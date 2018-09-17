@@ -15,11 +15,14 @@ limitations under the License.
 
 // XLA-specific reduction Ops.
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -27,10 +30,9 @@ namespace tensorflow {
 XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
                                DataType reduction_type)
     : XlaOpKernel(ctx), reduction_type_(reduction_type) {
-  const DataType dt = BaseType(input_type(0));
-  OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
-
   OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+  OP_REQUIRES_OK(
+      ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }
 
 // Unless BuildFinalizer is overridden the reduction has no
@@ -54,20 +56,24 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
     return;
   }
 
+  OP_REQUIRES(ctx, axes_tensor_shape.dims() <= 1,
+              errors::InvalidArgument(
+                  "Expected scalar or vector as index argument, got ",
+                  axes_tensor_shape.DebugString()));
+
   // Evaluate the constant, reshaping to a 1-vector if it is a scalar.
+  std::vector<int64> axes;
   xla::Literal axes_literal;
-  OP_REQUIRES_OK(
-      ctx, ctx->ConstantInputReshaped(1, {axes_tensor_shape.num_elements()},
-                                      &axes_literal));
+  OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector(1, &axes));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
-  VLOG(1) << "axes      : " << axes_literal.ToString();
+  VLOG(1) << "axes      : " << absl::StrJoin(axes, ",");
 
-  gtl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
+  absl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64> xla_axes;
   int64 num_elements_reduced = 1LL;
   for (int64 i = 0; i < axes_tensor_shape.num_elements(); ++i) {
-    int32 index = axes_literal.Get<int>({i});
+    int64 index = axes[i];
     OP_REQUIRES(ctx,
                 !(index < -data_shape.dims() || index >= data_shape.dims()),
                 errors::InvalidArgument("Invalid reduction dimension (", index,
@@ -97,24 +103,24 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   xla::XlaBuilder* const b = ctx->builder();
   // Construct the builder for the reduction lambda.
-  xla::XlaBuilder r(strings::StrCat(desc, "-reduction"));
+  xla::XlaBuilder r(absl::StrCat(desc, "-reduction"));
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
 
-  auto data = b->ConvertElementType(ctx->Input(0), type);
+  auto data = xla::ConvertElementType(ctx->Input(0), type);
   // Call virtual method to get the initial value.
-  auto initial = b->ConvertElementType(InitialValue(b), type);
+  auto initial = xla::ConvertElementType(InitialValue(b), type);
   // Make two scalar parameters of the desired type for the lambda.
-  auto rx = r.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  auto ry = r.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
+  auto rx = xla::Parameter(&r, 0, xla::ShapeUtil::MakeShape(type, {}), "x");
+  auto ry = xla::Parameter(&r, 1, xla::ShapeUtil::MakeShape(type, {}), "y");
   // Call virtual method to build the reduction lambda.
   BuildReducer(&r, rx, ry);
   xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
-  auto reduce = b->Reduce(data, initial, reduction_computation, xla_axes);
+  auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
   auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
   auto finalized = BuildFinalizer(b, deconverted, num_elements_reduced);
-  auto result = keep_dims_ ? b->Reshape(finalized, final_shape) : finalized;
+  auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
 }
 

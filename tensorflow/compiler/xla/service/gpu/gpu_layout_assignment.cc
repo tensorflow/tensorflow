@@ -31,52 +31,58 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using stream_executor::dnn::DataLayout;
-using stream_executor::dnn::FilterLayout;
-
-static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
-  int major, minor;
-  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
-                                                                       &minor));
-  return major >= 7;
-}
+using se::dnn::DataLayout;
+using se::dnn::FilterLayout;
 
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          stream_executor::StreamExecutor* stream_executor) {
+                          se::StreamExecutor* stream_executor) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
   //   H <=> Y
   //   W <=> X
   //
-  // Therefore kOutputInputYX means NHWC; kBatchDepthYX means NCHW.
+  // Therefore kOutputInputYX and kBatchDepthYX mean NCHW.
+  //
+  // If you have trouble keeping these straight, consider that all that matters
+  // is the location of the channel dim: Is it major (NCHW), or minor (NHWC)?
 
-  // As of today, our empirical evidence is that cudnn 7.0 is faster on V100 x
-  // fp16 with the mostly-NHWC layout. The heuristic may change as cudnn version
-  // changes, as well as the hardware updates.
+  constexpr auto kAllNCHW =
+      std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
+                      DataLayout::kBatchDepthYX);
+  constexpr auto kAllNHWC =
+      std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
+                      DataLayout::kBatchYXDepth);
+
+  // If we're not Volta or not fp16, the decision is easy: Use NCHW.
   if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
         IsVoltaOrLater(*stream_executor))) {
-    return std::make_tuple(DataLayout::kBatchDepthYX,
-                           FilterLayout::kOutputInputYX,
-                           DataLayout::kBatchDepthYX);
+    return kAllNCHW;
   }
+
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
-  // For BackwardInput that has stride, full NHWC layouts run significantly
-  // slower than (NHWC, NCHW, NCHW) or (NHWC, NCHW, NHWC).
+
+  // Empirically we've found with Volta and cudnn 7 that backward-input convs
+  // with stride are significantly faster with NCHW layouts.
   //
-  // TODO(timshen): more closely compare (NHWC, NCHW, NCHW) and (NHWC, NCHW,
-  // NHWC).
+  // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
+  // which on paper gives good performance. However, there are two observations:
+  // * a mixed layout combination is more cuDNN-bug prone, based on empirical
+  //   envidence.
+  // * we've also observed that for mixed layouts, cuDNN transposes data back
+  //   and forth from a different layout combination. If we end up with
+  //   transposes anyway, we prefer to have them in XLA, as they can be fused.
+  // TODO(timshen): Figure out the exact condition. This may be achieved by
+  // auto-tuning layouts offline.
   if (instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
       window_util::HasStride(instr->window())) {
-    return std::make_tuple(DataLayout::kBatchYXDepth,
-                           FilterLayout::kOutputInputYX,
-                           DataLayout::kBatchDepthYX);
+    return kAllNCHW;
   }
-  return std::make_tuple(DataLayout::kBatchYXDepth,
-                         FilterLayout::kOutputYXInput,
-                         DataLayout::kBatchYXDepth);
+
+  // For other Volta f16 convolutions, use NHWC.
+  return kAllNHWC;
 }
 
 // Adds layout constraints on the cudnn custom-call instruction. The layout
@@ -169,6 +175,38 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     if (IsCustomCallToDnnConvolution(*instruction)) {
       TF_RETURN_IF_ERROR(
           AddBackendConstraintsToDnnConvCustomCall(instruction, constraints));
+    }
+
+    // For batched dot we require the default layout.
+    // TODO(b/112111608): This is overly conservative, the only real restriction
+    // is that batch dimensions must be major.
+    if (instruction->opcode() == HloOpcode::kDot &&
+        ImplementedAsGemm(*instruction) &&
+        instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
+      // Verify that the batch dims come before the row and col dims.
+      const DotDimensionNumbers& dim_nums =
+          instruction->dot_dimension_numbers();
+      CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
+               dim_nums.rhs_batch_dimensions_size());
+      CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
+               ShapeUtil::Rank(instruction->shape()));
+      for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+        CHECK_LT(batch_dim, ShapeUtil::Rank(instruction->shape()) - 2);
+      }
+
+      // Set both inputs and the output to default layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape op1_shape = instruction->operand(1)->shape();
+      LayoutUtil::SetToDefaultLayout(&op1_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     }
   }
   return Status::OK();

@@ -59,6 +59,9 @@ typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*)>
 class GrpcServer : public ServerInterface {
  protected:
   GrpcServer(const ServerDef& server_def, Env* env);
+  // Allow children classes to override this and provide custom args to the
+  // server before it is constructed. Default behavior is to do nothing.
+  virtual void MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
  public:
   static Status Create(const ServerDef& server_def, Env* env,
@@ -96,7 +99,7 @@ class GrpcServer : public ServerInterface {
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func,
               const CollectiveMgrCreationFunction& collective_mgr_func);
-    
+
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 

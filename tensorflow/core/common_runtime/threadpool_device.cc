@@ -70,17 +70,6 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
-void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // When Xprof/ThreadScape profiling is off (which is the default), the
-  // following code is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                               op_kernel->name());
-
-  op_kernel->Compute(context);
-}
-
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_;
 }
@@ -111,7 +100,21 @@ Status ThreadPoolDevice::MakeTensorFromProto(
 }
 
 #ifdef INTEL_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
+namespace {
+class MklCPUAllocatorFactory : public AllocatorFactory {
+ public:
+  bool NumaEnabled() override { return false; }
+
+  Allocator* CreateAllocator() override { return new MklCPUAllocator; }
+
+  // Note: Ignores numa_node, for now.
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new MklSubAllocator;
+  }
+};
+
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+}  // namespace
 #endif
 
 }  // namespace tensorflow

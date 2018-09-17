@@ -37,6 +37,14 @@ REGISTER_OP("RegexReplace")
       return Status::OK();
     });
 
+REGISTER_OP("StaticRegexReplace")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Attr("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("RegexFullMatch")
     .Input("input: string")
     .Input("pattern: string")
@@ -47,6 +55,12 @@ REGISTER_OP("RegexFullMatch")
       c->set_output(0, c->input(0));
       return Status::OK();
     });
+
+REGISTER_OP("StaticRegexFullMatch")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
@@ -78,7 +92,9 @@ REGISTER_OP("ReduceJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int8, int16, int32, int64, complex64, float, double, bool}")
+    .Attr(
+        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
+        "bool}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -155,6 +171,11 @@ REGISTER_OP("StringSplitV2")
 REGISTER_OP("StringStrip")
     .Input("input: string")
     .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringLength")
+    .Input("input: string")
+    .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")

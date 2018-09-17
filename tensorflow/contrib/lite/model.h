@@ -35,9 +35,10 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_MODEL_H_
 
 #include <memory>
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/op_resolver.h"
 #include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/op_resolver.h"
+#include "tensorflow/contrib/lite/mutable_op_resolver.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -156,6 +157,7 @@ class InterpreterBuilder {
   InterpreterBuilder(const ::tflite::Model* model,
                      const OpResolver& op_resolver,
                      ErrorReporter* error_reporter = DefaultErrorReporter());
+  ~InterpreterBuilder();
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter);

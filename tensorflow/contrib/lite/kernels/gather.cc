@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -40,10 +40,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   // Only INT32 positions are supported.
   TF_LITE_ENSURE_EQ(context, positions->type, kTfLiteInt32);
-  // Check that input and output types match.
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
-  // TODO(mgubin): only 0D or 1D positions are currently supported.
-  TF_LITE_ENSURE(context, NumDimensions(positions) <= 1);
+  // Assign to output the input type.
+  output->type = input->type;
   // TODO(mgubin): Only default axis == 0 is supported.
   TF_LITE_ENSURE_EQ(context, params->axis, 0);
   // Check conditions for different types.
@@ -102,6 +100,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_GATHER(int32_t, int32_t);
       break;
     case kTfLiteString: {
+      // TODO(mgubin): Currently support only for 1D output tensors.
       DynamicBuffer buffer;
       const int32* indexes = positions->data.i32;
       const int num_strings = GetStringCount(input);

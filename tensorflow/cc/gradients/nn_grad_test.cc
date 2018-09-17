@@ -25,6 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ops::AvgPool;
+using ops::AvgPool3D;
 using ops::BiasAdd;
 using ops::Conv2D;
 using ops::Elu;
@@ -33,11 +35,9 @@ using ops::FractionalMaxPool;
 using ops::L2Loss;
 using ops::LogSoftmax;
 using ops::LRN;
-using ops::AvgPool;
-using ops::AvgPool3D;
 using ops::MaxPool;
-using ops::MaxPoolV2;
 using ops::MaxPool3D;
+using ops::MaxPoolV2;
 using ops::Placeholder;
 using ops::Relu;
 using ops::Relu6;
@@ -109,6 +109,20 @@ TEST_F(NNGradTest, SoftmaxGrad) {
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
   auto y = Softmax(scope_, x);
   RunTest(x, shape, y, shape);
+}
+
+TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
+  TensorShape logits_shape({5, 3});
+  TensorShape loss_shape({5});
+
+  auto logits = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logits_shape));
+  auto labels = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logits_shape));
+  auto y =
+      tensorflow::ops::SoftmaxCrossEntropyWithLogits(scope_, logits, labels);
+  // Note the reversal of the backprop and loss orders. Issue #18734 has been
+  // opened for this.
+  RunTest({logits, labels}, {logits_shape, logits_shape}, {y.backprop, y.loss},
+          {logits_shape, loss_shape});
 }
 
 TEST_F(NNGradTest, LogSoftmaxGrad) {
@@ -253,7 +267,7 @@ TEST_F(NNGradTest, AvgPool3DGradHelper) {
   RunTest(x, x_shape, y, y_shape);
 }
 
-TEST_F(NNGradTest, LRN){
+TEST_F(NNGradTest, LRN) {
   TensorShape x_shape({1, 1, 2, 1});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = LRN(scope_, x);

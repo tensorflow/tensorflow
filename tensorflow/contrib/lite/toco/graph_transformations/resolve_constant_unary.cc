@@ -51,14 +51,15 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   // Test for unary ops of types that we know how to resolve.
   switch (unary_op->type) {
     case OperatorType::kCast:
+    case OperatorType::kExp:
     case OperatorType::kLog:
     case OperatorType::kNeg:
     case OperatorType::kRsqrt:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
     case OperatorType::kSum:
-    case OperatorType::kMin:  //  Reduction Min
-    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kReduceMin:  //  Reduction Min
+    case OperatorType::kReduceMax:  //  Reduction Max
     case OperatorType::kReshape:
     case OperatorType::kRelu6:
     case OperatorType::kRelu1:
@@ -196,7 +197,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = sum;
     }
-  } else if (unary_op->type == OperatorType::kMin) {
+  } else if (unary_op->type == OperatorType::kReduceMin) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
     for (int i = 0; i < output_dims_count; i++) {
@@ -207,7 +208,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       min = std::min(min, (*input_float_data)[i]);
     }
     output_float_data[0] = min;
-  } else if (unary_op->type == OperatorType::kMax) {
+  } else if (unary_op->type == OperatorType::kReduceMax) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
     for (int i = 0; i < output_dims_count; i++) {
@@ -218,7 +219,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       max = std::max(max, (*input_float_data)[i]);
     }
     output_float_data[0] = max;
-  } else if (unary_op->type == OperatorType::kNeg ||
+  } else if (unary_op->type == OperatorType::kExp ||
+             unary_op->type == OperatorType::kNeg ||
              unary_op->type == OperatorType::kLog ||
              unary_op->type == OperatorType::kRsqrt ||
              unary_op->type == OperatorType::kSqrt ||
@@ -231,7 +233,9 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     for (int i = 0; i < output_buffer_size; i++) {
       const float val = (*input_float_data)[i];
       float outval = 0.f;
-      if (unary_op->type == OperatorType::kNeg) {
+      if (unary_op->type == OperatorType::kExp) {
+        outval = std::exp(val);
+      } else if (unary_op->type == OperatorType::kNeg) {
         outval = -val;
       } else if (unary_op->type == OperatorType::kLog) {
         outval = std::log(val);
@@ -246,8 +250,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       }
       output_float_data[i] = outval;
     }
-  } else if (unary_op->type == OperatorType::kRelu6 &&
-             unary_op->type == OperatorType::kRelu1 &&
+  } else if (unary_op->type == OperatorType::kRelu6 ||
+             unary_op->type == OperatorType::kRelu1 ||
              unary_op->type == OperatorType::kRelu) {
     for (size_t i = 0; i < output_buffer_size; ++i) {
       const float value = (*input_float_data)[i];

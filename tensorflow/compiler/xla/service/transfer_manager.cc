@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -27,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/notification.h"
 
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
 
 namespace xla {
 /* static */ tensorflow::mutex
@@ -40,17 +42,42 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
+StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
-  StatusOr<std::unique_ptr<Literal>> ret;
+  StatusOr<Literal> ret;
+
   se::Stream* substream = stream->GetOrCreateSubStream();
+  substream->ThenWaitFor(stream);
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
 
   tensorflow::Notification n;
-  TransferLiteralFromDevice(substream, device_buffer,
-                            [&](StatusOr<std::unique_ptr<Literal>> arg) {
-                              ret = std::move(arg);
+  Status s;
+  Literal literal(device_buffer.on_host_shape());
+  TransferLiteralFromDevice(substream, device_buffer, literal,
+                            [&](Status status) {
+                              s = status;
+                              n.Notify();
+                            });
+  n.WaitForNotification();
+  if (!s.ok()) {
+    return s;
+  }
+  return std::move(literal);
+}
+
+Status TransferManager::TransferLiteralFromDevice(
+    se::Stream* stream, const ShapedBuffer& device_buffer,
+    const MutableBorrowingLiteral& literal) {
+  se::Stream* substream = stream->GetOrCreateSubStream();
+  auto cleanup = tensorflow::gtl::MakeCleanup(
+      [&]() { stream->ReturnSubStream(substream); });
+
+  Status ret;
+  tensorflow::Notification n;
+  TransferLiteralFromDevice(substream, device_buffer, literal,
+                            [&](Status status) {
+                              ret = status;
                               n.Notify();
                             });
   n.WaitForNotification();
@@ -64,6 +91,7 @@ Status TransferManager::TransferLiteralToDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   se::Stream* substream = stream->GetOrCreateSubStream();
+  substream->ThenWaitFor(stream);
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
   TF_RETURN_IF_ERROR(
@@ -71,25 +99,30 @@ Status TransferManager::TransferLiteralToDevice(
   return substream->BlockHostUntilDone();
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
+StatusOr<Literal> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape,
     const se::DeviceMemoryBase& source) {
+  StatusOr<Literal> ret;
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
-  StatusOr<std::unique_ptr<Literal>> ret;
   se::Stream* substream = stream->GetOrCreateSubStream();
   auto cleanup = tensorflow::gtl::MakeCleanup(
       [&]() { stream->ReturnSubStream(substream); });
 
   tensorflow::Notification n;
-  TransferArrayFromDevice(substream, shape, source,
-                          [&](StatusOr<std::unique_ptr<Literal>> arg) {
-                            ret = std::move(arg);
+  Literal literal(shape);
+  Status s;
+  TransferArrayFromDevice(substream, shape, source, literal,
+                          [&](Status status) {
+                            s = status;
                             n.Notify();
                           });
   n.WaitForNotification();
-  return ret;
+  if (!s.ok()) {
+    return s;
+  }
+  return std::move(literal);
 }
 
 Status TransferManager::TransferArrayToDevice(
@@ -116,7 +149,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
   if (dest.size() < GetByteSizeRequirement(on_device_shape)) {
     return FailedPrecondition(
         "Allocation on device not large enough for array: "
-        "%lld < %lld",
+        "%d < %d",
         dest.size(), GetByteSizeRequirement(on_device_shape));
   }
   ShapedBuffer shaped_buffer(/*on_host_shape=*/literal.shape(), on_device_shape,
@@ -128,24 +161,25 @@ Status TransferManager::TransferArrayToDeviceAsync(
 
 void TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
-    std::function<void(StatusOr<std::unique_ptr<Literal>>)> done) {
+    const MutableBorrowingLiteral& literal, std::function<void(Status)> done) {
   if (!ShapeUtil::Equal(HostShapeToDeviceShape(shape), shape)) {
     auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
                         " has a differently shaped representation on-device: ",
                         ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));
-    return done(FailedPrecondition("%s", error.c_str()));
+    return done(FailedPrecondition("%s", error));
   }
   if (source.size() < GetByteSizeRequirement(shape)) {
     return done(
         FailedPrecondition("Allocation on device not large enough for array: "
-                           "%lld < %lld",
+                           "%d < %d",
                            source.size(), GetByteSizeRequirement(shape)));
   }
   ShapedBuffer shaped_buffer(/*on_host_shape=*/shape, shape,
                              stream->parent()->platform(),
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(source, /*index=*/{});
-  return TransferLiteralFromDevice(stream, shaped_buffer, std::move(done));
+  return TransferLiteralFromDevice(stream, shaped_buffer, literal,
+                                   std::move(done));
 }
 
 /* static */ void TransferManager::RegisterTransferManager(
@@ -169,7 +203,7 @@ void TransferManager::TransferArrayFromDevice(
     return NotFound(
         "could not find registered transfer manager for platform %s -- check "
         "target linkage",
-        platform->Name().c_str());
+        platform->Name());
   }
 
   if (it->second.manager == nullptr) {
@@ -220,7 +254,7 @@ Status TransferManager::TransferBufferFromDevice(
   if (source.size() < size) {
     return FailedPrecondition(
         "Source allocation on device not large enough for data tranfer: "
-        "%lld < %lld",
+        "%d < %d",
         source.size(), size);
   }
   stream->ThenMemcpy(destination, source, size);
@@ -233,7 +267,7 @@ Status TransferManager::TransferBufferToDevice(
   if (destination->size() < size) {
     return FailedPrecondition(
         "Destination allocation on device not large enough for data tranfer: "
-        "%lld < %lld",
+        "%d < %d",
         destination->size(), size);
   }
   stream->ThenMemcpy(destination, source, size);
@@ -244,9 +278,8 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const Shape& on_host_shape, DeviceMemoryAllocator* allocator,
     int device_ordinal) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
-    return InvalidArgument(
-        "Shape must have a layout: %s",
-        ShapeUtil::HumanStringWithLayout(on_host_shape).c_str());
+    return InvalidArgument("Shape must have a layout: %s",
+                           ShapeUtil::HumanStringWithLayout(on_host_shape));
   }
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(on_host_shape));
   const Shape on_device_shape = HostShapeToDeviceShape(on_host_shape);

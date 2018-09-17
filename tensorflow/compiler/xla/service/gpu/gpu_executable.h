@@ -19,6 +19,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -32,8 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -66,7 +68,7 @@ class GpuExecutable : public Executable {
   }
 
   // Returns the compiled PTX for the computation.
-  tensorflow::StringPiece ptx() const { return ptx_; }
+  const string& ptx() const { return ptx_; }
 
   // Returns the cubin (compiled PTX) stored in this GpuExecutable.  May be
   // empty, in which case compilation is left up to the GPU driver.
@@ -76,12 +78,12 @@ class GpuExecutable : public Executable {
   // match the compute capability passed to this object's constructor.
   StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
+      absl::Span<const ShapedBuffer* const> arguments) override;
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -97,6 +99,15 @@ class GpuExecutable : public Executable {
   // Returns the points-to set of the root instruction of the entry
   // computation. Uses points-to analysis from buffer assignment.
   const PointsToSet& GetRootPointsToSet() const;
+
+  using BufferAllocToDeviceMemoryMap =
+      tensorflow::gtl::FlatMap<BufferAllocation::Index, se::DeviceMemoryBase>;
+
+  // Loads the PTX or CUBIN for this executable into `executor` and resolves the
+  // globals corresponding to constant buffers.  Returns a map mapping buffer
+  // allocation indices to GPU pointers.
+  StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
+      stream_executor::StreamExecutor* executor);
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -125,6 +136,14 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<const BufferAssignment> assignment_;
+
+  // Cache of module handles and constant buffer allocation maps used by
+  // `ResolveConstantGlobals`.
+  tensorflow::mutex module_handle_mutex_;
+  std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+      module_handles_ GUARDED_BY(module_handle_mutex_);
+  std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
+      module_globals_ GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

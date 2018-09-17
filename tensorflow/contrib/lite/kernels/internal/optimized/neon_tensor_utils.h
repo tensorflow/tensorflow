@@ -17,7 +17,7 @@ limitations under the License.
 
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/tensor_utils_impl.h"
 
@@ -52,6 +52,13 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
                    result);
 }
 
+void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                   const float* batch_vector, int n_batch,
+                                   float* result) {
+  NEON_OR_PORTABLE(VectorBatchVectorCwiseProduct, vector, v_size, batch_vector,
+                   n_batch, result);
+}
+
 void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
                                              const float* batch_vector,
                                              int n_batch, float* result) {
@@ -70,6 +77,11 @@ void BatchVectorBatchVectorDotProduct(const float* vector1,
                                       int result_stride) {
   NEON_OR_PORTABLE(BatchVectorBatchVectorDotProduct, vector1, vector2, v_size,
                    n_batch, result, result_stride);
+}
+
+void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                          float* batch_vector) {
+  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
 void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
@@ -105,16 +117,20 @@ bool IsZeroVector(const float* vector, int v_size) {
   return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);
 }
 
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result) {
+  NEON_OR_PORTABLE(VectorScalarMultiply, vector, v_size, scale, result);
+}
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result) {
   NEON_OR_PORTABLE(ClipVector, vector, v_size, abs_limit, result);
 }
 
 void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* min, float* max,
-                             float* scaling_factor) {
-  NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values, min,
-                   max, scaling_factor);
+                             int8_t* quantized_values, float* min_value,
+                             float* max_value, float* scaling_factor) {
+  NEON_OR_PORTABLE(SymmetricQuantizeFloats, values, size, quantized_values,
+                   min_value, max_value, scaling_factor);
 }
 
 void VectorShiftLeft(float* vector, int v_size, float shift_value) {
@@ -125,6 +141,13 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   NEON_OR_PORTABLE(ReductionSumVector, input_vector, output_vector, output_size,
                    reduction_size);
+}
+
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch,
+                             float normalization_epsilon) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
+                                  normalization_epsilon);
 }
 
 }  // namespace tensor_utils

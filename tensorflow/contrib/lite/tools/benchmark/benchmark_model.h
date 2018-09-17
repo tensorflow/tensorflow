@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_MODEL_H_
-#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_MODEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
+#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_MODEL_H_
 
 #include <cmath>
 #include <limits>
@@ -137,19 +137,21 @@ class BenchmarkModel {
   BenchmarkModel();
   BenchmarkModel(BenchmarkParams params) : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
-  bool ParseFlags(int argc, char** argv);
   virtual void Init() = 0;
   void Run(int argc, char** argv);
+  virtual void Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
 
  protected:
-  virtual void LogFlags();
-  virtual bool ValidateFlags() { return true; }
+  virtual void LogParams();
+  virtual bool ValidateParams();
+  bool ParseFlags(int argc, char** argv);
   virtual std::vector<Flag> GetFlags();
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int num_times, RunType run_type);
+  virtual void PrepareInputsAndOutputs();
   virtual void RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;

@@ -47,6 +47,7 @@ namespace xla {
 #define HLO_OPCODE_LIST(V)                                   \
   V(kAbs, "abs")                                             \
   V(kAdd, "add")                                             \
+  V(kAllToAll, "all-to-all")                                 \
   V(kAtan2, "atan2")                                         \
   V(kBatchNormGrad, "batch-norm-grad")                       \
   V(kBatchNormInference, "batch-norm-inference")             \
@@ -57,6 +58,7 @@ namespace xla {
   V(kCall, "call", kHloOpcodeIsVariadic)                     \
   V(kCeil, "ceil")                                           \
   V(kClamp, "clamp")                                         \
+  V(kCollectivePermute, "collective-permute")                \
   V(kClz, "count-leading-zeros")                             \
   V(kComplex, "complex")                                     \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)       \
@@ -84,9 +86,9 @@ namespace xla {
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
-  V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
+  V(kIota, "iota")                                           \
   V(kIsFinite, "is-finite")                                  \
   V(kLe, "less-than-or-equal-to", kHloOpcodeIsComparison)    \
   V(kLog, "log")                                             \
@@ -117,6 +119,7 @@ namespace xla {
   V(kReverse, "reverse")                                     \
   V(kRng, "rng")                                             \
   V(kRoundNearestAfz, "round-nearest-afz")                   \
+  V(kScatter, "scatter")                                     \
   V(kSelect, "select")                                       \
   V(kSelectAndScatter, "select-and-scatter")                 \
   V(kSend, "send")                                           \
@@ -133,6 +136,7 @@ namespace xla {
   V(kTrace, "trace")                                         \
   V(kTranspose, "transpose")                                 \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                   \
+  V(kTupleSelect, "tuple-select")                            \
   V(kWhile, "while")
 
 enum class HloOpcode {
@@ -152,7 +156,7 @@ enum HloOpcodeProperty {
 // Returns a string representation of the opcode.
 string HloOpcodeString(HloOpcode opcode);
 
-// Returns a string representation of the opcode.
+// Retrieves the opcode enum by name if the opcode exists.
 StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {

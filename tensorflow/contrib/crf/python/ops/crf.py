@@ -67,7 +67,7 @@ __all__ = [
     "crf_sequence_score", "crf_log_norm", "crf_log_likelihood",
     "crf_unary_score", "crf_binary_score", "CrfForwardRnnCell",
     "viterbi_decode", "crf_decode", "CrfDecodeForwardRnnCell",
-    "CrfDecodeBackwardRnnCell"
+    "CrfDecodeBackwardRnnCell", "crf_multitag_sequence_score"
 ]
 
 
@@ -106,6 +106,56 @@ def crf_sequence_score(inputs, tag_indices, sequence_lengths,
                                      transition_params)
     sequence_scores = unary_scores + binary_scores
     return sequence_scores
+
+  return utils.smart_cond(
+      pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
+                          1),
+      true_fn=_single_seq_fn,
+      false_fn=_multi_seq_fn)
+
+
+def crf_multitag_sequence_score(inputs, tag_bitmap, sequence_lengths,
+                                transition_params):
+  """Computes the unnormalized score of all tag sequences matching tag_bitmap.
+
+  tag_bitmap enables more than one tag to be considered correct at each time
+  step. This is useful when an observed output at a given time step is
+  consistent with more than one tag, and thus the log likelihood of that
+  observation must take into account all possible consistent tags.
+
+  Using one-hot vectors in tag_bitmap gives results identical to
+  crf_sequence_score.
+
+  Args:
+    inputs: A [batch_size, max_seq_len, num_tags] tensor of unary potentials
+        to use as input to the CRF layer.
+    tag_bitmap: A [batch_size, max_seq_len, num_tags] boolean tensor
+        representing all active tags at each index for which to calculate the
+        unnormalized score.
+    sequence_lengths: A [batch_size] vector of true sequence lengths.
+    transition_params: A [num_tags, num_tags] transition matrix.
+  Returns:
+    sequence_scores: A [batch_size] vector of unnormalized sequence scores.
+  """
+
+  # If max_seq_len is 1, we skip the score calculation and simply gather the
+  # unary potentials of all active tags.
+  def _single_seq_fn():
+    filtered_inputs = array_ops.where(
+        tag_bitmap, inputs,
+        array_ops.fill(array_ops.shape(inputs), float("-inf")))
+    return math_ops.reduce_logsumexp(
+        filtered_inputs, axis=[1, 2], keepdims=False)
+
+  def _multi_seq_fn():
+    # Compute the logsumexp of all scores of sequences matching the given tags.
+    filtered_inputs = array_ops.where(
+        tag_bitmap, inputs,
+        array_ops.fill(array_ops.shape(inputs), float("-inf")))
+    return crf_log_norm(
+        inputs=filtered_inputs,
+        sequence_lengths=sequence_lengths,
+        transition_params=transition_params)
 
   return utils.smart_cond(
       pred=math_ops.equal(inputs.shape[1].value or array_ops.shape(inputs)[1],
@@ -498,7 +548,9 @@ def crf_decode(potentials, transition_params, sequence_length):
     initial_state = array_ops.squeeze(initial_state, axis=[1])  # [B, O]
     inputs = array_ops.slice(potentials, [0, 1, 0], [-1, -1, -1])  # [B, T-1, O]
     # Sequence length is not allowed to be less than zero.
-    sequence_length_less_one = math_ops.maximum(0, sequence_length - 1)
+    sequence_length_less_one = math_ops.maximum(
+        constant_op.constant(0, dtype=sequence_length.dtype),
+        sequence_length - 1)
     backpointers, last_score = rnn.dynamic_rnn(  # [B, T - 1, O], [B, O]
         crf_fwd_cell,
         inputs=inputs,

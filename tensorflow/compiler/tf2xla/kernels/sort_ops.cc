@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -25,8 +25,7 @@ class XlaSortOp : public XlaOpKernel {
   explicit XlaSortOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
 
   void Compile(XlaOpKernelContext* context) override {
-    xla::XlaBuilder* const b = context->builder();
-    context->SetOutput(0, b->Sort(context->Input(0)));
+    context->SetOutput(0, xla::Sort(context->Input(0)));
   }
 };
 

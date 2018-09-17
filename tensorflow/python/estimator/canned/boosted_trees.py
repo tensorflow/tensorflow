@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
+import functools
 
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
@@ -36,7 +38,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -44,12 +45,13 @@ from tensorflow.python.util.tf_export import estimator_export
 # TODO(nponomareva): Reveal pruning params here.
 _TreeHParams = collections.namedtuple('TreeHParams', [
     'n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity',
-    'min_node_weight'
+    'min_node_weight', 'center_bias', 'pruning_mode'
 ])
 
 _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
 _HOLD_FOR_MULTI_DIM_SUPPORT = object()
 _DUMMY_NUM_BUCKETS = -1
+_DUMMY_NODE_ID = -1
 
 
 def _get_transformed_features(features, sorted_feature_columns):
@@ -279,7 +281,9 @@ class _CacheTrainingStatesUsingHashTable(object):
     """Returns cached_tree_ids, cached_node_ids, cached_logits."""
     cached_tree_ids, cached_node_ids, cached_logits = array_ops.split(
         lookup_ops.lookup_table_find_v2(
-            self._table_ref, self._example_ids, default_value=[0.0, 0.0, 0.0]),
+            self._table_ref,
+            self._example_ids,
+            default_value=[0.0, _DUMMY_NODE_ID, 0.0]),
         [1, 1, self._logits_dimension],
         axis=1)
     cached_tree_ids = array_ops.squeeze(
@@ -330,7 +334,7 @@ class _CacheTrainingStatesUsingVariables(object):
         array_ops.zeros([batch_size], dtype=dtypes.int32),
         name='tree_ids_cache')
     self._node_ids = _local_variable(
-        array_ops.zeros([batch_size], dtype=dtypes.int32),
+        _DUMMY_NODE_ID*array_ops.ones([batch_size], dtype=dtypes.int32),
         name='node_ids_cache')
     self._logits = _local_variable(
         array_ops.zeros([batch_size, logits_dimension], dtype=dtypes.float32),
@@ -380,6 +384,287 @@ class _StopAtAttemptsHook(session_run_hook.SessionRunHook):
       run_context.request_stop()
 
 
+def _get_max_splits(tree_hparams):
+  """Calculates the max possible number of splits based on tree params."""
+  # maximum number of splits possible in the whole tree =2^(D-1)-1
+  max_splits = (1 << tree_hparams.max_depth) - 1
+  return max_splits
+
+
+class _EnsembleGrower(object):
+  """Abstract base class for different types of ensemble growers.
+
+  Use it to receive training ops for growing and centering bias, depending
+  on the implementation (for example, in memory or accumulator-based
+  distributed):
+    grower = ...create subclass grower(tree_ensemble, tree_hparams)
+    grow_op = grower.grow_tree(stats_summaries_list, feature_ids_list,
+                               last_layer_nodes_range)
+    training_ops.append(grow_op)
+  """
+
+  def __init__(self, tree_ensemble, tree_hparams, feature_ids_list):
+    """Initializes a grower object.
+
+    Args:
+      tree_ensemble: A TreeEnsemble variable.
+      tree_hparams: TODO. collections.namedtuple for hyper parameters.
+      feature_ids_list: a list of lists of feature ids for each bucket size.
+
+    Raises:
+      ValueError: when pruning mode is invalid or pruning is used and no tree
+      complexity is set.
+    """
+    self._tree_ensemble = tree_ensemble
+    self._tree_hparams = tree_hparams
+    self._feature_ids_list = feature_ids_list
+    # pylint: disable=protected-access
+    self._pruning_mode_parsed = boosted_trees_ops.PruningMode.from_str(
+        tree_hparams.pruning_mode)
+
+    if (self._pruning_mode_parsed != boosted_trees_ops.PruningMode.NO_PRUNING
+        and tree_hparams.tree_complexity <= 0):
+      raise ValueError('For pruning, tree_complexity must be positive.')
+    # pylint: enable=protected-access
+
+  @abc.abstractmethod
+  def center_bias(self, center_bias_var, gradients, hessians):
+    """Centers bias, if ready, based on statistics.
+
+    Args:
+      center_bias_var: A variable that will be updated when bias centering
+        finished.
+      gradients: A rank 2 tensor of gradients.
+      hessians: A rank 2 tensor of hessians.
+
+    Returns:
+      An operation for centering bias.
+    """
+
+  @abc.abstractmethod
+  def grow_tree(self, stats_summaries_list, last_layer_nodes_range):
+    """Grows a tree, if ready, based on provided statistics.
+
+    Args:
+      stats_summaries_list: List of stats summary tensors, representing sums of
+        gradients and hessians for each feature bucket.
+      last_layer_nodes_range: A tensor representing ids of the nodes in the
+        current layer, to be split.
+
+    Returns:
+      An op for growing a tree.
+    """
+
+  def chief_init_op(self):
+    """Ops that chief needs to run to initialize the state."""
+    return control_flow_ops.no_op()
+
+  #  ============= Helper methods ===========
+
+  def _center_bias_fn(self, center_bias_var, mean_gradients, mean_hessians):
+    """Updates the ensembles and cache (if needed) with logits prior."""
+    continue_centering = boosted_trees_ops.center_bias(
+        self._tree_ensemble.resource_handle,
+        mean_gradients=mean_gradients,
+        mean_hessians=mean_hessians,
+        l1=self._tree_hparams.l1,
+        l2=self._tree_hparams.l2)
+    return center_bias_var.assign(continue_centering)
+
+  def _grow_tree_from_stats_summaries(self, stats_summaries_list,
+                                      last_layer_nodes_range):
+    """Updates ensemble based on the best gains from stats summaries."""
+    node_ids_per_feature = []
+    gains_list = []
+    thresholds_list = []
+    left_node_contribs_list = []
+    right_node_contribs_list = []
+    all_feature_ids = []
+    assert len(stats_summaries_list) == len(self._feature_ids_list)
+
+    max_splits = _get_max_splits(self._tree_hparams)
+
+    for i, feature_ids in enumerate(self._feature_ids_list):
+      (numeric_node_ids_per_feature, numeric_gains_list,
+       numeric_thresholds_list, numeric_left_node_contribs_list,
+       numeric_right_node_contribs_list) = (
+           boosted_trees_ops.calculate_best_gains_per_feature(
+               node_id_range=last_layer_nodes_range,
+               stats_summary_list=stats_summaries_list[i],
+               l1=self._tree_hparams.l1,
+               l2=self._tree_hparams.l2,
+               tree_complexity=self._tree_hparams.tree_complexity,
+               min_node_weight=self._tree_hparams.min_node_weight,
+               max_splits=max_splits))
+
+      all_feature_ids += feature_ids
+      node_ids_per_feature += numeric_node_ids_per_feature
+      gains_list += numeric_gains_list
+      thresholds_list += numeric_thresholds_list
+      left_node_contribs_list += numeric_left_node_contribs_list
+      right_node_contribs_list += numeric_right_node_contribs_list
+
+    grow_op = boosted_trees_ops.update_ensemble(
+        # Confirm if local_tree_ensemble or tree_ensemble should be used.
+        self._tree_ensemble.resource_handle,
+        feature_ids=all_feature_ids,
+        node_ids=node_ids_per_feature,
+        gains=gains_list,
+        thresholds=thresholds_list,
+        left_node_contribs=left_node_contribs_list,
+        right_node_contribs=right_node_contribs_list,
+        learning_rate=self._tree_hparams.learning_rate,
+        max_depth=self._tree_hparams.max_depth,
+        pruning_mode=self._pruning_mode_parsed)
+    return grow_op
+
+
+class _InMemoryEnsembleGrower(_EnsembleGrower):
+  """An in-memory ensemble grower."""
+
+  def __init__(self, tree_ensemble, tree_hparams, feature_ids_list):
+
+    super(_InMemoryEnsembleGrower, self).__init__(
+        tree_ensemble=tree_ensemble, tree_hparams=tree_hparams,
+        feature_ids_list=feature_ids_list)
+
+  def center_bias(self, center_bias_var, gradients, hessians):
+    # For in memory, we already have a full batch of gradients and hessians,
+    # so just take a mean and proceed with centering.
+    mean_gradients = array_ops.expand_dims(
+        math_ops.reduce_mean(gradients, 0), 0)
+    mean_heassians = array_ops.expand_dims(math_ops.reduce_mean(hessians, 0), 0)
+    return self._center_bias_fn(center_bias_var, mean_gradients, mean_heassians)
+
+  def grow_tree(self, stats_summaries_list, last_layer_nodes_range):
+    # For in memory, we already have full data in one batch, so we can grow the
+    # tree immediately.
+    return self._grow_tree_from_stats_summaries(
+        stats_summaries_list, last_layer_nodes_range)
+
+
+class _AccumulatorEnsembleGrower(_EnsembleGrower):
+  """An accumulator based ensemble grower."""
+
+  def __init__(self, tree_ensemble, tree_hparams, stamp_token,
+               n_batches_per_layer, bucket_size_list, is_chief, center_bias,
+               feature_ids_list):
+    super(_AccumulatorEnsembleGrower, self).__init__(
+        tree_ensemble=tree_ensemble, tree_hparams=tree_hparams,
+        feature_ids_list=feature_ids_list)
+    self._stamp_token = stamp_token
+    self._n_batches_per_layer = n_batches_per_layer
+    self._bucket_size_list = bucket_size_list
+    self._is_chief = is_chief
+    self._growing_accumulators = []
+    self._chief_init_ops = []
+    max_splits = _get_max_splits(self._tree_hparams)
+    for i, feature_ids in enumerate(self._feature_ids_list):
+      accumulator = data_flow_ops.ConditionalAccumulator(
+          dtype=dtypes.float32,
+          # The stats consist of grads and hessians (the last dimension).
+          shape=[len(feature_ids), max_splits, self._bucket_size_list[i], 2],
+          shared_name='numeric_stats_summary_accumulator_' + str(i))
+      self._chief_init_ops.append(
+          accumulator.set_global_step(self._stamp_token))
+      self._growing_accumulators.append(accumulator)
+    self._center_bias = center_bias
+    if center_bias:
+      self._bias_accumulator = data_flow_ops.ConditionalAccumulator(
+          dtype=dtypes.float32,
+          # The stats consist of grads and hessians means only.
+          # TODO(nponomareva): this will change for a multiclass
+          shape=[2, 1],
+          shared_name='bias_accumulator')
+      self._chief_init_ops.append(
+          self._bias_accumulator.set_global_step(self._stamp_token))
+
+  def center_bias(self, center_bias_var, gradients, hessians):
+    # For not in memory situation, we need to accumulate enough of batches first
+    # before proceeding with centering bias.
+
+    # Create an accumulator.
+    if not self._center_bias:
+      raise RuntimeError('center_bias called but bias centering is disabled.')
+    bias_dependencies = []
+    grads_and_hess = array_ops.stack([gradients, hessians], axis=0)
+    grads_and_hess = math_ops.reduce_mean(grads_and_hess, axis=1)
+
+    apply_grad = self._bias_accumulator.apply_grad(
+        grads_and_hess, self._stamp_token)
+    bias_dependencies.append(apply_grad)
+
+    # Center bias if enough batches were processed.
+    with ops.control_dependencies(bias_dependencies):
+      if not self._is_chief:
+        return control_flow_ops.no_op()
+      def _set_accumulators_stamp():
+        return control_flow_ops.group(
+            [acc.set_global_step(self._stamp_token + 1) for acc in
+             self._growing_accumulators])
+
+      def center_bias_from_accumulator():
+        accumulated = array_ops.unstack(self._bias_accumulator.take_grad(1),
+                                        axis=0)
+        center_bias_op = self._center_bias_fn(
+            center_bias_var,
+            array_ops.expand_dims(accumulated[0], 0),
+            array_ops.expand_dims(accumulated[1], 0))
+        with ops.control_dependencies([center_bias_op]):
+          return control_flow_ops.cond(center_bias_var,
+                                       control_flow_ops.no_op,
+                                       _set_accumulators_stamp)
+
+      center_bias_op = control_flow_ops.cond(
+          math_ops.greater_equal(self._bias_accumulator.num_accumulated(),
+                                 self._n_batches_per_layer),
+          center_bias_from_accumulator,
+          control_flow_ops.no_op,
+          name='wait_until_n_batches_for_bias_accumulated')
+      return center_bias_op
+
+  def grow_tree(self, stats_summaries_list, last_layer_nodes_range):
+    dependencies = []
+    for i in range(len(self._feature_ids_list)):
+      stats_summaries = stats_summaries_list[i]
+      apply_grad = self._growing_accumulators[i].apply_grad(
+          array_ops.stack(stats_summaries, axis=0), self._stamp_token)
+      dependencies.append(apply_grad)
+
+    # Grow the tree if enough batches is accumulated.
+    with ops.control_dependencies(dependencies):
+      if not self._is_chief:
+        return control_flow_ops.no_op()
+
+      min_accumulated = math_ops.reduce_min(
+          array_ops.stack([acc.num_accumulated() for acc in
+                           self._growing_accumulators]))
+
+      def grow_tree_from_accumulated_summaries_fn():
+        """Updates tree with the best layer from accumulated summaries."""
+        # Take out the accumulated summaries from the accumulator and grow.
+        stats_summaries_list = []
+        stats_summaries_list = [
+            array_ops.unstack(accumulator.take_grad(1), axis=0)
+            for accumulator in self._growing_accumulators
+        ]
+        grow_op = self._grow_tree_from_stats_summaries(
+            stats_summaries_list, last_layer_nodes_range
+        )
+        return grow_op
+
+      grow_model = control_flow_ops.cond(
+          math_ops.greater_equal(min_accumulated, self._n_batches_per_layer),
+          grow_tree_from_accumulated_summaries_fn,
+          control_flow_ops.no_op,
+          name='wait_until_n_batches_accumulated')
+      return grow_model
+
+  def chief_init_op(self):
+    """Ops that chief needs to run to initialize the state."""
+    return control_flow_ops.group(self._chief_init_ops)
+
+
 def _bt_model_fn(
     features,
     labels,
@@ -424,33 +709,50 @@ def _bt_model_fn(
   Raises:
     ValueError: mode or params are invalid, or features has the wrong type.
   """
-  is_single_machine = (config.num_worker_replicas <= 1)
-
   sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
-  if train_in_memory:
-    assert n_batches_per_layer == 1, (
-        'When train_in_memory is enabled, input_fn should return the entire '
-        'dataset as a single batch, and n_batches_per_layer should be set as '
-        '1.')
-    if (not config.is_chief or config.num_worker_replicas > 1 or
-        config.num_ps_replicas > 0):
-      raise ValueError('train_in_memory is supported only for '
-                       'non-distributed training.')
-  worker_device = control_flow_ops.no_op().device
-  # maximum number of splits possible in the whole tree =2^(D-1)-1
-  # TODO(youngheek): perhaps storage could be optimized by storing stats with
-  # the dimension max_splits_per_layer, instead of max_splits (for the entire
-  # tree).
-  max_splits = (1 << tree_hparams.max_depth) - 1
-  train_op = []
   with ops.name_scope(name) as name:
     # Prepare.
     global_step = training_util.get_or_create_global_step()
     bucket_size_list, feature_ids_list = _group_features_by_num_buckets(
         sorted_feature_columns)
+    # Create Ensemble resources.
+    tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
+
+    # Create logits.
+    if mode != model_fn.ModeKeys.TRAIN:
+      input_feature_list = _get_transformed_features(features,
+                                                     sorted_feature_columns)
+      logits = boosted_trees_ops.predict(
+          # For non-TRAIN mode, ensemble doesn't change after initialization,
+          # so no local copy is needed; using tree_ensemble directly.
+          tree_ensemble_handle=tree_ensemble.resource_handle,
+          bucketized_features=input_feature_list,
+          logits_dimension=head.logits_dimension)
+      return head.create_estimator_spec(
+          features=features,
+          mode=mode,
+          labels=labels,
+          train_op_fn=control_flow_ops.no_op,
+          logits=logits)
+
+    # ============== Training graph ==============
+    center_bias = tree_hparams.center_bias
+    is_single_machine = (config.num_worker_replicas <= 1)
+
+    if train_in_memory:
+      assert n_batches_per_layer == 1, (
+          'When train_in_memory is enabled, input_fn should return the entire '
+          'dataset as a single batch, and n_batches_per_layer should be set as '
+          '1.')
+      if (not config.is_chief or config.num_worker_replicas > 1 or
+          config.num_ps_replicas > 0):
+        raise ValueError('train_in_memory is supported only for '
+                         'non-distributed training.')
+    worker_device = control_flow_ops.no_op().device
+    train_op = []
     # Extract input features and set up cache for training.
     training_state_cache = None
-    if mode == model_fn.ModeKeys.TRAIN and train_in_memory:
+    if train_in_memory:
       # cache transformed features as well for in-memory training.
       batch_size = array_ops.shape(labels)[0]
       input_feature_list, input_cache_op = (
@@ -462,70 +764,84 @@ def _bt_model_fn(
     else:
       input_feature_list = _get_transformed_features(features,
                                                      sorted_feature_columns)
-      if mode == model_fn.ModeKeys.TRAIN and example_id_column_name:
+      if example_id_column_name:
         example_ids = features[example_id_column_name]
         training_state_cache = _CacheTrainingStatesUsingHashTable(
             example_ids, head.logits_dimension)
+    if training_state_cache:
+      cached_tree_ids, cached_node_ids, cached_logits = (
+          training_state_cache.lookup())
+    else:
+      # Always start from the beginning when no cache is set up.
+      batch_size = array_ops.shape(labels)[0]
+      cached_tree_ids, cached_node_ids, cached_logits = (
+          array_ops.zeros([batch_size], dtype=dtypes.int32),
+          _DUMMY_NODE_ID * array_ops.ones([batch_size], dtype=dtypes.int32),
+          array_ops.zeros(
+              [batch_size, head.logits_dimension], dtype=dtypes.float32))
 
-    # Create Ensemble resources.
-    tree_ensemble = boosted_trees_ops.TreeEnsemble(name=name)
-    # Create logits.
-    if mode != model_fn.ModeKeys.TRAIN:
-      logits = boosted_trees_ops.predict(
-          # For non-TRAIN mode, ensemble doesn't change after initialization,
-          # so no local copy is needed; using tree_ensemble directly.
-          tree_ensemble_handle=tree_ensemble.resource_handle,
+    if is_single_machine:
+      local_tree_ensemble = tree_ensemble
+      ensemble_reload = control_flow_ops.no_op()
+    else:
+      # Have a local copy of ensemble for the distributed setting.
+      with ops.device(worker_device):
+        local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
+            name=name + '_local', is_local=True)
+      # TODO(soroush): Do partial updates if this becomes a bottleneck.
+      ensemble_reload = local_tree_ensemble.deserialize(
+          *tree_ensemble.serialize())
+    with ops.control_dependencies([ensemble_reload]):
+      (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
+       last_layer_nodes_range) = local_tree_ensemble.get_states()
+      partial_logits, tree_ids, node_ids = boosted_trees_ops.training_predict(
+          tree_ensemble_handle=local_tree_ensemble.resource_handle,
+          cached_tree_ids=cached_tree_ids,
+          cached_node_ids=cached_node_ids,
           bucketized_features=input_feature_list,
           logits_dimension=head.logits_dimension)
+    logits = cached_logits + partial_logits
+
+    if train_in_memory:
+      grower = _InMemoryEnsembleGrower(tree_ensemble, tree_hparams,
+                                       feature_ids_list=feature_ids_list)
     else:
-      if is_single_machine:
-        local_tree_ensemble = tree_ensemble
-        ensemble_reload = control_flow_ops.no_op()
-      else:
-        # Have a local copy of ensemble for the distributed setting.
-        with ops.device(worker_device):
-          local_tree_ensemble = boosted_trees_ops.TreeEnsemble(
-              name=name + '_local', is_local=True)
-        # TODO(soroush): Do partial updates if this becomes a bottleneck.
-        ensemble_reload = local_tree_ensemble.deserialize(
-            *tree_ensemble.serialize())
-      if training_state_cache:
-        cached_tree_ids, cached_node_ids, cached_logits = (
-            training_state_cache.lookup())
-      else:
-        # Always start from the beginning when no cache is set up.
-        batch_size = array_ops.shape(labels)[0]
-        cached_tree_ids, cached_node_ids, cached_logits = (
-            array_ops.zeros([batch_size], dtype=dtypes.int32),
-            array_ops.zeros([batch_size], dtype=dtypes.int32),
-            array_ops.zeros(
-                [batch_size, head.logits_dimension], dtype=dtypes.float32))
-      with ops.control_dependencies([ensemble_reload]):
-        (stamp_token, num_trees, num_finalized_trees, num_attempted_layers,
-         last_layer_nodes_range) = local_tree_ensemble.get_states()
-        summary.scalar('ensemble/num_trees', num_trees)
-        summary.scalar('ensemble/num_finalized_trees', num_finalized_trees)
-        summary.scalar('ensemble/num_attempted_layers', num_attempted_layers)
+      grower = _AccumulatorEnsembleGrower(tree_ensemble, tree_hparams,
+                                          stamp_token, n_batches_per_layer,
+                                          bucket_size_list, config.is_chief,
+                                          center_bias=center_bias,
+                                          feature_ids_list=feature_ids_list)
 
-        partial_logits, tree_ids, node_ids = boosted_trees_ops.training_predict(
-            tree_ensemble_handle=local_tree_ensemble.resource_handle,
-            cached_tree_ids=cached_tree_ids,
-            cached_node_ids=cached_node_ids,
-            bucketized_features=input_feature_list,
-            logits_dimension=head.logits_dimension)
-      logits = cached_logits + partial_logits
+    summary.scalar('ensemble/num_trees', num_trees)
+    summary.scalar('ensemble/num_finalized_trees', num_finalized_trees)
+    summary.scalar('ensemble/num_attempted_layers', num_attempted_layers)
 
+    # Variable that determines whether bias centering is needed.
+    center_bias_var = variable_scope.variable(
+        initial_value=center_bias, name='center_bias_needed', trainable=False,
+        use_resource=True)
     # Create training graph.
     def _train_op_fn(loss):
       """Run one training iteration."""
       if training_state_cache:
-        train_op.append(training_state_cache.insert(tree_ids, node_ids, logits))
+        # Cache logits only after center_bias is complete, if it's in progress.
+        train_op.append(
+            control_flow_ops.cond(
+                center_bias_var, control_flow_ops.no_op,
+                lambda: training_state_cache.insert(tree_ids, node_ids, logits))
+        )
+
       if closed_form_grad_and_hess_fn:
         gradients, hessians = closed_form_grad_and_hess_fn(logits, labels)
       else:
         gradients = gradients_impl.gradients(loss, logits, name='Gradients')[0]
         hessians = gradients_impl.gradients(
             gradients, logits, name='Hessians')[0]
+
+      # TODO(youngheek): perhaps storage could be optimized by storing stats
+      # with the dimension max_splits_per_layer, instead of max_splits (for the
+      # entire tree).
+      max_splits = _get_max_splits(tree_hparams)
 
       stats_summaries_list = []
       for i, feature_ids in enumerate(feature_ids_list):
@@ -542,104 +858,25 @@ def _bt_model_fn(
                 axis=0) for f in feature_ids
         ]
         stats_summaries_list.append(summaries)
-
-      accumulators = []
-
-      def grow_tree_from_stats_summaries(stats_summaries_list,
-                                         feature_ids_list):
-        """Updates ensemble based on the best gains from stats summaries."""
-        node_ids_per_feature = []
-        gains_list = []
-        thresholds_list = []
-        left_node_contribs_list = []
-        right_node_contribs_list = []
-        all_feature_ids = []
-
-        assert len(stats_summaries_list) == len(feature_ids_list)
-
-        for i, feature_ids in enumerate(feature_ids_list):
-          (numeric_node_ids_per_feature, numeric_gains_list,
-           numeric_thresholds_list, numeric_left_node_contribs_list,
-           numeric_right_node_contribs_list) = (
-               boosted_trees_ops.calculate_best_gains_per_feature(
-                   node_id_range=last_layer_nodes_range,
-                   stats_summary_list=stats_summaries_list[i],
-                   l1=tree_hparams.l1,
-                   l2=tree_hparams.l2,
-                   tree_complexity=tree_hparams.tree_complexity,
-                   min_node_weight=tree_hparams.min_node_weight,
-                   max_splits=max_splits))
-
-          all_feature_ids += feature_ids
-          node_ids_per_feature += numeric_node_ids_per_feature
-          gains_list += numeric_gains_list
-          thresholds_list += numeric_thresholds_list
-          left_node_contribs_list += numeric_left_node_contribs_list
-          right_node_contribs_list += numeric_right_node_contribs_list
-
-        grow_op = boosted_trees_ops.update_ensemble(
-            # Confirm if local_tree_ensemble or tree_ensemble should be used.
-            tree_ensemble.resource_handle,
-            feature_ids=all_feature_ids,
-            node_ids=node_ids_per_feature,
-            gains=gains_list,
-            thresholds=thresholds_list,
-            left_node_contribs=left_node_contribs_list,
-            right_node_contribs=right_node_contribs_list,
-            learning_rate=tree_hparams.learning_rate,
-            max_depth=tree_hparams.max_depth,
-            pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING)
-        return grow_op
-
-      if train_in_memory and is_single_machine:
-        train_op.append(distribute_lib.increment_var(global_step))
-        train_op.append(
-            grow_tree_from_stats_summaries(stats_summaries_list,
-                                           feature_ids_list))
+      if center_bias:
+        update_model = control_flow_ops.cond(
+            center_bias_var,
+            functools.partial(
+                grower.center_bias,
+                center_bias_var,
+                gradients,
+                hessians,
+            ),
+            functools.partial(grower.grow_tree, stats_summaries_list,
+                              last_layer_nodes_range))
       else:
-        dependencies = []
+        update_model = grower.grow_tree(stats_summaries_list,
+                                        last_layer_nodes_range)
+      train_op.append(update_model)
 
-        for i, feature_ids in enumerate(feature_ids_list):
-          stats_summaries = stats_summaries_list[i]
-          accumulator = data_flow_ops.ConditionalAccumulator(
-              dtype=dtypes.float32,
-              # The stats consist of grads and hessians (the last dimension).
-              shape=[len(feature_ids), max_splits, bucket_size_list[i], 2],
-              shared_name='numeric_stats_summary_accumulator_' + str(i))
-          accumulators.append(accumulator)
-
-          apply_grad = accumulator.apply_grad(
-              array_ops.stack(stats_summaries, axis=0), stamp_token)
-          dependencies.append(apply_grad)
-
-        def grow_tree_from_accumulated_summaries_fn():
-          """Updates the tree with the best layer from accumulated summaries."""
-          # Take out the accumulated summaries from the accumulator and grow.
-          stats_summaries_list = []
-
-          stats_summaries_list = [
-              array_ops.unstack(accumulator.take_grad(1), axis=0)
-              for accumulator in accumulators
-          ]
-
-          grow_op = grow_tree_from_stats_summaries(stats_summaries_list,
-                                                   feature_ids_list)
-          return grow_op
-
-        with ops.control_dependencies(dependencies):
-          train_op.append(distribute_lib.increment_var(global_step))
-          if config.is_chief:
-            min_accumulated = math_ops.reduce_min(
-                array_ops.stack(
-                    [acc.num_accumulated() for acc in accumulators]))
-
-            train_op.append(
-                control_flow_ops.cond(
-                    math_ops.greater_equal(min_accumulated,
-                                           n_batches_per_layer),
-                    grow_tree_from_accumulated_summaries_fn,
-                    control_flow_ops.no_op,
-                    name='wait_until_n_batches_accumulated'))
+      with ops.control_dependencies([update_model]):
+        increment_global = state_ops.assign_add(global_step, 1).op
+        train_op.append(increment_global)
 
       return control_flow_ops.group(train_op, name='train_op')
 
@@ -649,13 +886,24 @@ def _bt_model_fn(
       labels=labels,
       train_op_fn=_train_op_fn,
       logits=logits)
-  if mode == model_fn.ModeKeys.TRAIN:
-    # Add an early stop hook.
-    estimator_spec = estimator_spec._replace(
-        training_hooks=estimator_spec.training_hooks +
-        (_StopAtAttemptsHook(num_finalized_trees, num_attempted_layers,
-                             tree_hparams.n_trees, tree_hparams.max_depth),))
+  # Add an early stop hook.
+  estimator_spec = estimator_spec._replace(
+      training_hooks=estimator_spec.training_hooks +
+      (_StopAtAttemptsHook(num_finalized_trees, num_attempted_layers,
+                           tree_hparams.n_trees, tree_hparams.max_depth),),
+      training_chief_hooks=[GrowerInitializationHook(grower.chief_init_op())] +
+      list(estimator_spec.training_chief_hooks))
   return estimator_spec
+
+
+class GrowerInitializationHook(session_run_hook.SessionRunHook):
+  """A SessionRunHook handles initialization of `_EnsembleGrower`."""
+
+  def __init__(self, init_op):
+    self._init_op = init_op
+
+  def after_create_session(self, session, coord):
+    session.run(self._init_op)
 
 
 def _create_classification_head(n_classes,
@@ -739,7 +987,9 @@ class BoostedTreesClassifier(estimator.Estimator):
                l2_regularization=0.,
                tree_complexity=0.,
                min_node_weight=0.,
-               config=None):
+               config=None,
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesClassifier` instance.
 
     Example:
@@ -750,8 +1000,11 @@ class BoostedTreesClassifier(estimator.Estimator):
     bucketized_feature_2 = bucketized_column(
       numeric_column('feature_2'), BUCKET_BOUNDARIES_2)
 
+    # Need to see a large portion of the data before we can build a layer, for
+    # example half of data n_batches_per_layer = 0.5 * NUM_EXAMPLES / BATCH_SIZE
     classifier = estimator.BoostedTreesClassifier(
         feature_columns=[bucketized_feature_1, bucketized_feature_2],
+        n_batches_per_layer=n_batches_per_layer,
         n_trees=100,
         ... <some other params>
     )
@@ -774,7 +1027,8 @@ class BoostedTreesClassifier(estimator.Estimator):
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
       n_batches_per_layer: the number of batches to collect statistics per
-        layer.
+        layer. The total number of batches is total number of data divided by
+        batch size.
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
@@ -807,6 +1061,17 @@ class BoostedTreesClassifier(estimator.Estimator):
         split to be considered. The value will be compared with
         sum(leaf_hessian)/(batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
+      center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     Raises:
       ValueError: when wrong arguments are given or unsupported functionalities
@@ -819,9 +1084,9 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
-                                l1_regularization, l2_regularization,
-                                tree_complexity, min_node_weight)
+    tree_hparams = _TreeHParams(
+        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
@@ -864,7 +1129,9 @@ class BoostedTreesRegressor(estimator.Estimator):
                l2_regularization=0.,
                tree_complexity=0.,
                min_node_weight=0.,
-               config=None):
+               config=None,
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesRegressor` instance.
 
     Example:
@@ -875,8 +1142,11 @@ class BoostedTreesRegressor(estimator.Estimator):
     bucketized_feature_2 = bucketized_column(
       numeric_column('feature_2'), BUCKET_BOUNDARIES_2)
 
+    # Need to see a large portion of the data before we can build a layer, for
+    # example half of data n_batches_per_layer = 0.5 * NUM_EXAMPLES / BATCH_SIZE
     regressor = estimator.BoostedTreesRegressor(
         feature_columns=[bucketized_feature_1, bucketized_feature_2],
+        n_batches_per_layer=n_batches_per_layer,
         n_trees=100,
         ... <some other params>
     )
@@ -899,7 +1169,8 @@ class BoostedTreesRegressor(estimator.Estimator):
         the model. All items in the set should be instances of classes derived
         from `FeatureColumn`.
       n_batches_per_layer: the number of batches to collect statistics per
-        layer.
+        layer. The total number of batches is total number of data divided by
+        batch size.
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator
         to continue training a previously saved model.
@@ -925,6 +1196,17 @@ class BoostedTreesRegressor(estimator.Estimator):
         split to be considered. The value will be compared with
         sum(leaf_hessian)/(batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
+      center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     Raises:
       ValueError: when wrong arguments are given or unsupported functionalities
@@ -936,9 +1218,9 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
-                                l1_regularization, l2_regularization,
-                                tree_complexity, min_node_weight)
+    tree_hparams = _TreeHParams(
+        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access

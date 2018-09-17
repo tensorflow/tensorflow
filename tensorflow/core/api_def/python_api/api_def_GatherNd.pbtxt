@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "gather_nd"
-    deprecation_message: "tf.gather_nd is deprecated, please use tf.manip.gather_nd instead."
+    deprecated: true
   }
 }

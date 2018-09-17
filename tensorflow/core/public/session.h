@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PUBLIC_SESSION_H_
-#define TENSORFLOW_PUBLIC_SESSION_H_
+#ifndef TENSORFLOW_CORE_PUBLIC_SESSION_H_
+#define TENSORFLOW_CORE_PUBLIC_SESSION_H_
 
 #include <string>
 #include <vector>
@@ -237,7 +237,7 @@ class Session {
 /// If session creation succeeds, the new `Session` will be stored in
 /// `*out_session`, the caller will take ownership of the returned
 /// `*out_session`, and this function will return `OK()`. Otherwise, this
-/// function will return an error status.
+/// function will return an error status and set *out_session to nullptr.
 Status NewSession(const SessionOptions& options, Session** out_session);
 
 /// \brief Resets resource containers associated with a target.
@@ -279,4 +279,4 @@ Session* NewSession(const SessionOptions& options);
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_PUBLIC_SESSION_H_
+#endif  // TENSORFLOW_CORE_PUBLIC_SESSION_H_

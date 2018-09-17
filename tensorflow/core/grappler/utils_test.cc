@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
@@ -333,7 +335,9 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   EXPECT_EQ(1, NumNonControlDataOutputs(*add_node, node_map));
 }
 
-TEST_F(UtilsTest, DeleteNodes) {}
+TEST_F(UtilsTest, DeleteNodes) {
+  // TODO(rmlarsen): write forgtten test.
+}
 
 }  // namespace
 }  // namespace grappler

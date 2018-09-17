@@ -47,6 +47,10 @@ public final class InterpreterTest {
   public void testInterpreter() throws Exception {
     Interpreter interpreter = new Interpreter(MODEL_FILE);
     assertThat(interpreter).isNotNull();
+    assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
     interpreter.close();
   }
 
@@ -165,6 +169,37 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testRunWithByteBufferOutput() {
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    ByteBuffer parsedOutput =
+        ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
+    try (Interpreter interpreter = new Interpreter(MODEL_FILE)) {
+      interpreter.run(fourD, parsedOutput);
+    }
+    float[] outputOneD = {
+      parsedOutput.getFloat(0), parsedOutput.getFloat(4), parsedOutput.getFloat(8)
+    };
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testResizeInput() {
+    try (Interpreter interpreter = new Interpreter(MODEL_FILE)) {
+      int[] inputDims = {1};
+      interpreter.resizeInput(0, inputDims);
+      assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
   public void testMobilenetRun() {
     // Create a gray image.
     float[][][][] img = new float[1][224][224][3];
@@ -181,6 +216,8 @@ public final class InterpreterTest {
 
     Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
     interpreter.run(img, labels);
+    assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(new int[] {1, 224, 224, 3});
+    assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});
     interpreter.close();
 
     assertThat(labels[0])
@@ -203,7 +240,9 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "DataType (2) of input data does not match with the DataType (1) of model inputs.");
+              "Cannot convert between a TensorFlowLite tensor with type "
+                  + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
+                  + " TensorFlowLite type INT32)");
     }
     interpreter.close();
   }
@@ -223,8 +262,8 @@ public final class InterpreterTest {
       assertThat(e)
           .hasMessageThat()
           .contains(
-              "Cannot convert an TensorFlowLite tensor with type "
-                  + "FLOAT32 to a Java object of type [[[[I (which is compatible with the"
+              "Cannot convert between a TensorFlowLite tensor with type "
+                  + "FLOAT32 and a Java object of type [[[[I (which is compatible with the"
                   + " TensorFlowLite type INT32)");
     }
     interpreter.close();
@@ -310,5 +349,12 @@ public final class InterpreterTest {
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     interpreter.close();
     fileChannel.close();
+  }
+
+  @Test
+  public void testRedundantClose() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    interpreter.close();
+    interpreter.close();
   }
 }

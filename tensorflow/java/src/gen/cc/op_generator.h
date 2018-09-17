@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/java/src/gen/cc/op_specs.h"
 
 namespace tensorflow {

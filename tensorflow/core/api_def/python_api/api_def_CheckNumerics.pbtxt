@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "check_numerics"
-    deprecation_message: "tf.check_numerics is deprecated, please use tf.debugging.check_numerics instead."
+    deprecated: true
   }
 }

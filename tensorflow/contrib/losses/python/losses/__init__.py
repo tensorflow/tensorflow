@@ -14,7 +14,7 @@
 # ==============================================================================
 """Ops for building neural network losses.
 
-See @{$python/contrib.losses}.
+See [Contrib Losses](https://tensorflow.org/api_guides/python/contrib.losses).
 """
 
 from __future__ import absolute_import

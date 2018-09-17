@@ -29,7 +29,7 @@ class SquareBijectorTest(test.TestCase):
   """Tests the correctness of the Y = X ** 2 transformation."""
 
   def testBijectorScalar(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = bijectors.Square(validate_args=True)
       self.assertEqual("square", bijector.name)
       x = [[[1., 5],
@@ -50,7 +50,7 @@ class SquareBijectorTest(test.TestCase):
           rtol=1e-7)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = bijectors.Square(validate_args=True)
       assert_scalar_congruency(bijector, lower_x=1e-3, upper_x=1.5, rtol=0.05)
 

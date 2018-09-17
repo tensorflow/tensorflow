@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "segment_ids"
     description: <<END
-A 1-D tensor whose rank is equal to the rank of `data`'s
+A 1-D tensor whose size is equal to the size of `data`'s
 first dimension.  Values should be sorted and can be repeated.
 END
   }
@@ -16,8 +16,9 @@ END
   }
   summary: "Computes the mean along segments of a tensor."
   description: <<END
-Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-segments.
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+for an explanation of segments.
 
 Computes a tensor such that
 \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is

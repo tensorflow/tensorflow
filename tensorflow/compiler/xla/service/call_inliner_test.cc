@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -28,11 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -41,16 +40,16 @@ namespace {
 
 // Tests for call inlining that are most tractable at the HLO level (vs
 // ComputationBuilder API in call_test.cc).
-using CallInlinerTest = HloTestBase;
+using CallInlinerTest = HloVerifiedTestBase;
 
 TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   // "inner" computation just has a control dependency from the "zero" value to
   // the "one" value.
   HloComputation::Builder inner(TestName() + ".inner");
   HloInstruction* zero = inner.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(24.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(24.0f)));
   HloInstruction* one = inner.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   TF_ASSERT_OK(zero->AddControlDependencyTo(one));
   auto module = CreateNewModule();
   HloComputation* inner_computation =
@@ -65,7 +64,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module));
   ASSERT_TRUE(mutated);
   EXPECT_THAT(computation->root_instruction(), op::Constant());
   EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<float>(),
@@ -87,11 +86,13 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
   // little trickier.
   HloComputation::Builder just_false(TestName() + ".false");
   just_false.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* false_computation =
       module->AddEmbeddedComputation(just_false.Build());
 
   HloComputation::Builder call_false_builder(TestName() + ".call_false");
+  call_false_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, pred, "param"));
   call_false_builder.AddInstruction(
       HloInstruction::CreateCall(pred, {}, false_computation));
   HloComputation* call_false =
@@ -99,14 +100,14 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
 
   HloComputation::Builder outer(TestName() + ".outer");
   HloInstruction* init_value = outer.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   outer.AddInstruction(
       HloInstruction::CreateWhile(pred, call_false, call_false, init_value));
 
   auto computation = module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module));
   ASSERT_TRUE(mutated);
   EXPECT_THAT(
       computation->root_instruction()->while_condition()->root_instruction(),
@@ -123,9 +124,9 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
 
   HloComputation::Builder just_false(TestName() + ".false");
   auto* true_constant = just_false.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<bool>({true})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<bool>({true})));
   auto* false_constant = just_false.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   TF_ASSERT_OK(false_constant->AddControlDependencyTo(true_constant));
   HloComputation* false_computation =
       module->AddEmbeddedComputation(just_false.Build());
@@ -147,8 +148,8 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
 
   HloComputation::Builder outfeeder(TestName() + ".outfeeder");
   auto value = outfeeder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
-  auto token = outfeeder.AddInstruction(HloInstruction::CreateAfterAll({}));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
+  auto token = outfeeder.AddInstruction(HloInstruction::CreateToken());
   outfeeder.AddInstruction(
       HloInstruction::CreateOutfeed(f32, value, token, /*outfeed_config=*/""));
 
@@ -162,7 +163,7 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   module->AddEntryComputation(outer.Build());
 
   CallInliner call_inliner;
-  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module));
   ASSERT_TRUE(mutated);
 }
 

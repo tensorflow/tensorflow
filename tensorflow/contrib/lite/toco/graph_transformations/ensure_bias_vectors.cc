@@ -26,17 +26,38 @@ namespace toco {
 
 namespace {
 
+int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
+  const string& weights_name = op.inputs[1];
+  const auto& weights_shape = model.GetArray(weights_name).shape();
+  if (op.type == OperatorType::kConv ||
+      op.type == OperatorType::kFullyConnected) {
+    return weights_shape.dims(0);
+  }
+  if (op.type == OperatorType::kDepthwiseConv) {
+    return weights_shape.dims(3);
+  }
+  LOG(FATAL) << "Unhandled operator type";
+  return 0;
+}
+
 bool ProcessLinearOperator(Model* model, Operator* op) {
   if (op->inputs.size() >= 3) {
     return false;
   }
   const string& output_name = op->outputs[0];
+  const string& weights_name = op->inputs[1];
+  if (!model->GetArray(weights_name).has_shape()) {
+    return false;
+  }
+  const int depth = GetOutputDepthFromWeights(*model, *op);
   const string& bias_name = AvailableArrayName(*model, output_name + "_bias");
   op->inputs.push_back(bias_name);
   DCHECK_EQ(op->inputs.size(), 3);
   auto& bias_array = model->GetOrCreateArray(bias_name);
   bias_array.data_type = ArrayDataType::kFloat;
-
+  bias_array.mutable_shape()->mutable_dims()->push_back(depth);
+  auto& bias_buffer = bias_array.GetMutableBuffer<ArrayDataType::kFloat>();
+  bias_buffer.data.resize(depth, 0.f);
   return true;
 }
 }  // namespace

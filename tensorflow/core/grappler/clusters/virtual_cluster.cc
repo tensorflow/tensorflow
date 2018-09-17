@@ -45,6 +45,8 @@ VirtualCluster::VirtualCluster(const DeviceSet* device_set)
   for (const auto& device : device_set_->devices()) {
     DeviceProperties props = GetDeviceInfo(device->parsed_name());
     if (props.type() == "UNKNOWN") continue;
+    auto attrs = device->attributes();
+    props.set_memory_size(attrs.memory_limit());
     devices_[device->name()] = props;
   }
 }

@@ -33,7 +33,6 @@ from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -101,7 +100,7 @@ class EvaluationTest(test.TestCase):
 
     # Save initialized variables to a checkpoint directory:
     saver = saver_lib.Saver()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
 
@@ -212,7 +211,7 @@ class EvaluationTest(test.TestCase):
 
     # Save initialized variables to a checkpoint directory:
     saver = saver_lib.Saver()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_op.run()
       saver.save(sess, os.path.join(chkpt_dir, 'chkpt'))
 
@@ -242,14 +241,14 @@ class SingleEvaluationTest(test.TestCase):
     checkpoint_path = os.path.join(self.get_temp_dir(),
                                    'this_file_doesnt_exist')
     log_dir = os.path.join(self.get_temp_dir(), 'error_raised')
-    with self.assertRaises(errors.NotFoundError):
+    with self.assertRaises(ValueError):
       evaluation.evaluate_once('', checkpoint_path, log_dir)
 
   def _prepareCheckpoint(self, checkpoint_path):
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
     saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)
 

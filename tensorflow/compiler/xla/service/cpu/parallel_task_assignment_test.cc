@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace {
@@ -36,7 +35,7 @@ class ParallelTaskAssignmentTest : public HloVerifiedTestBase {
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features_;
 
   ParallelTaskAssignmentTest()
-      : target_machine_features_([](int64 shape_size) {
+      : HloVerifiedTestBase(), target_machine_features_([](int64 shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         }) {}
 
@@ -110,9 +109,10 @@ TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
   const string hlo_string = R"(
     HloModule TestTaskParallel_infeed_outfeed
     ENTRY InfeedOutfeed {
-      infeed0 = (u32[12345678,2]{1,0}, token[]) infeed()
+      token = token[] after-all()
+      infeed0 = (u32[12345678,2]{1,0}, token[]) infeed(token)
       infeed0.data = u32[12345678,2]{1,0} get-tuple-element((u32[12345678,2]{1,0}, token[]) infeed0), index=0
-      ROOT outfeed0 = token[] outfeed(infeed0.data)
+      ROOT outfeed0 = token[] outfeed(infeed0.data, token)
     }
   )";
 

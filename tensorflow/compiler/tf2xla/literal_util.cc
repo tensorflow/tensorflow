@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
@@ -32,9 +32,25 @@ Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
   return Status::OK();
 }
 
-Status HostTensorsToBorrowingLiteralTuple(
-    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
-    xla::BorrowingLiteral* literal) {
+Status HostTensorToMutableBorrowingLiteral(
+    Tensor* host_tensor, xla::MutableBorrowingLiteral* literal) {
+  xla::Shape xla_shape;
+  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor->dtype(),
+                                           host_tensor->shape(), &xla_shape));
+  return HostTensorToMutableBorrowingLiteral(xla_shape, host_tensor, literal);
+}
+
+Status HostTensorToMutableBorrowingLiteral(
+    const xla::Shape& xla_shape, Tensor* host_tensor,
+    xla::MutableBorrowingLiteral* literal) {
+  *literal = xla::MutableBorrowingLiteral(
+      static_cast<const char*>(DMAHelper::base(host_tensor)), xla_shape);
+
+  return Status::OK();
+}
+
+Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
+                                          xla::BorrowingLiteral* literal) {
   std::vector<const char*> buf_ptrs;
   buf_ptrs.reserve(host_tensors.size());
   std::vector<xla::Shape> tensor_shapes(host_tensors.size());

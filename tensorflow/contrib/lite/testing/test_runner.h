@@ -90,7 +90,7 @@ class TestRunner {
 
   // Invalidate the test runner, preventing it from executing any further.
   void Invalidate(const string& error_message) {
-    cerr << error_message << std::endl;
+    std::cerr << error_message << std::endl;
     error_message_ = error_message;
   }
   bool IsValid() const { return error_message_.empty(); }

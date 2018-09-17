@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include <algorithm>
+#include <limits>
+
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
 
@@ -27,6 +30,11 @@ inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
 inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
                                     int index) {
   return &context->tensors[node->inputs->data[index]];
+}
+inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
+                                      int index) {
+  TfLiteTensor* tensor = &context->tensors[node->inputs->data[index]];
+  return (tensor->is_variable) ? tensor : nullptr;
 }
 inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
                                int index) {
@@ -86,8 +94,8 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               TfLiteTensor* output,
                                               double* multiplier);
 
-// Calculates the useful range of an activation layer given its activation
-// tensor.
+// Calculates the useful quantized range of an activation layer given its
+// activation tensor.
 TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
                                                TfLiteFusedActivation activation,
                                                TfLiteTensor* output,
@@ -96,9 +104,25 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
 void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                    TfLiteTensor* output, int32_t* act_min,
                                    int32_t* act_max);
-void CalculateActivationRangeFloat(TfLiteFusedActivation activation,
-                                   float* activation_min,
-                                   float* activation_max);
+// Calculates the useful range of an activation layer given its activation
+// tensor.a
+template <typename T>
+void CalculateActivationRange(TfLiteFusedActivation activation,
+                              T* activation_min, T* activation_max) {
+  if (activation == kTfLiteActRelu) {
+    *activation_min = 0;
+    *activation_max = std::numeric_limits<T>::max();
+  } else if (activation == kTfLiteActRelu6) {
+    *activation_min = 0;
+    *activation_max = 6;
+  } else if (activation == kTfLiteActRelu1) {
+    *activation_min = -1;
+    *activation_max = 1;
+  } else {
+    *activation_min = std::numeric_limits<T>::lowest();
+    *activation_max = std::numeric_limits<T>::max();
+  }
+}
 
 // Return true if the given tensors have the same shape.
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2);

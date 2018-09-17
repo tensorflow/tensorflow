@@ -16,11 +16,12 @@ END
   }
   summary: "Computes the sum along segments of a tensor."
   description: <<END
-Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-segments.
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+for an explanation of segments.
 
 Computes a tensor such that
-`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
+\\(output[i] = \sum_{j...} data[j...]\\) where the sum is over tuples `j...` such
 that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 need not be sorted and need not cover all values in the full
 range of valid values.

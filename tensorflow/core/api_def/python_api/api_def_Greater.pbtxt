@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "greater"
-    deprecation_message: "tf.greater is deprecated, please use tf.math.greater instead."
+    deprecated: true
   }
 }

@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gzip
 import os
 import string
 import tempfile
 import time
+import zlib
 
 import numpy as np
 
@@ -29,51 +31,73 @@ from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class CsvDatasetOpTest(test.TestCase):
 
-  def _assert_datasets_equal(self, g, ds1, ds2):
+  def _get_next(self, dataset):
+    # Returns a no argument function whose result is fed to self.evaluate to
+    # yield the next element
+    it = dataset.make_one_shot_iterator()
+    if context.executing_eagerly():
+      return it.get_next
+    else:
+      get_next = it.get_next()
+      return lambda: get_next
+
+  def _assert_datasets_equal(self, ds1, ds2):
     assert ds1.output_shapes == ds2.output_shapes, ('output_shapes differ: %s, '
                                                     '%s') % (ds1.output_shapes,
                                                              ds2.output_shapes)
     assert ds1.output_types == ds2.output_types
     assert ds1.output_classes == ds2.output_classes
-    next1 = ds1.make_one_shot_iterator().get_next()
-    next2 = ds2.make_one_shot_iterator().get_next()
-    with self.test_session(graph=g) as sess:
-      # Run through datasets and check that outputs match, or errors match.
-      while True:
-        try:
-          op1 = sess.run(next1)
-        except (errors.OutOfRangeError, ValueError) as e:
-          # If op1 throws an exception, check that op2 throws same exception.
-          with self.assertRaises(type(e)):
-            sess.run(next2)
-          break
-        op2 = sess.run(next2)
-        self.assertAllEqual(op1, op2)
+    next1 = self._get_next(ds1)
+    next2 = self._get_next(ds2)
+    # Run through datasets and check that outputs match, or errors match.
+    while True:
+      try:
+        op1 = self.evaluate(next1())
+      except (errors.OutOfRangeError, ValueError) as e:
+        # If op1 throws an exception, check that op2 throws same exception.
+        with self.assertRaises(type(e)):
+          self.evaluate(next2())
+        break
+      op2 = self.evaluate(next2())
+      self.assertAllEqual(op1, op2)
 
-  def setup_files(self, inputs, linebreak='\n'):
+  def _setup_files(self, inputs, linebreak='\n', compression_type=None):
     filenames = []
     for i, ip in enumerate(inputs):
       fn = os.path.join(self.get_temp_dir(), 'temp_%d.csv' % i)
-      with open(fn, 'wb') as f:
-        f.write(linebreak.join(ip).encode('utf-8'))
+      contents = linebreak.join(ip).encode('utf-8')
+      if compression_type is None:
+        with open(fn, 'wb') as f:
+          f.write(contents)
+      elif compression_type == 'GZIP':
+        with gzip.GzipFile(fn, 'wb') as f:
+          f.write(contents)
+      elif compression_type == 'ZLIB':
+        contents = zlib.compress(contents)
+        with open(fn, 'wb') as f:
+          f.write(contents)
+      else:
+        raise ValueError('Unsupported compression_type', compression_type)
       filenames.append(fn)
     return filenames
 
   def _make_test_datasets(self, inputs, **kwargs):
     # Test by comparing its output to what we could get with map->decode_csv
-    filenames = self.setup_files(inputs)
+    filenames = self._setup_files(inputs)
     dataset_expected = core_readers.TextLineDataset(filenames)
     dataset_expected = dataset_expected.map(
         lambda l: parsing_ops.decode_csv(l, **kwargs))
@@ -82,50 +106,49 @@ class CsvDatasetOpTest(test.TestCase):
 
   def _test_by_comparison(self, inputs, **kwargs):
     """Checks that CsvDataset is equiv to TextLineDataset->map(decode_csv)."""
-    with ops.Graph().as_default() as g:
-      dataset_actual, dataset_expected = self._make_test_datasets(
-          inputs, **kwargs)
-      self._assert_datasets_equal(g, dataset_actual, dataset_expected)
+    dataset_actual, dataset_expected = self._make_test_datasets(
+        inputs, **kwargs)
+    self._assert_datasets_equal(dataset_actual, dataset_expected)
 
   def _verify_output_or_err(self,
-                            sess,
                             dataset,
                             expected_output=None,
                             expected_err_re=None):
-    nxt = dataset.make_one_shot_iterator().get_next()
     if expected_err_re is None:
       # Verify that output is expected, without errors
+      nxt = self._get_next(dataset)
       expected_output = [[
           v.encode('utf-8') if isinstance(v, str) else v for v in op
       ] for op in expected_output]
       for value in expected_output:
-        op = sess.run(nxt)
+        op = self.evaluate(nxt())
         self.assertAllEqual(op, value)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(nxt)
+        self.evaluate(nxt())
     else:
       # Verify that OpError is produced as expected
       with self.assertRaisesOpError(expected_err_re):
+        nxt = self._get_next(dataset)
         while True:
           try:
-            sess.run(nxt)
+            self.evaluate(nxt())
           except errors.OutOfRangeError:
             break
 
-  def _test_dataset(self,
-                    inputs,
-                    expected_output=None,
-                    expected_err_re=None,
-                    linebreak='\n',
-                    **kwargs):
+  def _test_dataset(
+      self,
+      inputs,
+      expected_output=None,
+      expected_err_re=None,
+      linebreak='\n',
+      compression_type=None,  # Used for both setup and parsing
+      **kwargs):
     """Checks that elements produced by CsvDataset match expected output."""
     # Convert str type because py3 tf strings are bytestrings
-    filenames = self.setup_files(inputs, linebreak)
-    with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
-        dataset = readers.CsvDataset(filenames, **kwargs)
-        self._verify_output_or_err(sess, dataset, expected_output,
-                                   expected_err_re)
+    filenames = self._setup_files(inputs, linebreak, compression_type)
+    kwargs['compression_type'] = compression_type
+    dataset = readers.CsvDataset(filenames, **kwargs)
+    self._verify_output_or_err(dataset, expected_output, expected_err_re)
 
   def testCsvDataset_requiredFields(self):
     record_defaults = [[]] * 4
@@ -174,22 +197,18 @@ class CsvDatasetOpTest(test.TestCase):
   def testCsvDataset_ignoreErrWithUnescapedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['1,"2"3",4', '1,"2"3",4",5,5', 'a,b,"c"d"', 'e,f,g']]
-    filenames = self.setup_files(inputs)
-    with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
-        dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
-        dataset = dataset.apply(error_ops.ignore_errors())
-        self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
+    filenames = self._setup_files(inputs)
+    dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
+    dataset = dataset.apply(error_ops.ignore_errors())
+    self._verify_output_or_err(dataset, [['e', 'f', 'g']])
 
   def testCsvDataset_ignoreErrWithUnquotedQuotes(self):
     record_defaults = [['']] * 3
     inputs = [['1,2"3,4', 'a,b,c"d', '9,8"7,6,5', 'e,f,g']]
-    filenames = self.setup_files(inputs)
-    with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
-        dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
-        dataset = dataset.apply(error_ops.ignore_errors())
-        self._verify_output_or_err(sess, dataset, [['e', 'f', 'g']])
+    filenames = self._setup_files(inputs)
+    dataset = readers.CsvDataset(filenames, record_defaults=record_defaults)
+    dataset = dataset.apply(error_ops.ignore_errors())
+    self._verify_output_or_err(dataset, [['e', 'f', 'g']])
 
   def testCsvDataset_withNoQuoteDelimAndUnquotedQuotes(self):
     record_defaults = [['']] * 3
@@ -335,10 +354,9 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['1,,3,4', '5,6,,8']]
     ds_actual, ds_expected = self._make_test_datasets(
         inputs, record_defaults=record_defaults)
-    with ops.Graph().as_default() as g:
-      self._assert_datasets_equal(g,
-                                  ds_actual.repeat(5).prefetch(1),
-                                  ds_expected.repeat(5).prefetch(1))
+    self._assert_datasets_equal(
+        ds_actual.repeat(5).prefetch(1),
+        ds_expected.repeat(5).prefetch(1))
 
   def testCsvDataset_withTypeDefaults(self):
     # Testing using dtypes as record_defaults for required fields
@@ -355,15 +373,13 @@ class CsvDatasetOpTest(test.TestCase):
         '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19',
         '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19'
     ]]
-    file_path = self.setup_files(data)
+    file_path = self._setup_files(data)
 
-    with ops.Graph().as_default() as g:
-      ds = readers.make_csv_dataset(
-          file_path, batch_size=1, shuffle=False, num_epochs=1)
-      next_batch = ds.make_one_shot_iterator().get_next()
+    ds = readers.make_csv_dataset(
+        file_path, batch_size=1, shuffle=False, num_epochs=1)
+    nxt = self._get_next(ds)
 
-    with self.test_session(graph=g) as sess:
-      result = list(sess.run(next_batch).values())
+    result = list(self.evaluate(nxt()).values())
 
     self.assertEqual(result, sorted(result))
 
@@ -432,14 +448,29 @@ class CsvDatasetOpTest(test.TestCase):
         record_defaults=record_defaults,
         buffer_size=0)
 
-  def testCsvDataset_withBufferSize(self):
+  def _test_dataset_on_buffer_sizes(self,
+                                    inputs,
+                                    expected,
+                                    linebreak,
+                                    record_defaults,
+                                    compression_type=None,
+                                    num_sizes_to_test=20):
+    # Testing reading with a range of buffer sizes that should all work.
+    for i in list(range(1, 1 + num_sizes_to_test)) + [None]:
+      self._test_dataset(
+          inputs,
+          expected,
+          linebreak=linebreak,
+          compression_type=compression_type,
+          record_defaults=record_defaults,
+          buffer_size=i)
+
+  def testCsvDataset_withLF(self):
     record_defaults = [['NA']] * 3
     inputs = [['abc,def,ghi', '0,1,2', ',,']]
     expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs, expected, record_defaults=record_defaults, buffer_size=i + 1)
+    self._test_dataset_on_buffer_sizes(
+        inputs, expected, linebreak='\n', record_defaults=record_defaults)
 
   def testCsvDataset_withCR(self):
     # Test that when the line separator is '\r', parsing works with all buffer
@@ -447,14 +478,8 @@ class CsvDatasetOpTest(test.TestCase):
     record_defaults = [['NA']] * 3
     inputs = [['abc,def,ghi', '0,1,2', ',,']]
     expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
+    self._test_dataset_on_buffer_sizes(
+        inputs, expected, linebreak='\r', record_defaults=record_defaults)
 
   def testCsvDataset_withCRLF(self):
     # Test that when the line separator is '\r\n', parsing works with all buffer
@@ -462,29 +487,15 @@ class CsvDatasetOpTest(test.TestCase):
     record_defaults = [['NA']] * 3
     inputs = [['abc,def,ghi', '0,1,2', ',,']]
     expected = [['abc', 'def', 'ghi'], ['0', '1', '2'], ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r\n',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
+    self._test_dataset_on_buffer_sizes(
+        inputs, expected, linebreak='\r\n', record_defaults=record_defaults)
 
   def testCsvDataset_withBufferSizeAndQuoted(self):
     record_defaults = [['NA']] * 3
     inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
     expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
                 ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\n',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-    self._test_dataset(
+    self._test_dataset_on_buffer_sizes(
         inputs, expected, linebreak='\n', record_defaults=record_defaults)
 
   def testCsvDataset_withCRAndQuoted(self):
@@ -494,15 +505,7 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
     expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
                 ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-    self._test_dataset(
+    self._test_dataset_on_buffer_sizes(
         inputs, expected, linebreak='\r', record_defaults=record_defaults)
 
   def testCsvDataset_withCRLFAndQuoted(self):
@@ -512,16 +515,55 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
     expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
                 ['NA', 'NA', 'NA']]
-    for i in range(20):
-      # Test a range of buffer sizes that should all work
-      self._test_dataset(
-          inputs,
-          expected,
-          linebreak='\r\n',
-          record_defaults=record_defaults,
-          buffer_size=i + 1)
-    self._test_dataset(
+    self._test_dataset_on_buffer_sizes(
         inputs, expected, linebreak='\r\n', record_defaults=record_defaults)
+
+  def testCsvDataset_withGzipCompressionType(self):
+    record_defaults = [['NA']] * 3
+    inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
+    expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
+                ['NA', 'NA', 'NA']]
+    self._test_dataset_on_buffer_sizes(
+        inputs,
+        expected,
+        linebreak='\r\n',
+        compression_type='GZIP',
+        record_defaults=record_defaults)
+
+  def testCsvDataset_withZlibCompressionType(self):
+    record_defaults = [['NA']] * 3
+    inputs = [['"\n\n\n","\r\r\r","abc"', '"0","1","2"', '"","",""']]
+    expected = [['\n\n\n', '\r\r\r', 'abc'], ['0', '1', '2'],
+                ['NA', 'NA', 'NA']]
+    self._test_dataset_on_buffer_sizes(
+        inputs,
+        expected,
+        linebreak='\r\n',
+        compression_type='ZLIB',
+        record_defaults=record_defaults)
+
+  def testCsvDataset_withScalarDefaults(self):
+    record_defaults = [constant_op.constant(0, dtype=dtypes.int64)] * 4
+    inputs = [[',,,', '1,1,1,', ',2,2,2']]
+    self._test_dataset(
+        inputs, [[0, 0, 0, 0], [1, 1, 1, 0], [0, 2, 2, 2]],
+        record_defaults=record_defaults)
+
+  def testCsvDataset_with2DDefaults(self):
+    record_defaults = [constant_op.constant([[0]], dtype=dtypes.int64)] * 4
+    inputs = [[',,,', '1,1,1,', ',2,2,2']]
+
+    if context.executing_eagerly():
+      err_spec = errors.InvalidArgumentError, (
+          'Each record default should be at '
+          'most rank 1.')
+    else:
+      err_spec = ValueError, 'Shape must be at most rank 1 but is rank 2'
+
+    with self.assertRaisesWithPredicateMatch(*err_spec):
+      self._test_dataset(
+          inputs, [[0, 0, 0, 0], [1, 1, 1, 0], [0, 2, 2, 2]],
+          record_defaults=record_defaults)
 
 
 class CsvDatasetBenchmark(test.Benchmark):

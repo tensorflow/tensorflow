@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
 
@@ -108,15 +107,19 @@ void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
   }
 
   gtl::InlinedVector<int64, 8> input_strides(input_rank);
-  input_strides[input_rank - 1] = 1;
-  for (int d = input_rank - 2; d >= 0; --d) {
-    input_strides[d] = input_strides[d + 1] * input_shape.dim_size(d + 1);
+  if (input_rank > 0) {
+    input_strides[input_rank - 1] = 1;
+    for (int d = input_rank - 2; d >= 0; --d) {
+      input_strides[d] = input_strides[d + 1] * input_shape.dim_size(d + 1);
+    }
   }
 
   gtl::InlinedVector<int64, 8> output_strides(output_rank);
-  output_strides[output_rank - 1] = 1;
-  for (int d = output_rank - 2; d >= 0; --d) {
-    output_strides[d] = output_strides[d + 1] * output_shape.dim_size(d + 1);
+  if (output_rank > 0) {
+    output_strides[output_rank - 1] = 1;
+    for (int d = output_rank - 2; d >= 0; --d) {
+      output_strides[d] = output_strides[d + 1] * output_shape.dim_size(d + 1);
+    }
   }
 
   Tensor *result_indices = nullptr;

@@ -16,13 +16,13 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -37,17 +37,16 @@ class FloorCeilTest : public ClientLibraryTestBase {
   };
 
   // Runs a computation and comparison on expected vs f(input)
-  void TestR1F32(tensorflow::gtl::ArraySlice<float> input,
-                 tensorflow::gtl::ArraySlice<float> expected, Function f) {
-    LOG(INFO) << "input: {" << tensorflow::str_util::Join(expected, ", ")
-              << "}";
+  void TestR1F32(absl::Span<const float> input,
+                 absl::Span<const float> expected, Function f) {
+    LOG(INFO) << "input: {" << absl::StrJoin(expected, ", ") << "}";
     XlaBuilder builder(TestName());
-    auto c = builder.ConstantR1<float>(input);
+    auto c = ConstantR1<float>(&builder, input);
     if (f == kCeil) {
-      builder.Ceil(c);
+      Ceil(c);
     } else {
       ASSERT_EQ(kFloor, f);
-      builder.Floor(c);
+      Floor(c);
     }
     ComputeAndCompareR1<float>(&builder, expected, /*arguments=*/{});
   }
@@ -55,12 +54,12 @@ class FloorCeilTest : public ClientLibraryTestBase {
   void TestR0F32(float input, float expected, Function f) {
     LOG(INFO) << "input: " << expected;
     XlaBuilder builder(TestName());
-    auto c = builder.ConstantR0<float>(input);
+    auto c = ConstantR0<float>(&builder, input);
     if (f == kCeil) {
-      builder.Ceil(c);
+      Ceil(c);
     } else {
       ASSERT_EQ(kFloor, f);
-      builder.Floor(c);
+      Floor(c);
     }
     ComputeAndCompareR0<float>(&builder, expected, /*arguments=*/{});
   }

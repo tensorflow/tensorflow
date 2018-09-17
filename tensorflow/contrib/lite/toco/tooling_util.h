@@ -28,6 +28,7 @@ limitations under the License.
 #if TOCO_SUPPORT_PORTABLE_PROTOS
 #include "third_party/protobuf/include/google/protobuf/text_format.h"
 #endif  // TOCO_SUPPORT_PORTABLE_PROTOS
+#include "tensorflow/contrib/lite/kernels/internal/types.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
@@ -115,10 +116,9 @@ void ExtendShape(Shape* shape, int new_shape_size);
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void UnextendShape(Shape* shape, int new_shape_size);
 
-// Checks that all dimensions of 'shape' are at least 1.
-bool IsValid(const Shape& shape);
-// Same as above, but reports error using CHECK.
-void CheckShapeDimensions(const Shape& shape);
+// Checks that all dimensions of 'shape' are at least 1. Note that scalars,
+// lacking dimensions, satisfy this condition and are considered non-empty.
+bool IsNonEmpty(const Shape& shape);
 
 // Given two shapes with potentially different dimensionality and dimension
 // arrays d0 and d1. Without loss of generality, assume that shape0 may have
@@ -139,6 +139,10 @@ bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1);
 //   d0[i0] == d1[i1] for each dimension until i1 == 0 (inclusive).
 // - For the remaining indices [0..i0), d0[i0] == 1.
 bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1);
+
+inline ::tflite::RuntimeShape ToRuntimeShape(const Shape& shape) {
+  return ::tflite::RuntimeShape(shape.dimensions_count(), shape.dims().data());
+}
 
 bool IsArrayFullyConnectedWeights(const Model& model, const string& name);
 
@@ -343,6 +347,14 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
   }
   return tensorflow::Status::OK();
 }
+
+// A model file may have shuffled FC weights.
+// When that happens, we want to de-shuffle them immediately on import,
+// so that the rest of toco doesn't need to know about shuffled weights.
+void UndoWeightsShuffling(Model* model);
+
+// Copies minmax, quantization_params, and narrow_range.
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst);
 
 }  // namespace toco
 

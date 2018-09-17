@@ -212,7 +212,7 @@ class ReparameterizationType(object):
     reparameterized, and straight-through gradients are either partially
     unsupported or are not supported at all. In this case, for purposes of
     e.g. RL or variational inference, it is generally safest to wrap the
-    sample results in a `stop_gradients` call and instead use policy
+    sample results in a `stop_gradients` call and use policy
     gradients / surrogate loss instead.
   """
 
@@ -446,6 +446,24 @@ class Distribution(_BaseDistribution):
     self._graph_parents = graph_parents
     self._name = name
 
+  @property
+  def _parameters(self):
+    return self._parameter_dict
+
+  @_parameters.setter
+  def _parameters(self, value):
+    """Intercept assignments to self._parameters to avoid reference cycles.
+
+    Parameters are often created using locals(), so we need to clean out any
+    references to `self` before assigning it to an attribute.
+
+    Args:
+      value: A dictionary of parameters to assign to the `_parameters` property.
+    """
+    if "self" in value:
+      del value["self"]
+    self._parameter_dict = value
+
   @classmethod
   def param_shapes(cls, sample_shape, name="DistributionParamShapes"):
     """Shapes of parameters given the desired shape of a call to `sample()`.
@@ -526,8 +544,8 @@ class Distribution(_BaseDistribution):
     # Remove "self", "__class__", or other special variables. These can appear
     # if the subclass used:
     # `parameters = dict(locals())`.
-    return dict((k, v) for k, v in self._parameters.items()
-                if not k.startswith("__") and k != "self")
+    return {k: v for k, v in self._parameters.items()
+            if not k.startswith("__") and k != "self"}
 
   @property
   def reparameterization_type(self):

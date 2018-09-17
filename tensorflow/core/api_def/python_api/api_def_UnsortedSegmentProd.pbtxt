@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "unsorted_segment_prod"
-    deprecation_message: "tf.unsorted_segment_prod is deprecated, please use tf.math.unsorted_segment_prod instead."
+    deprecated: true
   }
 }

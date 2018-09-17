@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "fake_quant_with_min_max_vars"
-    deprecation_message: "tf.fake_quant_with_min_max_vars is deprecated, please use tf.quantization.fake_quant_with_min_max_vars instead."
+    deprecated: true
   }
 }

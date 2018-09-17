@@ -28,7 +28,7 @@ namespace xla {
 // points-to analysis (see b/36865746 for details).
 class FlattenCallGraph : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override { return "flatten-call-graph"; }
+  absl::string_view name() const override { return "flatten-call-graph"; }
 
   // Duplicates computations called from multiple call- or while-nodes to
   // flatten the call graph.

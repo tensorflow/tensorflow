@@ -112,6 +112,7 @@ class Embedding(Layer):
     self.activity_regularizer = regularizers.get(activity_regularizer)
     self.embeddings_constraint = constraints.get(embeddings_constraint)
     self.mask_zero = mask_zero
+    self.supports_masking = mask_zero
     self.input_length = input_length
 
   @tf_utils.shape_type_conversion
@@ -127,8 +128,8 @@ class Embedding(Layer):
   def compute_mask(self, inputs, mask=None):
     if not self.mask_zero:
       return None
-    else:
-      return math_ops.not_equal(inputs, 0)
+
+    return math_ops.not_equal(inputs, 0)
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):

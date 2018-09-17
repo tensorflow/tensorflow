@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -54,18 +55,18 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         ctx, ParseVectorArgument<string>(ctx, "optimizations", &optimizations));
     Dataset* dataset =
         new Dataset(ctx, input, optimizations, output_types_, output_shapes_);
-    core::ScopedUnref unref(dataset);
-    OP_REQUIRES_OK(ctx, dataset->Optimize(ctx, output));
+    OP_REQUIRES_OK(ctx, dataset->Optimize(ctx));
+    *output = dataset;
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const std::vector<string>& optimizations,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           optimizations_(optimizations),
           output_types_(output_types),
@@ -73,34 +74,57 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       input_->Ref();
     }
 
-    ~Dataset() override { input_->Unref(); }
+    ~Dataset() override {
+      input_->Unref();
+      optimized_input_->Unref();
+    }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Optimize")}));
+      // We do not add a token for the optimization dataset to the prefix. The
+      // prefix is used to identify checkpoint elements and since the
+      // optimization dataset is excluded from the checkpoint, adding a token
+      // here would result in invalid checkpoint identifiers.
+      return std::unique_ptr<IteratorBase>(new Iterator({this, prefix}));
     }
 
-    Status Optimize(OpKernelContext* ctx, DatasetBase** output) {
+    Status Optimize(OpKernelContext* ctx) {
       GraphDefBuilder b;
       DatasetGraphDefBuilder db(&b);
       Node* input_node = nullptr;
-      TF_RETURN_IF_ERROR(db.AddParentDataset(ctx, input_, &input_node));
+      SerializationContext::Params params;
+      std::vector<std::pair<string, Tensor>> input_list;
+      params.allow_stateful_functions = true;
+      params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
+      params.input_list = &input_list;
+      SerializationContext serialization_ctx(params);
+      TF_RETURN_IF_ERROR(
+          db.AddInputDataset(&serialization_ctx, input_, &input_node));
       string output_node = input_node->name();
+
       GraphDef graph_def;
       TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
+      VLOG(3) << "Before optimization: " << graph_def.DebugString();
+
       TF_RETURN_IF_ERROR(ApplyOptimizations(ctx, &graph_def, &output_node));
+      VLOG(3) << "After optimization: " << graph_def.DebugString();
+
+      // Instantiate the optimized input pipeline by running the optimized graph
+      // using the optimized function library.
+      TF_RETURN_IF_ERROR(
+          ctx->function_library()->Clone(&flib_def_, &pflr_, &lib_));
+      TF_RETURN_IF_ERROR(flib_def_->AddLibrary(graph_def.library()));
 
       Graph graph(OpRegistry::Global());
       TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
       std::vector<Tensor> outputs;
-      GraphRunner graph_runner(ctx->env());
-      // Once rewrites that add/modify functions are introduced, we will need
-      // persist the results in a function library runtime.
-      TF_RETURN_IF_ERROR(graph_runner.Run(&graph, ctx->function_library(), {},
-                                          {output_node}, &outputs));
-      TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], output));
-      (*output)->Ref();
+      GraphRunner graph_runner(ctx->function_library()->device());
+
+      TF_RETURN_IF_ERROR(
+          graph_runner.Run(&graph, lib_, input_list, {output_node}, &outputs));
+      TF_RETURN_IF_ERROR(
+          GetDatasetFromVariantTensor(outputs[0], &optimized_input_));
+      optimized_input_->Ref();
       return Status::OK();
     }
 
@@ -113,6 +137,16 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "OptimizeDatasetOp::Dataset"; }
 
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      // We only serialize the optimized dataset to avoid re-running
+      // optimizations when the input pipeline is restored from a checkpoint.
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, optimized_input_, output));
+      return Status::OK();
+    }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
@@ -120,15 +154,43 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return errors::Unimplemented(strings::StrCat(prefix(), "::Initialize"));
+        IteratorContext::Params params;
+        params.env = ctx->env();
+        params.runner = *(ctx->runner());
+        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        params.lib = dataset()->lib_;
+        params.allocator_getter = ctx->allocator_getter();
+        return dataset()->optimized_input_->MakeIterator(
+            IteratorContext(params), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        return errors::Unimplemented(
-            strings::StrCat(prefix(), "::GetNextInternal"));
+        IteratorContext::Params params;
+        params.env = ctx->env();
+        params.runner = *(ctx->runner());
+        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        params.lib = dataset()->lib_;
+        params.allocator_getter = ctx->allocator_getter();
+        IteratorContext iter_ctx(params);
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
       }
+
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+        return Status::OK();
+      }
+
+     private:
+      std::unique_ptr<IteratorBase> input_impl_;
     };
 
     Status ApplyOptimizations(OpKernelContext* ctx, GraphDef* graph_def,
@@ -136,16 +198,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // Add a fake sink node to allow rewriting the actual sink node.
       NodeDef* node = graph_def->mutable_node()->Add();
       node->set_name("FakeSink");
-      node->set_op("IdentityDataset");
+      node->set_op("SinkDataset");
       node->add_input(*output_node);
-      {
-        grappler::GraphView graph(graph_def);
-        NodeDef* sink = graph.GetNode(*output_node);
-        (*node->mutable_attr())["output_shapes"] =
-            sink->attr().at("output_shapes");
-        (*node->mutable_attr())["output_types"] =
-            sink->attr().at("output_types");
-      }
 
       // Create metagraph.
       MetaGraphDef meta_graph_def;
@@ -162,10 +216,10 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       for (const string& optimization : optimizations_) {
         rewriter_config.add_optimizers(optimization);
       }
-      // If no optimizations were specified, supply a non-existent optimization
-      // to prevent Grappler from applying the default set of optimizations as
-      // some of them do not work out of the box at the moment (e.g. because we
-      // have no cost model for dataset ops).
+      // If no optimizations were specified, supply a non-existent
+      // optimization to prevent Grappler from applying the default set of
+      // optimizations as some of them do not work out of the box at the
+      // moment (e.g. because we have no cost model for dataset ops).
       if (optimizations_.empty()) {
         rewriter_config.add_optimizers("non-existent");
       }
@@ -178,6 +232,12 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       tensorflow::grappler::VirtualCluster cluster(device_map);
 
       // Run optimizer.
+      if (VLOG_IS_ON(2)) {
+        LOG(INFO) << "Performing the following optimizations:";
+        for (const string& optimization : optimizations_) {
+          LOG(INFO) << "  " << optimization;
+        }
+      }
       TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
           *grappler_item, rewriter_config, ctx->device(), &cluster, graph_def));
 
@@ -192,6 +252,10 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       return Status::OK();
     }
 
+    DatasetBase* optimized_input_;
+    FunctionLibraryRuntime* lib_ = nullptr;
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ = nullptr;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def_ = nullptr;
     const DatasetBase* input_;
     const std::vector<string> optimizations_;
     const DataTypeVector output_types_;
@@ -207,4 +271,5 @@ REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
                         OptimizeDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -118,7 +118,7 @@ class VariableOpTest(test.TestCase):
     self.assertEqual(tensor_shape.unknown_shape(), assigned.get_shape())
 
   def testAssignNoShape(self):
-    with self.test_session():
+    with self.cached_session():
       value = self._NewShapelessTensor()
       var = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
       self.assertEqual(tensor_shape.unknown_shape(), var.get_shape())
@@ -126,7 +126,7 @@ class VariableOpTest(test.TestCase):
                        state_ops.assign(var, value).get_shape())
 
   def testAssignNoShapeNoValidateShape(self):
-    with self.test_session():
+    with self.cached_session():
       value = self._NewShapelessTensor()
       var = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
       self.assertEqual(tensor_shape.unknown_shape(), var.get_shape())

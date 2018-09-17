@@ -326,6 +326,21 @@ class QuantizedDistribution(distributions.Distribution):
         graph_parents=graph_parents,
         name=name)
 
+  @property
+  def distribution(self):
+    """Base distribution, p(x)."""
+    return self._dist
+
+  @property
+  def low(self):
+    """Lowest value that quantization returns."""
+    return self._low
+
+  @property
+  def high(self):
+    """Highest value that quantization returns."""
+    return self._high
+
   def _batch_shape_tensor(self):
     return self.distribution.batch_shape_tensor()
 
@@ -569,8 +584,3 @@ class QuantizedDistribution(distributions.Distribution):
       dependencies = [distribution_util.assert_integer_form(
           value, message="value has non-integer components.")]
       return control_flow_ops.with_dependencies(dependencies, value)
-
-  @property
-  def distribution(self):
-    """Base distribution, p(x)."""
-    return self._dist

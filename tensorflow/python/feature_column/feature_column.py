@@ -16,7 +16,7 @@
 
 FeatureColumns provide a high level abstraction for ingesting and representing
 features. FeatureColumns are also the primary way of encoding features for
-canned @{tf.estimator.Estimator}s.
+canned `tf.estimator.Estimator`s.
 
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
@@ -169,7 +169,8 @@ def _internal_input_layer(features,
                           weight_collections=None,
                           trainable=True,
                           cols_to_vars=None,
-                          scope=None):
+                          scope=None,
+                          cols_to_output_tensors=None):
   """See input_layer. `scope` is a name or variable scope to use."""
 
   feature_columns = _normalize_feature_columns(feature_columns)
@@ -202,14 +203,17 @@ def _internal_input_layer(features,
             trainable=trainable)
         num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
         batch_size = array_ops.shape(tensor)[0]
-        output_tensors.append(
-            array_ops.reshape(tensor, shape=(batch_size, num_elements)))
+        output_tensor = array_ops.reshape(
+            tensor, shape=(batch_size, num_elements))
+        output_tensors.append(output_tensor)
         if cols_to_vars is not None:
           # Retrieve any variables created (some _DenseColumn's don't create
           # variables, in which case an empty list is returned).
           cols_to_vars[column] = ops.get_collection(
               ops.GraphKeys.GLOBAL_VARIABLES,
               scope=variable_scope.get_variable_scope().name)
+        if cols_to_output_tensors is not None:
+          cols_to_output_tensors[column] = output_tensor
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
 
@@ -219,7 +223,8 @@ def input_layer(features,
                 feature_columns,
                 weight_collections=None,
                 trainable=True,
-                cols_to_vars=None):
+                cols_to_vars=None,
+                cols_to_output_tensors=None):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -264,6 +269,9 @@ def input_layer(features,
         dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
                         <tf.Variable 'some_variable:1' shape=(5, 10)]}
       If a column creates no variables, its value will be an empty list.
+    cols_to_output_tensors: If not `None`, must be a dictionary that will be
+      filled with a mapping from '_FeatureColumn' to the associated
+      output `Tensor`s.
 
   Returns:
     A `Tensor` which represents input layer of a model. Its shape
@@ -273,8 +281,13 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  return _internal_input_layer(features, feature_columns, weight_collections,
-                               trainable, cols_to_vars)
+  return _internal_input_layer(
+      features,
+      feature_columns,
+      weight_collections=weight_collections,
+      trainable=trainable,
+      cols_to_vars=cols_to_vars,
+      cols_to_output_tensors=cols_to_output_tensors)
 
 
 # TODO(akshayka): InputLayer should be a subclass of Layer, and it
@@ -1936,7 +1949,7 @@ class _FeatureColumn(object):
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
     dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of @{tf.parse_example} for all
+    supported objects. Please check documentation of `tf.parse_example` for all
     supported spec objects.
 
     Let's say a Feature column depends on raw feature ('raw') and another
@@ -1995,7 +2008,7 @@ class _DenseColumn(_FeatureColumn):
       weight_collections: List of graph collections to which Variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.Variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 
     Returns:
       `Tensor` of shape [batch_size] + `_variable_shape`.
@@ -2062,7 +2075,7 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a @{tf.SparseTensor} of IDs.
+  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -2097,7 +2110,7 @@ class _CategoricalColumn(_FeatureColumn):
       weight_collections: List of graph collections to which variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.get_variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.get_variable`).
     """
     pass
 
@@ -2158,7 +2171,7 @@ def _create_categorical_column_weighted_sum(column,
         initializer=init_ops.zeros_initializer(),
         trainable=trainable,
         collections=weight_collections)
-  return _safe_embedding_lookup_sparse(
+  return embedding_ops.safe_embedding_lookup_sparse(
       weight,
       id_tensor,
       sparse_weights=weight_tensor,
@@ -2594,7 +2607,7 @@ class _EmbeddingColumn(
       })
 
     # Return embedding lookup result.
-    return _safe_embedding_lookup_sparse(
+    return embedding_ops.safe_embedding_lookup_sparse(
         embedding_weights=embedding_weights,
         sparse_ids=sparse_ids,
         sparse_weights=sparse_weights,
@@ -2736,7 +2749,7 @@ class _SharedEmbeddingColumn(
         })
 
       # Return embedding lookup result.
-      return _safe_embedding_lookup_sparse(
+      return embedding_ops.safe_embedding_lookup_sparse(
           embedding_weights=embedding_weights,
           sparse_ids=sparse_ids,
           sparse_weights=sparse_weights,
@@ -3228,161 +3241,6 @@ def _collect_leaf_level_keys(cross):
   return leaf_level_keys
 
 
-# TODO(zakaria): Move this to embedding_ops and make it public.
-def _safe_embedding_lookup_sparse(embedding_weights,
-                                  sparse_ids,
-                                  sparse_weights=None,
-                                  combiner='mean',
-                                  default_id=None,
-                                  name=None,
-                                  partition_strategy='div',
-                                  max_norm=None):
-  """Lookup embedding results, accounting for invalid IDs and empty features.
-
-  The partitioned embedding in `embedding_weights` must all be the same shape
-  except for the first dimension. The first dimension is allowed to vary as the
-  vocabulary size is not necessarily a multiple of `P`.  `embedding_weights`
-  may be a `PartitionedVariable` as returned by using `tf.get_variable()` with a
-  partitioner.
-
-  Invalid IDs (< 0) are pruned from input IDs and weights, as well as any IDs
-  with non-positive weight. For an entry with no features, the embedding vector
-  for `default_id` is returned, or the 0-vector if `default_id` is not supplied.
-
-  The ids and weights may be multi-dimensional. Embeddings are always aggregated
-  along the last dimension.
-
-  Args:
-    embedding_weights:  A list of `P` float `Tensor`s or values representing
-        partitioned embedding `Tensor`s.  Alternatively, a `PartitionedVariable`
-        created by partitioning along dimension 0.  The total unpartitioned
-        shape should be `[e_0, e_1, ..., e_m]`, where `e_0` represents the
-        vocab size and `e_1, ..., e_m` are the embedding dimensions.
-    sparse_ids: `SparseTensor` of shape `[d_0, d_1, ..., d_n]` containing the
-        ids. `d_0` is typically batch size.
-    sparse_weights: `SparseTensor` of same shape as `sparse_ids`, containing
-        float weights corresponding to `sparse_ids`, or `None` if all weights
-        are be assumed to be 1.0.
-    combiner: A string specifying how to combine embedding results for each
-        entry. Currently "mean", "sqrtn" and "sum" are supported, with "mean"
-        the default.
-    default_id: The id to use for an entry with no features.
-    name: A name for this operation (optional).
-    partition_strategy: A string specifying the partitioning strategy.
-        Currently `"div"` and `"mod"` are supported. Default is `"div"`.
-    max_norm: If not `None`, all embeddings are l2-normalized to max_norm before
-        combining.
-
-
-  Returns:
-    Dense `Tensor` of shape `[d_0, d_1, ..., d_{n-1}, e_1, ..., e_m]`.
-
-  Raises:
-    ValueError: if `embedding_weights` is empty.
-  """
-  if embedding_weights is None:
-    raise ValueError('Missing embedding_weights %s.' % embedding_weights)
-  if isinstance(embedding_weights, variables.PartitionedVariable):
-    embedding_weights = list(embedding_weights)  # get underlying Variables.
-  if not isinstance(embedding_weights, list):
-    embedding_weights = [embedding_weights]
-  if len(embedding_weights) < 1:
-    raise ValueError('Missing embedding_weights %s.' % embedding_weights)
-
-  dtype = sparse_weights.dtype if sparse_weights is not None else None
-  embedding_weights = [
-      ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
-  ]
-
-  with ops.name_scope(name, 'embedding_lookup',
-                      embedding_weights + [sparse_ids,
-                                           sparse_weights]) as scope:
-    # Reshape higher-rank sparse ids and weights to linear segment ids.
-    original_shape = sparse_ids.dense_shape
-    original_rank_dim = sparse_ids.dense_shape.get_shape()[0]
-    original_rank = (
-        array_ops.size(original_shape)
-        if original_rank_dim.value is None
-        else original_rank_dim.value)
-    sparse_ids = sparse_ops.sparse_reshape(sparse_ids, [
-        math_ops.reduce_prod(
-            array_ops.slice(original_shape, [0], [original_rank - 1])),
-        array_ops.gather(original_shape, original_rank - 1)])
-    if sparse_weights is not None:
-      sparse_weights = sparse_tensor_lib.SparseTensor(
-          sparse_ids.indices,
-          sparse_weights.values, sparse_ids.dense_shape)
-
-    # Prune invalid ids and weights.
-    sparse_ids, sparse_weights = _prune_invalid_ids(sparse_ids, sparse_weights)
-    if combiner != 'sum':
-      sparse_ids, sparse_weights = _prune_invalid_weights(
-          sparse_ids, sparse_weights)
-
-    # Fill in dummy values for empty features, if necessary.
-    sparse_ids, is_row_empty = sparse_ops.sparse_fill_empty_rows(sparse_ids,
-                                                                 default_id or
-                                                                 0)
-    if sparse_weights is not None:
-      sparse_weights, _ = sparse_ops.sparse_fill_empty_rows(sparse_weights, 1.0)
-
-    result = embedding_ops.embedding_lookup_sparse(
-        embedding_weights,
-        sparse_ids,
-        sparse_weights,
-        combiner=combiner,
-        partition_strategy=partition_strategy,
-        name=None if default_id is None else scope,
-        max_norm=max_norm)
-
-    if default_id is None:
-      # Broadcast is_row_empty to the same shape as embedding_lookup_result,
-      # for use in Select.
-      is_row_empty = array_ops.tile(
-          array_ops.reshape(is_row_empty, [-1, 1]),
-          array_ops.stack([1, array_ops.shape(result)[1]]))
-
-      result = array_ops.where(is_row_empty,
-                               array_ops.zeros_like(result),
-                               result,
-                               name=scope)
-
-    # Reshape back from linear ids back into higher-dimensional dense result.
-    final_result = array_ops.reshape(
-        result,
-        array_ops.concat([
-            array_ops.slice(
-                math_ops.cast(original_shape, dtypes.int32), [0],
-                [original_rank - 1]),
-            array_ops.slice(array_ops.shape(result), [1], [-1])
-        ], 0))
-    final_result.set_shape(tensor_shape.unknown_shape(
-        (original_rank_dim - 1).value).concatenate(result.get_shape()[1:]))
-    return final_result
-
-
-def _prune_invalid_ids(sparse_ids, sparse_weights):
-  """Prune invalid IDs (< 0) from the input ids and weights."""
-  is_id_valid = math_ops.greater_equal(sparse_ids.values, 0)
-  if sparse_weights is not None:
-    is_id_valid = math_ops.logical_and(
-        is_id_valid,
-        array_ops.ones_like(sparse_weights.values, dtype=dtypes.bool))
-  sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_id_valid)
-  if sparse_weights is not None:
-    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_id_valid)
-  return sparse_ids, sparse_weights
-
-
-def _prune_invalid_weights(sparse_ids, sparse_weights):
-  """Prune invalid weights (< 0) from the input ids and weights."""
-  if sparse_weights is not None:
-    is_weights_valid = math_ops.greater(sparse_weights.values, 0)
-    sparse_ids = sparse_ops.sparse_retain(sparse_ids, is_weights_valid)
-    sparse_weights = sparse_ops.sparse_retain(sparse_weights, is_weights_valid)
-  return sparse_ids, sparse_weights
-
-
 class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
                        collections.namedtuple('_IndicatorColumn',
                                               ['categorical_column'])):
@@ -3419,10 +3277,14 @@ class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
           sp_ids=id_tensor,
           sp_values=weight_tensor,
           vocab_size=int(self._variable_shape[-1]))
-      # Remove (?, -1) index
+      # Remove (?, -1) index.
       weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
                                                 weighted_column.dense_shape)
-      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+      # Use scatter_nd to merge duplicated indices if existed,
+      # instead of sparse_tensor_to_dense.
+      return array_ops.scatter_nd(weighted_column.indices,
+                                  weighted_column.values,
+                                  weighted_column.dense_shape)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
         id_tensor, default_value=-1)

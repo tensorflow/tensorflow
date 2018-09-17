@@ -175,7 +175,8 @@ class Conv2DBenchmark(test.Benchmark):
 
     data_types = [dtypes.float32, dtypes.float16]
     data_formats = ["NHWC", "NCHW"]
-    in_channels = list(range(3, 16))
+    in_channels = list(range(1, 10)) + list(range(10, 20, 2)) + list(
+        range(20, 33, 4))
     out_channels = [4, 16, 32]
     hw_strides = [[2, 2]]
     paddings = ["VALID", "SAME"]

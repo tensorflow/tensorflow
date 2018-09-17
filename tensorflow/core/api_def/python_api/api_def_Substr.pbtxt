@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "substr"
-    deprecation_message: "tf.substr is deprecated, please use tf.strings.substr instead."
+    deprecated: true
   }
 }

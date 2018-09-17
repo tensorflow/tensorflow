@@ -12,6 +12,7 @@ exports_files([
     # The leakr files are used by //third_party/cloud_tpu.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
+    "leakr_file_type_recipe.ftrcp",
 ])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
@@ -20,8 +21,34 @@ load(
     "tf_additional_binary_deps",
 )
 load(
-    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
+)
+load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
+load(
+    "//tensorflow/python/tools/api/generator:api_init_files.bzl",
+    "TENSORFLOW_API_INIT_FILES",  # @unused
+)
+load(
+    "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
+    "TENSORFLOW_API_INIT_FILES_V1",  # @unused
+)
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
+
+# @unused
+TENSORFLOW_API_INIT_FILES_V2 = (
+    TENSORFLOW_API_INIT_FILES + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+)
+
+# Config setting used when building for products
+# which requires restricted licenses to be avoided.
+config_setting(
+    name = "no_lgpl_deps",
+    values = {"define": "__TENSORFLOW_NO_LGPL_DEPS__=1"},
+    visibility = ["//visibility:public"],
 )
 
 # Config setting for determining if we are building for Android.
@@ -112,12 +139,6 @@ config_setting(
 config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "windows_msvc",
-    values = {"cpu": "x64_windows_msvc"},
     visibility = ["//visibility:public"],
 )
 
@@ -216,8 +237,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support",
+    define_values = {"with_aws_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -244,8 +265,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support_windows_override",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support_windows_override",
+    define_values = {"with_aws_support": "true"},
     values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
 )
@@ -253,6 +274,13 @@ config_setting(
 config_setting(
     name = "with_kafka_support_windows_override",
     define_values = {"with_kafka_support": "true"},
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_cuda_support_windows_override",
+    define_values = {"using_cuda_nvcc": "true"},
     values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
 )
@@ -272,8 +300,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support_android_override",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support_android_override",
+    define_values = {"with_aws_support": "true"},
     values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
 )
@@ -293,8 +321,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support_ios_override",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support_ios_override",
+    define_values = {"with_aws_support": "true"},
     values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
     visibility = ["//visibility:public"],
 )
@@ -366,6 +394,15 @@ config_setting(
     },
 )
 
+# Setting to use when loading kernels dynamically
+config_setting(
+    name = "dynamic_loaded_kernels",
+    define_values = {
+        "dynamic_loaded_kernels": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "using_cuda_nvcc",
     define_values = {
@@ -393,12 +430,19 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(laigd): consider removing this option and make TensorRT enabled
-# automatically when CUDA is enabled.
+# This flag is set from the configure step when the user selects with nGraph option.
+# By default it should be false
 config_setting(
-    name = "with_tensorrt_support",
-    values = {"define": "with_tensorrt_support=true"},
+    name = "with_ngraph_support",
+    values = {"define": "with_ngraph_support=true"},
     visibility = ["//visibility:public"],
+)
+
+# This flag specifies whether TensorFlow 2.0 API should be built instead
+# of 1.* API. Note that TensorFlow 2.0 API is currently under development.
+config_setting(
+    name = "api_version_2",
+    define_values = {"tf_api_version": "2"},
 )
 
 package_group(
@@ -407,6 +451,7 @@ package_group(
         "-//third_party/tensorflow/python/estimator",
         "//learning/meta_rank/...",
         "//tensorflow/...",
+        "//tensorflow_estimator/...",
         "//tensorflow_fold/llgtm/...",
         "//third_party/py/tensor2tensor/...",
     ],
@@ -414,21 +459,16 @@ package_group(
 
 load(
     "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
+    "if_mkl_ml",
 )
 
 filegroup(
     name = "intel_binary_blob",
-    data = if_mkl(
+    data = if_mkl_ml(
         [
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
-)
-
-filegroup(
-    name = "docs_src",
-    data = glob(["docs_src/**/*.md"]),
 )
 
 cc_library(
@@ -477,7 +517,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:darwin": [],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow:tf_framework_version_script.lds)",
@@ -519,7 +558,6 @@ tf_cc_shared_object(
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
@@ -544,7 +582,6 @@ tf_cc_shared_object(
             "$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
@@ -561,7 +598,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:scope",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
 )
 
 exports_files(
@@ -572,9 +609,37 @@ exports_files(
 )
 
 gen_api_init_files(
-    name = "tensorflow_python_api_gen",
+    name = "tf_python_api_gen_v1",
     srcs = ["api_template.__init__.py"],
+    api_version = 1,
+    output_dir = "_api/v1/",
+    output_files = TENSORFLOW_API_INIT_FILES_V1,
+    output_package = "tensorflow._api.v1",
     root_init_template = "api_template.__init__.py",
+)
+
+gen_api_init_files(
+    name = "tf_python_api_gen_v2",
+    srcs = ["api_template.__init__.py"],
+    api_version = 2,
+    compat_api_versions = [1],
+    output_dir = "_api/v2/",
+    output_files = TENSORFLOW_API_INIT_FILES_V2,
+    output_package = "tensorflow._api.v2",
+    root_init_template = "api_template.__init__.py",
+)
+
+genrule(
+    name = "root_init_gen",
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }),
+    outs = ["__init__.py"],
+    cmd = select({
+        "api_version_2": "cp $(@D)/_api/v2/__init__.py $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/__init__.py $(OUTS)",
+    }),
 )
 
 py_library(
@@ -591,7 +656,10 @@ py_library(
 
 py_library(
     name = "tensorflow_py_no_contrib",
-    srcs = [":tensorflow_python_api_gen"],
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }) + [":root_init_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -101,7 +101,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 batch_size,
             int64 num_parallel_calls, bool drop_remainder,
@@ -110,7 +110,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func,
             const Eigen::ThreadPoolDevice* device)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           batch_size_(batch_size),
           num_parallel_calls_(num_parallel_calls),
@@ -144,11 +144,12 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, map_fn_.name()));
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* batch_size_node;
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size_node));
       Node* num_parallel_calls_node;
@@ -203,7 +204,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        SetMetadata(ctx, "batch_size", dataset()->batch_size_);
+        SetMetadata(ctx, "parallelism", dataset()->num_parallel_calls_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -215,7 +220,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EnsureRunnerThreadStarted(ctx);
           while (batch_results_.empty() ||
                  batch_results_.front()->num_calls > 0) {
+            StopWork(ctx);
             cond_var_.wait(l);
+            StartWork(ctx);
           }
           std::swap(result, batch_results_.front());
           batch_results_.pop_front();
@@ -232,7 +239,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           cond_var_.wait(l);
         }
         CHECK_EQ(num_calls_, 0);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("call_counter"), call_counter_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("batch_results_size"),
@@ -246,7 +253,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("call_counter"), &call_counter_));
         int64 batch_results_size;
@@ -362,7 +369,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                   ctx.get(), std::move(input_element), return_values.get(),
                   [this, ctx, result, return_values, offset](Status status) {
                     Callback(ctx, result, return_values, offset, status);
-                  });
+                  },
+                  prefix());
             },
             ctx, std::move(input_element)));
       }
@@ -383,7 +391,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 #undef HANDLE_TYPE
           default:
             return errors::InvalidArgument("Unsupported data type: ",
-                                           value.dtype());
+                                           DataTypeString(value.dtype()));
         }
         return Status::OK();
       }
@@ -473,6 +481,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           LOCKS_EXCLUDED(mu_) {
         std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
         new_calls.reserve(dataset()->num_parallel_calls_);
+        StartWork(ctx.get());
+        auto stop_cleanup =
+            gtl::MakeCleanup([this, &ctx]() { StopWork(ctx.get()); });
         while (true) {
           {
             mutex_lock l(mu_);
@@ -481,7 +492,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     batch_results_.size() > MaxBatchResults() ||
                     (batch_results_.size() == MaxBatchResults() &&
                      call_counter_ % dataset()->batch_size_ == 0))) {
+              StopWork(ctx.get());
               cond_var_.wait(l);
+              StartWork(ctx.get());
             }
 
             if (cancelled_) {
@@ -672,5 +685,5 @@ REGISTER_KERNEL_BUILDER(Name("MapAndBatchDatasetV2").Device(DEVICE_CPU),
                         MapAndBatchDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

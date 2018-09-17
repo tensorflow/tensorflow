@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "diag_part"
-    deprecation_message: "tf.diag_part is deprecated, please use tf.linalg.tensor_diag_part instead."
+    deprecated: true
   }
 }

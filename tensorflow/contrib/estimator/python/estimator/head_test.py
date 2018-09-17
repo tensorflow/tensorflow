@@ -215,7 +215,7 @@ class MultiLabelHead(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -246,7 +246,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertAllEqual(
           expected_export_classes,
@@ -271,7 +271,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits)
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -297,7 +297,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(expected_training_loss,
                           actual_training_loss.eval())
@@ -321,7 +321,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, actual_training_loss.eval(), atol=1e-4)
@@ -338,7 +338,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels_placeholder)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -375,7 +375,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits_input,
         labels=labels_input)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(np.sum(loss) / 2., actual_training_loss.eval())
 
@@ -394,7 +394,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
         labels=labels)[0]
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -433,7 +433,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, and metrics.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
@@ -568,6 +568,33 @@ class MultiLabelHead(test.TestCase):
         expected_loss=expected_loss,
         expected_metrics=expected_metrics)
 
+  def test_eval_with_label_vocabulary_with_multi_hot_input(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(
+        n_classes, label_vocabulary=['class0', 'class1'])
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # Sum over examples, divide by batch_size.
+    expected_loss = 0.5 * np.sum(
+        _sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        # Average loss over examples.
+        keys.LOSS_MEAN: expected_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels_multi_hot,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
+
   def test_eval_with_thresholds(self):
     n_classes = 2
     thresholds = [0.25, 0.5, 0.75]
@@ -667,12 +694,14 @@ class MultiLabelHead(test.TestCase):
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
         keys.AUC_PR: 0.7639,
-        keys.PROBABILITY_MEAN_AT_CLASS % 0: np.sum(_sigmoid(logits[:, 0])) / 2.,
-        keys.AUC_AT_CLASS % 0: 0.,
-        keys.AUC_PR_AT_CLASS % 0: 1.,
-        keys.PROBABILITY_MEAN_AT_CLASS % 1: np.sum(_sigmoid(logits[:, 1])) / 2.,
-        keys.AUC_AT_CLASS % 1: 1.,
-        keys.AUC_PR_AT_CLASS % 1: 1.,
+        keys.PROBABILITY_MEAN_AT_NAME % 'a':
+            np.sum(_sigmoid(logits[:, 0])) / 2.,
+        keys.AUC_AT_NAME % 'a': 0.,
+        keys.AUC_PR_AT_NAME % 'a': 1.,
+        keys.PROBABILITY_MEAN_AT_NAME % 'b':
+            np.sum(_sigmoid(logits[:, 1])) / 2.,
+        keys.AUC_AT_NAME % 'b': 1.,
+        keys.AUC_PR_AT_NAME % 'b': 1.,
     }
 
     self._test_eval(
@@ -724,7 +753,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, and metrics.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
@@ -762,7 +791,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
         labels=labels)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), atol=1e-4)
@@ -796,7 +825,7 @@ class MultiLabelHead(test.TestCase):
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
         labels=labels)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), atol=1e-4)
@@ -835,7 +864,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -861,7 +890,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -890,7 +919,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -982,7 +1011,7 @@ class MultiLabelHead(test.TestCase):
         optimizer=_Optimizer())
 
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       loss, train_result = sess.run((spec.loss, spec.train_op))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
@@ -1011,7 +1040,7 @@ class MultiLabelHead(test.TestCase):
           labels=np.array([[1, 0], [1, 1]], dtype=np.int64),
           train_op_fn=_train_op_fn)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         _initialize_variables(self, spec.scaffold)
         sess.run(spec.train_op)
         w_value, t_value = sess.run([w, t])
@@ -1050,7 +1079,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -1098,7 +1127,7 @@ class MultiLabelHead(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -1133,7 +1162,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels)
     atol = 1.e-3
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), atol=atol)
@@ -1168,7 +1197,7 @@ class MultiLabelHead(test.TestCase):
         train_op_fn=_train_op_fn)
 
     atol = 1.e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, monitored_session.Scaffold())
       loss, train_result = sess.run((spec.loss, spec.train_op))
       self.assertAllClose(expected_loss, loss, atol=atol)
@@ -1195,7 +1224,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -1223,7 +1252,7 @@ class MultiLabelHead(test.TestCase):
         logits=logits,
         labels=labels,
         train_op_fn=_train_op_fn)
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -1298,7 +1327,7 @@ class PoissonRegressionHead(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       loss, train_result = sess.run([spec.loss, spec.train_op])
       self.assertAlmostEqual(expected_loss, loss, delta=atol)
@@ -1323,7 +1352,7 @@ class PoissonRegressionHead(test.TestCase):
     self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
 
     # Assert predictions.
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, spec.scaffold)
       self.assertAllClose(
           expected_predictions, spec.predictions[keys.PREDICTIONS].eval())
@@ -1366,7 +1395,7 @@ class LogisticRegressionHead(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       loss, train_result = sess.run([spec.loss, spec.train_op])
       self.assertAlmostEqual(expected_loss, loss, delta=atol)
@@ -1390,7 +1419,7 @@ class LogisticRegressionHead(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -1415,7 +1444,7 @@ class LogisticRegressionHead(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
@@ -1442,7 +1471,7 @@ class LogisticRegressionHead(test.TestCase):
     self.assertEqual(dtypes.float32, spec.predictions[keys.LOGITS].dtype)
 
     # Assert predictions.
-    with self.test_session():
+    with self.cached_session():
       _initialize_variables(self, spec.scaffold)
       self.assertAllClose(
           expected_predictions, spec.predictions[keys.PREDICTIONS].eval())

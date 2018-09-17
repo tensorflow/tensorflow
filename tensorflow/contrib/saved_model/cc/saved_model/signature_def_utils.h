@@ -64,6 +64,9 @@ Status FindInputTensorNameByKey(const SignatureDef& signature_def,
 Status FindOutputTensorNameByKey(const SignatureDef& signature_def,
                                  const string& tensor_info_key, string* name);
 
+// Determine whether a SignatureDef can be served by TensorFlow Serving.
+bool IsValidSignature(const SignatureDef& signature_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_SAVED_MODEL_CC_SAVED_MODEL_SIGNATURE_DEF_UTILS_H_

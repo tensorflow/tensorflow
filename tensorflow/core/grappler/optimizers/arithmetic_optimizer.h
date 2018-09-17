@@ -61,7 +61,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool fold_multiply_into_conv = true;
     bool fold_transpose_into_matmul = true;
     bool hoist_common_factor_out_of_aggregation = true;
-    bool hoist_cwise_unary_chains = false;
+    bool hoist_cwise_unary_chains = true;
     bool minimize_broadcasts = true;
     bool optimize_max_or_min_of_monotonic = true;
     bool remove_idempotent = true;
@@ -77,6 +77,8 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool simplify_aggregation = true;
     bool convert_pow = true;
     bool convert_log1p = true;
+    bool convert_expm1 = true;
+    bool unary_ops_composition = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.

@@ -69,3 +69,9 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
 )
+
+filegroup(
+    name = "eigen_header_files",
+    srcs = EIGEN_MPL2_HEADER_FILES,
+    visibility = ["//visibility:public"],
+)

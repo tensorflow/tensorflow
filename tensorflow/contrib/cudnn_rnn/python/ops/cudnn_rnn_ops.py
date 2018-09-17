@@ -61,8 +61,8 @@ _WEIGHTS_VARIABLE_NAME = rnn_cell_impl._WEIGHTS_VARIABLE_NAME
 class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
   """Cudnn Compatible LSTMCell.
 
-  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by
+  A simple wrapper around `tf.contrib.rnn.LSTMBlockCell` to use along with
+  `tf.contrib.cudnn_rnn.CudnnLSTM`. The latter's params can be used by
   this cell seamlessly.
   """
 
@@ -76,8 +76,8 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
 class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   """Cudnn Compatible GRUCell.
 
-  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by
+  A GRU impl akin to `tf.nn.rnn_cell.GRUCell` to use along with
+  `tf.contrib.cudnn_rnn.CudnnGRU`. The latter's params can be used by
   it seamlessly.
 
   It differs from platform-independent GRUs in how the new memory gate is
@@ -97,7 +97,7 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
-  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
+  Other GRU (see `tf.nn.rnn_cell.GRUCell` and `tf.contrib.rnn.GRUBlockCell`):
   ```python
   # new memory gate
   \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
@@ -891,7 +891,7 @@ def _cudnn_rnn(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -957,7 +957,7 @@ def cudnn_lstm(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -998,7 +998,7 @@ def _cudnn_rnn_no_input_c(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1040,7 +1040,7 @@ def cudnn_gru(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1079,7 +1079,7 @@ def cudnn_rnn_relu(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1119,7 +1119,7 @@ def cudnn_rnn_tanh(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1161,7 +1161,7 @@ def cudnn_rnn_opaque_params_to_canonical(rnn_mode,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1224,7 +1224,7 @@ def cudnn_rnn_canonical_to_opaque_params(rnn_mode,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1282,7 +1282,7 @@ def cudnn_rnn_opaque_params_size(rnn_mode,
         'unidirectional' or 'bidirectional'
     dtype: one of tf.float32 or tf.float64.
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1349,7 +1349,7 @@ class _CudnnRNN(object):
           'unidirectional' or 'bidirectional'
       dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
           for behavior.
     Raises:
       ValueError: if direction is invalid.

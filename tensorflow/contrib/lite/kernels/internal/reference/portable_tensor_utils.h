@@ -17,7 +17,11 @@ limitations under the License.
 
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
 
 namespace tflite {
 namespace tensor_utils {
@@ -28,8 +32,8 @@ float PortableClip(float f, float abs_limit);
 bool PortableIsZeroVector(const float* vector, int v_size);
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
-                                     int8_t* quantized_values, float* min,
-                                     float* max, float* scaling_factor);
+                                     int8_t* quantized_values, float* min_value,
+                                     float* max_value, float* scaling_factor);
 
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
@@ -65,6 +69,11 @@ void PortableBatchVectorBatchVectorDotProduct(const float* vector1,
                                               int n_batch, float* result,
                                               int result_stride);
 
+// Cwise product of a vector and a batch-vector.
+void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                           const float* batch_vector,
+                                           int n_batch, float* result);
+
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.
@@ -77,6 +86,10 @@ void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
 // Batch vector initialization with another vector.
 void PortableVectorBatchVectorAssign(const float* vector, int v_size,
                                      int n_batch, float* batch_vector);
+
+// Add another vector for each batch in the batch vector.
+void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                                  float* batch_vector);
 
 // Apply sigmoid to elements of a vector.
 void PortableApplySigmoidToVector(const float* vector, int v_size,
@@ -96,6 +109,10 @@ void PortableSub1Vector(const float* vector, int v_size, float* result);
 // Fill vector with 0.f.
 void PortableZeroVector(float* vector, int v_size);
 
+// Multiply all elements of vector with a scalar.
+void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                                  float* result);
+
 // Clip elements of a vector using a abs_limit value.
 void PortableClipVector(const float* vector, int v_size, float abs_limit,
                         float* result);
@@ -111,6 +128,12 @@ void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
 // added to get one element of output.
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
+
+// Layer norm for each batch.
+// normalization_epsilon is added to avoid divergence.
+void PortableMeanStddevNormalization(const float* input_vector,
+                                     float* output_vector, int v_size,
+                                     int n_batch, float normalization_epsilon);
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
@@ -153,6 +176,13 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
   PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
 }
 
+void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
+                                   const float* batch_vector, int n_batch,
+                                   float* result) {
+  PortableVectorBatchVectorCwiseProduct(vector, v_size, batch_vector, n_batch,
+                                        result);
+}
+
 void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
                                              const float* batch_vector,
                                              int n_batch, float* result) {
@@ -171,6 +201,11 @@ void BatchVectorBatchVectorDotProduct(const float* vector1,
                                       int result_stride) {
   PortableBatchVectorBatchVectorDotProduct(vector1, vector2, v_size, n_batch,
                                            result, result_stride);
+}
+
+void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
+                          float* batch_vector) {
+  PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
 void VectorBatchVectorAssign(const float* vector, int v_size, int n_batch,
@@ -199,6 +234,12 @@ void ZeroVector(float* vector, int v_size) {
   PortableZeroVector(vector, v_size);
 }
 
+// Multiply all elements of vector with a scalar.
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result) {
+  PortableVectorScalarMultiply(vector, v_size, scale, result);
+}
+
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result) {
   PortableClipVector(vector, v_size, abs_limit, result);
@@ -212,6 +253,13 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size) {
   PortableReductionSumVector(input_vector, output_vector, output_size,
                              reduction_size);
+}
+
+void MeanStddevNormalization(const float* input_vector, float* output_vector,
+                             int v_size, int n_batch,
+                             float normalization_epsilon) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
+                                  normalization_epsilon);
 }
 
 }  // namespace tensor_utils

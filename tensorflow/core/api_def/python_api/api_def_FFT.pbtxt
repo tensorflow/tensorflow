@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "fft"
-    deprecation_message: "tf.fft is deprecated, please use tf.spectral.fft instead."
+    deprecated: true
   }
 }

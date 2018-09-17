@@ -21,8 +21,11 @@ from __future__ import print_function
 import glob
 import json
 import os
+import tempfile
+import time
 
 from tensorflow.contrib.estimator.python.estimator import hooks as hooks_lib
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator import run_config as run_config_lib
@@ -102,6 +105,7 @@ class InMemoryEvaluatorHookTest(test.TestCase):
     self.assertTrue(os.path.isdir(estimator.eval_dir()))
     step_keyword_to_value = summary_step_keyword_to_value_mapping(
         estimator.eval_dir())
+
     # 4.5 = sum(range(10))/10
     # before training
     self.assertEqual(4.5, step_keyword_to_value[0]['mean_of_features'])
@@ -110,6 +114,7 @@ class InMemoryEvaluatorHookTest(test.TestCase):
     self.assertEqual(4.5, step_keyword_to_value[8]['mean_of_features'])
     # end
     self.assertEqual(4.5, step_keyword_to_value[10]['mean_of_features'])
+    self.assertEqual(set([0, 4, 8, 10]), set(step_keyword_to_value.keys()))
 
   def test_uses_latest_variable_value(self):
 
@@ -312,6 +317,86 @@ class InMemoryEvaluatorHookTest(test.TestCase):
     evaluator = hooks_lib.InMemoryEvaluatorHook(estimator, input_fn)
     with self.assertRaisesRegexp(ValueError, 'does not support saveables'):
       estimator.train(input_fn, hooks=[evaluator])
+
+
+class StopAtCheckpointStepHookTest(test.TestCase):
+
+  def test_do_not_stop_if_checkpoint_is_not_there(self):
+    with ops.Graph().as_default():
+      step = training.create_global_step()
+      assign_ten = step.assign(10)
+      no_op = control_flow_ops.no_op()
+      hook = hooks_lib._StopAtCheckpointStepHook(
+          model_dir=tempfile.mkdtemp(), last_step=10)
+      with training.SingularMonitoredSession(hooks=[hook]) as mon_sess:
+        mon_sess.raw_session().run(assign_ten)
+        with test.mock.patch.object(time, 'sleep') as mock_sleep:
+          mon_sess.run(no_op)
+          self.assertTrue(mock_sleep.called)
+        self.assertFalse(mon_sess.should_stop())
+
+  def test_do_not_stop_if_checkpoint_step_is_smaller(self):
+    model_dir = tempfile.mkdtemp()
+    with ops.Graph().as_default():
+      step = training.create_global_step()
+      assign_nine = step.assign(9)
+      assign_ten = step.assign(10)
+      no_op = control_flow_ops.no_op()
+      hook = hooks_lib._StopAtCheckpointStepHook(
+          model_dir=model_dir, last_step=10)
+      with tf_session.Session() as sess:
+        sess.run(assign_nine)
+        training.Saver().save(sess, os.path.join(model_dir, 'model.ckpt'))
+      with training.SingularMonitoredSession(hooks=[hook]) as mon_sess:
+        mon_sess.raw_session().run(assign_ten)
+        with test.mock.patch.object(time, 'sleep') as mock_sleep:
+          mon_sess.run(no_op)
+          self.assertTrue(mock_sleep.called)
+        self.assertFalse(mon_sess.should_stop())
+
+  def test_stop_if_checkpoint_step_is_laststep(self):
+    model_dir = tempfile.mkdtemp()
+    with ops.Graph().as_default():
+      step = training.create_global_step()
+      assign_ten = step.assign(10)
+      no_op = control_flow_ops.no_op()
+      hook = hooks_lib._StopAtCheckpointStepHook(
+          model_dir=model_dir, last_step=10)
+      with tf_session.Session() as sess:
+        sess.run(assign_ten)
+        training.Saver().save(sess, os.path.join(model_dir, 'model.ckpt'))
+      with training.SingularMonitoredSession(hooks=[hook]) as mon_sess:
+        mon_sess.raw_session().run(assign_ten)
+        with test.mock.patch.object(time, 'sleep') as mock_sleep:
+          mon_sess.run(no_op)
+          self.assertFalse(mock_sleep.called)
+        self.assertTrue(mon_sess.should_stop())
+
+  def test_creates_regular_stop_at_step_hook_for_chief(self):
+    # by default an estimator is in chief mode
+    dnn = estimator_lib.DNNClassifier(
+        feature_columns=[feature_column_lib.numeric_column('x')],
+        hidden_units=[3, 1])
+    hook = hooks_lib.make_stop_at_checkpoint_step_hook(dnn, 300)
+    self.assertIsInstance(hook, training.StopAtStepHook)
+    self.assertEqual(300, hook._last_step)
+
+  def test_creates_checkpoint_hook_for_workers(self):
+
+    class FakeWorkerConfig(estimator_lib.RunConfig):
+
+      @property
+      def is_chief(self):
+        return False
+
+    dnn = estimator_lib.DNNClassifier(
+        feature_columns=[feature_column_lib.numeric_column('x')],
+        hidden_units=[3, 1],
+        config=FakeWorkerConfig())
+    hook = hooks_lib.make_stop_at_checkpoint_step_hook(dnn, 300)
+    self.assertIsInstance(hook, hooks_lib._StopAtCheckpointStepHook)
+    self.assertEqual(300, hook._last_step)
+    self.assertEqual(dnn.model_dir, hook._model_dir)
 
 
 if __name__ == '__main__':

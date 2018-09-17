@@ -86,7 +86,8 @@ string AttrSlice::SummarizeNode() const {
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
 
 string SummarizeNodeDef(const NodeDef& node_def) {
-  string ret = strings::StrCat(node_def.name(), " = ", node_def.op(), "[");
+  string ret = strings::StrCat(FormatNodeDefForError(node_def), " = ",
+                               node_def.op(), "[");
   strings::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
   strings::StrAppend(&ret, "](");
 
@@ -99,6 +100,14 @@ string SummarizeNodeDef(const NodeDef& node_def) {
   }
   strings::StrAppend(&ret, ")");
   return ret;
+}
+
+string FormatNodeForError(const Node& node) {
+  return FormatNodeDefForError(node.def());
+}
+
+string FormatNodeDefForError(const NodeDef& node_def) {
+  return errors::FormatNodeNameForError(node_def.name());
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
@@ -245,7 +254,7 @@ DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
 
 bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
-  return node_def.attr().find(std::string(attr_name)) != node_def.attr().end();
+  return node_def.attr().find(string(attr_name)) != node_def.attr().end();
 }
 
 static const string& kEmptyString = *new string();
@@ -634,7 +643,7 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
 Status AttachDef(const Status& status, const NodeDef& node_def) {
   Status ret = status;
   errors::AppendToMessage(
-      &ret, strings::StrCat(" [[Node: ", SummarizeNodeDef(node_def), "]]"));
+      &ret, strings::StrCat(" [[", SummarizeNodeDef(node_def), "]]"));
   return ret;
 }
 
@@ -644,7 +653,7 @@ Status AttachDef(const Status& status, const Node& node) {
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
   node_def->mutable_attr()->insert(
-      AttrValueMap::value_type(std::string(name), value));
+      AttrValueMap::value_type(string(name), value));
 }
 
 #define ADD_NODE_ATTR(T)                                           \
@@ -682,7 +691,7 @@ ADD_NODE_ATTR(gtl::ArraySlice<NameAttrList>)
 #undef ADD_NODE_ATTR
 
 void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
-  map->insert(AttrValueMap::value_type(std::string(name), value));
+  map->insert(AttrValueMap::value_type(string(name), value));
 }
 
 #define ADD_ATTR(T)                                            \

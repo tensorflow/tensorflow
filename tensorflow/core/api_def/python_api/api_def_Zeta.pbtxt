@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "zeta"
-    deprecation_message: "tf.zeta is deprecated, please use tf.math.zeta instead."
+    deprecated: true
   }
 }

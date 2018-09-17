@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -50,8 +51,8 @@ class LRNOp : public XlaOpKernel {
     auto accumulation_type = XlaHelpers::SumAccumulationType(input_type(0));
     auto converted =
         XlaHelpers::ConvertElementType(builder, input, accumulation_type);
-    auto squared = builder->Mul(converted, converted);
-    auto reduce = builder->ReduceWindow(
+    auto squared = xla::Mul(converted, converted);
+    auto reduce = xla::ReduceWindow(
         squared, XlaHelpers::Zero(builder, accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type),
         /* window_dimensions = */ {1, 1, 1, depth_radius_ * 2 + 1},
@@ -59,12 +60,12 @@ class LRNOp : public XlaOpKernel {
     auto sqr_sum =
         XlaHelpers::ConvertElementType(builder, reduce, input_type(0));
 
-    auto scale = builder->Pow(
-        builder->Add(builder->ConstantR0<float>(bias_),
-                     builder->Mul(builder->ConstantR0<float>(alpha_), sqr_sum)),
-        builder->ConstantR0<float>(-beta_));
+    auto scale = xla::Pow(
+        xla::Add(xla::ConstantR0<float>(builder, bias_),
+                 xla::Mul(xla::ConstantR0<float>(builder, alpha_), sqr_sum)),
+        xla::ConstantR0<float>(builder, -beta_));
 
-    ctx->SetOutput(0, builder->Mul(input, scale));
+    ctx->SetOutput(0, xla::Mul(input, scale));
   }
 
  private:
@@ -138,8 +139,8 @@ class LRNGradOp : public XlaOpKernel {
     auto accumulation_type = XlaHelpers::SumAccumulationType(input_type(0));
     auto converted =
         XlaHelpers::ConvertElementType(builder, in_image, accumulation_type);
-    auto squared = builder->Mul(converted, converted);
-    auto reduce = builder->ReduceWindow(
+    auto squared = xla::Mul(converted, converted);
+    auto reduce = xla::ReduceWindow(
         squared, XlaHelpers::Zero(builder, accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type),
         /* window_dimensions = */ {1, 1, 1, depth_radius_ * 2 + 1},
@@ -148,17 +149,17 @@ class LRNGradOp : public XlaOpKernel {
         XlaHelpers::ConvertElementType(builder, reduce, input_type(0));
 
     auto norm =
-        builder->Add(builder->ConstantR0<float>(bias_),
-                     builder->Mul(builder->ConstantR0<float>(alpha_), sqr_sum));
+        xla::Add(xla::ConstantR0<float>(builder, bias_),
+                 xla::Mul(xla::ConstantR0<float>(builder, alpha_), sqr_sum));
 
-    auto dy = builder->Mul(
-        builder->Mul(builder->ConstantR0<float>(-2.0f * alpha_ * beta_),
-                     builder->Div(out_image, norm)),
+    auto dy = xla::Mul(
+        xla::Mul(xla::ConstantR0<float>(builder, -2.0f * alpha_ * beta_),
+                 xla::Div(out_image, norm)),
         in_grads);
 
     auto converted_dy =
         XlaHelpers::ConvertElementType(builder, dy, accumulation_type);
-    auto dy_reduce = builder->ReduceWindow(
+    auto dy_reduce = xla::ReduceWindow(
         converted_dy, XlaHelpers::Zero(builder, accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type),
         /* window_dimensions = */ {1, 1, 1, depth_radius_ * 2 + 1},
@@ -166,10 +167,10 @@ class LRNGradOp : public XlaOpKernel {
     auto dy_reduced =
         XlaHelpers::ConvertElementType(builder, dy_reduce, input_type(0));
 
-    xla::XlaOp gradients = builder->Add(
-        builder->Mul(in_image, dy_reduced),
-        builder->Mul(in_grads,
-                     builder->Pow(norm, builder->ConstantR0<float>(-beta_))));
+    xla::XlaOp gradients = xla::Add(
+        xla::Mul(in_image, dy_reduced),
+        xla::Mul(in_grads,
+                 xla::Pow(norm, xla::ConstantR0<float>(builder, -beta_))));
 
     ctx->SetOutput(0, gradients);
   }

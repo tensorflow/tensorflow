@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -30,9 +31,11 @@ HostToDeviceCopyThunk::HostToDeviceCopyThunk(
       mem_size_(mem_size) {}
 
 Status HostToDeviceCopyThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase destination_data =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenMemcpy(&destination_data, source_address_, mem_size_);
   return Status::OK();
 }
@@ -47,11 +50,13 @@ DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
       mem_size_(mem_size) {}
 
 Status DeviceToDeviceCopyThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
   se::DeviceMemoryBase destination_data =
       buffer_allocations.GetDeviceAddress(destination_buffer_);
   se::DeviceMemoryBase source_data =
       buffer_allocations.GetDeviceAddress(source_buffer_);
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   stream->ThenMemcpy(&destination_data, source_data, mem_size_);
   return Status::OK();
 }

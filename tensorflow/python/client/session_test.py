@@ -35,6 +35,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as framework_device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
@@ -48,6 +49,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+# Import gradients to resolve circular imports
+from tensorflow.python.ops import gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -104,18 +107,20 @@ class SessionTest(test_util.TensorFlowTestCase):
           copy_val)
 
   def testManyCPUs(self):
-    # TODO(keveman): Implement ListDevices and test for the number of
-    # devices returned by ListDevices.
     with session.Session(
         config=config_pb2.ConfigProto(device_count={
-            'CPU': 2
-        })):
+            'CPU': 2, 'GPU': 0
+        })) as sess:
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
+      devices = sess.list_devices()
+      self.assertEqual(2, len(devices))
+      for device in devices:
+        self.assertEqual('CPU', framework_device_lib.DeviceSpec.from_string(
+            device.name).device_type)
+
   def testPerSessionThreads(self):
-    # TODO(keveman): Implement ListDevices and test for the number of
-    # devices returned by ListDevices.
     with session.Session(
         config=config_pb2.ConfigProto(use_per_session_threads=True)):
       inp = constant_op.constant(10.0, name='W1')
@@ -1757,7 +1762,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       session.register_session_run_conversion_functions(SquaredTensor, fetch_fn,
                                                         feed_fn1, feed_fn2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       np1 = np.array([1.0, 1.5, 2.0, 2.5])
       np2 = np.array([3.0, 3.5, 4.0, 4.5])
       squared_tensor = SquaredTensor(np2)
@@ -1868,19 +1873,21 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testDeviceAttributes(self):
     attrs = session._DeviceAttributes(
-        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337)
+        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337, 1000000)
     self.assertEqual(1337, attrs.memory_limit_bytes)
     self.assertEqual('/job:worker/replica:0/task:3/device:CPU:2', attrs.name)
     self.assertEqual('TYPE', attrs.device_type)
+    self.assertEqual(1000000, attrs.incarnation)
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 
   def testDeviceAttributesCanonicalization(self):
     attrs = session._DeviceAttributes('/job:worker/replica:0/task:3/cpu:1',
-                                      'TYPE', 1337)
+                                      'TYPE', 1337, 1000000)
     self.assertEqual(1337, attrs.memory_limit_bytes)
     self.assertEqual('/job:worker/replica:0/task:3/device:CPU:1', attrs.name)
     self.assertEqual('TYPE', attrs.device_type)
+    self.assertEqual(1000000, attrs.incarnation)
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 
@@ -1915,7 +1922,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       pass
 
   def testAutoConvertAndCheckData(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)
       with self.assertRaisesRegexp(
           TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):

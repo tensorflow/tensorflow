@@ -18,14 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.opt.python.training import shampoo
 from tensorflow.python.framework import ops
-from tensorflow.python.training import optimizer
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.training import adam
 from tensorflow.python.training import momentum as momentum_opt
+from tensorflow.python.training import optimizer
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import array_ops
 
 
 class DecoupledWeightDecayExtension(object):
@@ -65,7 +67,7 @@ class DecoupledWeightDecayExtension(object):
     Args:
       weight_decay: A `Tensor` or a floating point value, the factor by which
         a variable is decayed in the update step.
-      decay_var_list: Optional list or tuple or set of `Variable` objects to
+      **kwargs: Optional list or tuple or set of `Variable` objects to
         decay.
     """
     self._decay_var_list = None  # is set in minimize or apply_gradients
@@ -85,6 +87,28 @@ class DecoupledWeightDecayExtension(object):
     If decay_var_list is None, all variables in var_list are decayed.
 
     For more information see the documentation of Optimizer.minimize.
+
+    Args:
+      loss: A `Tensor` containing the value to minimize.
+      global_step: Optional `Variable` to increment by one after the
+        variables have been updated.
+      var_list: Optional list or tuple of `Variable` objects to update to
+        minimize `loss`.  Defaults to the list of variables collected in
+        the graph under the key `GraphKeys.TRAINABLE_VARIABLES`.
+      gate_gradients: How to gate the computation of gradients.  Can be
+        `GATE_NONE`, `GATE_OP`, or  `GATE_GRAPH`.
+      aggregation_method: Specifies the method used to combine gradient terms.
+        Valid values are defined in the class `AggregationMethod`.
+      colocate_gradients_with_ops: If True, try colocating gradients with
+        the corresponding op.
+      name: Optional name for the returned operation.
+      grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+      decay_var_list: Optional list of decay variables.
+
+    Returns:
+      An Operation that updates the variables in `var_list`.  If `global_step`
+      was not `None`, that operation also increments `global_step`.
+
     """
     self._decay_var_list = set(decay_var_list) if decay_var_list else False
     return super(DecoupledWeightDecayExtension, self).minimize(
@@ -103,6 +127,19 @@ class DecoupledWeightDecayExtension(object):
     are decayed.
 
     For more information see the documentation of Optimizer.apply_gradients.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs as returned by
+        `compute_gradients()`.
+      global_step: Optional `Variable` to increment by one after the
+        variables have been updated.
+      name: Optional name for the returned operation.  Default to the
+        name passed to the `Optimizer` constructor.
+      decay_var_list: Optional list of decay variables.
+
+    Returns:
+      An `Operation` that applies the specified gradients. If `global_step`
+      was not None, that operation also increments `global_step`.
     """
     self._decay_var_list = set(decay_var_list) if decay_var_list else False
     return super(DecoupledWeightDecayExtension, self).apply_gradients(
@@ -124,8 +161,8 @@ class DecoupledWeightDecayExtension(object):
 
   def _decay_weights_sparse_op(self, var, indices, scatter_add):
     if not self._decay_var_list or var in self._decay_var_list:
-      return scatter_add(var, indices, -self._weight_decay * var,
-                         self._use_locking)
+      update = -self._weight_decay * array_ops.gather(var, indices)
+      return scatter_add(var, indices, update, self._use_locking)
     return control_flow_ops.no_op()
 
   # Here, we overwrite the apply functions that the base optimizer calls.
@@ -197,6 +234,7 @@ def extend_with_decoupled_weight_decay(base_optimizer):
     A new optimizer class that inherits from DecoupledWeightDecayExtension
     and base_optimizer.
   """
+
   class OptimizerWithDecoupledWeightDecay(DecoupledWeightDecayExtension,
                                           base_optimizer):
     """Base_optimizer with decoupled weight decay.
@@ -324,3 +362,74 @@ class AdamWOptimizer(DecoupledWeightDecayExtension, adam.AdamOptimizer):
     super(AdamWOptimizer, self).__init__(
         weight_decay, learning_rate=learning_rate, beta1=beta1, beta2=beta2,
         epsilon=epsilon, use_locking=use_locking, name=name)
+
+
+@tf_export("contrib.opt.ShampooWOptimizer")
+class ShampooWOptimizer(DecoupledWeightDecayExtension,
+                        shampoo.ShampooOptimizer):
+  """Optimizer that implements the Shampoo algorithm with weight decay.
+
+  For further information see the documentation of the Shampoo Optimizer.
+  """
+
+  def __init__(self,
+               weight_decay,
+               global_step,
+               max_matrix_size=768,
+               gbar_decay=0.0,
+               gbar_weight=1.0,
+               mat_gbar_decay=1.0,
+               mat_gbar_weight=1.0,
+               learning_rate=1.0,
+               svd_interval=1,
+               precond_update_interval=1,
+               epsilon=1e-4,
+               alpha=0.5,
+               use_iterative_root=False,
+               use_locking=False,
+               name="ShampooW"):
+    """Construct a new ShampooW optimizer.
+
+    For further information see the documentation of the Shampoo Optimizer.
+
+    Args:
+      weight_decay:  A `Tensor` or a floating point value.  The weight decay.
+      global_step: tensorflow variable indicating the step.
+      max_matrix_size: We do not perform SVD for matrices larger than this.
+      gbar_decay:
+      gbar_weight:  Used to update gbar: gbar[t] = gbar_decay[t] * gbar[t-1] +
+        gbar_weight[t] * g[t]
+      mat_gbar_decay:
+      mat_gbar_weight:  Used to update mat_gbar: mat_gbar_j[t] =
+        mat_gbar_decay[t] * mat_gbar_j[t-1] + mat_gbar_weight[t] * gg_j[t]
+      learning_rate: Similar to SGD
+      svd_interval: We should do SVD after this many steps. Default = 1, i.e.
+        every step. Usually 20 leads to no loss of accuracy, and 50 or 100 is
+        also OK. May also want more often early,
+                    and less often later - set in caller as for example:
+                    "svd_interval = lambda(T): tf.cond(
+                        T < 2000, lambda: 20.0, lambda: 1000.0)"
+      precond_update_interval: We should update the preconditioners after this
+        many steps. Default = 1. Usually less than svd_interval.
+      epsilon:  epsilon * I_n is added to each mat_gbar_j for stability
+      alpha:  total power of the preconditioners.
+      use_iterative_root: should the optimizer use SVD (faster) or the iterative
+        root method (for TPU) for finding the roots of PSD matrices.
+      use_locking: If `True` use locks for update operations.
+      name: name of optimizer.
+    """
+    super(ShampooWOptimizer, self).__init__(
+        weight_decay,
+        global_step=global_step,
+        max_matrix_size=max_matrix_size,
+        gbar_decay=gbar_decay,
+        gbar_weight=gbar_weight,
+        mat_gbar_decay=mat_gbar_weight,
+        learning_rate=learning_rate,
+        svd_interval=svd_interval,
+        precond_update_interval=precond_update_interval,
+        epsilon=epsilon,
+        alpha=alpha,
+        use_iterative_root=use_iterative_root,
+        use_locking=use_locking,
+        name=name)

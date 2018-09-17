@@ -136,12 +136,14 @@ class GrapplerFunctionItemInstantiation {
 class GrapplerFunctionItem : public GrapplerItem {
  public:
   GrapplerFunctionItem() = default;
-  GrapplerFunctionItem(
-      const string& func_name, const AttrValueMap& func_attr,
-      const std::vector<InputArgExpansion>& input_arg_expansions,
-      const std::vector<OutputArgExpansion>& output_arg_expansions,
-      const std::vector<string>& keep_nodes, bool is_stateful,
-      GraphDef&& function_body);
+  GrapplerFunctionItem(string func_name, string description,
+                       AttrValueMap func_attr,
+                       std::vector<InputArgExpansion> input_arg_expansions,
+                       std::vector<OutputArgExpansion> output_arg_expansions,
+                       std::vector<string> keep_nodes, int graph_def_version,
+                       bool is_stateful, GraphDef&& function_body);
+
+  const string& description() const;
 
   bool IsInputPlaceholder(const string& node_name) const;
 
@@ -165,6 +167,7 @@ class GrapplerFunctionItem : public GrapplerItem {
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
 
+  string description_;
   AttrValueMap func_attr_;  // Attributes specific to function definition that
                             // produced this item (FuncDef.attr field).
 
@@ -218,6 +221,7 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const AttrValueMap& func_instantiation_attr,
                                 const FunctionLibraryDefinition& flib,
+                                const int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a GrapplerFunction item from the function definition. Function must be
@@ -227,6 +231,7 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 // without specializing it to it's instantiation attributes (at least types)?
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
+                                const int graph_def_version,
                                 GrapplerFunctionItem* item);
 
 // Make a FunctionDef from the GrapplerFunctionItem. Use function library

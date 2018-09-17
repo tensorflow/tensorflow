@@ -112,7 +112,9 @@ cuda_py_test(
     ],
     tags = [
         "manual",
+        "no_windows",
         "noguitar",
+        "nomac",
         "notap",
     ],
 )

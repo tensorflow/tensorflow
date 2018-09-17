@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sdca_internal.h"
 
 #include <limits>
+#include <numeric>
 #include <random>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -250,7 +251,7 @@ Status Examples::SampleAdaptiveProbabilities(
                                                 num_weight_vectors);
     const double kappa = example_state_data(example_id, 0) +
                          loss_updater->PrimalLossDerivative(
-                             example_statistics.wx[0], label, example_weight);
+                             example_statistics.wx[0], label, 1.0);
     probabilities_[example_id] = example_weight *
                                  sqrt(examples_[example_id].squared_norm_ +
                                       regularization.symmetric_l2() *

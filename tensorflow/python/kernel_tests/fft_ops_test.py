@@ -496,7 +496,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
             "Input dimension .* must have length of at least 6 but got: 5"):
           x = np.zeros((5,) * rank).astype(np.float32)
           fft_length = [6] * rank
-          with self.test_session():
+          with self.cached_session():
             rfft_fn(x, fft_length).eval()
 
         with self.assertRaisesWithPredicateMatch(
@@ -504,7 +504,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
             "Input dimension .* must have length of at least .* but got: 3"):
           x = np.zeros((3,) * rank).astype(np.complex64)
           fft_length = [6] * rank
-          with self.test_session():
+          with self.cached_session():
             irfft_fn(x, fft_length).eval()
 
   def testGrad_Simple(self):

@@ -50,7 +50,6 @@ limitations under the License.
 //     Output.Dim == { Tensor[0].Dim[0] * Tensor[0].Dim[1] }
 //     A flattened tensor represents projected bit vectors.
 
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -60,8 +59,8 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 #include <farmhash.h>

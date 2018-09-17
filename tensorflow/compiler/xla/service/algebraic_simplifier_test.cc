@@ -18,11 +18,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -34,12 +38,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-
-using ::testing::ElementsAre;
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -60,7 +63,7 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param0, zero));
 
@@ -74,12 +77,32 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that A * 0 is simplified to 0
+TEST_F(AlgebraicSimplifierTest, MulZero) {
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0s32, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0s32, HloOpcode::kMultiply, param0, zero));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  EXPECT_EQ(computation->root_instruction(), zero);
+}
+
 // Test that Reduce(Reduce(A)) -> Reduce(A)
 TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   HloComputation::Builder builder(TestName());
   // Create add computation.
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   HloComputation* add_computation = nullptr;
   {
     HloComputation::Builder builder(TestName() + ".add");
@@ -119,7 +142,7 @@ TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, constant, param0));
 
@@ -140,9 +163,9 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.0f)));
   HloInstruction* constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(3.14159f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(3.14159f)));
 
   HloInstruction* add1 = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kAdd, param0, constant1));
@@ -165,7 +188,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   HloInstruction* bcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(r2f32, zero, {0, 1}));
   builder.AddInstruction(
@@ -200,7 +223,7 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   builder.AddInstruction(HloInstruction::CreateMap(
       r2f32,
       {param0, builder.AddInstruction(
@@ -223,7 +246,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({0, 0, 0})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0, 0, 0})));
   HloInstruction* bcast =
       builder.AddInstruction(HloInstruction::CreateBroadcast(r2f32, zero, {1}));
   builder.AddInstruction(
@@ -242,7 +265,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
 TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
   HloComputation::Builder builder(TestName());
   builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({3.14f, 3.14f, 3.14f})));
+      LiteralUtil::CreateR1<float>({3.14f, 3.14f, 3.14f})));
 
   auto computation = module().AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
@@ -258,7 +281,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
 TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
   HloComputation::Builder builder(TestName());
   builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({3.14, 3.14, 4})));
+      LiteralUtil::CreateR1<float>({3.14, 3.14, 4})));
 
   auto computation = module().AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
@@ -270,6 +293,21 @@ TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
   EXPECT_THAT(root, op::Constant());
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaToBroadcast) {
+  HloComputation::Builder builder(TestName());
+  builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f})));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Constant());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+}
+
 // Test that A - 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, SubZero) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
@@ -277,7 +315,7 @@ TEST_F(AlgebraicSimplifierTest, SubZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kSubtract, param0, zero));
 
@@ -298,7 +336,7 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32, HloOpcode::kSubtract, param0, constant));
 
@@ -493,7 +531,7 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* constant =
       builder.AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR1<float>({0.f, 1.f, 2.f})));
+          LiteralUtil::CreateR1<float>({1.f, 2.f, 3.f})));
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kDivide,
                                                       param0, constant));
 
@@ -559,7 +597,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   HloInstruction* div = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kDivide, param0, one));
 
@@ -580,7 +618,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r2f32, "param0"));
   HloInstruction* one = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1.0, 1.0}, {1.0, 1.0}})));
+      LiteralUtil::CreateR2<float>({{1.0, 1.0}, {1.0, 1.0}})));
   HloInstruction* div = builder.AddInstruction(
       HloInstruction::CreateBinary(r2f32, HloOpcode::kDivide, param0, one));
 
@@ -860,7 +898,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Scalar) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, zero));
 
@@ -884,7 +922,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Vector) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kPower, param0, zero));
 
@@ -912,7 +950,7 @@ TEST_F(AlgebraicSimplifierTest, Pow1) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, one));
 
@@ -934,7 +972,7 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* two = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32, HloOpcode::kPower, param0, two));
 
@@ -956,7 +994,7 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32, "param0"));
   HloInstruction* negative_one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(-1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-1)));
   builder.AddInstruction(HloInstruction::CreateBinary(r0f32, HloOpcode::kPower,
                                                       param0, negative_one));
 
@@ -1006,7 +1044,8 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   dim->set_window_reversal(false);
   // Create add computation.
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, window, dnums));
+      ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   module().AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
                                              non_bitcasting_callback());
@@ -1047,7 +1086,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
   builder.AddInstruction(HloInstruction::CreateReduceWindow(
       ShapeUtil::MakeShape(F32, {5, 2}), param,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f))),
       window, add_computation));
   module().AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
@@ -1074,7 +1113,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
   builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(F32, {5, 2}), param,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0(0.0f))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f))),
       padding));
   module().AddEntryComputation(builder.Build());
   EXPECT_THAT(module().entry_computation()->root_instruction(),
@@ -1116,7 +1155,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
 TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
@@ -1208,7 +1247,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
   HloInstruction* param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, r1f32, "param1"));
   HloInstruction* empty_literal = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
           ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}, {1}));
@@ -1230,6 +1269,55 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
               op::Concatenate(param0, param0, param1));
 }
 
+// Test that reduce of concat is simplified.
+TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
+  const int kParamLength = 100;
+  Shape r3f32 =
+      ShapeUtil::MakeShape(F32, {kParamLength, kParamLength, kParamLength});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r3f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r3f32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r3f32, "param2"));
+  Shape concat_shape =
+      ShapeUtil::MakeShape(F32, {kParamLength, 3 * kParamLength, kParamLength});
+  HloInstruction* Concatenate =
+      builder.AddInstruction(HloInstruction::CreateConcatenate(
+          concat_shape, {param0, param1, param2}, 1));
+  HloComputation* add_computation = nullptr;
+  {
+    HloComputation::Builder builder(TestName() + ".add");
+    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
+    add_computation = module().AddEmbeddedComputation(builder.Build());
+  }
+  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
+  Shape reduce_shape = ShapeUtil::MakeShape(F32, {kParamLength});
+
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
+  builder.AddInstruction(HloInstruction::CreateReduce(
+      reduce_shape, Concatenate, zero, {1, 2}, add_computation));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      op::Map(op::Map(op::Reduce(param0, zero), op::Reduce(param1, zero)),
+              op::Reduce(param2, zero)));
+}
+
 // Test a concatenate with only empty operands is removed.
 TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   const int kParamLength = 100;
@@ -1238,7 +1326,7 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "param0"));
   HloInstruction* empty_literal = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
           ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}, {1}));
@@ -1359,6 +1447,37 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
 }
 
+// Test transforming reshapes and transposes of rng.
+TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  HloInstruction* one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  HloInstruction* rng0 = builder.AddInstruction(
+      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {2, 2}),
+                                RandomDistribution::RNG_UNIFORM, {zero, one}));
+
+  HloInstruction* transpose = builder.AddInstruction(
+      HloInstruction::CreateTranspose(rng0->shape(), rng0, {1, 0}));
+  Shape reshape_shape = builder
+                            .AddInstruction(HloInstruction::CreateReshape(
+                                ShapeUtil::MakeShape(F32, {4}), transpose))
+                            ->shape();
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  EXPECT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  // Verify that that reshape(transpose(rng)) is replace by a single rng of the
+  // same shape as the reshape.
+  EXPECT_THAT(computation->root_instruction(), op::Rng());
+  EXPECT_TRUE(ShapeUtil::Equal(computation->root_instruction()->shape(),
+                               reshape_shape));
+}
+
 // Test transforming reshapes to bitcasts under various conditions.
 TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
   HloComputation::Builder builder(TestName());
@@ -1420,7 +1539,7 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkReshapeDoesntAffectChangedBit) {
       builder.AddInstruction(
           HloInstruction::CreateParameter(0, shape, "param0")),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR2<float>({{0, 0}, {0, 0}})))));
+          LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}})))));
 
   builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {4}), add));
@@ -1443,7 +1562,7 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
       builder.AddInstruction(
           HloInstruction::CreateParameter(0, shape, "param0")),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR2<float>({{0, 0}, {0, 0}})))));
+          LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}})))));
 
   builder.AddInstruction(
       HloInstruction::CreateBroadcast(ShapeUtil::MakeShape(F32, {2, 2, 2}), add,
@@ -1720,13 +1839,133 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
               op::Reshape(op::Broadcast(param)));
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(HloInstruction::CreateIota(
+      ShapeUtil::MakeShape(F32, {1, 2, 3, 7, 12, 1}), 2));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {2, 3, 7, 2, 1, 3, 2});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {1, 1}), 0));
+  auto result_shape = iota->shape();
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  auto root = computation->root_instruction();
+  EXPECT_THAT(root, op::Broadcast(op::Constant()));
+  EXPECT_EQ(0.0f, root->operand(0)->literal().GetFirstElement<float>());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2_6) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2}), 1));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6}), iota));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 4}), 2));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 4}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(computation->root_instruction())
+                ->iota_dimension(),
+            3);
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x2_6x1x1x2) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 2}), 2));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {6, 1, 1, 2}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  const int64 iota_dim =
+      Cast<HloIotaInstruction>(computation->root_instruction())
+          ->iota_dimension();
+  EXPECT_THAT(iota_dim, ::testing::AnyOf(1, 2, 3));
+}
+
+TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4x2_6x8) {
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {3, 2, 4, 2}), 2));
+  builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {6, 8}), iota));
+
+  HloComputation* computation = module().AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  EXPECT_FALSE(simplifier.Run(&module()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {2, 2}), "param"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   PaddingConfig no_padding;
   for (int i = 0; i < 2; ++i) {
     auto dimension = no_padding.add_dimensions();
@@ -1757,7 +1996,7 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           0, ShapeUtil::MakeShape(F32, {10, 10}), "param"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   PaddingConfig padding;
   int64 low_padding[2] = {-1, -2};
   int64 high_padding[2] = {2, -3};
@@ -1839,6 +2078,336 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
   EXPECT_THAT(computation->root_instruction(), param);
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
+  HloComputation::Builder builder(TestName());
+  const int64 dim0 = 11;
+  const int64 dim1 = 12;
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
+  HloInstruction* original_slice =
+      builder.AddInstruction(HloInstruction::CreateSlice(
+          ShapeUtil::MakeShape(F32, {dim0 - 2, dim1 - 4}), param,
+          /*start_indices=*/{1, 2},
+          /*limit_indices=*/{dim0 - 1, dim1 - 2}, /*strides=*/{1, 1}));
+
+  builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {dim0 - 5, dim1 - 9}), original_slice,
+      /*start_indices=*/{2, 3},
+      /*limit_indices=*/{dim0 - 3, dim1 - 6}, /*strides=*/{1, 1}));
+  auto module = CreateNewModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Slice(param)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Slice(param));
+  EXPECT_EQ(computation->root_instruction()->slice_starts(0), 3);
+  EXPECT_EQ(computation->root_instruction()->slice_starts(1), 5);
+  EXPECT_EQ(computation->root_instruction()->slice_limits(0), dim0 - 2);
+  EXPECT_EQ(computation->root_instruction()->slice_limits(1), dim1 - 4);
+}
+
+TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {1});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+  auto module = CreateNewModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), keys);
+}
+
+TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {5, 0});
+  Shape values_shape = ShapeUtil::MakeShape(S32, {5, 0});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto values = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, values_shape, "values"));
+  builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+  auto module = CreateNewModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Tuple(keys, values));
+}
+
+// Used for TEST_Ps that test merging (or not) of a kPad instruction into a
+// convolution's Window.
+struct ConvPaddingTestcase {
+  ConvPaddingTestcase(absl::string_view padding,
+                      absl::string_view orig_conv_window,
+                      absl::string_view expected_conv_window)
+      : ConvPaddingTestcase(padding, orig_conv_window, expected_conv_window,
+                            /*pad_value=*/0) {}
+
+  ConvPaddingTestcase(absl::string_view padding,
+                      absl::string_view orig_conv_window,
+                      absl::string_view expected_conv_window, float pad_value)
+      : padding(padding),
+        orig_conv_window(orig_conv_window),
+        expected_conv_window(expected_conv_window),
+        pad_value(pad_value) {}
+
+  string ToString() const {
+    return absl::StrFormat(
+        "padding=%s, orig_conv_window=%s, expected_conv_window=%s, "
+        "pad_value=%f",
+        padding, orig_conv_window, expected_conv_window, pad_value);
+  }
+
+  string padding;
+  string orig_conv_window;
+  string expected_conv_window;
+  float pad_value;
+};
+
+// ConvInputPaddingTest (and its one associated TEST_P testcase) checks that a
+// computation that does
+//
+//   conv(pad(param0, padding=padding), param1), window=orig_conv_window
+//
+// gets transformed by AlgebraicSimplifier to
+//
+//   conv(param0, param1), window=expected_conv_window
+//
+// or, if expected_conv_window is the empty string, checks that
+// AlgebraicSimplifier does *not* transform the original convolution.
+class ConvInputPaddingTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<ConvPaddingTestcase> {};
+
+INSTANTIATE_TEST_CASE_P(
+    ConvInputPaddingTestCases, ConvInputPaddingTest,
+    ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
+        // Merge this edge padding into the conv.
+        {"0_0x0_0x1_1x2_2", "", "pad=1_1x2_2"},
+        // Merge this edge padding with the conv's edge padding.
+        {"0_0x0_0x1_2x3_4", "pad=10_10x20_20", "pad=11_12x23_24"},
+        // Merge this interior-padded kPad with the unpadded conv.  The 3x6
+        // interior padding gets transformed to 4x7 conv lhs dilation.
+        {"0_0x0_0x1_2_3x4_5_6", "", "pad=1_2x4_5 lhs_dilate=4x7"},
+        // kPad has dilation on one dim, conv has it on the other; merge them.
+        {"0_0x0_0x0_0_1x0_0_0", "lhs_dilate=1x10", "lhs_dilate=2x10"},
+        // kPad has dilation and edge padding on one dim, conv has them on the
+        // other; merge them.
+        {"0_0x0_0x0_1_1x0_0_0", "pad=0_0x3_0 lhs_dilate=1x10",
+         "pad=0_1x3_0 lhs_dilate=2x10"},
+
+        // Don't transform if the pad value is nonzero.
+        {"0_0x0_0x1_1x2_2", "", "", /*pad_value=*/1},
+
+        // We refuse to transform the following because on some dimension, one
+        // of the kPad and conv has dilation and the other has some sort of
+        // padding.
+        {"0_0x0_0x0_0_1x0_0", "pad=1_0x0_0", ""},
+        {"0_0x0_0x0_0_1x0_0", "pad=0_1x0_0", ""},
+        {"0_0x0_0x0_0_1x0_0", "lhs_dilate=2x1", ""},
+        {"0_0x0_0x1_0_0x0_0", "lhs_dilate=2x1", ""},
+        {"0_0x0_0x0_1_0x0_0", "lhs_dilate=2x1", ""},
+        {"0_0x0_0x0_0_1x0_0", "lhs_dilate=2x1", ""},
+
+        // We can't merge feature or batch padding into the conv.
+        {"1_0x0_0x0_0x0_0", "", ""},
+        {"0_0x1_0x0_0x0_0", "", ""},
+    }));
+
+TEST_P(ConvInputPaddingTest, DoTest) {
+  ConvPaddingTestcase testcase = GetParam();
+
+  // It would be better to put the testcase's ToString into the test name, but
+  // gUnit has constraints on what can go into test names, and any reasonable
+  // implementation of ToString() seems to violate them.
+  SCOPED_TRACE(testcase.ToString());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1024, 128, 100, 100}),  // bf01
+      "input"));
+  auto* pad_value = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR0(testcase.pad_value)));
+
+  PaddingConfig padding_config =
+      ParsePaddingConfig(testcase.padding).ValueOrDie();
+  auto* lhs_pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeInference::InferPadShape(input->shape(), pad_value->shape(),
+                                    padding_config)
+          .ValueOrDie(),
+      input, pad_value, padding_config));
+
+  auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
+      1,
+      ShapeUtil::MakeShape(
+          F32, {lhs_pad->shape().dimensions(1), 256, 3, 3}),  // io01
+      "input"));
+
+  ConvolutionDimensionNumbers dnums =
+      ParseConvolutionDimensionNumbers("bf01_io01->bf01").ValueOrDie();
+  Window window =
+      ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window))
+          .ValueOrDie();
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
+                                         /*feature_group_count=*/1, window,
+                                         dnums)
+          .ValueOrDie(),
+      lhs_pad, filter, /*feature_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  if (testcase.expected_conv_window.empty()) {
+    ASSERT_FALSE(simplifier.Run(module).ValueOrDie());
+  } else {
+    ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+    auto* conv = module->entry_computation()->root_instruction();
+    SCOPED_TRACE(module->ToString());
+    ASSERT_THAT(conv, op::Convolution(op::Parameter(), op::Parameter()));
+    EXPECT_EQ(window_util::ToString(conv->window()),
+              absl::StrCat("size=3x3 ", testcase.expected_conv_window));
+  }
+}
+
+// ConvFilterPaddingTest (and its one associated TEST_P) checks that a
+// computation that does
+//
+//   conv(param0, pad(param1, padding=padding)), window=orig_conv_window
+//
+// gets transformed by AlgebraicSimplifier to
+//
+//   conv(param0, param1), window=expected_conv_window
+//
+// or, if expected_conv_window is the empty string, checks that
+// AlgebraicSimplifier does *not* transform the original convolution.
+class ConvFilterPaddingTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<ConvPaddingTestcase> {};
+
+INSTANTIATE_TEST_CASE_P(
+    ConvFilterPaddingTestCases, ConvFilterPaddingTest,
+    ::testing::ValuesIn(std::vector<ConvPaddingTestcase>{
+        // Can only merge interior padding on the filter's spatial dimensions;
+        // all
+        // other paddings (edge padding and interior padding on the channel
+        // dims)
+        // should be rejected out of hand.
+        {"1_0_0x0_0_0x0_0x0_0", "", ""},
+        {"0_1_0x0_0_0x0_0x0_0", "", ""},
+        {"0_0_1x0_0_0x0_0x0_0", "", ""},
+        {"0_0_0x1_0_0x0_0x0_0", "", ""},
+        {"0_0_0x0_1_0x0_0x0_0", "", ""},
+        {"0_0_0x0_0_1x0_0x0_0", "", ""},
+        {"0_0_0x0_0_0x1_0x0_0", "", ""},
+        {"0_0_0x0_0_0x0_1x0_0", "", ""},
+        {"0_0_0x0_0_0x0_0x1_0", "", ""},
+        {"0_0_0x0_0_0x0_0x0_1", "", ""},
+
+        // Interior padding on channel dims can be merged into the conv, so long
+        // as the conv and pad don't have interior padding on the same dim.
+        {"0_0x0_0x0_0_5x0_0", "", "rhs_dilate=6x1"},
+        {"0_0x0_0x0_0x0_0_10", "", "rhs_dilate=1x11"},
+        {"0_0x0_0x0_0_10x0_0_100", "", "rhs_dilate=11x101"},
+        {"0_0x0_0x0_0_1x0_0", "rhs_dilate=1x10", "rhs_dilate=2x10"},
+        {"0_0x0_0x0_0x0_0_5", "rhs_dilate=10x1", "rhs_dilate=10x6"},
+
+        // Can't merge if for a given dim there's interior padding on both the
+        // pad and conv.
+        {"0_0x0_0x0_0_1x0_0", "rhs_dilate=2x10", ""},
+        {"0_0x0_0x0_0x0_0_5", "rhs_dilate=10x2", ""},
+
+        // Don't transform if the pad value is nonzero.
+        {"0_0x0_0x0_0_5x0_0", "", "", /*pad_value=*/1},
+    }));
+
+TEST_P(ConvFilterPaddingTest, DoIt) {
+  ConvPaddingTestcase testcase = GetParam();
+
+  // It would be better to put the testcase's ToString into the test name, but
+  // gUnit has constraints on what can go into test names, and any reasonable
+  // implementation of ToString() seems to violate them.
+  SCOPED_TRACE(testcase.ToString());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto* pad_value = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR0(testcase.pad_value)));
+  auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {128, 256, 3, 3}),  // io01
+      "input"));
+  PaddingConfig padding_config =
+      ParsePaddingConfig(testcase.padding).ValueOrDie();
+  auto* rhs_pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeInference::InferPadShape(filter->shape(), pad_value->shape(),
+                                    padding_config)
+          .ValueOrDie(),
+      filter, pad_value, padding_config));
+
+  auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
+      0,
+      ShapeUtil::MakeShape(
+          F32, {1024, rhs_pad->shape().dimensions(0), 100, 100}),  // bf01
+      "input"));
+
+  ConvolutionDimensionNumbers dnums =
+      ParseConvolutionDimensionNumbers("bf01_io01->bf01").ValueOrDie();
+  Window window = ParseWindow(absl::StrFormat("size=%dx%d %s",
+                                              rhs_pad->shape().dimensions(2),
+                                              rhs_pad->shape().dimensions(3),
+                                              testcase.orig_conv_window))
+                      .ValueOrDie();
+
+  // Add a PrecisionConfig and check that AlgebraicSimplifier keeps it in place
+  // after the transformation.
+  PrecisionConfig precision_config;
+  precision_config.add_operand_precision(PrecisionConfig::HIGH);
+  precision_config.add_operand_precision(PrecisionConfig::HIGHEST);
+
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
+                                         /*feature_group_count=*/1, window,
+                                         dnums)
+          .ValueOrDie(),
+      input, rhs_pad, /*feature_group_count=*/1, window, dnums,
+      precision_config));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  if (testcase.expected_conv_window.empty()) {
+    ASSERT_FALSE(simplifier.Run(module).ValueOrDie());
+  } else {
+    ASSERT_TRUE(simplifier.Run(module).ValueOrDie());
+    auto* conv = module->entry_computation()->root_instruction();
+    SCOPED_TRACE(module->ToString());
+    ASSERT_THAT(conv, op::Convolution(op::Parameter(), op::Parameter()));
+    EXPECT_EQ(window_util::ToString(conv->window()),
+              absl::StrFormat("size=%dx%d %s",
+                              conv->operand(1)->shape().dimensions(2),
+                              conv->operand(1)->shape().dimensions(3),
+                              testcase.expected_conv_window));
+    EXPECT_THAT(Cast<HloConvolutionInstruction>(conv)
+                    ->precision_config()
+                    .operand_precision(),
+                ElementsAre(PrecisionConfig::HIGH, PrecisionConfig::HIGHEST));
+  }
+}
+
 TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   struct ConvTestOptions {
     int in_batch = 10;
@@ -1870,7 +2439,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   // Builds a convolution from <options> and runs algebraic simplification on
   // the computation. Returns a string description of the result of
   // simplification.
-  auto build_and_simplify = [&options, this]() -> string {
+  auto build_and_simplify = [&]() -> string {
     HloComputation::Builder b(TestName());
 
     Window window;
@@ -1942,7 +2511,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     auto out_dims = in_dims;
     out_dims[in_channel_idx] = options.f_output_channels;
 
-    auto make_shape = [](tensorflow::gtl::ArraySlice<int64> dims,
+    auto make_shape = [](absl::Span<const int64> dims,
                          bool minor_to_major_layout) {
       if (minor_to_major_layout) {
         return ShapeUtil::MakeShapeWithLayout(F32, dims, {0, 1, 2, 3});
@@ -1959,8 +2528,9 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     HloInstruction* filter =
         b.AddInstruction(HloInstruction::CreateParameter(1, f_shape, "filter"));
 
-    b.AddInstruction(HloInstruction::CreateConvolve(out_shape, input, filter,
-                                                    window, dnums));
+    b.AddInstruction(HloInstruction::CreateConvolve(
+        out_shape, input, filter,
+        /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
     // TODO(b/80488902): verify this module.
     auto module = HloTestBase::CreateNewModule();
@@ -1976,9 +2546,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         root->operand(0)->opcode() == HloOpcode::kDot) {
       auto lhs_shape = root->operand(0)->operand(0)->shape();
       auto rhs_shape = root->operand(0)->operand(1)->shape();
-      return tensorflow::strings::StrCat(
-          tensorflow::str_util::Join(lhs_shape.dimensions(), "x"), " DOT ",
-          tensorflow::str_util::Join(rhs_shape.dimensions(), "x"));
+      return absl::StrCat(absl::StrJoin(lhs_shape.dimensions(), "x"), " DOT ",
+                          absl::StrJoin(rhs_shape.dimensions(), "x"));
     }
     return "UNEXPECTED CHANGE";
   };
@@ -2109,7 +2678,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* forty_two = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
 
   Shape broadcast_shape = ShapeUtil::MakeShape(F32, {4, 5, 6});
   HloInstruction* broadcast = builder.AddInstruction(
@@ -2156,7 +2725,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   padding.mutable_dimensions(3)->set_edge_padding_high(2);
 
   HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(F32, {1, 3, 3, 5}), operand, pad_value, padding));
 
@@ -2187,7 +2756,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   const Shape reduce_window_shape =
       ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
   HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
       builder.AddInstruction(HloInstruction::CreateReduceWindow(
           reduce_window_shape, pad, reduce_init_value, window,
@@ -2238,7 +2807,7 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
   padding.mutable_dimensions(3)->set_edge_padding_high(2);
 
   HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(BF16, {1, 3, 3, 5}), parameter, pad_value, padding));
 
@@ -2273,7 +2842,7 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
   const Shape reduce_window_shape =
       ShapeUtil::MakeShape(F32, {111, 113, 113, 115});
   HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
   HloInstruction* reduce_window =
       builder.AddInstruction(HloInstruction::CreateReduceWindow(
           reduce_window_shape, convert, reduce_init_value, window,
@@ -2339,14 +2908,15 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  builder.AddInstruction(HloInstruction::CreateDot(r1f32, x, y, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(r1f32, x, y, dot_dnums,
+                                                   DefaultPrecisionConfig(2)));
   std::unique_ptr<HloComputation> dot_computation(builder.Build());
 
   HloComputation::Builder call_builder(TestName() + ".Call");
   HloInstruction* zero = call_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({0.0f})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({0.0f})));
   HloInstruction* one = call_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({1.0f})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1.0f})));
   call_builder.AddInstruction(
       HloInstruction::CreateCall(r1f32, {zero, one}, dot_computation.get()));
 
@@ -2362,9 +2932,9 @@ TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
   HloComputation::Builder builder(TestName());
   const float constant_scalar = 7.3f;
   std::initializer_list<float> constant_vector = {1.1f, 2.0f, 3.3f};
-  std::unique_ptr<Literal> value =
-      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
-                          Literal::CreateR1<float>(constant_vector).get()});
+  Literal elements[] = {LiteralUtil::CreateR0<float>(constant_scalar),
+                        LiteralUtil::CreateR1<float>(constant_vector)};
+  Literal value = LiteralUtil::MakeTuple({&elements[0], &elements[1]});
   builder.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
 
   auto computation = module().AddEntryComputation(builder.Build());
@@ -2387,8 +2957,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
       shape,
       builder.AddInstruction(
           HloInstruction::CreateParameter(0, shape, "slice_from")),
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR1<int>({0, 0, 0}))),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
       /*slice_sizes=*/{10, 100, 1000}));
 
   auto computation = module().AddEntryComputation(builder.Build());
@@ -2421,8 +2991,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
       builder.AddInstruction(
           HloInstruction::CreateParameter(2, slice_shape, "to_update")),
       slice,
-      builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR1<int>({0, 0, 0})))));
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -2437,7 +3007,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts) {
   HloComputation::Builder builder(TestName());
   Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* input_array = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({3, 4})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({3, 4})));
   HloInstruction* inner_bcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(r2f32, input_array, {1}));
   Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 2, 2});
@@ -2481,6 +3051,47 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts2) {
   EXPECT_THAT(root->dimensions(), ElementsAre(1, 3));
 }
 
+// Test that a broadcast of an iota can be merged to one iota.
+TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota) {
+  HloComputation::Builder builder(TestName());
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
+  HloInstruction* iota =
+      builder.AddInstruction(HloInstruction::CreateIota(r2f32, 1));
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  builder.AddInstruction(HloInstruction::CreateBroadcast(r3f32, iota, {0, 2}));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
+}
+
+// Test that a broadcast of an iota can be merged to one iota.
+TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
+  HloComputation::Builder builder(TestName());
+  Shape r3f32 = ShapeUtil::MakeShape(F32, {2, 5, 3});
+  HloInstruction* iota =
+      builder.AddInstruction(HloInstruction::CreateIota(r3f32, 1));
+  Shape r4f32 = ShapeUtil::MakeShape(F32, {4, 2, 5, 3});
+  builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r4f32, iota, {1, 2, 3}));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  root = computation->root_instruction();
+  EXPECT_THAT(root, op::Iota());
+  EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
+}
+
 struct PadReduceWindowEffectiveBroadcastCase {
   std::vector<int64> input_spatials;
   std::vector<int64> symmetric_pad_spatials;
@@ -2493,11 +3104,10 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool should_become_broadcast;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::StrCat(
-        tensorflow::str_util::Join(input_spatials, ","), ";",
-        tensorflow::str_util::Join(symmetric_pad_spatials, ","), ";",
-        tensorflow::str_util::Join(reduce_window_spatials, ","), ";", prepend_a,
-        ";", should_become_broadcast);
+    return absl::StrCat(absl::StrJoin(input_spatials, ","), ";",
+                        absl::StrJoin(symmetric_pad_spatials, ","), ";",
+                        absl::StrJoin(reduce_window_spatials, ","), ";",
+                        prepend_a, ";", should_become_broadcast);
   }
 };
 
@@ -2515,8 +3125,8 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
 
   // a and b are parallel bounds we can either turn into a B F S0 S1 or
   // `B S0 S1 F` kind of pattern.
-  auto decorate_spatials = [&param](tensorflow::gtl::ArraySlice<int64> spatials,
-                                    int64 a, int64 b) {
+  auto decorate_spatials = [&param](absl::Span<const int64> spatials, int64 a,
+                                    int64 b) {
     std::vector<int64> result;
     if (param.prepend_a) {
       result.push_back(a);
@@ -2546,7 +3156,7 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
   HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
       pad_shape, input,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0(0.0f))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0.0f))),
       padding));
 
   HloComputation* add_computation = nullptr;
@@ -2565,7 +3175,7 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
   Window window = window_util::MakeWindow(
       decorate_spatials(param.reduce_window_spatials, 1, 1));
   auto zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   TF_ASSERT_OK_AND_ASSIGN(const Shape output_shape,
                           ShapeInference::InferReduceWindowShape(
                               pad->shape(), zero->shape(), window,
@@ -2651,8 +3261,8 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
                                  non_bitcasting_callback());
@@ -2704,7 +3314,7 @@ TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
 
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.k});
   auto* lhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/spec.m, /*cols=*/spec.k)));
 
   Shape rhs0_shape = ShapeUtil::MakeShape(F32, {k0, spec.n});
@@ -2727,8 +3337,8 @@ TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
   dot_dnums.add_rhs_contracting_dimensions(0);
 
   Shape dot_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.n});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -2783,7 +3393,7 @@ TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
 
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {spec.k, spec.n});
   auto* rhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/spec.k, /*cols=*/spec.n)));
 
   DotDimensionNumbers dot_dnums;
@@ -2791,8 +3401,8 @@ TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
   dot_dnums.add_rhs_contracting_dimensions(0);
 
   Shape dot_shape = ShapeUtil::MakeShape(F32, {spec.m, spec.n});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -2830,7 +3440,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   HloInstruction* const update = builder.AddInstruction(
       HloInstruction::CreateParameter(1, update_shape, "update"));
   HloInstruction* const start_indices = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<int>({0})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int>({0})));
   builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       dslice_shape, operand, update, start_indices));
   const HloComputation* const computation =
@@ -2879,7 +3489,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int64 lhs_cols = (spec.lcd == 0) ? spec.m : (spec.k + k_increase);
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {lhs_rows, lhs_cols});
   auto* lhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/lhs_rows,
           /*cols=*/lhs_cols)));
 
@@ -2887,7 +3497,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int32 start_col = (spec.lcd == 0) ? spec.s : 0;
   const auto start_indices =
       builder.AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR1<int32>({start_row, start_col})));
+          LiteralUtil::CreateR1<int32>({start_row, start_col})));
   int64 slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64 slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
   Shape ds_shape = ShapeUtil::MakeShape(F32, {slice_row_size, slice_col_size});
@@ -2898,7 +3508,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int64 rhs_cols = (spec.rcd == 0) ? spec.n : spec.k;
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {rhs_rows, rhs_cols});
   auto* rhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/rhs_rows,
           /*cols=*/rhs_cols)));
 
@@ -2909,8 +3519,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int64 dot_row_size = 1;
   int64 dot_col_size = spec.n;
   Shape dot_shape = ShapeUtil::MakeShape(F32, {dot_row_size, dot_col_size});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, ds, rhs, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, ds, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
@@ -2946,7 +3556,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int64 lhs_cols = (spec.lcd == 0) ? spec.m : spec.k;
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {lhs_rows, lhs_cols});
   auto* lhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/lhs_rows,
           /*cols=*/lhs_cols)));
 
@@ -2957,7 +3567,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int64 rhs_cols = (spec.rcd == 0) ? spec.n : (spec.k + k_increase);
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {rhs_rows, rhs_cols});
   auto* rhs = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
           /*from=*/10.0, /*to=*/10000.0, /*rows=*/rhs_rows,
           /*cols=*/rhs_cols)));
 
@@ -2965,7 +3575,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int32 start_col = (spec.rcd == 0) ? spec.s : 0;
   const auto start_indices =
       builder.AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR1<int32>({start_row, start_col})));
+          LiteralUtil::CreateR1<int32>({start_row, start_col})));
   int64 slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64 slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
   Shape ds_shape = ShapeUtil::MakeShape(F32, {slice_row_size, slice_col_size});
@@ -2979,8 +3589,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int64 dot_row_size = spec.m;
   int64 dot_col_size = 1;
   Shape dot_shape = ShapeUtil::MakeShape(F32, {dot_row_size, dot_col_size});
-  builder.AddInstruction(
-      HloInstruction::CreateDot(dot_shape, lhs, ds, dot_dnums));
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, ds, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,

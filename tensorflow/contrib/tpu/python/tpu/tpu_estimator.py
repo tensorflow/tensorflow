@@ -22,9 +22,9 @@ import collections
 import copy
 import os
 import signal
+import sys
 import threading
 import time
-import traceback
 
 import numpy as np
 import six
@@ -32,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
@@ -44,6 +45,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import util as estimator_util
@@ -81,12 +83,17 @@ _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CTX_KEY = 'context'
+_USE_TPU_KEY = 'use_tpu'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 _REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
 
+# Ideally _USE_TPU_KEY should be reserved as well. However there are already
+# models that make use of this key, thus it can not be reserved now to prevent
+# breakage. In the long run, we would like to mitigate this by migrating models
+# off of using _USE_TPU_KEY.
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
@@ -198,6 +205,12 @@ def _increase_eval_step_op(iterations_per_loop):
       use_locking=True)
 
 
+def _extract_key_names(tensor_or_dict):
+  if isinstance(tensor_or_dict, dict):
+    return sorted(tensor_or_dict.keys())
+  return []
+
+
 class _SIGNAL(object):
   """Signal used to control the thread of infeed/outfeed.
 
@@ -211,8 +224,8 @@ class _SIGNAL(object):
 class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
   """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
 
-  See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
-  'export_outputs`.
+  See `EstimatorSpec` for `mode`, `predictions`, `loss`, `train_op`, and
+  `export_outputs`.
 
   For evaluation, `eval_metrics `is a tuple of `metric_fn` and `tensors`, where
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
@@ -226,7 +239,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   size is the first dimension. Once all tensors are available at CPU host from
   all shards, they are concatenated (on CPU) and passed as positional arguments
   to the `metric_fn` if `tensors` is list or keyword arguments if `tensors` is
-  dict. `metric_fn` takes the `tensors` and returns a dict from metric string
+  a dict. `metric_fn` takes the `tensors` and returns a dict from metric string
   name to the result of calling a metric function, namely a `(metric_tensor,
   update_op)` tuple. See `TPUEstimator` for MNIST example how to specify the
   `eval_metrics`.
@@ -252,7 +265,10 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
               eval_metrics=None,
               export_outputs=None,
               scaffold_fn=None,
-              host_call=None):
+              host_call=None,
+              training_hooks=None,
+              evaluation_hooks=None,
+              prediction_hooks=None):
     """Creates a validated `TPUEstimatorSpec` instance."""
     host_calls = {}
     if eval_metrics is not None:
@@ -260,6 +276,17 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     if host_call is not None:
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
+
+    training_hooks = list(training_hooks or [])
+    evaluation_hooks = list(evaluation_hooks or [])
+    prediction_hooks = list(prediction_hooks or [])
+
+    for hook in training_hooks + evaluation_hooks + prediction_hooks:
+      if not isinstance(hook, session_run_hook.SessionRunHook):
+        raise TypeError(
+            'All hooks must be SessionRunHook instances, given: {}'.format(
+                hook))
+
     return super(TPUEstimatorSpec, cls).__new__(
         cls,
         mode=mode,
@@ -269,7 +296,10 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
         eval_metrics=eval_metrics,
         export_outputs=export_outputs,
         scaffold_fn=scaffold_fn,
-        host_call=host_call)
+        host_call=host_call,
+        training_hooks=training_hooks,
+        evaluation_hooks=evaluation_hooks,
+        prediction_hooks=prediction_hooks)
 
   def as_estimator_spec(self):
     """Creates an equivalent `EstimatorSpec` used by CPU train/eval."""
@@ -285,6 +315,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
+    hooks = list(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
@@ -294,9 +325,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
         eval_metric_ops=eval_metric_ops,
         export_outputs=self.export_outputs,
         scaffold=scaffold,
-        training_hooks=hooks,
-        evaluation_hooks=hooks,
-        prediction_hooks=hooks)
+        training_hooks=self.training_hooks + hooks,
+        evaluation_hooks=self.evaluation_hooks + hooks,
+        prediction_hooks=self.prediction_hooks + hooks)
 
 
 class _OpQueueContext(object):
@@ -360,16 +391,16 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                ctx,
                enqueue_ops,
                dequeue_ops,
-               run_infeed_loop_on_coordinator=True):
+               run_infeed_loop_on_coordinator=True,
+               rendezvous=None):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
+    self._rendezvous = rendezvous
 
     self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
-
-    self._session_cancel_timer = None
 
     self._feed_error = None
     self._finished = False
@@ -387,62 +418,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     for op in summary_writer_init_ops:
       self._finalize_ops.append(contrib_summary.flush(writer=op.inputs[0]))
 
-  def _log_error(self, session, error):
-    """Log an infeed or outfeed error.
-
-    This logs a short error message immediately, and schedules a timer to
-    emit the full stack trace and error message after a short period of time.
-    If the main session has terminated by the time the timer triggers, we
-    assume the real source of the error was from the main session and avoid
-    emitting a stack trace for the infeed.
-
-    Args:
-      session: `tf.Session`, session to be terminated error: exception that
-        triggered logging.
-      error: the Exception to log.
-    """
-    logging.warning(
-        '\n\n'
-        'Error occurred during infeed/outfeed.  This may be due to a compile '
-        'error in the main session.  Waiting for a short time for the main '
-        'session to come back.\n\n%s', error)
-
-    self._feed_error = traceback.format_exc()
-
-    # If we've already encountered a feed error, don't schedule another
-    # cancellation op.
-    if self._session_cancel_timer:
-      return
-
-    def _cancel_session():
-      """Close the session to avoid the main thread from hanging.
-
-      If input pipeline triggers any error, the infeed thread dies but the main
-      thread for TPU computation waits for the infeed enqueue forever. Close the
-      Session to cancel the main thread Session.run execution.
-
-      We sleep for a few seconds before closing to give some time for the TPU
-      compilation error, if any, propagating, from TPU to CPU host. Compilation
-      errors should be reported by the main thread so that the program can be
-      interrupted and users can take action.  Due to a race condition, the
-      infeed thread might see an error first.  Closing the session here
-      immediately would result in a session cancellation exception in the main
-      thread, instead of the expected compile error.  User code that depends on
-      having the proper exception type will therefore be confused.
-      """
-      time.sleep(5)
-
-      # If the main session is still running, the infeed/outfeed errors are
-      # legitimate, and should be logged.
-      if not self._finished and self._feed_error:
-        logging.error('Feed error: %s', self._feed_error)
-        logging.error('Closing session.  A RuntimeError should follow.')
-        session.close()
-
-    self._session_cancel_timer = threading.Thread(target=_cancel_session)
-    self._session_cancel_timer.daemon = True
-    self._session_cancel_timer.start()
-
   def _run_infeed(self, queue_ctx, session):
     logging.info('Starting infeed thread controller.')
     if self._initial_infeed_sleep_secs:
@@ -451,7 +426,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       time.sleep(self._initial_infeed_sleep_secs)
       logging.info('%s thread starting after sleep', self._name)
 
-    try:
+    with self._rendezvous.catch_errors(source='infeed', session=session):
       if self._run_infeed_loop_on_coordinator:
         for count, steps in enumerate(queue_ctx.read_iteration_counts()):
           for i in xrange(steps):
@@ -461,19 +436,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         for _ in queue_ctx.read_iteration_counts():
           session.run(self._enqueue_ops)
       logging.info('Infeed thread finished, shutting down.')
-    except Exception as e:  # pylint: disable=broad-except
-      self._log_error(session, e)
 
   def _run_outfeed(self, queue_ctx, session):
     logging.info('Starting outfeed thread controller.')
-    try:
+    with self._rendezvous.catch_errors(source='outfeed', session=session):
       for count, steps in enumerate(queue_ctx.read_iteration_counts()):
         for i in xrange(steps):
           logging.debug('Outfeed dequeue for iteration (%d, %d)', count, i)
           session.run(self._dequeue_ops)
       logging.info('Outfeed thread finished, shutting down.')
-    except Exception as e:  # pylint: disable=broad-except
-      self._log_error(session, e)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpQueueContext(name=name, target=target, args=args)
@@ -492,11 +463,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def before_run(self, run_context):
     self._feed_error = None
 
-    # Wait for the cancellation timer to complete before continuing.
-    if self._session_cancel_timer:
-      self._session_cancel_timer.join()
-      self._session_cancel_timer = None
-
     iterations = run_context.session.run(self._iterations_per_loop_var)
 
     logging.info('Enqueue next (%d) batch(es) of data to infeed.', iterations)
@@ -507,16 +473,14 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._outfeed_controller.send_next_batch_signal(iterations)
 
   def end(self, session):
-    if self._session_cancel_timer:
-      logging.warning('Feed error occurred; waiting for message.')
-      self._session_cancel_timer.join()
-
     self._finished = True
     logging.info('Stop infeed thread controller')
     self._infeed_controller.join()
+    self._rendezvous.record_done('infeed')
 
     logging.info('Stop output thread controller')
     self._outfeed_controller.join()
+    self._rendezvous.record_done('outfeed')
 
     logging.info('Shutdown TPU system.')
     session.run(self._finalize_ops)
@@ -524,9 +488,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops):
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
-        ctx, enqueue_ops, dequeue_ops, run_infeed_loop_on_coordinator=False)
+        ctx, enqueue_ops, dequeue_ops, run_infeed_loop_on_coordinator=False,
+        rendezvous=rendezvous)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpSignalOnceQueueContext(name=name, target=target, args=args)
@@ -696,8 +661,6 @@ def generate_per_core_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -755,8 +718,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
       features, labels = inputs.features_and_labels()
       signals = inputs.signals()
 
-      inputs_structure_recorder.validate_and_record_structure(
-          features, labels, signals)
+      inputs_structure_recorder.validate_and_record_structure(features, labels)
       unsharded_tensor_list = (
           inputs_structure_recorder.flatten_features_and_labels(
               features, labels, signals))
@@ -800,9 +762,13 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     if not is_dataset:
       raise TypeError('`input_fn` must return a `Dataset` for the PER_HOST_V2 '
                       'input pipeline configuration.')
+
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
-      # TODO(b/XXX): Add predict support for PER_HOST_V2
-      raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True,
+          num_invocations_per_step=ctx.num_of_replicas_per_host)
 
     hooks.append(inputs.dataset_initializer_hook())
     tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
@@ -812,6 +778,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     control_deps = []
     per_host_sharded_inputs = []
     num_replicas_per_host = ctx.num_of_replicas_per_host
+    cached_signals = None
     with ops.device(device):
       if not inputs.is_dataset:
         raise TypeError('`input_fn` must return a `Dataset` for this mode.')
@@ -819,25 +786,128 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         # Use control dependencies to ensure a deterministic ordering.
         with ops.control_dependencies(control_deps):
           features, labels = inputs.features_and_labels()  # Calls get_next()
+          signals = inputs.signals()
+
+          # All the replicas share the replica 0's stopping singal.
+          # This avoids inconsistent state among different model replcias.
+          if cached_signals:
+            signals['stopping'] = cached_signals['stopping']
+          else:
+            cached_signals = signals
 
         inputs_structure_recorder.validate_and_record_structure(
             features, labels)
         flattened_inputs = (
             inputs_structure_recorder.flatten_features_and_labels(
-                features, labels))
-
+                features, labels, signals))
         control_deps.extend(flattened_inputs)
         per_host_sharded_inputs.append(flattened_inputs)
 
-    infeed_queue = tpu_feed.InfeedQueue(
-        number_of_tuple_elements=len(per_host_sharded_inputs[0]))
-    captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
+      if inputs_structure_recorder.flattened_input_dims:
+        input_partition_dims = inputs_structure_recorder.flattened_input_dims
+        if signals:
+          input_partition_dims += [None] * len(signals)
+        # pylint: disable=protected-access
+        infeed_queue = tpu_feed._PartitionedInfeedQueue(
+            number_of_tuple_elements=len(per_host_sharded_inputs[0]),
+            host_id=host_id,
+            input_partition_dims=input_partition_dims,
+            device_assignment=ctx.device_assignment)
+        per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
+            per_host_sharded_inputs)
+      else:
+        infeed_queue = tpu_feed.InfeedQueue(
+            number_of_tuple_elements=len(per_host_sharded_inputs[0]))
+        per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
+            per_host_sharded_inputs,
+            tpu_ordinal_function=tpu_ordinal_function_impl)
+      captured_infeed_queue.capture(infeed_queue)
 
-    per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
-        per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
-    return per_host_enqueue_ops
+    if signals is None:
+      return per_host_enqueue_ops
+    else:
+      return {
+          'ops': per_host_enqueue_ops,
+          'signals': signals,
+      }
+
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
+
+
+def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
+                                      num_hosts):
+  """Generates infeed enqueue ops for one input_fn on all the hosts."""
+  captured_infeed_queue = _CapturedObject()
+  hooks = []
+  device_0 = ctx.tpu_host_placement_function(host_id=0)
+  with ops.device(device_0):
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx, input_device=device_0, invocation_index=0)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
+
+    is_dataset = inputs.is_dataset
+    if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
+      if not is_dataset:
+        raise TypeError(
+            'For mode PREDICT, `input_fn` must return `Dataset` instead of '
+            '`features` and `labels`.')
+
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True)
+
+    if is_dataset:
+      hooks.append(inputs.dataset_initializer_hook())
+    num_replicas_per_host = ctx.num_of_replicas_per_host
+
+  def tpu_ordinal_function_impl(replica_id):
+    if ctx.device_assignment:
+      return ctx.device_assignment.tpu_ordinal(replica=replica_id)
+    else:
+      return replica_id % num_replicas_per_host
+
+  def device_function_impl(replica_id):
+    return ctx.tpu_host_placement_function(replica_id=replica_id)
+
+  def enqueue_ops_fn():
+    """Generates enqueue ops for all the hosts."""
+    broadcasted_inputs = []
+    flattened_inputs = None  # Cache result from input_fn.
+    signals = None
+    for host_id in xrange(num_hosts):
+      with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
+        for _ in xrange(ctx.num_of_replicas_per_host):
+          # Note: input_fn is only called once at host 0 for the first replica.
+          # The features and labels returned from that invocation are
+          # broadcasted to other replicas(including the replicas on other
+          # hosts).
+          if flattened_inputs is None:
+            features, labels = inputs.features_and_labels()  # Calls get_next()
+            signals = inputs.signals()
+
+            inputs_structure_recorder.validate_and_record_structure(
+                features, labels)
+            flattened_inputs = (
+                inputs_structure_recorder.flatten_features_and_labels(
+                    features, labels, signals))
+          broadcasted_inputs.append(flattened_inputs)
+
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(broadcasted_inputs[0]))
+    captured_infeed_queue.capture(infeed_queue)
+    enqueue_ops = infeed_queue.generate_enqueue_ops(
+        broadcasted_inputs,
+        tpu_ordinal_function=tpu_ordinal_function_impl,
+        placement_function=device_function_impl)
+
+    if signals is None:
+      return enqueue_ops
+    else:
+      return {
+          'ops': enqueue_ops,
+          'signals': signals,
+      }
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
@@ -859,85 +929,118 @@ class _InputPipeline(object):
   inputs returned by the `input_fn` can have one of the following forms:
   1. features
   2. (features, labels)
+  3. ((arbitrarily nested structure of features), labels)
 
   Internally, form 1 is reformed to `(features, None)` as features and labels
   are passed separately to underlying methods. For TPU training, TPUEstimator
   may expect multiple `features` and `labels` tuples one for each core.
 
   TPUEstimator allows various different structures for inputs (namely `features`
-  and `labels`).  `features` can be `Tensor` or dict of string name to `Tensor`,
-  and `labels` could be `None`, `Tensor`, or dict of string name to `Tensor`.
-  TPU infeed/outfeed library expects flattened tensor list. So, `features` and
-  `labels` need to be flattened, before infeed enqueue, and the structure of
-  them needs to be recorded, in order to restore them after infeed dequeue.
+  and `labels`).  `features` can be `Tensor`, dict of string name to `Tensor`,
+  or nested tuples and `labels` could be `None`, `Tensor`, or dict of string
+  name to `Tensor`. TPU infeed/outfeed library expects flattened tensor list.
+  So, `features` and `labels` need to be flattened, before infeed enqueue, and
+  the structure of them needs to be recorded, in order to restore them after
+  infeed dequeue.
   """
 
   class InputsStructureRecorder(object):
     """The recorder to record inputs structure."""
 
-    def __init__(self):
+    def __init__(self, input_partition_dims=None):
       # Holds the structure of inputs
-      self._feature_names = []
-      self._label_names = []
-      self._has_labels = False
-      self._signals_helper = None
+      self._feature_structure = {}
+      self._flattened_input_dims = None
+
+      if input_partition_dims:
+        # This should have been validated in TPUConfig.
+        assert len(input_partition_dims) <= 2, 'must have 1 or 2 elements.'
+        if len(input_partition_dims) == 2:
+          self._feature_dims, self._label_dims = input_partition_dims
+        else:
+          self._feature_dims = input_partition_dims[0]
+          self._label_dims = None
+
+        assert self._feature_dims is not None, ('input_partition_dims[0] must '
+                                                'not be None')
+      else:
+        self._feature_dims = None
+        self._label_dims = None
 
       # Internal state.
       self._initialized = False
 
+    @property
+    def flattened_input_dims(self):
+      assert self._initialized, 'InputsStructureRecorder is not initialized.'
+      return self._flattened_input_dims
+
     def has_labels(self):
-      return self._has_labels
+      return 'labels' in self._feature_structure
 
-    def validate_and_record_structure(self, features, labels, signals=None):
-      """Validates and records the structure of features` and `labels`."""
+    def _flatten_input_dims(self, feature_dims, feature_dims_names, label_dims,
+                            label_dims_names, label_names, has_labels):
+      """Flatten input dims with the same order as flattened input tensors."""
+      flattened_input_dims = []
+      if feature_dims_names:
+        # We need a fixed ordering for matching the tensors in features.
+        flattened_input_dims.extend(
+            [feature_dims[name] for name in feature_dims_names])
+      else:
+        flattened_input_dims.append(feature_dims)
 
-      def _extract_key_names(tensor_or_dict):
-        if tensor_or_dict is None:
-          return []
-        return sorted(tensor_or_dict.keys()) if isinstance(
-            tensor_or_dict, dict) else []
+      if label_dims_names:
+        # We need a fixed ordering for matching the tensors in labels.
+        flattened_input_dims.extend(
+            [label_dims[name] for name in label_dims_names])
+      else:
+        if label_names:
+          num_tensors_in_label = len(label_names)
+        else:
+          num_tensors_in_label = int(has_labels)
+        # Setting `None` in input_partition_dims[1] will apply `None` to
+        # all the tensors in labels, regardless of internal structure.
+        flattened_input_dims.extend([label_dims] * num_tensors_in_label)
 
+      return flattened_input_dims
+
+    def validate_and_record_structure(self, features, labels):
+      """Validates and records the structure of `features` and `labels`."""
       # Extract structure.
       has_labels = labels is not None
       feature_names = _extract_key_names(features)
       label_names = _extract_key_names(labels)
 
-      if signals is not None and self._signals_helper is None:
-        # Record signals helper.
-        self._signals_helper = _SignalsHelper(signals)
-
-      if self._initialized:
-        # Verify the structure is same. The following should never happen.
-        assert feature_names == self._feature_names, 'feature keys mismatched'
-        assert label_names == self._label_names, 'label keys mismatched'
-        assert has_labels == self._has_labels, 'label presence mismatched'
-      else:
+      if not self._initialized:
         # Record structure.
         self._initialized = True
-        self._feature_names = feature_names
-        self._label_names = label_names
-        self._has_labels = has_labels
+        if self._feature_dims is not None:
+          feature_dims_names = _extract_key_names(self._feature_dims)
+          if feature_dims_names != feature_names:
+            raise ValueError(
+                'TPUConfig.input_partition_dims[0] mismatched feature'
+                ' keys. Expected {}, got {}'.format(feature_names,
+                                                    feature_dims_names))
+
+          label_dims_names = _extract_key_names(self._label_dims)
+          if self._label_dims is not None and label_dims_names != label_names:
+            raise ValueError(
+                'TPUConfig.input_partition_dims[1] mismatched label'
+                ' keys. Expected {}, got {}'.format(label_names,
+                                                    label_dims_names))
+
+          self._flattened_input_dims = self._flatten_input_dims(
+              self._feature_dims, feature_dims_names, self._label_dims,
+              label_dims_names, label_names, has_labels)
 
     def flatten_features_and_labels(self, features, labels, signals=None):
       """Flattens the `features` and `labels` to a single tensor list."""
-      flattened_inputs = []
-      if self._feature_names:
-        # We need a fixed ordering for enqueueing and dequeueing.
-        flattened_inputs.extend(
-            [features[name] for name in self._feature_names])
-      else:
-        flattened_inputs.append(features)
-
+      self._feature_structure['features'] = features
       if labels is not None:
-        if self._label_names:
-          # We need a fixed ordering for enqueueing and dequeueing.
-          flattened_inputs.extend([labels[name] for name in self._label_names])
-        else:
-          flattened_inputs.append(labels)
-
+        self._feature_structure['labels'] = labels
       if signals is not None:
-        flattened_inputs.extend(_SignalsHelper.as_tensor_list(signals))
-      return flattened_inputs
+        self._feature_structure['signals'] = signals
+      return data_nest.flatten(self._feature_structure)
 
     def unflatten_features_and_labels(self, flattened_inputs):
       """Restores the flattened inputs to original features and labels form.
@@ -954,49 +1057,13 @@ class _InputPipeline(object):
         ValueError: If the number of expected tensors from `flattened_inputs`
           mismatches the recorded structure.
       """
-      expected_num_features = (
-          len(self._feature_names) if self._feature_names else 1)
-      if self._has_labels:
-        expected_num_labels = (
-            len(self._label_names) if self._label_names else 1)
-      else:
-        expected_num_labels = 0
 
-      expected_num_signals = (
-          self._signals_helper.num_signals if self._signals_helper else 0)
-
-      expected_num_tensors = (
-          expected_num_features + expected_num_labels + expected_num_signals)
-
-      if expected_num_tensors != len(flattened_inputs):
-        raise ValueError(
-            'The number of flattened tensors mismatches expected num. '
-            'Expected {}, got {}'.format(expected_num_tensors,
-                                         len(flattened_inputs)))
-      if self._feature_names:
-        unflattened_features = dict(
-            zip(self._feature_names, flattened_inputs[:expected_num_features]))
-      else:
-        # Single tensor case
-        unflattened_features = flattened_inputs[0]
-
-      if expected_num_labels == 0:
-        unflattened_label = None
-      elif self._label_names:
-        label_list = flattened_inputs[
-            expected_num_features:expected_num_features + expected_num_labels]
-        unflattened_label = dict(zip(self._label_names, label_list))
-      else:
-        # Single tensor case.
-        unflattened_label = flattened_inputs[expected_num_features]
-
-      signals = None
-      if expected_num_signals != 0:
-        tensor_list_for_signals = flattened_inputs[
-            expected_num_features + expected_num_labels:]
-        signals = self._signals_helper.unflatten(tensor_list_for_signals)
-
-      return _Inputs(unflattened_features, unflattened_label, signals=signals)
+      unflattened_inputs = data_nest.pack_sequence_as(self._feature_structure,
+                                                      flattened_inputs)
+      return _Inputs(
+          unflattened_inputs['features'],
+          unflattened_inputs.get('labels'),
+          signals=unflattened_inputs.get('signals'))
 
   def __init__(self, input_fn, batch_axis, ctx):
     """Constructor.
@@ -1011,7 +1078,8 @@ class _InputPipeline(object):
     Raises:
       ValueError: If both `sharded_features` and `num_cores` are `None`.
     """
-    self._inputs_structure_recorder = _InputPipeline.InputsStructureRecorder()
+    self._inputs_structure_recorder = _InputPipeline.InputsStructureRecorder(
+        ctx.input_partition_dims)
 
     self._sharded_per_core = ctx.is_input_sharded_per_core()
     self._input_fn = input_fn
@@ -1074,6 +1142,24 @@ class _InputPipeline(object):
             # Infeed_queue_getter must be called after enqueue_ops_fn is called.
             infeed_queues.append(captured_infeed_queue.get())
 
+    elif self._ctx.is_input_broadcast_with_iterators():
+      # Only calls input_fn in host 0.
+      host_device = tpu_host_placement_fn(host_id=0)
+      enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+          generate_broadcast_enqueue_ops_fn(self._ctx, self._input_fn,
+                                            self._inputs_structure_recorder,
+                                            num_hosts))
+      all_hooks.extend(hooks)
+      if is_dataset:
+        run_infeed_loop_on_coordinator = False
+        wrap_fn = (
+            _wrap_computation_in_while_loop
+            if self._ctx.mode != model_fn_lib.ModeKeys.PREDICT else
+            _wrap_computation_in_while_loop_with_stopping_signals)
+        enqueue_ops.append(wrap_fn(device=host_device, op_fn=enqueue_ops_fn))
+      else:
+        enqueue_ops.append(enqueue_ops_fn())
+      infeed_queues.append(captured_infeed_queue.get())
     else:
       for host_id in range(num_hosts):
         host_device = tpu_host_placement_fn(host_id=host_id)
@@ -1188,6 +1274,7 @@ class _ModelFnWrapper(object):
 
     host_call = _OutfeedHostCall(self._ctx)
     captured_scaffold_fn = _CapturedObject()
+    captured_training_hooks = _CapturedObject()
 
     def train_step(loss):
       """Training step function for use inside a while loop."""
@@ -1204,6 +1291,8 @@ class _ModelFnWrapper(object):
       else:
         captured_scaffold_fn.capture(None)
 
+      captured_training_hooks.capture(estimator_spec.training_hooks)
+
       # We must run train_op to update the variables prior to running the
       # outfeed.
       with ops.control_dependencies([train_op]):
@@ -1215,7 +1304,8 @@ class _ModelFnWrapper(object):
         with ops.control_dependencies(host_call_outfeed_ops):
           return array_ops.identity(loss)
 
-    return train_step, host_call, captured_scaffold_fn
+    return (train_step, host_call, captured_scaffold_fn,
+            captured_training_hooks)
 
   def convert_to_single_tpu_eval_step(self, dequeue_fn):
     """Converts user provided model_fn` as a single eval step on TPU.
@@ -1245,6 +1335,7 @@ class _ModelFnWrapper(object):
     """
     host_calls = _OutfeedHostCall(self._ctx)
     captured_scaffold_fn = _CapturedObject()
+    captured_eval_hooks = _CapturedObject()
 
     def eval_step(total_loss):
       """Evaluation step function for use inside a while loop."""
@@ -1259,8 +1350,11 @@ class _ModelFnWrapper(object):
 
       loss = tpu_estimator_spec.loss
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
+      captured_eval_hooks.capture(tpu_estimator_spec.evaluation_hooks)
+
       to_record = {}
-      to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
+      if tpu_estimator_spec.eval_metrics:
+        to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
       if tpu_estimator_spec.host_call is not None:
         # We assume that evaluate won't update global step, so we don't wrap
         # this host_call.
@@ -1270,7 +1364,7 @@ class _ModelFnWrapper(object):
       with ops.control_dependencies(host_calls.create_enqueue_op()):
         return math_ops.add(total_loss, loss)
 
-    return eval_step, host_calls, captured_scaffold_fn
+    return eval_step, host_calls, captured_scaffold_fn, captured_eval_hooks
 
   def convert_to_single_tpu_predict_step(self, dequeue_fn):
     """Converts user provided model_fn` as a single predict step on TPU.
@@ -1285,6 +1379,7 @@ class _ModelFnWrapper(object):
     """
     host_calls = _OutfeedHostCall(self._ctx)
     captured_scaffold_fn = _CapturedObject()
+    captured_predict_hooks = _CapturedObject()
 
     def predict_step(unused_scalar_stopping_signal):
       """Evaluation step function for use inside a while loop."""
@@ -1305,6 +1400,7 @@ class _ModelFnWrapper(object):
       self._verify_tpu_spec_predictions(tpu_estimator_spec.predictions)
 
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
+      captured_predict_hooks.capture(tpu_estimator_spec.prediction_hooks)
       to_record = {}
       identity_fn = lambda **kwargs: kwargs
       to_record['predictions'] = [identity_fn, tpu_estimator_spec.predictions]
@@ -1316,7 +1412,8 @@ class _ModelFnWrapper(object):
       with ops.control_dependencies(host_calls.create_enqueue_op()):
         return _StopSignals.as_scalar_stopping_signal(stopping_signals)
 
-    return predict_step, host_calls, captured_scaffold_fn
+    return (predict_step, host_calls, captured_scaffold_fn,
+            captured_predict_hooks)
 
   def _verify_tpu_spec_predictions(self, predictions):
     """Validates TPUEstimatorSpec.predictions dict."""
@@ -1368,12 +1465,14 @@ class _ModelFnWrapper(object):
               'The {} to the model returned by input_fn must have static shape.'
               ' Tensor: {}'.format(obj_name, obj))
       else:
-        for (key, tensor) in obj.items():
-          if not tensor.get_shape().is_fully_defined():
-            raise ValueError(
-                'The {} to the model returned by input_fn must have static '
-                'shape. Key: \'{}\', Tensor: {}'.format(
-                    obj_name, key, tensor))
+        for (key, value) in obj.items():
+          flattened_tensors = data_nest.flatten(value)
+          for tensor in flattened_tensors:
+            if not tensor.get_shape().is_fully_defined():
+              raise ValueError(
+                  'The {} to the model returned by input_fn must have static '
+                  'shape. Key: \'{}\', Tensor: {}'.format(
+                      obj_name, key, tensor))
 
     validate(features, 'features')
     if labels is not None:
@@ -1414,8 +1513,16 @@ class _ModelFnWrapper(object):
     if batch_size_for_model_fn is not None:
       _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
+    running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
+    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
+
+    if not running_on_cpu:
+      user_context = tpu_context.TPUContext(
+          internal_ctx=self._ctx, call_from_input_fn=False)
+      _add_item_to_params(params, _CTX_KEY, user_context)
+
     estimator_spec = self._model_fn(features=features, **kwargs)
-    if (self._ctx.is_running_on_cpu(is_export_mode) and
+    if (running_on_cpu and
         isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
       # The estimator_spec will be passed to `Estimator` directly, which expects
       # type `EstimatorSpec`.
@@ -1430,11 +1537,9 @@ class _ModelFnWrapper(object):
 
     err_msg = '{} returned by EstimatorSpec is not supported in TPUEstimator.'
     if estimator_spec.training_chief_hooks:
-      raise ValueError(err_msg.format('training_chief_hooks'))
-    if estimator_spec.training_hooks:
-      raise ValueError(err_msg.format('training_hooks'))
-    if estimator_spec.evaluation_hooks:
-      raise ValueError(err_msg.format('evaluation_hooks'))
+      raise ValueError(
+          err_msg.format('training_chief_hooks') + 'If you want' +
+          ' to pass training hooks, please pass via training_hooks.')
 
     if estimator_spec.scaffold:
       logging.warning('EstimatorSpec.Scaffold is ignored by TPU train/eval. '
@@ -1555,7 +1660,7 @@ class _OutfeedHostCall(object):
       RuntimeError: If outfeed tensor is scalar.
     """
     if not self._names:
-      return []
+      return {}
 
     ret = {}
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -1574,11 +1679,13 @@ class _OutfeedHostCall(object):
     # Outfeed ops execute on each replica's first logical core. Note: we must
     # constraint it such that we have at most one outfeed dequeue and enqueue
     # per replica.
-    tpu_device_placement_fn = self._ctx.tpu_device_placement_function
     for i in xrange(self._ctx.num_replicas):
-      with ops.device(tpu_device_placement_fn(i)):
+      host_device, ordinal_id = self._ctx.device_for_replica(i)
+      with ops.device(host_device):
         outfeed_tensors = tpu_ops.outfeed_dequeue_tuple(
-            dtypes=tensor_dtypes, shapes=tensor_shapes)
+            dtypes=tensor_dtypes,
+            shapes=tensor_shapes,
+            device_ordinal=ordinal_id)
         for j, item in enumerate(outfeed_tensors):
           dequeue_ops[j].append(item)
 
@@ -1593,7 +1700,7 @@ class _OutfeedHostCall(object):
     # place all ops on tpu host if possible.
     #
     # TODO(jhseu): Evaluate whether this is right for summaries.
-    with ops.device(self._ctx.tpu_host_placement_function(core_id=0)):
+    with ops.device(self._ctx.tpu_host_placement_function(replica_id=0)):
       for name in self._names:
         dequeue_ops = dequeue_ops_by_name[name]
         for i, item in enumerate(dequeue_ops):
@@ -1667,18 +1774,19 @@ class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
         summary_writer=summary_writer)
 
   def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
-    global_step_per_sec = elapsed_steps / elapsed_time
-    examples_per_sec = self._batch_size * global_step_per_sec
+    global_steps_per_sec = elapsed_steps / elapsed_time
+    examples_per_sec = self._batch_size * global_steps_per_sec
     if self._summary_writer is not None:
       global_step_summary = Summary(value=[
-          Summary.Value(tag='global_step/sec', simple_value=global_step_per_sec)
+          Summary.Value(tag='global_steps/sec',
+                        simple_value=global_steps_per_sec)
       ])
       example_summary = Summary(value=[
           Summary.Value(tag='examples/sec', simple_value=examples_per_sec)
       ])
       self._summary_writer.add_summary(global_step_summary, global_step)
       self._summary_writer.add_summary(example_summary, global_step)
-    logging.info('global_step/sec: %g', global_step_per_sec)
+    logging.info('global_steps/sec: %g', global_steps_per_sec)
     logging.info('examples/sec: %g', examples_per_sec)
 
 
@@ -1701,6 +1809,9 @@ class InstallSignalHandlerHook(session_run_hook.SessionRunHook):
 
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
+
+  TPUEstimator also supports training on CPU and GPU. You don't need to define
+  a separate `tf.estimator.Estimator`.
 
   TPUEstimator handles many of the details of running on TPU devices, such as
   replicating inputs and models for each core, and returning to host
@@ -1739,7 +1850,8 @@ class TPUEstimator(estimator_lib.Estimator):
   Current limitations:
   --------------------
 
-  1. TPU evaluation only works on a single host (one TPU worker).
+  1. TPU evaluation only works on a single host (one TPU worker) except
+     BROADCAST mode.
 
   2. `input_fn` for evaluation should **NOT** raise an end-of-input exception
      (`OutOfRangeError` or `StopIteration`). And all evaluation steps and all
@@ -1910,10 +2022,9 @@ class TPUEstimator(estimator_lib.Estimator):
     """Constructs an `TPUEstimator` instance.
 
     Args:
-      model_fn: Model function as required by `Estimator`. For training, the
-        returned `EstimatorSpec` cannot have hooks as it is not supported in
-        `TPUEstimator`. Instead, the user can pass the training hooks as
-        an argument to `TPUEstimator.train()`.
+      model_fn: Model function as required by `Estimator` which returns
+      EstimatorSpec or TPUEstimatorSpec. `training_hooks`, 'evaluation_hooks',
+      and `prediction_hooks` must not capure any TPU Tensor inside the model_fn.
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model. If `None`, the model_dir in
@@ -1978,7 +2089,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
       if (config.tpu_config.per_host_input_for_training is
           tpu_config.InputPipelineConfig.PER_SHARD_V1 and
-          config.tpu_config.computation_shape):
+          config.tpu_config.num_cores_per_replica):
         raise ValueError(
             'Model parallelism only supports per host input for training. '
             'Please adjust TPURunconfig.per_host_input_for_training.')
@@ -2025,6 +2136,7 @@ class TPUEstimator(estimator_lib.Estimator):
     self._export_to_tpu = export_to_tpu
 
     self._is_input_fn_invoked = None
+    self._rendezvous = {}
 
   def _add_meta_graph_for_mode(self,
                                builder,
@@ -2033,24 +2145,30 @@ class TPUEstimator(estimator_lib.Estimator):
                                strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
-                               export_tags=None):
-    if mode != model_fn_lib.ModeKeys.PREDICT:
+                               export_tags=None,
+                               check_variables=True):
+    if self._export_to_tpu and mode != model_fn_lib.ModeKeys.PREDICT:
       raise NotImplementedError(
-          'TPUEstimator only handles mode PREDICT for export_savedmodel(); '
+          'TPUEstimator only handles mode PREDICT for exporting '
+          'when `export_to_tpu` is `True`; '
           'got {}.'.format(mode))
 
-    super(TPUEstimator, self)._add_meta_graph_for_mode(builder,
-                                                       input_receiver_fn_map,
-                                                       checkpoint_path,
-                                                       strip_default_attrs,
-                                                       save_variables,
-                                                       mode=mode)
+    (super(TPUEstimator, self).
+     _add_meta_graph_for_mode(builder,
+                              input_receiver_fn_map,
+                              checkpoint_path,
+                              strip_default_attrs,
+                              save_variables,
+                              mode=mode,
+                              export_tags=export_tags,
+                              check_variables=check_variables))
 
     if self._export_to_tpu:
       input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
                                input_receiver_fn_map[mode]}
       export_tags = [tag_constants.SERVING, tag_constants.TPU]
       mode = _REWRITE_FOR_INFERENCE_MODE
+      # See b/110052256 for why `check_variables` is `False`.
       (super(TPUEstimator, self).
        _add_meta_graph_for_mode(builder,
                                 input_receiver_fn_map,
@@ -2058,7 +2176,8 @@ class TPUEstimator(estimator_lib.Estimator):
                                 strip_default_attrs,
                                 save_variables=False,
                                 mode=mode,
-                                export_tags=export_tags))
+                                export_tags=export_tags,
+                                check_variables=False))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
@@ -2262,6 +2381,65 @@ class TPUEstimator(estimator_lib.Estimator):
     """
     pass
 
+  def train(self,
+            input_fn,
+            hooks=None,
+            steps=None,
+            max_steps=None,
+            saving_listeners=None):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.TRAIN] = rendezvous
+    try:
+      return super(TPUEstimator, self).train(
+          input_fn=input_fn, hooks=hooks, steps=steps, max_steps=max_steps,
+          saving_listeners=saving_listeners
+      )
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('training_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('training_loop')
+      rendezvous.raise_errors()
+
+  def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
+               name=None):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.EVAL] = rendezvous
+    try:
+      return super(TPUEstimator, self).evaluate(
+          input_fn, steps=steps, hooks=hooks, checkpoint_path=checkpoint_path,
+          name=name
+      )
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('evaluation_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('evaluation_loop')
+      rendezvous.raise_errors()
+
+  def predict(self,
+              input_fn,
+              predict_keys=None,
+              hooks=None,
+              checkpoint_path=None,
+              yield_single_examples=True):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.PREDICT] = rendezvous
+    try:
+      for result in super(TPUEstimator, self).predict(
+          input_fn=input_fn,
+          predict_keys=predict_keys,
+          hooks=hooks,
+          checkpoint_path=checkpoint_path,
+          yield_single_examples=yield_single_examples):
+        yield result
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('prediction_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('prediction_loop')
+      rendezvous.raise_errors()
+
+    rendezvous.record_done('prediction_loop')
+    rendezvous.raise_errors()
+
   def _augment_model_fn(self, model_fn, batch_axis):
     """Returns a new model_fn, which wraps the TPU support."""
 
@@ -2270,24 +2448,30 @@ class TPUEstimator(estimator_lib.Estimator):
       with self._ctx.with_mode(mode) as ctx:
         model_fn_wrapper = _ModelFnWrapper(model_fn, config, params, ctx)
 
-        if mode != model_fn_lib.ModeKeys.PREDICT:
+        # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
+        # but not in `export_savedmodel()`.
+        if self._is_input_fn_invoked:
           is_export_mode = False
         else:
-          # For export_savedmodel, input_fn is never passed to Estimator. So, by
-          # checking the self._is_input_fn_invoked bit, we can know, given the
-          # mode == PREDICT, it is the .predict API, not export_savedmodel API.
-          if self._is_input_fn_invoked:
-            is_export_mode = False
-          else:
-            is_export_mode = True
+          is_export_mode = True
 
         # Clear the bit.
         self._is_input_fn_invoked = None
 
+        # examples_hook is added to training_hooks for both CPU and TPU
+        # execution.
+        examples_hook = ExamplesPerSecondHook(
+            ctx.global_batch_size,
+            output_dir=self.model_dir,
+            every_n_steps=self._log_every_n_steps)
+
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):
           logging.info('Running %s on CPU', mode)
-          return model_fn_wrapper.call_without_tpu(
+          estimator_spec = model_fn_wrapper.call_without_tpu(
               features, labels, is_export_mode=is_export_mode)
+          estimator_spec = estimator_spec._replace(
+              training_hooks=estimator_spec.training_hooks + (examples_hook,))
+          return estimator_spec
 
         assert labels is None, '`labels` passed to `model_fn` must be `None`.'
         # TPUEstimator._call_input_fn passes `input_fn` as features to here.
@@ -2306,7 +2490,7 @@ class TPUEstimator(estimator_lib.Estimator):
             graph.add_to_collection(_TPU_ENQUEUE_OPS, enqueue_op)
 
         if mode == model_fn_lib.ModeKeys.TRAIN:
-          loss, host_call, scaffold = (
+          loss, host_call, scaffold, training_hooks = (
               _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
           host_ops = host_call.create_tpu_hostcall()
           if host_ops is None:
@@ -2346,7 +2530,9 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   host_ops,
                   run_infeed_loop_on_coordinator=(
-                      run_infeed_loop_on_coordinator)),
+                      run_infeed_loop_on_coordinator),
+                  rendezvous=self._rendezvous[mode],
+              ),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
@@ -2355,13 +2541,12 @@ class TPUEstimator(estimator_lib.Estimator):
                   },
                   every_n_iter=logging_hook_frequency)
           ])
-          examples_hook = ExamplesPerSecondHook(
-              ctx.global_batch_size,
-              output_dir=self.model_dir,
-              every_n_steps=self._log_every_n_steps)
           examples_hook._set_steps_per_run(   # pylint: disable=protected-access
               self._config.tpu_config.iterations_per_loop)
           hooks.append(examples_hook)
+
+          if training_hooks:
+            hooks.extend(training_hooks)
 
           chief_hooks = []
           if (self._config.save_checkpoints_secs or
@@ -2374,6 +2559,7 @@ class TPUEstimator(estimator_lib.Estimator):
             checkpoint_hook._set_steps_per_run(   # pylint: disable=protected-access
                 self._config.tpu_config.iterations_per_loop)
             chief_hooks.append(checkpoint_hook)
+
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
           with ops.control_dependencies([loss]):
             update_ops = _sync_variables_ops()
@@ -2393,7 +2579,7 @@ class TPUEstimator(estimator_lib.Estimator):
               scaffold=scaffold)
 
         if mode == model_fn_lib.ModeKeys.EVAL:
-          total_loss, host_calls, scaffold = _eval_on_tpu_system(
+          total_loss, host_calls, scaffold, eval_hooks = _eval_on_tpu_system(
               ctx, model_fn_wrapper, dequeue_fn)
           iterations_per_loop_var = _create_or_get_iterations_per_loop()
           mean_loss = math_ops.div(total_loss,
@@ -2418,7 +2604,8 @@ class TPUEstimator(estimator_lib.Estimator):
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
-          for k, v in host_call_ret['eval_metrics'].items():
+
+          for k, v in host_call_ret.get('eval_metrics', {}).items():
             eval_metric_ops[k] = (v[0], dummy_update_op)
             eval_update_ops.append(v[1])
 
@@ -2432,8 +2619,12 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   eval_update_ops + host_ops,
                   run_infeed_loop_on_coordinator=(
-                      run_infeed_loop_on_coordinator)),
+                      run_infeed_loop_on_coordinator),
+                  rendezvous=self._rendezvous[mode]),
           ] + input_hooks
+
+          if eval_hooks:
+            hooks.extend(eval_hooks)
 
           return model_fn_lib.EstimatorSpec(
               mode,
@@ -2445,8 +2636,9 @@ class TPUEstimator(estimator_lib.Estimator):
         # Predict
         assert mode == model_fn_lib.ModeKeys.PREDICT
 
-        dummy_predict_op, host_calls, scaffold = _predict_on_tpu_system(
-            ctx, model_fn_wrapper, dequeue_fn)
+        (dummy_predict_op, host_calls,
+         scaffold, prediction_hooks) = _predict_on_tpu_system(
+             ctx, model_fn_wrapper, dequeue_fn)
         with ops.control_dependencies([dummy_predict_op]):
           internal_ops_to_run = _sync_variables_ops()
           with ops.control_dependencies(internal_ops_to_run):
@@ -2498,9 +2690,12 @@ class TPUEstimator(estimator_lib.Estimator):
 
         hooks = [
             _StoppingPredictHook(scalar_stopping_signal),
-            TPUInfeedOutfeedSessionHookForPrediction(ctx, enqueue_ops,
-                                                     host_ops),
+            TPUInfeedOutfeedSessionHookForPrediction(
+                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode]),
         ] + input_hooks
+
+        if prediction_hooks:
+          hooks.extend(prediction_hooks)
 
         return model_fn_lib.EstimatorSpec(
             mode,
@@ -2585,8 +2780,8 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
   iterations_per_loop_var = _create_or_get_iterations_per_loop()
 
-  single_tpu_eval_step, host_calls, captured_scaffold_fn = (
-      model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn))
+  (single_tpu_eval_step, host_calls, captured_scaffold_fn, captured_eval_hooks
+  ) = model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn)
 
   def multi_tpu_eval_steps_on_single_shard():
     return training_loop.repeat(
@@ -2601,15 +2796,16 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
-  return loss, host_calls, scaffold
+  return loss, host_calls, scaffold, captured_eval_hooks.get()
 
 
 def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
   iterations_per_loop_var = _create_or_get_iterations_per_loop()
 
-  single_tpu_train_step, host_call, captured_scaffold_fn = (
-      model_fn_wrapper.convert_to_single_tpu_train_step(dequeue_fn))
+  (single_tpu_train_step, host_call, captured_scaffold_fn,
+   captured_training_hooks) = (
+       model_fn_wrapper.convert_to_single_tpu_train_step(dequeue_fn))
 
   def multi_tpu_train_steps_on_single_shard():
     return training_loop.repeat(
@@ -2624,15 +2820,14 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
-  return loss, host_call, scaffold
+  return loss, host_call, scaffold, captured_training_hooks.get()
 
 
 def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
-  num_cores = ctx.num_cores
-
-  single_tpu_predict_step, host_calls, captured_scaffold_fn = (
-      model_fn_wrapper.convert_to_single_tpu_predict_step(dequeue_fn))
+  (single_tpu_predict_step, host_calls, captured_scaffold_fn,
+   captured_predict_hooks
+  ) = model_fn_wrapper.convert_to_single_tpu_predict_step(dequeue_fn)
 
   def multi_tpu_predict_steps_on_single_shard():
 
@@ -2648,11 +2843,12 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (dummy_predict_op,) = tpu.shard(
       multi_tpu_predict_steps_on_single_shard,
       inputs=[],
-      num_shards=num_cores,
-      outputs_from_all_shards=False)
+      num_shards=ctx.num_replicas,
+      outputs_from_all_shards=False,
+      device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
-  return dummy_predict_op, host_calls, scaffold
+  return dummy_predict_op, host_calls, scaffold, captured_predict_hooks.get()
 
 
 def _wrap_computation_in_while_loop(device, op_fn):
@@ -2865,16 +3061,48 @@ class _Inputs(object):
 class _InputsWithStoppingSignals(_Inputs):
   """Inputs with `_StopSignals` inserted into the dataset."""
 
-  def __init__(self, dataset, batch_size, add_padding=False):
+  def __init__(self,
+               dataset,
+               batch_size,
+               add_padding=False,
+               num_invocations_per_step=1):
 
     assert dataset is not None
-
     user_provided_dataset = dataset.map(
         _InputsWithStoppingSignals.insert_stopping_signal(
             stop=False, batch_size=batch_size, add_padding=add_padding))
-    final_batch_dataset = dataset.take(1).map(
-        _InputsWithStoppingSignals.insert_stopping_signal(
-            stop=True, batch_size=batch_size, add_padding=add_padding))
+    if num_invocations_per_step == 1:
+      final_batch_dataset = dataset.take(1).map(
+          _InputsWithStoppingSignals.insert_stopping_signal(
+              stop=True, batch_size=batch_size, add_padding=add_padding))
+    else:
+      # We append (2 * num_invocations_per_step - 1) batches for exhausting the
+      # user_provided_dataset and stop properly.
+      # For example, if num_invocations_per_step is 2, we append 3 additional
+      # padding batches: b1, b2, b3.
+      # If user_provided_dataset contains two batches: a1, a2
+      # Step 1: [a1, a2]
+      # Step 2: [b1, b2] -> STOP
+      # If user_provided_dataset contains three batches: a1, a2, a3.
+      # The training loops:
+      # Step 1: [a1, a2]
+      # Step 2: [a3, b1]
+      # Step 3: [b2, b3] -> STOP.
+      final_batch_dataset = dataset.take(1).map(
+          _InputsWithStoppingSignals.insert_stopping_signal(
+              stop=True, batch_size=batch_size, add_padding=add_padding))
+      final_batch_dataset = final_batch_dataset.repeat(
+          2 * num_invocations_per_step - 1)
+
+      def _set_mask(data_dict):
+        signals = data_dict['signals']
+        signals['padding_mask'] = array_ops.ones_like(signals['padding_mask'])
+        data_dict['signals'] = signals
+        return data_dict
+
+      # Mask out the extra batch.
+      final_batch_dataset = final_batch_dataset.map(_set_mask)
+
     dataset = user_provided_dataset.concatenate(final_batch_dataset).prefetch(2)
 
     super(_InputsWithStoppingSignals, self).__init__(dataset=dataset)
@@ -3100,26 +3328,6 @@ class _PaddingSignals(object):
     return padding_mask
 
 
-class _SignalsHelper(object):
-  """A general helper class to handle common signals manipulation."""
-
-  def __init__(self, signals):
-    self._signal_keys = []
-    for key in sorted(iter(signals.keys())):
-      self._signal_keys.append(key)
-
-  @property
-  def num_signals(self):
-    return len(self._signal_keys)
-
-  def unflatten(self, tensor_list):
-    return dict(zip(self._signal_keys, tensor_list))
-
-  @staticmethod
-  def as_tensor_list(signals):
-    return [signals[key] for key in sorted(iter(signals.keys()))]
-
-
 def _verify_cross_hosts_transfer_size(tensor_dict, message):
   total_size = 0
   tensor_structure = {}
@@ -3149,3 +3357,47 @@ def _add_item_to_params(params, key, value):
   else:
     # Now params is Python dict.
     params[key] = value
+
+
+def export_estimator_savedmodel(estimator,
+                                export_dir_base,
+                                serving_input_receiver_fn,
+                                assets_extra=None,
+                                as_text=False,
+                                checkpoint_path=None,
+                                strip_default_attrs=False):
+  """Export `Estimator` trained model for TPU inference.
+
+  Args:
+    estimator: `Estimator` with which model has been trained.
+    export_dir_base: A string containing a directory in which to create
+      timestamped subdirectories containing exported SavedModels.
+    serving_input_receiver_fn: A function that takes no argument and
+      returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel, or `None` if no extra assets are needed.
+    as_text: whether to write the SavedModel proto in text format.
+    checkpoint_path: The checkpoint path to export.  If `None` (the default),
+      the most recent checkpoint found within the model directory is chosen.
+    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+      removed from the NodeDefs.
+
+  Returns:
+    The string path to the exported directory.
+  """
+  # `TPUEstimator` requires `tpu_config.RunConfig`, so we cannot use
+  # `estimator.config`.
+  config = tpu_config.RunConfig(model_dir=estimator.model_dir)
+  est = TPUEstimator(
+      estimator._model_fn,  # pylint: disable=protected-access
+      config=config,
+      params=estimator.params,
+      use_tpu=True,
+      train_batch_size=2048,  # Does not matter.
+      eval_batch_size=2048,  # Does not matter.
+  )
+  return est.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                               assets_extra,
+                               as_text,
+                               checkpoint_path,
+                               strip_default_attrs)

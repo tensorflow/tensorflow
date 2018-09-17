@@ -22,7 +22,7 @@ import math
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -31,15 +31,16 @@ from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import googletest
 
 
-class RandomOpsTest(XLATestCase):
+class RandomOpsTest(xla_test.XLATestCase):
   """Test cases for random-number generating operators."""
 
   def _random_types(self):
-    return set(self.numeric_types) - set(self.complex_types)
+    return set(self.numeric_types) - set(
+        self.complex_types) - {np.uint8, np.int8}
 
   def _testRngIsNotConstant(self, rng, dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = rng(dtype)
 
@@ -57,7 +58,8 @@ class RandomOpsTest(XLATestCase):
   def testRandomUniformIsNotConstant(self):
 
     def rng(dtype):
-      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=1000000)
+      dtype = dtypes.as_dtype(dtype)
+      return random_ops.random_uniform(shape=[2], dtype=dtype, maxval=dtype.max)
 
     for dtype in self._random_types():
       self._testRngIsNotConstant(rng, dtype)
@@ -73,7 +75,12 @@ class RandomOpsTest(XLATestCase):
 
   def testRandomUniformIsInRange(self):
     for dtype in self._random_types():
-      with self.test_session() as sess:
+      # TODO (b/112272078): enable bfloat16 for CPU and GPU when the bug is
+      # fixed.
+      if (self.device in ["XLA_GPU", "XLA_CPU"
+                         ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
+        continue
+      with self.cached_session() as sess:
         with self.test_scope():
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
@@ -93,9 +100,9 @@ class RandomOpsTest(XLATestCase):
     count = 10000000
     # TODO(b/34339814): implement inverse erf support for non-F32 types.
     for dtype in [dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.test_scope():
-          x = random_ops.truncated_normal(shape=[count], dtype=dtype, seed=42)
+          x = random_ops.truncated_normal(shape=[count], dtype=dtype)
         y = sess.run(x)
 
         def normal_cdf(x):
@@ -124,32 +131,35 @@ class RandomOpsTest(XLATestCase):
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
         actual_mean = np.mean(y)
-        self.assertAllClose(actual_mean, expected_mean, atol=2e-4)
+        self.assertAllClose(actual_mean, expected_mean, atol=2e-3)
 
         expected_median = mu + probit(
             (normal_cdf(alpha) + normal_cdf(beta)) / 2.) * sigma
         actual_median = np.median(y)
-        self.assertAllClose(actual_median, expected_median, atol=8e-4)
+        self.assertAllClose(actual_median, expected_median, atol=1e-2)
 
         expected_variance = sigma**2 * (1 + (
             (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
                 (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
         actual_variance = np.var(y)
-        self.assertAllClose(actual_variance, expected_variance, rtol=3e-4)
+        self.assertAllClose(actual_variance, expected_variance, rtol=2*1e-3)
 
   def testShuffle1d(self):
-    with self.test_session() as sess:
+    # TODO(b/26783907): this test requires the CPU backend to implement sort.
+    if self.device in ["XLA_CPU"]:
+      return
+    with self.cached_session() as sess:
       with self.test_scope():
-        x = math_ops.range(20)
+        x = math_ops.range(1 << 16)
         shuffle = random_ops.random_shuffle(x)
       result = sess.run(shuffle)
-      expected = range(20)
+      expected = range(1 << 16)
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.
       self.assertAllEqual(set(result), set(expected))
 
   def testShuffle2d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = array_ops.diag(math_ops.range(20))
         shuffle = random_ops.random_shuffle(x)

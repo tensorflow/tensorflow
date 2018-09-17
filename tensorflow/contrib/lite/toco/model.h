@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -62,6 +64,7 @@ enum class OperatorType : uint8 {
   kMaxPool,
   kFakeQuant,
   kMul,
+  kOneHot,
   kRandomUniform,
   kRange,
   kRank,
@@ -80,10 +83,11 @@ enum class OperatorType : uint8 {
   kResizeBilinear,
   kSin,
   kSpaceToBatchND,
-  kStack,
+  kPack,
   kBatchToSpaceND,
   kPad,
   kPadV2,
+  kReduceProd,  // Reduction product
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -105,10 +109,10 @@ enum class OperatorType : uint8 {
   kIdentity,
   kLess,
   kLessEqual,
-  kMax,      //  Reduction Max
-  kMaximum,  //  Element-wise Maximum
-  kMin,      //  Reduction Min
-  kMinimum,  //  Element-wise Minimum
+  kReduceMax,  //  Reduction Max
+  kMaximum,    //  Element-wise Maximum
+  kReduceMin,  //  Reduction Min
+  kMinimum,    //  Element-wise Minimum
   kMatMul,
   kMerge,
   kNeg,
@@ -138,6 +142,15 @@ enum class OperatorType : uint8 {
   kSparseToDense,
   kEqual,
   kNotEqual,
+  kPow,
+  kArgMin,
+  kAny,
+  kLogicalAnd,
+  kLogicalNot,
+  kLogicalOr,
+  kCTCBeamSearchDecoder,
+  kUnpack,
+  kZerosLike,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -160,15 +173,16 @@ enum class AxesOrder {
 
 // The type of the scalars in an array.
 // Note that the type does not by itself tell whether the values in the array
-// are real (are literally interpreted as real numbers) or quantized (only
-// acquire a meaning as real numbers in conjunction with QuantizationParams).
+// are non-quantized (can be accessed directly) or quantized (must be
+// interpreted in conjunction with QuantizationParams).
 //
 // In practice though:
-//   float values are always real
+//   float values are never quantized
 //   uint8 values are always quantized
-//   int32 values are either real or quantized (depending on whether
+//   int32 values are sometimes quantized (depending on whether
 //   QuantizationParams are present).
-//   other types are unused at the moment.
+//   complex values are never quantized
+//   other types are never quantized at the moment.
 //
 // kNone means that we don't know the data type yet, or that we don't care
 // because we'll be dropping the array anyway (e.g. some exotic array types
@@ -186,7 +200,8 @@ enum class ArrayDataType : uint8 {
   kUint32,
   kInt64,
   kUint64,  // 10
-  kString
+  kString,
+  kComplex64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -240,6 +255,10 @@ template <>
 struct DataTypeImpl<ArrayDataType::kString> {
   typedef string Type;
 };
+template <>
+struct DataTypeImpl<ArrayDataType::kComplex64> {
+  typedef std::complex<float> Type;
+};
 
 template <ArrayDataType A>
 using DataType = typename DataTypeImpl<A>::Type;
@@ -276,6 +295,46 @@ struct Buffer : GenericBuffer {
   int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
+};
+
+class Shape {
+ public:
+  // For Shape, we stick to half-way encapsulation for now:
+  // we hide the raw dims_ member, but expose it raw by accessors
+  // because from some brainstorming, it's not at all easy to
+  // anticipate which flavor of more hermetic encapsulation would
+  // actually buy us future-proof-ness without being needlessly
+  // cumbersome.
+  Shape() {}
+  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
+
+  void ReplaceDims(std::initializer_list<int> dim_list) {
+    dims_ = std::vector<int>(dim_list);
+  }
+
+  const std::vector<int>& dims() const { return dims_; }
+  std::vector<int>* mutable_dims() { return &dims_; }
+  const int dimensions_count() const { return dims_.size(); }
+
+  // We still have that one convenience accessor to avoid
+  // the awkward double bracket issue:  shape.dims()[i].
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurrence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
+
+  bool operator==(const Shape& comp) const {
+    return (this->dims_ == comp.dims());
+  }
+
+  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
+
+ private:
+  std::vector<int> dims_;
 };
 
 // Base class for all operator classes.
@@ -382,6 +441,28 @@ struct ConvOperator : Operator {
   int dilation_height_factor = 1;
 };
 
+// CTCBeamSearchDecoder operator:
+//
+// Inputs:
+//   inputs[0]: required: the logits.
+//   inputs[1]: required: sequence length.
+//   inputs[2]: optional: beam width.
+//   inputs[3]: optional: top paths.
+//   inputs[4]: optional: merge repeated.
+//
+//  Outputs:
+//    outputs[0]: deocoded.
+//    outputs[1]: log probability.
+//
+// TensorFlow equivalent: CTCBeamSearchDecoder
+struct CTCBeamSearchDecoderOperator : Operator {
+  CTCBeamSearchDecoderOperator()
+      : Operator(OperatorType::kCTCBeamSearchDecoder) {}
+  int beam_width;
+  int top_paths;
+  bool merge_repeated = true;
+};
+
 // Depthwise-separable convolution operator.
 //
 // Inputs:
@@ -397,6 +478,11 @@ struct DepthwiseConvOperator : Operator {
   int stride_height = 0;
   int stride_width = 0;
   int depth_multiplier = 0;
+  // A dilation_rate of 0 is invalid and this field is an optional attribute.
+  // Thus initializing it to 1 to allow default conv behavior when the
+  // attribute is not present.
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depth-to-space transform operator.
@@ -782,6 +868,7 @@ struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
   int num_bits = 8;
+  bool narrow_range = false;
 };
 
 // Element-wise division operator.
@@ -829,6 +916,8 @@ struct BatchMatMulOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct TensorFlowMatMulOperator : Operator {
   TensorFlowMatMulOperator() : Operator(OperatorType::kMatMul) {}
+  bool transpose_a = false;
+  bool transpose_b = false;
 };
 
 // Padding operator. Pads a tensor with zeros.
@@ -1144,10 +1233,12 @@ struct TensorFlowRsqrtOperator : Operator {
 // Inputs: this operator accepts any number >= 1 of inputs.
 //   inputs[i]: the i-th array to merge.
 //
-// TensorFlow equivalent: Stack or Pack
-struct StackOperator : Operator {
-  StackOperator() : Operator(OperatorType::kStack) {}
+// TensorFlow equivalent: Pack
+struct PackOperator : Operator {
+  PackOperator() : Operator(OperatorType::kPack) {}
+  int values_count;
   int axis = 0;
+  ArrayDataType dtype = ArrayDataType::kNone;
 };
 
 // Shape operator. Extracts the shape of the tensor.
@@ -1217,6 +1308,19 @@ struct SubOperator : Operator {
 // TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kSum) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
+};
+
+// Prod reduction: computes the product of all of entries across the axes.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Prod
+struct TensorFlowProdOperator : Operator {
+  TensorFlowProdOperator() : Operator(OperatorType::kReduceProd) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1376,29 +1480,27 @@ struct TensorFlowNotEqualOperator : Operator {
   TensorFlowNotEqualOperator() : Operator(OperatorType::kNotEqual) {}
 };
 
-// Global max reduction: computes the max of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Max reduction: computes the max of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Max --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Max
 struct TensorFlowMaxOperator : Operator {
-  TensorFlowMaxOperator() : Operator(OperatorType::kMax) {}
+  TensorFlowMaxOperator() : Operator(OperatorType::kReduceMax) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
-// Global min reduction: computes the min of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Min reduction: computes the min of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Min --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Min
 struct TensorFlowMinOperator : Operator {
-  TensorFlowMinOperator() : Operator(OperatorType::kMin) {}
+  TensorFlowMinOperator() : Operator(OperatorType::kReduceMin) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1437,8 +1539,13 @@ struct TensorFlowUnsupportedOperator : Operator {
   string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
+  // A boolean indicating if the unsupported op output should allow float values
+  // in quantized mode.
+  bool support_output_type_float_in_quantized_op = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
+  // Output shapes.
+  std::vector<Shape> output_shapes;
 };
 
 // Softmax activation function.
@@ -1499,11 +1606,15 @@ struct FloorOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the params array
 //   inputs[1]: required: the indices to gather
+//   inputs[2]: optional: axis
 //
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int axis = 0;
+  // Axis is populated explicitly or implicitly from the axis input by
+  // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
+  // be resolved.
+  absl::optional<int> axis;
   int input_rank = 0;
 };
 
@@ -1515,6 +1626,17 @@ struct GatherOperator : Operator {
 // TensorFlow equivalent: ArgMax
 struct ArgMaxOperator : Operator {
   ArgMaxOperator() : Operator(OperatorType::kArgMax) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
+};
+
+// ArgMin operator. It returns the index of the minimum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMin
+struct ArgMinOperator : Operator {
+  ArgMinOperator() : Operator(OperatorType::kArgMin) {}
   ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 
@@ -1637,6 +1759,107 @@ struct SparseToDenseOperator : Operator {
   bool validate_indices;
 };
 
+// Pow operator:
+//
+// Inputs:
+// Inputs[0]: required: A tensor.
+// Inputs[1]: required: A tensor.
+//
+// TensorFlow equivalent: Pow.
+struct PowOperator : Operator {
+  PowOperator() : Operator(OperatorType::kPow) {}
+};
+
+// Any operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.reduce_any.
+struct TensorFlowAnyOperator : Operator {
+  TensorFlowAnyOperator() : Operator(OperatorType::kAny) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
+};
+
+// LogicalAnd operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+// Inputs[1]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_and.
+struct LogicalAndOperator : Operator {
+  LogicalAndOperator() : Operator(OperatorType::kLogicalAnd) {}
+};
+
+// LogicalNot operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_not.
+struct LogicalNotOperator : Operator {
+  LogicalNotOperator() : Operator(OperatorType::kLogicalNot) {}
+};
+
+// OneHot operator:
+//
+// Inputs:
+// Inputs[0]: required: indices.
+// Inputs[1]: required: depth.
+// Inputs[2]: required: on_value.
+// Inputs[3]: required: off_value.
+//
+// TensorFlow equivalent: OneHot.
+struct OneHotOperator : Operator {
+  enum Inputs {
+    INDICES_INPUT = 0,
+    DEPTH_INPUT = 1,
+    ON_VALUE_INPUT = 2,
+    OFF_VALUE_INPUT = 3,
+  };
+
+  OneHotOperator() : Operator(OperatorType::kOneHot) {}
+  int axis = -1;
+};
+
+// LogicalOr operator:
+//
+// Inputs:
+// Inputs[0]: required: A Bool tensor.
+// Inputs[1]: required: A Bool tensor.
+//
+// TensorFlow equivalent: LogicalOr.
+struct LogicalOrOperator : Operator {
+  LogicalOrOperator() : Operator(OperatorType::kLogicalOr) {}
+};
+
+// Unpack operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.unstack.
+struct UnpackOperator : Operator {
+  UnpackOperator() : Operator(OperatorType::kUnpack) {}
+  int num;
+  int axis;
+  ArrayDataType dtype = ArrayDataType::kNone;
+};
+
+// ZerosLike operator:
+//
+// Inputs:
+// inputs[0]: required: the input array
+//
+// TensorFlow equivalent: tf.zeros_like
+struct TensorFlowZerosLikeOperator : Operator {
+  TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -1649,46 +1872,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-class Shape {
- public:
-  // For Shape, we stick to half-way encapsulation for now:
-  // we hide the raw dims_ member, but expose it raw by accessors
-  // because from some brainstorming, it's not at all easy to
-  // anticipate which flavor of more hermetic encapsulation would
-  // actually buy us future-proof-ness without being needlessly
-  // cumbersome.
-  Shape() {}
-  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
-
-  void ReplaceDims(std::initializer_list<int> dim_list) {
-    dims_ = std::vector<int>(dim_list);
-  }
-
-  const std::vector<int>& dims() const { return dims_; }
-  std::vector<int>* mutable_dims() { return &dims_; }
-  const int dimensions_count() const { return dims_.size(); }
-
-  // We still have that one convenience accessor to avoid
-  // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const {
-    // Always check for out-of-bounds accesses, even in optimized builds where
-    // standard assertions are disabled. Out-of-bounds access here is a common
-    // occurrence.
-    CHECK_GE(i, 0);
-    CHECK_GT(dims_.size(), i);
-    return dims_[i];
-  }
-
-  bool operator==(const Shape& comp) const {
-    return (this->dims_ == comp.dims());
-  }
-
-  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
-
- private:
-  std::vector<int> dims_;
-};
 
 // Array represents an array (either a constant parameter array or an
 // activations array) in a Model.
@@ -1821,6 +2004,40 @@ struct Array {
   // If this is non-null, then these quantization parameters are to be used
   // to assign a meaning as real numbers to the elements of this array.
   std::unique_ptr<QuantizationParams> quantization_params;
+  // narrow_range is a detail of how toco handles FakeQuant operators with
+  // narrow_range, see
+  // https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars
+  //
+  // For more context about what that is useful for, see the big comment in
+  // graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc
+  //
+  // The narrow_range flag applies only to quantized arrays, and changes
+  // their quantization in the following way when it is set to 'true':
+  // 1. The computation of {zero_point, scale} from {min, max} needs to be
+  //    amended so that the real min value will get quantized to
+  //    (min_quantized_value + 1) instead of just (min_quantized_value).
+  //    E.g. for uint8 quantization, the real min value should get quantized to
+  //    the uint8 value 1, not 0.
+  // 2. Quantized values should get clamped to the interval
+  //    [min_quantized_value + 1, max_value]. Equivalently, the
+  //    min_quantized_value should get nudged to (min_quantized_value + 1).
+  // The reason why 1. does not imply 2. is that real values may not belong to
+  // the stated [min, max] interval. Concretely, weights recorded at the last
+  // learning step may not fall in the [min, max] interval recorded over
+  // previous learning steps, as the values evolve across learning steps.
+  //
+  // Rationale why this is directly a field on Array:
+  // - This can't be just a field on FakeQuantOperator, because
+  //   FakeQuantOperators are gone (DropFakeQuant) before we get to using that
+  //   information (Quantize). We need a place to store that bit in the interim.
+  // - This can't be in QuantizationParams because we need to record this
+  //   ahead of quantization, and QuantizationParams are only created during
+  //   quantization.
+  // - This could be in MinMax, but that would be an abuse of what MinMax is
+  //   about, and would break existing code that assumes that a MinMax is just
+  //   a min and a max. Unlike MinMax which is agnostic as to the quantized
+  //   data type, narrow_range refers to values in the quantized data type.
+  bool narrow_range = false;
 
  private:
   std::unique_ptr<Shape> array_shape;
@@ -1886,7 +2103,7 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
-  // Arithmatic operations performed in the model.
+  // Arithmetic operations performed in the model.
   int64 ops_count = 0;
 
  private:

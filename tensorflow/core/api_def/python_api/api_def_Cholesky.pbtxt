@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "cholesky"
-    deprecation_message: "tf.cholesky is deprecated, please use tf.linalg.cholesky instead."
+    deprecated: true
   }
 }

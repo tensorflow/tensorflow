@@ -35,7 +35,7 @@ class ShuffleAndRepeatTest(test.TestCase):
   def _gen_outputs(self, ds_fn, num_outputs, verify_exhausted=True):
     get_next = ds_fn().make_one_shot_iterator().get_next()
     outputs = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(num_outputs):
         outputs.append(sess.run(get_next))
       if verify_exhausted:
@@ -106,7 +106,7 @@ class ShuffleAndRepeatTest(test.TestCase):
       ds = dataset_ops.Dataset.range(20).apply(
           shuffle_ops.shuffle_and_repeat(buffer_size=21))
       get_next_op = ds.make_one_shot_iterator().get_next()
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(get_next_op)
 
 

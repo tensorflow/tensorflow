@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -37,7 +37,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 
 
-class VariableOpsTest(XLATestCase):
+class VariableOpsTest(xla_test.XLATestCase):
   """Test cases for resource variable operators."""
 
   def testOneWriteOneOutput(self):
@@ -435,7 +435,7 @@ class StridedSliceAssignChecker(object):
       self.test.assertAllEqual(val, valnp)
 
 
-class SliceAssignTest(XLATestCase):
+class SliceAssignTest(xla_test.XLATestCase):
 
   def testSliceAssign(self):
     for dtype in self.numeric_types:

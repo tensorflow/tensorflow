@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_GEMM_SUPPORT_H_
 
 #include "public/gemmlowp.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
 namespace gemm_support {
@@ -44,9 +44,6 @@ void IncrementUsageCounter(TfLiteContext* context);
 // Let the framework know that the op stopped using the GemmContext stored in
 // 'context'. If there are no more usages the GemmContext will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
-
-// Set the number of threads that can be used by gemmlowp.
-void SetNumThreads(TfLiteContext* context, int num_threads);
 
 }  // namespace gemm_support
 }  // namespace tflite

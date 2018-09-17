@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "reshape"
-    deprecation_message: "tf.reshape is deprecated, please use tf.manip.reshape instead."
+    deprecated: true
   }
 }

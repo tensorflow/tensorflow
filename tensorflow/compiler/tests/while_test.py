@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,7 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class WhileTest(XLATestCase):
+class WhileTest(xla_test.XLATestCase):
 
   def testSingletonLoopHandrolled(self):
     # Define a function for the loop body
@@ -43,7 +43,7 @@ class WhileTest(XLATestCase):
     def loop_cond(step):
       return step < 10
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       with self.test_scope():
         loop_outputs = xla.while_loop([init_index], loop_cond, loop_body)
@@ -65,7 +65,7 @@ class WhileTest(XLATestCase):
       del rsum
       return step < 10
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       init_sum = array_ops.placeholder(dtypes.float32, [])
       with self.test_scope():
@@ -91,7 +91,7 @@ class WhileTest(XLATestCase):
       del rsum
       return step < 10
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       init_sum = array_ops.placeholder(dtypes.complex64, [])
       with self.test_scope():
@@ -117,7 +117,7 @@ class WhileTest(XLATestCase):
       del x
       return step < 10
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       init_index = array_ops.placeholder(dtypes.int32, [])
       with self.test_scope():
         loop_outputs = xla.while_loop([init_index, 42], loop_cond, loop_body)

@@ -32,3 +32,4 @@ class PredictionKeys(object):
   LOGITS = 'logits'
   PREDICTIONS = 'predictions'
   PROBABILITIES = 'probabilities'
+  TOP_K = 'top_k'

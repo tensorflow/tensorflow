@@ -54,6 +54,7 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
                                        DEVICE_CPU_XLA_JIT, options, name_prefix,
                                        registration,
                                        /*transfer_as_literal=*/false,
+                                       /*use_multiple_streams=*/false,
                                        /*shape_representation_fn=*/{},
                                        /*padded_shape_fn=*/{}, &device));
   devices->push_back(device.release());
@@ -64,8 +65,9 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 7> kAllXlaCpuTypes = {
-    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 9> kAllXlaCpuTypes = {
+    {DT_UINT8, DT_INT8, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_COMPLEX64, DT_BOOL}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_CPU, XlaLocalLaunchOp, kAllXlaCpuTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_CPU, kAllXlaCpuTypes);

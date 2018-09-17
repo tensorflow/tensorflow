@@ -14,29 +14,30 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 
-using tensorflow::strings::Appendf;
+using absl::StrAppend;
+using absl::StrAppendFormat;
+using absl::StrCat;
+using absl::StrFormat;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
-using tensorflow::strings::Printf;
-using tensorflow::strings::StrAppend;
-using tensorflow::strings::StrCat;
 
 string HumanReadableProfileBuilder::ToString() const {
   string s;
 
-  Appendf(&s, "Execution profile for %s: (%s @ f_nom)\n",
-          computation_name_.c_str(),
-          HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)).c_str());
+  StrAppendFormat(&s, "Execution profile for %s: (%s @ f_nom)\n",
+                  computation_name_,
+                  HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)));
 
-  auto print_op = [&](const OpInfo& op) {
+  int64 cumulative_cycles = 0;
+  auto print_op = [&](const OpInfo& op, bool is_total = false) {
     // Skip ops with 0 optimal seconds and 0 actual cycles.  These are ops that
     // were expected to be free and are actually free -- things like (on most
     // backends) kParameter or kConstant HLOs.  There's no need to clutter the
@@ -55,31 +56,45 @@ string HumanReadableProfileBuilder::ToString() const {
       if (op.bytes_accessed > op.cycles) {
         bytes_per_cycle = StrCat(HumanReadableNumBytes(bpc), "/cycle");
       } else {
-        bytes_per_cycle = Printf("%.3fB/cycle", bpc);
+        bytes_per_cycle = StrFormat("%.3fB/cycle", bpc);
       }
     }
 
+    double cumulative_cycles_percent = 0;
     double cycles_percent = 0;
+    if (!is_total) {
+      cumulative_cycles += op.cycles;
+    }
     if (total_cycles_ > 0) {
       cycles_percent = op.cycles / static_cast<double>(total_cycles_) * 100;
+      cumulative_cycles_percent =
+          cumulative_cycles / static_cast<double>(total_cycles_) * 100;
+    }
+
+    string cycles_percent_str;
+    if (is_total) {
+      // Leaving off the two trailing decimal points of "100.%" lets us save two
+      // columns in the output.
+      cycles_percent_str = "100.% 100Σ";
+    } else {
+      cycles_percent_str = StrFormat("%5.2f%% %2.0fΣ", cycles_percent,
+                                     cumulative_cycles_percent);
     }
 
     double nsecs = op.cycles / clock_rate_ghz_;
-    Appendf(&s,
-            "%15lld cycles (%6.2f%%) :: %12.1f usec %22s :: %18s "
-            ":: %18s :: %14s :: %16s :: %s\n",
-            op.cycles, cycles_percent, CyclesToMicroseconds(op.cycles),
-            op.optimal_seconds < 0
-                ? ""
-                : Printf("(%12.1f optimal)", op.optimal_seconds * 1e6).c_str(),
-            op.flop_count <= 0
-                ? ""
-                : HumanReadableNumFlops(op.flop_count, nsecs).c_str(),
-            op.transcendental_count <= 0 ? ""
-                                         : HumanReadableNumTranscendentalOps(
-                                               op.transcendental_count, nsecs)
-                                               .c_str(),
-            bytes_per_sec.c_str(), bytes_per_cycle.c_str(), op.name.c_str());
+    StrAppendFormat(
+        &s,
+        "%15d cycles (%s) :: %12.1f usec %22s :: %18s :: %18s :: %14s :: "
+        "%16s :: %s\n",
+        op.cycles, cycles_percent_str, CyclesToMicroseconds(op.cycles),
+        op.optimal_seconds < 0
+            ? ""
+            : StrFormat("(%12.1f optimal)", op.optimal_seconds * 1e6),
+        op.flop_count <= 0 ? "" : HumanReadableNumFlops(op.flop_count, nsecs),
+        op.transcendental_count <= 0
+            ? ""
+            : HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs),
+        bytes_per_sec, bytes_per_cycle, op.name);
   };
 
   float optimal_seconds_sum = 0.0;
@@ -98,7 +113,8 @@ string HumanReadableProfileBuilder::ToString() const {
   VLOG(1) << "Total floating point ops: " << total_flops;
 
   print_op({"[total]", "[total]", /*category=*/"", total_cycles_, total_flops,
-            total_transcendentals, total_bytes, optimal_seconds_sum});
+            total_transcendentals, total_bytes, optimal_seconds_sum},
+           /*is_total=*/true);
 
   // Sort ops in decreasing order of cycles, and print them.
   std::vector<OpInfo> sorted_ops(op_infos_);

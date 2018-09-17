@@ -33,9 +33,7 @@ namespace xla {
 class WhileLoopSimplifier : public HloPassInterface {
  public:
   ~WhileLoopSimplifier() override {}
-  tensorflow::StringPiece name() const override {
-    return "simplify-while-loops";
-  }
+  absl::string_view name() const override { return "simplify-while-loops"; }
   StatusOr<bool> Run(HloModule* module) override;
 };
 

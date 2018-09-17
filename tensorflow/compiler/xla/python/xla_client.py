@@ -99,12 +99,29 @@ _UNARY_OPS = [
     'Cos',
     'Sin',
     'Tanh',
-    'SqrtF32',
-    'SquareF32',
     'IsFinite',
-    'ReciprocalF32',
+    'Sqrt',
+    'Rsqrt',
+    'Square',
+    'Reciprocal',
     'Neg',
-    'Sort',
+    'Erf',
+    'Erfc',
+    'ErfInv',
+    'Lgamma',
+    'Digamma',
+    'Acos',
+    'Asin',
+    'Atan',
+    'Tan',
+    'Acosh',
+    'Asinh',
+    'Atanh',
+    'Cosh',
+    'Sinh',
+    'Real',
+    'Imag',
+    'Conj',
 ]
 
 _BINARY_OPS = [
@@ -125,6 +142,11 @@ _BINARY_OPS = [
     'Or',
     'Xor',
     'Pow',
+    'ShiftLeft',
+    'ShiftRightArithmetic',
+    'ShiftRightLogical',
+    'Atan2',
+    'Complex',
 ]
 
 
@@ -461,14 +483,16 @@ class LocalComputation(object):
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
 
+    result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
-      result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
       result_shape = result_shape.map_leaves(layout_fn)
-      compile_options = compile_options or CompileOptions()
-      compile_options.result_shape = result_shape
+
+    compile_options = compile_options or CompileOptions()
+    compile_options.result_shape = result_shape
     return LocalComputation(
         self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
@@ -699,6 +723,18 @@ class ComputationBuilder(object):
       A LocalOp representing the added conversion op.
     """
     return self._client.ConvertElementType(operand, new_element_type)
+
+  def BitcastConvertType(self, operand, new_element_type):
+    """Enqueues a bitcast type conversion operation onto the computation.
+
+    Args:
+      operand: the operand to convert.
+      new_element_type: the target primitive type.
+
+    Returns:
+      A LocalOp representing the added conversion op.
+    """
+    return self._client.BitcastConvertType(operand, new_element_type)
 
   def GetShape(self, operand):
     return _wrap_shape(self._client.GetShape(operand))
@@ -1180,6 +1216,14 @@ class ComputationBuilder(object):
     return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                            lhs_dilation, rhs_dilation,
                                            dimension_numbers)
+
+  def Sort(self, operand, dimension=-1):
+    """Enqueues a sort operation onto the computation."""
+    return self._client.Sort(operand, dimension)
+
+  def SortKeyVal(self, keys, values, dimension=-1):
+    """Enqueues a key-value sort operation onto the computation."""
+    return self._client.SortKeyVal(keys, values, dimension)
 
 
 def _forward_methods_to_local_builder():

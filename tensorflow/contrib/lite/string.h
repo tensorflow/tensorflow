@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Abstract string. We don't want even absl at this level.
-#ifndef _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_H_
-#define _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_STRING_H_
+#define TENSORFLOW_CONTRIB_LITE_STRING_H_
 
 #include <string>
 
@@ -26,4 +26,4 @@ using std::string;
 
 }  // namespace tflite
 
-#endif  // _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_STRING_H_

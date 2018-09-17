@@ -91,7 +91,7 @@ class AutoShardDatasetTest(test.TestCase):
   def _verifySimpleShardingOutput(self, dataset, record_fn):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
           self.assertAllEqual(record_fn(r, f), sess.run(next_element))
@@ -150,7 +150,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual, expected = [], []
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
@@ -182,7 +182,7 @@ class AutoShardDatasetTest(test.TestCase):
     # Verify output.
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual = []
       num_iterations = (self._num_files * self._num_records * num_epochs) // (
           self._num_shards * batch_size)
@@ -218,7 +218,7 @@ class AutoShardDatasetTest(test.TestCase):
 
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
           self.assertAllEqual(self._record(r, f), sess.run(next_element))

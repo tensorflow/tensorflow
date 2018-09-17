@@ -21,8 +21,10 @@ from absl.testing import parameterized
 import numpy as np
 import scipy.sparse
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -117,7 +119,7 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
 
   def test_learning_phase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       keras.backend.set_learning_phase(1)
       self.assertEqual(keras.backend.learning_phase(), 1)
       with self.assertRaises(ValueError):
@@ -131,7 +133,7 @@ class BackendUtilsTest(test.TestCase):
       sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_scope(self):
-    with self.test_session():
+    with self.cached_session():
       initial_learning_phase = keras.backend.learning_phase()
       with keras.backend.learning_phase_scope(1) as lp:
         self.assertEqual(lp, 1)
@@ -154,7 +156,7 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.int_shape(x), (None, 4))
 
   def test_in_train_phase(self):
-    with self.test_session():
+    with self.cached_session():
       y1 = keras.backend.variable(1)
       y2 = keras.backend.variable(2)
       y = keras.backend.in_train_phase(y1, y2)
@@ -192,7 +194,7 @@ class BackendUtilsTest(test.TestCase):
       self.assertEqual(y.op.name[:12], 'StopGradient')
 
   def test_function_tf_feed_symbols(self):
-    with self.test_session():
+    with self.cached_session():
       # Test feeding a resource variable to `function`.
       x1 = keras.backend.placeholder(shape=())
       x2 = keras.backend.placeholder(shape=())
@@ -230,7 +232,7 @@ class BackendUtilsTest(test.TestCase):
     # keras.backend.function() these do not have control dependency on `outputs`
     # so they can run in parallel. Also they should not contribute to output of
     # keras.backend.function().
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.variable(0.)
       y = keras.backend.variable(0.)
       x_placeholder = keras.backend.placeholder(shape=())
@@ -251,7 +253,7 @@ class BackendUtilsTest(test.TestCase):
     # constructor but we can modify the values in the dictionary. Through
     # this feed_dict we can provide additional substitutions besides Keras
     # inputs.
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.variable(0.)
       y = keras.backend.variable(0.)
       x_placeholder = keras.backend.placeholder(shape=())
@@ -276,43 +278,96 @@ class BackendUtilsTest(test.TestCase):
       self.assertEqual(
           keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
 
+  def test_function_tf_run_options_with_run_metadata(self):
+    with self.cached_session():
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      # enable run_options.
+      f = keras.backend.function(inputs=[x_placeholder, y_placeholder],
+                                 outputs=[x_placeholder + y_placeholder],
+                                 options=run_options,
+                                 run_metadata=run_metadata)
+      output = f([10., 20.])
+      self.assertEqual(output, [30.])
+      self.assertGreater(len(run_metadata.partition_graphs), 0)
+      # disable run_options.
+      f1 = keras.backend.function(inputs=[x_placeholder, y_placeholder],
+                                  outputs=[x_placeholder + y_placeholder],
+                                  run_metadata=run_metadata)
+      output1 = f1([10., 20.])
+      self.assertEqual(output1, [30.])
+      self.assertEqual(len(run_metadata.partition_graphs), 0)
+
+  def test_function_fetch_callbacks(self):
+
+    class CallbackStub(object):
+
+      def __init__(self):
+        self.times_called = 0
+        self.callback_result = 0
+
+      def _fetch_callback(self, result):
+        self.times_called += 1
+        self.callback_result = result
+
+    with self.cached_session():
+      callback = CallbackStub()
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      callback_op = x_placeholder * y_placeholder
+
+      f = keras.backend.function(
+          inputs=[x_placeholder, y_placeholder],
+          outputs=[x_placeholder + y_placeholder])
+      f.fetches.append(callback_op)
+      f.fetch_callbacks[callback_op] = callback._fetch_callback
+
+      _ = f([10., 20.])
+
+      self.assertEqual(callback.times_called, 1)
+      self.assertEqual(callback.callback_result, 200)
+
 
 class BackendVariableTest(test.TestCase):
 
   def test_zeros(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.zeros((3, 4))
       val = keras.backend.eval(x)
       self.assertAllClose(val, np.zeros((3, 4)))
 
   def test_ones(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.ones((3, 4))
       val = keras.backend.eval(x)
       self.assertAllClose(val, np.ones((3, 4)))
 
   def test_eye(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.eye(4)
       val = keras.backend.eval(x)
       self.assertAllClose(val, np.eye(4))
 
   def test_zeros_like(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.zeros((3, 4))
       y = keras.backend.zeros_like(x)
       val = keras.backend.eval(y)
       self.assertAllClose(val, np.zeros((3, 4)))
 
   def test_ones_like(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.zeros((3, 4))
       y = keras.backend.ones_like(x)
       val = keras.backend.eval(y)
       self.assertAllClose(val, np.ones((3, 4)))
 
   def test_random_uniform_variable(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.random_uniform_variable((30, 20), low=1, high=2, seed=0)
       val = keras.backend.eval(x)
       self.assertAllClose(val.mean(), 1.5, atol=1e-1)
@@ -320,7 +375,7 @@ class BackendVariableTest(test.TestCase):
       self.assertAllClose(val.min(), 1., atol=1e-1)
 
   def test_random_normal_variable(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.random_normal_variable((30, 20), 1., 0.5,
                                                seed=0)
       val = keras.backend.eval(x)
@@ -328,20 +383,20 @@ class BackendVariableTest(test.TestCase):
       self.assertAllClose(val.std(), 0.5, atol=1e-1)
 
   def test_count_params(self):
-    with self.test_session():
+    with self.cached_session():
       x = keras.backend.zeros((4, 5))
       val = keras.backend.count_params(x)
       self.assertAllClose(val, 20)
 
   def test_constant(self):
-    with self.test_session():
+    with self.cached_session():
       ref_val = np.random.random((3, 4)).astype('float32')
       x = keras.backend.constant(ref_val)
       val = keras.backend.eval(x)
       self.assertAllClose(val, ref_val)
 
   def test_sparse_variable(self):
-    with self.test_session():
+    with self.cached_session():
       val = scipy.sparse.eye(10)
       x = keras.backend.variable(val)
       self.assertTrue(isinstance(x, sparse_tensor.SparseTensor))
@@ -390,7 +445,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.argmax, np.argmax),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.test_session():
+      with self.cached_session():
         compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
                                          keras_kwargs={'axis': 1},
                                          np_kwargs={'axis': 1})
@@ -416,7 +471,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.exp, np.exp),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.test_session():
+      with self.cached_session():
         compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7))
 
     ops_to_test = [
@@ -424,19 +479,19 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.log, np.log),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.test_session():
+      with self.cached_session():
         compare_single_input_op_to_numpy(keras_op, np_op,
                                          input_shape=(4, 7),
                                          negative_values=False)
 
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(
           keras.backend.clip, np.clip,
           input_shape=(6, 4),
           keras_kwargs={'min_value': 0.1, 'max_value': 2.4},
           np_kwargs={'a_min': 0.1, 'a_max': 1.4})
 
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(
           keras.backend.pow, np.power,
           input_shape=(6, 4),
@@ -455,16 +510,77 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.minimum, np.minimum),
     ]
     for keras_op, np_op in ops_to_test:
-      with self.test_session():
+      with self.cached_session():
         compare_two_inputs_op_to_numpy(keras_op, np_op,
                                        input_shape_a=(4, 7),
                                        input_shape_b=(4, 7))
+
+  def test_relu(self):
+    x = ops.convert_to_tensor([[-4, 0], [2, 7]], 'float32')
+    with self.cached_session():
+      # standard relu
+      relu_op = keras.backend.relu(x)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+
+      # alpha (leaky relu used)
+      relu_op = keras.backend.relu(x, alpha=0.5)
+      self.assertTrue('LeakyRelu' in relu_op.name)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
+
+      # max_value < some elements
+      relu_op = keras.backend.relu(x, max_value=5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 5]])
+
+      # nn.relu6 used
+      relu_op = keras.backend.relu(x, max_value=6)
+      self.assertTrue('Relu6' in relu_op.name)  # uses tf.nn.relu6
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 6]])
+
+      # max value > 6
+      relu_op = keras.backend.relu(x, max_value=10)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+
+      # max value is float
+      relu_op = keras.backend.relu(x, max_value=4.3)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 4.3]])
+
+      # max value == 0
+      relu_op = keras.backend.relu(x, max_value=0)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 0]])
+
+      # alpha and max_value
+      relu_op = keras.backend.relu(x, alpha=0.25, max_value=3)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-1, 0], [2, 3]])
+
+      # threshold
+      relu_op = keras.backend.relu(x, threshold=3)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 7]])
+
+      # threshold is float
+      relu_op = keras.backend.relu(x, threshold=1.5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
+
+      # threshold is negative
+      relu_op = keras.backend.relu(x, threshold=-5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-4, 0], [2, 7]])
+
+      # threshold and max_value
+      relu_op = keras.backend.relu(x, threshold=3, max_value=5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [0, 5]])
+
+      # threshold and alpha
+      relu_op = keras.backend.relu(x, alpha=0.25, threshold=4)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 7]])
+
+      # threshold, alpha, and max_value
+      relu_op = keras.backend.relu(x, alpha=0.25, threshold=4, max_value=5)
+      self.assertAllClose(keras.backend.eval(relu_op), [[-2, -1], [-0.5, 5]])
 
 
 class BackendShapeOpsTest(test.TestCase):
 
   def test_reshape(self):
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(keras.backend.reshape, np.reshape,
                                        input_shape=(4, 7),
                                        keras_args=[(2, 14)],
@@ -477,7 +593,7 @@ class BackendShapeOpsTest(test.TestCase):
     self.assertEqual(y.get_shape().as_list(), [1, 2, 5])
 
   def test_permute_dimensions(self):
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(keras.backend.permute_dimensions,
                                        np.transpose,
                                        input_shape=(4, 7),
@@ -556,14 +672,14 @@ class BackendShapeOpsTest(test.TestCase):
     self.assertEqual(y.get_shape().as_list(), [1, 2, 3])
 
   def test_flatten(self):
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(keras.backend.flatten,
                                        np.reshape,
                                        input_shape=(4, 7, 6),
                                        np_args=[(4 * 7 * 6,)])
 
   def test_batch_flatten(self):
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(keras.backend.batch_flatten,
                                        np.reshape,
                                        input_shape=(4, 7, 6),
@@ -578,7 +694,7 @@ class BackendShapeOpsTest(test.TestCase):
       y[:, padding[0]:-padding[1], :] = x
       return y
 
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(keras.backend.temporal_padding,
                                        ref_op,
                                        input_shape=(4, 7, 6),
@@ -601,7 +717,7 @@ class BackendShapeOpsTest(test.TestCase):
         y[:, :, padding[0][0]:-padding[0][1], padding[1][0]:-padding[1][1]] = x
       return y
 
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(
           keras.backend.spatial_2d_padding,
           ref_op,
@@ -644,7 +760,7 @@ class BackendShapeOpsTest(test.TestCase):
           padding[2][0]:-padding[2][1]] = x
       return y
 
-    with self.test_session():
+    with self.cached_session():
       compare_single_input_op_to_numpy(
           keras.backend.spatial_3d_padding,
           ref_op,
@@ -666,7 +782,7 @@ class BackendShapeOpsTest(test.TestCase):
 class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
   def test_bias_add(self):
-    with self.test_session():
+    with self.cached_session():
       keras_op = keras.backend.bias_add
       np_op = np.add
       compare_two_inputs_op_to_numpy(keras_op, np_op,
@@ -692,7 +808,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         keras.backend.bias_add(x, b, data_format='unknown')
 
   def test_bias_add_channels_first(self):
-    with self.test_session():
+    with self.cached_session():
+
       def keras_op(x, b):
         return keras.backend.bias_add(x, b, data_format='channels_first')
 
@@ -868,7 +985,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                              strides,
                                              output_shape,
                                              'channels_last')
-          with self.test_session():
+          with self.cached_session():
             conv_cf = keras.backend.eval(conv_cf)
             conv_cl = keras.backend.eval(conv_cl)
 
@@ -918,7 +1035,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                   output_shape,
                                                   'channels_last')
 
-    with self.test_session():
+    with self.cached_session():
       local_conv = keras.backend.eval(local_conv)
       local_conv_dim = keras.backend.eval(local_conv_dim)
 
@@ -1076,8 +1193,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         {'go_backwards': False, 'mask': mask},
         {'go_backwards': False, 'mask': mask, 'unroll': True},
     ]
-    with self.test_session():
-      for (i, kwargs) in enumerate(kwargs_list):
+    with self.cached_session():
+      for i, kwargs in enumerate(kwargs_list):
         last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
                                                              initial_states,
                                                              **kwargs)
@@ -1124,6 +1241,115 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       for b_s, b_u_s in zip(state_list[2], state_list[3]):
         self.assertAllClose(b_s, b_u_s, atol=1e-04)
 
+  def test_rnn_additional_states(self):
+    # implement a simple RNN
+    num_samples = 4
+    input_dim = 5
+    output_dim = 3
+    timesteps = 6
+
+    input_val = np.random.random(
+        (num_samples, timesteps, input_dim)).astype(np.float32)
+    init_state_val = np.random.random(
+        (num_samples, output_dim)).astype(np.float32)
+    w_i_val = np.random.random((input_dim, output_dim)).astype(np.float32)
+    w_o_val = np.random.random((output_dim, output_dim)).astype(np.float32)
+    np_mask = np.random.randint(2, size=(num_samples, timesteps))
+
+    def rnn_step_fn():
+      w_i = keras.backend.variable(w_i_val)
+      w_o = keras.backend.variable(w_o_val)
+
+      def step_function(x, states):
+        assert len(states) == 2
+        prev_output = states[0]
+        output = keras.backend.dot(x, w_i) + keras.backend.dot(prev_output, w_o)
+        return output, [output,
+                        keras.backend.concatenate([output, output], axis=-1)]
+
+      return step_function
+
+    # test default setup
+    last_output_list = [[], [], [], [], [], []]
+    outputs_list = [[], [], [], [], [], []]
+    state_list = [[], [], [], [], [], []]
+    additional_state_list = [[], [], [], [], [], []]
+
+    rnn_fn = rnn_step_fn()
+    inputs = keras.backend.variable(input_val)
+    initial_states = [keras.backend.variable(init_state_val),
+                      np.concatenate([init_state_val, init_state_val], axis=-1)]
+    mask = keras.backend.variable(np_mask)
+
+    kwargs_list = [
+        {'go_backwards': False, 'mask': None},
+        {'go_backwards': False, 'mask': None, 'unroll': True},
+        {'go_backwards': True, 'mask': None},
+        {'go_backwards': True, 'mask': None, 'unroll': True},
+        {'go_backwards': False, 'mask': mask},
+        {'go_backwards': False, 'mask': mask, 'unroll': True},
+    ]
+    with self.cached_session():
+      for i, kwargs in enumerate(kwargs_list):
+        last_output, outputs, new_states = keras.backend.rnn(rnn_fn, inputs,
+                                                             initial_states,
+                                                             **kwargs)
+        # check static shape inference
+        self.assertEqual(last_output.get_shape().as_list(),
+                         [num_samples, output_dim])
+        self.assertEqual(outputs.get_shape().as_list(),
+                         [num_samples, timesteps, output_dim])
+        # for state in new_states:
+        #   self.assertEquals(state.get_shape().as_list(),
+        #                     [num_samples, output_dim])
+        self.assertEqual(new_states[0].get_shape().as_list(),
+                         [num_samples, output_dim])
+        self.assertEqual(new_states[1].get_shape().as_list(),
+                         [num_samples, 2 * output_dim])
+
+        last_output_list[i].append(keras.backend.eval(last_output))
+        outputs_list[i].append(keras.backend.eval(outputs))
+        self.assertEqual(len(new_states), 2)
+        state_list[i].append(keras.backend.eval(new_states[0]))
+        additional_state_list[i].append(keras.backend.eval(new_states[1]))
+
+      def assert_list_pairwise(z_list, atol=1e-05):
+        for (z1, z2) in zip(z_list[1:], z_list[:-1]):
+          self.assertAllClose(z1, z2, atol=atol)
+
+      assert_list_pairwise(last_output_list[0], atol=1e-04)
+      assert_list_pairwise(outputs_list[0], atol=1e-04)
+      assert_list_pairwise(state_list[0], atol=1e-04)
+      assert_list_pairwise(additional_state_list[0], atol=1e-04)
+      assert_list_pairwise(last_output_list[2], atol=1e-04)
+      assert_list_pairwise(outputs_list[2], atol=1e-04)
+      assert_list_pairwise(state_list[2], atol=1e-04)
+      assert_list_pairwise(additional_state_list[2], atol=1e-04)
+
+      for l, u_l in zip(last_output_list[0], last_output_list[1]):
+        self.assertAllClose(l, u_l, atol=1e-04)
+
+      for o, u_o in zip(outputs_list[0], outputs_list[1]):
+        self.assertAllClose(o, u_o, atol=1e-04)
+
+      for s, u_s in zip(state_list[0], state_list[1]):
+        self.assertAllClose(s, u_s, atol=1e-04)
+
+      for s, u_s in zip(additional_state_list[0], additional_state_list[1]):
+        self.assertAllClose(s, u_s, atol=1e-04)
+
+      for b_l, b_u_l in zip(last_output_list[2], last_output_list[3]):
+        self.assertAllClose(b_l, b_u_l, atol=1e-04)
+
+      for b_o, b_u_o in zip(outputs_list[2], outputs_list[3]):
+        self.assertAllClose(b_o, b_u_o, atol=1e-04)
+
+      for b_s, b_u_s in zip(state_list[2], state_list[3]):
+        self.assertAllClose(b_s, b_u_s, atol=1e-04)
+
+      for s, u_s in zip(additional_state_list[2], additional_state_list[3]):
+        self.assertAllClose(s, u_s, atol=1e-04)
+
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))
     x = keras.backend.variable(val)
@@ -1159,7 +1385,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 class TestCTC(test.TestCase):
 
   def test_ctc_decode(self):
-    with self.test_session():
+    with self.cached_session():
       depth = 6
       seq_len_0 = 5
       input_prob_matrix_0 = np.asarray(
@@ -1184,8 +1410,8 @@ class TestCTC(test.TestCase):
           np.array([seq_len_0], dtype=np.int32))
       # batch_size length vector of negative log probabilities
       log_prob_truth = np.array([
-          0.584855,  # output beam 0
-          0.389139  # output beam 1
+          -3.5821197,  # output beam 0
+          -3.777835    # output beam 1
       ], np.float32)[np.newaxis, :]
 
       decode_truth = [np.array([1, 0]), np.array([0, 1, 0])]
@@ -1208,7 +1434,7 @@ class TestCTC(test.TestCase):
       self.assertAllClose(log_prob_truth, log_prob_pred)
 
   def test_ctc_batch_cost(self):
-    with self.test_session():
+    with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)
       input_lens = np.expand_dims(np.asarray([5, 5]), 1)  # number of timesteps
       loss_log_probs = [3.34211, 5.42262]
@@ -1264,13 +1490,13 @@ class TestCTC(test.TestCase):
 class TestRandomOps(test.TestCase):
 
   def test_random_binomial(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(123)
       x = keras.backend.random_binomial((1000, 1000), p=0.5)
       self.assertAllClose(np.mean(keras.backend.eval(x)), 0.5, atol=0.1)
 
   def test_truncated_normal(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(123)
       x = keras.backend.truncated_normal((1000, 1000), mean=0.0, stddev=1.0)
       y = keras.backend.eval(x)

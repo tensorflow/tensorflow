@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,7 +41,7 @@ def _AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding):
       padding=padding)
 
 
-class Pooling3DTest(XLATestCase):
+class Pooling3DTest(xla_test.XLATestCase):
 
   def _VerifyValues(self, pool_func, input_sizes, window, strides, padding,
                     expected):
@@ -62,7 +62,7 @@ class Pooling3DTest(XLATestCase):
     # numbers from 1.
     x = np.arange(1.0, total_size + 1, dtype=np.float32)
     x = x.reshape(input_sizes)
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       inputs = array_ops.placeholder(dtypes.float32)
       t = pool_func(
           inputs,
@@ -210,7 +210,7 @@ class Pooling3DTest(XLATestCase):
     strides = [1] + strides + [1]
     total_size = np.prod(input_sizes)
     x = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_sizes)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Use the forward pool function to compute some corresponding outputs
       # (needed for the CPU device, and we need the shape in both cases).
       with ops.device("CPU"):

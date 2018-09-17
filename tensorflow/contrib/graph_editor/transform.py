@@ -129,7 +129,7 @@ def transform_op_if_inside_handler(info, op, keep_if_possible=True):
       return None
 
 
-def copy_op_handler(info, op, new_inputs, copy_shape=True, nodedef_fn=None):
+def copy_op_handler(info, op, new_inputs, copy_shape=False, nodedef_fn=None):
   """Copy a `tf.Operation`.
 
   Args:

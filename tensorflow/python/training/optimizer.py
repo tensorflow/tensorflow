@@ -35,6 +35,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
@@ -51,8 +52,8 @@ def get_filtered_grad_fn(grad_fn):
   # those variables are accessed in another thread during the gradient
   # computation. To get a consistent set of variables, we filter out
   # those with `None` gradients.
-  def filtered_grad_fn(x=None):
-    return [(g, v) for g, v in grad_fn(x) if g is not None]
+  def filtered_grad_fn(*args, **kwargs):
+    return [(g, v) for g, v in grad_fn(*args, **kwargs) if g is not None]
 
   return filtered_grad_fn
 
@@ -77,9 +78,10 @@ def _deduplicate_indexed_slices(values, indices):
 
 
 def _var_key(var):
-  if context.executing_eagerly():
-    return var._unique_id  # pylint: disable=protected-access
-  return (var.op.graph, var.op.name)
+  # TODO(ashankar): Consolidate handling for eager and graph
+  if hasattr(var, "op"):
+    return (var.op.graph, var.op.name)
+  return var._unique_id  # pylint: disable=protected-access
 
 
 class _OptimizableVariable(object):
@@ -383,13 +385,12 @@ class Optimizer(
 
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
-    takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
-    Minimization (and gradient computation) is done with respect to the
-    elements of `var_list` if not None, else with respect to any trainable
-    variables created during the execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    takes no arguments and computes the value to be minimized. Minimization (and
+    gradient computation) is done with respect to the elements of `var_list` if
+    not None, else with respect to any trainable variables created during the
+    execution of the `loss` function. `gate_gradients`, `aggregation_method`,
+    `colocate_gradients_with_ops` and `grad_loss` are ignored when eager
+    execution is enabled.
     @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
@@ -461,8 +462,10 @@ class Optimizer(
         # Have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        if distribute_lib.get_loss_reduction() == "mean":
-          num_towers = distribute_lib.get_distribution_strategy().num_towers
+        if (distribute_lib.get_loss_reduction() ==
+            variable_scope.VariableAggregation.MEAN):
+          num_towers = distribution_strategy_context.get_distribution_strategy(
+          ).num_towers
           if num_towers > 1:
             loss_value *= (1. / num_towers)
 
@@ -478,8 +481,10 @@ class Optimizer(
           "be a function when eager execution is enabled.")
 
     # Scale loss if using a "mean" loss reduction and multiple towers.
-    if distribute_lib.get_loss_reduction() == "mean":
-      num_towers = distribute_lib.get_distribution_strategy().num_towers
+    if (distribute_lib.get_loss_reduction() ==
+        variable_scope.VariableAggregation.MEAN):
+      num_towers = distribution_strategy_context.get_distribution_strategy(
+      ).num_towers
       if num_towers > 1:
         loss *= (1. / num_towers)
 
@@ -545,15 +550,15 @@ class Optimizer(
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
     # Handle DistributionStrategy case.
-    if distribute_lib.get_cross_tower_context():
+    if distribution_strategy_context.get_cross_tower_context():
       raise RuntimeError("Use `_distributed_apply()` instead of "
                          "`apply_gradients()` in a cross-tower context.")
     # TODO(isaprykin): Get rid of `has_distribution_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_lib.has_distribution_strategy():
-      grads_and_vars = get_filtered_grad_fn(lambda _: grads_and_vars)()
-      return distribute_lib.get_tower_context().merge_call(
+    if distribution_strategy_context.has_distribution_strategy():
+      grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
+      return distribution_strategy_context.get_tower_context().merge_call(
           self._distributed_apply, grads_and_vars, global_step, name)
 
     # No DistributionStrategy case.
@@ -649,7 +654,8 @@ class Optimizer(
       towers. If `global_step` was not None, that operation also
       increments `global_step`.
     """
-    reduced_grads = distribution.batch_reduce("sum", grads_and_vars)
+    reduced_grads = distribution.batch_reduce(
+        variable_scope.VariableAggregation.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
     # Note that this is called in a cross-tower context.
@@ -765,16 +771,15 @@ class Optimizer(
     Returns:
       A list of variables.
     """
-    executing_eagerly = context.executing_eagerly()
     current_graph = ops.get_default_graph()
 
     def _from_current_graph(variable):
-      if executing_eagerly:
+      if variable._in_graph_mode:  # pylint: disable=protected-access
+        return variable.op.graph is current_graph
+      else:
         # No variable.op in eager mode. We don't expect lots of eager graphs,
         # but behavior should be consistent with graph mode.
         return variable._graph_key == current_graph._graph_key  # pylint: disable=protected-access
-      else:
-        return variable.op.graph is current_graph
 
     optimizer_variables = [v for v in self._non_slot_variables()
                            if _from_current_graph(v)]
@@ -795,7 +800,8 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_checkpointable()
-      distribution_strategy = distribute_lib.get_distribution_strategy()
+      distribution_strategy = (
+          distribution_strategy_context.get_distribution_strategy())
       with distribution_strategy.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
