@@ -1191,37 +1191,6 @@ class TestGeneratorMethods(test.TestCase):
                                  use_multiprocessing=False,
                                  workers=0)
 
-  def test_fit_generator_with_callback(self):
-    model = keras.Sequential()
-    model.add(keras.layers.Dense(4, input_shape=(3,)))
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
-    model.compile(optimizer, 'mse', metrics=['mae'])
-
-    x = np.random.random((10, 3))
-    y = np.random.random((10, 4))
-
-    def iterator():
-      while 1:
-        yield x, y
-
-    class TestCallback(callbacks.Callback):
-      def set_model(self, model):
-        # Check the model operations for the optimizer operations that
-        # the _make_train_function adds under a named scope for the
-        # optimizer. This ensurs the full model is populated before the
-        # set_model callback is called.
-        optimizer_name_scope = 'training/TFOptimizer/'
-        graph_def = ops.get_default_graph().as_graph_def()
-        for node in graph_def.node:
-            if node.name.startswith(optimizer_name_scope):
-                return
-        raise RuntimeError('The optimizer operations are not present in the '
-                           'model graph when the Callback.set_model function '
-                           'is called')
-
-    model.fit_generator(iterator(), steps_per_epoch=3, epochs=1,
-                        callbacks=[TestCallback()])
-
   def test_generator_methods_with_sample_weights(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))
