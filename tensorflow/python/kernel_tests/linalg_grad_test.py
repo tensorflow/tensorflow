@@ -120,7 +120,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
       delta = epsilon**(1.0 / 3.0)
       # tolerance obtained by looking at actual differences using
       # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
-      tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.04
+      tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.05
       # The gradients for a and b may be of very different magnitudes,
       # so to not get spurious failures we test them separately.
       for factor, factor_init in [a, a_np], [b, b_np]:
