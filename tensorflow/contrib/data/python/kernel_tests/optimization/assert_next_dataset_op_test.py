@@ -31,7 +31,7 @@ class AssertNextDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(0, sess.run(get_next))
 
   def testAssertNextInvalid(self):
@@ -40,7 +40,7 @@ class AssertNextDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "Asserted Whoops transformation at offset 0 but encountered "
@@ -53,7 +53,7 @@ class AssertNextDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "Asserted next 2 transformations but encountered only 1."):

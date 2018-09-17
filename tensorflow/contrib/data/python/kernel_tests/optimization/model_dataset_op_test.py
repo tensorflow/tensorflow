@@ -40,7 +40,7 @@ class ModelDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     deltas = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
       for _ in range(100):
@@ -64,7 +64,7 @@ class ModelDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     deltas = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
       for _ in range(1000):
@@ -92,7 +92,7 @@ class ModelDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     deltas = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
       for _ in range(10):
@@ -119,7 +119,7 @@ class ModelDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     deltas = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
       for _ in range(1000):
@@ -164,7 +164,7 @@ class ModelDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     deltas = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next)
       for _ in range(100):
