@@ -1681,8 +1681,8 @@ REGISTER_OP("_MklSlice")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &begin_value));
 
       // NOTE(mrry): We can't use `MakeShapeFromShapeTensor` for `sizes` because
-      // it might contain -1, which can't be represented -1 in the ShapeHandle
-      // would meqan "unknown".
+      // it might contain -1, which can't be represented. (-1 in the ShapeHandle
+      // would mean "unknown".)
       const Tensor* sizes_value = c->input_tensor(3);
 
       if (sizes_value != nullptr) {
@@ -1698,7 +1698,43 @@ REGISTER_OP("_MklSlice")
           TF_RETURN_IF_ERROR(
               SliceHelper<int32>(c, begin_value, sizes_value, &dims));
         }
+
+        c->set_output(0, c->MakeShape(dims));
+        return Status::OK();
+      } else {
+        // In case `sizes` is not available (`sizes_value` is null),
+        // we could try to use `MakeShapeFromShapeTensor` here.
+        // If sizes contain -1, we will simply consider it as `Unknown`.
+        // This is less than ideal but still an improvement of shape inference.
+        // The following is an example that returns [None, 1, None] with this
+        // code path:
+        //   z = tf.zeros((1, 2, 3))
+        //   m = tf.slice(z, [0, 0, 0], [tf.constant(1) + 0, 1, -1])
+        //   m.get_shape().as_list()
+        ShapeHandle sizes_value;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &sizes_value));
+        if (c->RankKnown(sizes_value)) {
+          TF_RETURN_IF_ERROR(
+              c->WithRank(begin_value, c->Rank(sizes_value), &begin_value));
+          std::vector<DimensionHandle> dims;
+          dims.reserve(c->Rank(sizes_value));
+          for (int i = 0; i < c->Rank(sizes_value); ++i) {
+            dims.emplace_back(c->Dim(sizes_value, i));
+          }
+          c->set_output(0, c->MakeShape(dims));
+          return Status::OK();
+        }
+
+        // We might know the rank of the input.
+        if (c->RankKnown(input)) {
+          c->set_output(0, c->UnknownShapeOfRank(c->Rank(input)));
+          return Status::OK();
+        } else {
+          return shape_inference::UnknownShape(c);
+        }
       }
+
+      return Status::OK();
     });
 #endif
 

@@ -48,7 +48,7 @@ gtl::InlinedVector<int64, 4> IntTensorToInt64Vec(const Tensor& tensor) {
       out.push_back(tensor.flat<int64>()(i));
     }
   } else {
-    LOG(FATAL) << "begin must be either int32 or int64";
+    LOG(FATAL) << "tensor must be either int32 or int64";
   }
   return out;
 }
@@ -59,6 +59,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // A version of SharedValidation (slice_op.h) written for input that is in
 // either Mkl layout or Tensorflow layout.
+// A shared code to validate input shapes and check for identity, which is not dependent on the type of T.
+// We do this to reduce code size by not duplicating all this for all T (float, double, int32, etc.)
 static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
                               gtl::InlinedVector<int64, 4>* begin,
                               gtl::InlinedVector<int64, 4>* size) {
@@ -81,19 +83,19 @@ static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
   TensorShape input_tf_shape = input_mkl_shape.IsMklTensor()
                                    ? input_mkl_shape.GetTfShape()
                                    : input.shape();
+  const int input_dims = input_tf_shape.dims();
 
   OP_REQUIRES(
       context, context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
                    context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
-                   begin_tensor.NumElements() == input_tf_shape.dims() &&
-                   size_tensor.NumElements() == input_tf_shape.dims(),
+                   begin_tensor.NumElements() == input_dims &&
+                   size_tensor.NumElements() == input_dims,
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
-          input_tf_shape.dims(), ", but got shapes ",
+          input_dims, ", but got shapes ",
           begin_tensor.shape().DebugString(), " and ",
           size_tensor.shape().DebugString(), " instead."));
 
-  const int input_dims = input_tf_shape.dims();
   *begin = IntTensorToInt64Vec(begin_tensor);
   *size = IntTensorToInt64Vec(size_tensor);
   for (int i = 0; i < input_dims; ++i) {
@@ -152,7 +154,6 @@ static void CheckCommonCasesForMklInputs(OpKernelContext* context,
     // output.
     AllocateOutputSetMklShape(context, 0, input_mkl_shape);
     *done = true;
-    return;
   }
 }
 
@@ -172,8 +173,8 @@ class MklDnnSliceOp : public OpKernel {
     CheckCommonCasesForMklInputs<T>(context, &begin, &size, &done);
     if (!context->status().ok() || done == true) return;
 
-    // MKL-DNN does not have this limitation of supporting less than 8 dimension
-    // tensor. But we are mimicking functionality of Eigen Slice op for CPU.
+    // Though MKL-DNN supports more than 8 dimension and less than 12 dimension tensor.
+    // But we are mimicking functionality of Eigen Slice op for CPU.
     if (begin.size() >= 8) {
       OP_REQUIRES(
           context, false,
@@ -181,7 +182,6 @@ class MklDnnSliceOp : public OpKernel {
     }
 
     ComputeMklDnnSlice(context, begin, size);
-    return;
   }
 
  private:
@@ -203,7 +203,7 @@ class MklDnnSliceOp : public OpKernel {
       // 2. create view primitive descriptor in_submem_pd based on in_mem_pd,
       //    initial offsets, and sub-sizes
       // 3. create memory primitive descriptor out_mem_pd and memory primitive
-      //    out_mem_p for the output (the logical sizes should much sub-sizes
+      //    out_mem_p for the output (the logical sizes should match sub-sizes
       //    used in step 2, but the format might be arbitrary)
       // 4. create reorder primitive descriptor reorder_pd based on in_submem_pd
       //    and out_mem_pd
@@ -232,6 +232,9 @@ class MklDnnSliceOp : public OpKernel {
 
       Tensor* output_tensor = nullptr;
       MklDnnShape output_mkl_shape;
+
+      // If no dimension is selected in slice, the result should be empty.
+      // Just return an empty output tensor, and a dummy Mkl-shape tensor.
       if (empty) {  // for empty dims
         auto shape_to = MklDnnDimsToTFShape(size_dims);
         AllocateOutputSetMklShape(context, 0, &output_tensor, shape_to,
@@ -250,22 +253,18 @@ class MklDnnSliceOp : public OpKernel {
         auto input_tf_format = MklDnnDataFormatToTFDataFormat(input_mkl_format);
         begin_dims = MklDnnDimsInNCHW(begin_dims, input_tf_format);
         size_dims = MklDnnDimsInNCHW(size_dims, input_tf_format);
-      }
-
-      // Initialize input dimensions and strides to be used when input is not in
-      // MklDnn layout.
-      memory::dims input_dims, input_strides;
-      if (!input_mkl_shape.IsMklTensor()) {
+        auto input_md = input_mkl_shape.GetMklLayout();
+        src.SetUsrMem(input_md, &input_tensor);
+      } else {
+        // Initialize input dimensions and strides to be used when input is not in
+        // MklDnn layout.
+        memory::dims input_dims, input_strides;
         input_dims = TFShapeToMklDnnDims(input_tensor.shape());
         input_strides = CalculateTFStrides(input_dims);
+        // Create input memory descriptor.
+        auto input_md = MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
+        src.SetUsrMem(input_md, &input_tensor);
       }
-
-      // Create input memory descriptor.
-      auto input_md =
-          input_mkl_shape.IsMklTensor()
-              ? input_mkl_shape.GetMklLayout()
-              : MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
-      src.SetUsrMem(input_md, &input_tensor);
 
       // Step 2 - create view primitive descriptor
       auto view_pd =
@@ -291,6 +290,7 @@ class MklDnnSliceOp : public OpKernel {
           reorder::primitive_desc(view_pd, output.GetUsrMemPrimDesc());
       // Step 5 - create reorder primitive itself.
       net.push_back(reorder(reorder_pd, *src.GetUsrMem(), *output.GetUsrMem()));
+      // Execute the reorder primitive.
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
