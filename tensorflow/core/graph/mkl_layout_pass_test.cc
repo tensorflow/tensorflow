@@ -1928,7 +1928,7 @@ static void InitGraph(const string& s, Graph* graph,
 class MklLayoutPassTest : public ::testing::Test {
  public:
   MklLayoutPassTest() : graph_(OpRegistry::Global()) {}
-  // Return Node* from the Node Name
+  // Ashraf added
   Node* FindNode(const string& name) {
     for (Node* node : graph_.nodes()) {
       if (node->name() == name) return node;
@@ -2383,7 +2383,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
 // After layout pass
 // _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
 // A1:control->E:control
-TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
+TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
   CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A1' op: 'Input'}"
