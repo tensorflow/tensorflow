@@ -250,6 +250,24 @@ class OptimizersTest(test.TestCase):
       self.assertAlmostEqual(var_value, 6.5, 4)
       self.assertEqual(global_step_value, 1)
 
+  def testGradientMultiplyTensor(self):
+    with self.cached_session() as session:
+      x, var, loss, global_step = _setup_model()
+      v = array_ops.placeholder(dtypes.float32, [])
+      train = optimizers_lib.optimize_loss(
+          loss,
+          global_step,
+          learning_rate=0.1,
+          optimizer="SGD",
+          gradient_multipliers={var: v})
+      variables.global_variables_initializer().run()
+      session.run(train, feed_dict={x: 5, v: 7.})
+      var_value, global_step_value = session.run([var, global_step])
+      # var(0) = 10, x = 5, var(0)/dx = 5,
+      # var(1) = var(0) - learning_rate * gradient_multiplier * var(0)/dx
+      self.assertAlmostEqual(var_value, 6.5, 4)
+      self.assertEqual(global_step_value, 1)
+
   def testIgnoreVariablesWithNoGradients(self):
     _, _, loss, global_step = _setup_model()
 
