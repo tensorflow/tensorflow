@@ -2065,6 +2065,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"TopKV2", ConvertTopKV2Operator},
       {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
       {"Unpack", ConvertUnpackOperator},
+      {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
   });
 }
 
