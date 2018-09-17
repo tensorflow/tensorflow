@@ -403,6 +403,14 @@ Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
   return OutputTypesForNode(node_def, op_def, outputs);
 }
 
+Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int* num_outputs) {
+  DataTypeVector outputs;
+  TF_RETURN_IF_ERROR(OutputTypesForNode(node_def, op_def, &outputs));
+  *num_outputs = outputs.size();
+  return Status::OK();
+}
+
 Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   if (node_def.op() != op_def.name()) {
     return errors::InvalidArgument("NodeDef op '", node_def.op(),
