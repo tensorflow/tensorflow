@@ -396,14 +396,20 @@ REGISTER_OP("FilterByLastComponentDataset")
 
 REGISTER_OP("WindowDataset")
     .Input("input_dataset: variant")
-    .Input("window_size: int64")
+    .Input("size: int64")
+    .Input("shift: int64")
+    .Input("stride: int64")
+    .Input("drop_remainder: bool")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // batch_size should be a scalar.
+      // size, shift, stride, and drop_remainder should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 

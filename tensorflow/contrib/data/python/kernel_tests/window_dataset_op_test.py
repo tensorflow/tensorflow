@@ -89,13 +89,14 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
       return dataset_ops.Dataset.zip(
           tuple([fn(*arg) if isinstance(arg, tuple) else arg for arg in args]))
 
-    dataset = self._structuredDataset(structure, shape, dtype).apply(
+    dataset = self._structuredDataset(structure, shape, dtype).repeat(5).apply(
         grouping.window_dataset(5)).flat_map(fn)
     get_next = dataset.make_one_shot_iterator().get_next()
     with self.cached_session() as sess:
       expected = sess.run(self._structuredElement(structure, shape, dtype))
-      actual = sess.run(get_next)
-      self._assertEqual(expected, actual)
+      for _ in range(5):
+        actual = sess.run(get_next)
+        self._assertEqual(expected, actual)
 
   @parameterized.named_parameters(
       ("1", None, np.int32([]), dtypes.bool),
