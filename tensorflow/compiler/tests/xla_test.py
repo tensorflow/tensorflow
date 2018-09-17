@@ -101,6 +101,12 @@ class XLATestCase(test.TestCase):
     self._all_types = set(
         [dtype.as_numpy_dtype for dtype in self._all_tf_types])
     self._int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
+    self.signed_int_types = set(dtype.as_numpy_dtype
+                                for dtype in self.int_tf_types
+                                if not dtype.is_unsigned)
+    self.unsigned_int_types = set(dtype.as_numpy_dtype
+                                  for dtype in self.int_tf_types
+                                  if dtype.is_unsigned)
     self._float_types = set(
         [dtype.as_numpy_dtype for dtype in self._float_tf_types])
     self.complex_types = set([
