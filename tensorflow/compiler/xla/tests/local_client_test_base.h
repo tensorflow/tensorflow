@@ -86,8 +86,7 @@ class LocalClientTestBase : public ::testing::Test {
 
   // Construct and return a literal containing the array represented by
   // shaped_buffer.
-  std::unique_ptr<Literal> ShapedBufferToLiteral(
-      const ShapedBuffer& shaped_buffer);
+  Literal ShapedBufferToLiteral(const ShapedBuffer& shaped_buffer);
 
   // Execute the given computation on the local client. With and without
   // options.

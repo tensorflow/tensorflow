@@ -2786,6 +2786,21 @@ class FeatureLayerTest(test.TestCase):
       with _initialized_session():
         self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
 
+  def test_compute_output_shape(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2', shape=4)
+    with ops.Graph().as_default():
+      features = {
+          'price1': [[1., 2.], [5., 6.]],
+          'price2': [[3., 4., 5., 6.], [7., 8., 9., 10.]]
+      }
+      feature_layer = FeatureLayer([price1, price2])
+      self.assertEqual((None, 6), feature_layer.compute_output_shape((None,)))
+      net = feature_layer(features)
+      with _initialized_session():
+        self.assertAllClose(
+            [[1., 2., 3., 4., 5., 6.], [5., 6., 7., 8., 9., 10.]], net.eval())
+
   def test_raises_if_shape_mismatch(self):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():

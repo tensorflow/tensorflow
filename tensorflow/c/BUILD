@@ -117,6 +117,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/c/eager:c_api",
         "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
@@ -203,6 +204,7 @@ tf_cuda_cc_test(
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
+    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),

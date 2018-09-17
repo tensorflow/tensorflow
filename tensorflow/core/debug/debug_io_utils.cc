@@ -693,6 +693,7 @@ uint64 DebugFileIO::diskBytesUsed = 0;
 mutex DebugFileIO::bytes_mu(LINKER_INITIALIZED);
 
 bool DebugFileIO::requestDiskByteUsage(uint64 bytes) {
+  mutex_lock l(bytes_mu);
   if (globalDiskBytesLimit == 0) {
     const char* env_tfdbg_disk_bytes_limit = getenv("TFDBG_DISK_BYTES_LIMIT");
     if (env_tfdbg_disk_bytes_limit == nullptr ||
@@ -707,7 +708,6 @@ bool DebugFileIO::requestDiskByteUsage(uint64 bytes) {
   if (bytes == 0) {
     return true;
   }
-  mutex_lock l(bytes_mu);
   if (diskBytesUsed + bytes < globalDiskBytesLimit) {
     diskBytesUsed += bytes;
     return true;

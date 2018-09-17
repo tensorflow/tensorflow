@@ -51,7 +51,7 @@ class SoftsignTest(test.TestCase):
           use_gpu=True)
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -67,7 +67,7 @@ class SoftsignTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testNoInts(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "No OpKernel was registered to support Op 'Softsign'"):

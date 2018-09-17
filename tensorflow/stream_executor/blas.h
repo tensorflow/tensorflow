@@ -41,6 +41,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_BLAS_H_
 
 #include <complex>
+#include <vector>
 
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"

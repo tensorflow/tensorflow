@@ -374,7 +374,12 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
   y->tensors.reserve(x.tensors.size());
   for (const Tensor& t : x.tensors) {
     Tensor out_tensor;
-    TF_RETURN_IF_ERROR(c->allocate_temp(t.dtype(), t.shape(), &out_tensor));
+    AllocatorAttributes attr;
+    if (t.dtype() == DT_VARIANT) {
+      attr.set_on_host(true);
+    }
+    TF_RETURN_IF_ERROR(
+        c->allocate_temp(t.dtype(), t.shape(), &out_tensor, attr));
     switch (out_tensor.dtype()) {
 #define DTYPE_CASE(dtype)                                        \
   case DataTypeToEnum<dtype>::value:                             \
@@ -385,6 +390,20 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
       TF_CALL_POD_TYPES(DTYPE_CASE)
 
 #undef DTYPE_CASE
+
+      case DataTypeToEnum<Variant>::value: {
+        const TensorList* inner_x = t.scalar<Variant>()().get<TensorList>();
+        if (inner_x == nullptr) {
+          return errors::InvalidArgument("Input handle is not a list. Saw: '",
+                                         t.scalar<Variant>()().DebugString(),
+                                         "'");
+        }
+        TensorList inner_y;
+        TF_RETURN_IF_ERROR(TensorListZerosLike<Device>(c, *inner_x, &inner_y));
+        out_tensor.scalar<Variant>()() = std::move(inner_y);
+        break;
+      }
+
       default:
         return errors::InvalidArgument(
             "Trying to compute zeros_like for unsupported dtype ",

@@ -26,8 +26,8 @@ enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
 enum class PaddingType : uint8 { kNone, kSame, kValid };
 
 struct PaddingValues {
-  int8 width;
-  int8 height;
+  int16 width;
+  int16 height;
 };
 
 // This enumeration allows for non-default formats for the weights array
@@ -283,6 +283,12 @@ inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
   return result;
 }
 
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
+  return RuntimeShape(
+      {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
+}
+
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
   if (num_dims == 0) {
@@ -359,6 +365,10 @@ inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
 
 inline int Offset(const Dims<4>& dims, int* index) {
   return Offset(dims, index[0], index[1], index[2], index[3]);
+}
+
+inline int Offset(const RuntimeShape& shape, int* index) {
+  return Offset(shape, index[0], index[1], index[2], index[3]);
 }
 
 // Get array size, DCHECKing that the dim index is in range.
@@ -720,12 +730,12 @@ struct ConcatenationParams {
 struct ComparisonParams {
   // uint8 inference params.
   int left_shift;
-  int32 input0_offset;
-  int32 input0_multiplier;
-  int input0_shift;
   int32 input1_offset;
   int32 input1_multiplier;
   int input1_shift;
+  int32 input2_offset;
+  int32 input2_multiplier;
+  int input2_shift;
   // Shape dependent / common to inference types.
   bool is_broadcast;
 };
@@ -734,10 +744,10 @@ struct ConvParams {
   PaddingType padding_type;
   PaddingValues padding_values;
   // TODO(starka): This was just "stride", so check that width+height is OK.
-  int8 stride_width;
-  int8 stride_height;
-  int8 dilation_width_factor;
-  int8 dilation_height_factor;
+  int16 stride_width;
+  int16 stride_height;
+  int16 dilation_width_factor;
+  int16 dilation_height_factor;
   // uint8 inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
   int32 input_offset;
@@ -745,8 +755,12 @@ struct ConvParams {
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
 };
 
 struct DepthToSpaceParams {
@@ -756,8 +770,9 @@ struct DepthToSpaceParams {
 struct DepthwiseParams {
   PaddingType padding_type;
   PaddingValues padding_values;
-  int8 stride;
-  int8 depth_multiplier;
+  int16 stride_width;
+  int16 stride_height;
+  int16 depth_multiplier;
   // uint8 inference params.
   // TODO(b/65838351): Use smaller types if appropriate.
   int32 input_offset;
@@ -765,8 +780,17 @@ struct DepthwiseParams {
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+};
+
+struct DequantizationParams {
+  double scale;
+  int32 zero_point;
 };
 
 struct FakeQuantParams {
@@ -782,13 +806,17 @@ struct FullyConnectedParams {
   int32 output_offset;
   int32 output_multiplier;
   int output_shift;
-  int32 output_activation_min;
-  int32 output_activation_max;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
   FullyConnectedWeightsFormat weights_format;
 };
 
 struct GatherParams {
-  int8 input_rank;
+  int16 input_rank;
   int16 axis;
 };
 
@@ -868,8 +896,8 @@ struct SoftmaxParams {
   // for LogSoftmax.
   double beta;
   // uint8 inference params.  Used even when beta defaults to 1.0.
-  int32 input_beta_multiplier;
-  int32 input_beta_left_shift;
+  int32 input_multiplier;
+  int32 input_left_shift;
   // Reverse scaling is only used by LogSoftmax.
   int32 reverse_scaling_divisor;
   int32 reverse_scaling_right_shift;
@@ -889,6 +917,7 @@ struct SplitParams {
   // Graphs that split into, say, 2000 nodes are encountered.  The indices in
   // OperatorEdges are of type uint16.
   uint16 num_split;
+  int16 axis;
 };
 
 struct SqueezeParams {
@@ -916,6 +945,11 @@ struct TanhParams {
   int32 input_range_radius;
   int32 input_multiplier;
   int input_left_shift;
+};
+
+struct TransposeParams {
+  int8 perm_count;
+  int32 perm[4];
 };
 
 template <typename P>

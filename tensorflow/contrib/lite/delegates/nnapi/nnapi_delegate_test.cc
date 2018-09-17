@@ -40,13 +40,15 @@ class FloatAddOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatAddOpModel(const TensorData& input1, const TensorData& input2,
                   const TensorData& output,
-                  ActivationFunctionType activation_type) {
+                  ActivationFunctionType activation_type,
+                  bool allow_fp32_relax_to_fp16 = false) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
                  CreateAddOptions(builder_, activation_type).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     allow_fp32_relax_to_fp16);
   }
 
   int input1() { return input1_; }
@@ -69,6 +71,19 @@ TEST(NNAPIDelegate, AddWithNoActivation) {
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Do a test with the NN API using no activation.
+// The test allows computing FP32 with FP16 precision. In this particular case,
+// calculating in FP32 or FP16 should produce the same results.
+TEST(NNAPIDelegate, AddWithNoActivationRelaxed) {
+  FloatAddOpModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE, true);
+  m.PopulateTensor<float>(m.input1(), {-2.0, -1.0, 1.0, 2.0});
+  m.PopulateTensor<float>(m.input2(), {1.0, 2.0, 3.0, 4.0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.0, 1.0, 4.0, 6.0}));
 }
 
 // Do a test with the NN api with relu.

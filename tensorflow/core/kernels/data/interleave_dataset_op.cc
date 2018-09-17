@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -201,7 +201,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
             TF_RETURN_IF_ERROR(input_impl_->GetNext(
                 ctx, &args_list_[cycle_index_], &end_of_input_));
             if (!end_of_input_) {
-              TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+              TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                   ctx, args_list_[cycle_index_], cycle_index_,
                   dataset()->captured_func_.get(), prefix(),
                   &current_elements_[cycle_index_]));
@@ -288,7 +288,7 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
                   full_name(strings::StrCat("args_list_[", idx, "][", i, "]")),
                   &args_list_[idx][i]));
             }
-            TF_RETURN_IF_ERROR(dataset::MakeIteratorFromInputElement(
+            TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
                 ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
                 prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
@@ -330,5 +330,5 @@ REGISTER_KERNEL_BUILDER(Name("InterleaveDataset").Device(DEVICE_CPU),
                         InterleaveDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

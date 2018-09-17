@@ -24,7 +24,7 @@ namespace tensorflow {
 xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
     const LoopConditionFunction& condition_function,
     const LoopBodyFunction& body_function,
-    absl::Span<const xla::XlaOp> initial_values, StringPiece name,
+    absl::Span<const xla::XlaOp> initial_values, absl::string_view name,
     xla::XlaBuilder* builder) {
   int arity = initial_values.size();
   std::vector<xla::Shape> var_shapes;
@@ -47,7 +47,7 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
 
   // Build the condition.
   std::unique_ptr<xla::XlaBuilder> cond_builder =
-      builder->CreateSubBuilder(strings::StrCat(name, "_condition"));
+      builder->CreateSubBuilder(absl::StrCat(name, "_condition"));
   {
     auto parameter =
         xla::Parameter(cond_builder.get(), 0, tuple_shape, "parameter");
@@ -61,7 +61,7 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
 
   // Build the body.
   std::unique_ptr<xla::XlaBuilder> body_builder =
-      builder->CreateSubBuilder(strings::StrCat(name, "_body"));
+      builder->CreateSubBuilder(absl::StrCat(name, "_body"));
   {
     auto parameter =
         xla::Parameter(body_builder.get(), 0, tuple_shape, "parameter");
@@ -84,7 +84,7 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
 xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
     int64 num_iterations, xla::PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
-    absl::Span<const xla::XlaOp> initial_values, StringPiece name,
+    absl::Span<const xla::XlaOp> initial_values, absl::string_view name,
     xla::XlaBuilder* builder) {
   auto while_cond_fn =
       [&](absl::Span<const xla::XlaOp> values,

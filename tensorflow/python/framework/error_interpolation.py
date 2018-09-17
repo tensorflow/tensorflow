@@ -15,7 +15,7 @@
 """Function for interpolating formatted errors from the TensorFlow runtime.
 
 Exposes the function `interpolate` to interpolate messages with tags of the form
-^^type:name:format^^.
+{{type name}}.
 """
 
 from __future__ import absolute_import
@@ -32,9 +32,9 @@ import six
 from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
-_TAG_REGEX = r"\^\^({name}):({name})\^\^".format(name=_NAME_REGEX)
+_TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
 _INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
-_INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX)
+_INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
 
 _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 
@@ -48,8 +48,8 @@ def _parse_message(message):
   """Parses the message.
 
   Splits the message into separators and tags. Tags are named tuples
-  representing the string ^^type:name^^ and they are separated by
-  separators. For example, in "123^^node:Foo^^456^^node:Bar^^789", there are
+  representing the string {{type name}} and they are separated by
+  separators. For example, in "123{{node Foo}}456{{node Bar}}789", there are
   two tags and three separators. The separators are the numeric characters.
 
   Args:
@@ -58,7 +58,7 @@ def _parse_message(message):
   Returns:
     (list of separator strings, list of _ParseTags).
 
-    For example, if message is "123^^node:Foo^^456" then this function
+    For example, if message is "123{{node Foo}}456" then this function
     returns (["123", "456"], [_ParseTag("node", "Foo")])
   """
   seps = []
@@ -276,7 +276,7 @@ def interpolate(error_message, graph):
         message.
 
   Returns:
-    The string with tags of the form ^^type:name^^ interpolated.
+    The string with tags of the form {{type name}} interpolated.
   """
   seps, tags = _parse_message(error_message)
   subs = []
@@ -288,7 +288,7 @@ def interpolate(error_message, graph):
     except KeyError:
       op = None
 
-    msg = "^^%s:%s^^" % (t.type, t.name)
+    msg = "{{%s %s}}" % (t.type, t.name)
     if op is not None:
       field_dict = compute_field_dict(op)
       if t.type == "node":

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -54,6 +55,14 @@ void RunResourceCtor(ResourceHandle* p, size_t n) {
 
 void RunResourceDtor(ResourceHandle* p, size_t n) {
   for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+}
+
+void Allocator::RunVariantCtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
+}
+
+void Allocator::RunVariantDtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
 }
 
 // If true, cpu allocator collects more stats.

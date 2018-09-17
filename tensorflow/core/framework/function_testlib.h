@@ -63,6 +63,9 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // x:T -> x * 2.
 FunctionDef XTimesTwo();
 
+// x:T -> x + x.
+FunctionDef XAddX();
+
 // x:T -> x * 2, where x is int32.
 FunctionDef XTimesTwoInt32();
 
@@ -80,6 +83,9 @@ FunctionDef NonZero();
 
 // x: T -> bool.
 FunctionDef IsZero();
+
+// x: T -> int64
+FunctionDef RandomUniform();
 
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();

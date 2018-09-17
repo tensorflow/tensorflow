@@ -107,12 +107,12 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolve) {
   conv_window.mutable_dimensions(1)->set_size(2);
   conv_window.mutable_dimensions(1)->set_window_dilation(2);
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(activations->shape(),
-                                         gradients->shape(), conv_window,
-                                         tf_default_dnums_for_backward_filter_)
+      ShapeInference::InferConvolveShape(
+          activations->shape(), gradients->shape(), /*feature_group_count=*/1,
+          conv_window, tf_default_dnums_for_backward_filter_)
           .ConsumeValueOrDie(),
-      activations, gradients, conv_window,
-      tf_default_dnums_for_backward_filter_));
+      activations, gradients, /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -135,12 +135,12 @@ TEST_F(CudnnConvolutionRewriterTest,
   Window conv_window = default_conv_window_;
   conv_window.mutable_dimensions(1)->set_size(3);
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(activations->shape(),
-                                         gradients->shape(), conv_window,
-                                         tf_default_dnums_for_backward_filter_)
+      ShapeInference::InferConvolveShape(
+          activations->shape(), gradients->shape(), /*feature_group_count=*/1,
+          conv_window, tf_default_dnums_for_backward_filter_)
           .ConsumeValueOrDie(),
-      activations, gradients, conv_window,
-      tf_default_dnums_for_backward_filter_));
+      activations, gradients, /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -170,7 +170,8 @@ TEST_F(CudnnConvolutionRewriterTest,
   }
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {32, 3, 3, 32}), activations, gradients,
-      conv_window, tf_default_dnums_for_backward_filter_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -200,7 +201,8 @@ TEST_F(CudnnConvolutionRewriterTest,
   }
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {320, 3, 3, 192}), activations, gradients,
-      conv_window, tf_default_dnums_for_backward_filter_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -228,7 +230,8 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
   }
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {32, 2, 2, 32}), activations, gradients,
-      conv_window, tf_default_dnums_for_backward_filter_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -272,13 +275,14 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveEvenPadding) {
 
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {4, 3, 16, 16}), /*lhs=*/output,
-      /*rhs=*/reverse_kernel, conv_window, conv_dnums));
+      /*rhs=*/reverse_kernel, /*feature_group_count=*/1, conv_window,
+      conv_dnums, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(),
-      ShapeInference::InferConvolveShape(
-          output->shape(), reverse_kernel->shape(), conv_window, conv_dnums)
-          .ValueOrDie()));
+      conv->shape(), ShapeInference::InferConvolveShape(
+                         output->shape(), reverse_kernel->shape(),
+                         /*feature_group_count=*/1, conv_window, conv_dnums)
+                         .ValueOrDie()));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -319,11 +323,11 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolve1x1Filter) {
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(output->shape(), kernel->shape(),
-                                         conv_window,
+                                         /*feature_group_count=*/1, conv_window,
                                          tf_default_dnums_for_backward_input_)
           .ConsumeValueOrDie(),
-      /*lhs=*/output, /*rhs=*/kernel, conv_window,
-      tf_default_dnums_for_backward_input_));
+      /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -350,12 +354,13 @@ TEST_F(CudnnConvolutionRewriterTest,
           1, ShapeUtil::MakeShape(F32, {1, 1, 1, 1}), "kernel"));
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeInference::InferConvolveShape(output->shape(), kernel->shape(),
-                                         default_conv_window_,
-                                         tf_default_dnums_for_backward_input_)
+      ShapeInference::InferConvolveShape(
+          output->shape(), kernel->shape(), /*feature_group_count=*/1,
+          default_conv_window_, tf_default_dnums_for_backward_input_)
           .ConsumeValueOrDie(),
-      /*lhs=*/output, /*rhs=*/kernel, default_conv_window_,
-      tf_default_dnums_for_backward_input_));
+      /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
+      default_conv_window_, tf_default_dnums_for_backward_input_,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -402,13 +407,15 @@ TEST_F(CudnnConvolutionRewriterTest,
   }
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {20, 10, 10, 192}), output, reverse_kernel,
-      conv_window, tf_default_dnums_for_backward_input_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(), conv_window,
-                         tf_default_dnums_for_backward_input_)
-                         .ValueOrDie()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(), /*feature_group_count=*/1,
+          conv_window, tf_default_dnums_for_backward_input_)
+          .ValueOrDie()));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -449,13 +456,15 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
   }
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {20, 10, 10, 192}), output, reverse_kernel,
-      conv_window, tf_default_dnums_for_backward_input_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(), conv_window,
-                         tf_default_dnums_for_backward_input_)
-                         .ValueOrDie()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(), /*feature_group_count=*/1,
+          conv_window, tf_default_dnums_for_backward_input_)
+          .ValueOrDie()));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -502,13 +511,15 @@ TEST_F(CudnnConvolutionRewriterTest,
   forward_conv_col_dim->set_base_dilation(2);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {1, 1, 14, 1}), output, reverse_kernel,
-      conv_window, tf_default_dnums_for_backward_input_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(), conv_window,
-                         tf_default_dnums_for_backward_input_)
-                         .ValueOrDie()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(), /*feature_group_count=*/1,
+          conv_window, tf_default_dnums_for_backward_input_)
+          .ValueOrDie()));
 
   auto module = CreateNewModule();
   const HloComputation* entry_computation =
@@ -554,13 +565,15 @@ TEST_F(CudnnConvolutionRewriterTest,
   forward_conv_col_dim->set_padding_high(2);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {1, 1, 4, 1}), output, reverse_kernel,
-      conv_window, tf_default_dnums_for_backward_input_));
+      /*feature_group_count=*/1, conv_window,
+      tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(), conv_window,
-                         tf_default_dnums_for_backward_input_)
-                         .ValueOrDie()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(), /*feature_group_count=*/1,
+          conv_window, tf_default_dnums_for_backward_input_)
+          .ValueOrDie()));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -577,7 +590,7 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveConstantFilter) {
   Array4D<float> constant_arr(4, 4, 2, 2);
   constant_arr.FillIota(0);
   string constant_str =
-      LiteralUtil::CreateR4FromArray4D(constant_arr)->ToString();
+      LiteralUtil::CreateR4FromArray4D(constant_arr).ToString();
   ParseAndVerifyModule(absl::StrFormat(R"(
     HloModule test
 

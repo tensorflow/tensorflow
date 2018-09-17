@@ -211,7 +211,7 @@ class S3WritableFile : public WritableFile {
             std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
                 std::ios_base::out)) {}
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     if (!outfile_) {
       return errors::FailedPrecondition(
           "The internal temporary file is not writable.");

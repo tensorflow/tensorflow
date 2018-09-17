@@ -80,7 +80,7 @@ class ParseExampleTest(test.TestCase):
             expected_values=None,
             expected_err=None):
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if expected_err:
         with self.assertRaisesWithPredicateMatch(expected_err[0],
                                                  expected_err[1]):

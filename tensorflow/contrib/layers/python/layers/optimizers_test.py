@@ -165,7 +165,7 @@ class OptimizersTest(test.TestCase):
 
   def testGradientNoise(self):
     random_seed.set_random_seed(42)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -182,7 +182,7 @@ class OptimizersTest(test.TestCase):
 
   def testGradientNoiseWithClipping(self):
     random_seed.set_random_seed(42)
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -198,7 +198,7 @@ class OptimizersTest(test.TestCase):
       self.assertEqual(global_step_value, 1)
 
   def testGradientClip(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -213,7 +213,7 @@ class OptimizersTest(test.TestCase):
       self.assertEqual(global_step_value, 1)
 
   def testAdaptiveGradientClip(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       clip_gradients = optimizers_lib.adaptive_clipping_fn()
       train = optimizers_lib.optimize_loss(
@@ -234,7 +234,7 @@ class OptimizersTest(test.TestCase):
       self.assertEqual(2, var_count)
 
   def testGradientMultiply(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, var, loss, global_step = _setup_model()
       train = optimizers_lib.optimize_loss(
           loss,
@@ -433,7 +433,7 @@ class OptimizersTest(test.TestCase):
 class AdaptiveClipping(test.TestCase):
 
   def testAverages(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       scale = 2.
       grad = array_ops.ones([3, 4]) * scale
       log_norm = np.log(np.sqrt(scale**2 * grad.get_shape().num_elements()))
@@ -463,7 +463,7 @@ class AdaptiveClipping(test.TestCase):
       self.assertAlmostEqual(float(sq_mean), log_norm**2, places=4)
 
   def testClip(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       spike = 1000.
       multiplier = array_ops.placeholder(dtypes.float32, [], "multiplier")
       step = array_ops.placeholder(dtypes.int32, [], "step")

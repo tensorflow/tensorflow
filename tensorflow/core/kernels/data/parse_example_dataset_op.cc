@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -368,5 +368,5 @@ REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
                         ParseExampleDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

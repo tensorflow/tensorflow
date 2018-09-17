@@ -61,7 +61,7 @@ from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
 
-_ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -2026,7 +2026,7 @@ def cond(pred,
   ```
 
   """
-  if _ENABLE_COND_V2:
+  if ENABLE_COND_V2 and not context.executing_eagerly():
     return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
 
   # We needed to make true_fn/false_fn keyword arguments for

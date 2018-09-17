@@ -49,6 +49,9 @@ def tflite_linkopts_unstripped():
     Returns:
        a select object with proper linkopts
     """
+
+    # In case you wonder why there's no --icf is because the gains were
+    # negligible, and created potential compatibility problems.
     return select({
         "//tensorflow:android": [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
@@ -56,12 +59,7 @@ def tflite_linkopts_unstripped():
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
-        "//tensorflow:darwin": [],
-        "//tensorflow/contrib/lite:mips": [],
-        "//tensorflow/contrib/lite:mips64": [],
-        "//conditions:default": [
-            "-Wl,--icf=all",  # Identical code folding.
-        ],
+        "//conditions:default": [],
     })
 
 def tflite_jni_linkopts_unstripped():
@@ -73,17 +71,15 @@ def tflite_jni_linkopts_unstripped():
     Returns:
        a select object with proper linkopts
     """
+
+    # In case you wonder why there's no --icf is because the gains were
+    # negligible, and created potential compatibility problems.
     return select({
         "//tensorflow:android": [
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
-        "//tensorflow:darwin": [],
-        "//tensorflow/contrib/lite:mips": [],
-        "//tensorflow/contrib/lite:mips64": [],
-        "//conditions:default": [
-            "-Wl,--icf=all",  # Identical code folding.
-        ],
+        "//conditions:default": [],
     })
 
 def tflite_linkopts():
@@ -287,6 +283,7 @@ def generated_test_models():
         "sparse_to_dense",
         "split",
         "sqrt",
+        "square",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
@@ -299,32 +296,70 @@ def generated_test_models():
         "where",
     ]
 
-def gen_zip_test(name, test_name, **kwargs):
+def generated_test_conversion_modes():
+    """Returns a list of conversion modes."""
+
+    # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
+    return ["toco-extended", ""]
+
+def generated_test_models_all():
+    """Generates a list of all tests with the different converters.
+
+    Returns:
+      List of tuples representing (conversion mode, name of test).
+    """
+    conversion_modes = generated_test_conversion_modes()
+    tests = generated_test_models()
+    options = []
+    for conversion_mode in conversion_modes:
+        for test in tests:
+            if conversion_mode:
+                test += "_%s" % conversion_mode
+            options.append((conversion_mode, test))
+    return options
+
+def gen_zip_test(name, test_name, conversion_mode, **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
     Args:
-      name: Resulting cc_test target name
-      test_name: Test targets this model. Comes from the list above.
-      **kwargs: tf_cc_test kwargs.
+      name: str. Resulting cc_test target name
+      test_name: str. Test targets this model. Comes from the list above.
+      conversion_mode: str. Which conversion mode to run with. Comes from the
+        list above.
+      **kwargs: tf_cc_test kwargs
     """
+    toco = "//tensorflow/contrib/lite/toco:toco"
+    flags = ""
+    if conversion_mode:
+        # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
+        # if conversion_mode == "pb2lite":
+        #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
+        flags = "--ignore_toco_errors --run_with_extended"
+        kwargs["tags"].append("skip_already_failing")
+        kwargs["tags"].append("no_oss")
+        kwargs["tags"].append("notap")
+
     gen_zipped_test_file(
         name = "zip_%s" % test_name,
         file = "%s.zip" % test_name,
+        toco = toco,
+        flags = flags,
     )
     tf_cc_test(name, **kwargs)
 
-def gen_zipped_test_file(name, file):
+def gen_zipped_test_file(name, file, toco, flags):
     """Generate a zip file of tests by using :generate_examples.
 
     Args:
-      name: Name of output. We will produce "`file`.files" as a target.
-      file: The name of one of the generated_examples targets, e.g. "transpose"
+      name: str. Name of output. We will produce "`file`.files" as a target.
+      file: str. The name of one of the generated_examples targets, e.g. "transpose"
+      toco: str. Pathname of toco binary to run
+      flags: str. Any additional flags to include
     """
-    toco = "//tensorflow/contrib/lite/toco:toco"
     native.genrule(
         name = file + ".files",
-        cmd = ("$(locations :generate_examples) --toco $(locations %s) " % toco +
-               " --zip_to_output " + file + " $(@D)"),
+        cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
+                " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
         tools = [
             ":generate_examples",

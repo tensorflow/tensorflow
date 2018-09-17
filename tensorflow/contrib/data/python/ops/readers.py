@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.contrib.data.python.ops import parsing_ops
 from tensorflow.contrib.data.python.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -214,18 +215,17 @@ def _maybe_shuffle_and_repeat(
   return dataset
 
 
-def make_tf_record_dataset(
-    file_pattern,
-    batch_size,
-    parser_fn=None,
-    num_epochs=None,
-    shuffle=True,
-    shuffle_buffer_size=None,
-    shuffle_seed=None,
-    prefetch_buffer_size=None,
-    num_parallel_reads=None,
-    num_parallel_parser_calls=None,
-    drop_final_batch=False):
+def make_tf_record_dataset(file_pattern,
+                           batch_size,
+                           parser_fn=None,
+                           num_epochs=None,
+                           shuffle=True,
+                           shuffle_buffer_size=None,
+                           shuffle_seed=None,
+                           prefetch_buffer_size=optimization.AUTOTUNE,
+                           num_parallel_reads=None,
+                           num_parallel_parser_calls=None,
+                           drop_final_batch=False):
   """Reads and optionally parses TFRecord files into a dataset.
 
   Provides common functionality such as batching, optional parsing, shuffling,
@@ -300,8 +300,6 @@ def make_tf_record_dataset(
         parser_fn, batch_size, num_parallel_calls=num_parallel_parser_calls,
         drop_remainder=drop_final_batch))
 
-  if prefetch_buffer_size is None:
-    prefetch_buffer_size = -1  # tf.config.data.AUTOTUNE
   if prefetch_buffer_size == 0:
     return dataset
   else:
@@ -323,7 +321,7 @@ def make_csv_dataset(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=1,
+    prefetch_buffer_size=optimization.AUTOTUNE,
     num_parallel_reads=1,
     sloppy=False,
     num_rows_for_inference=100,
@@ -386,9 +384,10 @@ def make_csv_dataset(
     shuffle_buffer_size: Buffer size to use for shuffling. A large buffer size
       ensures better shuffling, but increases memory usage and startup time.
     shuffle_seed: Randomization seed to use for shuffling.
-    prefetch_buffer_size: An int specifying the number of feature batches to
-      prefetch for performance improvement. Recommended value is the number of
-      batches consumed per training step.
+    prefetch_buffer_size: An int specifying the number of feature
+      batches to prefetch for performance improvement. Recommended value is the
+      number of batches consumed per training step. Defaults to auto-tune.
+
     num_parallel_reads: Number of threads used to read CSV records from files.
       If >1, the results will be interleaved.
     sloppy: If `True`, reading performance will be improved at
@@ -499,7 +498,8 @@ def make_csv_dataset(
   # indefinitely, and all batches will be full-sized.
   dataset = dataset.batch(batch_size=batch_size,
                           drop_remainder=num_epochs is None)
-  dataset = dataset.map(map_fn)
+  dataset = dataset_ops.MapDataset(
+      dataset, map_fn, use_inter_op_parallelism=False)
   dataset = dataset.prefetch(prefetch_buffer_size)
 
   return dataset
@@ -665,7 +665,7 @@ def make_batched_features_dataset(file_pattern,
                                   shuffle=True,
                                   shuffle_buffer_size=10000,
                                   shuffle_seed=None,
-                                  prefetch_buffer_size=1,
+                                  prefetch_buffer_size=optimization.AUTOTUNE,
                                   reader_num_threads=1,
                                   parser_num_threads=2,
                                   sloppy_ordering=False,
@@ -738,7 +738,7 @@ def make_batched_features_dataset(file_pattern,
     shuffle_seed: Randomization seed to use for shuffling.
     prefetch_buffer_size: Number of feature batches to prefetch in order to
       improve performance. Recommended value is the number of batches consumed
-      per training step (default is 1).
+      per training step. Defaults to auto-tune.
     reader_num_threads: Number of threads used to read `Example` records. If >1,
       the results will be interleaved.
     parser_num_threads: Number of threads to use for parsing `Example` tensors
@@ -778,7 +778,8 @@ def make_batched_features_dataset(file_pattern,
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset.output_types == (dtypes.string, dtypes.string):
-    dataset = dataset.map(lambda _, v: v)
+    dataset = dataset_ops.MapDataset(
+        dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
   # Apply dataset repeat and shuffle transformations.
   dataset = _maybe_shuffle_and_repeat(

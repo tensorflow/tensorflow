@@ -85,10 +85,10 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
       ROOT dynamic-slice.2 = f32[3,2,2] dynamic-slice(array_param.2, index_param), dynamic_slice_sizes={3,2,2}
     })")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 3);
-  const Literal& index_arg = *args[0];
+  const Literal& index_arg = args[0];
 
   EXPECT_EQ(index_arg.Get<int32>({0}), 0);
 
@@ -114,10 +114,10 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
       ROOT dynamic-update-slice.2 = f32[3,3000,5] dynamic-update-slice(array_param.2, update_param.2, index_param)
     })")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
-  const Literal& index_arg = *args[0];
+  const Literal& index_arg = args[0];
 
   EXPECT_EQ(index_arg.Get<int32>({0}), 0);
 
@@ -140,10 +140,10 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
 }
 )")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
-  const Literal& key_arg = *args[0];
+  const Literal& key_arg = args[0];
 
   tensorflow::gtl::FlatSet<uint32> key_set;
   for (const float& value : key_arg.data<float>()) {
@@ -163,10 +163,10 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 }
 )")
                     .ValueOrDie();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<Literal>> args,
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
-  const Literal& key_arg = *args[0];
+  const Literal& key_arg = args[0];
 
   tensorflow::gtl::FlatSet<int32> key_set;
   for (const int32& value : key_arg.data<int32>()) {

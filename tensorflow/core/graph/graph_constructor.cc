@@ -1042,12 +1042,12 @@ Status GraphConstructor::Convert() {
   }
 
   if (processed < node_defs_.size()) {
-    LOG(WARNING) << "IN " << __func__ << (node_defs_.size() - processed)
+    LOG(WARNING) << "IN " << __func__ << " " << (node_defs_.size() - processed)
                  << " NODES IN A CYCLE";
     for (int64 i = 0; i < node_defs_.size(); i++) {
       if (pending_count_[i] != 0) {
         LOG(WARNING) << "PENDING: " << SummarizeNodeDef(*node_defs_[i])
-                     << "WITH PENDING COUNT = " << pending_count_[i];
+                     << " WITH PENDING COUNT = " << pending_count_[i];
       }
     }
     return errors::InvalidArgument(node_defs_.size() - processed,

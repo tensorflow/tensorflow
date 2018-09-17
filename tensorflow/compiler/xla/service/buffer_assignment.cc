@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -617,18 +616,24 @@ Status BufferAssignment::ComputeSummaryStats() {
   }
 
   // Only compute total fragmentation if all computations have schedules.
-  SequentialHloOrdering::HloModuleSequence module_sequence;
+  HloSchedule schedule(module_);
+  bool schedule_complete = true;
   for (const auto& computation : module_->computations()) {
-    const std::vector<const HloInstruction*>* sequence =
-        liveness_->hlo_ordering().SequentialOrder(*computation);
-    if (sequence != nullptr) {
-      module_sequence.emplace(computation, *sequence);
+    if (!computation->IsFusionComputation()) {
+      const std::vector<const HloInstruction*>* sequence =
+          liveness_->hlo_ordering().SequentialOrder(*computation);
+      if (sequence == nullptr) {
+        schedule_complete = false;
+      } else {
+        schedule.set_sequence(computation, *sequence);
+      }
     }
   }
-  if (module_sequence.size() == module_->computation_count()) {
+  if (schedule_complete) {
+    TF_RETURN_IF_ERROR(schedule.Verify());
     TF_ASSIGN_OR_RETURN(
         const int64 min_size,
-        HeapSimulator::MinimumMemoryForModule(module_sequence, buffer_size_));
+        HeapSimulator::MinimumMemoryForModule(schedule, buffer_size_));
     stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
   }
 
@@ -1064,7 +1069,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     // since buffers for kCall, kWhile, and kConditional sub-computations are
     // only live for the duration of their calling instructions.
     VLOG(1) << "Running whole-module heap simulation";
-    SequentialHloOrdering::HloModuleSequence module_sequence;
+    HloSchedule schedule(&assignment->module());
     FlatSet<const LogicalBuffer*> all_buffers_to_assign;
     for (const auto& pair : buffers_to_assign_sequentially) {
       const HloComputation* computation = pair.first;
@@ -1072,7 +1077,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       const std::vector<const HloInstruction*>* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
-      module_sequence[computation] = *instruction_sequence;
+      schedule.set_sequence(computation, *instruction_sequence);
       all_buffers_to_assign.insert(buffers_to_assign.begin(),
                                    buffers_to_assign.end());
     }
@@ -1090,7 +1095,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
           const HeapSimulator::Result result,
           HeapSimulator::Run(absl::make_unique<DecreasingSizeRunsHeap>(
                                  absl::make_unique<LazyBestFitHeap>(alignment)),
-                             assignment->module(), module_sequence,
+                             assignment->module(), schedule,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_, options));
       AssignBuffersFromHeapSimulator(result, assignment,
@@ -1121,7 +1126,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(
                 absl::make_unique<DecreasingSizeRunsHeap>(
                     absl::make_unique<LazyBestFitHeap>(alignment)),
-                *computation, *instruction_sequence,
+                *computation, HloInstructionSequence(*instruction_sequence),
                 assignment->points_to_analysis(), assignment->buffer_size_,
                 options));
         AssignBuffersFromHeapSimulator(result, assignment,

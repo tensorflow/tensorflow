@@ -39,7 +39,7 @@ from tensorflow.python.platform import test
 class LocalVariabletest(test.TestCase):
 
   def test_local_variable(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEquals([], variables_lib.local_variables())
       value0 = 42
       variables_lib2.local_variable(value0)
@@ -55,7 +55,7 @@ class LocalVariabletest(test.TestCase):
 class ReduceSumNTest(test.TestCase):
 
   def test_reduce_sum_n(self):
-    with self.test_session():
+    with self.cached_session():
       a = constant_op.constant(1)
       b = constant_op.constant([2])
       c = constant_op.constant([[3, 4], [5, 6]])
@@ -119,13 +119,13 @@ class WithShapeTest(test.TestCase):
                                   }))
 
   def test_with_shape_invalid_expected_shape(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(ValueError, "Invalid rank",
                               tensor_util.with_shape, [[1], [2]],
                               constant_op.constant(1.0))
 
   def test_with_shape_invalid_type(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(ValueError, "Invalid dtype",
                               tensor_util.with_shape, [1.1],
                               constant_op.constant([1.0]))
@@ -138,7 +138,7 @@ class WithShapeTest(test.TestCase):
                               constant_op.constant(1.0))
 
   def test_with_shape_0(self):
-    with self.test_session():
+    with self.cached_session():
       value = 42
       shape = [0]
       unexpected_shapes = [[1], [2], [1, 1]]
@@ -150,7 +150,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_1(self):
-    with self.test_session():
+    with self.cached_session():
       value = [42]
       shape = [1]
       unexpected_shapes = [[0], [2], [1, 1]]
@@ -162,7 +162,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2(self):
-    with self.test_session():
+    with self.cached_session():
       value = [42, 43]
       shape = [2]
       unexpected_shapes = [[0], [1], [2, 1]]
@@ -174,7 +174,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2x2(self):
-    with self.test_session():
+    with self.cached_session():
       value = [[42, 43], [44, 45]]
       shape = [2, 2]
       unexpected_shapes = [[0], [1], [2, 1]]
@@ -196,7 +196,7 @@ class WithShapeTest(test.TestCase):
       np.testing.assert_array_equal(value, tensor_with_shape.eval())
 
   def test_with_shape_none(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_no_shape = array_ops.placeholder(dtypes.float32)
 
       compatible_shape = [2, 2]
@@ -220,7 +220,7 @@ class WithShapeTest(test.TestCase):
 
   @test_util.enable_c_shapes
   def test_with_shape_partial(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_partial_shape = array_ops.placeholder(dtypes.float32)
       tensor_partial_shape.set_shape([None, 2])
 

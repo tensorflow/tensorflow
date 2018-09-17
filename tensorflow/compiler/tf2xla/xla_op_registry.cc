@@ -371,26 +371,28 @@ XlaOpRegistry& XlaOpRegistry::Instance() {
   return *r;
 }
 
-XlaOpRegistrationBuilder::XlaOpRegistrationBuilder(StringPiece name) {
+XlaOpRegistrationBuilder::XlaOpRegistrationBuilder(absl::string_view name) {
   registration_.reset(new XlaOpRegistry::OpRegistration);
   registration_->name = string(name);
 }
 
-XlaOpRegistrationBuilder XlaOpRegistrationBuilder::Name(StringPiece name) {
+XlaOpRegistrationBuilder XlaOpRegistrationBuilder::Name(
+    absl::string_view name) {
   XlaOpRegistrationBuilder registration(name);
   return registration;
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
-    absl::Span<const StringPiece> devices) {
+    absl::Span<const absl::string_view> devices) {
   registration_->has_device_whitelist = true;
-  for (StringPiece device : devices) {
+  for (absl::string_view device : devices) {
     registration_->device_whitelist.emplace(device);
   }
   return *this;
 }
 
-XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(StringPiece device) {
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
+    absl::string_view device) {
   registration_->has_device_whitelist = true;
   registration_->device_whitelist.emplace(device);
   return *this;
@@ -407,7 +409,7 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowResourceTypes() {
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
-    StringPiece attr_name, DataType allowed) {
+    absl::string_view attr_name, DataType allowed) {
   std::set<DataType>& types =
       registration_->type_constraints[string(attr_name)];
   types.insert(allowed);
@@ -415,7 +417,7 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
-    StringPiece attr_name, absl::Span<const DataType> allowed) {
+    absl::string_view attr_name, absl::Span<const DataType> allowed) {
   std::set<DataType>& types =
       registration_->type_constraints[string(attr_name)];
   for (DataType t : allowed) {
@@ -425,7 +427,7 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstInput(
-    StringPiece input_name) {
+    absl::string_view input_name) {
   registration_->compile_time_constant_inputs.emplace(input_name);
   return *this;
 }
@@ -452,7 +454,7 @@ XlaOpRegistrar::XlaOpRegistrar(
 }
 
 XlaBackendRegistrar::XlaBackendRegistrar(
-    StringPiece name, absl::Span<const DataType> types,
+    absl::string_view name, absl::Span<const DataType> types,
     XlaOpRegistry::BackendOpFilter op_filter) {
   XlaOpRegistry& registry = XlaOpRegistry::Instance();
   registry.RegisterBackend(string(name), types, op_filter);

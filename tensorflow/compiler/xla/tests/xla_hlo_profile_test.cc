@@ -144,14 +144,14 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum  # pylint: disable=g-bad-import-order
+
 import os as _os
 import platform as _platform
 import subprocess as _subprocess
@@ -29,7 +31,6 @@ from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.lazy_loader import LazyLoader
-
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies.
@@ -50,6 +51,31 @@ else:
 
 if _toco_from_proto_bin and not _os.path.exists(_toco_from_proto_bin):
   _toco_from_proto_bin = "toco_from_protos"
+
+
+class ConverterMode(enum.Enum):
+  """Enum class defining the converters available to generate TFLite models.
+
+  WARNING: Experimental interface, subject to change.
+  """
+  # Convert model using TOCO such that all ops are TensorFlow Lite native ops.
+  #
+  # This is the only supported mode for any models that contain operations that
+  # cannot be resolved in TensorFlow.
+  DEFAULT = "DEFAULT"
+
+  # Convert model using TOCO such that only unsupported operations are
+  # represented as TensorFlow ops.
+  # WARNING: Experimental interface, subject to change.
+  TOCO_EXTENDED = "TOCO_EXTENDED"
+
+  # Convert model using TOCO such that all operations are represented as
+  # TensorFlow ops.
+  # WARNING: Experimental interface, subject to change.
+  TOCO_EXTENDED_ALL = "TOCO_EXTENDED_ALL"
+
+  def __str__(self):
+    return self.value
 
 
 def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
@@ -128,7 +154,8 @@ def build_toco_convert_protos(input_tensors,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
                               dump_graphviz_dir=None,
-                              dump_graphviz_video=False):
+                              dump_graphviz_video=False,
+                              converter_mode=ConverterMode.DEFAULT):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -183,6 +210,8 @@ def build_toco_convert_protos(input_tensors,
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
+    converter_mode: Experimental flag, subject to change. ConverterMode
+      indicating which converter to use. (default ConverterMode.DEFAULT)
 
   Returns:
     model_flags, toco_flags: two protocol buffers describing the conversion
@@ -211,6 +240,11 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
+  if converter_mode == ConverterMode.TOCO_EXTENDED:
+    toco.allow_eager_ops = True
+  elif converter_mode == ConverterMode.TOCO_EXTENDED_ALL:
+    toco.allow_eager_ops = True
+    toco.force_eager_ops = True
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
@@ -301,9 +335,8 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   Raises:
     Defined in `build_toco_convert_protos`.
   """
-  model_flags, toco_flags = build_toco_convert_protos(input_tensors,
-                                                      output_tensors,
-                                                      *args, **kwargs)
+  model_flags, toco_flags = build_toco_convert_protos(
+      input_tensors, output_tensors, *args, **kwargs)
   data = toco_convert_protos(model_flags.SerializeToString(),
                              toco_flags.SerializeToString(),
                              input_data.SerializeToString())

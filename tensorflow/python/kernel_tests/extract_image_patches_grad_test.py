@@ -83,7 +83,7 @@ class ExtractImagePatchesGradTest(test.TestCase):
     random_seed = 42
     random_seed_lib.set_random_seed(random_seed)
 
-    with self.test_session():
+    with self.cached_session():
       for test_case in self._TEST_CASES:
         np.random.seed(random_seed)
         in_shape = test_case['in_shape']

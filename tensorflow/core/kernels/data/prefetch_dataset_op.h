@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {
+namespace data {
 
 class PrefetchDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -34,6 +35,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
   class Dataset;
 };
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_

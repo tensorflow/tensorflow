@@ -644,14 +644,7 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
-    ] + if_mkl(
-        [
-            ":mkl_transpose_op",
-        ],
-        [
-            ":transpose_op",
-        ],
-    ) + [
+        ":transpose_op",
         ":unique_op",
         ":unpack_op",
         ":unravel_index_op",
@@ -894,24 +887,13 @@ tf_kernel_library(
     deps = ARRAY_DEPS,
 )
 
-if_mkl(
-    [tf_mkl_kernel_library(
-        name = "mkl_transpose_op",
-        srcs = [
-            "mkl_transpose_op.cc",
-            "transpose_op.cc",
-        ],
-        hdrs = ["transpose_op.h"],
-        deps = ARRAY_DEPS + mkl_deps(),
-    )],
-    [tf_kernel_library(
-        name = "transpose_op",
-        srcs = [
-            "transpose_op.cc",
-        ],
-        hdrs = ["transpose_op.h"],
-        deps = ARRAY_DEPS,
-    )],
+tf_kernel_library(
+    name = "transpose_op",
+    srcs = [
+        "transpose_op.cc",
+    ],
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + if_mkl([":mkl_transpose_op"]),
 )
 
 tf_kernel_library(
@@ -4523,6 +4505,25 @@ tf_kernel_library(
     deps = STRING_DEPS,
 )
 
+tf_cc_test(
+    name = "substr_op_test",
+    size = "small",
+    srcs = ["substr_op_test.cc"],
+    deps = [
+        ":substr_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
 tf_kernel_library(
     name = "as_string_op",
     prefix = "as_string_op",
@@ -5203,6 +5204,7 @@ filegroup(
         "fifo_queue.cc",
         "fifo_queue_op.cc",
         "fused_batch_norm_op.cc",
+        "listdiff_op.cc",
         "population_count_op.cc",
         "population_count_op.h",
         "winograd_transform.h",
@@ -6375,6 +6377,14 @@ tf_cc_test_mkl(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ]
+)
+tf_mkl_kernel_library(
+    name = "mkl_transpose_op",
+    srcs = [
+        "mkl_transpose_op.cc",
+    ],
+    hdrs = ["transpose_op.h"],
+    deps = ARRAY_DEPS + mkl_deps(),
 )
 
 # NOTE(lespeholt): This rule is deprecated, please use:

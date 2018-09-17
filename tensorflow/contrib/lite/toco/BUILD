@@ -347,6 +347,7 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
     ],
@@ -372,6 +373,7 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
+        "//tensorflow/contrib/lite/kernels/internal:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
@@ -406,8 +408,11 @@ tf_cc_binary(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        # We cannot embed the core:ops dependency directly into :toco_tooling as
+        # it can conflict with downstream deps when toco is used as a library.
+        "//tensorflow/core:ops",
     ],
 )
 

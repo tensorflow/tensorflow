@@ -291,13 +291,7 @@ def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
       name=name)
 
 
-def dynamic_slice(x, starts, sizes, name=None):
-  # TODO(phawkins): the Slice operator lowers to DynamicSlice if `starts` is not
-  # a compile-time constant. This doesn't exactly mimic the semantics of dynamic
-  # slice if the slice is out of bounds.
-  return array_ops.slice(x, starts, sizes, name=name)
-
-
+dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
 
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove

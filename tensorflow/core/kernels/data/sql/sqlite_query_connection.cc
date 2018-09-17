@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace sql {
 
 SqliteQueryConnection::SqliteQueryConnection() {}
@@ -115,5 +115,5 @@ void SqliteQueryConnection::FillTensorWithResultSetEntry(
 }
 
 }  // namespace sql
-
+}  // namespace data
 }  // namespace tensorflow

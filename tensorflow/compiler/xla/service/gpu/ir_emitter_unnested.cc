@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -464,67 +465,35 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 
   if (IsCustomCallToDnnConvolution(*custom_call)) {
     const auto& assn = ir_emitter_context_->buffer_assignment();
-    const auto& lhs_shape = custom_call->operand(0)->shape();
-    const auto& rhs_shape = custom_call->operand(1)->shape();
-    const auto& conv_result_shape = custom_call->shape().tuple_shapes(0);
     auto lhs_slice = GetAllocationSlice(*custom_call->operand(0));
     auto rhs_slice = GetAllocationSlice(*custom_call->operand(1));
     auto tuple_result_slice = GetAllocationSlice(*custom_call);
     auto conv_result_slice = assn.GetUniqueSlice(custom_call, {0}).ValueOrDie();
     auto scratch_slice = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
 
-    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                        custom_call->backend_config<CudnnConvBackendConfig>());
     const auto& target = custom_call->custom_call_target();
-    std::unique_ptr<ConvolutionThunk> thunk;
+    BufferAllocation::Slice input_slice, filter_slice, output_slice;
+
     if (target == kCudnnConvForwardCallTarget) {
-      thunk = absl::make_unique<ConvolutionThunk>(
-          CudnnConvKind::kForward,
-          /*input_buffer=*/lhs_slice,
-          /*filter_buffer=*/rhs_slice,
-          /*output_buffer=*/conv_result_slice,
-          /*tuple_result_buffer=*/tuple_result_slice,
-          /*scratch_buffer=*/scratch_slice,
-          /*input_shape=*/lhs_shape,
-          /*filter_shape=*/rhs_shape,
-          /*output_shape=*/conv_result_shape,  //
-          custom_call->window(), custom_call->convolution_dimension_numbers(),
-          custom_call->feature_group_count(), backend_config.algorithm(),
-          backend_config.tensor_ops_enabled(), custom_call);
+      input_slice = lhs_slice;
+      filter_slice = rhs_slice;
+      output_slice = conv_result_slice;
     } else if (target == kCudnnConvBackwardInputCallTarget) {
-      thunk = absl::make_unique<ConvolutionThunk>(
-          CudnnConvKind::kBackwardInput,
-          /*input_buffer=*/conv_result_slice,
-          /*filter_buffer=*/rhs_slice,
-          /*output_buffer=*/lhs_slice,
-          /*tuple_result_buffer=*/tuple_result_slice,
-          /*scratch_buffer=*/scratch_slice,
-          /*input_shape=*/conv_result_shape,
-          /*filter_shape=*/rhs_shape,
-          /*output_shape=*/lhs_shape,  //
-          custom_call->window(), custom_call->convolution_dimension_numbers(),
-          custom_call->feature_group_count(), backend_config.algorithm(),
-          backend_config.tensor_ops_enabled(), custom_call);
+      input_slice = conv_result_slice;
+      filter_slice = rhs_slice;
+      output_slice = lhs_slice;
     } else if (target == kCudnnConvBackwardFilterCallTarget) {
-      thunk = absl::make_unique<ConvolutionThunk>(
-          CudnnConvKind::kBackwardFilter,
-          /*input_buffer=*/lhs_slice,
-          /*filter_buffer=*/conv_result_slice,
-          /*output_buffer=*/rhs_slice,
-          /*tuple_result_buffer=*/tuple_result_slice,
-          /*scratch_buffer=*/scratch_slice,
-          /*input_shape=*/lhs_shape,
-          /*filter_shape=*/conv_result_shape,
-          /*output_shape=*/rhs_shape,  //
-          custom_call->window(), custom_call->convolution_dimension_numbers(),
-          custom_call->feature_group_count(), backend_config.algorithm(),
-          backend_config.tensor_ops_enabled(), custom_call);
+      input_slice = lhs_slice;
+      filter_slice = conv_result_slice;
+      output_slice = rhs_slice;
     } else {
       LOG(FATAL) << "Unexpected custom call target: "
                  << custom_call->custom_call_target();
     }
 
-    thunk_sequence_->emplace_back(std::move(thunk));
+    thunk_sequence_->emplace_back(absl::make_unique<ConvolutionThunk>(
+        Cast<HloCustomCallInstruction>(custom_call), input_slice, filter_slice,
+        output_slice, scratch_slice, tuple_result_slice));
     return Status::OK();
   }
 
@@ -2521,15 +2490,15 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
-    const HloInstruction* hlo, const ShapeIndex& index) {
+    HloInstruction* hlo, const ShapeIndex& index) {
   bool fused = HloOpcode::kFusion == hlo->opcode();
-  const HloInstruction* inst = fused ? hlo->fused_expression_root() : hlo;
-  const HloInstruction* init_value_operand = [&] {
+  HloInstruction* inst = fused ? hlo->fused_expression_root() : hlo;
+  HloInstruction* init_value_operand = [&] {
     switch (inst->opcode()) {
       case HloOpcode::kSelectAndScatter:
-        return inst->operand(2);
+        return inst->mutable_operand(2);
       case HloOpcode::kReduce:
-        return inst->operand(1);
+        return inst->mutable_operand(1);
       case HloOpcode::kTuple:
         CHECK(hlo->IsMultiOutputFusion())
             << ": " << hlo->ToString() << " is not a multi-output fusion.";
@@ -2537,7 +2506,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
             << ": Found '" << inst->operand(index.back())->opcode() << "' in "
             << inst->ToString() << " but expected 'reduce'.";
         // For multi-output fusion look through the tuple.
-        return inst->operand(index.back())->operand(1);
+        return inst->mutable_operand(index.back())->mutable_operand(1);
       default:
         LOG(FATAL) << "Opcode " << inst->opcode()
                    << " should not need an initializer.";
@@ -2609,28 +2578,35 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
                                 ir_emitter_context_->device_description());
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk.get(),
                          ir_emitter_context_->llvm_module());
-  // If the init_value was fused into this reduce we have to generate it first.
-  if (fused && init_value_operand->opcode() != HloOpcode::kParameter) {
-    CHECK_EQ(HloOpcode::kConstant, init_value_operand->opcode());
 
-    const Literal& literal = init_value_operand->literal();
-    llvm::Constant* initializer =
-        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+  if (fused) {
+    // If init_value was fused into this reduce we have to generate it first.
+    std::vector<IrArray> parameter_arrays;
+    for (HloInstruction* operand : hlo->operands()) {
+      parameter_arrays.push_back(GetIrArray(*operand, *hlo));
+    }
+    GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
+                                            ir_emitter_context_->llvm_module(),
+                                            &b_, GetNestedComputer());
 
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        *module_, initializer->getType(),
-        /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
-        /*Name=*/"");
-    global_for_const->setAlignment(kConstantBufferAlignBytes);
-    bindings_.BindHloToIrValue(*init_value_operand, global_for_const);
+    FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
+    TF_RETURN_IF_ERROR(init_value_operand->Accept(&fused_emitter));
+    TF_RETURN_IF_ERROR(
+        ParallelLoopEmitter(fused_emitter.GetGenerator(init_value_operand),
+                            GetIrArray(*hlo, *hlo, index), launch_dimensions,
+                            &b_)
+            .EmitLoop(IrName(hlo)));
+  } else {
+    // In the unfused case the element is already there, just read from it.
+    TF_RETURN_IF_ERROR(ParallelLoopEmitter(
+                           [=](const IrArray::Index& index) {
+                             return GetIrArray(*init_value, *hlo)
+                                 .EmitReadArrayElement(index, &b_);
+                           },
+                           GetIrArray(*hlo, *hlo, index), launch_dimensions,
+                           &b_)
+                           .EmitLoop(IrName(hlo)));
   }
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(
-                         [=](const IrArray::Index& index) {
-                           return GetIrArray(*init_value, *hlo)
-                               .EmitReadArrayElement(index, &b_);
-                         },
-                         GetIrArray(*hlo, *hlo, index), launch_dimensions, &b_)
-                         .EmitLoop(IrName(hlo)));
 
   // Clean up state left behind by emitting the loop above.  (This is normally
   // done in IrEmitterUnnested::Postprocess().)
@@ -2819,10 +2795,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   }
 
   // For multioutput fusion, we need to emit each operand and the root.
-  std::vector<IrArray> output_arrays;
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(hlo.shape()); ++i) {
-    output_arrays.push_back(GetIrArray(hlo, hlo, {i}));
-  }
+  std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(element_generator, output_arrays, launch_dimensions,
                           &b_, unroll_factor)
@@ -2830,12 +2803,9 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
                     GetIndexTypeForKernel(
                         &hlo, launch_dimensions.launch_bound(), &b_)));
 
-  std::vector<llvm::Value*> tuple_operand_ptrs;
-  for (int64 i = 0; i < output_arrays.size(); ++i) {
-    tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
-  }
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-  llvm_ir::EmitTuple(GetIrArray(hlo, hlo), tuple_operand_ptrs, &b_, module_);
+  llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
+
   return Status::OK();
 }
 
@@ -2847,29 +2817,14 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
                                       static_cast<KernelThunk*>(LastThunk()));
 }
 
-int IrEmitterUnnested::ConstructIrArrayForOutputs(
-    const HloInstruction& hlo, std::vector<IrArray>* output_arrays) {
-  int64 num_outputs = 1;
-  if (hlo.IsMultiOutputFusion()) {
-    num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
-    output_arrays->reserve(num_outputs);
-    for (int64 i = 0; i < num_outputs; ++i) {
-      output_arrays->push_back(GetIrArray(hlo, hlo, {i}));
-    }
-  } else {
-    output_arrays->push_back(GetIrArray(hlo, hlo));
-  }
-  return num_outputs;
-}
-
-int IrEmitterUnnested::ConstructIrArrayForInputs(
-    const HloInstruction& hlo, std::vector<IrArray>* param_arrays) {
-  int64 num_params = hlo.operands().size();
-  param_arrays->reserve(num_params);
+std::vector<IrArray> IrEmitterUnnested::ConstructIrArrayForInputs(
+    const HloInstruction& hlo) {
+  std::vector<IrArray> param_arrays;
+  param_arrays.reserve(hlo.operands().size());
   for (const HloInstruction* param : hlo.operands()) {
-    param_arrays->push_back(GetIrArray(*param, hlo));
+    param_arrays.push_back(GetIrArray(*param, hlo));
   }
-  return num_params;
+  return param_arrays;
 }
 
 int IrEmitterUnnested::ConstructOutputReducedShapeAndCastOutputIrArrayToShape(
@@ -3050,10 +3005,10 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
   constexpr int64 kThreadsPerTile = kTileSize * kNumRows;
 
   // Construct IrArrays for the inputs and outputs.
-  std::vector<IrArray> output_arrays;
-  int64 num_outputs = ConstructIrArrayForOutputs(*hlo, &output_arrays);
-  std::vector<IrArray> param_arrays;
-  int64 num_params = ConstructIrArrayForInputs(*hlo, &param_arrays);
+  std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(*hlo);
+  int64 num_outputs = output_arrays.size();
+  std::vector<IrArray> param_arrays = ConstructIrArrayForInputs(*hlo);
+  int64 num_params = param_arrays.size();
 
   // Allocate shared memory buffers to store the tiled inputs.
   std::vector<llvm::Value*> param_shmem_buffers(num_params, nullptr);
@@ -3251,12 +3206,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
 
   // For multioutput fusion, emit a tuple with all the individual outputs.
   if (hlo->IsMultiOutputFusion()) {
-    std::vector<llvm::Value*> tuple_operand_ptrs;
-    for (int64 i = 0; i < output_arrays.size(); ++i) {
-      tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
-    }
-    llvm_ir::EmitTuple(GetIrArray(*hlo, *hlo), tuple_operand_ptrs, &b_,
-                       module_);
+    llvm_ir::EmitTuple(GetIrArray(*hlo, *hlo), output_arrays, &b_, module_);
   }
 
   return launch_dimensions;
