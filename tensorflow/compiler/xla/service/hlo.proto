@@ -309,6 +309,13 @@ message HeapSimulatorTrace {
   bool whole_module_simulation = 2;
 }
 
+// An abstraction representing a set of HLO module built to run concurrently
+// across different devices.
+message HloModuleGroupProto {
+  string name = 1;
+  repeated HloModuleProto hlo_modules = 2;
+}
+
 // Serialization of BufferAssignment.
 message BufferAssignmentProto {
   // Alias represents a source LogicalBuffer, and the buffer location that

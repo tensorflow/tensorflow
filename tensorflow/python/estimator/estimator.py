@@ -329,7 +329,7 @@ class Estimator(object):
                                  run_config.TaskType.PS):
       raise ValueError(
           'Train has been called wrong configuration. Please use '
-          'tf.estimator.train_and_evaluate which calls propper API according '
+          'tf.estimator.train_and_evaluate which calls proper API according '
           'to given configuration. Current configuration: {}.'.format(
               self.config))
 
@@ -1653,7 +1653,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
   def _unwrap_and_concat(value):
     value = nest.flatten(distribution.unwrap(value))
     if len(value) != 1:
-      return array_ops.concat(value)
+      return array_ops.concat(value, 0)
     return value[0]
 
   ready_op = distribution.call_for_each_tower(

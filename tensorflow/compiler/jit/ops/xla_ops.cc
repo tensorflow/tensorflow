@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::InferenceContext;
 
 REGISTER_OP("XlaLaunch")
     .Input("constants: Tconstants")
@@ -31,5 +35,20 @@ REGISTER_OP("XlaLaunch")
     // TODO(phawkins): create stateful and non-stateful variants of XlaLaunch.
     .SetIsStateful()
     .Doc("XLA Launch Op. For use by the XLA JIT only.");
+
+REGISTER_OP("XlaClusterOutput")
+    .Input("input: T")
+    // Note: when replication is supported, this op will have N outputs.
+    .Output("outputs: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        c->set_output(i, c->input(0));
+      }
+      return Status::OK();
+    })
+    .Doc(
+        "Operator that connects the output of an XLA computation to other "
+        "consumer graph nodes.");
 
 }  // namespace tensorflow

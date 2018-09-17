@@ -113,7 +113,7 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual(w.constraint, constraint)
 
   def testStringDefaultInitializer(self):
-    with self.test_session():
+    with self.cached_session():
       v = variable_scope.get_variable("string", shape=[], dtype=dtypes.string)
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(compat.as_bytes(v.eval()), b"")
@@ -263,7 +263,7 @@ class VariableScopeTest(test.TestCase):
 
   # TODO(alive): support variable partitioning/caching in eager mode.
   def testVarScopeCachingDevice(self):
-    with self.test_session():
+    with self.cached_session():
       caching_device = "/job:moo"
       with variable_scope.variable_scope("tower"):
         with variable_scope.variable_scope(
@@ -367,7 +367,7 @@ class VariableScopeTest(test.TestCase):
       variable_scope.get_variable("s", initializer=init, dtype=dtypes.float64)
 
   def testControlDeps(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
           "v0", [1], initializer=init_ops.constant_initializer(0))
       with ops.control_dependencies([v0.value()]):
@@ -403,7 +403,7 @@ class VariableScopeTest(test.TestCase):
       variable_scope._DEFAULT_USE_RESOURCE = old
 
   def testControlFlow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v0 = variable_scope.get_variable(
           "v0", [], initializer=init_ops.constant_initializer(0))
       var_dict = {}
@@ -513,7 +513,7 @@ class VariableScopeTest(test.TestCase):
           self.assertEqual(sc2, "testVarScopeNameScope3/scope2/")
 
   def testVarScopeOriginalNameScope(self):
-    with self.test_session():
+    with self.cached_session():
       with ops.name_scope("scope1"):
         with variable_scope.variable_scope("tower") as tower:
           self.assertEqual(tower.original_name_scope, "scope1/tower/")
@@ -536,7 +536,7 @@ class VariableScopeTest(test.TestCase):
               self.assertEqual(sc3, "scope1/tower/bar_1/")
 
   def testVarScopeObjectReuse(self):
-    with self.test_session():
+    with self.cached_session():
       vs = None
       with variable_scope.variable_scope("jump", reuse=True) as scope:
         vs = scope
@@ -563,7 +563,7 @@ class VariableScopeTest(test.TestCase):
         self.assertFalse(jump_no_reuse.reuse)
 
   def testVarScopeGetOrCreateReuse(self):
-    with self.test_session():
+    with self.cached_session():
 
       def test_value(value):
         x = constant_op.constant(value)
@@ -582,7 +582,7 @@ class VariableScopeTest(test.TestCase):
       test_value(17.)
 
   def testVarOpScope(self):
-    with self.test_session():
+    with self.cached_session():
       with ops.name_scope("testVarOpScope1"):
         with variable_scope.variable_scope("tower", "default", []):
           self.assertEqual(
@@ -608,7 +608,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "testVarOpScope2/default_1/testVarOpScope2/")
 
   def testVarOpScopeUniqueNamesInterleavedSubstringScopes(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope(None, "defaultScope1"):
         with variable_scope.variable_scope(None, "layer"):
           self.assertEqual(
@@ -631,7 +631,7 @@ class VariableScopeTest(test.TestCase):
               "defaultScope1_2/layer/w:0")
 
   def testVarOpScopeUniqueNamesWithJump(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("default") as default:
         with variable_scope.variable_scope(None, "layer"):
           self.assertEqual(
@@ -647,7 +647,7 @@ class VariableScopeTest(test.TestCase):
               variable_scope.get_variable("w", []).name, "default/layer_2/w:0")
 
   def testVarOpScopeReuse(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer") as outer:
         with variable_scope.variable_scope("tower", "default", []):
           self.assertEqual(
@@ -673,7 +673,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
   def testVarScopeGetVar(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("root"):
         with variable_scope.variable_scope("towerA") as tower_a:
           va = variable_scope.get_variable("v", [1])
@@ -719,7 +719,7 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual("dtype" in str(exc.exception), True)
 
   def testVarScopeOuterScope(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer") as outer:
         pass
       with variable_scope.variable_scope(outer):
@@ -743,7 +743,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "outer_2/default/scope2/")
 
   def testVarScopeNestedOuterScope(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer") as outer:
         with variable_scope.variable_scope(outer):
           self.assertEqual(
@@ -768,7 +768,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "outer/default_1/scope2/")
 
   def testVarOpScopeReuseParam(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer") as outer:
         with variable_scope.variable_scope("tower", "default", []):
           self.assertEqual(
@@ -795,14 +795,14 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
   def testVarOpScopeReuseError(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         with variable_scope.variable_scope(None, "default", reuse=True):
           self.assertEqual(
               variable_scope.get_variable("w", []).name, "outer/tower/w:0")
 
   def testVarOpScopeOuterScope(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer") as outer:
         pass
       with variable_scope.variable_scope(outer, "default", []):
@@ -827,7 +827,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "outer_2/default/scope2/")
 
   def testVarOpScopeNestedOuterScope(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer") as outer:
         with variable_scope.variable_scope(outer, "default", []):
           self.assertEqual(
@@ -851,7 +851,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
   def testBasicWhenAuxiliaryNameScopeIsFalse(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope(
           "scope", auxiliary_name_scope=False) as scope:
         self.assertEqual(scope.original_name_scope, "")
@@ -886,7 +886,7 @@ class VariableScopeTest(test.TestCase):
               constant_op.constant([], name="c").name, "outer/inner/c:0")
 
   def testCreatedByDefaultNameWhenAuxiliaryNameScopeIsFalse(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope(
           None, default_name="default", auxiliary_name_scope=False) as scope:
         self.assertEqual(scope.original_name_scope, "")
@@ -910,7 +910,7 @@ class VariableScopeTest(test.TestCase):
               constant_op.constant([], name="c").name, "outer/default/c:0")
 
   def testReenterRootScopeWhenAuxiliaryNameScopeIsFalse(self):
-    with self.test_session():
+    with self.cached_session():
       root_scope = variable_scope.get_variable_scope()
       with variable_scope.variable_scope(
           root_scope, auxiliary_name_scope=False) as scope:
@@ -927,7 +927,7 @@ class VariableScopeTest(test.TestCase):
               constant_op.constant([], name="c1").name, "outer/c1:0")
 
   def testAuxiliaryNameScopeIsInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             None, default_name="scope", auxiliary_name_scope="invalid"):
@@ -947,7 +947,7 @@ class VariableScopeTest(test.TestCase):
 
   def testReuseScopeWithoutNameScopeCollision(self):
     # Github issue: #13429
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("outer"):
         with variable_scope.variable_scope("inner") as inner:
           pass
@@ -1021,7 +1021,7 @@ class VariableScopeTest(test.TestCase):
     self.assertEqual(varname_type[1], ("y", dtypes.int64))
 
   def testGetCollection(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable("testGetCollection_a", [])
       _ = variable_scope.get_variable(
           "testGetCollection_b", [], trainable=False)
@@ -1075,7 +1075,7 @@ class VariableScopeTest(test.TestCase):
       ])
 
   def testGetTrainableVariablesWithGetVariable(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable("testGetTrainableVariables_a", [])
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
@@ -1111,7 +1111,7 @@ class VariableScopeTest(test.TestCase):
             trainable=True)
 
   def testGetTrainableVariablesWithVariable(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
@@ -1150,7 +1150,7 @@ class VariableScopeTest(test.TestCase):
             trainable=True)
 
   def testGetGlobalVariables(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable("testGetGlobalVariables_a", [])
       with variable_scope.variable_scope("testGetGlobalVariables_foo") as scope:
         _ = variable_scope.get_variable("testGetGlobalVariables_b", [])
@@ -1160,7 +1160,7 @@ class VariableScopeTest(test.TestCase):
              "testGetGlobalVariables_b:0"])
 
   def testGetLocalVariables(self):
-    with self.test_session():
+    with self.cached_session():
       _ = variable_scope.get_variable(
           "a", [], collections=[ops.GraphKeys.LOCAL_VARIABLES])
       with variable_scope.variable_scope("foo") as scope:
@@ -1396,7 +1396,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual("scope/v/0:0", true_vars[0].name)
     self.assertEqual("scope/v/1:0", true_vars[1].name)
     self.assertEqual("custom_getter/add:0", v.name)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       np_vars, np_v = sess.run([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
@@ -1436,7 +1436,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual(template % (1, 1, 0), true_vars[6].name)
     self.assertEqual(template % (1, 1, 1), true_vars[7].name)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       np_vars, np_v = sess.run([true_vars, v])
       # take products of sums of products

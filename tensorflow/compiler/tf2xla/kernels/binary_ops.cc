@@ -66,6 +66,9 @@ XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
 static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  if (DataTypeIsUnsigned(dtype)) {
+    return xla::Div(x, y);
+  }
   auto zero = XlaHelpers::Zero(b, dtype);
   auto one = XlaHelpers::One(b, dtype);
   auto different_sign = xla::Ne(xla::Lt(x, zero), xla::Lt(y, zero));

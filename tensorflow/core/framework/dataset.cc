@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
 namespace {
 
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.

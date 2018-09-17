@@ -25,7 +25,7 @@ tf_custom_op_library(
     name = "python/ops/_nccl_ops.so",
     srcs = [
         "ops/nccl_ops.cc",
-    ] + if_cuda(["kernels/nccl_rewrite.cc"]),
+    ],
     gpu_srcs = if_not_windows_cuda([
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
@@ -74,6 +74,7 @@ tf_kernel_library(
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
         "kernels/nccl_ops.cc",
+        "kernels/nccl_rewrite.cc",
     ]),
     deps = if_cuda([
         "@local_config_nccl//:nccl",

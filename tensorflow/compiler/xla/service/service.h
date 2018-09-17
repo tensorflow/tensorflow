@@ -271,7 +271,9 @@ class Service : public ServiceInterface {
   StatusOr<std::vector<se::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
 
-  Status MaybeDumpHloModule(const HloModule& module) const;
+  // Dumps the (unoptimized) module given if the corresponding DebugOptions
+  // field has been set.
+  Status MaybeDumpUnoptimizedHloModule(const HloModule& module) const;
 
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.

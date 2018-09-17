@@ -485,7 +485,6 @@ py_library(
     srcs = ["single_loss_example.py"],
     deps = [
         ":step_fn",
-        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",
@@ -732,9 +731,12 @@ cuda_py_test(
         ":keras_test_lib",
     ],
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_gpu",
         "no_pip",
         "no_windows_gpu",
+        "notap",
         "notsan",
     ],
 )

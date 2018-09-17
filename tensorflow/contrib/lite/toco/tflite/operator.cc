@@ -107,7 +107,8 @@ class DepthwiseConvolution
         ActivationFunction::Serialize(op.fused_activation_function);
     return ::tflite::CreateDepthwiseConv2DOptions(
         *builder, padding, op.stride_width, op.stride_height,
-        op.depth_multiplier, activation_function);
+        op.depth_multiplier, activation_function, op.dilation_width_factor,
+        op.dilation_height_factor);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -118,9 +119,18 @@ class DepthwiseConvolution
     op->depth_multiplier = options.depth_multiplier();
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
+    op->dilation_width_factor = options.dilation_w_factor();
+    op->dilation_height_factor = options.dilation_h_factor();
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& conv_op = static_cast<const DepthwiseConvOperator&>(op);
+    if (conv_op.dilation_width_factor != 1 ||
+        conv_op.dilation_height_factor != 1) {
+      return 2;
+    }
+    return 1;
+  }
 };
 
 class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
@@ -1490,6 +1500,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       "RSQRT", OperatorType::kRsqrt));
   ops.push_back(MakeUnique<SimpleOperator<TensorFlowSquareOperator>>(
       "SQUARE", OperatorType::kSquare));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowZerosLikeOperator>>(
+      "ZEROS_LIKE", OperatorType::kZerosLike));
 
   return ops;
 }

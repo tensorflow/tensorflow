@@ -3459,13 +3459,17 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-  clip_max = max_value is not None
 
   if alpha != 0.:
+    if max_value is None and threshold == 0:
+      return nn.leaky_relu(x, alpha=alpha)
+
     if threshold != 0:
       negative_part = nn.relu(-x + threshold)
     else:
       negative_part = nn.relu(-x)
+
+  clip_max = max_value is not None
 
   if threshold != 0:
     # computes x for x > threshold else 0

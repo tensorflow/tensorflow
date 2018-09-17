@@ -37,6 +37,7 @@ Checkpoint management:
 
 Saving and restoring Python state:
 @@NumpyState
+@@PythonStateWrapper
 """
 
 from __future__ import absolute_import
@@ -45,6 +46,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.checkpoint.python.containers import UniqueNameTracker
 from tensorflow.contrib.checkpoint.python.python_state import NumpyState
+from tensorflow.contrib.checkpoint.python.python_state import PythonStateWrapper
 from tensorflow.contrib.checkpoint.python.split_dependency import split_dependency
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
@@ -39,7 +40,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()),
         op_version_(ctx->def().op() == "MapAndBatchDataset" ? 1 : 2) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
@@ -77,7 +77,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       case 2:
         OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                                 &num_parallel_calls));
-        OP_REQUIRES(ctx, num_parallel_calls > 0,
+        OP_REQUIRES(ctx,
+                    num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
                     errors::InvalidArgument(
                         "num_parallel_calls must be greater than zero."));
         break;
@@ -190,7 +191,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params) {}
+          : DatasetIterator<Dataset>(params),
+            num_parallel_calls_(params.dataset->num_parallel_calls_) {}
 
       ~Iterator() override {
         mutex_lock l(mu_);
@@ -204,8 +206,24 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        SetMetadata(ctx, "batch_size", dataset()->batch_size_);
-        SetMetadata(ctx, "parallelism", dataset()->num_parallel_calls_);
+        mutex_lock l(mu_);
+        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
+        if (num_parallel_calls_ == kAutoTune) {
+          num_parallel_calls_ = 1;
+          std::function<void(int64)> set_fn = [this](int64 value) {
+            {
+              mutex_lock l(mu_);
+              num_parallel_calls_ = value;
+            }
+            VLOG(2) << "setting parallelism knob to " << value;
+            cond_var_.notify_all();
+          };
+          AddTunableParameter(
+              ctx, "parallelism", num_parallel_calls_ /* value */, 1 /* min */,
+              port::NumSchedulableCPUs() /* max */, std::move(set_fn));
+        } else {
+          AddConstantParameter(ctx, "parallelism", num_parallel_calls_);
+        }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(ctx);
@@ -428,7 +446,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       int MaxBatchResults() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        return (dataset()->num_parallel_calls_ + dataset()->batch_size_ - 1) /
+        return (num_parallel_calls_ + dataset()->batch_size_ - 1) /
                dataset()->batch_size_;
       }
 
@@ -480,15 +498,18 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
           LOCKS_EXCLUDED(mu_) {
         std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
-        new_calls.reserve(dataset()->num_parallel_calls_);
         StartWork(ctx.get());
         auto stop_cleanup =
             gtl::MakeCleanup([this, &ctx]() { StopWork(ctx.get()); });
+        {
+          tf_shared_lock l(mu_);
+          new_calls.reserve(num_parallel_calls_);
+        }
         while (true) {
           {
             mutex_lock l(mu_);
             while (!cancelled_ &&
-                   (num_calls_ >= dataset()->num_parallel_calls_ ||
+                   (num_calls_ >= num_parallel_calls_ ||
                     batch_results_.size() > MaxBatchResults() ||
                     (batch_results_.size() == MaxBatchResults() &&
                      call_counter_ % dataset()->batch_size_ == 0))) {
@@ -501,7 +522,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               return;
             }
 
-            while (num_calls_ < dataset()->num_parallel_calls_ &&
+            while (num_calls_ < num_parallel_calls_ &&
                    (batch_results_.size() < MaxBatchResults() ||
                     (batch_results_.size() == MaxBatchResults() &&
                      call_counter_ % dataset()->batch_size_ != 0))) {
@@ -648,6 +669,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       // user specified level of parallelism and there are slots available in
       // the `batch_results_` buffer.
       condition_variable cond_var_;
+      // Identifies the maximum number of parallel calls.
+      int64 num_parallel_calls_ GUARDED_BY(mu_) = 0;
       // Counts the number of outstanding calls for this batch.
       int64 num_calls_ GUARDED_BY(mu_) = 0;
       // Counts the total number of calls.
@@ -671,7 +694,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const Eigen::ThreadPoolDevice* device_;  // not owned
   };
 
-  const int graph_def_version_;
   const int op_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;

@@ -58,7 +58,8 @@ class ModelDatasetTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensors((np.random.rand(1, 4 * k),
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
-    dataset = dataset.map(math_ops.matmul, num_parallel_calls=56)
+    dataset = dataset.map(
+        math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
     iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
     get_next = iterator.get_next()
 
@@ -84,7 +85,9 @@ class ModelDatasetTest(test.TestCase):
                                                                1))).repeat()
     dataset = dataset.apply(
         batching.map_and_batch(
-            math_ops.matmul, num_parallel_calls=28, batch_size=batch_size))
+            math_ops.matmul,
+            num_parallel_calls=optimization.AUTOTUNE,
+            batch_size=batch_size))
     iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
     get_next = iterator.get_next()
 
@@ -109,7 +112,9 @@ class ModelDatasetTest(test.TestCase):
                                                                1))).repeat()
     dataset = dataset.map(math_ops.matmul)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
-        lambda _: dataset, cycle_length=56, num_parallel_calls=56)
+        lambda _: dataset,
+        cycle_length=10,
+        num_parallel_calls=optimization.AUTOTUNE)
     iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
     get_next = iterator.get_next()
 
@@ -146,15 +151,15 @@ class ModelDatasetTest(test.TestCase):
       x, y = c
       return a, b, math_ops.matmul(x, y)
 
-    dataset = dataset.map(f1, num_parallel_calls=32)
+    dataset = dataset.map(f1, num_parallel_calls=optimization.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset, cycle_length=2)
 
-    dataset = dataset.map(f2, num_parallel_calls=16)
+    dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset, cycle_length=2)
 
-    dataset = dataset.map(f3, num_parallel_calls=10)
+    dataset = dataset.map(f3, num_parallel_calls=optimization.AUTOTUNE)
     iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
     get_next = iterator.get_next()
 

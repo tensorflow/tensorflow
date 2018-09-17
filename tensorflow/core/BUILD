@@ -178,7 +178,6 @@ COMMON_PROTO_SRCS = [
     "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
-    "framework/model.proto",
     "framework/node_def.proto",
     "framework/op_def.proto",
     "framework/reader_base.proto",
@@ -842,7 +841,6 @@ tf_cuda_library(
         "framework/log_memory.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
-        "framework/model.h",
         "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
@@ -1429,9 +1427,11 @@ cc_library(
         ":test",
         ":testlib_ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:random_ops",
     ],
 )
 
@@ -1917,6 +1917,13 @@ tf_pyclif_proto_library(
     name = "framework/types_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/types.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "protobuf/config_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/config.proto",
     visibility = ["//visibility:public"],
 )
 

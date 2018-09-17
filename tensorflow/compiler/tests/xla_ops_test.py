@@ -181,7 +181,7 @@ class XlaOpsTest(xla_test.XLATestCase, parameterized.TestCase):
               dtype=dtype))
 
   def testNeg(self):
-    for dtype in self.numeric_types:
+    for dtype in self.numeric_types - {np.uint8, np.int8}:
       self._assertOpOutputMatchesExpected(
           xla.neg,
           args=(np.array([1, 2, 3], dtype=dtype),),
