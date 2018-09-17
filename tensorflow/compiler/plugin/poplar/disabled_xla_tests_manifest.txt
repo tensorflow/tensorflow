@@ -18,6 +18,9 @@ PrngTest.HundredValuesB10p5F64 POPLAR
 PrngTest.HundredValuesB10p1F64 POPLAR
 ConvertTest.ConvertU64S64 POPLAR
 ConvertTest.ConvertS64U64 POPLAR
+ConvolutionHloTest.ConvolveF64BackwardFilter POPLAR
+ConvolutionHloTest.ConvolveF64BackwardInput POPLAR
+ConvolutionHloTest.ConvolveF64Forward POPLAR
 
 Bfloat16Test POPLAR // No bfloat16
 DynamicSliceTest.Int32R1BF16 POPLAR
