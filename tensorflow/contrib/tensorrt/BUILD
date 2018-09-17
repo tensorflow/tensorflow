@@ -471,7 +471,7 @@ gpu_py_tests(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "base_test",
     srcs = [
         "test/base_test.py",
