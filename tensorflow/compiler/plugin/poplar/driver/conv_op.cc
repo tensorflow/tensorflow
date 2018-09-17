@@ -49,16 +49,14 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
   unsigned int n_o = output_dims[dims.output_feature_dimension()];
   unsigned int n_p = kernel_dims[dims.kernel_output_feature_dimension()];
 
-  unsigned int n_g;
+  unsigned int n_g = parameters_inst->feature_group_count();
 
   if ((n_i >= n_j) && (n_o >= n_p)) {
     // Forward and backward passes
-    n_g = (n_i / n_j) * (n_o / n_p);
     n_i = n_i / n_g;
     n_o = n_o / n_g;
   } else {
     // Weight update
-    n_g = (n_j / n_i) * (n_p / n_o);
     n_b = n_b / n_g;
   }
 
@@ -217,17 +215,7 @@ poplar::Tensor RemoveGroupsDimensionFromWeights(const poplin::ConvParams& p,
                                                 const poplar::Tensor& t,
                                                 bool flipped) {
   poplar::Tensor out = t;
-
-  if (p.getNumConvGroups() == 1) {
-    // Non-grouped case
-    return out.reshapePartial(0, 1, {});
-  } else {
-    // GOI... -> OGI...
-    out = out.dimShufflePartial({0}, {1});
-
-    // OGI... -> O(GI)...
-    return out.reshapePartial(1, 3, {out.dim(1) * out.dim(2)});
-  }
+  return out.reshapePartial(0, 2, {out.dim(0) * out.dim(1)});
 }
 
 // This function operates on the poplibs format weights (GOI...)

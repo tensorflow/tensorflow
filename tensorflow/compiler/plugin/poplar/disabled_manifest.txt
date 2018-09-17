@@ -2,8 +2,7 @@ TensorArrayTest.testTensorArrayEvalEmpty  # Test generates invalid graph
 ReduceOpsTest.testReduceSumC64            # No support for C64
 ReduceOpsTest.testReduceProdC64           # No support for C64
 ReduceOpsTest.testReduceMeanC64           # No support for C64
-DepthwiseConv2DTest.testDepthwiseConv2DInputGradCompare      # Too slow at the moment
-DepthwiseConv2DTest.testDepthwiseConv2DFilterGradCompare     # Too slow at the moment
+DepthwiseConv2DTest.testDepthwiseConv2DInputGradCompare # Fails on Valid
 Pooling3DTest.testMaxPool3dSamePaddingDifferentStrides  # Too slow at the moment
 FFTTest # No support for FFT
 MatrixTriangularSolveOpTest.testLarge # Too slow at the moment
@@ -16,7 +15,6 @@ EagerTest # Eager test crashing
 EagerFunctionTest # Eager function test crashing
 ExcessivePaddingTest # Eager test crashing
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
-DepthwiseConv2DTest # Failing due to input size to poplibs convolution
 XlaSortOpTest # No Sort op
 Pooling3DTest.testMaxPoolGradValidPadding1_1_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradValidPadding2_1_6_3d  # 3D grad_grad
