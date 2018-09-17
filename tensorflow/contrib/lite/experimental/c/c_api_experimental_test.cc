@@ -16,25 +16,40 @@ limitations under the License.
 #include "tensorflow/contrib/lite/experimental/c/c_api_experimental.h"
 
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/builtin_ops.h"
 #include "tensorflow/contrib/lite/experimental/c/c_api.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace {
+
+TfLiteRegistration* GetDummyRegistration() {
+  static TfLiteRegistration registration = {
+      .init = nullptr,
+      .free = nullptr,
+      .prepare = nullptr,
+      .invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; },
+  };
+  return &registration;
+}
 
 TEST(CApiExperimentalSimple, Smoke) {
   TFL_Model* model = TFL_NewModelFromFile(
       "tensorflow/contrib/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
-  TFL_Interpreter* interpreter =
-      TFL_NewInterpreter(model, /*optional_options=*/nullptr);
+  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
+  TFL_InterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
+                                     GetDummyRegistration(), 1, 1);
+
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
   ASSERT_NE(interpreter, nullptr);
   ASSERT_EQ(TFL_InterpreterAllocateTensors(interpreter), kTfLiteOk);
-
   EXPECT_EQ(TFL_InterpreterResetVariableTensorsToZero(interpreter), kTfLiteOk);
+  EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteOk);
 
-  TFL_DeleteModel(model);
   TFL_DeleteInterpreter(interpreter);
+  TFL_DeleteInterpreterOptions(options);
+  TFL_DeleteModel(model);
 }
 
 }  // namespace
