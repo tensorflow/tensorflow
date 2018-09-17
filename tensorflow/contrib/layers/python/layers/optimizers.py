@@ -438,6 +438,6 @@ def _multiply_gradients(grads_and_vars, gradient_multipliers):
         grad_values = grad.values * multiplier
         grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
       else:
-        grad *= multiplier
+        grad *= math_ops.cast(multiplier, grad.dtype)
     multiplied_grads_and_vars.append((grad, var))
   return multiplied_grads_and_vars
