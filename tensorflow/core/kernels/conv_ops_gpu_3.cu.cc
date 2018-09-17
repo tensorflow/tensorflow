@@ -442,7 +442,7 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     CHECK(dst_filter_format == FORMAT_OIHW)
         << "Unsupported output layout: " << ToString(dst_filter_format);
 
-    GPU_LAUNCH_KERNEL(ShuffleInTensor3Simple<T, 2, 1, 0>,
+    GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
             config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
@@ -463,7 +463,7 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
       combined_dims[2] *= in.dimension(i);
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
-    GPU_LAUNCH_KERNEL(ShuffleInTensor3Simple<T, 2, 1, 0>,
+    GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
             config.virtual_thread_count, in.data(), combined_dims, out.data());
   }
