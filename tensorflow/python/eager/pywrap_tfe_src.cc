@@ -1744,6 +1744,9 @@ PyObject* MaybeGetDTypeForAttr(const string& attr,
   Py_RETURN_NONE;
 }
 
+// TODO(agarwal): use an automatic mechanism for handling None arguments to
+// gradient functions.
+
 // Returns a pair where the first value of the pair indicates whether or not all
 // outputs are unused. If the first value is false, the second value is a
 // set that identifies which of the output indices are unused.
