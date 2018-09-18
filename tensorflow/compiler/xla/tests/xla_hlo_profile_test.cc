@@ -84,7 +84,7 @@ struct ParsedProfileOutputLine {
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
     gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results,
-    tensorflow::gtl::ArraySlice<absl::string_view> opcodes_to_ignore = {}) {
+    absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
   string separator = "[^:]*:: +";
   string match_percentage = R"(\d+\.\d*% +\d+Σ)";
   string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
@@ -144,14 +144,14 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
@@ -171,10 +171,10 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   ServiceExecutableRunOptions run_options(
       exec_run_options, /*borrow_stream=*/nullptr,
       backend->eigen_intra_op_thread_pool());
+  std::vector<const ShapedBuffer*> args = {&lhs_arg, &rhs_arg};
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
-      executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
-                                  &hlo_execution_profile));
+      executable->ExecuteOnStream(&run_options, args, &hlo_execution_profile));
   TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 

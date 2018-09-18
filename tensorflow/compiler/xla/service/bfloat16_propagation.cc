@@ -407,7 +407,7 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
     HloInstruction* hlo) {
   auto adjust_computation =
       [this, hlo](HloComputation* computation,
-                  tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+                  absl::Span<HloInstruction* const> operands) {
         // Adjust parameters.
         CHECK_EQ(operands.size(), computation->num_parameters());
         for (int64 i = 0; i < operands.size(); ++i) {
@@ -675,10 +675,8 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
         continue;
       }
       if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
-        TF_ASSIGN_OR_RETURN(
-            auto converted_literal,
-            hlo->literal().ConvertToShape(hlo->shape(),
-                                          /*round_f32_to_bf16=*/true));
+        TF_ASSIGN_OR_RETURN(auto converted_literal,
+                            hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));

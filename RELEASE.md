@@ -1,3 +1,86 @@
+# Release 1.11.0
+
+## Major Features and Improvements
+
+* Nvidia GPU:
+  * Prebuilt binaries are now (as of TensorFlow 1.11) built against cuDNN 7.2 and TensorRT 4. See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
+* Google Cloud TPU:
+  * Experimental tf.data integration for Keras on Google Cloud TPUs.
+  * Experimental / preview support for eager execution on Google Cloud TPUs.
+* DistributionStrategy:
+  * Add multi-GPU DistributionStrategy support in tf.keras. Users can now use `fit`, `evaluate` and `predict` to distribute their model on multiple GPUs.
+  * Add multi-worker DistributionStrategy and standalone client support in Estimator. See [README] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute) for more details.
+* Add C, C++, and Python functions for querying kernels
+
+## Breaking Changes
+
+* Keras:
+  * The default values for tf.keras `RandomUniform`, `RandomNormal`, and `TruncatedNormal` initializers have been changed to match those in external Keras.
+  * Breaking change: `model.get_config()` on a Sequential model now returns a config dictionary (consistent with other Model instances) instead of a list of configs for the underlying layers.
+
+## Bug Fixes and Other Changes
+
+* C++:
+  * Changed the signature of SessionFactory::NewSession so that it can return a meaningful error message on failure.
+* tf.data:
+  * Remove `num_parallel_parser_calls` argument from `tf.contrib.data.make_csv_dataset()`. [tf.data] Remove `num_parallel_parser_calls` argument from `tf.contrib.data.make_csv_dataset()`.
+  * `tf.data.Dataset.list_files()` raises an exception at initialization time if the argument matches no files.
+  * Renamed BigTable class to BigtableTable for clarity
+  * Document use of the Cloud Bigtable API
+  * Adding `tf.contrib.data.reduce_dataset` which can be used to reduce a dataset to a single element.
+  * Generalization of `tf.contrib.data.sliding_window_batch`.
+* INC:
+  * Runtime improvements to triangular solve.
+* `tf.contrib`:
+  * Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D`. The new mode (`implementation=2`) performs forward pass as a single dense matrix multiplication, allowing dramatic speedups in certain scenarios (but worse performance in others - see docstring). The option also allows to use `padding=same`.
+  * Add documentation clarifying the differences between tf.fill and tf.constant.
+  * Add experimental IndexedDatasets.
+  * Add selective registration target using the lite proto runtime.
+  * Add simple Tensor and DataType classes to TensorFlow Lite Java
+  * Add support for bitcasting to/from uint32 and uint64.
+  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
+  * Adds leaf index modes as an argument.
+  * Allow a different output shape from the input in tf.contrib.image.transform.
+  * Change the state_size order of the StackedRNNCell to be natural order. To keep the existing behavior, user can add reverse_state_order=True when constructing the StackedRNNCells.
+  * Deprecate self.test_session() in favor of self.session() or self.cached_session().
+  * Directly import tensor.proto.h (the transitive import will be removed from tensor.h soon)
+  * Estimator.train() now supports tf.contrib.summary.\* summaries out of the box; each call to .train() will now create a separate tfevents file rather than re-using a shared one.
+  * Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term should not end up in the accumulator.
+  * Fix toco compilation/execution on Windows
+  * GoogleZoneProvider class added to detect  which Google Cloud Engine zone tensorflow is running in.
+  * It is now safe to call any of the C API's TF_Delete\* functions on nullptr
+  * Log some errors on Android to logcat
+  * Match FakeQuant numerics in TFLite to improve accuracy of TFLite quantized inference models.
+  * Optional bucket location check for the GCS Filesystem.
+  * Performance enhancements for StringSplitOp & StringSplitV2Op.
+  * Performance improvements for regex replace operations.
+  * TFRecordWriter now raises an error if .write() fails.
+  * TPU: More helpful error messages in TPUClusterResolvers.
+  * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time.
+  * The protocol used for Estimator training is now configurable in RunConfig.
+  * Triangular solve performance improvements.
+  * Unify RNN cell interface between TF and Keras. Add new get_initial_state() to Keras and TF RNN cell, which will use to replace the existing zero_state() method.
+  * Update initialization of variables in Keras.
+  * Updates to "constrained_optimization" in tensorflow/contrib.
+  * boosted trees: adding pruning mode
+  * tf.train.Checkpoint does not delete old checkpoints by default.
+  * tfdbg: Limit the total disk space occupied by dumped tensor data to 100 GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow adjustment of this upper limit.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aapeli, adoda, Ag Ramesh, Amogh Mannekote, Andrew Gibiansky, Andy Craze, Anirudh Koul, Aurelien Geron, Avijit, Avijit-Nervana, Ben, Benjamin H. Myara, bhack, Brett Koonce, Cao Zongyan, cbockman, cheerss, Chikanaga Tomoyuki, Clayne Robison, cosine0, Cui Wei, Dan J, David, David Norman, Dmitry Klimenkov, Eliel Hojman, Florian Courtial, fo40225, formath, Geoffrey Irving, gracehoney, Grzegorz Pawelczak, Guoliang Hua, Guozhong Zhuang, Herman Zvonimir DošIlović, HuiyangFei, Jacker, Jan HüNnemeyer, Jason Taylor, Jason Zaman, Jesse, Jiang,Zhoulong, Jiawei Zhang, Jie, Joe Yearsley, Johannes Schmitz, Jon Perl, Jon Triebenbach, Jonathan, Jonathan Hseu, Jongmin Park, Justin Shenk, karl@kubx.ca, Kate Hodesdon, Kb Sriram, Keishi Hattori, Kenneth Blomqvist, Koan-Sin Tan, Li Liangbin, Li, Yiqiang, Loo Rong Jie, Madiyar, Mahmoud Abuzaina, Mark Ryan, Matt Dodge, mbhuiyan, melvinljy96, Miguel Mota, Nafis Sadat, Nathan Luehr, naurril, Nehal J Wani, Niall Moran, Niranjan Hasabnis, Nishidha Panpaliya, npow, olicht, Pei Zhang, Peng Wang (Simpeng), Peng Yu, Philipp Jund, Pradeep Banavara, Pratik Kalshetti, qwertWZ, Rakesh Chada, Randy West, Ray Kim, Rholais Lii, Robin Richtsfeld, Rodrigo Silveira, Ruizhi, Santosh Kumar, Seb Bro, Sergei Lebedev, sfujiwara, Shaba Abhiram, Shashi, SneakyFish5, Soila Kavulya, Stefan Dyulgerov, Steven Winston, Sunitha Kambhampati, Surry Shome, Taehoon Lee, Thor Johnsen, Tristan Rice, TShapinsky, tucan, tucan9389, Vicente Reyes, Vilmar-Hillow, Vitaly Lavrukhin, wangershi, weidan.kong, weidankong, Wen-Heng (Jack) Chung, William D. Irons, Wim Glenn, XFeiF, Yan Facai (颜发才), Yanbo Liang, Yong Tang, Yoshihiro Yamazaki, Yuan (Terry) Tang, Yuan, Man, zhaoyongke, ÁRon
+Ricardo Perez-Lopez, 张天启, 张晓飞
+
+
+# Release 1.10.1
+## Bug Fixes and Other Changes
+
+* `tf.keras`:
+  * Fixing keras on Cloud TPUs. No new binaries will be built for Windows.
+
+
 # Release 1.10.0
 
 ## Major Features And Improvements

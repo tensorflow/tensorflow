@@ -26,11 +26,15 @@ namespace tflite {
 class BaseOperator;
 
 // Return a map contained all know TF Lite Operators, keyed by their names.
-std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap();
+// TODO(ycling): The pattern to propagate parameters (e.g. allow_eager_ops)
+// is ugly here. Consider refactoring.
+std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
+    bool allow_eager_ops = false);
 
 // Return a map contained all know TF Lite Operators, keyed by the type of
 // their tf.mini counterparts.
-std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap();
+std::map<OperatorType, std::unique_ptr<BaseOperator>> BuildOperatorByTypeMap(
+    bool allow_eager_ops = false);
 
 // These are the flatbuffer types for custom and builtin options.
 using CustomOptions = flatbuffers::Vector<uint8_t>;

@@ -137,6 +137,8 @@ tf_py_test(
     size = "small",
     srcs = ["interleave_dataset_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -154,6 +156,7 @@ tf_py_test(
     size = "small",
     srcs = ["map_dataset_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -402,5 +405,22 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
+    ],
+)
+
+tf_py_test(
+    name = "window_dataset_op_test",
+    size = "small",
+    srcs = ["window_dataset_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )

@@ -142,6 +142,7 @@ filegroup(
     srcs = [
         "include/flatbuffers/base.h",
         "include/flatbuffers/flatbuffers.h",
+        "include/flatbuffers/minireflect.h",
         "include/flatbuffers/stl_emulation.h",
         "include/flatbuffers/util.h",
     ],

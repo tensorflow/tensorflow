@@ -279,7 +279,7 @@ class BackendUtilsTest(test.TestCase):
           keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
 
   def test_function_tf_run_options_with_run_metadata(self):
-    with self.test_session():
+    with self.cached_session():
       x_placeholder = keras.backend.placeholder(shape=())
       y_placeholder = keras.backend.placeholder(shape=())
 
@@ -522,8 +522,9 @@ class BackendLinearAlgebraTest(test.TestCase):
       relu_op = keras.backend.relu(x)
       self.assertAllClose(keras.backend.eval(relu_op), [[0, 0], [2, 7]])
 
-      # alpha
+      # alpha (leaky relu used)
       relu_op = keras.backend.relu(x, alpha=0.5)
+      self.assertTrue('LeakyRelu' in relu_op.name)
       self.assertAllClose(keras.backend.eval(relu_op), [[-2, 0], [2, 7]])
 
       # max_value < some elements

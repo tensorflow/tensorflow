@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace llvm {
@@ -59,7 +59,7 @@ llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
 }
 
 template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const tensorflow::gtl::ArraySlice<T>& slice) {
+llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T>& slice) {
   return llvm::ArrayRef<T>(slice.data(), slice.size());
 }
 
@@ -101,11 +101,10 @@ string SanitizeFunctionName(string function_name);
 // intrinsics (for example, "minnum") must include a type in overloaded_types
 // for each overloaded type. Typically, overloaded intrinsics have only a single
 // overloaded type.
-llvm::Value* EmitCallToIntrinsic(
-    llvm::Intrinsic::ID intrinsic_id,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
-    llvm::IRBuilder<>* b);
+llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
+                                 absl::Span<llvm::Value* const> operands,
+                                 absl::Span<llvm::Type* const> overloaded_types,
+                                 llvm::IRBuilder<>* b);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise

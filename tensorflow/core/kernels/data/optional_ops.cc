@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 const char kOptionalVariantTypeName[] = "tensorflow::data::Optional";
 
@@ -107,11 +108,8 @@ class OptionalFromValueOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     OpInputList components_input;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &components_input));
-    std::vector<Tensor> components;
-    components.reserve(components_input.size());
-    for (const Tensor& component_t : components_input) {
-      components.push_back(component_t);
-    }
+    std::vector<Tensor> components(components_input.begin(),
+                                   components_input.end());
     OP_REQUIRES_OK(
         ctx, WriteOptionalWithValueToOutput(ctx, 0, std::move(components)));
   }
@@ -230,10 +228,9 @@ static Status OptionalDeviceCopy(
   return Status::OK();
 }
 
-#define REGISTER_OPTIONAL_COPY(DIRECTION)                   \
-  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(     \
-      OptionalVariant, DIRECTION, kOptionalVariantTypeName, \
-      OptionalDeviceCopy)
+#define REGISTER_OPTIONAL_COPY(DIRECTION)               \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      OptionalVariant, DIRECTION, OptionalDeviceCopy)
 
 REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
 REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
@@ -267,4 +264,5 @@ Status WriteOptionalNoneToOutput(OpKernelContext* ctx, int output_index) {
   return Status::OK();
 }
 
+}  // namespace data
 }  // namespace tensorflow

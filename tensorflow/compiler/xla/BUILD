@@ -175,6 +175,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -191,6 +193,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -245,6 +248,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -305,6 +309,8 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -347,6 +353,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -366,6 +373,7 @@ cc_library(
         ":util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -378,6 +386,7 @@ cc_library(
         ":util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -400,6 +409,7 @@ cc_library(
         ":types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -468,6 +478,7 @@ cc_library(
         ":types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -479,6 +490,7 @@ tf_cc_test(
         ":test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -506,6 +518,7 @@ cc_library(
         ":util",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -573,6 +586,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -603,6 +617,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -644,6 +659,7 @@ cc_library(
         ":xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -668,6 +684,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -698,8 +715,8 @@ cc_library(
         ":array2d",
         ":shape_util",
         ":xla_data_proto",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

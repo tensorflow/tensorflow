@@ -45,15 +45,15 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.10.0'
+_VERSION = '1.11.0-rc1'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
-    'keras_applications == 1.0.4',
-    'keras_preprocessing == 1.0.2',
-    'numpy >= 1.13.3, <= 1.14.5',
+    'keras_applications >= 1.0.5',
+    'keras_preprocessing >= 1.0.3',
+    'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.6.0',
     'setuptools <= 39.1.0',
@@ -167,17 +167,21 @@ class InstallHeaders(Command):
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
-    # Copy eigen code into tensorflow/include.
+    # Copy external code headers into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    if 'tensorflow/include/external/eigen_archive/' in install_dir:
-      extra_dir = install_dir.replace(
-          'tensorflow/include/external/eigen_archive', '')
-      if not os.path.exists(extra_dir):
-        self.mkpath(extra_dir)
-      self.copy_file(header, extra_dir)
+    external_header_locations = [
+        'tensorflow/include/external/eigen_archive/',
+        'tensorflow/include/external/com_google_absl/',
+    ]
+    for location in external_header_locations:
+      if location in install_dir:
+        extra_dir = install_dir.replace(location, '')
+        if not os.path.exists(extra_dir):
+          self.mkpath(extra_dir)
+        self.copy_file(header, extra_dir)
 
     if not os.path.exists(install_dir):
       self.mkpath(install_dir)
@@ -227,6 +231,8 @@ headers = (list(find_files('*.h', 'tensorflow/core')) +
            list(find_files('*.h', 'tensorflow/stream_executor')) +
            list(find_files('*.h', 'google/protobuf_archive/src')) +
            list(find_files('*', 'third_party/eigen3')) +
+           list(find_files('*.h',
+                           'tensorflow/include/external/com_google_absl')) +
            list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(

@@ -137,6 +137,7 @@ py_test(
     size = "small",
     srcs = ["strip_unused_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notap"],
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",

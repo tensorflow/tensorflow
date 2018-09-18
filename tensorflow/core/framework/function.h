@@ -358,6 +358,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
                 const OpRegistrationData** op_reg_data) const override
       LOCKS_EXCLUDED(mu_);
 
+  // Generates new function name with the specified prefix that is unique
+  // across this library.
+  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
+
   // Ops created for function arguments bear the name given by `kArgOp`; those
   // created for return values bear the name given by `kRetOp`.
   static constexpr const char* const kArgOp = "_Arg";
@@ -710,9 +714,10 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
-  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
-                                  ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)      \
+  static bool unused_grad_##ctr TF_ATTRIBUTE_UNUSED = \
+      SHOULD_REGISTER_OP_GRADIENT &&                  \
+      ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".

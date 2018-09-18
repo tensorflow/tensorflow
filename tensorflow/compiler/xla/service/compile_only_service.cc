@@ -62,7 +62,7 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+    const absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
@@ -97,7 +97,7 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,
         HloModule::CreateFromProto(instance.computation, *module_config));
-    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
+    TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*hlo_module));
     hlo_modules.push_back(std::move(hlo_module));
   }
 

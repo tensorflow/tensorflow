@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 
 xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
-                    bool transpose_y, bool conjugate_x, bool conjugate_y) {
+                    bool transpose_y, bool conjugate_x, bool conjugate_y,
+                    xla::PrecisionConfig::Precision precision) {
   xla::XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
     TF_ASSIGN_OR_RETURN(xla::Shape x_shape, builder->GetShape(x));
@@ -95,15 +96,9 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       y = xla::Conj(y);
     }
 
-    // If there are no batch dimensions, use a regular Dot.
-    // TODO(b/69062148) Remove this code when Dot emitters can be passed
-    // dimensions to transpose directly (i.e. without requiring a Transpose
-    // HLO).
-    if (batch_dimension_numbers.empty()) {
-      auto lhs = transpose_x ? xla::Transpose(x, {1, 0}) : x;
-      auto rhs = transpose_y ? xla::Transpose(y, {1, 0}) : y;
-      return xla::Dot(lhs, rhs);
-    }
+    xla::PrecisionConfig precision_proto;
+    precision_proto.add_operand_precision(precision);
+    precision_proto.add_operand_precision(precision);
 
     xla::DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(x_inner_dim);
@@ -112,7 +107,8 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       dot_dnums.add_lhs_batch_dimensions(batch_dimension_number);
       dot_dnums.add_rhs_batch_dimensions(batch_dimension_number);
     }
-    return xla::DotGeneral(x, y, dot_dnums);
+
+    return xla::DotGeneral(x, y, dot_dnums, &precision_proto);
   });
 }
 

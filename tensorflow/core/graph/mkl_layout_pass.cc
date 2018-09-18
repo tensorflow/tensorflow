@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -334,6 +335,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
                       CopyAttrsConv2D, AlwaysRewrite, nullptr});
+
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite, nullptr});
@@ -546,14 +548,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // If Op has been specifically assigned to a non-CPU device, then No.
     if (!n->assigned_device_name().empty() &&
-        !str_util::StrContains(n->assigned_device_name(),kCPUDeviceSubStr)) {
+       !str_util::StrContains(n->assigned_device_name(), kCPUDeviceSubStr)) {
       result = false;
       reason = "Op has been assigned a runtime device that is not CPU.";
     }
 
     // If user has specifically assigned this op to a non-CPU device, then No.
     if (!n->def().device().empty() &&
-        !str_util::StrContains(n->def().device(),kCPUDeviceSubStr)) {
+       !str_util::StrContains(n->def().device(), kCPUDeviceSubStr)) {
       result = false;
       reason = "User has assigned a device that is not CPU.";
     }
@@ -1042,6 +1044,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
                                                       // device of the original
                                                       // node.
                   .Finalize(&**g, out));
+  CHECK_NOTNULL(*out); // Make sure we got a valid object before using it
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -1335,6 +1338,7 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
                                                       // device of the original
                                                       // node.
                   .Finalize(&**g, out));
+  CHECK_NOTNULL(*out); // Make sure we got a valid object before using it
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -2408,6 +2412,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
     csinfo_.avg_pool_grad = "AvgPoolGrad";
+    csinfo_.avg_pool3d = "AvgPool3D";
+    csinfo_.avg_pool3d_grad = "AvgPool3DGrad";
     csinfo_.bias_add = "BiasAdd";
     csinfo_.bias_add_grad = "BiasAddGrad";
     csinfo_.concat = "Concat";
@@ -2429,6 +2435,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.matmul = "MatMul";
     csinfo_.max_pool = "MaxPool";
     csinfo_.max_pool_grad = "MaxPoolGrad";
+    csinfo_.max_pool3d = "MaxPool3D";
+    csinfo_.max_pool3d_grad = "MaxPool3DGrad";
     csinfo_.mkl_conv2d = "_MklConv2D";
     csinfo_.mkl_conv2d_grad_input = "_MklConv2DBackpropInput";
     csinfo_.mkl_conv2d_grad_filter = "_MklConv2DBackpropFilter";
@@ -2462,6 +2470,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsPooling, AlwaysRewrite});
     rinfo_.push_back({csinfo_.avg_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool_grad),
+                      CopyAttrsPooling, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.avg_pool3d,
+                      mkl_op_registry::GetMklOpName(csinfo_.avg_pool3d),
+                      CopyAttrsPooling, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.avg_pool3d_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.avg_pool3d_grad),
                       CopyAttrsPooling, AlwaysRewrite});
     rinfo_.push_back({csinfo_.concat,
                       mkl_op_registry::GetMklOpName(csinfo_.concat),
@@ -2513,7 +2527,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
                       CopyAttrsPooling, MaxpoolGradRewrite});
-
+    rinfo_.push_back({csinfo_.max_pool3d,
+                      mkl_op_registry::GetMklOpName(csinfo_.max_pool3d),
+                      CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
+    rinfo_.push_back({csinfo_.max_pool3d_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
+                      CopyAttrsPooling, AlwaysRewrite});
     rinfo_.push_back({csinfo_.maximum,
                       mkl_op_registry::GetMklOpName(csinfo_.maximum),
                       CopyAttrsDataType, AlwaysRewrite});
@@ -2550,6 +2569,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});
+    wsinfo_.push_back
+        ({csinfo_.max_pool3d, csinfo_.max_pool3d_grad, 0, 1, 1, 3});
 
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
@@ -2617,6 +2638,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string add;
     string avg_pool;
     string avg_pool_grad;
+    string avg_pool3d;
+    string avg_pool3d_grad;
     string bias_add;
     string bias_add_grad;
     string concat;
@@ -2637,6 +2660,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string matmul;
     string max_pool;
     string max_pool_grad;
+    string max_pool3d;
+    string max_pool3d_grad;
     string maximum;
     string mkl_conv2d;
     string mkl_conv2d_grad_input;
@@ -3192,6 +3217,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
                                                       // device of the original
                                                       // node.
                   .Finalize(&**g, out));
+  CHECK_NOTNULL(*out); // Make sure we got a valid object before using it
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and

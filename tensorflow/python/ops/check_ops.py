@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1243,3 +1244,57 @@ def assert_scalar(tensor, name=None):
         raise ValueError('Expected scalar shape for %s, saw shape: %s.'
                          % (tensor.name, shape))
     return tensor
+
+
+@tf_export('ensure_shape')
+def ensure_shape(x, shape, name=None):
+  """Updates the shape of a tensor and checks at runtime that the shape holds.
+
+  For example:
+  ```python
+  x = tf.placeholder(tf.int32)
+  print(x.shape)
+  ==> TensorShape(None)
+  y = x * 2
+  print(y.shape)
+  ==> TensorShape(None)
+
+  y = tf.ensure_shape(y, (None, 3, 3))
+  print(y.shape)
+  ==> TensorShape([Dimension(None), Dimension(3), Dimension(3)])
+
+  with tf.Session() as sess:
+    # Raises tf.errors.InvalidArgumentError, because the shape (3,) is not
+    # compatible with the shape (None, 3, 3)
+    sess.run(y, feed_dict={x: [1, 2, 3]})
+
+  ```
+
+  NOTE: This differs from `Tensor.set_shape` in that it sets the static shape
+  of the resulting tensor and enforces it at runtime, raising an error if the
+  tensor's runtime shape is incompatible with the specified shape.
+  `Tensor.set_shape` sets the static shape of the tensor without enforcing it
+  at runtime, which may result in inconsistencies between the statically-known
+  shape of tensors and the runtime value of tensors.
+
+  Args:
+    x: A `Tensor`.
+    shape: A `TensorShape` representing the shape of this tensor, a
+      `TensorShapeProto`, a list, a tuple, or None.
+    name: A name for this operation (optional). Defaults to "EnsureShape".
+
+  Returns:
+    A `Tensor`. Has the same type and contents as `x`. At runtime, raises a
+    `tf.errors.InvalidArgumentError` if `shape` is incompatible with the shape
+    of `x`.
+  """
+  if not isinstance(shape, tensor_shape.TensorShape):
+    shape = tensor_shape.TensorShape(shape)
+
+  return array_ops.ensure_shape(x, shape, name=name)
+
+
+@ops.RegisterGradient('EnsureShape')
+def _ensure_shape_grad(op, grad):
+  del op  # Unused.
+  return grad

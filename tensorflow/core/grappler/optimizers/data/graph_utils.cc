@@ -94,11 +94,11 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
                  MutableGraphView* graph) {
   NodeDef node;
   if (!name.empty()) {
-    node.set_name(name.ToString());
+    node.set_name(string(name));
   } else {
     SetUniqueGraphNodeName(op, graph->GetGraph(), &node);
   }
-  node.set_op(op.ToString());
+  node.set_op(string(op));
   for (const string& input : inputs) {
     node.add_input(input);
   }
@@ -114,11 +114,11 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
                  FunctionDef* fd) {
   NodeDef* node = fd->add_node_def();
   if (!name.empty()) {
-    node->set_name(name.ToString());
+    node->set_name(string(name));
   } else {
     SetUniqueFunctionNodeName(op, fd, node);
   }
-  node->set_op(op.ToString());
+  node->set_op(string(op));
   for (const string& input : inputs) {
     node->add_input(input);
   }
@@ -270,10 +270,10 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
 
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
                             NodeDef* node) {
-  string name = prefix.ToString();
+  string name = string(prefix);
   int id = graph->node_size();
   while (ContainsGraphNodeWithName(name, *graph)) {
-    if (name.rfind("_generated") != std::string::npos &&
+    if (name.rfind("_generated") != string::npos &&
         (name.rfind("_generated") == (name.size() - strlen("_generated")))) {
       name.insert(name.rfind("_generated"), strings::StrCat("/_", id));
     } else {
@@ -286,7 +286,7 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
 
 void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
                                NodeDef* node) {
-  string name = prefix.ToString();
+  string name = string(prefix);
   int id = function->node_def_size();
   while (ContainsFunctionNodeWithName(name, *function)) {
     name = strings::StrCat(prefix, "/_", id);
@@ -297,7 +297,7 @@ void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
 
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function) {
-  string name = prefix.ToString();
+  string name = string(prefix);
   int id = library->function_size();
   while (ContainsGraphFunctionWithName(name, *library)) {
     name = strings::StrCat(prefix, "/_", id);

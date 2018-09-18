@@ -130,7 +130,7 @@ class MatMulGradientTest(test.TestCase):
 
   def _testGradients(self, tr_a, tr_b, sp_a, sp_b, a_dtype, b_dtype, delta,
                      name):
-    with self.test_session():
+    with self.cached_session():
       a = constant_op.constant(
           RandMatrix(
               3, 2, tr_a, round_bfloat=True), dtype=dtypes.float32)

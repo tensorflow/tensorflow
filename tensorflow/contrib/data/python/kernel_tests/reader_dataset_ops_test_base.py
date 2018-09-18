@@ -76,6 +76,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
                          filenames,
                          num_epochs,
                          batch_size,
+                         label_key=None,
                          reader_num_threads=1,
                          parser_num_threads=1,
                          shuffle=False,
@@ -91,8 +92,10 @@ class ReadBatchFeaturesTestBase(test.TestCase):
         features={
             "file": parsing_ops.FixedLenFeature([], dtypes.int64),
             "record": parsing_ops.FixedLenFeature([], dtypes.int64),
-            "keywords": parsing_ops.VarLenFeature(dtypes.string)
+            "keywords": parsing_ops.VarLenFeature(dtypes.string),
+            "label": parsing_ops.FixedLenFeature([], dtypes.string),
         },
+        label_key=label_key,
         reader=core_readers.TFRecordDataset,
         num_epochs=self.num_epochs,
         shuffle=shuffle,
@@ -101,7 +104,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
         parser_num_threads=parser_num_threads,
         drop_final_batch=drop_final_batch)
 
-  def _record(self, f, r):
+  def _record(self, f, r, l):
     example = example_pb2.Example(
         features=feature_pb2.Features(
             feature={
@@ -114,7 +117,11 @@ class ReadBatchFeaturesTestBase(test.TestCase):
                 "keywords":
                     feature_pb2.Feature(
                         bytes_list=feature_pb2.BytesList(
-                            value=self._get_keywords(f, r)))
+                            value=self._get_keywords(f, r))),
+                "label":
+                    feature_pb2.Feature(
+                        bytes_list=feature_pb2.BytesList(
+                            value=[compat.as_bytes(l)]))
             }))
     return example.SerializeToString()
 
@@ -139,23 +146,30 @@ class ReadBatchFeaturesTestBase(test.TestCase):
       filenames.append(fn)
       writer = python_io.TFRecordWriter(fn)
       for j in range(self._num_records):
-        writer.write(self._record(i, j))
+        writer.write(self._record(i, j, "fake-label"))
       writer.close()
     return filenames
 
-  def _run_actual_batch(self, outputs, sess):
-    file_op = outputs["file"]
-    keywords_indices_op = outputs["keywords"].indices
-    keywords_values_op = outputs["keywords"].values
-    keywords_dense_shape_op = outputs["keywords"].dense_shape
-    record_op = outputs["record"]
+  def _run_actual_batch(self, outputs, sess, label_key_provided=False):
+    if label_key_provided:
+      # outputs would be a tuple of (feature dict, label)
+      label_op = outputs[1]
+      features_op = outputs[0]
+    else:
+      features_op = outputs
+      label_op = features_op["label"]
+    file_op = features_op["file"]
+    keywords_indices_op = features_op["keywords"].indices
+    keywords_values_op = features_op["keywords"].values
+    keywords_dense_shape_op = features_op["keywords"].dense_shape
+    record_op = features_op["record"]
     return sess.run([
         file_op, keywords_indices_op, keywords_values_op,
-        keywords_dense_shape_op, record_op
+        keywords_dense_shape_op, record_op, label_op
     ])
 
-  def _next_actual_batch(self, sess):
-    return self._run_actual_batch(self.outputs, sess)
+  def _next_actual_batch(self, sess, label_key_provided=False):
+    return self._run_actual_batch(self.outputs, sess, label_key_provided)
 
   def _interleave(self, iterators, cycle_length):
     pending_iterators = iterators
@@ -188,7 +202,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
     def _next_record(file_indices):
       for j in file_indices:
         for i in range(self._num_records):
-          yield j, i
+          yield j, i, compat.as_bytes("fake-label")
 
     def _next_record_interleaved(file_indices, cycle_length):
       return self._interleave([_next_record([i]) for i in file_indices],
@@ -200,6 +214,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
     keywords_batch_max_len = 0
     record_batch = []
     batch_index = 0
+    label_batch = []
     for _ in range(num_epochs):
       if cycle_length == 1:
         next_records = _next_record(file_indices)
@@ -208,6 +223,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
       for record in next_records:
         f = record[0]
         r = record[1]
+        label_batch.append(record[2])
         file_batch.append(f)
         record_batch.append(r)
         keywords = self._get_keywords(f, r)
@@ -219,7 +235,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
         if len(file_batch) == batch_size:
           yield [
               file_batch, keywords_batch_indices, keywords_batch_values,
-              [batch_size, keywords_batch_max_len], record_batch
+              [batch_size, keywords_batch_max_len], record_batch, label_batch
           ]
           file_batch = []
           keywords_batch_indices = []
@@ -227,10 +243,11 @@ class ReadBatchFeaturesTestBase(test.TestCase):
           keywords_batch_max_len = 0
           record_batch = []
           batch_index = 0
+          label_batch = []
     if file_batch:
       yield [
           file_batch, keywords_batch_indices, keywords_batch_values,
-          [len(file_batch), keywords_batch_max_len], record_batch
+          [len(file_batch), keywords_batch_max_len], record_batch, label_batch
       ]
 
   def verify_records(self,
@@ -238,6 +255,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
                      batch_size,
                      file_index=None,
                      num_epochs=1,
+                     label_key_provided=False,
                      interleave_cycle_length=1):
     if file_index is not None:
       file_indices = [file_index]
@@ -245,8 +263,12 @@ class ReadBatchFeaturesTestBase(test.TestCase):
       file_indices = range(self._num_files)
 
     for expected_batch in self._next_expected_batch(
-        file_indices, batch_size, num_epochs, interleave_cycle_length):
-      actual_batch = self._next_actual_batch(sess)
+        file_indices,
+        batch_size,
+        num_epochs,
+        cycle_length=interleave_cycle_length):
+      actual_batch = self._next_actual_batch(
+          sess, label_key_provided=label_key_provided)
       for i in range(len(expected_batch)):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
 

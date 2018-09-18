@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -80,10 +81,8 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
-// TODO(mrry): Convert to std::make_unique when available.
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : OpKernel(context,
-               std::unique_ptr<const NodeDef>(new NodeDef(context->def()))) {}
+    : OpKernel(context, MakeUnique<const NodeDef>(context->def())) {}
 
 OpKernel::OpKernel(OpKernelConstruction* context,
                    std::unique_ptr<const NodeDef> node_def)
@@ -525,10 +524,8 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
       return nullptr;
     }
   }
-  // TODO(rmlarsen): Use MakeUnique here. There is already a copy in
-  // tensorflow/compiler/xla/ptr_util.h. Perhaps this should be part of
-  // general cleanup of ownership in this code.
-  std::unique_ptr<Tensor> output_tensor(new Tensor());
+
+  auto output_tensor = MakeUnique<Tensor>();
   CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
   return output_tensor;
 }
@@ -913,7 +910,7 @@ void OpKernelContext::clear_recorded_memory() {
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
                      kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(std::string(c)), factory(f) {}
+      : def(d), kernel_class_name(c), factory(f) {}
   const KernelDef def;
   const string kernel_class_name;
   const kernel_factory::OpKernelRegistrar::Factory factory;

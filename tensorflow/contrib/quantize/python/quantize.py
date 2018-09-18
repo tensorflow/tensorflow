@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
@@ -592,8 +591,8 @@ def _InsertQuantOp(context,
         name=name_prefix + '/delayed_quant')
 
   if consumers:
-    tensors_modified_count = graph_editor.reroute_ts(
-        [quant], [inputs], can_modify=consumers)
+    tensors_modified_count = common.RerouteTensor(
+        quant, inputs, can_modify=consumers)
     # Some operations can have multiple output tensors going to the same
     # consumer. Since consumers is a set, we need to ensure that
     # tensors_modified_count is greater than or equal to the length of the set

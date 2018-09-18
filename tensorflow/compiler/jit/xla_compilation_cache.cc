@@ -67,12 +67,12 @@ string XlaCompilationCache::DebugString() {
 string XlaCompilationCache::SignatureDebugString(const Signature& sig) {
   string result = sig.name;
   for (const auto& a : sig.arg_types) {
-    strings::StrAppend(&result, ",", DataTypeString(a.first),
-                       a.second.DebugString());
+    absl::StrAppend(&result, ",", DataTypeString(a.first),
+                    a.second.DebugString());
   }
 
   for (const auto& v : sig.arg_values) {
-    strings::StrAppend(&result, "; ", v.DebugString());
+    absl::StrAppend(&result, "; ", v.DebugString());
   }
   return result;
 }
@@ -230,7 +230,7 @@ Status XlaCompilationCache::Compile(
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options) {
+    const XlaCompiler::CompileOptions& compile_options) {
   return CompileImpl(options, function, constant_args, variable_args, ctx,
                      compilation_result, executable, compile_options, false);
 }
@@ -241,7 +241,7 @@ Status XlaCompilationCache::CompileSingleOp(
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options) {
+    const XlaCompiler::CompileOptions& compile_options) {
   const NodeDef& def = ctx->op_kernel().def();
   NameAttrList name;
   name.set_name(def.op());
@@ -256,10 +256,10 @@ Status XlaCompilationCache::CompileImpl(
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions* compile_options,
+    const XlaCompiler::CompileOptions& compile_options,
     bool compile_single_op) {
   CHECK_NE(executable, nullptr);
-  VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
+  VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << ctx->num_inputs()
@@ -310,7 +310,7 @@ Status XlaCompilationCache::CompileImpl(
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
   if (!entry->compiled) {
-    VLOG(1) << "Compilation cache miss for signature: "
+    VLOG(2) << "Compilation cache miss for signature: "
             << SignatureDebugString(signature);
     tensorflow::Env* env = tensorflow::Env::Default();
     const uint64 compile_start_us = env->NowMicros();
@@ -324,13 +324,12 @@ Status XlaCompilationCache::CompileImpl(
     entry->compiled = true;
 
     if (compile_single_op) {
-      entry->compilation_status = compiler.CompileSingleOp(
-          compile_options ? *compile_options : XlaCompiler::CompileOptions(),
-          signature.name, ctx, args, &entry->compilation_result);
+      entry->compilation_status =
+          compiler.CompileSingleOp(compile_options, signature.name, ctx, args,
+                                   &entry->compilation_result);
     } else {
       entry->compilation_status = compiler.CompileFunction(
-          compile_options ? *compile_options : XlaCompiler::CompileOptions(),
-          function, args, &entry->compilation_result);
+          compile_options, function, args, &entry->compilation_result);
     }
     TF_RETURN_IF_ERROR(entry->compilation_status);
     CHECK_EQ(entry->executable.get(), nullptr);

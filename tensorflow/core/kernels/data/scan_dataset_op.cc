@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -45,23 +45,12 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     OpInputList initial_state_inputs;
     OP_REQUIRES_OK(ctx,
                    ctx->input_list("initial_state", &initial_state_inputs));
-    std::vector<Tensor> initial_state;
-    initial_state.reserve(initial_state_inputs.size());
-    for (const Tensor& t : initial_state_inputs) {
-      initial_state.push_back(t);
-    }
-
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
+    std::vector<Tensor> initial_state(initial_state_inputs.begin(),
+                                      initial_state_inputs.end());
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 &captured_func));
 
     *output = new Dataset(ctx, input, func_, std::move(initial_state),
                           std::move(captured_func), state_types_, output_types_,
@@ -109,7 +98,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
       std::vector<Node*> initial_state_nodes;
@@ -279,5 +268,5 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("ScanDataset").Device(DEVICE_CPU), ScanDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

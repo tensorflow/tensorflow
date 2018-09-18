@@ -26,6 +26,7 @@ import six
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util.tf_export import estimator_export
 
@@ -259,7 +260,10 @@ class _SupervisedOutput(ExportOutput):
       loss: dict of Tensors or single Tensor representing calculated loss.
       predictions: dict of Tensors or single Tensor representing model
         predictions.
-      metrics: dict of (metric_value, update_op) tuples, or a single tuple.
+      metrics: Dict of metric results keyed by name.
+        The values of the dict can be one of the following:
+        (1) instance of `Metric` class.
+        (2) (metric_value, update_op) tuples, or a single tuple.
         metric_value must be a Tensor, and update_op must be a Tensor or Op.
 
     Raises:
@@ -311,7 +315,11 @@ class _SupervisedOutput(ExportOutput):
     Here, we separate out the tuples and create a dict with names to tensors.
 
     Args:
-      metrics: dict of (metric_value, update_op) tuples, or a single tuple.
+      metrics: Dict of metric results keyed by name.
+        The values of the dict can be one of the following:
+        (1) instance of `Metric` class.
+        (2) (metric_value, update_op) tuples, or a single tuple.
+        metric_value must be a Tensor, and update_op must be a Tensor or Op.
 
     Returns:
       dict of output_names to tensors
@@ -324,7 +332,13 @@ class _SupervisedOutput(ExportOutput):
       metrics = {self.METRICS_NAME: metrics}
 
     outputs = {}
-    for key, (metric_val, metric_op) in metrics.items():
+    for key, value in metrics.items():
+      if isinstance(value, metrics_module.Metric):
+        metric_val = value.result()
+        assert len(value.updates) == 1  # We expect only one update op.
+        metric_op = value.updates[0]
+      else:
+        metric_val, metric_op = value
       key = self._check_output_key(key, self.METRICS_NAME)
       key = self._prefix_key(key, self.METRICS_NAME)
 
@@ -397,7 +411,3 @@ class EvalOutput(_SupervisedOutput):
 
   def _get_signature_def_fn(self):
     return signature_def_utils.supervised_eval_signature_def
-
-
-
-

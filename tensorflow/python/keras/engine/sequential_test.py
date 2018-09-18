@@ -132,7 +132,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters((True,), (False,))
   def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
-    with self.test_session():
+    with self.cached_session():
 
       def get_model():
         if deferred:
@@ -222,7 +222,7 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.BatchNormalization(input_shape=(4,)))
       assert model.updates

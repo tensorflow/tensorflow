@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/experimental/c/c_api.h"
 
+#include <memory>
+
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/experimental/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
@@ -29,12 +31,14 @@ extern "C" {
 TFL_Model* TFL_NewModel(const void* model_data, size_t model_size) {
   auto model = tflite::FlatBufferModel::BuildFromBuffer(
       static_cast<const char*>(model_data), model_size);
-  return model ? new TFL_Model{std::move(model)} : nullptr;
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
 
 TFL_Model* TFL_NewModelFromFile(const char* model_path) {
   auto model = tflite::FlatBufferModel::BuildFromFile(model_path);
-  return model ? new TFL_Model{std::move(model)} : nullptr;
+  std::shared_ptr<const tflite::FlatBufferModel> shared_model(model.release());
+  return shared_model ? new TFL_Model{std::move(shared_model)} : nullptr;
 }
 
 void TFL_DeleteModel(TFL_Model* model) { delete model; }
@@ -58,7 +62,11 @@ TFL_Interpreter* TFL_NewInterpreter(
     return nullptr;
   }
 
+  // TODO(b/111881878): Allow use of C API without pulling in all builtin ops.
   tflite::ops::builtin::BuiltinOpResolver resolver;
+  if (optional_options) {
+    resolver.AddAll(optional_options->op_resolver);
+  }
   tflite::InterpreterBuilder builder(*model->impl, resolver);
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (builder(&interpreter) != kTfLiteOk) {
@@ -72,7 +80,7 @@ TFL_Interpreter* TFL_NewInterpreter(
     }
   }
 
-  return new TFL_Interpreter{std::move(interpreter)};
+  return new TFL_Interpreter{model->impl, std::move(interpreter)};
 }
 
 void TFL_DeleteInterpreter(TFL_Interpreter* interpreter) { delete interpreter; }
@@ -128,6 +136,8 @@ size_t TFL_TensorByteSize(const TFL_Tensor* tensor) { return tensor->bytes; }
 void* TFL_TensorData(const TFL_Tensor* tensor) {
   return static_cast<void*>(tensor->data.raw);
 }
+
+const char* TFL_TensorName(const TFL_Tensor* tensor) { return tensor->name; }
 
 TFL_Status TFL_TensorCopyFromBuffer(TFL_Tensor* tensor, const void* input_data,
                                     size_t input_data_size) {

@@ -31,6 +31,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients as gradient_ops
@@ -300,28 +302,129 @@ class ArrayTest(PForTest):
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
 
-class MathTest(PForTest):
+class BitwiseTest(PForTest):
 
-  def test_unary_cwise_ops(self):
-    for op in [
-        math_ops.tanh, nn.relu, math_ops.sigmoid, math_ops.negative,
-        math_ops.square
-    ]:
-      x = random_ops.random_uniform([3, 5])
+  def test_unary_cwise(self):
+    for op in [bitwise_ops.invert]:
+      x = random_ops.random_uniform([7, 3, 5], maxval=10, dtype=dtypes.int32)
 
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
         x1 = array_ops.gather(x, i)
-        y = op(x1)
-        loss = math_ops.reduce_sum(y * y)
-        return op(x), y, gradient_ops.gradients(loss, x1)
+        return op(x1)
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+
+  def test_binary_cwise(self):
+    binary_ops = [
+        bitwise_ops.bitwise_and,
+        bitwise_ops.bitwise_or,
+        bitwise_ops.bitwise_xor,
+        bitwise_ops.left_shift,
+        bitwise_ops.right_shift,
+    ]
+    for op in binary_ops:
+      x = random_ops.random_uniform([7, 3, 5], maxval=10, dtype=dtypes.int32)
+      y = random_ops.random_uniform([3, 5], maxval=10, dtype=dtypes.int32)
+
+      output_dtypes = []
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x1 = array_ops.gather(x, i)
+        y1 = array_ops.gather(y, i)
+        outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
+      # pylint: enable=cell-var-from-loop
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+
+
+class MathTest(PForTest):
+
+  def test_unary_cwise_ops(self):
+    complex_ops = [
+        math_ops.angle,
+        math_ops.imag,
+        math_ops.complex_abs,
+        math_ops.real,
+        math_ops.conj,
+    ]
+    real_ops = [
+        lambda x: math_ops.acosh(1 + math_ops.square(x)),
+        math_ops.abs,
+        math_ops.acos,
+        math_ops.asin,
+        math_ops.asinh,
+        math_ops.atan,
+        math_ops.atanh,
+        math_ops.bessel_i0e,
+        math_ops.bessel_i1e,
+        math_ops.cos,
+        math_ops.cosh,
+        math_ops.digamma,
+        math_ops.erf,
+        math_ops.erfc,
+        math_ops.exp,
+        math_ops.expm1,
+        math_ops.inv,
+        math_ops.is_finite,
+        math_ops.is_inf,
+        math_ops.lgamma,
+        math_ops.log,
+        math_ops.log1p,
+        math_ops.neg,
+        math_ops.negative,
+        math_ops.reciprocal,
+        math_ops.rint,
+        math_ops.round,
+        math_ops.rsqrt,
+        math_ops.sigmoid,
+        math_ops.sign,
+        math_ops.sin,
+        math_ops.sinh,
+        math_ops.sqrt,
+        math_ops.square,
+        math_ops.tan,
+        math_ops.tanh,
+        math_ops.tanh,
+        nn.elu,
+        nn.relu,
+        nn.relu6,
+        nn.selu,
+        nn.softplus,
+        nn.softsign,
+    ]
+    for op in complex_ops + real_ops:
+      x = random_ops.random_uniform([3, 5])
+      if op in complex_ops:
+        y = random_ops.random_uniform([3, 5])
+        x = math_ops.complex(x, y)
+
+      # pylint: disable=cell-var-from-loop
+      output_dtypes = []
+      def loop_fn(i):
+        x1 = array_ops.gather(x, i)
+        y1 = op(x1)
+        outputs = [op(x), y1]
+        if y1.dtype == dtypes.float32:
+          loss = math_ops.reduce_sum(y1 * y1)
+          grad = gradient_ops.gradients(loss, x1)
+          if grad and grad[0] is not None:
+            outputs.extend(grad)
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
 
   def test_unary_cwise_no_grad(self):
-    for op in [math_ops.ceil, math_ops.floor, math_ops.logical_not]:
+    for op in [math_ops.ceil,
+               math_ops.floor,
+               math_ops.logical_not]:
       x = random_ops.random_uniform([3, 5])
       if op == math_ops.logical_not:
         x = x > 0
@@ -336,33 +439,80 @@ class MathTest(PForTest):
 
   def test_binary_cwise_ops(self):
     logical_ops = [
-        math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor
+        math_ops.logical_and,
+        math_ops.logical_or,
+        math_ops.logical_xor
     ]
-    bool_ops = [
-        math_ops.less, math_ops.less_equal, math_ops.greater,
-        math_ops.greater_equal, math_ops.equal, math_ops.not_equal
-    ]
+
+    # Wrapper functions restricting the range of inputs of zeta and polygamma.
+    def safe_polygamma(x, y):
+      return math_ops.polygamma(
+          math_ops.round(clip_ops.clip_by_value(y, 1, 10)),
+          x * x + 1)
+
+    def safe_zeta(x, y):
+      return math_ops.zeta(x * x + 1, y * y)
+
     float_ops = [
-        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.divide,
-        math_ops.maximum, math_ops.minimum
+        math_ops.add,
+        math_ops.add_v2,
+        math_ops.atan2,
+        math_ops.complex,
+        math_ops.div,
+        math_ops.divide,
+        math_ops.div_no_nan,
+        math_ops.equal,
+        math_ops.floor_div,
+        math_ops.floor_mod,
+        math_ops.greater,
+        math_ops.greater_equal,
+        math_ops.igamma,
+        math_ops.igammac,
+        math_ops.igamma_grad_a,
+        math_ops.less,
+        math_ops.less_equal,
+        math_ops.maximum,
+        math_ops.minimum,
+        math_ops.mod,
+        math_ops.multiply,
+        math_ops.not_equal,
+        math_ops.pow,
+        math_ops.squared_difference,
+        math_ops.subtract,
+        math_ops.truncate_mod,
+        safe_polygamma,
+        safe_zeta,
     ]
-    for op in logical_ops + bool_ops + float_ops:
+    for op in logical_ops + float_ops:
       x = random_ops.random_uniform([7, 3, 5])
       y = random_ops.random_uniform([3, 5])
       if op in logical_ops:
         x = x > 0
         y = y > 0
 
+      output_dtypes = []
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
         x1 = array_ops.gather(x, i)
         y1 = array_ops.gather(y, i)
-        return op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)
-
+        outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
       # pylint: enable=cell-var-from-loop
 
-      dtype = dtypes.float32 if op in float_ops else dtypes.bool
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtype] * 5)
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+
+  def test_approximate_equal(self):
+    x = random_ops.random_uniform([3, 5])
+    y = random_ops.random_uniform([3, 5])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      y1 = array_ops.gather(y, i)
+      return math_ops.approximate_equal(x1, y1)
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.bool])
 
   def test_addn(self):
     x = random_ops.random_uniform([2, 3, 5])
@@ -1259,7 +1409,7 @@ class SparseTest(PForTest):
                                         [3])  # [0, 2, 0]
 
     pfor = pfor_control_flow_ops.pfor(loop_fn, num_iters)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(pfor, feed_dict={num_iters: 3})
 
   def test_sparse_result_none_stacked(self):

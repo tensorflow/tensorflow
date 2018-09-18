@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -37,14 +37,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     FunctionLibraryRuntime::Handle pred_handle;
     OP_REQUIRES_OK(ctx,
                    ctx->function_library()->Instantiate(
@@ -61,9 +53,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     Node* ret_node = pred_body->ret_nodes[0];
     Node* ret_input_node;
     OP_REQUIRES_OK(ctx, ret_node->input_node(0, &ret_input_node));
+
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 &captured_func));
 
     if (ret_input_node->def().op() == "_Arg") {
       int32 index = -1;
@@ -112,7 +105,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx->flib_def(), func_.name()));
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -280,5 +273,5 @@ REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),
                         FilterDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

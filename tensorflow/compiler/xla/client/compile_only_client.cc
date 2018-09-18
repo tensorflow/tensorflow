@@ -23,7 +23,7 @@ namespace xla {
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyClient::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+    const absl::Span<const AotXlaComputationInstance> computations,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<CompileOnlyService::AotXlaComputationInstance> service_instances;

@@ -121,7 +121,7 @@ static mutex& GetRpathMutex() {
 
 /* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
   mutex_lock lock{GetRpathMutex()};
-  GetRpaths()->push_back(path.ToString());
+  GetRpaths()->emplace_back(path);
 }
 
 /* static */ port::Status DsoLoader::GetDsoHandle(port::StringPiece path,
@@ -131,7 +131,7 @@ static mutex& GetRpathMutex() {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "Only LoadKind::kLocal is currently supported");
   }
-  string path_string = path.ToString();
+  string path_string(path);
   port::Status s =
       port::Env::Default()->LoadLibrary(path_string.c_str(), dso_handle);
   if (!s.ok()) {
@@ -154,7 +154,7 @@ static mutex& GetRpathMutex() {
 
 /* static */ string DsoLoader::GetBinaryDirectory(bool strip_executable_name) {
   string exe_path = port::Env::Default()->GetExecutablePath();
-  return strip_executable_name ? port::Dirname(exe_path).ToString() : exe_path;
+  return strip_executable_name ? string(port::Dirname(exe_path)) : exe_path;
 }
 
 // Creates a heap-allocated vector for initial rpaths.
@@ -212,7 +212,7 @@ static std::vector<string>* CreatePrimordialRpaths() {
   }
   attempted.push_back(candidate);
 
-  return library_name.ToString();
+  return string(library_name);
 }
 
 /* static */ string DsoLoader::GetCudaLibraryDirPath() {

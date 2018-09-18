@@ -19,12 +19,14 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
 
 struct TFL_Model {
-  std::unique_ptr<tflite::FlatBufferModel> impl;
+  // Sharing is safe as FlatBufferModel is const.
+  std::shared_ptr<const tflite::FlatBufferModel> impl;
 };
 
 struct TFL_InterpreterOptions {
@@ -32,9 +34,13 @@ struct TFL_InterpreterOptions {
     kDefaultNumThreads = -1,
   };
   int num_threads = kDefaultNumThreads;
+  tflite::MutableOpResolver op_resolver;
 };
 
 struct TFL_Interpreter {
+  // Taking a reference to the (const) model data avoids lifetime-related issues
+  // and complexity with the TFL_Model's existence.
+  std::shared_ptr<const tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> impl;
 };
 

@@ -68,6 +68,7 @@ cc_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/contrib/lite:kernel_api",
     ],
 )
 
@@ -78,6 +79,7 @@ cc_test(
     data = ["//tensorflow/contrib/lite:testdata/add.bin"],
     deps = [
         ":c_api",
+        "//tensorflow/contrib/lite:context",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
@@ -92,6 +94,7 @@ cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

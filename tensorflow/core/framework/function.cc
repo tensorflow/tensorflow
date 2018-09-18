@@ -504,7 +504,7 @@ string Print(const NodeDef& n) {
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
     if (str_util::ConsumePrefix(&s, "^")) {
-      dep.push_back(std::string(s));
+      dep.emplace_back(s);
     } else {
       dat.push_back(s);
     }
@@ -1154,6 +1154,17 @@ Status FunctionLibraryDefinition::LookUp(
   return default_registry_->LookUp(op, op_reg_data);
 }
 
+string FunctionLibraryDefinition::UniqueFunctionName(StringPiece prefix) const {
+  tf_shared_lock l(mu_);
+  int index = 0;
+  string name = strings::StrCat(prefix, index);
+  while (function_defs_.find(name) != function_defs_.end()) {
+    ++index;
+    name = strings::StrCat(prefix, index);
+  }
+  return name;
+}
+
 const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     const NodeDef& ndef) const {
   if (ndef.op() != kGradientOp) {
@@ -1283,6 +1294,18 @@ FunctionDef FunctionDefHelper::Create(
   for (const auto& r : ret_def) {
     fdef.mutable_ret()->insert({r.first, r.second});
   }
+
+  auto* op_def_registry = OpRegistry::Global();
+  // Check if any op is stateful.
+  for (const auto& n : node_def) {
+    const OpDef* op_def = nullptr;
+    auto status = op_def_registry->LookUpOpDef(n.op, &op_def);
+    // Lookup can fail if e.g. we are calling a function that was not yet
+    // defined.  If it happens, conservatively assume the op is stateful.
+    if (!status.ok() || op_def->is_stateful()) {
+      fdef.mutable_signature()->set_is_stateful(true);
+    }
+  }
   return fdef;
 }
 
@@ -1344,6 +1367,7 @@ FunctionDef FunctionDefHelper::Define(const string& name,
             strings::StrCat(src.ret[0], ":", o.first, ":", i - o.second.first);
       }
     }
+    if (op_def->is_stateful()) fdef.mutable_signature()->set_is_stateful(true);
   }
 
   // Returns

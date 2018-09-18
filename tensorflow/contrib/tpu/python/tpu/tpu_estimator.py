@@ -804,11 +804,14 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         per_host_sharded_inputs.append(flattened_inputs)
 
       if inputs_structure_recorder.flattened_input_dims:
+        input_partition_dims = inputs_structure_recorder.flattened_input_dims
+        if signals:
+          input_partition_dims += [None] * len(signals)
         # pylint: disable=protected-access
         infeed_queue = tpu_feed._PartitionedInfeedQueue(
             number_of_tuple_elements=len(per_host_sharded_inputs[0]),
             host_id=host_id,
-            input_partition_dims=inputs_structure_recorder.flattened_input_dims,
+            input_partition_dims=input_partition_dims,
             device_assignment=ctx.device_assignment)
         per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
             per_host_sharded_inputs)
@@ -1771,18 +1774,19 @@ class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
         summary_writer=summary_writer)
 
   def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
-    global_step_per_sec = elapsed_steps / elapsed_time
-    examples_per_sec = self._batch_size * global_step_per_sec
+    global_steps_per_sec = elapsed_steps / elapsed_time
+    examples_per_sec = self._batch_size * global_steps_per_sec
     if self._summary_writer is not None:
       global_step_summary = Summary(value=[
-          Summary.Value(tag='global_step/sec', simple_value=global_step_per_sec)
+          Summary.Value(tag='global_steps/sec',
+                        simple_value=global_steps_per_sec)
       ])
       example_summary = Summary(value=[
           Summary.Value(tag='examples/sec', simple_value=examples_per_sec)
       ])
       self._summary_writer.add_summary(global_step_summary, global_step)
       self._summary_writer.add_summary(example_summary, global_step)
-    logging.info('global_step/sec: %g', global_step_per_sec)
+    logging.info('global_steps/sec: %g', global_steps_per_sec)
     logging.info('examples/sec: %g', examples_per_sec)
 
 
@@ -2821,8 +2825,6 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
 
 def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
-  num_cores = ctx.num_cores
-
   (single_tpu_predict_step, host_calls, captured_scaffold_fn,
    captured_predict_hooks
   ) = model_fn_wrapper.convert_to_single_tpu_predict_step(dequeue_fn)
@@ -2841,7 +2843,7 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (dummy_predict_op,) = tpu.shard(
       multi_tpu_predict_steps_on_single_shard,
       inputs=[],
-      num_shards=num_cores,
+      num_shards=ctx.num_replicas,
       outputs_from_all_shards=False,
       device_assignment=ctx.device_assignment)
 

@@ -210,7 +210,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             equality_test=self.ListsAreClose)
 
   def testIntOps(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types:
       self._testBinary(
           gen_math_ops.truncate_div,
           np.array([3, 3, -1, -9, -8], dtype=dtype),
@@ -287,7 +287,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(7),
           expected=np.array([[-6], [-5]], dtype=dtype))
 
-      if dtype not in self.complex_types:  # min/max not supported for complex
+      # min/max not supported for complex
+      if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(
             math_ops.maximum,
             np.array([1, 2], dtype=dtype),
@@ -337,7 +338,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[70], [14]], dtype=dtype))
 
       # Complex support for squared_difference is incidental, see b/68205550
-      if dtype not in self.complex_types:
+      if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(
             math_ops.squared_difference,
             np.array([1, 2], dtype=dtype),
@@ -567,7 +568,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1, -2, -1, -5, 2], dtype=dtype))
 
   def testIntDivision(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types:
       self._testDivision(dtype)
 
   def testFloatDivision(self):
@@ -588,7 +589,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
         expected=np.array([1, 1, -1, 0], dtype=dtype))
 
   def testIntRemainder(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
   def testFloatRemainder(self):
@@ -1010,7 +1011,38 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
-  def testMirrorPad(self):
+  def testSymmetricMirrorPad(self):
+    mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad,
+          np.array(
+              [
+                  [1, 2, 3],  #
+                  [4, 5, 6],  #
+              ],
+              dtype=dtype),
+          np.array([[
+              2,
+              2,
+          ], [3, 3]], dtype=np.int32),
+          expected=np.array(
+              [
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+              ],
+              dtype=dtype))
+      self._testBinary(
+          mirror_pad,
+          np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype),
+          np.array([[0, 0], [0, 0]], dtype=np.int32),
+          expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
+
+  def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
       self._testBinary(

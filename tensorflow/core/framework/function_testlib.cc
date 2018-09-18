@@ -49,8 +49,8 @@ NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
              gtl::ArraySlice<std::pair<string, FDH::AttrValueWrapper>> attrs,
              const string& device) {
   NodeDef n;
-  n.set_name(name.ToString());
-  n.set_op(op.ToString());
+  n.set_name(string(name));
+  n.set_op(string(op));
   for (const auto& in : inputs) n.add_input(in);
   n.set_device(device);
   for (auto na : attrs) n.mutable_attr()->insert({na.first, na.second.proto});
@@ -91,6 +91,40 @@ FunctionDef IsZero() {
       });
 }
 
+FunctionDef RandomUniform() {
+  const Tensor kZero = test::AsScalar<int64>(0);
+  const Tensor kTen = test::AsScalar<int64>(10);
+
+  return FDH::Define(
+      // Name
+      "RandomUniform",
+      // Args
+      {"x: T"},
+      // Return values
+      {"random_uniform: int64"},
+      // Attr def
+      {"T:{float, double, int32, int64, string}"},
+      {{{"random_uniform/shape"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT64}}},
+       {{"random_uniform/min"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT64}}},
+       {{"random_uniform/max"},
+        "Const",
+        {},
+        {{"value", kTen}, {"dtype", DT_INT64}}},
+       {{"random_uniform"},
+        "RandomUniformInt",
+        {},
+        {{"T", DT_INT64},
+         {"Tout", DT_INT64},
+         {"seed", 87654321},
+         {"seed2", 42}}}});
+}
+
 FunctionDef XTimesTwo() {
   const Tensor kTwo = test::AsScalar<int64>(2);
   return FDH::Define(
@@ -107,6 +141,22 @@ FunctionDef XTimesTwo() {
           {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
           {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+}
+
+FunctionDef XAddX() {
+  return FDH::Define(
+      // Name
+      "XAddX",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"y"}, "Add", {"x", "x"}, {{"T", "$T"}}},
       });
 }
 
@@ -217,6 +267,62 @@ FunctionDef InvalidControlFlow() {
        {{"add"}, "Add", {"enter:output", "i"}, {{"T", DT_INT32}}}},
       // Output mapping
       {{"o", "add:z"}});
+}
+
+FunctionDef LessThanOrEqualToN(int64 N) {
+  const Tensor kN = test::AsScalar<int64>(N);
+  return FDH::Define(
+      // Name
+      "LessThanOrEqualToN",
+      // Args
+      {"x: T"},
+      // Return values
+      {"z: bool"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"N"}, "Const", {}, {{"value", kN}, {"dtype", DT_INT64}}},
+          {{"y"}, "Cast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"z"}, "LessEqual", {"x", "y"}, {{"T", "$T"}}},
+      });
+}
+
+FunctionDef XPlusOneXTimesY() {
+  const Tensor kOne = test::AsScalar<int64>(1);
+  return FDH::Define(
+      // Name
+      "XPlusOneXTimesY",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"s: T", "t: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {{{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_INT64}}},
+       {{"increment"}, "Cast", {"one"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+       {{"s"}, "Add", {"x", "increment"}, {{"T", "$T"}}},
+       {{"t"}, "Mul", {"x", "y"}, {{"T", "$T"}}}});
+}
+
+FunctionDef XYXLessThanOrEqualToN(int64 N) {
+  const Tensor kN = test::AsScalar<int64>(N);
+  return FDH::Define(
+      // Name
+      "XYXLessThanOrEqualToN",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"z: bool"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"N"}, "Const", {}, {{"value", kN}, {"dtype", DT_INT64}}},
+          {{"N1"}, "Cast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"z"}, "LessEqual", {"x", "N1"}, {{"T", "$T"}}},
+      });
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

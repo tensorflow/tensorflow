@@ -52,8 +52,9 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef TfLiteTensor TFL_Tensor;
+typedef TfLiteRegistration TFL_Registration;
 typedef TfLiteStatus TFL_Status;
+typedef TfLiteTensor TFL_Tensor;
 typedef TfLiteType TFL_Type;
 
 // --------------------------------------------------------------------------
@@ -93,7 +94,8 @@ typedef struct TFL_Interpreter TFL_Interpreter;
 // failure.
 //
 // * `model` must be a valid model instance. The caller retains ownership of the
-//   object, and can destroy it immediately after creating the interpreter.
+//   object, and can destroy it immediately after creating the interpreter; the
+//   interpreter will maintain its own reference to the underlying model data.
 // * `optional_options` may be null. The caller retains ownership of the object,
 //   and can safely destroy it immediately after creating the interpreter.
 //
@@ -145,6 +147,11 @@ TFL_CAPI_EXPORT extern int32_t TFL_InterpreterGetOutputTensorCount(
 
 // Returns the tensor associated with the output index.
 // REQUIRES: 0 <= input_index < TFL_InterpreterGetOutputTensorCount(tensor)
+//
+// NOTE: The shape and underlying data buffer for output tensors may be not
+// be available until after the output tensor has been both sized and allocated.
+// In general, best practice is to interact with the output tensor *after*
+// calling TFL_InterpreterInvoke().
 TFL_CAPI_EXPORT extern const TFL_Tensor* TFL_InterpreterGetOutputTensor(
     const TFL_Interpreter* interpreter, int32_t output_index);
 
@@ -172,11 +179,14 @@ TFL_CAPI_EXPORT extern size_t TFL_TensorByteSize(const TFL_Tensor* tensor);
 
 // Returns a pointer to the underlying data buffer.
 //
-// Note: The result may be null if tensors have not yet been allocated, e.g.,
+// NOTE: The result may be null if tensors have not yet been allocated, e.g.,
 // if the Tensor has just been created or resized and `TFL_AllocateTensors()`
 // has yet to be called, or if the output tensor is dynamically sized and the
 // interpreter hasn't been invoked.
 TFL_CAPI_EXPORT extern void* TFL_TensorData(const TFL_Tensor* tensor);
+
+// Returns the (null-terminated) name of the tensor.
+TFL_CAPI_EXPORT extern const char* TFL_TensorName(const TFL_Tensor* tensor);
 
 // Copies from the provided input buffer into the tensor's buffer.
 // REQUIRES: input_data_size == TFL_TensorByteSize(tensor)

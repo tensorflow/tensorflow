@@ -7,7 +7,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow/contrib/lite:build_def.bzl",
     "gen_zip_test",
-    "generated_test_models",
+    "generated_test_models_all",
 )
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
@@ -29,6 +29,7 @@ load(
             "--unzip_binary_path=/usr/bin/unzip",
         ],
     }),
+    conversion_mode = conversion_mode,
     data = [
         ":zip_%s" % test_name,
     ],
@@ -36,7 +37,7 @@ load(
     tags = [
         "gen_zip_test",
         "no_oss",
-        "tflite_not_portable",
+        "tflite_not_portable_intentional",
     ],
     test_name = test_name,
     deps = [
@@ -59,7 +60,7 @@ load(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for test_name in generated_test_models()]
+) for conversion_mode, test_name in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -214,6 +215,7 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite/core/api",
     ],
 )
 

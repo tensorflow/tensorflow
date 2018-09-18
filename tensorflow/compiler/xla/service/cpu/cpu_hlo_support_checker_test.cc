@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -25,7 +25,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class CpuHloSupportCheckerTest : public HloTestBase {
+class CpuHloSupportCheckerTest : public HloVerifiedTestBase {
  protected:
   CpuHloSupportChecker& checker() { return checker_; }
 
@@ -45,7 +45,7 @@ TEST_F(CpuHloSupportCheckerTest, Add) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(checker().Run(module.get()).status());
+  TF_ASSERT_OK(checker().Run(module).status());
 }
 
 TEST_F(CpuHloSupportCheckerTest, SparseUnimplemented) {
@@ -60,7 +60,7 @@ TEST_F(CpuHloSupportCheckerTest, SparseUnimplemented) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  Status status = checker().Run(module.get()).status();
+  Status status = checker().Run(module).status();
   ASSERT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
   EXPECT_THAT(status.error_message(),
               HasSubstr("CPU backend does not support"));

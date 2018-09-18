@@ -113,10 +113,9 @@ tf_kernel_library(
         "shape_util.h",
     ],
     deps = [
+        ":conv_op_helpers",
         ":if_op",
         ":while_op",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:batch_dot",
@@ -167,14 +166,32 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
         "//tensorflow/core/kernels:training_ops",
-    ] + if_mkl(
-        [
-            "//tensorflow/core/kernels:mkl_transpose_op",
-        ],
-        [
-            "//tensorflow/core/kernels:transpose_op",
-        ],
-    ),
+        "//tensorflow/core/kernels:transpose_op",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "conv_op_helpers",
+    srcs = ["conv_op_helpers.cc"],
+    hdrs = ["conv_op_helpers.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
@@ -183,6 +200,7 @@ tf_kernel_library(
     hdrs = ["while_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",
@@ -200,6 +218,7 @@ tf_kernel_library(
     hdrs = ["if_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:literal",

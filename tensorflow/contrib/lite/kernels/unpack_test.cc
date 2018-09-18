@@ -140,7 +140,7 @@ TEST(UnpackOpTest, FloatThreeDimensionsOutputs) {
 
 // int32 tests.
 TEST(UnpackOpTest, IntThreeOutputs) {
-  UnpackOpModel<int32> model({TensorType_INT32, {3, 2}}, 0);
+  UnpackOpModel<int32_t> model({TensorType_INT32, {3, 2}}, 0);
   model.SetInput({1, 2, 3, 4, 5, 6});
   model.Invoke();
 
@@ -152,7 +152,8 @@ TEST(UnpackOpTest, IntThreeOutputs) {
   EXPECT_THAT(output_shapes[2], ElementsAre(2));
 
   // Check outputs values.
-  const std::vector<std::vector<int32>>& output_datas = model.GetOutputDatas();
+  const std::vector<std::vector<int32_t>>& output_datas =
+      model.GetOutputDatas();
   EXPECT_EQ(output_datas.size(), 3);
   EXPECT_THAT(output_datas[0], ElementsAre(1, 2));
   EXPECT_THAT(output_datas[1], ElementsAre(3, 4));
@@ -160,7 +161,7 @@ TEST(UnpackOpTest, IntThreeOutputs) {
 }
 
 TEST(UnpackOpTest, IntThreeOutputsAxisOne) {
-  UnpackOpModel<int32> model({TensorType_INT32, {3, 2}}, 1);
+  UnpackOpModel<int32_t> model({TensorType_INT32, {3, 2}}, 1);
   model.SetInput({1, 2, 3, 4, 5, 6});
   model.Invoke();
 
@@ -171,14 +172,15 @@ TEST(UnpackOpTest, IntThreeOutputsAxisOne) {
   EXPECT_THAT(output_shapes[1], ElementsAre(3));
 
   // Check outputs values.
-  const std::vector<std::vector<int32>>& output_datas = model.GetOutputDatas();
+  const std::vector<std::vector<int32_t>>& output_datas =
+      model.GetOutputDatas();
   EXPECT_EQ(output_datas.size(), 2);
   EXPECT_THAT(output_datas[0], ElementsAre(1, 3, 5));
   EXPECT_THAT(output_datas[1], ElementsAre(2, 4, 6));
 }
 
 TEST(UnpackOpTest, IntOneOutput) {
-  UnpackOpModel<int32> model({TensorType_INT32, {1, 6}}, 0);
+  UnpackOpModel<int32_t> model({TensorType_INT32, {1, 6}}, 0);
   model.SetInput({1, 2, 3, 4, 5, 6});
   model.Invoke();
 
@@ -188,13 +190,14 @@ TEST(UnpackOpTest, IntOneOutput) {
   EXPECT_THAT(output_shapes[0], ElementsAre(6));
 
   // Check outputs values.
-  const std::vector<std::vector<int32>>& output_datas = model.GetOutputDatas();
+  const std::vector<std::vector<int32_t>>& output_datas =
+      model.GetOutputDatas();
   EXPECT_EQ(output_datas.size(), 1);
   EXPECT_THAT(output_datas[0], ElementsAre(1, 2, 3, 4, 5, 6));
 }
 
 TEST(UnpackOpTest, IntThreeDimensionsOutputs) {
-  UnpackOpModel<int32> model({TensorType_INT32, {2, 2, 2}}, 2);
+  UnpackOpModel<int32_t> model({TensorType_INT32, {2, 2, 2}}, 2);
   model.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
   model.Invoke();
 
@@ -205,7 +208,8 @@ TEST(UnpackOpTest, IntThreeDimensionsOutputs) {
   EXPECT_THAT(output_shapes[1], ElementsAre(2, 2));
 
   // Check outputs values.
-  const std::vector<std::vector<int32>>& output_datas = model.GetOutputDatas();
+  const std::vector<std::vector<int32_t>>& output_datas =
+      model.GetOutputDatas();
   EXPECT_EQ(output_datas.size(), 2);
   EXPECT_THAT(output_datas[0], ElementsAre(1, 3, 5, 7));
   EXPECT_THAT(output_datas[1], ElementsAre(2, 4, 6, 8));

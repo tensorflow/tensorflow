@@ -273,9 +273,6 @@ tensorflow/contrib/libsvm
 tensorflow/contrib/libsvm/python
 tensorflow/contrib/libsvm/python/kernel_tests
 tensorflow/contrib/libsvm/python/ops
-tensorflow/contrib/linalg
-tensorflow/contrib/linalg/python
-tensorflow/contrib/linalg/python/ops
 tensorflow/contrib/linear_optimizer
 tensorflow/contrib/linear_optimizer/kernels
 tensorflow/contrib/linear_optimizer/kernels/g3doc

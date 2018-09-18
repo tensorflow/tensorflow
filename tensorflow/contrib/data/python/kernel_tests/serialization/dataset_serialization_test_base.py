@@ -510,7 +510,6 @@ class DatasetSerializationTestBase(test.TestCase):
       else:
         init_op, get_next_op, saver = self._build_graph(
             ds_fn, sparse_tensors=sparse_tensors)
-      get_next_op = remove_variants(get_next_op)
       return init_op, get_next_op, saver
 
     for i in range(len(break_points) + 1):
@@ -616,29 +615,40 @@ class DatasetSerializationTestBase(test.TestCase):
     # `get_next` may be a tuple e.g. in TensorSliceDataset. Since Collections
     # do not support tuples we flatten the tensors and restore the shape in
     # `_get_iterator_ops_from_collection`.
-
-    # TODO(shivaniagrwal): `output_classes` is a nested structure of classes,
-    # this base class is specific to current test cases. Update when tests are
-    # added with `output_classes` as a nested structure with at least one of the
-    # component being `tf.SparseTensor`.
-    if (sparse_tensors or
-        self._get_output_classes(ds_fn) is sparse_tensor.SparseTensor):
+    if sparse_tensors:  # specific for deprecated `from_sparse_tensor_slices`.
       ops.add_to_collection("iterator_ops", get_next.indices)
       ops.add_to_collection("iterator_ops", get_next.values)
       ops.add_to_collection("iterator_ops", get_next.dense_shape)
-    else:
-      for el in nest.flatten(get_next):
-        ops.add_to_collection("iterator_ops", el)
+      return
+
+    get_next_list = nest.flatten(get_next)
+    for i, output_class in enumerate(
+        nest.flatten(self._get_output_classes(ds_fn))):
+      if output_class is sparse_tensor.SparseTensor:
+        ops.add_to_collection("iterator_ops", get_next_list[i].indices)
+        ops.add_to_collection("iterator_ops", get_next_list[i].values)
+        ops.add_to_collection("iterator_ops", get_next_list[i].dense_shape)
+      else:
+        ops.add_to_collection("iterator_ops", get_next_list[i])
 
   def _get_iterator_ops_from_collection(self, ds_fn, sparse_tensors=False):
     all_ops = ops.get_collection("iterator_ops")
-    if (sparse_tensors or
-        self._get_output_classes(ds_fn) is sparse_tensor.SparseTensor):
+    if sparse_tensors:  # specific for deprecated `from_sparse_tensor_slices`.
       init_op, indices, values, dense_shape = all_ops
       return init_op, sparse_tensor.SparseTensor(indices, values, dense_shape)
-    else:
-      return all_ops[0], nest.pack_sequence_as(
-          self._get_output_types(ds_fn), all_ops[1:])
+    get_next_list = []
+    i = 1
+    for output_class in nest.flatten(self._get_output_classes(ds_fn)):
+      if output_class is sparse_tensor.SparseTensor:
+        indices, values, dense_shape = all_ops[i:i + 3]
+        i += 3
+        get_next_list.append(
+            sparse_tensor.SparseTensor(indices, values, dense_shape))
+      else:
+        get_next_list.append(all_ops[i])
+        i += 1
+    return all_ops[0], nest.pack_sequence_as(
+        self._get_output_types(ds_fn), get_next_list)
 
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():

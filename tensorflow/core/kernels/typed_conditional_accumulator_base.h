@@ -35,8 +35,9 @@ class TypedConditionalAccumulatorBase : public ConditionalAccumulatorBase {
  public:
   TypedConditionalAccumulatorBase(const DataType& dtype,
                                   const PartialTensorShape& shape,
-                                  const string& name)
-      : ConditionalAccumulatorBase(dtype, shape, name) {}
+                                  const string& name,
+                                  const string& reduction_type)
+      : ConditionalAccumulatorBase(dtype, shape, name, reduction_type) {}
 
   /**
    * Attempts to add a gradient to the accumulator. An ApplyGrad attempt is

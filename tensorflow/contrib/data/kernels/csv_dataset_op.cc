@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -48,6 +49,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->input_list("record_defaults", &record_defaults_list));
     for (int i = 0; i < record_defaults_list.size(); ++i) {
+      OP_REQUIRES(ctx, record_defaults_list[i].dims() <= 1,
+                  errors::InvalidArgument(
+                      "Each record default should be at most rank 1"));
       OP_REQUIRES(ctx, record_defaults_list[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,
@@ -713,7 +717,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<string>()() =
                   dataset()->record_defaults_[output_idx].flat<string>()(0);
             } else {
-              component.scalar<string>()() = field.ToString();
+              component.scalar<string>()() = string(field);
             }
             break;
           }
@@ -851,4 +855,5 @@ class CSVDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

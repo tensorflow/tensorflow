@@ -31,6 +31,7 @@ from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as _graph_util
 from tensorflow.python.framework import importer as _importer
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.platform import tf_logging as _logging
 from tensorflow.python.saved_model import constants as _saved_model_constants
 from tensorflow.python.training import saver as _saver_lib
 from tensorflow.python.util import compat as _compat
@@ -476,6 +477,12 @@ def _add_pruned_collection(base_meta_graph_def, meta_graph_def,
     collection.bytes_list.value[:] = [
         s for s in base_collection.bytes_list.value
         if not _is_removed_mentioned(s, removed_op_names)]
+    _logging.info(
+        'In collection %s, nodes excluded are: %s', collection_name,
+        sorted([
+            s for s in base_collection.bytes_list.value
+            if _is_removed_mentioned(s, removed_op_names)
+        ]))
   elif base_collection.HasField('node_list'):
     collection.node_list.value[:] = [
         s for s in base_collection.node_list.value
@@ -745,6 +752,9 @@ def meta_graph_transform(
   retained_op_names = [_compat.as_str(node.name)
                        for node in meta_graph_def.graph_def.node]
   removed_op_names = set(base_op_names) - set(retained_op_names)
+  _logging.info('Node names in base graph: %s', sorted(base_op_names))
+  _logging.info('Node names retained: %s', sorted(retained_op_names))
+  _logging.info('Node names removed: %s', sorted(removed_op_names))
 
   # Copy saver, excluding any pruned nodes if graph was not frozen.
   # TODO(b/63447631): Revisit this once the problem is addressed. Currently

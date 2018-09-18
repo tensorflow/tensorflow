@@ -19,8 +19,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
@@ -126,23 +126,28 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto compute_out_size = [padding](int imageSize, int filterSize,
-                                    int stride) -> int {
+  auto compute_out_size = [padding](int image_size, int filter_size, int stride,
+                                    int dilation_rate) -> int {
+    int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
     return padding == kTfLitePaddingSame
-               ? (imageSize + stride - 1) / stride
+               ? (image_size + stride - 1) / stride
                : padding == kTfLitePaddingValid
-                     ? (imageSize - filterSize + stride) / stride
+                     ? (image_size - effective_filter_size + stride) / stride
                      : 0;
   };
 
-  int out_width = compute_out_size(width, filter_width, params->stride_width);
+  int out_width = compute_out_size(width, filter_width, params->stride_width,
+                                   params->dilation_width_factor);
   int out_height =
-      compute_out_size(height, filter_height, params->stride_height);
+      compute_out_size(height, filter_height, params->stride_height,
+                       params->dilation_height_factor);
 
-  data->padding.height = ComputePadding(params->stride_height, 1, height,
-                                        filter_height, out_height);
+  data->padding.height =
+      ComputePadding(params->stride_height, params->dilation_height_factor,
+                     height, filter_height, out_height);
   data->padding.width =
-      ComputePadding(params->stride_width, 1, width, filter_width, out_width);
+      ComputePadding(params->stride_width, params->dilation_width_factor, width,
+                     filter_width, out_width);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -177,7 +182,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 
   void (*depthwise_conv)(const float*, const Dims<4>&, const float*,
                          const Dims<4>&, const float*, const Dims<4>&, int, int,
-                         int, int, int, float, float, float*, const Dims<4>&);
+                         int, int, int, int, int, float, float, float*,
+                         const Dims<4>&);
   if (kernel_type == kReference) {
     depthwise_conv = &reference_ops::DepthwiseConv;
   } else {
@@ -188,7 +194,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       GetTensorData<float>(input), GetTensorDims(input),
       GetTensorData<float>(filter), GetTensorDims(filter),
       GetTensorData<float>(bias), GetTensorDims(bias), params->stride_width,
-      params->stride_height, data->padding.width, data->padding.height,
+      params->stride_height, params->dilation_width_factor,
+      params->dilation_height_factor, data->padding.width, data->padding.height,
       params->depth_multiplier, output_activation_min, output_activation_max,
       GetTensorData<float>(output), GetTensorDims(output));
 }
@@ -204,8 +211,9 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   void (*depthwise_conv)(const uint8*, const Dims<4>&, int32, const uint8*,
                          const Dims<4>&, int32, const int32*, const Dims<4>&,
-                         int, int, int, int, int, int32, int32, int, int32,
-                         int32, uint8*, const Dims<4>&);
+                         int, int, int, int, int, int, int, int32, int32, int,
+                         int32, int32, uint8*, const Dims<4>&);
+
   if (kernel_type == kReference) {
     depthwise_conv = &reference_ops::DepthwiseConv;
   } else {
@@ -216,7 +224,8 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,
       GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset,
       GetTensorData<int32_t>(bias), GetTensorDims(bias), params->stride_width,
-      params->stride_height, data->padding.width, data->padding.height,
+      params->stride_height, params->dilation_width_factor,
+      params->dilation_height_factor, data->padding.width, data->padding.height,
       params->depth_multiplier, output_offset, data->output_multiplier,
       data->output_shift, data->output_activation_min,
       data->output_activation_max, GetTensorData<uint8_t>(output),

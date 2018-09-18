@@ -62,6 +62,7 @@ class VariableCreatorStackTest(test.TestCase):
 
     def model_fn(device_id):
       assert isinstance(device_id, int)
+
       def thread_creator_fn(next_creator, *args, **kwargs):
         return next_creator(*args, **kwargs) + ":thread_" + str(device_id)
 
@@ -93,16 +94,15 @@ class MultiWorkerMirroredStrategyTest(test.TestCase):
   def testDeviceScope(self):
     """Test the device scope of multi-worker MirroredStrategy."""
     with context.graph_mode():
-      strategy = mirrored_strategy.MirroredStrategy(
-          num_gpus=context.num_gpus())
+      strategy = mirrored_strategy.MirroredStrategy(num_gpus=context.num_gpus())
       strategy.configure(
           cluster_spec={"worker": ["/job:worker/task:0", "/job:worker/task:1"]})
       with strategy.scope():
         a = constant_op.constant(1.)
-        with ops.device('/cpu:0'):
+        with ops.device("/cpu:0"):
           b = constant_op.constant(1.)
-        self.assertEqual(a.device, '/job:worker/task:0')
-        self.assertEqual(b.device, '/job:worker/task:0/device:CPU:0')
+        self.assertEqual(a.device, "/job:worker/task:0")
+        self.assertEqual(b.device, "/job:worker/task:0/device:CPU:0")
 
 
 if __name__ == "__main__":

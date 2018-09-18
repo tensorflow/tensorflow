@@ -60,7 +60,7 @@ tf_class {
   }
   member_method {
     name: "interleave"
-    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\'], varargs=None, keywords=None, defaults=[\'1\'], "
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "list_files"
@@ -109,6 +109,10 @@ tf_class {
   member_method {
     name: "take"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "window"
+    argspec: "args=[\'self\', \'size\', \'shift\', \'stride\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'False\'], "
   }
   member_method {
     name: "zip"

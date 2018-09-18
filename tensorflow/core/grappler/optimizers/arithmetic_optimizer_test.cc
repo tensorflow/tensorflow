@@ -581,7 +581,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   EXPECT_EQ("^x", new_const->input(0));
-  EXPECT_EQ(std::string("\0\0\0@", 4),
+  EXPECT_EQ(string("\0\0\0@", 4),
             new_const->attr().at("value").tensor().tensor_content());
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
@@ -625,7 +625,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   EXPECT_EQ("^x", new_const->input(0));
-  EXPECT_EQ(std::string("\0\0\0@", 4),
+  EXPECT_EQ(string("\0\0\0@", 4),
             new_const->attr().at("value").tensor().tensor_content());
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
@@ -3216,6 +3216,72 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWise) {
       ++required_node_count;
     } else if (node.name() == "reduce_max") {
       EXPECT_EQ("Max", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      ++required_node_count;
+    }
+  }
+  EXPECT_EQ(2, required_node_count);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWise_DoNotChangeFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
+  Output reduce_max = ops::Max(s.WithOpName("reduce_max"), sqrt, {0});
+  Output final_out = ops::Identity(s.WithOpName("final_out"), reduce_max);
+
+  GrapplerItem item;
+  item.fetch = {"sqrt", "final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWiseNonIncreasing) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output neg = ops::Neg(s.WithOpName("neg"), x);
+  Output reduce_max = ops::Max(s.WithOpName("reduce_max"), neg, {0});
+  Output final_out = ops::Identity(s.WithOpName("final_out"), reduce_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  // Check if the inputs are switched
+  int required_node_count = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "neg") {
+      EXPECT_EQ("Neg", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("reduce_max", node.input(0));
+      ++required_node_count;
+    } else if (node.name() == "reduce_max") {
+      EXPECT_EQ("Min", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       ++required_node_count;

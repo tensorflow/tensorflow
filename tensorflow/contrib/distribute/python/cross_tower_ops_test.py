@@ -32,7 +32,6 @@ from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
-from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -136,7 +135,7 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
     destination_list = devices
 
     all_destinations = [
-        None, destination_mirrored, destination_different, destination_str,
+        destination_mirrored, destination_different, destination_str,
         destination_list
     ]
 
@@ -147,24 +146,24 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
               vs.VariableAggregation.MEAN,
               per_device,
               destinations=destinations),
-          _fake_mirrored(mean, destinations or per_device))
+          _fake_mirrored(mean, destinations))
       self._assert_values_equal(
           cross_tower_ops.reduce(
               vs.VariableAggregation.MEAN,
               per_device_2,
               destinations=destinations),
-          _fake_mirrored(mean_2, destinations or per_device))
+          _fake_mirrored(mean_2, destinations))
       self._assert_values_equal(
           cross_tower_ops.reduce(
               vs.VariableAggregation.SUM, per_device,
               destinations=destinations),
-          _fake_mirrored(mean * len(devices), destinations or per_device))
+          _fake_mirrored(mean * len(devices), destinations))
       self._assert_values_equal(
           cross_tower_ops.reduce(
               vs.VariableAggregation.SUM,
               per_device_2,
               destinations=destinations),
-          _fake_mirrored(mean_2 * len(devices), destinations or per_device))
+          _fake_mirrored(mean_2 * len(devices), destinations))
 
     # test batch_reduce()
     for d1, d2 in itertools.product(all_destinations, all_destinations):
@@ -172,25 +171,22 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
           cross_tower_ops.batch_reduce(vs.VariableAggregation.MEAN,
                                        [(per_device, d1), (per_device_2, d2)]),
           [
-              _fake_mirrored(mean, d1 or per_device),
-              _fake_mirrored(mean_2, d2 or per_device_2)
+              _fake_mirrored(mean, d1),
+              _fake_mirrored(mean_2, d2)
           ])
       self._assert_values_equal(
           cross_tower_ops.batch_reduce(vs.VariableAggregation.SUM,
                                        [(per_device, d1), (per_device_2, d2)]),
           [
-              _fake_mirrored(mean * len(devices), d1 or per_device),
-              _fake_mirrored(mean_2 * len(devices), d2 or per_device_2)
+              _fake_mirrored(mean * len(devices), d1),
+              _fake_mirrored(mean_2 * len(devices), d2)
           ])
 
     # test broadcast()
     for destinations in all_destinations:
-      if destinations is None:
-        continue
-      else:
-        self._assert_values_equal(
-            cross_tower_ops.broadcast(constant_op.constant(1.), destinations),
-            _fake_mirrored(1., destinations))
+      self._assert_values_equal(
+          cross_tower_ops.broadcast(constant_op.constant(1.), destinations),
+          _fake_mirrored(1., destinations))
 
 
 class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
@@ -379,12 +375,16 @@ class MultiWorkerCrossTowerOpsTest(multi_worker_test_base.MultiWorkerTestBase,
       distribution=[
           combinations.NamedDistribution(
               "MirroredCPU",
-              lambda: mirrored_strategy.MirroredStrategy(["/cpu:0"]),
-              required_gpus=2),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus=0),
+              required_gpus=0),
           combinations.NamedDistribution(
               "Mirrored1GPU",
-              lambda: mirrored_strategy.MirroredStrategy(["/gpu:1"]),
-              required_gpus=2), combinations.mirrored_strategy_with_two_gpus
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus=1),
+              required_gpus=1),
+          combinations.NamedDistribution(
+              "Mirrored2GPUs",
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus=2),
+              required_gpus=2),
       ],
       mode=["graph"])
 
@@ -406,13 +406,8 @@ class MultiWorkerCollectiveAllReduceTest(
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    cls._workers, cls._ps = multi_worker_test_base.create_in_process_cluster(
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0)
-    cls._cluster_spec = {
-        run_config.TaskType.WORKER: [
-            "fake_worker_0", "fake_worker_1", "fake_worker_2"
-        ]
-    }
 
   def setUp(self):
     super(MultiWorkerCollectiveAllReduceTest, self).setUp()
@@ -446,7 +441,8 @@ class MultiWorkerCollectiveAllReduceTest(
         ]
       else:
         devices = ["/job:%s/task:%d" % (task_type, task_id)]
-      return collective_all_reduce_ops, devices, self._workers[task_id].target
+      return (collective_all_reduce_ops, devices,
+              "grpc://" + self._cluster_spec[task_type][task_id])
 
   def _assert_values_equal(self, left, right, sess):
     if isinstance(left, list):
@@ -473,7 +469,8 @@ class MultiWorkerCollectiveAllReduceTest(
       num_workers = 1
       worker_device = None
     else:
-      num_workers = len(self._workers)
+      num_workers = len(self._cluster_spec.get("chief", [])) + len(
+          self._cluster_spec.get("worker", []))
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
@@ -494,7 +491,7 @@ class MultiWorkerCollectiveAllReduceTest(
       destination_list = devices
 
       all_destinations = [
-          destination_different, None, destination_mirrored, destination_str,
+          destination_different, destination_mirrored, destination_str,
           destination_list
       ]
 
@@ -505,27 +502,27 @@ class MultiWorkerCollectiveAllReduceTest(
                 vs.VariableAggregation.MEAN,
                 per_device,
                 destinations=destinations),
-            _fake_mirrored(mean, destinations or per_device), sess)
+            _fake_mirrored(mean, destinations), sess)
         self._assert_values_equal(
             collective_all_reduce.reduce(
                 vs.VariableAggregation.MEAN,
                 per_device_2,
                 destinations=destinations),
-            _fake_mirrored(mean_2, destinations or per_device), sess)
+            _fake_mirrored(mean_2, destinations), sess)
         self._assert_values_equal(
             collective_all_reduce.reduce(
                 vs.VariableAggregation.SUM,
                 per_device,
                 destinations=destinations),
-            _fake_mirrored(mean * len(devices) * num_workers, destinations or
-                           per_device), sess)
+            _fake_mirrored(mean * len(devices) * num_workers, destinations),
+            sess)
         self._assert_values_equal(
             collective_all_reduce.reduce(
                 vs.VariableAggregation.SUM,
                 per_device_2,
                 destinations=destinations),
-            _fake_mirrored(mean_2 * len(devices) * num_workers, destinations or
-                           per_device), sess)
+            _fake_mirrored(mean_2 * len(devices) * num_workers, destinations),
+            sess)
 
       # test batch_reduce()
       for d1, d2 in itertools.product(all_destinations, all_destinations):
@@ -534,24 +531,22 @@ class MultiWorkerCollectiveAllReduceTest(
                                                [(per_device, d1),
                                                 (per_device_2, d2)]),
             [
-                _fake_mirrored(mean, d1 or per_device),
-                _fake_mirrored(mean_2, d2 or per_device_2)
+                _fake_mirrored(mean, d1),
+                _fake_mirrored(mean_2, d2)
             ], sess)
         self._assert_values_equal(
             collective_all_reduce.batch_reduce(vs.VariableAggregation.SUM,
                                                [(per_device, d1),
                                                 (per_device_2, d2)]),
             [
-                _fake_mirrored(mean * len(devices) * num_workers, d1 or
-                               per_device),
-                _fake_mirrored(mean_2 * len(devices) * num_workers, d2 or
-                               per_device_2)
+                _fake_mirrored(mean * len(devices) * num_workers, d1),
+                _fake_mirrored(mean_2 * len(devices) * num_workers, d2)
             ], sess)
 
     return True
 
   @combinations.generate(
-      combinations.combine(mode=["graph"], num_gpus=[0, 1, 2]))
+      combinations.combine(mode=["graph"], num_gpus=[0, 1, 2], required_gpus=1))
   def testReductionDistributed(self, num_gpus):
     if context.num_gpus() < num_gpus:
       return
