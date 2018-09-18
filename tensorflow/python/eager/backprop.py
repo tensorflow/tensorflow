@@ -120,27 +120,6 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
 pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
-_tracing = False
-
-
-# TODO(agarwal): use an automatic mechanism for handling None arguments to
-# gradient functions.
-# Some gradient functions can accept None arguments for gradients. The following
-# maps the operation name to the indices at which the corresponding gradient
-# function can accept None values.
-# e.g. FusedBatchNorm outputs 5 values and hence receives 5 gradient values
-# during backprop. However the gradient function uses only the first of those
-# values and ignores the rest. The entry, "FusedBatchNorm": [1, 2, 3, 4],
-# indicates that only the gradient corresponding to index 0 is used, and the
-# gradient values at indices 1-4 are ignored (and hence can be None). The
-# backprop algorithm can then leverage this by not constructing zeros to
-# pass for those indices.
-_grad_fn_accepts_none_for_indices = {
-    "SoftmaxCrossEntropyWithLogits": [1],
-    "FusedBatchNorm": [1, 2, 3, 4]
-}
-
-
 def _record_gradient(op_name, inputs, attrs, results, name):
   return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
                                                  results, name)
