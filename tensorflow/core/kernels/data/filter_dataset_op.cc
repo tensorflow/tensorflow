@@ -131,9 +131,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       return Status::OK();
     }
 
-    virtual Status EvaluatePredicate(IteratorContext* ctx,
-                                     const std::vector<Tensor>& element,
-                                     bool* out_matched) const = 0;
+    virtual Status EvaluatePredicate(
+        IteratorContext* ctx,
+        InstantiatedCapturedFunction* instantiated_captured_function,
+        const std::vector<Tensor>& element, bool* out_matched) const = 0;
 
    private:
     class Iterator : public DatasetIterator<FilterDatasetBase> {
@@ -144,7 +145,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -171,8 +173,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          TF_RETURN_IF_ERROR(
-              dataset()->EvaluatePredicate(ctx, *out_tensors, &matched));
+          TF_RETURN_IF_ERROR(dataset()->EvaluatePredicate(
+              ctx, instantiated_captured_func_.get(), *out_tensors, &matched));
           if (!matched) {
             // Clear the output tensor list since it didn't match.
             out_tensors->clear();
@@ -206,6 +208,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
      private:
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
@@ -220,14 +223,15 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     using FilterDatasetBase::FilterDatasetBase;
 
    protected:
-    Status EvaluatePredicate(IteratorContext* ctx,
-                             const std::vector<Tensor>& element,
-                             bool* out_matched) const override {
+    Status EvaluatePredicate(
+        IteratorContext* ctx,
+        InstantiatedCapturedFunction* instantiated_captured_function,
+        const std::vector<Tensor>& element, bool* out_matched) const override {
       // TODO(mrry): Avoid blocking a threadpool thread. We will need to
       // stack-rip the iterators and use async kernels.
       std::vector<Tensor> result;
-      TF_RETURN_IF_ERROR(
-          captured_func_->RunWithBorrowedArgs(ctx, element, &result));
+      TF_RETURN_IF_ERROR(instantiated_captured_function->RunWithBorrowedArgs(
+          ctx, element, &result));
 
       if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
           result[0].NumElements() != 1) {
@@ -249,9 +253,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           index_(index) {}
 
    protected:
-    Status EvaluatePredicate(IteratorContext* ctx,
-                             const std::vector<Tensor>& element,
-                             bool* out_matched) const override {
+    Status EvaluatePredicate(
+        IteratorContext* ctx,
+        InstantiatedCapturedFunction* instantiated_captured_function,
+        const std::vector<Tensor>& element, bool* out_matched) const override {
       const Tensor& predicate = element[index_];
       if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
         return errors::InvalidArgument(

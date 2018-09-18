@@ -24,8 +24,9 @@ namespace data {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator);
+    int64 thread_index,
+    const InstantiatedCapturedFunction& instantiated_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 }  // namespace data
 }  // namespace tensorflow
