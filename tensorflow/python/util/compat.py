@@ -41,7 +41,6 @@ except ImportError:
   from collections import Iterable as _Iterable
 
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.framework import ops
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
   """Converts either bytes or unicode to `bytes`, using utf-8 encoding for text.
@@ -125,7 +124,8 @@ def path_to_str(path):
     If `path` is a `PathLike` object, then the return value is one or more `str` objects.
     Otherwise `path` is returned unchanged
   """
-  if isinstance(path, _Iterable) and not isinstance(path, (str, bytes, bytearray, ops.Tensor)):
+  from tensorflow.python.framework.ops import _TensorLike
+  if isinstance(path, _Iterable) and not isinstance(path, (str, bytes, bytearray, _TensorLike)):
     path = [path_to_str(p) for p in path]
   elif hasattr(path, '__fspath__'):
     path = as_str_any(path.__fspath__())

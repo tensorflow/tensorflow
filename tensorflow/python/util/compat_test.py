@@ -35,7 +35,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.ops import array_ops
-from tensorflow.python import dtypes
 
 class CompatPathToStrTest(test.TestCase):
 
@@ -71,7 +70,7 @@ class CompatPathToStrTest(test.TestCase):
         self.assertEqual(['/tmp/folder', '/tmp/folder2'], transformed)
 
     def testReturnsTensorUnchanged(self):
-        tensor_input = array_ops.constant('/tmp/folder/', dtype=dtypes.string)
+        tensor_input = array_ops.constant('/tmp/folder/')
 
         transformed = compat.path_to_str(tensor_input)
         self.assertEqual(tensor_input, transformed)
