@@ -66,7 +66,8 @@ class PackedSequenceAlignmentOp<GPUDevice, T> : public OpKernel {
 
 #define REGISTER_GPU(T)                                    \
   REGISTER_KERNEL_BUILDER(Name("PackedSequenceAlignment")       \
-                              .Device(DEVICE_GPU)          \
+                              .Device(DEVICE_GPU) \
+							  .HostMemory("sequence_lengths")          \
                               .TypeConstraint<T>("T"),      \
                           PackedSequenceAlignmentOp<GPUDevice, T>);
 REGISTER_GPU(int8)					  
@@ -126,6 +127,8 @@ class PackSequenceOp<GPUDevice, T, Index> : public OpKernel {
 #define REGISTER_GPU_T_Index(T, Index)                                    \
   REGISTER_KERNEL_BUILDER(Name("PackSequence")       \
                               .Device(DEVICE_GPU)          \
+							  .HostMemory("alignments")  \
+							  .HostMemory("batch_sizes")  \
                               .TypeConstraint<T>("T")      \
                               .TypeConstraint<Index>("Index"),      \
                           PackSequenceOp<GPUDevice, T, Index>);
@@ -189,6 +192,8 @@ class UnpackSequenceOp<GPUDevice, T, Index> : public OpKernel {
 #define REGISTER_GPU_T_Index(T, Index)                                    \
   REGISTER_KERNEL_BUILDER(Name("UnpackSequence")       \
                               .Device(DEVICE_GPU)          \
+							  .HostMemory("alignments")  \
+							  .HostMemory("batch_sizes")  \
                               .TypeConstraint<T>("T")      \
                               .TypeConstraint<Index>("Index"),      \
                           UnpackSequenceOp<GPUDevice, T, Index>);
