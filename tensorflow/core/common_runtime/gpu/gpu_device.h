@@ -86,8 +86,9 @@ class BaseGPUDevice : public LocalDevice {
   // The caller owns the returned device.
   PerOpGpuDevice* MakeGpuDevice() override;
 
-  void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
-                             DeviceContext* dc, Allocator* allocator) override;
+  Status ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                               DeviceContext* dc,
+                               Allocator* allocator) override;
 
   // Returns the CUDA GPU id of this device within the native driver system;
   // e.g., for CUDA this is the ordinal of the GPU within the system.
@@ -125,6 +126,7 @@ class BaseGPUDevice : public LocalDevice {
   class StreamGroupFactory;
 
   gtl::InlinedVector<StreamGroup*, 4> streams_;
+  mutex scratch_init_mutex_;
   gtl::InlinedVector<char*, 4> scratch_;
   std::vector<GPUDeviceContext*> device_contexts_;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
@@ -134,6 +136,9 @@ class BaseGPUDevice : public LocalDevice {
   const int32 max_streams_;
   std::unique_ptr<EventMgr> em_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  // Initialize scractch buffers used by Eigen.
+  Status InitScratchBuffers();
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
