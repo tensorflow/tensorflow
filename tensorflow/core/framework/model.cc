@@ -322,7 +322,7 @@ void Model::Optimize(int64 cpu_budget) {
         }
         tunable->value--;
       }
-      if (best_tunable) {
+      if (!best_tunable) {
         // NOTE: This can happen because we are performing the optimization
         // while the model data is changing. If this becomes an issue, we should
         // look into performing the optimization using a model snapshot.
