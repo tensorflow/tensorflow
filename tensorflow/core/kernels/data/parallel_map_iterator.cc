@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -55,7 +56,25 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   Status Initialize(IteratorContext* ctx) override {
-    SetMetadata(ctx, "parallelism", num_parallel_calls_);
+    mutex_lock l(mu_);
+    if (num_parallel_calls_ == kAutoTune) {
+      num_parallel_calls_ = 1;
+      auto set_fn = [this](int64 value) {
+        {
+          mutex_lock l(mu_);
+          num_parallel_calls_ = value;
+        }
+        VLOG(2) << "setting parallelism knob to " << value;
+        cond_var_.notify_all();
+      };
+      // TODO(jsimsa): Surface the number of threads used by `ctx->runner()` and
+      // use it here for the maximum.
+      AddTunableParameter(ctx, "parallelism", num_parallel_calls_ /* value */,
+                          1 /* min */, port::NumSchedulableCPUs() /* max */,
+                          std::move(set_fn));
+    } else {
+      AddConstantParameter(ctx, "parallelism", num_parallel_calls_);
+    }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
     if (init_func_) {
@@ -211,8 +230,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
               std::move(done));
   }
 
-  int64 MaxInvocationResults() { return num_parallel_calls_; }
-
   Status ProcessResult(const std::shared_ptr<InvocationResult>& result,
                        std::vector<Tensor>* out_tensors,
                        bool* end_of_sequence) {
@@ -235,13 +252,16 @@ class ParallelMapIterator : public DatasetBaseIterator {
     StartWork(ctx.get());
     auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
     std::vector<std::shared_ptr<InvocationResult>> new_calls;
-    new_calls.reserve(num_parallel_calls_);
+    {
+      tf_shared_lock l(mu_);
+      new_calls.reserve(num_parallel_calls_);
+    }
     while (true) {
       {
         mutex_lock l(mu_);
         while (!cancelled_ &&
                (num_calls_ >= num_parallel_calls_ ||
-                invocation_results_.size() >= MaxInvocationResults())) {
+                invocation_results_.size() >= num_parallel_calls_)) {
           StopWork(ctx.get());
           cond_var_.wait(l);
           StartWork(ctx.get());
@@ -250,7 +270,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
           return;
         }
         while (num_calls_ < num_parallel_calls_ &&
-               invocation_results_.size() < MaxInvocationResults()) {
+               invocation_results_.size() < num_parallel_calls_) {
           invocation_results_.emplace_back(new InvocationResult());
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
@@ -305,7 +325,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
   const DatasetBase* const input_dataset_;  // Not owned.
   const std::function<Status(IteratorContext*)> init_func_;
   const ParallelMapIteratorFunction map_func_;
-  const int32 num_parallel_calls_;
   // Used for coordination between the main thread and the runner thread.
   mutex mu_;
   // Used for coordination between the main thread and the runner thread. In
@@ -314,6 +333,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
   // parallelism and there are slots available in the `invocation_results_`
   // buffer.
   condition_variable cond_var_;
+  // Identifies the maximum number of parallel calls.
+  int64 num_parallel_calls_ GUARDED_BY(mu_) = 0;
   // Counts the number of outstanding calls.
   int64 num_calls_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<IteratorBase> input_impl_;

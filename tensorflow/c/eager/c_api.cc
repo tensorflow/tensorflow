@@ -375,6 +375,17 @@ int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
   return result;
 }
 
+int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h, TF_Status* status) {
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "The passed in handle is a nullptr");
+    return -1;
+  }
+  tensorflow::int64 result;
+  status->status = h->handle->NumElements(&result);
+  return result;
+}
+
 int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
                             TF_Status* status) {
   if (h == nullptr || h->handle == nullptr) {

@@ -21,6 +21,7 @@ import collections
 import functools
 from multiprocessing.pool import ThreadPool
 import sys
+import weakref
 
 import numpy
 
@@ -72,6 +73,13 @@ class MiniModel(keras_training.Model):
 
   def call(self, inputs, training=True):
     return self.fc(inputs)
+
+
+class DefunnedMiniModel(MiniModel):
+
+  @function.defun
+  def call(self, inputs, training=True):
+    return super(DefunnedMiniModel, self).call(inputs, training=training)
 
 
 @test_util.with_c_shapes
@@ -140,8 +148,8 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def f():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      return v.read_value()
+      self.v = resource_variable_ops.ResourceVariable(1.0)
+      return self.v.read_value()
 
     self.assertAllEqual(f(), 1.0)
 
@@ -399,9 +407,9 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def tensor_init():
-      v = resource_variable_ops.ResourceVariable(
+      self.v = resource_variable_ops.ResourceVariable(
           lambda: constant_op.constant(2.0))
-      return v.read_value()
+      return self.v.read_value()
 
     value = tensor_init()
     if not context.executing_eagerly():
@@ -415,8 +423,8 @@ class FunctionTest(test.TestCase):
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
-      v = resource_variable_ops.ResourceVariable(const)
-      return v.read_value()
+      self.v = resource_variable_ops.ResourceVariable(const)
+      return self.v.read_value()
 
     value = tensor_init()
     if not context.executing_eagerly():
@@ -478,13 +486,14 @@ class FunctionTest(test.TestCase):
   def testDefunForcesResourceVariables(self):
 
     def variable_creator():
-      return variables.Variable(0.0).read_value()
+      self.v = variables.Variable(0.0)
+      return self.v.read_value()
 
+    self.v = None
     defined = function.defun(variable_creator)
     defined()  # Create the variable.
-    self.assertEqual(len(defined.variables), 1)
     self.assertIsInstance(
-        defined.variables[0], resource_variable_ops.ResourceVariable)
+        self.v, resource_variable_ops.ResourceVariable)
 
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1184,13 +1193,11 @@ class FunctionTest(test.TestCase):
     defined = function.defun(foo)
 
     x = constant_op.constant([1.0])
-    self.assertAllEqual(defined.variables, [])
-    _ = defined(x)
-    self.assertAllEqual(defined.variables, [v])
+    self.assertEqual(1., self.evaluate(defined(x)))
+    v.assign(2.)
 
     x = constant_op.constant([1.0, 2.0])
-    _ = defined(x)  # ensure the variables list remains the same
-    self.assertAllEqual(defined.variables, [v])
+    self.assertAllEqual([2., 4.], self.evaluate(defined(x)))
 
   def testPythonFunctionWithDefaultArgs(self):
 
@@ -1913,10 +1920,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     @function.defun
     def train():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(v)
+      self.v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
-      return v.read_value()
+      return self.v.read_value()
 
     value = train()
     self.assertEqual(value.numpy(), -1.0)
@@ -1943,10 +1950,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     @function.defun
     def train():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(v)
+      self.v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
-      return v.read_value()
+      return self.v.read_value()
 
     train()
 
@@ -2133,6 +2140,13 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
       modify_same_flat(nested_input)
 
+  def testDecoratedMethodVariableCleanup(self):
+    m = DefunnedMiniModel()
+    m(array_ops.ones([1, 2]))
+    weak_variables = weakref.WeakSet(m.variables)
+    self.assertEqual(2, len(weak_variables))
+    del m
+    self.assertEqual([], list(weak_variables))
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

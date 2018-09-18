@@ -23,6 +23,7 @@ import collections
 import functools
 import sys
 import threading
+import weakref
 
 import numpy as np
 import six
@@ -180,7 +181,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.structured_outputs = None
-    self.variables = []
+    self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
     self.captures = collections.OrderedDict()
 
@@ -216,6 +217,31 @@ class FuncGraph(ops.Graph):
     # optimizers.
     self._graph_key = graph._graph_key
     # pylint: enable=protected-access
+
+  @property
+  def variables(self):
+    """A list of variables accessed by this FuncGraph.
+
+    Note that functions keep only weak references to variables. Calling the
+    function after a variable it accesses has been deleted is an error.
+
+    Yields:
+      Strong references to variables accessed by this FuncGraph.
+    """
+    for weak_v in self._weak_variables:
+      v = weak_v()
+      if v is None:
+        raise AssertionError(
+            "Called a function referencing variables which have been deleted. "
+            "This likely means that function-local variables were created and "
+            "not referenced elsewhere in the program. This is generally a "
+            "mistake; consider storing variables in an object attribute on "
+            "first call.")
+      yield v
+
+  @variables.setter
+  def variables(self, var_list):
+    self._weak_variables = [weakref.ref(v) for v in var_list]
 
   def create_op(
       self,
@@ -604,11 +630,6 @@ class Function(object):
     return self._func_graph
 
   @property
-  def variables(self):
-    """Returns all variables touched by this function."""
-    return self._func_graph.variables
-
-  @property
   def inputs(self):
     """Returns tensors in `self.graph` corresponding to arguments."""
     return self._func_graph.inputs
@@ -970,7 +991,16 @@ def _encode_arg(arg):
     return tuple(
         (_encode_arg(key), _encode_arg(arg[key])) for key in sorted(arg))
   else:
-    return arg
+    try:
+      # If possible, keep only a weak reference to Python objects. Weak
+      # references hash to the same value as the original object.
+      # TODO(allenl): Clean up dead functions and their cache keys if the cache
+      # gets large. Right now creating objects with a defunned method, calling
+      # the method, and losing a reference to the object in a loop will leak
+      # memory here.
+      return weakref.ref(arg)
+    except TypeError:
+      return arg
 
 
 def _deterministic_dict_values(dictionary):
@@ -1020,7 +1050,6 @@ class PolymorphicFunction(object):
       self._kwds_to_include = {}
     self._name = name
     self._function_cache = collections.OrderedDict()
-    self._variables = []
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
@@ -1065,12 +1094,6 @@ class PolymorphicFunction(object):
   def python_function(self):
     """Returns the wrapped Python function."""
     return self._python_function
-
-  # TODO(akshayka): Remove this property.
-  @property
-  def variables(self):
-    """Returns the union of all variables referenced by cached `Function`s`."""
-    return self._variables
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
@@ -1238,8 +1261,6 @@ class PolymorphicFunction(object):
             func_graph_from_py_func(self._name, self._python_function, args,
                                     kwds, self._input_signature),
             self._function_attributes)
-        self._variables.extend(
-            [v for v in graph_function.variables if v not in self._variables])
         self._function_cache[cache_key] = graph_function
       return graph_function, [
           t for t in nest.flatten((args, kwds))

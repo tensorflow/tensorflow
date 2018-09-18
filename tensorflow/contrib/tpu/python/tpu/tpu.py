@@ -847,8 +847,12 @@ def shard(computation,
   if num_shards <= 0:
     raise ValueError("num_shards must be a positive integer.")
 
+  inputs = [] if inputs is None else inputs
+  if not isinstance(inputs, list):
+    raise TypeError("tpu.shard()'s inputs must be a list of Tensors or None.")
+
   # Converts inputs to Tensors.
-  inputs = [] if inputs is None else [ops.convert_to_tensor(x) for x in inputs]
+  inputs = [ops.convert_to_tensor(x) for x in inputs]
 
   if input_shard_axes is None:
     input_shard_axes = [0] * len(inputs)

@@ -38,7 +38,7 @@ class OptimizeDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -51,7 +51,7 @@ class OptimizeDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -64,7 +64,7 @@ class OptimizeDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -76,7 +76,7 @@ class OptimizeDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(get_next)
 
   def testOptimizationLargeInputFromTensor(self):
@@ -87,7 +87,7 @@ class OptimizeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
       sess.run(get_next)
 
@@ -99,7 +99,7 @@ class OptimizeDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {input_t: np.ones([1, 512, 1024, 1025], np.int32)})
       sess.run(get_next)
 

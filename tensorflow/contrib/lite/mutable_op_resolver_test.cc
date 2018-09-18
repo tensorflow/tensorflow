@@ -36,6 +36,20 @@ TfLiteRegistration* GetDummyRegistration() {
   return &registration;
 }
 
+TfLiteStatus Dummy2Invoke(TfLiteContext* context, TfLiteNode* node) {
+  return kTfLiteOk;
+}
+
+TfLiteRegistration* GetDummy2Registration() {
+  static TfLiteRegistration registration = {
+      .init = nullptr,
+      .free = nullptr,
+      .prepare = nullptr,
+      .invoke = Dummy2Invoke,
+  };
+  return &registration;
+}
+
 TEST(MutableOpResolverTest, FinOp) {
   MutableOpResolver resolver;
   resolver.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
@@ -117,6 +131,26 @@ TEST(MutableOpResolverTest, FindCustomOpWithUnsupportedVersion) {
 
   const TfLiteRegistration* found_registration = resolver.FindOp("AWESOME", 2);
   EXPECT_EQ(found_registration, nullptr);
+}
+
+TEST(MutableOpResolverTest, AddAll) {
+  MutableOpResolver resolver1;
+  resolver1.AddBuiltin(BuiltinOperator_ADD, GetDummyRegistration());
+  resolver1.AddBuiltin(BuiltinOperator_MUL, GetDummy2Registration());
+
+  MutableOpResolver resolver2;
+  resolver2.AddBuiltin(BuiltinOperator_SUB, GetDummyRegistration());
+  resolver2.AddBuiltin(BuiltinOperator_ADD, GetDummy2Registration());
+
+  // resolver2's ADD op should replace resolver1's ADD op, while augmenting
+  // non-overlapping ops.
+  resolver1.AddAll(resolver2);
+  ASSERT_EQ(resolver1.FindOp(BuiltinOperator_ADD, 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver1.FindOp(BuiltinOperator_MUL, 1)->invoke,
+            GetDummy2Registration()->invoke);
+  ASSERT_EQ(resolver1.FindOp(BuiltinOperator_SUB, 1)->invoke,
+            GetDummyRegistration()->invoke);
 }
 
 }  // namespace

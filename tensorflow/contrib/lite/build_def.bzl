@@ -294,6 +294,7 @@ def generated_test_models():
         #"transpose_conv",   # disabled due to b/111213074
         "unpack",
         "where",
+        "zeros_like",
     ]
 
 def generated_test_conversion_modes():

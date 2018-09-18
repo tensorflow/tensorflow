@@ -619,6 +619,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_FLOOR_DIV:
     case BuiltinOperator_SQUARE:
     case BuiltinOperator_ZEROS_LIKE:
+    case BuiltinOperator_FILL:
       break;
   }
   return kTfLiteOk;

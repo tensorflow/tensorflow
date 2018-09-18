@@ -52,8 +52,9 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef TfLiteTensor TFL_Tensor;
+typedef TfLiteRegistration TFL_Registration;
 typedef TfLiteStatus TFL_Status;
+typedef TfLiteTensor TFL_Tensor;
 typedef TfLiteType TFL_Type;
 
 // --------------------------------------------------------------------------

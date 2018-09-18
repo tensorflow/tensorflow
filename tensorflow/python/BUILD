@@ -3090,7 +3090,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/image_grad_test.py"],
     additional_deps = [
         ":client_testlib",

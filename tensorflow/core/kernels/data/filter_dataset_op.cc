@@ -37,14 +37,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     FunctionLibraryRuntime::Handle pred_handle;
     OP_REQUIRES_OK(ctx,
                    ctx->function_library()->Instantiate(
@@ -61,9 +53,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     Node* ret_node = pred_body->ret_nodes[0];
     Node* ret_input_node;
     OP_REQUIRES_OK(ctx, ret_node->input_node(0, &ret_input_node));
+
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            func_, std::move(other_arguments), &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 &captured_func));
 
     if (ret_input_node->def().op() == "_Arg") {
       int32 index = -1;

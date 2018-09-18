@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/test_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
 
@@ -28,23 +29,29 @@ namespace tflite {
 namespace {
 
 // Runs the DepthwiseConv and compares against the reference implementation.
-template <FusedActivationFunctionType Ac>
 void TestOneDepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,
                           const float* bias_data, const Dims<4>& bias_dims,
-                          int stride, int pad_width, int pad_height,
-                          int depth_multiplier, const Dims<4>& output_dims) {
+                          int stride, int dilation_width_factor,
+                          int dilation_height_factor, int pad_width,
+                          int pad_height, int depth_multiplier,
+                          float output_activation_min,
+                          float output_activation_max,
+                          const Dims<4>& output_dims) {
   const int output_buffer_size = RequiredBufferSizeForDims(output_dims);
   std::vector<float> output_data(output_buffer_size);
   std::vector<float> reference_output_data(output_buffer_size);
-  reference_ops::DepthwiseConv<Ac>(input_data, input_dims, filter_data,
-                                   filter_dims, bias_data, bias_dims, stride,
-                                   pad_width, pad_height, depth_multiplier,
-                                   reference_output_data.data(), output_dims);
-  optimized_ops::DepthwiseConv<Ac>(input_data, input_dims, filter_data,
-                                   filter_dims, bias_data, bias_dims, stride,
-                                   pad_width, pad_height, depth_multiplier,
-                                   output_data.data(), output_dims);
+  reference_ops::DepthwiseConv(
+      input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
+      stride, stride, dilation_width_factor, dilation_height_factor, pad_width,
+      pad_height, depth_multiplier, output_activation_min,
+      output_activation_max, reference_output_data.data(), output_dims);
+  optimized_ops::DepthwiseConv(
+      input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
+      stride, stride, dilation_width_factor, dilation_height_factor, pad_width,
+      pad_height, depth_multiplier, output_activation_min,
+      output_activation_max, output_data.data(), output_dims);
+
   double sum_abs_diff = 0;
   float max_abs_val = 0;
   for (int i = 0; i < output_buffer_size; i++) {
@@ -57,27 +64,6 @@ void TestOneDepthwiseConv(const float* input_data, const Dims<4>& input_dims,
     const float relative_error = std::abs(mean_diff) / max_abs_val;
     ASSERT_LT(relative_error, 1e-5f);
   }
-}
-
-void TestOneDepthwiseConv(FusedActivationFunctionType Ac,
-                          const float* input_data, const Dims<4>& input_dims,
-                          const float* filter_data, const Dims<4>& filter_dims,
-                          const float* bias_data, const Dims<4>& bias_dims,
-                          int stride, int pad_width, int pad_height,
-                          int depth_multiplier, const Dims<4>& output_dims) {
-#define TOCO_HANDLE_CASE(AC_TYPE)                                            \
-  if (AC_TYPE == Ac) {                                                       \
-    TestOneDepthwiseConv<AC_TYPE>(input_data, input_dims, filter_data,       \
-                                  filter_dims, bias_data, bias_dims, stride, \
-                                  pad_width, pad_height, depth_multiplier,   \
-                                  output_dims);                              \
-    return;                                                                  \
-  }
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kNone)
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu)
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu1)
-  TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu6)
-#undef TOCO_HANDLE_CASE
 }
 
 // This function picks some random DepthwiseConv params, which may or may not
@@ -99,6 +85,16 @@ bool TryTestOneDepthwiseConv() {
   const int depth_multiplier = ExponentialRandomPositiveInt(0.8f, 6, 50);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
   const int output_depth = input_depth * depth_multiplier;
+  const int dilation_width_factor = RandomElement(std::vector<int>({1, 2, 4}));
+  const int dilation_height_factor = RandomElement(std::vector<int>({1, 2, 4}));
+  float output_activation_min, output_activation_max;
+  FusedActivationFunctionType ac =
+      RandomElement(std::vector<FusedActivationFunctionType>(
+          {FusedActivationFunctionType::kNone,
+           FusedActivationFunctionType::kRelu,
+           FusedActivationFunctionType::kRelu1,
+           FusedActivationFunctionType::kRelu6}));
+  GetActivationMinMax(ac, &output_activation_min, &output_activation_max);
   // The optimized DepthwiseConv implementation currently uses a fixed-size
   // accumulator buffer on the stack, with that size. This currently means
   // that it does not support larger output depths. It CHECK's for it,
@@ -109,10 +105,6 @@ bool TryTestOneDepthwiseConv() {
   if (output_depth > kMaxSupportedOutputDepth) {
     return false;
   }
-  const auto ac = RandomElement(std::vector<FusedActivationFunctionType>(
-      {FusedActivationFunctionType::kNone, FusedActivationFunctionType::kRelu,
-       FusedActivationFunctionType::kRelu6,
-       FusedActivationFunctionType::kRelu1}));
   Dims<4> input_dims_inference =
       MakeDimsForInference(input_depth, input_width, input_height, batch);
   Dims<4> output_dims_inference;
@@ -120,7 +112,8 @@ bool TryTestOneDepthwiseConv() {
   const auto padding_type =
       UniformRandomInt(0, 1) ? PaddingType::kSame : PaddingType::kValid;
   if (!ComputeConvSizes(input_dims_inference, output_depth, filter_width,
-                        filter_height, stride, padding_type,
+                        filter_height, stride, dilation_width_factor,
+                        dilation_height_factor, padding_type,
                         &output_dims_inference, &pad_width, &pad_height)) {
     return false;
   }
@@ -140,10 +133,12 @@ bool TryTestOneDepthwiseConv() {
   FillRandom(&input_data, -input_amplitude, input_amplitude);
   FillRandom(&filter_data, -filter_amplitude, filter_amplitude);
   FillRandom(&bias_data, -bias_amplitude, bias_amplitude);
-  TestOneDepthwiseConv(ac, input_data.data(), input_dims_inference,
+  TestOneDepthwiseConv(input_data.data(), input_dims_inference,
                        filter_data.data(), filter_dims_inference,
-                       bias_data.data(), bias_dims_inference, stride, pad_width,
-                       pad_height, depth_multiplier, output_dims_inference);
+                       bias_data.data(), bias_dims_inference, stride,
+                       dilation_width_factor, dilation_height_factor, pad_width,
+                       pad_height, depth_multiplier, output_activation_min,
+                       output_activation_max, output_dims_inference);
   return true;
 }
 

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/model.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -33,6 +34,7 @@ struct TFL_InterpreterOptions {
     kDefaultNumThreads = -1,
   };
   int num_threads = kDefaultNumThreads;
+  tflite::MutableOpResolver op_resolver;
 };
 
 struct TFL_Interpreter {
