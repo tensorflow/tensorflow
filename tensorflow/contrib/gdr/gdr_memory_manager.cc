@@ -138,8 +138,6 @@ class GdrMemoryManager : public RemoteMemoryManager {
       Device* device, DeviceContext* device_context, bool on_host,
       StatusCallback done) override;
 
-  static void RegMemVisitors();
-
  protected:
   Status CreateEndpoint(const string& host, const string& port,
                         RdmaEndpointPtr& endpoint);
@@ -185,50 +183,34 @@ class GdrMemoryManager : public RemoteMemoryManager {
   TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
 };
 
+// TODO(byronyi): remove this class and its registration when the default
+// cpu_allocator() returns visitable allocator, or cpu_allocator() is no
+// longer in use.
+class BFCGdrAllocator : public BFCAllocator {
+ public:
+  BFCGdrAllocator()
+      : BFCAllocator(new BasicCPUAllocator(port::kNUMANoAffinity), 1LL << 36,
+                     true, "cpu_gdr_bfc") {}
+};
+class BFCGdrAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() override { return new BFCGdrAllocator; }
+
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new BasicCPUAllocator(numa_node);
+  }
+};
+
+REGISTER_MEM_ALLOCATOR("BFCGdrAllocator", 102, BFCGdrAllocatorFactory);
+
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
       port_(port),
       listening_(nullptr, EndpointDeleter),
       stopped_(true),
-      next_key_(0) {
-  static std::once_flag flag;
-  std::call_once(flag, []() { RegMemVisitors(); });
-}
+      next_key_(0) {}
 
 GdrMemoryManager::~GdrMemoryManager() { close(epfd_); }
-
-/*static*/ void GdrMemoryManager::RegMemVisitors() {
-  SubAllocator::Visitor alloc_visitor = [](void* ptr, int numa_node,
-                                           size_t num_bytes) {
-    GdrMemoryManager::Singleton().InsertMemoryRegion(
-        ptr, num_bytes, strings::StrCat("CPU:", numa_node));
-  };
-  SubAllocator::Visitor free_visitor = [](void* ptr, int numa_node,
-                                          size_t num_bytes) {
-    GdrMemoryManager::Singleton().EvictMemoryRegion(ptr, num_bytes);
-  };
-  ProcessState::singleton()->AddCPUAllocVisitor(alloc_visitor);
-  ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
-
-#if GOOGLE_CUDA
-  if (IsGDRAvailable()) {
-    int32_t bus_id = TryToReadNumaNode(rdma_adapter_->context_->device) + 1;
-
-    // Note we don't free allocated GPU memory so there is no free visitor
-    SubAllocator::Visitor cuda_alloc_visitor = [](void* ptr, int gpu_id,
-                                                  size_t num_bytes) {
-      RdmaMemoryMgr::Singleton().InsertMemoryRegion(
-          ptr, num_bytes, strings::StrCat("GPU:", gpu_id));
-    };
-    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
-                                                     cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(bus_id,
-                                                          alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(bus_id, free_visitor);
-    LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
-  }
-#endif  // GOOGLE_CUDA
-}
 
 Status GdrMemoryManager::Init() {
   epfd_ = epoll_create1(0);
@@ -288,6 +270,48 @@ Status GdrMemoryManager::Init() {
     return errors::Unavailable(strerror(errno), ": ",
                                "cannot add server to epoll");
   }
+
+  Allocator* allocators[] = {
+#if GOOGLE_CUDA
+    GPUProcessState::singleton()->GetCUDAHostAllocator(0),
+#endif  // GOOGLE_CUDA
+    ProcessState::singleton()->GetCPUAllocator(0),
+    cpu_allocator(),
+  };
+
+  using namespace std::placeholders;
+  VisitableAllocator::Visitor alloc_visitor =
+      std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
+  VisitableAllocator::Visitor free_visitor =
+      std::bind(&GdrMemoryManager::EvictMemoryRegion, this, _1, _2);
+
+  std::set<Allocator*> instrumented_;
+
+  // Host memory allocators
+  for (Allocator* allocator : allocators) {
+    auto* visitable_allocator = dynamic_cast<VisitableAllocator*>(allocator);
+    CHECK(visitable_allocator)
+        << "is not visitable for instrumentation" << allocator->Name();
+    // Make sure we don't instrument the same allocator twice
+    if (instrumented_.find(allocator) == std::end(instrumented_)) {
+      visitable_allocator->AddAllocVisitor(alloc_visitor);
+      visitable_allocator->AddFreeVisitor(free_visitor);
+      instrumented_.insert(allocator);
+      LOG(INFO) << "Instrumenting CPU allocator " << allocator->Name();
+    }
+  }
+
+#if GOOGLE_CUDA
+  VisitableAllocator::Visitor cuda_alloc_visitor =
+      std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
+  if (IsGDRAvailable()) {
+    // Note we don't free allocated GPU memory so there is no free visitor
+    int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
+    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
+                                                     cuda_alloc_visitor);
+    LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
+  }
+#endif  // GOOGLE_CUDA
 
   return Status::OK();
 }

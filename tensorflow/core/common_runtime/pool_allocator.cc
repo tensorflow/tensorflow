@@ -40,7 +40,8 @@ PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
       auto_resize_(auto_resize),
       pool_size_limit_(pool_size_limit),
       allocator_(allocator),
-      size_rounder_(size_rounder) {
+      size_rounder_(size_rounder),
+      allocation_begun_(false) {
   if (auto_resize) {
     CHECK_LT(size_t{0}, pool_size_limit)
         << "size limit must be > 0 if auto_resize is true.";
@@ -92,6 +93,7 @@ ChunkPrefix* FindPrefix(void* user_ptr) {
 }  // namespace
 
 void* PoolAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
+  if (!allocation_begun_) allocation_begun_ = true;
   if (num_bytes == 0) return nullptr;
 
   // If alignment is larger than kPoolAlignment, increase num_bytes so that we
@@ -127,6 +129,9 @@ void* PoolAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
     return PrepareChunk(r, alignment, num_bytes);
   } else {
     void* ptr = allocator_->Alloc(kPoolAlignment, num_bytes);
+    for (const auto& v : alloc_visitors_) {
+      v(ptr, num_bytes);
+    }
     return PrepareChunk(ptr, alignment, num_bytes);
   }
 }
@@ -136,6 +141,9 @@ void PoolAllocator::DeallocateRaw(void* ptr) {
   ChunkPrefix* cp = FindPrefix(ptr);
   CHECK_LE((void*)cp, (void*)ptr);
   if (!has_size_limit_ && !auto_resize_) {
+    for (const auto& v : free_visitors_) {
+      v(cp, cp->num_bytes);
+    }
     allocator_->Free(cp, cp->num_bytes);
   } else {
     mutex_lock lock(mutex_);
@@ -156,6 +164,9 @@ void PoolAllocator::Clear() {
     mutex_lock lock(mutex_);
     for (auto iter : pool_) {
       PtrRecord* pr = iter.second;
+      for (const auto& v : free_visitors_) {
+        v(pr->ptr, pr->num_bytes);
+      }
       allocator_->Free(pr->ptr, pr->num_bytes);
       delete pr;
     }
@@ -210,6 +221,9 @@ void PoolAllocator::EvictOne() {
     DCHECK(iter != pool_.end());
   }
   pool_.erase(iter);
+  for (const auto& v : free_visitors_) {
+    v(prec->ptr, prec->num_bytes);
+  }
   allocator_->Free(prec->ptr, prec->num_bytes);
   delete prec;
   ++evicted_count_;
@@ -255,19 +269,28 @@ void PoolAllocator::EvictOne() {
   }
 }
 
+void PoolAllocator::AddAllocVisitor(Visitor visitor) {
+  mutex_lock lock(mutex_);
+  CHECK(!allocation_begun_)
+      << "AddAllocVisitor may not be called after pool allocation "
+      << "has begun.";
+  alloc_visitors_.push_back(visitor);
+}
+
+void PoolAllocator::AddFreeVisitor(Visitor visitor) {
+  mutex_lock lock(mutex_);
+  CHECK(!allocation_begun_)
+      << "AddFreeVisitor may not be called after pool allocation "
+      << "has begun.";
+  free_visitors_.push_back(visitor);
+}
+
 void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
-  void* ptr = nullptr;
-  if (num_bytes > 0) {
-    ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
-    VisitAlloc(ptr, numa_node_, num_bytes);
-  }
-  return ptr;
+  return port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
 }
 
 void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
-  if (num_bytes > 0) {
-    VisitFree(ptr, numa_node_, num_bytes);
-    port::AlignedFree(ptr);
-  }
+  port::AlignedFree(ptr);
 }
+
 }  // namespace tensorflow
