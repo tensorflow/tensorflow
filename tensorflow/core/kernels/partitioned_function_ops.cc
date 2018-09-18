@@ -100,8 +100,8 @@ class PartitionedCallOp : public AsyncOpKernel {
         // We need to pass global op_registry as default_registry when creating
         // graph. So that graph optimization passes can lookup all possible ops
         // by name.
-        FunctionLibraryDefinition func_lib_def(OpRegistry::Global(),
-                                            fbody->graph->flib_def().ToProto());
+        FunctionLibraryDefinition func_lib_def(
+            OpRegistry::Global(), fbody->graph->flib_def().ToProto());
         auto graph = tensorflow::MakeUnique<Graph>(func_lib_def);
         CopyGraph(*fbody->graph, graph.get());
         OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
@@ -256,7 +256,7 @@ class PartitionedCallOp : public AsyncOpKernel {
             << partitions.size() << " shards.";
 
     FunctionLibraryDefinition func_lib_def(OpRegistry::Global(),
-                                          graph->flib_def().ToProto());
+                                           graph->flib_def().ToProto());
     for (const auto& partition : partitions) {
       std::unique_ptr<Graph> subgraph(new Graph(func_lib_def));
       GraphConstructorOptions opts;
