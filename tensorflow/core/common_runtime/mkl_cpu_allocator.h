@@ -23,11 +23,12 @@ limitations under the License.
 
 #include <cstdlib>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/numa.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #ifndef INTEL_MKL_DNN_ONLY
 #include "i_malloc.h"
@@ -39,16 +40,20 @@ typedef unsigned int uint;
 
 namespace tensorflow {
 
-class MklSubAllocator : public BasicCPUAllocator {
+class MklSubAllocator : public SubAllocator {
  public:
-  MklSubAllocator() : BasicCPUAllocator(port::kNUMANoAffinity, {}, {}) {}
   ~MklSubAllocator() override {}
+
+  void* Alloc(size_t alignment, size_t num_bytes) override {
+    return port::AlignedMalloc(num_bytes, alignment);
+  }
+  void Free(void* ptr, size_t num_bytes) override { port::AlignedFree(ptr); }
 };
 
 // CPU allocator that handles small-size allocations by calling
 // suballocator directly. Mostly, it is just a wrapper around a suballocator
 // (that calls malloc and free directly) with support for bookkeeping.
-class MklSmallSizeAllocator : public Allocator {
+class MklSmallSizeAllocator : public VisitableAllocator {
  public:
   MklSmallSizeAllocator(SubAllocator* sub_allocator, size_t total_memory,
                         const string& name)
@@ -70,6 +75,10 @@ class MklSmallSizeAllocator : public Allocator {
       CHECK(map_.insert(map_val).second);
       // Increment statistics for small-size allocations.
       IncrementStats(num_bytes);
+      // Call alloc visitors.
+      for (const auto& visitor : alloc_visitors_) {
+        visitor(ptr, num_bytes);
+      }
     }
     return ptr;
   }
@@ -85,6 +94,9 @@ class MklSmallSizeAllocator : public Allocator {
     if (map_iter != map_.end()) {
       // Call free visitors.
       size_t dealloc_bytes = map_iter->second;
+      for (const auto& visitor : free_visitors_) {
+        visitor(ptr, dealloc_bytes);
+      }
       sub_allocator_->Free(ptr, dealloc_bytes);
       DecrementStats(dealloc_bytes);
       map_.erase(map_iter);
@@ -107,6 +119,16 @@ class MklSmallSizeAllocator : public Allocator {
   void ClearStats() override {
     mutex_lock l(mutex_);
     stats_.Clear();
+  }
+
+  void AddAllocVisitor(Visitor visitor) override {
+    mutex_lock l(mutex_);
+    alloc_visitors_.push_back(visitor);
+  }
+
+  void AddFreeVisitor(Visitor visitor) override {
+    mutex_lock l(mutex_);
+    free_visitors_.push_back(visitor);
   }
 
  private:
@@ -141,11 +163,15 @@ class MklSmallSizeAllocator : public Allocator {
 
   // Allocator stats for small allocs
   AllocatorStats stats_ GUARDED_BY(mutex_);
+
+  // Visitors
+  std::vector<Visitor> alloc_visitors_ GUARDED_BY(mutex_);
+  std::vector<Visitor> free_visitors_ GUARDED_BY(mutex_);
 };
 
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
 /// and redirects memory allocation calls from MKL.
-class MklCPUAllocator : public Allocator {
+class MklCPUAllocator : public VisitableAllocator {
  public:
   // Constructor and other standard functions
 
@@ -258,6 +284,16 @@ class MklCPUAllocator : public Allocator {
     large_size_allocator_->ClearStats();
   }
 
+  void AddAllocVisitor(Visitor visitor) override {
+    small_size_allocator_->AddAllocVisitor(visitor);
+    large_size_allocator_->AddAllocVisitor(visitor);
+  }
+
+  void AddFreeVisitor(Visitor visitor) override {
+    small_size_allocator_->AddFreeVisitor(visitor);
+    large_size_allocator_->AddFreeVisitor(visitor);
+  }
+
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
 
@@ -294,7 +330,7 @@ class MklCPUAllocator : public Allocator {
   // The alignment that we need for the allocations
   static constexpr const size_t kAlignment = 64;
 
-  Allocator* large_size_allocator_;              // owned by this class
+  VisitableAllocator* large_size_allocator_;     // owned by this class
   MklSmallSizeAllocator* small_size_allocator_;  // owned by this class.
 
   SubAllocator* sub_allocator_;  // not owned by this class

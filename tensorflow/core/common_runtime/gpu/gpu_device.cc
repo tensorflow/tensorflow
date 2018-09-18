@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -284,38 +285,6 @@ BaseGPUDevice::~BaseGPUDevice() {
   for (auto ctx : device_contexts_) ctx->Unref();
 }
 
-// This should be idempotent if already initialized.
-Status BaseGPUDevice::InitScratchBuffers() {
-  mutex_lock l(scratch_init_mutex_);
-  if (scratch_.size() < max_streams_) {
-    for (int i = 0; i < max_streams_; i++) {
-      DCHECK(streams_[i]);
-      if (scratch_.size() > i && scratch_[i]) continue;
-      size_t scratch_buffer_size =
-          Eigen::kCudaScratchSize + sizeof(unsigned int);
-      void* scratch_buffer = gpu_allocator_->AllocateRaw(
-          Allocator::kAllocatorAlignment, scratch_buffer_size);
-      if (scratch_buffer == nullptr) {
-        return errors::FailedPrecondition(
-            "Failed to allocate scratch buffer for device ",
-            tf_gpu_id_.value());
-      }
-      se::DeviceMemory<char> mem(
-          se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
-
-      bool ok = executor_->SynchronousMemZero(
-          &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
-      if (!ok) {
-        return errors::FailedPrecondition(
-            "Failed to memcopy into scratch buffer for device ",
-            tf_gpu_id_.value());
-      }
-      scratch_.push_back(static_cast<char*>(scratch_buffer));
-    }
-  }
-  return Status::OK();
-}
-
 Status BaseGPUDevice::Init(const SessionOptions& options) {
   auto executor_status = GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id_);
   if (!executor_status.status().ok()) {
@@ -334,6 +303,27 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   for (int i = 0; i < max_streams_; i++) {
     streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
         tf_gpu_id_, i, executor_, options.config.gpu_options()));
+
+    size_t scratch_buffer_size = Eigen::kCudaScratchSize + sizeof(unsigned int);
+    void* scratch_buffer = gpu_allocator_->AllocateRaw(
+        Allocator::kAllocatorAlignment, scratch_buffer_size);
+    if (scratch_buffer == nullptr) {
+      return errors::FailedPrecondition(
+          "Failed to allocate scratch buffer for device ", tf_gpu_id_.value());
+    }
+    scratch_.push_back(static_cast<char*>(scratch_buffer));
+
+    se::DeviceMemory<char> mem(
+        se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
+
+    bool ok = executor_->SynchronousMemZero(
+        &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
+    if (!ok) {
+      return errors::FailedPrecondition(
+          "Failed to memcopy into scratch buffer for device ",
+          tf_gpu_id_.value());
+    }
+
     device_contexts_.push_back(new GPUDeviceContext(
         i, streams_.back()->compute, streams_.back()->host_to_device,
         streams_.back()->device_to_host, streams_.back()->device_to_device));
@@ -877,11 +867,10 @@ PerOpGpuDevice* BaseGPUDevice::MakeGpuDevice() {
   return new ConcretePerOpGpuDevice();
 }
 
-Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
-                                            PerOpGpuDevice* device,
-                                            DeviceContext* dc,
-                                            Allocator* allocator) {
-  TF_RETURN_IF_ERROR(InitScratchBuffers());
+void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
+                                          PerOpGpuDevice* device,
+                                          DeviceContext* dc,
+                                          Allocator* allocator) {
   if (dc) {
     const GPUDeviceContext* gpu_dc = static_cast<GPUDeviceContext*>(dc);
     const int stream_id = gpu_dc->stream_id();
@@ -892,7 +881,6 @@ Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   } else {
     ReinitializeDevice(context, device, 0, allocator);
   }
-  return Status::OK();
 }
 
 Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,

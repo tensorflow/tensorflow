@@ -214,12 +214,10 @@ class DeviceBase {
 
   // This is overridden by GPU devices to reinitialize the derived
   // type returned by MakeGpuDevice.
-  virtual Status ReinitializeGpuDevice(OpKernelContext* /*context*/,
-                                       PerOpGpuDevice* /*device*/,
-                                       DeviceContext* /*dc*/,
-                                       Allocator* /*allocator*/) {
-    return Status::OK();
-  }
+  virtual void ReinitializeGpuDevice(OpKernelContext* /*context*/,
+                                     PerOpGpuDevice* /*device*/,
+                                     DeviceContext* /*dc*/,
+                                     Allocator* /*allocator*/) {}
 
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;

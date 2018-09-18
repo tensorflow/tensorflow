@@ -265,12 +265,9 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
   params_->ensure_eigen_gpu_device();
   if (params_->eigen_gpu_device != nullptr) {
     Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
-    Status s = params_->device->ReinitializeGpuDevice(
-        this, params_->eigen_gpu_device, params_->op_device_context,
-        eigen_gpu_allocator);
-    if (!s.ok()) {
-      SetStatus(s);
-    }
+    params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
+                                           params_->op_device_context,
+                                           eigen_gpu_allocator);
   }
   if (params_->record_tensor_accesses) {
     referenced_tensors_.Init();

@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -42,7 +42,7 @@ namespace tensorflow {
 // coalescing.  One assumption we make is that the process using this
 // allocator owns pretty much all of the memory, and that nearly
 // all requests to allocate memory go through this interface.
-class BFCAllocator : public Allocator {
+class BFCAllocator : public VisitableAllocator {
  public:
   // Takes ownership of sub_allocator.
   BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
@@ -54,6 +54,11 @@ class BFCAllocator : public Allocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
+
+  void AddAllocVisitor(Visitor visitor) override;
+
+  // Does nothing, because memory is never freed.
+  void AddFreeVisitor(Visitor visitor) override {}
 
   bool TracksAllocationSizes() override;
 
@@ -418,7 +423,7 @@ class BFCAllocator : public Allocator {
   // of the available memory.
   bool started_backpedal_ = false;
 
-  std::unique_ptr<SubAllocator> sub_allocator_;
+  std::unique_ptr<SubAllocator> suballocator_;
   string name_;
 
   // Structures mutable after construction
@@ -429,6 +434,9 @@ class BFCAllocator : public Allocator {
 
   // Pointer to head of linked list of free Chunks
   ChunkHandle free_chunks_list_ GUARDED_BY(lock_);
+
+  // Called once on each region, ASAP.
+  std::vector<Visitor> region_visitors_ GUARDED_BY(lock_);
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
