@@ -88,6 +88,7 @@ TOK_OPERATOR(star,               "*")
 
 // Keywords.  These turn "foo" into Token::kw_foo enums.
 TOK_KEYWORD(affineint)
+TOK_KEYWORD(attributes)
 TOK_KEYWORD(bf16)
 TOK_KEYWORD(br)
 TOK_KEYWORD(ceildiv)

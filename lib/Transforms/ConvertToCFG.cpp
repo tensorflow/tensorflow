@@ -110,8 +110,9 @@ void ModuleConverter::convertMLFunctions() {
 // Creates CFG function equivalent to the given ML function.
 CFGFunction *ModuleConverter::convert(const MLFunction *mlFunc) {
   // TODO: ensure that CFG function name is unique.
-  auto *cfgFunc = new CFGFunction(
-      mlFunc->getLoc(), mlFunc->getName().str() + "_cfg", mlFunc->getType());
+  auto *cfgFunc =
+      new CFGFunction(mlFunc->getLoc(), mlFunc->getName().str() + "_cfg",
+                      mlFunc->getType(), mlFunc->getAttrs());
   module->getFunctions().push_back(cfgFunc);
 
   // Generates the body of the CFG function.

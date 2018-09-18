@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "AttributeListStorage.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
@@ -27,13 +28,22 @@
 using namespace mlir;
 
 Function::Function(Kind kind, Location *location, StringRef name,
-                   FunctionType *type)
+                   FunctionType *type, ArrayRef<NamedAttribute> attrs)
     : nameAndKind(Identifier::get(name, type->getContext()), kind),
-      location(location), type(type) {}
+      location(location), type(type) {
+  this->attrs = AttributeListStorage::get(attrs, getContext());
+}
 
 Function::~Function() {
   // Clean up function attributes referring to this function.
   FunctionAttr::dropFunctionReference(this);
+}
+
+ArrayRef<NamedAttribute> Function::getAttrs() const {
+  if (attrs)
+    return attrs->getElements();
+  else
+    return {};
 }
 
 MLIRContext *Function::getContext() const { return getType()->getContext(); }
@@ -149,15 +159,17 @@ void Function::emitError(const Twine &message) const {
 // ExtFunction implementation.
 //===----------------------------------------------------------------------===//
 
-ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType *type)
-    : Function(Kind::ExtFunc, location, name, type) {}
+ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType *type,
+                         ArrayRef<NamedAttribute> attrs)
+    : Function(Kind::ExtFunc, location, name, type, attrs) {}
 
 //===----------------------------------------------------------------------===//
 // CFGFunction implementation.
 //===----------------------------------------------------------------------===//
 
-CFGFunction::CFGFunction(Location *location, StringRef name, FunctionType *type)
-    : Function(Kind::CFGFunc, location, name, type) {}
+CFGFunction::CFGFunction(Location *location, StringRef name, FunctionType *type,
+                         ArrayRef<NamedAttribute> attrs)
+    : Function(Kind::CFGFunc, location, name, type, attrs) {}
 
 CFGFunction::~CFGFunction() {
   // Instructions may have cyclic references, which need to be dropped before we
@@ -176,13 +188,14 @@ CFGFunction::~CFGFunction() {
 
 /// Create a new MLFunction with the specific fields.
 MLFunction *MLFunction::create(Location *location, StringRef name,
-                               FunctionType *type) {
+                               FunctionType *type,
+                               ArrayRef<NamedAttribute> attrs) {
   const auto &argTypes = type->getInputs();
   auto byteSize = totalSizeToAlloc<MLFuncArgument>(argTypes.size());
   void *rawMem = malloc(byteSize);
 
   // Initialize the MLFunction part of the function object.
-  auto function = ::new (rawMem) MLFunction(location, name, type);
+  auto function = ::new (rawMem) MLFunction(location, name, type, attrs);
 
   // Initialize the arguments.
   auto arguments = function->getArgumentsInternal();
@@ -191,8 +204,9 @@ MLFunction *MLFunction::create(Location *location, StringRef name,
   return function;
 }
 
-MLFunction::MLFunction(Location *location, StringRef name, FunctionType *type)
-    : Function(Kind::MLFunc, location, name, type),
+MLFunction::MLFunction(Location *location, StringRef name, FunctionType *type,
+                       ArrayRef<NamedAttribute> attrs)
+    : Function(Kind::MLFunc, location, name, type, attrs),
       StmtBlock(StmtBlockKind::MLFunc) {}
 
 MLFunction::~MLFunction() {

@@ -29,10 +29,17 @@
 #include "llvm/ADT/ilist.h"
 
 namespace mlir {
+class Attribute;
+class AttributeListStorage;
 class FunctionType;
 class Location;
 class MLIRContext;
 class Module;
+
+/// NamedAttribute is used for function attribute lists, it holds an
+/// identifier for the name and a value for the attribute.  The attribute
+/// pointer should always be non-null.
+typedef std::pair<Identifier, Attribute *> NamedAttribute;
 
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {
@@ -49,6 +56,9 @@ public:
 
   /// Return the type of this function.
   FunctionType *getType() const { return type; }
+
+  /// Returns all of the attributes on this function.
+  ArrayRef<NamedAttribute> getAttrs() const;
 
   MLIRContext *getContext() const;
   Module *getModule() { return module; }
@@ -83,7 +93,8 @@ public:
   void emitNote(const Twine &message) const;
 
 protected:
-  Function(Kind kind, Location *location, StringRef name, FunctionType *type);
+  Function(Kind kind, Location *location, StringRef name, FunctionType *type,
+           ArrayRef<NamedAttribute> attrs = {});
   ~Function();
 
 private:
@@ -99,6 +110,9 @@ private:
   /// The type of the function.
   FunctionType *const type;
 
+  /// This holds general named attributes for the function.
+  AttributeListStorage *attrs;
+
   void operator=(const Function &) = delete;
   friend struct llvm::ilist_traits<Function>;
 };
@@ -107,7 +121,8 @@ private:
 /// defined in some other module.
 class ExtFunction : public Function {
 public:
-  ExtFunction(Location *location, StringRef name, FunctionType *type);
+  ExtFunction(Location *location, StringRef name, FunctionType *type,
+              ArrayRef<NamedAttribute> attrs = {});
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {

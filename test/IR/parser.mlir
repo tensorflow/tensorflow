@@ -414,3 +414,43 @@ bb0:
   "foo"(){a: 4.0, b: 2.0, c: 7.1, d: -0.0} : () -> ()
   return
 }
+
+// CHECK-LABEL: extfunc @extfuncattr
+extfunc @extfuncattr() -> ()
+  // CHECK: attributes {a: "a\22quoted\22string", b: 4.000000e+00, c: tensor<*xf32>}
+  attributes {a: "a\"quoted\"string", b: 4.0, c: tensor<*xf32>}
+
+// CHECK-LABEL: extfunc @extfuncattrempty
+extfunc @extfuncattrempty() -> ()
+  // CHECK-EMPTY
+  attributes {}
+
+// CHECK-LABEL: cfgfunc @cfgfuncattr
+cfgfunc @cfgfuncattr() -> ()
+  // CHECK: attributes {a: "a\22quoted\22string", b: 4.000000e+00, c: tensor<*xf32>}
+  attributes {a: "a\"quoted\"string", b: 4.0, c: tensor<*xf32>} {
+bb0:
+  return
+}
+
+// CHECK-LABEL: cfgfunc @cfgfuncattrempty
+cfgfunc @cfgfuncattrempty() -> ()
+  // CHECK-EMPTY
+  attributes {} {
+bb0:
+  return
+}
+
+// CHECK-LABEL: mlfunc @mlfuncattr
+mlfunc @mlfuncattr() -> ()
+  // CHECK: attributes {a: "a\22quoted\22string", b: 4.000000e+00, c: tensor<*xf32>}
+  attributes {a: "a\"quoted\"string", b: 4.0, c: tensor<*xf32>} {
+  return
+}
+
+// CHECK-LABEL: mlfunc @mlfuncattrempty
+mlfunc @mlfuncattrempty() -> ()
+  // CHECK-EMPTY
+  attributes {} {
+  return
+}

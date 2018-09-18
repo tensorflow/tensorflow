@@ -41,6 +41,10 @@ extfunc @memrefs(memref<2x4xi8, #map0, 1, #map1>) // expected-error {{affine map
 
 // -----
 
+extfunc @illegalattrs() -> () attributes { key } // expected-error {{expected ':' in attribute list}}
+
+// -----
+
 cfgfunc @foo()
 cfgfunc @bar() // expected-error {{expected '{' in CFG function}}
 
@@ -98,12 +102,28 @@ bb42 (%0): // expected-error {{expected ':' and type for SSA operand}}
 
 // -----
 
+cfgfunc @illegalattrs() -> ()
+  attributes { key } { // expected-error {{expected ':' in attribute list}}
+bb42:
+  return
+}
+
+// -----
+
 mlfunc @foo()
 mlfunc @bar() // expected-error {{expected '{' before statement list}}
 
 // -----
 
 mlfunc @empty() { // expected-error {{ML function must end with return statement}}
+}
+
+// -----
+
+mlfunc @illegalattrs() -> ()
+  attributes { key } { // expected-error {{expected ':' in attribute list}}
+bb42:
+  return
 }
 
 // -----

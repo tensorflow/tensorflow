@@ -620,7 +620,8 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
   if (!function) {
     auto &entry = state.functionForwardRefs[name];
     if (!entry)
-      entry = new ExtFunction(getEncodedSourceLocation(nameLoc), name, type);
+      entry = new ExtFunction(getEncodedSourceLocation(nameLoc), name, type,
+                              /*attrs=*/{});
     function = entry;
   }
 
@@ -2653,6 +2654,7 @@ private:
                                   SmallVectorImpl<StringRef> &argNames);
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type,
                                      SmallVectorImpl<StringRef> *argNames);
+  ParseResult parseFunctionAttribute(SmallVectorImpl<NamedAttribute> &attrs);
   ParseResult parseExtFunc();
   ParseResult parseCFGFunc();
   ParseResult parseMLFunc();
@@ -2788,9 +2790,24 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType *&type,
   return ParseSuccess;
 }
 
+/// Parse function attributes, starting with keyword "attributes".
+///
+///   function-attribute ::= (`attributes` attribute-dict)?
+///
+ParseResult
+ModuleParser::parseFunctionAttribute(SmallVectorImpl<NamedAttribute> &attrs) {
+  if (consumeIf(Token::kw_attributes)) {
+    if (parseAttributeDict(attrs)) {
+      return ParseFailure;
+    }
+  }
+  return ParseSuccess;
+}
+
 /// External function declarations.
 ///
 ///   ext-func ::= `extfunc` function-signature
+///                (`attributes` attribute-dict)?
 ///
 ParseResult ModuleParser::parseExtFunc() {
   consumeToken(Token::kw_extfunc);
@@ -2801,8 +2818,14 @@ ParseResult ModuleParser::parseExtFunc() {
   if (parseFunctionSignature(name, type, /*arguments*/ nullptr))
     return ParseFailure;
 
+  SmallVector<NamedAttribute, 8> attrs;
+  if (parseFunctionAttribute(attrs)) {
+    return ParseFailure;
+  }
+
   // Okay, the external function definition was parsed correctly.
-  auto *function = new ExtFunction(getEncodedSourceLocation(loc), name, type);
+  auto *function =
+      new ExtFunction(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -2815,7 +2838,8 @@ ParseResult ModuleParser::parseExtFunc() {
 
 /// CFG function declarations.
 ///
-///   cfg-func ::= `cfgfunc` function-signature `{` basic-block+ `}`
+///   cfg-func ::= `cfgfunc` function-signature
+///               (`attributes` attribute-dict)? `{` basic-block+ `}`
 ///
 ParseResult ModuleParser::parseCFGFunc() {
   consumeToken(Token::kw_cfgfunc);
@@ -2826,8 +2850,14 @@ ParseResult ModuleParser::parseCFGFunc() {
   if (parseFunctionSignature(name, type, /*arguments*/ nullptr))
     return ParseFailure;
 
+  SmallVector<NamedAttribute, 8> attrs;
+  if (parseFunctionAttribute(attrs)) {
+    return ParseFailure;
+  }
+
   // Okay, the CFG function signature was parsed correctly, create the function.
-  auto *function = new CFGFunction(getEncodedSourceLocation(loc), name, type);
+  auto *function =
+      new CFGFunction(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -2840,7 +2870,8 @@ ParseResult ModuleParser::parseCFGFunc() {
 
 /// ML function declarations.
 ///
-///   ml-func ::= `mlfunc` ml-func-signature `{` ml-stmt* ml-return-stmt `}`
+///   ml-func ::= `mlfunc` ml-func-signature
+///              (`attributes` attribute-dict)? `{` ml-stmt* ml-return-stmt `}`
 ///
 ParseResult ModuleParser::parseMLFunc() {
   consumeToken(Token::kw_mlfunc);
@@ -2853,9 +2884,14 @@ ParseResult ModuleParser::parseMLFunc() {
   if (parseFunctionSignature(name, type, &argNames))
     return ParseFailure;
 
+  SmallVector<NamedAttribute, 8> attrs;
+  if (parseFunctionAttribute(attrs)) {
+    return ParseFailure;
+  }
+
   // Okay, the ML function signature was parsed correctly, create the function.
   auto *function =
-      MLFunction::create(getEncodedSourceLocation(loc), name, type);
+      MLFunction::create(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.

@@ -285,6 +285,9 @@ protected:
   ModuleState &state;
 
   void printFunctionSignature(const Function *fn);
+  void printFunctionAttributes(const Function *fn);
+  void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
+                             ArrayRef<const char *> elidedAttrs = {});
   void printFunctionResultType(const FunctionType *type);
   void printAffineMapId(int affineMapId) const;
   void printAffineMapReference(const AffineMap *affineMap);
@@ -751,6 +754,14 @@ void ModulePrinter::printFunctionResultType(const FunctionType *type) {
   }
 }
 
+void ModulePrinter::printFunctionAttributes(const Function *fn) {
+  auto attrs = fn->getAttrs();
+  if (attrs.empty())
+    return;
+  os << "\n  attributes ";
+  printOptionalAttrDict(attrs);
+}
+
 void ModulePrinter::printFunctionSignature(const Function *fn) {
   auto type = fn->getType();
 
@@ -762,9 +773,49 @@ void ModulePrinter::printFunctionSignature(const Function *fn) {
   printFunctionResultType(type);
 }
 
+void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
+                                          ArrayRef<const char *> elidedAttrs) {
+  // If there are no attributes, then there is nothing to be done.
+  if (attrs.empty())
+    return;
+
+  // Filter out any attributes that shouldn't be included.
+  SmallVector<NamedAttribute, 8> filteredAttrs;
+  for (auto attr : attrs) {
+    auto attrName = attr.first.strref();
+    // Never print attributes that start with a colon.  These are internal
+    // attributes that represent location or other internal metadata.
+    if (attrName.startswith(":"))
+      return;
+
+    // If the caller has requested that this attribute be ignored, then drop it.
+    bool ignore = false;
+    for (const char *elide : elidedAttrs)
+      ignore |= attrName == StringRef(elide);
+
+    // Otherwise add it to our filteredAttrs list.
+    if (!ignore) {
+      filteredAttrs.push_back(attr);
+    }
+  }
+
+  // If there are no attributes left to print after filtering, then we're done.
+  if (filteredAttrs.empty())
+    return;
+
+  // Otherwise, print them all out in braces.
+  os << " {";
+  interleaveComma(filteredAttrs, [&](NamedAttribute attr) {
+    os << attr.first << ": ";
+    printAttribute(attr.second);
+  });
+  os << '}';
+}
+
 void ModulePrinter::print(const ExtFunction *fn) {
   os << "extfunc ";
   printFunctionSignature(fn);
+  printFunctionAttributes(fn);
   os << '\n';
 }
 
@@ -797,11 +848,15 @@ public:
   void printFunctionReference(const Function *func) {
     return ModulePrinter::printFunctionReference(func);
   }
-
+  void printFunctionAttributes(const Function *func) {
+    return ModulePrinter::printFunctionAttributes(func);
+  }
   void printOperand(const SSAValue *value) { printValueID(value); }
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<const char *> elidedAttrs = {}) override;
+                             ArrayRef<const char *> elidedAttrs = {}) {
+    return ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
+  };
 
   enum { nameSentinel = ~0U };
 
@@ -944,44 +999,6 @@ private:
 };
 } // end anonymous namespace
 
-void FunctionPrinter::printOptionalAttrDict(
-    ArrayRef<NamedAttribute> attrs, ArrayRef<const char *> elidedAttrs) {
-  // If there are no attributes, then there is nothing to be done.
-  if (attrs.empty())
-    return;
-
-  // Filter out any attributes that shouldn't be included.
-  SmallVector<NamedAttribute, 8> filteredAttrs;
-  for (auto attr : attrs) {
-    auto attrName = attr.first.strref();
-    // Never print attributes that start with a colon.  These are internal
-    // attributes that represent location or other internal metadata.
-    if (attrName.startswith(":"))
-      continue;
-
-    // If the caller has requested that this attribute be ignored, then drop it.
-    bool ignore = false;
-    for (const char *elide : elidedAttrs)
-      ignore |= attrName == StringRef(elide);
-
-    // Otherwise add it to our filteredAttrs list.
-    if (!ignore)
-      filteredAttrs.push_back(attr);
-  }
-
-  // If there are no attributes left to print after filtering, then we're done.
-  if (filteredAttrs.empty())
-    return;
-
-  // Otherwise, print them all out in braces.
-  os << " {";
-  interleaveComma(filteredAttrs, [&](NamedAttribute attr) {
-    os << attr.first << ": ";
-    printAttribute(attr.second);
-  });
-  os << '}';
-}
-
 void FunctionPrinter::printOperation(const Operation *op) {
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
@@ -1091,6 +1108,7 @@ void CFGFunctionPrinter::numberValuesInBlock(const BasicBlock *block) {
 void CFGFunctionPrinter::print() {
   os << "cfgfunc ";
   printFunctionSignature(getFunction());
+  printFunctionAttributes(getFunction());
   os << " {\n";
 
   for (auto &block : *function)
@@ -1301,6 +1319,7 @@ void MLFunctionPrinter::numberValues() {
 void MLFunctionPrinter::print() {
   os << "mlfunc ";
   printFunctionSignature();
+  printFunctionAttributes(getFunction());
   os << " {\n";
   print(function);
   os << "}\n\n";
