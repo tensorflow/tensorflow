@@ -490,6 +490,10 @@ class Estimator(object):
               yield_single_examples=True):
     """Yields predictions for given features.
 
+    Please note that interleaving two predict outputs does not work. See:
+    [issue/20506](
+    https://github.com/tensorflow/tensorflow/issues/20506#issuecomment-422208517)
+
     Args:
       input_fn: A function that constructs the features. Prediction continues
         until `input_fn` raises an end-of-input exception
