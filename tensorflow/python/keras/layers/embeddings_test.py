@@ -92,5 +92,23 @@ class EmbeddingTest(test.TestCase):
     opt.apply_gradients(zip(gs, l.weights))
     self.assertAllEqual(len(gs), 1)
 
+  @tf_test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def test_embedding_invalid(self):
+    # len(input_length) should be equal to len(input_shape) - 1
+    with self.assertRaises(ValueError):
+      model = keras.Sequential([keras.layers.Embedding(
+          input_dim=10,
+          output_dim=4,
+          input_length=2,
+          input_shape=(3, 4, 5))])
+
+    # input_length should be equal to input_shape[1:]
+    with self.assertRaises(ValueError):
+      model = keras.Sequential([keras.layers.Embedding(
+          input_dim=10,
+          output_dim=4,
+          input_length=2,
+          input_shape=(3, 5))])
+
 if __name__ == '__main__':
   test.main()
