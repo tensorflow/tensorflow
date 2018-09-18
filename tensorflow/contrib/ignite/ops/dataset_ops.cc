@@ -26,11 +26,6 @@ REGISTER_OP("IgniteDataset")
     .Input("local: bool")
     .Input("part: int32")
     .Input("page_size: int32")
-    .Input("username: string")
-    .Input("password: string")
-    .Input("certfile: string")
-    .Input("keyfile: string")
-    .Input("cert_password: string")
     .Input("schema: int32")
     .Input("permutation: int32")
     .Output("handle: variant")
@@ -54,11 +49,6 @@ port: Ignite Thin Client Port.
 local: Local flag that defines that data should be fetched from local host only.
 part: Partition data should be fetched from.
 page_size: Page size for Ignite Thin Client.
-username: Username to authenticate via Ignite Thin Client.
-password: Password to authenticate via Ignite Thin Client.
-certfile: SSL certificate to establish SSL connection.
-keyfile: Private key file to establish SSL connection.
-cert_password: SSL certificate password to establish SSL connection.
 schema: Internal structure that defines schema of cache objects.
 permutation: Internal structure that defines permutation of cache objects.
 )doc");

@@ -125,35 +125,15 @@ class IgniteDatasetOp : public DatasetOpKernel {
       OP_REQUIRES_OK(ctx,
                      ParseScalarArgument<int32>(ctx, "page_size", &page_size));
 
-    if (env_username)
-      username = string(env_username);
-    else
-      OP_REQUIRES_OK(ctx,
-                     ParseScalarArgument<string>(ctx, "username", &username));
+    if (env_username) username = string(env_username);
 
-    if (env_password)
-      password = string(env_password);
-    else
-      OP_REQUIRES_OK(ctx,
-                     ParseScalarArgument<string>(ctx, "password", &password));
+    if (env_password) password = string(env_password);
 
-    if (env_certfile)
-      certfile = string(env_certfile);
-    else
-      OP_REQUIRES_OK(ctx,
-                     ParseScalarArgument<string>(ctx, "certfile", &certfile));
+    if (env_certfile) certfile = string(env_certfile);
 
-    if (env_keyfile)
-      keyfile = string(env_keyfile);
-    else
-      OP_REQUIRES_OK(ctx,
-                     ParseScalarArgument<string>(ctx, "keyfile", &keyfile));
+    if (env_keyfile) keyfile = string(env_keyfile);
 
-    if (env_cert_password)
-      cert_password = string(env_cert_password);
-    else
-      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "cert_password",
-                                                      &cert_password));
+    if (env_cert_password) cert_password = string(env_cert_password);
 
     const Tensor* schema_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("schema", &schema_tensor));
