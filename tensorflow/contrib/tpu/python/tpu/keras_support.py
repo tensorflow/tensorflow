@@ -76,6 +76,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers as keras_optimizers
 from tensorflow.python.keras.engine import base_layer
@@ -291,6 +292,16 @@ def _replicated_optimizer(opt):
     return tpu_optimizer.CrossShardOptimizer(opt.optimizer)
   else:
     return KerasCrossShardOptimizer(opt)
+
+
+def clone_metrics(metrics):
+  """Returns a copy of metrics. A copy is created for stateful metrics."""
+  if metrics is None:
+    return None
+  return [
+      m.__class__.from_config(m.get_config())
+      if isinstance(m, metrics_module.Metric) else m for m in metrics
+  ]
 
 
 class TPURewriteContext(object):
@@ -811,8 +822,8 @@ class TPUFunction(object):
             optimizer=_replicated_optimizer(cloned_optimizer),
             loss=self.model.loss,
             loss_weights=self.model.loss_weights,
-            metrics=self.model.metrics,
-            weighted_metrics=self.model.weighted_metrics,
+            metrics=clone_metrics(self.model.metrics),
+            weighted_metrics=clone_metrics(self.model.weighted_metrics),
             target_tensors=tpu_targets,
         )
 
