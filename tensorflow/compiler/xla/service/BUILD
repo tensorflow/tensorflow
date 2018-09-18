@@ -365,8 +365,11 @@ cc_library(
     hdrs = ["pattern_matcher.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/utility",
     ],
 )
 
