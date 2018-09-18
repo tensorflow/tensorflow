@@ -34,13 +34,13 @@ struct LLVM_NODISCARD PassResult {
   operator bool() const { return value == Failure; }
 };
 
-static PassResult success() { return PassResult::Success; }
-static PassResult failure() { return PassResult::Failure; }
-
 class Pass {
 public:
   virtual ~Pass() = default;
   virtual PassResult runOnModule(Module *m) = 0;
+
+  static PassResult success() { return PassResult::Success; }
+  static PassResult failure() { return PassResult::Failure; }
 };
 
 class ModulePass : public Pass {
