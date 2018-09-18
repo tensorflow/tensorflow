@@ -62,7 +62,11 @@ TFL_Interpreter* TFL_NewInterpreter(
     return nullptr;
   }
 
+  // TODO(b/111881878): Allow use of C API without pulling in all builtin ops.
   tflite::ops::builtin::BuiltinOpResolver resolver;
+  if (optional_options) {
+    resolver.AddAll(optional_options->op_resolver);
+  }
   tflite::InterpreterBuilder builder(*model->impl, resolver);
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (builder(&interpreter) != kTfLiteOk) {

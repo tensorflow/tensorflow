@@ -40,7 +40,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       expected_sum = 0.0
       for i in range(100):
@@ -65,7 +65,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(100):
         self.assertEqual(i, sess.run(next_element))
@@ -84,7 +84,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(100):
         self.assertAllEqual(
@@ -109,7 +109,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for j in range(5):
         sess.run(iterator.initializer)
         for i in range(100):
@@ -127,7 +127,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(100):
         self.assertEqual(i, sess.run(next_element))
@@ -144,7 +144,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(100):
         self.assertEqual(i, sess.run(next_element))
@@ -168,7 +168,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for i in range(100):
         self.assertEqual(i, sess.run(next_element))
@@ -188,7 +188,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     next_element = iterator_0.get_next() + iterator_1.get_next()
     summary_t = stats_aggregator.get_summary()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([iterator_0.initializer, iterator_1.initializer])
       for i in range(100):
         self.assertEqual(i * 2, sess.run(next_element))

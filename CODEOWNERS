@@ -41,7 +41,6 @@
 /tensorflow/contrib/labeled_tensor/ @shoyer
 /tensorflow/contrib/layers/ @fchollet @martinwicke
 /tensorflow/contrib/learn/ @martinwicke @ispirmustafa @alextp
-/tensorflow/contrib/linalg/ @langmore
 /tensorflow/contrib/linear_optimizer/ @petrosmol @andreasst @katsiapis
 /tensorflow/contrib/lookup/ @ysuematsu @andreasst
 /tensorflow/contrib/losses/ @alextp @ispirmustafa

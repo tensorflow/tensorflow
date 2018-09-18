@@ -370,6 +370,13 @@ class TestWholeModelSaving(test.TestCase):
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
       new_model.train_on_batch(x, y)
+
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3, 3))
+      eval_out = model.evaluate(x, y)
+      eval_out2 = new_model.evaluate(x, y)
+      self.assertArrayNear(eval_out, eval_out2, 0.001)
+
       out = model.predict(x)
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)

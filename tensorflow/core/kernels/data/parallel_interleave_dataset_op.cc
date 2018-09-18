@@ -44,14 +44,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
@@ -83,8 +75,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(
-                 interleave_func_, std::move(other_arguments), &captured_func));
+        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
+                                      &captured_func));
 
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
@@ -1102,9 +1094,6 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
@@ -1128,16 +1117,10 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         errors::InvalidArgument(
             "num_parallel_calls must less than or equal to cycle_length."));
 
-    // TODO(b/114267189): Use `other_arguments(inputs.begin(), inputs.end());`.
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(
-                 interleave_func_, std::move(other_arguments), &captured_func));
+        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
+                                      &captured_func));
 
     *output = new Dataset(ctx, input, interleave_func_,
                           std::move(captured_func), cycle_length, block_length,

@@ -45,7 +45,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.10.0'
+_VERSION = '1.11.0-rc1'
 
 if '--version' in sys.argv:
   version_idx = sys.argv.index('--version')

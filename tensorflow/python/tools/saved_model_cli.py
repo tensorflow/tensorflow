@@ -15,7 +15,7 @@
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/guide/saved_model_cli
+https://www.tensorflow.org/guide/saved_model#cli_to_inspect_and_execute_savedmodel
 
 """
 

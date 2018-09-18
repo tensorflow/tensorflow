@@ -255,6 +255,7 @@ def _map_x_dataset(map_func):
   return _apply_fn
 
 
+# TODO(b/115382007) Remove this once canned reducers move to core.
 def window_dataset(window_size):
   """A transformation that creates window datasets from the input dataset.
 
@@ -271,7 +272,12 @@ def window_dataset(window_size):
   """
 
   def _apply_fn(dataset):
-    return _WindowDataset(dataset, window_size)
+    return dataset_ops.WindowDataset(
+        dataset,
+        size=window_size,
+        shift=window_size,
+        stride=1,
+        drop_remainder=False)
 
   return _apply_fn
 
@@ -543,49 +549,6 @@ class _MapXDataset(dataset_ops.Dataset):
         input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
-        **dataset_ops.flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
-class _WindowDataset(dataset_ops.Dataset):
-  """A dataset that creates window datasets from the input elements."""
-
-  def __init__(self, input_dataset, window_size):
-    """See `window_dataset()` for more details."""
-    super(_WindowDataset, self).__init__()
-    self._input_dataset = input_dataset
-    self._window_size = ops.convert_to_tensor(
-        window_size, dtype=dtypes.int64, name="window_size")
-    self._output_classes = nest.pack_sequence_as(
-        input_dataset.output_classes,
-        [
-            dataset_ops._NestedDatasetComponent(  # pylint: disable=protected-access
-                output_classes=output_class,
-                output_shapes=output_shape,
-                output_types=output_type)
-            for output_class, output_shape, output_type in zip(
-                nest.flatten(input_dataset.output_classes),
-                nest.flatten(input_dataset.output_shapes),
-                nest.flatten(input_dataset.output_types))
-        ])
-    self._output_shapes = self._output_classes
-    self._output_types = self._output_classes
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.window_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._window_size,
         **dataset_ops.flat_structure(self))
 
   @property
