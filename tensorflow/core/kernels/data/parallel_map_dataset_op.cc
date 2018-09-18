@@ -85,11 +85,29 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
+      auto init_func = [this](IteratorContext* ctx) {
+        return captured_func_->Instantiate(ctx);
+      };
+
       const string& new_prefix = strings::StrCat(prefix, "::ParallelMap");
-      std::unique_ptr<ParallelMapDatasetFunctor> parallel_map_dataset_functor(
-          new ParallelMapDatasetFunctor(this, new_prefix));
+      ParallelMapIteratorFunction map_func =
+          [this, new_prefix](IteratorContext* ctx,
+                             std::vector<Tensor> input_element,
+                             std::vector<Tensor>* result, StatusCallback done) {
+            captured_func_->RunAsync(ctx, std::move(input_element), result,
+                                     std::move(done), new_prefix);
+          };
+      if (!use_inter_op_parallelism_) {
+        map_func = [map_func](
+                       IteratorContext* ctx, std::vector<Tensor> input_element,
+                       std::vector<Tensor>* result, StatusCallback done) {
+          (*ctx->runner())(std::bind(map_func, ctx, std::move(input_element),
+                                     result, std::move(done)));
+        };
+      }
+
       return NewParallelMapIterator({this, new_prefix}, input_,
-                                    std::move(parallel_map_dataset_functor),
+                                    std::move(init_func), std::move(map_func),
                                     num_parallel_calls_);
     }
 
@@ -151,39 +169,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
-    class ParallelMapDatasetFunctor : public ParallelMapFunctor {
-     public:
-      ParallelMapDatasetFunctor(const Dataset* dataset, const string& prefix)
-          : dataset_(dataset), prefix_(prefix) {}
-
-      Status InitFunc(IteratorContext* ctx) override {
-        return dataset_->captured_func_->Instantiate(
-            ctx, &instantiated_captured_func_);
-      }
-
-      void MapFunc(IteratorContext* ctx, std::vector<Tensor> input_element,
-                   std::vector<Tensor>* result, StatusCallback done) override {
-        auto map_func = [this](IteratorContext* ctx,
-                               std::vector<Tensor> input_element,
-                               std::vector<Tensor>* result,
-                               StatusCallback done) {
-          instantiated_captured_func_->RunAsync(
-              ctx, std::move(input_element), result, std::move(done), prefix_);
-        };
-        if (!dataset_->use_inter_op_parallelism_) {
-          (*ctx->runner())(std::bind(map_func, ctx, std::move(input_element),
-                                     result, std::move(done)));
-        } else {
-          map_func(ctx, std::move(input_element), result, std::move(done));
-        }
-      }
-
-     private:
-      const Dataset* dataset_;
-      const string prefix_;
-      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
-    };
-
     const DatasetBase* const input_;
     const NameAttrList func_;
     const int32 num_parallel_calls_;

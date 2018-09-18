@@ -247,8 +247,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         AddConstantParameter(ctx, "parallelism", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(
-            ctx, &instantiated_captured_func_);
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       // It is implemented so that it matches the deterministic interleave
@@ -686,7 +685,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
               worker_thread_states_[thread_index].iterator_creation_status =
                   MakeIteratorFromInputElement(
                       ctx.get(), worker_thread_states_[thread_index].input,
-                      thread_index, *instantiated_captured_func_, prefix(),
+                      thread_index, dataset()->captured_func_.get(), prefix(),
                       &worker_thread_states_[thread_index].iterator);
               iterator_creation_status =
                   worker_thread_states_[thread_index].iterator_creation_status;
@@ -920,7 +919,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           std::unique_ptr<IteratorBase> iterator;
           Status s = MakeIteratorFromInputElement(
               ctx, worker_thread_states_[index].input, index,
-              *instantiated_captured_func_, prefix(), &iterator);
+              dataset()->captured_func_.get(), prefix(), &iterator);
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, iterator));
           worker_thread_states_[index].iterator.swap(iterator);
         }
@@ -1048,7 +1047,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       // threads have exited before any other members are deallocated.
       // TODO(b/65178177): Avoid allocating additional threads.
       std::vector<std::unique_ptr<Thread>> worker_threads_ GUARDED_BY(mu_);
-      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
@@ -1256,8 +1254,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         AddConstantParameter(ctx, "cycle_length", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(
-            ctx, &instantiated_captured_func_);
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -1493,7 +1490,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
                 if (!end_of_input_) {
                   Status status = MakeIteratorFromInputElement(
                       ctx.get(), args_list_[cycle_index_], cycle_index_,
-                      *instantiated_captured_func_, prefix(),
+                      dataset()->captured_func_.get(), prefix(),
                       &current_elements_[cycle_index_]);
                   if (!status.ok()) {
                     invocation_results_.emplace_back(new InvocationResult());
@@ -1602,7 +1599,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
                   &args_list_[idx][i]));
             }
             TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-                ctx, args_list_[idx], idx, *instantiated_captured_func_,
+                ctx, args_list_[idx], idx, dataset()->captured_func_.get(),
                 prefix(), &current_elements_[idx]));
             TF_RETURN_IF_ERROR(
                 RestoreInput(ctx, reader, current_elements_[idx]));
@@ -1662,7 +1659,6 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
       // Identifies whether background activity should be cancelled.
       bool cancelled_ GUARDED_BY(mu_) = false;
-      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

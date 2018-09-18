@@ -31,11 +31,12 @@ class ParallelMapIterator : public DatasetBaseIterator {
   explicit ParallelMapIterator(
       const typename DatasetBaseIterator::BaseParams& params,
       const DatasetBase* input_dataset,
-      std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
-      int32 num_parallel_calls)
+      std::function<Status(IteratorContext*)> init_func,
+      ParallelMapIteratorFunction map_func, int32 num_parallel_calls)
       : DatasetBaseIterator(params),
         input_dataset_(input_dataset),
-        parallel_map_functor_(std::move(parallel_map_functor)),
+        init_func_(std::move(init_func)),
+        map_func_(std::move(map_func)),
         num_parallel_calls_(num_parallel_calls) {}
 
   ~ParallelMapIterator() override {
@@ -76,7 +77,10 @@ class ParallelMapIterator : public DatasetBaseIterator {
     }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
-    return parallel_map_functor_->InitFunc(ctx);
+    if (init_func_) {
+      TF_RETURN_IF_ERROR(init_func_(ctx));
+    }
+    return Status::OK();
   }
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -222,8 +226,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
       CallCompleted(result);
     };
 
-    parallel_map_functor_->MapFunc(ctx.get(), std::move(input_element),
-                                   &result->return_values, std::move(done));
+    map_func_(ctx.get(), std::move(input_element), &result->return_values,
+              std::move(done));
   }
 
   Status ProcessResult(const std::shared_ptr<InvocationResult>& result,
@@ -319,7 +323,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   const DatasetBase* const input_dataset_;  // Not owned.
-  std::unique_ptr<ParallelMapFunctor> parallel_map_functor_;
+  const std::function<Status(IteratorContext*)> init_func_;
+  const ParallelMapIteratorFunction map_func_;
   // Used for coordination between the main thread and the runner thread.
   mutex mu_;
   // Used for coordination between the main thread and the runner thread. In
@@ -344,12 +349,20 @@ class ParallelMapIterator : public DatasetBaseIterator {
 
 std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
-    const DatasetBase* input_dataset,
-    std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
+    const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
     int32 num_parallel_calls) {
-  return std::unique_ptr<IteratorBase>(new ParallelMapIterator(
-      params, input_dataset, std::move(parallel_map_functor),
-      num_parallel_calls));
+  return NewParallelMapIterator(params, input_dataset, nullptr,
+                                std::move(map_func), num_parallel_calls);
+}
+
+std::unique_ptr<IteratorBase> NewParallelMapIterator(
+    const DatasetBaseIterator::BaseParams& params,
+    const DatasetBase* input_dataset,
+    std::function<Status(IteratorContext*)> init_func,
+    ParallelMapIteratorFunction map_func, int32 num_parallel_calls) {
+  return std::unique_ptr<IteratorBase>(
+      new ParallelMapIterator(params, input_dataset, std::move(init_func),
+                              std::move(map_func), num_parallel_calls));
 }
 
 }  // namespace data
