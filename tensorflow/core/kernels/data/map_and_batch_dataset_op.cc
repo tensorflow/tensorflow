@@ -218,7 +218,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -375,7 +376,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                                    std::vector<Tensor> input_element) {
               std::shared_ptr<std::vector<Tensor>> return_values(
                   new std::vector<Tensor>());
-              dataset()->captured_func_->RunAsync(
+              instantiated_captured_func_->RunAsync(
                   ctx.get(), std::move(input_element), return_values.get(),
                   [this, ctx, result, return_values, offset](Status status) {
                     Callback(ctx, result, return_values, offset, status);
@@ -672,6 +673,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       std::deque<std::shared_ptr<BatchResult>> batch_results_ GUARDED_BY(mu_);
       std::unique_ptr<Thread> runner_thread_ GUARDED_BY(mu_);
       bool cancelled_ GUARDED_BY(mu_) = false;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

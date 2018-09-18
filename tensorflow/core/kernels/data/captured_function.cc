@@ -46,10 +46,36 @@ Status CapturedFunction::Create(
   return Status::OK();
 }
 
-CapturedFunction::~CapturedFunction() {
-  if (lib_ != nullptr && f_handle_ != kInvalidHandle) {
-    lib_->ReleaseHandle(f_handle_).IgnoreError();
+Status CapturedFunction::Instantiate(
+    IteratorContext* ctx, std::unique_ptr<InstantiatedCapturedFunction>*
+                              instantiated_captured_function) {
+  // The context's runtime will be used for all subsequent calls.
+  FunctionLibraryRuntime* lib = ctx->lib();
+  FunctionLibraryRuntime::InstantiateOptions inst_opts;
+  inst_opts.overlay_lib = ctx->function_library().get();
+  inst_opts.state_handle = std::to_string(random::New64());
+  inst_opts.create_kernels_eagerly = true;
+  if (!use_inter_op_parallelism_) {
+    inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
+
+  FunctionLibraryRuntime::Handle f_handle;
+  Status s = (lib->Instantiate(func_.name(), AttrSlice(&func_.attr()),
+                               inst_opts, &f_handle));
+  TF_RETURN_IF_ERROR(s);
+  const FunctionBody* fbody = lib->GetFunctionBody(f_handle);
+  if (fbody == nullptr) {
+    return errors::Internal("Failed to instantiate function body.");
+  }
+
+  DataTypeVector ret_types;
+  for (const auto& ret_type : fbody->ret_types) {
+    ret_types.push_back(ret_type);
+  }
+
+  instantiated_captured_function->reset(new InstantiatedCapturedFunction(
+      lib, f_handle, std::move(ret_types), *ctx->runner(), this));
+  return Status::OK();
 }
 
 namespace {
@@ -172,35 +198,34 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
 }  // namespace
 
-Status CapturedFunction::GetHandle(IteratorContext* ctx,
-                                   FunctionLibraryRuntime::Handle* out_handle) {
-  tf_shared_lock l(mu_);
-  if (lib_ == nullptr) {
-    return errors::Internal("Captured function \"", func_.name(),
-                            "\" was called before it was instantiated.");
+InstantiatedCapturedFunction::InstantiatedCapturedFunction(
+    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
+    DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
+    CapturedFunction* captured_func)
+    : lib_(lib),
+      f_handle_(f_handle),
+      ret_types_(std::move(ret_types)),
+      captured_runner_(std::move(runner)),
+      captured_func_(captured_func) {}
+
+InstantiatedCapturedFunction::~InstantiatedCapturedFunction() {
+  if (lib_ != nullptr && f_handle_ != kInvalidHandle) {
+    lib_->ReleaseHandle(f_handle_).IgnoreError();
   }
-  if (ctx->lib() != lib_) {
-    return errors::Internal("Captured function \"", func_.name(),
-                            "\" was called with a different "
-                            "FunctionLibraryRuntime*, which is not permitted.");
-  }
-  *out_handle = f_handle_;
-  return Status::OK();
 }
 
-Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
-                             std::vector<Tensor>* rets) {
-  FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(GetHandle(ctx, &handle));
-
+Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
+                                         std::vector<Tensor>&& args,
+                                         std::vector<Tensor>* rets) const {
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = CapturedFunction::generate_step_id();
-  ScopedStepContainer step_container(f_opts.step_id, [ctx](const string& name) {
-    ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
-  });
+  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
+  ScopedStepContainer step_container(
+      f_opts.step_id, [this](const string& name) {
+        lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
+      });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
-  if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
+  if (lib_->device()->device_type() != DEVICE_CPU) {
     f_opts.create_rendezvous = true;
   }
   // TODO(mrry): Add cancellation manager support to IteratorContext
@@ -212,10 +237,11 @@ Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
 
-  OwnedArgsCallFrame frame(std::move(args), &captured_inputs_, ret_types_);
+  OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
+                           ret_types_);
   Notification n;
   Status s;
-  ctx->lib()->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -224,20 +250,18 @@ Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
   return frame.ConsumeRetvals(rets);
 }
 
-Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
-                                             const std::vector<Tensor>& args,
-                                             std::vector<Tensor>* rets) {
-  FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(GetHandle(ctx, &handle));
-
+Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
+    IteratorContext* ctx, const std::vector<Tensor>& args,
+    std::vector<Tensor>* rets) const {
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = CapturedFunction::generate_step_id();
-  ScopedStepContainer step_container(f_opts.step_id, [ctx](const string& name) {
-    ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
-  });
+  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
+  ScopedStepContainer step_container(
+      f_opts.step_id, [this](const string& name) {
+        lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
+      });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
-  if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
+  if (lib_->device()->device_type() != DEVICE_CPU) {
     f_opts.create_rendezvous = true;
   }
   // TODO(mrry): Add cancellation manager support to IteratorContext
@@ -249,11 +273,12 @@ Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
 
-  BorrowedArgsCallFrame frame(args, &captured_inputs_, ret_types_);
+  BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
+                              ret_types_);
   Notification n;
   Status s;
 
-  ctx->lib()->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -262,65 +287,17 @@ Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
   return frame.ConsumeRetvals(rets);
 }
 
-Status CapturedFunction::Instantiate(IteratorContext* ctx) {
-  mutex_lock l(mu_);
-  if (lib_ == nullptr) {
-    // The context's runtime will be used for all subsequent calls.
-    lib_ = ctx->lib();
-    DCHECK(f_handle_ == kInvalidHandle);
-    FunctionLibraryRuntime::InstantiateOptions inst_opts;
-    inst_opts.overlay_lib = ctx->function_library().get();
-    inst_opts.state_handle = std::to_string(random::New64());
-    inst_opts.create_kernels_eagerly = true;
-    if (!use_inter_op_parallelism_) {
-      inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
-    }
-    Status s = (lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
-                                  inst_opts, &f_handle_));
-    TF_RETURN_IF_ERROR(s);
-    const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
-    if (fbody == nullptr) {
-      return errors::Internal("Failed to instantiate function body.");
-    }
-    ret_types_ = fbody->ret_types;
-  } else {
-    if (ctx->lib() != lib_) {
-      return errors::Internal(
-          "Captured function was called with a different "
-          "FunctionLibraryRuntime*, which is not permitted.");
-    }
-  }
-  if (captured_runner_ == nullptr) {
-    captured_runner_ = *ctx->runner();
-  }
-  return Status::OK();
-}
-
-Status CapturedFunction::RunInstantiated(const std::vector<Tensor>& args,
-                                         std::vector<Tensor>* rets) {
-  FunctionLibraryRuntime* lib;
-  FunctionLibraryRuntime::Handle handle;
-  std::function<void(std::function<void()>)>* runner;
-  {
-    tf_shared_lock l(mu_);
-    if (lib_ == nullptr) {
-      return errors::FailedPrecondition(
-          "`CapturedFunction::Instantiate()` must be called before a call to "
-          "`CapturedFunction::RunInstantiated()`.");
-    }
-    lib = lib_;
-    handle = f_handle_;
-    runner = &captured_runner_;
-  }
-
+Status InstantiatedCapturedFunction::RunInstantiated(
+    const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = CapturedFunction::generate_step_id();
-  ScopedStepContainer step_container(f_opts.step_id, [lib](const string& name) {
-    lib->device()->resource_manager()->Cleanup(name).IgnoreError();
-  });
+  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
+  ScopedStepContainer step_container(
+      f_opts.step_id, [this](const string& name) {
+        lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
+      });
   f_opts.step_container = &step_container;
-  f_opts.runner = runner;
-  if (lib->device()->device_type() != DEVICE_CPU) {
+  f_opts.runner = &captured_runner_;
+  if (lib_->device()->device_type() != DEVICE_CPU) {
     f_opts.create_rendezvous = true;
   }
   // TODO(mrry): Add cancellation manager support to IteratorContext
@@ -332,11 +309,12 @@ Status CapturedFunction::RunInstantiated(const std::vector<Tensor>& args,
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
 
-  BorrowedArgsCallFrame frame(args, &captured_inputs_, ret_types_);
+  BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
+                              ret_types_);
   Notification n;
   Status s;
 
-  lib->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
+  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
   });
@@ -345,33 +323,25 @@ Status CapturedFunction::RunInstantiated(const std::vector<Tensor>& args,
   return frame.ConsumeRetvals(rets);
 }
 
-void CapturedFunction::RunAsync(IteratorContext* ctx,
-                                std::vector<Tensor>&& args,
-                                std::vector<Tensor>* rets,
-                                FunctionLibraryRuntime::DoneCallback done,
-                                const string& prefix) {
+void InstantiatedCapturedFunction::RunAsync(
+    IteratorContext* ctx, std::vector<Tensor>&& args, std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::DoneCallback done, const string& prefix) const {
   // NOTE(mrry): This method does not transfer ownership of `ctx`, and it may
   // be deleted before `done` is called. Take care not to capture `ctx` in any
   // code that may execute asynchronously in this function.
-  FunctionLibraryRuntime::Handle handle;
-  Status s = GetHandle(ctx, &handle);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  auto frame =
-      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
+  auto frame = new OwnedArgsCallFrame(
+      std::move(args), &captured_func_->captured_inputs(), ret_types_);
 
   FunctionLibraryRuntime::Options f_opts;
-  f_opts.step_id = CapturedFunction::generate_step_id();
-  ResourceMgr* resource_mgr = ctx->lib()->device()->resource_manager();
+  f_opts.step_id = InstantiatedCapturedFunction::generate_step_id();
+  ResourceMgr* resource_mgr = lib_->device()->resource_manager();
   auto step_container = new ScopedStepContainer(
       f_opts.step_id, [resource_mgr](const string& name) {
         resource_mgr->Cleanup(name).IgnoreError();
       });
   f_opts.step_container = step_container;
   f_opts.runner = ctx->runner();
-  if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
+  if (lib_->device()->device_type() != DEVICE_CPU) {
     f_opts.create_rendezvous = true;
   }
   // TODO(mrry): Add cancellation manager support to IteratorContext
@@ -426,15 +396,13 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
       },
       std::move(done), std::placeholders::_1);
 
-  ctx->lib()->Run(f_opts, handle, frame, std::move(callback));
+  lib_->Run(f_opts, f_handle_, frame, std::move(callback));
 }
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,
                                    std::vector<Tensor> captured_inputs,
                                    bool use_inter_op_parallelism)
     : func_(func),
-      lib_(nullptr),
-      f_handle_(kInvalidHandle),
       captured_inputs_(std::move(captured_inputs)),
       use_inter_op_parallelism_(use_inter_op_parallelism) {}
 

@@ -122,7 +122,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -238,8 +239,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         return MakeIteratorFromInputElement(
             ctx, captured_func_inputs_, element_index_++,
-            dataset()->captured_func_.get(), prefix(),
-            &current_element_iterator_);
+            *instantiated_captured_func_, prefix(), &current_element_iterator_);
       }
 
       Status BuildCurrentElementIteratorLocked(OpKernelContext* ctx)
@@ -257,6 +257,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
       std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
