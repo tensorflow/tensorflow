@@ -1084,7 +1084,8 @@ class _BoostedTrees(estimator.Estimator):
 
     Raises:
       ValueError: When attempting to normalize on an empty ensemble
-        or an ensemble of trees which have no splits.
+        or an ensemble of trees which have no splits. Or when attempting
+        to normalize and feature importances have negative values.
     """
     reader = checkpoint_utils.load_checkpoint(self._model_dir)
     serialized = reader.get_tensor('boosted_trees:0_serialized')
