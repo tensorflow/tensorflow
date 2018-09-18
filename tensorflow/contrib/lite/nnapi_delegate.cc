@@ -512,6 +512,10 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_FULLY_CONNECTED;
         break;
       case tflite::BuiltinOperator_RESHAPE:
+        if (node.inputs->size != 2) {
+          logError("NNAPI only supports 2-input RESHAPE");
+          return kTfLiteError;
+        }
         nn_op_type = ANEURALNETWORKS_RESHAPE;
         // add_reshape_params(node.builtin_data);
         break;
