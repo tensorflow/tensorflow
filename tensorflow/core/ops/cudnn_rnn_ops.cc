@@ -302,12 +302,50 @@ REGISTER_OP("CudnnRNNBackpropV2")
       return Status::OK();
     });
 
-REGISTER_OP("CudnnRNNBackpropVar")
+REGISTER_OP("CudnnRNNVarLenBackprop")
     .Input("input: T")
     .Input("input_h: T")
     .Input("input_c: T")
     .Input("params: T")
     .Input("sequence_lengths: int64")
+    .Input("output: T")
+    .Input("output_h: T")
+    .Input("output_c: T")
+    .Input("output_backprop: T")
+    .Input("output_h_backprop: T")
+    .Input("output_c_backprop: T")
+    .Input("reserve_space: T")
+    .Input("host_reserved: int8")
+    .SetIsStateful()
+    .Output("input_backprop: T")
+    .Output("input_h_backprop: T")
+    .Output("input_c_backprop: T")
+    .Output("params_backprop: T")
+    .Attr("T: {float16, float32, float64}")
+    .Attr(kRNNModeAttrs)
+    .Attr(kRNNInputModeAttrs)
+    .Attr(kRNNDirectionAttrs)
+    .Attr("dropout: float = 0.0")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .SetShapeFn([](InferenceContext* c) {
+      auto input_shape = c->input(0);
+      auto input_h_shape = c->input(1);
+      auto input_c_shape = c->input(2);
+      auto params_shape = c->input(3);
+      c->set_output(0, input_shape);
+      c->set_output(1, input_h_shape);
+      c->set_output(2, input_c_shape);
+      c->set_output(3, params_shape);
+      return Status::OK();
+    });
+	
+REGISTER_OP("CudnnRNNVarLenBackpropV2")
+    .Input("input: T")
+    .Input("input_h: T")
+    .Input("input_c: T")
+    .Input("params: T")
+    .Input("sequence_lengths: int32")
     .Input("output: T")
     .Input("output_h: T")
     .Input("output_c: T")

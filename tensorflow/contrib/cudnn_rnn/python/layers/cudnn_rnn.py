@@ -395,7 +395,10 @@ class _CudnnRNN(base_layer.Layer):
     dtype = self.dtype
     inputs = ops.convert_to_tensor(inputs, dtype=dtype)
 
-    batch_size = array_ops.shape(inputs)[1]
+    if sequence_lengths is None:
+      batch_size = array_ops.shape(inputs)[1]
+    else:
+      batch_size = array_ops.shape(sequence_lengths)[0]
     if initial_state is None:
       initial_state = self._zero_state(batch_size)
     if self._rnn_mode == CUDNN_LSTM:

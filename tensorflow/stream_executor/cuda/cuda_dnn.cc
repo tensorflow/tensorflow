@@ -1213,7 +1213,7 @@ class CudnnRnnSequenceTensorDescriptor
         data_size_(data_size),
         data_type_(data_type),
         descriptors_(std::move(descriptors)),
-        handles_(std::move(handles)){}
+        handles_(handles){}
 
     CudnnRnnSequenceTensorDescriptor(CUDAExecutor* parent, int seq_length,
                                    int batch_size, int data_size,
@@ -1244,10 +1244,6 @@ class CudnnRnnSequenceTensorDescriptor
         /*tensorDesc=*/tensor_desc.get(), /*dataType=*/data_type,
         /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides));
-	//auto descriptors = std::vector<TensorDescriptor>();
-	//descriptors.push_back(std::move(tensor_desc));
-	//auto handles = std::vector<cudnnTensorDescriptor_t>(seq_length, std::move(tensor_desc.get()));
-	//descriptors.push_back(std::move(tensor_desc));
     return CudnnRnnSequenceTensorDescriptor(parent, seq_length, batch_size,
                                             data_size, data_type,
                                             tensor_desc);
@@ -1266,29 +1262,23 @@ class CudnnRnnSequenceTensorDescriptor
 				/*nbDims=*/3, /*dimA=*/dims,
 				/*strideA=*/strides));
 		}
-        //auto seq_desc = CudnnRnnSequenceTensorDescriptor(parent, seq_length, batch_size,
-        //                                    data_size, data_type,
-        //                                    std::move(tensor_desc));
 		auto descriptors = std::vector<TensorDescriptor>(0);
 		auto handles = std::vector<cudnnTensorDescriptor_t>(seq_length);
 		int pos = batch_size-1;
 		for(int i=0; i< seq_length; i++){
-			while(sequence_lengths[pos] < i && pos > 0){
+			while(sequence_lengths[pos] <= i && pos > 0){
 				pos--;
 			}
-			//auto td = CreateTensorDescriptor();
-			//cudnnCreateTensorDescriptor(&(seq_desc.handles_[i]));
-			cudnnCreateTensorDescriptor(&(handles[i]));
+			auto td = CreateTensorDescriptor();
 			int dims[] = {pos+1, data_size, 1};
 			int strides[] = {data_size, 1, 1};
 			RETURN_IF_CUDNN_ERROR(cudnnSetTensorNdDescriptor(
-				handles[i], data_type, 3, dims, strides));
-			//handles[i]=td.get();
-			//descriptors.push_back(std::move(td));
+				td.get(), data_type, 3, dims, strides));
+			handles[i]=td.get();
+			descriptors.push_back(std::move(td));
 		}
 		return CudnnRnnSequenceTensorDescriptor(parent, seq_length, batch_size,
                                            data_size, data_type, descriptors, handles);
-		//return seq_desc;
 	  }
   const cudnnTensorDescriptor_t* handles() const {
     return handles_.data();

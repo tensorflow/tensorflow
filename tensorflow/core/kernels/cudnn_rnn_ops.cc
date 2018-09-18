@@ -710,7 +710,7 @@ Status CreateForwardAndBackwardIODescriptorsVarLen(
     std::unique_ptr<RnnSequenceTensorDescriptor>* input_desc,
     std::unique_ptr<RnnStateTensorDescriptor>* state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc, 
-	const int32_t batch_size, const int32_t* sequence_lengths) {
+	const int32 batch_size, const int32* sequence_lengths) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
   se::dnn::DataType data_type = ToDataType<T>::value;
 
@@ -766,7 +766,7 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   else{
     TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptorsVarLen<T>(
       context, model_shapes, &input_desc, &state_desc, &output_desc,
-	  sequence_lengths->dim_size(0), sequence_lengths->vec<int32_t>().data()
+	  sequence_lengths->dim_size(0), sequence_lengths->vec<int32>().data()
 	));
   }
 
@@ -827,7 +827,7 @@ Status DoBackward(
   }else{
     TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptorsVarLen<T>(
         context, model_shapes, &input_desc, &state_desc, &output_desc,
-		sequence_lengths->dim_size(0), (const int32_t*)sequence_lengths->vec<int32_t>().data()));
+		sequence_lengths->dim_size(0), sequence_lengths->vec<int32>().data()));
   }
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
@@ -1269,7 +1269,9 @@ template <typename T>
 class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
   explicit CudnnRNNForwardOp(OpKernelConstruction* context)
-      : CudnnRNNKernelCommon(context), is_variable_length_(false) {
+      : CudnnRNNForwardOp(context, false) {}
+  explicit CudnnRNNForwardOp(OpKernelConstruction* context, bool is_variable_length)
+      : CudnnRNNKernelCommon(context), is_variable_length_(is_variable_length) {
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
 
     // Read debug env variables.
@@ -1281,10 +1283,6 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig algo_config;
     ComputeAndReturnAlgorithm(context, &algo_config);
-  }
-  
-  void set_is_variable_length(bool is_variable_length){
-	  is_variable_length_= is_variable_length;
   }
 
  protected:
@@ -1420,15 +1418,15 @@ template <typename T>
 class CudnnRNNForwardOpVarLen<GPUDevice, T> : public CudnnRNNForwardOp<GPUDevice, T> {
  public:
   explicit CudnnRNNForwardOpVarLen(OpKernelConstruction* context)
-      : CudnnRNNForwardOp<GPUDevice, T>(context) {
-    //is_variable_length_ = true;		 
-	this->set_is_variable_length(true);
-  }
+      : CudnnRNNForwardOp<GPUDevice, T>(context, true) {}
 };
 
 #define REGISTER_GPU(T)                                           \
   REGISTER_KERNEL_BUILDER(                                        \
-      Name("CudnnRNNVarLen").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      Name("CudnnRNNVarLen") \
+	  .Device(DEVICE_GPU) \
+	  .HostMemory("sequence_lengths") \
+	  .TypeConstraint<T>("T"), \
       CudnnRNNForwardOpVarLen<GPUDevice, T>);
 
 TF_CALL_half(REGISTER_GPU);
@@ -1448,7 +1446,9 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
 
  public:
   explicit CudnnRNNForwardOpV2(OpKernelConstruction* context)
-      : CudnnRNNForwardOp<GPUDevice, T>(context) {}
+      : CudnnRNNForwardOpV2<GPUDevice, T>(context, false) {}
+  explicit CudnnRNNForwardOpV2(OpKernelConstruction* context, bool is_variable_length)
+      : CudnnRNNForwardOp<GPUDevice, T>(context, is_variable_length) {}
 
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig best_algo_config;
@@ -1627,9 +1627,7 @@ template <typename T>
 class CudnnRNNForwardOpVarLenV2<GPUDevice, T> : public CudnnRNNForwardOpV2<GPUDevice, T> {
  public:
   explicit CudnnRNNForwardOpVarLenV2(OpKernelConstruction* context)
-      : CudnnRNNForwardOpV2<GPUDevice, T>(context) {
-    this->is_variable_length_ = true;
-  }
+      : CudnnRNNForwardOpV2<GPUDevice, T>(context, true) {}
 };
 
 #define REGISTER_GPU(T)                                           \
@@ -1646,8 +1644,10 @@ TF_CALL_double(REGISTER_GPU);
 template <typename T>
 class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
  public:
+  explicit CudnnRNNBackwardOp(OpKernelConstruction* context, bool is_variable_length)
+      : CudnnRNNKernelCommon(context), is_variable_length_(is_variable_length) {}
   explicit CudnnRNNBackwardOp(OpKernelConstruction* context)
-      : CudnnRNNKernelCommon(context), is_variable_length_(false) {}
+      : CudnnRNNBackwardOp(context, false) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor* input = nullptr;
@@ -1722,11 +1722,11 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     *algo_config = AlgorithmConfig();
     return Status::OK();
   }
-  bool is_variable_length_;
 
  private:
   mutex mu_;
   RnnStateCache rnn_state_cache_ GUARDED_BY(mu_);
+  bool is_variable_length_;
 
   Status ExtractBackwardInputs(
       OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
@@ -1827,7 +1827,9 @@ class CudnnRNNBackwardOpV2<GPUDevice, T>
     : public CudnnRNNBackwardOp<GPUDevice, T> {
  public:
   explicit CudnnRNNBackwardOpV2(OpKernelConstruction* context)
-      : CudnnRNNBackwardOp<GPUDevice, T>(context) {}
+      : CudnnRNNBackwardOpV2<GPUDevice, T>(context, false) {}
+  explicit CudnnRNNBackwardOpV2(OpKernelConstruction* context, bool is_variable_length)
+      : CudnnRNNBackwardOp<GPUDevice, T>(context, is_variable_length) {}
 
  protected:
   Status GetAlgorithm(OpKernelContext* context,
@@ -1850,6 +1852,45 @@ class CudnnRNNBackwardOpV2<GPUDevice, T>
                               .TypeConstraint<T>("T"),     \
                           CudnnRNNBackwardOpV2<GPUDevice, T>);
 
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
+
+template <typename T>
+class CudnnRNNVarLenBackwardOp<GPUDevice, T> : public CudnnRNNBackwardOp<GPUDevice, T> {
+ public:
+  explicit CudnnRNNVarLenBackwardOp(OpKernelConstruction* context)
+      : CudnnRNNBackwardOp<GPUDevice, T>(context, true) {}
+};
+#define REGISTER_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNVarLenBackprop")       \
+                              .Device(DEVICE_GPU)          \
+                              .HostMemory("host_reserved") \
+                              .HostMemory("sequence_lengths") \
+                              .TypeConstraint<T>("T"),     \
+                          CudnnRNNVarLenBackwardOp<GPUDevice, T>);
+
+TF_CALL_half(REGISTER_GPU);
+TF_CALL_float(REGISTER_GPU);
+TF_CALL_double(REGISTER_GPU);
+#undef REGISTER_GPU
+
+
+template <typename T>
+class CudnnRNNVarLenBackwardOpV2<GPUDevice, T> : public CudnnRNNBackwardOpV2<GPUDevice, T> {
+ public:
+  explicit CudnnRNNVarLenBackwardOpV2(OpKernelConstruction* context)
+      : CudnnRNNBackwardOpV2<GPUDevice, T>(context, true) {}
+};
+#define REGISTER_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("CudnnRNNVarLenBackpropV2")       \
+                              .Device(DEVICE_GPU)          \
+                              .HostMemory("host_reserved") \
+                              .HostMemory("sequence_lengths") \
+                              .TypeConstraint<T>("T"),     \
+                          CudnnRNNVarLenBackwardOpV2<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);

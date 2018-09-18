@@ -2045,6 +2045,16 @@ py_library(
 )
 
 py_library(
+    name = "packing_grad",
+    srcs = ["ops/packing_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        "//tensorflow/python:packing_ops_gen",
+    ],
+)
+
+py_library(
     name = "data_flow_grad",
     srcs = ["ops/data_flow_grad.py"],
     srcs_version = "PY2AND3",
@@ -2796,6 +2806,7 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":numerics",
+		":packing_grad",
         ":parsing_ops",
         ":partitioned_variables",
         ":random_ops",
