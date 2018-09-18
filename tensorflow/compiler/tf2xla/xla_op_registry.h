@@ -136,6 +136,10 @@ class XlaOpRegistry {
   static const std::unordered_set<string>* CompileTimeConstantInputs(
       const string& op);
 
+  // Returns true if `op` is a "metadata" op, one that only looks at the shapes
+  // of its operands and not their values.
+  static bool IsMetadataOp(const string& op);
+
  private:
   friend class XlaBackendRegistrar;
   friend class XlaOpRegistrar;
@@ -191,6 +195,10 @@ class XlaOpRegistry {
 
     // Names of arguments that must be compile-time constants.
     std::unordered_set<string> compile_time_constant_inputs;
+
+    // True if this is a "metadata" op, one that only looks at the shapes of its
+    // operands and not their values.
+    bool is_metadata_op = false;
 
     // Factory used to build OpKernels that perform symbolic execution.
     Factory factory;
@@ -255,6 +263,10 @@ class XlaOpRegistrationBuilder {
 
   // Mark 'input_name' as an argument whose value must be known at compile-time.
   XlaOpRegistrationBuilder& CompileTimeConstInput(absl::string_view input_name);
+
+  // Mark this op as a "metadata" op, one that only looks at the shapes of its
+  // operands and not their values.
+  XlaOpRegistrationBuilder& IsMetadataOp();
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);
