@@ -860,7 +860,7 @@ static tensorflow::int64 MakeInt(PyObject* integer) {
 
 static tensorflow::int64 FastTensorId(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    return EagerTensor_id(tensor);
+    return PyEagerTensor_ID(tensor);
   }
   PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
   if (id_field == nullptr) {
@@ -873,7 +873,7 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
 
 static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    return EagerTensor_dtype(tensor);
+    return PyEagerTensor_Dtype(tensor);
   }
   PyObject* dtype_field = PyObject_GetAttrString(tensor, "dtype");
   if (dtype_field == nullptr) {
@@ -1178,7 +1178,7 @@ void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
 static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
-    tensorflow::int64 id = EagerTensor_id(tensor);
+    tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::TensorShape tensor_shape;
     const tensorflow::Status status = t->handle->Shape(&tensor_shape);
 
@@ -1400,6 +1400,9 @@ class PyVSpace
   }
 
   tensorflow::int64 NumElements(PyObject* tensor) const final {
+    if (EagerTensor_CheckExact(tensor)) {
+      return PyEagerTensor_NumElements(tensor);
+    }
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
     PyObject* result = PyEval_CallObject(num_elements_, arglist);
