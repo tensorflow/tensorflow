@@ -182,11 +182,97 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      std::unique_ptr<ParallelMapFunctor> parse_example_functor(
-          new ParseExampleFunctor(this));
+      auto map_fn = [this](IteratorContext* ctx,
+                           std::vector<Tensor> input_element,
+                           std::vector<Tensor>* result, StatusCallback done) {
+        (*ctx->runner())([this, ctx, input_element, result, done]() {
+          thread::ThreadPool* device_threadpool =
+              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
+          std::vector<string> slice_vec;
+          for (Tensor t : input_element) {
+            auto serialized_t = t.flat<string>();
+            gtl::ArraySlice<string> slice(serialized_t.data(),
+                                          serialized_t.size());
+            for (auto it = slice.begin(); it != slice.end(); it++)
+              slice_vec.push_back(*it);
+          }
+          example::FastParseExampleConfig config = config_;
+          // local copy of config_ for modification.
+          auto stats_aggregator = ctx->stats_aggregator();
+          if (stats_aggregator) {
+            config.collect_feature_stats = true;
+          }
+          example::Result example_result;
+          Status s = FastParseExample(config, slice_vec, {}, device_threadpool,
+                                      &example_result);
+          if (s.ok()) {
+            (*result).resize(key_to_output_index_.size());
+            for (int d = 0; d < dense_keys_.size(); ++d) {
+              int output_index = key_to_output_index_.at(dense_keys_[d]);
+              CHECK(example_result.dense_values[d].dtype() ==
+                    output_dtypes()[output_index])
+                  << "Got wrong type for FastParseExample return value " << d
+                  << " (expected "
+                  << DataTypeString(output_dtypes()[output_index]) << ", got "
+                  << DataTypeString(example_result.dense_values[d].dtype())
+                  << ").";
+              CHECK(output_shapes()[output_index].IsCompatibleWith(
+                  example_result.dense_values[d].shape()))
+                  << "Got wrong shape for FastParseExample return value " << d
+                  << " (expected "
+                  << output_shapes()[output_index].DebugString() << ", got "
+                  << example_result.dense_values[d].shape().DebugString()
+                  << ").";
+              (*result)[output_index] = example_result.dense_values[d];
+            }
+            for (int d = 0; d < sparse_keys_.size(); ++d) {
+              Tensor serialized_sparse = Tensor(DT_VARIANT, TensorShape({3}));
+              auto serialized_sparse_t = serialized_sparse.vec<Variant>();
+              serialized_sparse_t(0) = example_result.sparse_indices[d];
+              serialized_sparse_t(1) = example_result.sparse_values[d];
+              serialized_sparse_t(2) = example_result.sparse_shapes[d];
+              int output_index = key_to_output_index_.at(sparse_keys_[d]);
+              CHECK(serialized_sparse.dtype() == output_dtypes()[output_index])
+                  << "Got wrong type for FastParseExample return value " << d
+                  << " (expected "
+                  << DataTypeString(output_dtypes()[output_index]) << ", got "
+                  << DataTypeString(serialized_sparse.dtype()) << ").";
+              CHECK(output_shapes()[output_index].IsCompatibleWith(
+                  serialized_sparse.shape()))
+                  << "Got wrong shape for FastParseExample return value " << d
+                  << " (expected "
+                  << output_shapes()[output_index].DebugString() << ", got "
+                  << serialized_sparse.shape().DebugString() << ").";
+              (*result)[output_index] = serialized_sparse;
+            }
+            // TODO(b/111553342): User provided tags instead of fixed tag.
+            if (stats_aggregator) {
+              stats_aggregator->IncrementCounter(
+                  "examples_count", "trainer",
+                  example_result.feature_stats.size());
+              for (example::PerExampleFeatureStats feature_stats :
+                   example_result.feature_stats) {
+                stats_aggregator->AddToHistogram(
+                    strings::StrCat("record_stats", ":features"),
+                    {static_cast<double>(feature_stats.features_count)});
+                stats_aggregator->IncrementCounter(
+                    "features_count", "trainer", feature_stats.features_count);
+                stats_aggregator->IncrementCounter(
+                    "feature_values_count", "trainer",
+                    feature_stats.feature_values_count);
+                stats_aggregator->AddToHistogram(
+                    strings::StrCat("record_stats", ":feature-values"),
+                    {static_cast<double>(feature_stats.feature_values_count)});
+              }
+            }
+          }
+          done(s);
+        });
+      };
+
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParseExample")}, input_,
-          std::move(parse_example_functor), num_parallel_calls_);
+          std::move(map_fn), num_parallel_calls_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -249,109 +335,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
-    class ParseExampleFunctor : public ParallelMapFunctor {
-     public:
-      explicit ParseExampleFunctor(const Dataset* dataset)
-          : dataset_(dataset) {}
-
-      void MapFunc(IteratorContext* ctx, std::vector<Tensor> input_element,
-                   std::vector<Tensor>* result, StatusCallback done) override {
-        (*ctx->runner())([this, ctx, input_element, result, done]() {
-          thread::ThreadPool* device_threadpool =
-              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
-          std::vector<string> slice_vec;
-          for (Tensor t : input_element) {
-            auto serialized_t = t.flat<string>();
-            gtl::ArraySlice<string> slice(serialized_t.data(),
-                                          serialized_t.size());
-            for (auto it = slice.begin(); it != slice.end(); it++)
-              slice_vec.push_back(*it);
-          }
-          example::FastParseExampleConfig config = dataset_->config_;
-          // local copy of config_ for modification.
-          auto stats_aggregator = ctx->stats_aggregator();
-          if (stats_aggregator) {
-            config.collect_feature_stats = true;
-          }
-          example::Result example_result;
-          Status s = FastParseExample(config, slice_vec, {}, device_threadpool,
-                                      &example_result);
-          if (s.ok()) {
-            (*result).resize(dataset_->key_to_output_index_.size());
-            for (int d = 0; d < dataset_->dense_keys_.size(); ++d) {
-              int output_index =
-                  dataset_->key_to_output_index_.at(dataset_->dense_keys_[d]);
-              DCHECK(example_result.dense_values[d].dtype() ==
-                     dataset_->output_dtypes()[output_index])
-                  << "Got wrong type for FastParseExample return value " << d
-                  << " (expected "
-                  << DataTypeString(dataset_->output_dtypes()[output_index])
-                  << ", got "
-                  << DataTypeString(example_result.dense_values[d].dtype())
-                  << ").";
-              DCHECK(dataset_->output_shapes()[output_index].IsCompatibleWith(
-                  example_result.dense_values[d].shape()))
-                  << "Got wrong shape for FastParseExample return value " << d
-                  << " (expected "
-                  << dataset_->output_shapes()[output_index].DebugString()
-                  << ", got "
-                  << example_result.dense_values[d].shape().DebugString()
-                  << ").";
-              (*result)[output_index] = example_result.dense_values[d];
-            }
-            for (int d = 0; d < dataset_->sparse_keys_.size(); ++d) {
-              Tensor serialized_sparse = Tensor(DT_VARIANT, TensorShape({3}));
-              auto serialized_sparse_t = serialized_sparse.vec<Variant>();
-              serialized_sparse_t(0) = example_result.sparse_indices[d];
-              serialized_sparse_t(1) = example_result.sparse_values[d];
-              serialized_sparse_t(2) = example_result.sparse_shapes[d];
-              int output_index =
-                  dataset_->key_to_output_index_.at(dataset_->sparse_keys_[d]);
-              DCHECK(serialized_sparse.dtype() ==
-                     dataset_->output_dtypes()[output_index])
-                  << "Got wrong type for FastParseExample return value " << d
-                  << " (expected "
-                  << DataTypeString(dataset_->output_dtypes()[output_index])
-                  << ", got " << DataTypeString(serialized_sparse.dtype())
-                  << ").";
-              DCHECK(dataset_->output_shapes()[output_index].IsCompatibleWith(
-                  serialized_sparse.shape()))
-                  << "Got wrong shape for FastParseExample return value " << d
-                  << " (expected "
-                  << dataset_->output_shapes()[output_index].DebugString()
-                  << ", got " << serialized_sparse.shape().DebugString()
-                  << ").";
-              (*result)[output_index] = serialized_sparse;
-            }
-            // TODO(b/111553342): User provided tags instead of fixed tag.
-            if (stats_aggregator) {
-              stats_aggregator->IncrementCounter(
-                  "examples_count", "trainer",
-                  example_result.feature_stats.size());
-              for (example::PerExampleFeatureStats feature_stats :
-                   example_result.feature_stats) {
-                stats_aggregator->AddToHistogram(
-                    strings::StrCat("record_stats", ":features"),
-                    {static_cast<double>(feature_stats.features_count)});
-                stats_aggregator->IncrementCounter(
-                    "features_count", "trainer", feature_stats.features_count);
-                stats_aggregator->IncrementCounter(
-                    "feature_values_count", "trainer",
-                    feature_stats.feature_values_count);
-                stats_aggregator->AddToHistogram(
-                    strings::StrCat("record_stats", ":feature-values"),
-                    {static_cast<double>(feature_stats.feature_values_count)});
-              }
-            }
-          }
-          done(s);
-        });
-      }
-
-     private:
-      const Dataset* dataset_;
-    };
-
     const DatasetBase* const input_;
     const std::vector<Tensor> dense_defaults_;
     const std::vector<string> sparse_keys_;

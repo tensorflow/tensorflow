@@ -122,8 +122,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(
-            ctx, &instantiated_captured_func_);
+        return dataset()->captured_func_->Instantiate(ctx);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -143,7 +142,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.
         Status s =
-            instantiated_captured_func_->Run(ctx, std::move(args), out_tensors);
+            dataset()->captured_func_->Run(ctx, std::move(args), out_tensors);
         if (errors::IsOutOfRange(s)) {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -168,7 +167,6 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       std::unique_ptr<IteratorBase> input_impl_;
-      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;

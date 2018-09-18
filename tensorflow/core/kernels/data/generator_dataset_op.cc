@@ -73,8 +73,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     ~Iterator() override {
       if (!finalized_) {
         std::vector<Tensor> ignored;
-        Status s =
-            instantiated_finalize_func_->RunInstantiated(state_, &ignored);
+        Status s = dataset()->finalize_func_->RunInstantiated(state_, &ignored);
         if (!s.ok()) {
           LOG(WARNING)
               << "Error occurred when finalizing GeneratorDataset iterator: "
@@ -84,14 +83,11 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     }
 
     Status Initialize(IteratorContext* ctx) override {
+      TF_RETURN_IF_ERROR(dataset()->init_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(dataset()->next_func_->Instantiate(ctx));
+      TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
       TF_RETURN_IF_ERROR(
-          dataset()->init_func_->Instantiate(ctx, &instantiated_init_func_));
-      TF_RETURN_IF_ERROR(
-          dataset()->next_func_->Instantiate(ctx, &instantiated_next_func_));
-      TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(
-          ctx, &instantiated_finalize_func_));
-      TF_RETURN_IF_ERROR(
-          instantiated_init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
+          dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
       return Status::OK();
     }
 
@@ -105,8 +101,8 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      Status s = instantiated_next_func_->RunWithBorrowedArgs(ctx, state_,
-                                                              out_tensors);
+      Status s =
+          dataset()->next_func_->RunWithBorrowedArgs(ctx, state_, out_tensors);
       if (s.ok()) {
         *end_of_sequence = false;
       } else if (errors::IsOutOfRange(s)) {
@@ -119,7 +115,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         // finalize function.
         std::vector<Tensor> ignored;
         TF_RETURN_IF_ERROR(
-            instantiated_finalize_func_->RunInstantiated(state_, &ignored));
+            dataset()->finalize_func_->RunInstantiated(state_, &ignored));
         finalized_ = true;
       }
       return s;
@@ -129,9 +125,6 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
     mutex mu_;
     bool finalized_ GUARDED_BY(mu_) = false;
     std::vector<Tensor> state_ GUARDED_BY(mu_);
-    std::unique_ptr<InstantiatedCapturedFunction> instantiated_init_func_;
-    std::unique_ptr<InstantiatedCapturedFunction> instantiated_next_func_;
-    std::unique_ptr<InstantiatedCapturedFunction> instantiated_finalize_func_;
   };
 
   const std::unique_ptr<CapturedFunction> init_func_;

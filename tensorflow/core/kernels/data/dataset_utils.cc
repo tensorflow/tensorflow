@@ -21,13 +21,12 @@ namespace data {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index,
-    const InstantiatedCapturedFunction& instantiated_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
-  TF_RETURN_IF_ERROR(instantiated_captured_func.RunWithBorrowedArgs(
-      ctx, input_element, &return_values));
+  TF_RETURN_IF_ERROR(
+      captured_func->RunWithBorrowedArgs(ctx, input_element, &return_values));
 
   if (!(return_values.size() == 1 && return_values[0].dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(return_values[0].shape()))) {
