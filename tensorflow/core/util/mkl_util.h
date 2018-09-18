@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
-#define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
+#ifndef TENSORFLOW_TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
+#define TENSORFLOW_TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
 #include <string>
@@ -2040,8 +2040,8 @@ class MklPrimitiveFactory {
   /// Fuction to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
     bool is_primitive_mem_opt_enabled = true;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
-          &is_primitive_mem_opt_enabled));
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE",
+        true, &is_primitive_mem_opt_enabled));
     return is_primitive_mem_opt_enabled;
   }
 
@@ -2098,7 +2098,7 @@ static inline memory::format get_desired_format(int channel,
              (channel % 8) == 0) {
     fmt_desired = is_2d
                       ? memory::format::nChw8c
-                      : memory::format::ncdhw;  //not support avx2 for 3d yet.
+                      : memory::format::ncdhw;  // not support avx2 for 3d yet.
   } else {
     fmt_desired = is_2d ? memory::format::nchw : memory::format::ncdhw;
   }
@@ -2210,7 +2210,8 @@ inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
 
 // utility function to determine if it is conv 1x1 and stride != 1
 // for purpose of temporarily disabling primitive reuse
-inline bool IsConv1x1StrideNot1(memory::dims filter_dims, memory::dims strides) {
+inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
+    memory::dims strides) {
   if (filter_dims.size() != 4 || strides.size() != 2) return false;
 
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&
@@ -2221,4 +2222,4 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims, memory::dims strides) 
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
+#endif  // TENSORFLOW_TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
