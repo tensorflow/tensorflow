@@ -80,7 +80,7 @@ class TensorSizeHistogram {
   uint64 Max() const { return max_; }
   uint64 NumElem() const { return num_elem_; }
   uint64 SumElem() const { return sum_elem_; }
-  std::string ToString() const;
+  string ToString() const;
 
  protected:
   const int Index(const uint64 value) const;

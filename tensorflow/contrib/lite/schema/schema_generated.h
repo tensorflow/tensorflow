@@ -229,6 +229,12 @@ struct FloorDivOptionsT;
 struct SquareOptions;
 struct SquareOptionsT;
 
+struct ZerosLikeOptions;
+struct ZerosLikeOptionsT;
+
+struct FillOptions;
+struct FillOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -387,11 +393,13 @@ enum BuiltinOperator {
   BuiltinOperator_FLOOR_DIV = 90,
   BuiltinOperator_REDUCE_ANY = 91,
   BuiltinOperator_SQUARE = 92,
+  BuiltinOperator_ZEROS_LIKE = 93,
+  BuiltinOperator_FILL = 94,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SQUARE
+  BuiltinOperator_MAX = BuiltinOperator_FILL
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[92] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[94] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -484,7 +492,9 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[92] {
     BuiltinOperator_REDUCE_MIN,
     BuiltinOperator_FLOOR_DIV,
     BuiltinOperator_REDUCE_ANY,
-    BuiltinOperator_SQUARE
+    BuiltinOperator_SQUARE,
+    BuiltinOperator_ZEROS_LIKE,
+    BuiltinOperator_FILL
   };
   return values;
 }
@@ -584,6 +594,8 @@ inline const char **EnumNamesBuiltinOperator() {
     "FLOOR_DIV",
     "REDUCE_ANY",
     "SQUARE",
+    "ZEROS_LIKE",
+    "FILL",
     nullptr
   };
   return names;
@@ -662,11 +674,13 @@ enum BuiltinOptions {
   BuiltinOptions_UnpackOptions = 64,
   BuiltinOptions_FloorDivOptions = 65,
   BuiltinOptions_SquareOptions = 66,
+  BuiltinOptions_ZerosLikeOptions = 67,
+  BuiltinOptions_FillOptions = 68,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SquareOptions
+  BuiltinOptions_MAX = BuiltinOptions_FillOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[67] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[69] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -734,7 +748,9 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[67] {
     BuiltinOptions_LogicalNotOptions,
     BuiltinOptions_UnpackOptions,
     BuiltinOptions_FloorDivOptions,
-    BuiltinOptions_SquareOptions
+    BuiltinOptions_SquareOptions,
+    BuiltinOptions_ZerosLikeOptions,
+    BuiltinOptions_FillOptions
   };
   return values;
 }
@@ -808,6 +824,8 @@ inline const char **EnumNamesBuiltinOptions() {
     "UnpackOptions",
     "FloorDivOptions",
     "SquareOptions",
+    "ZerosLikeOptions",
+    "FillOptions",
     nullptr
   };
   return names;
@@ -1084,6 +1102,14 @@ template<> struct BuiltinOptionsTraits<FloorDivOptions> {
 
 template<> struct BuiltinOptionsTraits<SquareOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SquareOptions;
+};
+
+template<> struct BuiltinOptionsTraits<ZerosLikeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ZerosLikeOptions;
+};
+
+template<> struct BuiltinOptionsTraits<FillOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_FillOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1644,6 +1670,22 @@ struct BuiltinOptionsUnion {
   const SquareOptionsT *AsSquareOptions() const {
     return type == BuiltinOptions_SquareOptions ?
       reinterpret_cast<const SquareOptionsT *>(value) : nullptr;
+  }
+  ZerosLikeOptionsT *AsZerosLikeOptions() {
+    return type == BuiltinOptions_ZerosLikeOptions ?
+      reinterpret_cast<ZerosLikeOptionsT *>(value) : nullptr;
+  }
+  const ZerosLikeOptionsT *AsZerosLikeOptions() const {
+    return type == BuiltinOptions_ZerosLikeOptions ?
+      reinterpret_cast<const ZerosLikeOptionsT *>(value) : nullptr;
+  }
+  FillOptionsT *AsFillOptions() {
+    return type == BuiltinOptions_FillOptions ?
+      reinterpret_cast<FillOptionsT *>(value) : nullptr;
+  }
+  const FillOptionsT *AsFillOptions() const {
+    return type == BuiltinOptions_FillOptions ?
+      reinterpret_cast<const FillOptionsT *>(value) : nullptr;
   }
 };
 
@@ -5888,6 +5930,86 @@ inline flatbuffers::Offset<SquareOptions> CreateSquareOptions(
 
 flatbuffers::Offset<SquareOptions> CreateSquareOptions(flatbuffers::FlatBufferBuilder &_fbb, const SquareOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ZerosLikeOptionsT : public flatbuffers::NativeTable {
+  typedef ZerosLikeOptions TableType;
+  ZerosLikeOptionsT() {
+  }
+};
+
+struct ZerosLikeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ZerosLikeOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  ZerosLikeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ZerosLikeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ZerosLikeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ZerosLikeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ZerosLikeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit ZerosLikeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ZerosLikeOptionsBuilder &operator=(const ZerosLikeOptionsBuilder &);
+  flatbuffers::Offset<ZerosLikeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ZerosLikeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ZerosLikeOptions> CreateZerosLikeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  ZerosLikeOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ZerosLikeOptions> CreateZerosLikeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ZerosLikeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct FillOptionsT : public flatbuffers::NativeTable {
+  typedef FillOptions TableType;
+  FillOptionsT() {
+  }
+};
+
+struct FillOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef FillOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  FillOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(FillOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<FillOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const FillOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct FillOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit FillOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  FillOptionsBuilder &operator=(const FillOptionsBuilder &);
+  flatbuffers::Offset<FillOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<FillOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<FillOptions> CreateFillOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  FillOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<FillOptions> CreateFillOptions(flatbuffers::FlatBufferBuilder &_fbb, const FillOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -6219,6 +6341,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SquareOptions *builtin_options_as_SquareOptions() const {
     return builtin_options_type() == BuiltinOptions_SquareOptions ? static_cast<const SquareOptions *>(builtin_options()) : nullptr;
   }
+  const ZerosLikeOptions *builtin_options_as_ZerosLikeOptions() const {
+    return builtin_options_type() == BuiltinOptions_ZerosLikeOptions ? static_cast<const ZerosLikeOptions *>(builtin_options()) : nullptr;
+  }
+  const FillOptions *builtin_options_as_FillOptions() const {
+    return builtin_options_type() == BuiltinOptions_FillOptions ? static_cast<const FillOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -6512,6 +6640,14 @@ template<> inline const FloorDivOptions *Operator::builtin_options_as<FloorDivOp
 
 template<> inline const SquareOptions *Operator::builtin_options_as<SquareOptions>() const {
   return builtin_options_as_SquareOptions();
+}
+
+template<> inline const ZerosLikeOptions *Operator::builtin_options_as<ZerosLikeOptions>() const {
+  return builtin_options_as_ZerosLikeOptions();
+}
+
+template<> inline const FillOptions *Operator::builtin_options_as<FillOptions>() const {
+  return builtin_options_as_FillOptions();
 }
 
 struct OperatorBuilder {
@@ -8782,6 +8918,52 @@ inline flatbuffers::Offset<SquareOptions> CreateSquareOptions(flatbuffers::FlatB
       _fbb);
 }
 
+inline ZerosLikeOptionsT *ZerosLikeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ZerosLikeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ZerosLikeOptions::UnPackTo(ZerosLikeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<ZerosLikeOptions> ZerosLikeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ZerosLikeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateZerosLikeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ZerosLikeOptions> CreateZerosLikeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ZerosLikeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ZerosLikeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateZerosLikeOptions(
+      _fbb);
+}
+
+inline FillOptionsT *FillOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new FillOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void FillOptions::UnPackTo(FillOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<FillOptions> FillOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FillOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateFillOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<FillOptions> CreateFillOptions(flatbuffers::FlatBufferBuilder &_fbb, const FillOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const FillOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateFillOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -9235,6 +9417,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const SquareOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_ZerosLikeOptions: {
+      auto ptr = reinterpret_cast<const ZerosLikeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_FillOptions: {
+      auto ptr = reinterpret_cast<const FillOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -9517,6 +9707,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const SquareOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_ZerosLikeOptions: {
+      auto ptr = reinterpret_cast<const ZerosLikeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_FillOptions: {
+      auto ptr = reinterpret_cast<const FillOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -9787,6 +9985,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const SquareOptionsT *>(value);
       return CreateSquareOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_ZerosLikeOptions: {
+      auto ptr = reinterpret_cast<const ZerosLikeOptionsT *>(value);
+      return CreateZerosLikeOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_FillOptions: {
+      auto ptr = reinterpret_cast<const FillOptionsT *>(value);
+      return CreateFillOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -10055,6 +10261,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_SquareOptions: {
       value = new SquareOptionsT(*reinterpret_cast<SquareOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ZerosLikeOptions: {
+      value = new ZerosLikeOptionsT(*reinterpret_cast<ZerosLikeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_FillOptions: {
+      value = new FillOptionsT(*reinterpret_cast<FillOptionsT *>(u.value));
       break;
     }
     default:
@@ -10391,6 +10605,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SquareOptions: {
       auto ptr = reinterpret_cast<SquareOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ZerosLikeOptions: {
+      auto ptr = reinterpret_cast<ZerosLikeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_FillOptions: {
+      auto ptr = reinterpret_cast<FillOptionsT *>(value);
       delete ptr;
       break;
     }

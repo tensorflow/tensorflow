@@ -300,7 +300,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
               tf_ans = s.eval()
               if dtype is dtypes_lib.bfloat16:
                 tf_ans = tf_ans.astype(np.float32)
-              self.assertAllClose(np_ans, tf_ans)
+              self.assertAllCloseAccordingToType(np_ans, tf_ans)
               self.assertShapeEqual(np_ans, s)
 
   def testNumSegmentsTypes(self):

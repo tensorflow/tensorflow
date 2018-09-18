@@ -184,17 +184,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                          const Dims<4>&, const float*, const Dims<4>&, int, int,
                          int, int, int, int, int, float, float, float*,
                          const Dims<4>&);
-  KernelType effective_kernel_type;
-  // TODO(suharshs): Currently only the reference implementation supports
-  // dilations.
-  if ((params->dilation_width_factor != 1) ||
-      (params->dilation_height_factor != 1)) {
-    effective_kernel_type = kReference;
-  } else {
-    effective_kernel_type = kernel_type;
-  }
-
-  if (effective_kernel_type == kReference) {
+  if (kernel_type == kReference) {
     depthwise_conv = &reference_ops::DepthwiseConv;
   } else {
     depthwise_conv = &optimized_ops::DepthwiseConv;
@@ -224,17 +214,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                          int, int, int, int, int, int, int, int32, int32, int,
                          int32, int32, uint8*, const Dims<4>&);
 
-  KernelType effective_kernel_type;
-  // TODO(suharshs): Currently only the reference implementation supports
-  // dilations.
-  if ((params->dilation_width_factor != 1) ||
-      (params->dilation_height_factor != 1)) {
-    effective_kernel_type = kReference;
-  } else {
-    effective_kernel_type = kernel_type;
-  }
-
-  if (effective_kernel_type == kReference) {
+  if (kernel_type == kReference) {
     depthwise_conv = &reference_ops::DepthwiseConv;
   } else {
     depthwise_conv = &optimized_ops::DepthwiseConv;

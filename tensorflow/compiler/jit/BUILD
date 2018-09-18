@@ -599,6 +599,35 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "node_matchers",
+    testonly = True,
+    srcs = ["node_matchers.cc"],
+    hdrs = ["node_matchers.h"],
+    deps = [
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "node_matchers_test",
+    srcs = ["node_matchers_test.cc"],
+    deps = [
+        ":node_matchers",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
 cc_header_only_library(
     name = "xla_jit_headers_lib",

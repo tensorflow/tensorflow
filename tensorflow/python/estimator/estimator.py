@@ -329,7 +329,7 @@ class Estimator(object):
                                  run_config.TaskType.PS):
       raise ValueError(
           'Train has been called wrong configuration. Please use '
-          'tf.estimator.train_and_evaluate which calls propper API according '
+          'tf.estimator.train_and_evaluate which calls proper API according '
           'to given configuration. Current configuration: {}.'.format(
               self.config))
 
@@ -489,6 +489,10 @@ class Estimator(object):
               checkpoint_path=None,
               yield_single_examples=True):
     """Yields predictions for given features.
+
+    Please note that interleaving two predict outputs does not work. See:
+    [issue/20506](
+    https://github.com/tensorflow/tensorflow/issues/20506#issuecomment-422208517)
 
     Args:
       input_fn: A function that constructs the features. Prediction continues
@@ -1653,7 +1657,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
   def _unwrap_and_concat(value):
     value = nest.flatten(distribution.unwrap(value))
     if len(value) != 1:
-      return array_ops.concat(value)
+      return array_ops.concat(value, 0)
     return value[0]
 
   ready_op = distribution.call_for_each_tower(

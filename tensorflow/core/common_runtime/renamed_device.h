@@ -72,9 +72,10 @@ class RenamedDevice : public Device {
     return underlying_->MakeGpuDevice();
   }
 
-  void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
-                             DeviceContext* dc, Allocator* allocator) override {
-    underlying_->ReinitializeGpuDevice(context, device, dc, allocator);
+  Status ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
+                               DeviceContext* dc,
+                               Allocator* allocator) override {
+    return underlying_->ReinitializeGpuDevice(context, device, dc, allocator);
   }
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,

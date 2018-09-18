@@ -134,7 +134,7 @@ class TimelineTest(test.TestCase):
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
 
-  def testAnalysisAndAllocations(self):
+  def disabled_testAnalysisAndAllocations(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
