@@ -2799,6 +2799,46 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "cwise_ops_binary_test",
+    size = "medium",
+    srcs = ["cwise_ops_binary_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+    ],
+    shard_count = 50,
+)
+
+cuda_py_test(
+    name = "cwise_ops_unary_test",
+    size = "medium",
+    srcs = ["cwise_ops_unary_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_grad",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+    ],
+    shard_count = 50,
+)
+
+cuda_py_test(
     name = "embedding_ops_test",
     size = "medium",
     srcs = ["embedding_ops_test.py"],
