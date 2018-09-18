@@ -2378,11 +2378,11 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
 // C= Pad = input of conv2D,
 // D=input(filter), E = Conv2D, Z = Zeta
 // C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
-// C:control->A1:control
-// E:control->A1:control
-// After layout pass
-// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+// A1:control->C:control
 // A1:control->E:control
+// After layout pass:
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+// A1:control->E:control (only one control edge)
 TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
   CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
@@ -2411,8 +2411,8 @@ TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
   Node* e = FindNode("E");
   const Edge* edge = graph_.AddControlEdge(a1, c);
   const Edge* edge_1 = graph_.AddControlEdge(a1, e);
-  ASSERT_TRUE(edge != nullptr);
-  ASSERT_TRUE(edge_1 != nullptr);
+  ASSERT_NE(edge, nullptr);
+  ASSERT_NE(edge_1, nullptr);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
@@ -2430,10 +2430,10 @@ TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
 // C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
 // C:control->A1:control
 // E:control->A1:control
-// After layout pass
+// After layout pass:
 // _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
 // E:control->A1:control (only one control edge)
-TEST_F(MklLayoutPassTest, ControlEdge_PadWithConv2D_Positive) {
+TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
   CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
   InitGraph(
       "node { name: 'A1' op: 'Input'}"
@@ -2461,8 +2461,8 @@ TEST_F(MklLayoutPassTest, ControlEdge_PadWithConv2D_Positive) {
   Node* e = FindNode("E");
   const Edge* edge = graph_.AddControlEdge(c, a1);
   const Edge* edge_1 = graph_.AddControlEdge(e, a1);
-  ASSERT_TRUE(edge != nullptr);
-  ASSERT_TRUE(edge_1 != nullptr);
+  ASSERT_NE(edge, nullptr);
+  ASSERT_NE(edge_1, nullptr);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
