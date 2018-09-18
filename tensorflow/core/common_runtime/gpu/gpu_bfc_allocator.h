@@ -31,28 +31,20 @@ limitations under the License.
 
 namespace tensorflow {
 
-// A GPU memory allocator that implements a 'best-fit with coalescing'
-// algorithm.
-class GPUBFCAllocator : public BFCAllocator {
- public:
-  // 'cuda_gpu_id' refers to the ID of the GPU device within
-  // the process and must reference a valid ID in the process.
-  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
-                  const string& name);
-  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
-                  const GPUOptions& gpu_options, const string& name);
-  virtual ~GPUBFCAllocator() {}
-
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
-};
-
 // Suballocator for GPU memory.
 class GPUMemAllocator : public SubAllocator {
  public:
+  // 'cuda_gpu_id' refers to the ID of the GPU device within
+  // the process and must reference a valid ID in the process.
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
-                           bool use_unified_memory)
-      : stream_exec_(stream_exec), use_unified_memory_(use_unified_memory) {
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec, CudaGpuId gpu_id,
+                           bool use_unified_memory,
+                           const std::vector<Visitor>& alloc_visitors,
+                           const std::vector<Visitor>& free_visitors)
+      : SubAllocator(alloc_visitors, free_visitors),
+        stream_exec_(stream_exec),
+        gpu_id_(gpu_id),
+        use_unified_memory_(use_unified_memory) {
     CHECK(stream_exec_ != nullptr);
   }
   ~GPUMemAllocator() override {}
@@ -65,12 +57,14 @@ class GPUMemAllocator : public SubAllocator {
       } else {
         ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
       }
+      VisitAlloc(ptr, gpu_id_.value(), num_bytes);
     }
     return ptr;
   }
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
+      VisitFree(ptr, gpu_id_.value(), num_bytes);
       if (use_unified_memory_) {
         stream_exec_->UnifiedMemoryDeallocate(ptr);
       } else {
@@ -82,9 +76,23 @@ class GPUMemAllocator : public SubAllocator {
 
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
+  const CudaGpuId gpu_id_;
   const bool use_unified_memory_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
+};
+
+// A GPU memory allocator that implements a 'best-fit with coalescing'
+// algorithm.
+class GPUBFCAllocator : public BFCAllocator {
+ public:
+  GPUBFCAllocator(GPUMemAllocator* sub_allocator, size_t total_memory,
+                  const string& name);
+  GPUBFCAllocator(GPUMemAllocator* sub_allocator, size_t total_memory,
+                  const GPUOptions& gpu_options, const string& name);
+  ~GPUBFCAllocator() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
 };
 
 }  // namespace tensorflow
