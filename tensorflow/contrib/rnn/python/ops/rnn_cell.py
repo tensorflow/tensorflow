@@ -3393,6 +3393,9 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
 
+NTMControllerState = collections.namedtuple('NTMControllerState',
+      ('controller_state', 'read_vector_list', 'w_list', 'M'))
+
 class NTMCell(rnn_cell_impl.LayerRNNCell):
   """Neural Turing Machine Cell with RNN controller.
 
@@ -3452,21 +3455,19 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
     self.clip_value = clip_value
     self.reuse = reuse
 
-    self.NTMControllerState = collections.namedtuple('NTMControllerState',
-      ('controller_state', 'read_vector_list', 'w_list', 'M'))
-
     self.output_dim = output_dim
     self.shift_range = shift_range
 
-    self.num_parameters_per_head = self.memory_vector_dim + \
-      2 * self.shift_range + 4
+    self.num_parameters_per_head = (
+      self.memory_vector_dim + 2 * self.shift_range + 4)
     self.num_heads = self.read_head_num + self.write_head_num
-    self.total_parameter_num = self.num_parameters_per_head * self.num_heads + \
-      self.memory_vector_dim * 2 * self.write_head_num
+    self.total_parameter_num = (
+      self.num_parameters_per_head * self.num_heads +
+      self.memory_vector_dim * 2 * self.write_head_num)
 
   @property
   def state_size(self):
-    return self.NTMControllerState(
+    return NTMControllerState(
       controller_state=self.controller.state_size,
       read_vector_list=[self.memory_vector_dim
         for _ in range(self.read_head_num)],
@@ -3486,28 +3487,30 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
       else:
         self.output_dim = inputs_shape[1].value
 
-    self._ntm_params_kernel = self.add_variable(
-        'ntm_parameters_kernel',
+    self._params_kernel = self.add_variable(
+        'parameters_kernel',
         shape=[self.controller.output_size, self.total_parameter_num])
 
-    self._ntm_params_bias = self.add_variable(
-        'ntm_parameters_bias',
+    self._params_bias = self.add_variable(
+        'parameters_bias',
         shape=[self.total_parameter_num],
         initializer=init_ops.zeros_initializer(dtype=self.dtype))
 
     self._output_kernel = self.add_variable(
-        'ntm_output_kernel',
-        shape=[self.controller.output_size + \
+        'output_kernel',
+        shape=[self.controller.output_size +
           self.memory_vector_dim * self.read_head_num, self.output_dim])
 
     self._output_bias = self.add_variable(
-        'ntm_output_bias',
+        'output_bias',
         shape=[self.output_dim],
         initializer=init_ops.zeros_initializer(dtype=self.dtype))
 
     self.built = True
 
   def call(self, x, prev_state):
+    # Addressing Mechanisms (Sec 3.3)
+
     prev_read_vector_list = prev_state.read_vector_list
 
     controller_input = array_ops.concat([x] + prev_read_vector_list, axis=1)
@@ -3515,8 +3518,8 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
       controller_output, controller_state = self.controller(controller_input,
         prev_state.controller_state)
 
-    parameters = math_ops.matmul(controller_output, self._ntm_params_kernel)
-    parameters = nn_ops.bias_add(parameters, self._ntm_params_bias)
+    parameters = math_ops.matmul(controller_output, self._params_kernel)
+    parameters = nn_ops.bias_add(parameters, self._params_bias)
     parameters = clip_ops.clip_by_value(parameters,
       -self.clip_value, self.clip_value)
     head_parameter_list = array_ops.split(
@@ -3542,12 +3545,16 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
         w = self.addressing(k, beta, g, s, gamma, prev_M, prev_w_list[i])
       w_list.append(w)
 
+    # Reading (Sec 3.1)
+
     read_w_list = w_list[:self.read_head_num]
     read_vector_list = []
     for i in range(self.read_head_num):
       read_vector = math_ops.reduce_sum(
         array_ops.expand_dims(read_w_list[i], dim=2) * prev_M, axis=1)
       read_vector_list.append(read_vector)
+
+    # Writing (Sec 3.2)
 
     write_w_list = w_list[self.read_head_num:]
     M = prev_M
@@ -3557,21 +3564,23 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
         math_ops.sigmoid(erase_add_list[i * 2]), axis=1)
       add_vector = array_ops.expand_dims(
         math_ops.tanh(erase_add_list[i * 2 + 1]), axis=1)
-      erase_M = array_ops.ones(M.get_shape()) - math_ops.matmul(w, erase_vector)
+      erase_M = array_ops.ones_like(M) - math_ops.matmul(w, erase_vector)
       M = M * erase_M + math_ops.matmul(w, add_vector)
 
-    ntm_output = math_ops.matmul(
+    output = math_ops.matmul(
       array_ops.concat([controller_output] + read_vector_list, axis=1),
       self._output_kernel)
-    ntm_output = nn_ops.bias_add(ntm_output, self._output_bias)
-    ntm_output = clip_ops.clip_by_value(ntm_output,
+    output = nn_ops.bias_add(output, self._output_bias)
+    output = clip_ops.clip_by_value(output,
       -self.clip_value, self.clip_value)
 
-    return ntm_output, self.NTMControllerState(
+    return output, NTMControllerState(
       controller_state=controller_state, read_vector_list=read_vector_list,
       w_list=w_list, M=M)
 
   def addressing(self, k, beta, g, s, gamma, prev_M, prev_w):
+    # Sec 3.3.1 Focusing by Content
+
     k = array_ops.expand_dims(k, axis=2)
     inner_product = math_ops.matmul(prev_M, k)
     k_norm = math_ops.sqrt(math_ops.reduce_sum(
@@ -3579,12 +3588,20 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
     M_norm = math_ops.sqrt(math_ops.reduce_sum(
       math_ops.square(prev_M), axis=2, keepdims=True))
     norm_product = M_norm * k_norm
+    
+    # eq (6)
     K = array_ops.squeeze(inner_product / (norm_product + 1e-8))
 
     K_amplified = math_ops.exp(array_ops.expand_dims(beta, axis=1) * K)
+    
+    # eq (5)
     w_c = K_amplified / math_ops.reduce_sum(K_amplified, axis=1, keepdims=True)
 
+    # Sec 3.3.2 Focusing by Location
+
     g = array_ops.expand_dims(g, axis=1)
+    
+    # eq (7)
     w_g = g * w_c + (1 - g) * prev_w
 
     s = array_ops.concat([s[:, :self.shift_range + 1],
@@ -3597,9 +3614,13 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
       [t[:, self.memory_size - i - 1:self.memory_size * 2 - i - 1]
         for i in range(self.memory_size)],
       axis=1)
+    
+    # eq (8)
     w_ = math_ops.reduce_sum(
       array_ops.expand_dims(w_g, axis=1) * s_matrix, axis=2)
     w_sharpen = math_ops.pow(w_, array_ops.expand_dims(gamma, axis=1))
+
+    # eq (9)
     w = w_sharpen / math_ops.reduce_sum(w_sharpen, axis=1, keepdims=True)
 
     return w
@@ -3636,7 +3657,7 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
               initializer=init_ops.constant_initializer(1e-6)),
             dim=0, N=batch_size)
 
-      return self.NTMControllerState(
+      return NTMControllerState(
         controller_state=controller_init_state,
         read_vector_list=read_vector_list,
         w_list=w_list,
