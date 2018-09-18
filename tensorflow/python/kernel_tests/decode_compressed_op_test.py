@@ -44,7 +44,7 @@ class DecodeCompressedOpTest(test.TestCase):
 
   def testDecompress(self):
     for compression_type in ["ZLIB", "GZIP", ""]:
-      with self.test_session():
+      with self.cached_session():
         in_bytes = array_ops.placeholder(dtypes.string, shape=[2])
         decompressed = parsing_ops.decode_compressed(
             in_bytes, compression_type=compression_type)
@@ -57,7 +57,7 @@ class DecodeCompressedOpTest(test.TestCase):
 
   def testDecompressWithRaw(self):
     for compression_type in ["ZLIB", "GZIP", ""]:
-      with self.test_session():
+      with self.cached_session():
         in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
         decompressed = parsing_ops.decode_compressed(
             in_bytes, compression_type=compression_type)

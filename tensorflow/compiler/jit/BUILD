@@ -275,6 +275,7 @@ cc_library(
     srcs = ["jit_compilation_pass_registration.cc"],
     deps = [
         ":compilation_passes",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu_internal",
     ],
     alwayslink = 1,
@@ -605,6 +606,35 @@ tf_gpu_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
+    name = "node_matchers",
+    testonly = True,
+    srcs = ["node_matchers.cc"],
+    hdrs = ["node_matchers.h"],
+    deps = [
+        "//tensorflow/cc:ops",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "node_matchers_test",
+    srcs = ["node_matchers_test.cc"],
+    deps = [
+        ":node_matchers",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:test_main",
     ],
 )
 

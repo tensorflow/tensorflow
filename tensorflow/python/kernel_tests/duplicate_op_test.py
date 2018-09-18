@@ -34,7 +34,7 @@ class DuplicateOpTest(test.TestCase):
 
     self.assertEqual(len(duplicate.OP_LIST.op), 0)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(math_ops.add(1, 41).eval(), 42)
 
 

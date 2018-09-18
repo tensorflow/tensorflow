@@ -52,7 +52,7 @@ class Convolution1DTest(test.TestCase):
         'kernel_size': 3,
     }
 
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
+    self._run_test(kwargs, 'padding', ['valid', 'same', 'causal'])
     self._run_test(kwargs, 'strides', [2])
     self._run_test(kwargs, 'dilation_rate', [2])
 
@@ -260,6 +260,10 @@ class Conv3DTransposeTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_conv3dtranspose(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     kwargs = {
         'filters': 2,
         'kernel_size': (3, 3, 3),
@@ -329,7 +333,7 @@ class SeparableConv1DTest(test.TestCase):
         'kernel_size': 3,
     }
 
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
+    self._run_test(kwargs, 'padding', ['valid', 'same', 'causal'])
     self._run_test(kwargs, 'strides', [2])
     self._run_test(kwargs, 'dilation_rate', [2])
     self._run_test(kwargs, 'depth_multiplier', [2])
@@ -479,6 +483,10 @@ class Conv3DTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_conv3d(self):
+
+    if test.is_built_with_rocm():
+      self.skipTest("5D tensors are not yet supported in ROCm")
+
     kwargs = {
         'filters': 2,
         'kernel_size': (3, 3, 3),

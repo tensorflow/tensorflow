@@ -106,7 +106,7 @@ class ReluTest(test.TestCase):
   # The gradient test for ReLU is a bit tricky as the derivative is not well
   # defined at around zero and we want to avoid that in terms of input values.
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -151,7 +151,7 @@ class ReluTest(test.TestCase):
         self.assertAllClose(dx_f32_v, dx_f16_v, atol=3e-4)
 
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -168,7 +168,7 @@ class ReluTest(test.TestCase):
     self.assertLess(err, 1e-10)
 
   def testGradGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -185,7 +185,7 @@ class ReluTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -203,7 +203,7 @@ class ReluTest(test.TestCase):
     self.assertLess(err, 1e-10)
 
   def testGradientScalar(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = variables.Variable(100.)
       y = nn_ops.relu(x)
       loss = y**2
@@ -251,7 +251,7 @@ class Relu6Test(test.TestCase):
   # not well defined at around zero and six and we want to avoid that
   # in terms of input values.
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
           shape=[2, 5],
@@ -267,7 +267,7 @@ class Relu6Test(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 6.1, 6.3, 6.5, 6.7, 6.9],
           shape=[2, 5],
@@ -315,7 +315,7 @@ class EluTest(test.TestCase):
           use_gpu=True)
 
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, name="x")
       y = nn_ops.elu(x, name="elu")
@@ -326,7 +326,7 @@ class EluTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
       y = nn_ops.elu(x, name="elu")
@@ -337,7 +337,7 @@ class EluTest(test.TestCase):
     self.assertLess(err, 1e-6)
 
   def testGradGrad(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtype=dtypes.float32)
       elu = nn_ops.elu(x)
       g, = gradients_impl.gradients(elu, x)
@@ -348,7 +348,7 @@ class EluTest(test.TestCase):
         self.assertLess(err, 1e-4)
 
   def testGradGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -365,7 +365,7 @@ class EluTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -417,7 +417,7 @@ class SeluTest(test.TestCase):
           use_gpu=True)
 
   def testGradientFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, name="x")
       y = nn_ops.selu(x, name="selu")
@@ -428,7 +428,7 @@ class SeluTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradientFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
       x = constant_op.constant(x_val, dtype=dtypes.float64, name="x")
       y = nn_ops.selu(x, name="selu")
@@ -439,7 +439,7 @@ class SeluTest(test.TestCase):
     self.assertLess(err, 1e-6)
 
   def testGradGradFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -456,7 +456,7 @@ class SeluTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -505,7 +505,7 @@ class CreluTest(test.TestCase):
             use_gpu=True)
 
   def testNumbersWithAxis0(self):
-    with self.test_session():
+    with self.cached_session():
       crelu = nn_ops.crelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=0)
       tf_relu = crelu.eval()
@@ -514,7 +514,7 @@ class CreluTest(test.TestCase):
       self.assertAllEqual(np_crelu, tf_relu)
 
   def testNumbersWithAxis1(self):
-    with self.test_session():
+    with self.cached_session():
       crelu = nn_ops.crelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]), axis=1)
       tf_relu = crelu.eval()

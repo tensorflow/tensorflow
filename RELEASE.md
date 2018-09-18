@@ -1,3 +1,9 @@
+# Release 1.10.1
+## Bug Fixes and Other Changes
+
+* `tf.keras`:
+  * Fixing keras on Cloud TPUs. No new binaries will be built for Windows.
+
 # Release 1.10.0
 
 ## Major Features And Improvements

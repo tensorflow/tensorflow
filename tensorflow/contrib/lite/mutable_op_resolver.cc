@@ -34,6 +34,7 @@ void MutableOpResolver::AddBuiltin(tflite::BuiltinOperator op,
                                    int min_version, int max_version) {
   for (int version = min_version; version <= max_version; ++version) {
     TfLiteRegistration new_registration = *registration;
+    new_registration.custom_name = nullptr;
     new_registration.builtin_code = op;
     new_registration.version = version;
     auto op_key = std::make_pair(op, version);
@@ -47,6 +48,7 @@ void MutableOpResolver::AddCustom(const char* name,
   for (int version = min_version; version <= max_version; ++version) {
     TfLiteRegistration new_registration = *registration;
     new_registration.builtin_code = BuiltinOperator_CUSTOM;
+    new_registration.custom_name = name;
     new_registration.version = version;
     auto op_key = std::make_pair(name, version);
     custom_ops_[op_key] = new_registration;

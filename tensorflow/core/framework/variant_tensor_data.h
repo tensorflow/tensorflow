@@ -19,13 +19,13 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
 class VariantTensorDataProto;
-class Tensor;
 
 // The serialization format for Variant objects. Objects with references to
 // other Tensors can simply store those tensors in the `tensors` field, and
@@ -38,7 +38,7 @@ class Tensor;
 class VariantTensorData {
  public:
   VariantTensorData();
-  VariantTensorData(const VariantTensorDataProto& proto);
+  VariantTensorData(VariantTensorDataProto proto);
   ~VariantTensorData();
 
   // Name of the type of objects being serialized.
@@ -68,12 +68,14 @@ class VariantTensorData {
 
   // Conversion to and from VariantTensorDataProto
   void ToProto(VariantTensorDataProto* proto) const;
-  bool FromProto(const VariantTensorDataProto& proto);
+  // This allows optimizations via std::move.
+  bool FromProto(VariantTensorDataProto proto);
+  bool FromConstProto(const VariantTensorDataProto& proto);
 
   // Serialization via VariantTensorDataProto
   string SerializeAsString() const;
   bool SerializeToString(string* buf);
-  bool ParseFromString(const string& s);
+  bool ParseFromString(string s);
 
   string DebugString() const;
 

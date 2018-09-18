@@ -108,7 +108,7 @@ class Conv3DTest(test.TestCase):
             use_gpu=use_gpu)
         results.append(result)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         values = sess.run(results)
         for value in values:
           print("expected = ", expected)
@@ -183,7 +183,7 @@ class Conv3DTest(test.TestCase):
         expected_results.append(expected)
         computed_results.append(computed)
         tolerance = 1e-2 if use_gpu else 1e-5
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           expected_values = sess.run(expected_results)
           computed_values = sess.run(computed_results)
           for e_value, c_value in zip(expected_values, computed_values):

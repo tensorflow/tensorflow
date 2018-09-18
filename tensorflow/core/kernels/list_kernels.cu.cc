@@ -94,11 +94,10 @@ REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(bool);
 #undef REGISTER_TENSOR_LIST_FROM_TENSOR_GPU
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_GPU,
-                                          TensorList, TensorList::kTypeName,
+                                          TensorList,
                                           TensorListBinaryAdd<GPUDevice>);
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_GPU, TensorList,
-                                         TensorList::kTypeName,
                                          TensorListZerosLike<GPUDevice>);
 
 }  // namespace tensorflow
