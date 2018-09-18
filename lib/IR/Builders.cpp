@@ -157,6 +157,10 @@ AffineExpr *Builder::getAddExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Add, lhs, rhs, context);
 }
 
+AffineExpr *Builder::getAddExpr(AffineExpr *lhs, int64_t rhs) {
+  return AffineBinaryOpExpr::getAdd(lhs, rhs, context);
+}
+
 AffineExpr *Builder::getMulExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs, rhs, context);
 }
@@ -169,6 +173,10 @@ AffineExpr *Builder::getMulExpr(AffineExpr *lhs, int64_t rhs) {
 
 AffineExpr *Builder::getSubExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return getAddExpr(lhs, getMulExpr(rhs, getConstantExpr(-1)));
+}
+
+AffineExpr *Builder::getSubExpr(AffineExpr *lhs, int64_t rhs) {
+  return AffineBinaryOpExpr::getAdd(lhs, -rhs, context);
 }
 
 AffineExpr *Builder::getModExpr(AffineExpr *lhs, AffineExpr *rhs) {

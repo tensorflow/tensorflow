@@ -101,7 +101,9 @@ public:
   AffineSymbolExpr *getSymbolExpr(unsigned position);
   AffineConstantExpr *getConstantExpr(int64_t constant);
   AffineExpr *getAddExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getAddExpr(AffineExpr *lhs, int64_t rhs);
   AffineExpr *getSubExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getSubExpr(AffineExpr *lhs, int64_t rhs);
   AffineExpr *getMulExpr(AffineExpr *lhs, AffineExpr *rhs);
   AffineExpr *getMulExpr(AffineExpr *lhs, int64_t rhs);
   AffineExpr *getModExpr(AffineExpr *lhs, AffineExpr *rhs);

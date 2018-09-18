@@ -82,9 +82,6 @@ public:
   /// Returns nullptr if the statement is unlinked.
   MLFunction *findFunction() const;
 
-  /// Returns true if there are no more loops nested under this stmt.
-  bool isInnermost() const;
-
   /// Destroys this statement and its subclass data.
   void destroy();
 

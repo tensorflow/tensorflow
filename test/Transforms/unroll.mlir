@@ -462,7 +462,7 @@ mlfunc @loop_nest_operand2() {
 }
 
 // Difference between loop bounds is constant, but not a multiple of unroll
-// factor. A cleanup loop is generated.
+// factor. The cleanup loop happens to be a single iteration one and is promoted.
 // UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand3() {
 mlfunc @loop_nest_operand3() {
   // UNROLL-BY-4: for %i0 = 1 to 100 step 2 {
@@ -473,30 +473,30 @@ mlfunc @loop_nest_operand3() {
     // UNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %3 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: }
-    // UNROLL-BY-4-NEXT: for %i2 = #map{{[0-9]+}}(%i0) to #map{{[0-9]+}}(%i0) {
     // UNROLL-BY-4-NEXT: %4 = "foo"() : () -> i32
-    // UNROLL-BY-4-NEXT: }
-    for %j = (d0) -> (d0) (%i) to (d0) -> (d0 + 4) (%i) {
+    for %j = (d0) -> (d0) (%i) to (d0) -> (d0 + 8) (%i) {
       %x = "foo"() : () -> i32
     }
   } // UNROLL-BY-4: }
   return
 }
 
-// Will not be unrolled for now. TODO(bondhugula): handle this.
-// xUNROLL-BY-4-LABEL: mlfunc @loop_nest_operand4(%arg0 : affineint) {
+// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand4(%arg0 : affineint) {
 mlfunc @loop_nest_operand4(%N : affineint) {
-  // UNROLL-BY-4: for %i0 = 1 to 100 step 2 {
-  for %i = 1 to 100 step 2 {
-    // UNROLL-BY-4: for %i1 = 0 to %arg0 {
-    // xUNROLL-BY-4: for %i1 = 0 to #map{{[0-9]+}}(%N) step 4 {
-    // xUNROLL-BY-4: %0 = "foo"() : () -> i32
-    // xUNROLL-BY-4-NEXT: %1 = "foo"() : () -> i32
-    // xUNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32
-    // xUNROLL-BY-4-NEXT: %3 = "foo"() : () -> i32
-    // xUNROLL-BY-4-NEXT: }
-    // a cleanup loop should be generated here.
-    for %j = (d0) -> (0) (%N) to %N {
+  // UNROLL-BY-4: for %i0 = 1 to 100 {
+  for %i = 1 to 100 {
+    // UNROLL-BY-4: for %i1 = 1 to #map{{[0-9]+}}()[%arg0] step 4 {
+    // UNROLL-BY-4: %0 = "foo"() : () -> i32
+    // UNROLL-BY-4-NEXT: %1 = "foo"() : () -> i32
+    // UNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32
+    // UNROLL-BY-4-NEXT: %3 = "foo"() : () -> i32
+    // UNROLL-BY-4-NEXT: }
+    // A cleanup loop will be be generated here.
+    // UNROLL-BY-4-NEXT: for %i2 = #map{{[0-9]+}}()[%arg0] to %arg0 {
+    // UNROLL-BY-4-NEXT: %4 = "foo"() : () -> i32
+    // UNROLL-BY-4_NEXT: }
+    // Specify the lower bound so that both lb and ub operands match.
+    for %j = ()[s0] -> (1)()[%N] to %N {
       %x = "foo"() : () -> i32
     }
   }

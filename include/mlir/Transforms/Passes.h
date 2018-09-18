@@ -27,9 +27,7 @@
 
 namespace mlir {
 
-class ForStmt;
 class FunctionPass;
-class MLFunction;
 class MLFunctionPass;
 class ModulePass;
 
@@ -38,18 +36,10 @@ class ModulePass;
 MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,
                                      int unrollFull = -1);
 
-/// Unrolls this loop completely.
-bool loopUnrollFull(ForStmt *forStmt);
-/// Unrolls this loop by the specified unroll factor.
-bool loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor);
-
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command
 /// line if provided.
 MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
-
-/// Unrolls and jams this loop by the specified factor.
-bool loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
 
 /// Creates an affine expression simplification pass.
 FunctionPass *createSimplifyAffineExprPass();
@@ -59,14 +49,6 @@ FunctionPass *createSimplifyAffineExprPass();
 /// generated CFG functions.
 ModulePass *createConvertToCFGPass();
 
-/// Promotes the loop body of a ForStmt to its containing block if the ForStmt
-/// was known to have a single iteration. Returns false otherwise.
-bool promoteIfSingleIteration(ForStmt *forStmt);
-
-/// Promotes all single iteration ForStmt's in the MLFunction, i.e., moves
-/// their body into the containing StmtBlock.
-void promoteSingleIterationLoops(MLFunction *f);
-
 } // end namespace mlir
 
-#endif // MLIR_TRANSFORMS_LOOP_H
+#endif // MLIR_TRANSFORMS_PASSES_H

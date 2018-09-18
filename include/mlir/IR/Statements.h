@@ -275,6 +275,10 @@ public:
   /// Sets the upper bound to the given constant value.
   void setConstantUpperBound(int64_t value);
 
+  /// Returns true if both the lower and upper bound have the same operand lists
+  /// (same operands in the same order).
+  bool matchingBoundOperandList() const;
+
   //===--------------------------------------------------------------------===//
   // Operands
   //===--------------------------------------------------------------------===//
@@ -343,7 +347,9 @@ private:
   AffineMap *ubMap;
   // Constant step.
   int64_t step;
-  // Operands for the lower and upper bounds.
+  // Operands for the lower and upper bounds, with the former followed by the
+  // latter. Dimensional operands are followed by symbolic operands for each
+  // bound.
   std::vector<StmtOperand> operands;
 
   explicit ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,

@@ -41,15 +41,16 @@
 //
 // Note: 'if/else' blocks are not jammed. So, if there are loops inside if
 // stmt's, bodies of those loops will not be jammed.
-//
 //===----------------------------------------------------------------------===//
 #include "mlir/Transforms/Passes.h"
 
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/StmtVisitor.h"
+#include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
@@ -108,6 +109,15 @@ bool LoopUnrollAndJam::runOnForStmt(ForStmt *forStmt) {
   return loopUnrollJamByFactor(forStmt, kDefaultUnrollJamFactor);
 }
 
+bool mlir::loopUnrollJamUpToFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forStmt);
+
+  if (mayBeConstantTripCount.hasValue() &&
+      mayBeConstantTripCount.getValue() < unrollJamFactor)
+    return loopUnrollJamByFactor(forStmt, mayBeConstantTripCount.getValue());
+  return loopUnrollJamByFactor(forStmt, unrollJamFactor);
+}
+
 /// Unrolls and jams this loop by the specified factor.
 bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   // Gathers all maximal sub-blocks of statements that do not themselves include
@@ -140,19 +150,32 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   if (unrollJamFactor == 1 || forStmt->getStatements().empty())
     return false;
 
-  Optional<uint64_t> mayTripCount = getConstantTripCount(*forStmt).getValue();
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forStmt);
 
-  if (!mayTripCount.hasValue())
+  if (!mayBeConstantTripCount.hasValue() &&
+      getLargestDivisorOfTripCount(*forStmt) % unrollJamFactor != 0)
     return false;
 
-  uint64_t tripCount = mayTripCount.getValue();
-  int64_t lb = forStmt->getConstantLowerBound();
-  int64_t step = forStmt->getStep();
+  auto *lbMap = forStmt->getLowerBoundMap();
+  auto *ubMap = forStmt->getUpperBoundMap();
 
-  // If the trip count is lower than the unroll jam factor, no unrolled body.
+  // Loops with max/min expressions won't be unrolled here (the output can't be
+  // expressed as an MLFunction in the general case). However, the right way to
+  // do such unrolling for an MLFunction would be to specialize the loop for the
+  // 'hotspot' case and unroll that hotspot.
+  if (lbMap->getNumResults() != 1 || ubMap->getNumResults() != 1)
+    return false;
+
+  // Same operand list for lower and upper bound for now.
+  // TODO(bondhugula): handle bounds with different sets of operands.
+  if (!forStmt->matchingBoundOperandList())
+    return false;
+
+  // If the trip count is lower than the unroll jam factor, no unroll jam.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
-  if (tripCount < unrollJamFactor)
-    return true;
+  if (mayBeConstantTripCount.hasValue() &&
+      mayBeConstantTripCount.getValue() < unrollJamFactor)
+    return false;
 
   // Gather all sub-blocks to jam upon the loop being unrolled.
   JamBlockGatherer jbg;
@@ -161,23 +184,27 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
 
   // Generate the cleanup loop if trip count isn't a multiple of
   // unrollJamFactor.
-  if (tripCount % unrollJamFactor) {
+  if (mayBeConstantTripCount.hasValue() &&
+      mayBeConstantTripCount.getValue() % unrollJamFactor != 0) {
     DenseMap<const MLValue *, MLValue *> operandMap;
     // Insert the cleanup loop right after 'forStmt'.
     MLFuncBuilder builder(forStmt->getBlock(),
                           std::next(StmtBlock::iterator(forStmt)));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
-    cleanupForStmt->setConstantLowerBound(
-        lb + (tripCount - tripCount % unrollJamFactor) * step);
+    cleanupForStmt->setLowerBoundMap(
+        getCleanupLoopLowerBound(*forStmt, unrollJamFactor, &builder));
+
+    // The upper bound needs to be adjusted.
+    forStmt->setUpperBoundMap(
+        getUnrolledLoopUpperBound(*forStmt, unrollJamFactor, &builder));
 
     // Promote the loop body up if this has turned into a single iteration loop.
     promoteIfSingleIteration(cleanupForStmt);
   }
 
-  MLFuncBuilder b(forStmt);
+  // Scale the step of loop being unroll-jammed by the unroll-jam factor.
+  int64_t step = forStmt->getStep();
   forStmt->setStep(step * unrollJamFactor);
-  forStmt->setConstantUpperBound(
-      lb + (tripCount - tripCount % unrollJamFactor - 1) * step);
 
   for (auto &subBlock : subBlocks) {
     // Builder to insert unroll-jammed bodies. Insert right at the end of

@@ -84,18 +84,6 @@ MLFunction *Statement::findFunction() const {
   return block ? block->findFunction() : nullptr;
 }
 
-bool Statement::isInnermost() const {
-  struct NestedLoopCounter : public StmtWalker<NestedLoopCounter> {
-    unsigned numNestedLoops;
-    NestedLoopCounter() : numNestedLoops(0) {}
-    void walkForStmt(const ForStmt *fs) { numNestedLoops++; }
-  };
-
-  NestedLoopCounter nlc;
-  nlc.walk(const_cast<Statement *>(this));
-  return nlc.numNestedLoops == 1;
-}
-
 MLValue *Statement::getOperand(unsigned idx) {
   return getStmtOperand(idx).get();
 }
@@ -359,6 +347,20 @@ void ForStmt::setConstantLowerBound(int64_t value) {
 
 void ForStmt::setConstantUpperBound(int64_t value) {
   setUpperBound({}, AffineMap::getConstantMap(value, getContext()));
+}
+
+bool ForStmt::matchingBoundOperandList() const {
+  if (lbMap->getNumDims() != ubMap->getNumDims() ||
+      lbMap->getNumSymbols() != ubMap->getNumSymbols())
+    return false;
+
+  unsigned numOperands = lbMap->getNumInputs();
+  for (unsigned i = 0, e = lbMap->getNumInputs(); i < e; i++) {
+    // Compare MLValue *'s.
+    if (getOperand(i) != getOperand(numOperands + i))
+      return false;
+  }
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
