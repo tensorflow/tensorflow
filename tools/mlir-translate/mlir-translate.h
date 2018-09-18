@@ -32,14 +32,14 @@ using TranslateFunction =
     std::function<bool(llvm::StringRef inputFilename,
                        llvm::StringRef oututFilename, MLIRContext *)>;
 
-// Use TranslateRegistration as a global initialiser that registers a
-// function and associates it with name. This requires that a command
-// has not been registered to a given name.
+// Use TranslateRegistration as a global initialiser that registers a function
+// and associates it with name. This requires that a translation has not been
+// registered to a given name.
 //
 // Usage:
 //
 //   // At namespace scope.
-//   static CommandRegistration Unused(&MySubCommand, [] { ... });
+//   static TranslateRegistration Unused(&MySubCommand, [] { ... });
 //
 struct TranslateRegistration {
   TranslateRegistration(llvm::StringRef name,

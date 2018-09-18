@@ -1,4 +1,4 @@
-// RUN: mlir-translate mlir-to-mlir %s -o - | FileCheck %s
+// RUN: mlir-translate -mlir-to-mlir %s -o - | FileCheck %s
 
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
 #map0 = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
