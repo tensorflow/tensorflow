@@ -732,18 +732,6 @@ class IgniteDataset(Dataset):
     self.part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
     self.page_size = ops.convert_to_tensor(page_size, dtype=dtypes.int32,
                                            name="page_size")
-    self.username = ops.convert_to_tensor("" if username is None else username,
-                                          dtype=dtypes.string, name="username")
-    self.password = ops.convert_to_tensor("" if password is None else password,
-                                          dtype=dtypes.string, name="password")
-    self.certfile = ops.convert_to_tensor("" if certfile is None else certfile,
-                                          dtype=dtypes.string, name="certfile")
-    self.keyfile = ops.convert_to_tensor("" if keyfile is None else keyfile,
-                                         dtype=dtypes.string, name="keyfile")
-    self.cert_password = ops.convert_to_tensor("" if cert_password is None
-                                               else cert_password,
-                                               dtype=dtypes.string,
-                                               name="cert_password")
     self.schema = ops.convert_to_tensor(self.cache_type.to_flat(),
                                         dtype=dtypes.int32, name="schema")
     self.permutation = ops.convert_to_tensor(self.cache_type.to_permutation(),
@@ -753,10 +741,8 @@ class IgniteDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.ignite_dataset(self.cache_name, self.host,
                                           self.port, self.local, self.part,
-                                          self.page_size, self.username,
-                                          self.password, self.certfile,
-                                          self.keyfile, self.cert_password,
-                                          self.schema, self.permutation)
+                                          self.page_size, self.schema,
+                                          self.permutation)
 
   @property
   def output_classes(self):

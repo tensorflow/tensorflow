@@ -35,28 +35,60 @@ class IgniteDatasetTest(test.TestCase):
   """
 
   def test_ignite_dataset_with_plain_client(self):
+    """Test Ignite Dataset with plain client.
+    """
+    self._clear_env()
     ds = IgniteDataset(cache_name="SQL_PUBLIC_TEST_CACHE", port=42300)
-    self.__check_dataset(ds)
+    self._check_dataset(ds)
 
   def test_ignite_dataset_with_ssl_client(self):
-    ds = IgniteDataset(cache_name="SQL_PUBLIC_TEST_CACHE", port=42301,\
-      certfile=os.path.dirname(os.path.realpath(__file__)) +\
-      "/keystore/client.pem", cert_password="123456")
-    self.__check_dataset(ds)
+    """Test Ignite Dataset with ssl client.
+    """
+    self._clear_env()
+    os.environ["IGNITE_DATASET_CERTFILE"] = os.path.dirname(
+        os.path.realpath(__file__)) + "/keystore/client.pem"
+    os.environ["IGNITE_DATASET_CERT_PASSWORD"] = "123456"
+
+    ds = IgniteDataset(cache_name="SQL_PUBLIC_TEST_CACHE", port=42301,
+                       certfile=os.environ["IGNITE_DATASET_CERTFILE"],
+                       cert_password=os.environ["IGNITE_DATASET_CERT_PASSWORD"])
+    self._check_dataset(ds)
 
   def test_ignite_dataset_with_ssl_client_and_auth(self):
-    ds = IgniteDataset(cache_name="SQL_PUBLIC_TEST_CACHE", port=42302,\
-      certfile=os.path.dirname(os.path.realpath(__file__)) +\
-      "/keystore/client.pem", cert_password="123456",\
-      username="ignite", password="ignite")
-    self.__check_dataset(ds)
+    """Test Ignite Dataset with ssl client and authentication.
+    """
+    self._clear_env()
+    os.environ['IGNITE_DATASET_USERNAME'] = "ignite"
+    os.environ['IGNITE_DATASET_PASSWORD'] = "ignite"
+    os.environ['IGNITE_DATASET_CERTFILE'] = os.path.dirname(
+        os.path.realpath(__file__)) + "/keystore/client.pem"
+    os.environ['IGNITE_DATASET_CERT_PASSWORD'] = "123456"
 
-  def __check_dataset(self, dataset):
+    ds = IgniteDataset(cache_name="SQL_PUBLIC_TEST_CACHE", port=42302,
+                       certfile=os.environ['IGNITE_DATASET_CERTFILE'],
+                       cert_password=os.environ['IGNITE_DATASET_CERT_PASSWORD'],
+                       username=os.environ['IGNITE_DATASET_USERNAME'],
+                       password=os.environ['IGNITE_DATASET_PASSWORD'])
+    self._check_dataset(ds)
+
+  def _clear_env(self):
+    """Clears environment variables used by Ignite Dataset.
+    """
+    if 'IGNITE_DATASET_USERNAME' in os.environ:
+      del os.environ['IGNITE_DATASET_USERNAME']
+    if 'IGNITE_DATASET_PASSWORD' in os.environ:
+      del os.environ['IGNITE_DATASET_PASSWORD']
+    if 'IGNITE_DATASET_CERTFILE' in os.environ:
+      del os.environ['IGNITE_DATASET_CERTFILE']
+    if 'IGNITE_DATASET_CERT_PASSWORD' in os.environ:
+      del os.environ['IGNITE_DATASET_CERT_PASSWORD']
+
+  def _check_dataset(self, dataset):
     """Checks that dataset provids correct data.
     """
-    self.assertEquals(tf.int64, dataset.output_types['key'])
-    self.assertEquals(tf.string, dataset.output_types['val']['NAME'])
-    self.assertEquals(tf.int64, dataset.output_types['val']['VAL'])
+    self.assertEqual(tf.int64, dataset.output_types['key'])
+    self.assertEqual(tf.string, dataset.output_types['val']['NAME'])
+    self.assertEqual(tf.int64, dataset.output_types['val']['VAL'])
 
     it = dataset.make_one_shot_iterator()
     ne = it.get_next()
@@ -66,11 +98,11 @@ class IgniteDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(ne)
 
-    self.assertEquals({'key': 1, 'val': {'NAME': b'TEST1', 'VAL': 42}},\
+    self.assertEqual({'key': 1, 'val': {'NAME': b'TEST1', 'VAL': 42}},\
       rows[0])
-    self.assertEquals({'key': 2, 'val': {'NAME': b'TEST2', 'VAL': 43}},\
+    self.assertEqual({'key': 2, 'val': {'NAME': b'TEST2', 'VAL': 43}},\
       rows[1])
-    self.assertEquals({'key': 3, 'val': {'NAME': b'TEST3', 'VAL': 44}},\
+    self.assertEqual({'key': 3, 'val': {'NAME': b'TEST3', 'VAL': 44}},\
       rows[2])
 
 if __name__ == "__main__":
