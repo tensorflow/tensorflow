@@ -20,12 +20,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
+
 class ByteSwapper {
  public:
   ByteSwapper(bool big_endian) {
-    int x = 1;
-    bool is_little_endian = (*(char *)&x == 1);
-    swap_ = big_endian == is_little_endian;
+    swap_ = big_endian == kLittleEndian;
   }
 
   inline void SwapIfRequiredInt16(int16_t *x) const {
