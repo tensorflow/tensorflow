@@ -932,9 +932,6 @@ inline void DepthwiseConv(
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  const bool has_dilation = (params.dilation_width_factor != 1) ||
-                            (params.dilation_height_factor != 1);
-
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
   const int input_height = input_shape.Dims(1);
@@ -966,7 +963,8 @@ inline void DepthwiseConv(
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER && !has_dilation) {      \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER &&                       \
+      dilation_height_factor == 1 && dilation_width_factor == 1) {        \
     row_accum_func =                                                      \
         FloatDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,      \
                                    FIXED_DEPTH_MULTIPLIER>;               \

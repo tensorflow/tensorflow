@@ -1718,18 +1718,15 @@ inline void DepthwiseConv(
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-  const bool has_dilation =
-      (dilation_width_factor != 1) || (dilation_height_factor != 1);
-
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
-  if (Fast3x3FilterKernelSupported(input_shape, filter_shape, stride_width,
-                                   stride_height, has_dilation, pad_width,
-                                   pad_height, depth_multiplier, output_shape,
-                                   output_shift)) {
+  if (Fast3x3FilterKernelSupported(
+          input_shape, filter_shape, stride_width, stride_height,
+          dilation_width_factor, dilation_height_factor, pad_width, pad_height,
+          depth_multiplier, output_shape, output_shift)) {
     DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
                            filter_data, bias_shape, bias_data, output_shape,
                            output_data);
@@ -1756,7 +1753,8 @@ inline void DepthwiseConv(
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER && !has_dilation) {      \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER &&                       \
+      dilation_width_factor == 1 && dilation_height_factor == 1) {        \
     row_accum_func =                                                      \
         QuantizedDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,  \
                                        FIXED_DEPTH_MULTIPLIER>;           \

@@ -3176,8 +3176,9 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 
 inline bool Fast3x3FilterKernelSupported(
     const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
-    int32 stride_width, int32 stride_height, bool has_dilation, int32 pad_width,
-    int32 pad_height, int32 depth_multiplier, const RuntimeShape& output_shape,
+    int32 stride_width, int32 stride_height, int32 dilation_width_factor,
+    int32 dilation_height_factor, int32 pad_width, int32 pad_height,
+    int32 depth_multiplier, const RuntimeShape& output_shape,
     int32 output_shift) {
   const int32 input_height = input_shape.Dims(1);
   const int32 input_width = input_shape.Dims(2);
@@ -3193,7 +3194,8 @@ inline bool Fast3x3FilterKernelSupported(
       (stride_height == 1 || stride_height == 2) &&
       (stride_width == stride_height) && (pad_width == 0 || pad_width == 1) &&
       (pad_height == 0 || pad_height == 1) && (pad_width == pad_height) &&
-      (input_depth % 8) == 0 && (output_shift > 0) && !has_dilation;
+      (input_depth % 8) == 0 && (output_shift > 0) &&
+      dilation_width_factor == 1 && dilation_height_factor == 1;
 
   if (!supported) {
     return false;
