@@ -2210,7 +2210,6 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(im2col_shape.DimensionsCount(), 4);
 
   const int batch_size = input_shape.Dims(0);
   const int filter_width = filter_shape.Dims(2);
@@ -2376,7 +2375,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(im2col_shape.DimensionsCount(), 4);
 
   const uint8* gemm_input_data = nullptr;
   const RuntimeShape* gemm_input_shape = nullptr;
