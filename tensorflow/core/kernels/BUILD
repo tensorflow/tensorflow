@@ -631,6 +631,7 @@ cc_library(
         ":mirror_pad_op",
         ":one_hot_op",
         ":pack_op",
+		":packing_ops",
         ":pad_op",
         ":quantize_and_dequantize_op",
         ":reshape_op",
@@ -770,6 +771,18 @@ tf_kernel_library(
 tf_kernel_library(
     name = "pack_op",
     prefix = "pack_op",
+    deps = ARRAY_DEPS,
+)
+
+tf_kernel_library(
+    name = "packing_ops",
+    #srcs = ["packing_ops.cc"],
+    hdrs = ["packing_functors.h"],
+    gpu_srcs = [
+        "packing_functors.h",
+        "packing_functors_gpu.cu.cc",
+    ],
+    prefix = "packing_ops",
     deps = ARRAY_DEPS,
 )
 
@@ -957,6 +970,26 @@ tf_cc_test(
         ":batch_norm_op",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "packing_ops_test",
+    size = "small",
+    srcs = ["packing_ops_test.cc"],
+    tags = ["requires-gpu-sm35"],
+    deps = [
+        ":packing_ops",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

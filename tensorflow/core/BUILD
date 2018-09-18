@@ -1054,6 +1054,7 @@ tf_gen_op_libs(
         "nn_ops",
         "no_op",
         "parsing_ops",
+		"packing_ops",
         "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
@@ -1170,6 +1171,7 @@ cc_library(
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
+		":packing_ops_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
         ":remote_fused_graph_ops_op_lib",
@@ -1320,6 +1322,7 @@ cc_library(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
         "//tensorflow/core/kernels:nn",
+        "//tensorflow/core/kernels:packing_ops",
         "//tensorflow/core/kernels:parameterized_truncated_normal_op",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
@@ -3653,12 +3656,13 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_test(
+tf_cc_tests_gpu(
     name = "cudnn_rnn_ops_test_cc",
     size = "small",
     srcs = [
         "ops/cudnn_rnn_ops_test.cc",
     ],
+    linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":cudnn_rnn_ops",
         "//tensorflow/core",
@@ -4379,6 +4383,32 @@ tf_cc_test_gpu(
     srcs = ["common_runtime/gpu/gpu_stream_util_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":gpu_runtime",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:ops_util",
+    ],
+)
+
+tf_cc_test_gpu(
+    name = "packing_ops_test",
+    size = "small",
+    srcs = ["ops/packing_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

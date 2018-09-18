@@ -392,5 +392,5 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     });
-
+	
 }  // namespace tensorflow

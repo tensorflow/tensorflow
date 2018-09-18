@@ -21,6 +21,7 @@ tf_custom_op_py_library(
         "python/layers/__init__.py",
         "python/layers/cudnn_rnn.py",
         "python/ops/cudnn_rnn_ops.py",
+        "python/ops/packing_ops.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -30,6 +31,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:cudnn_rnn_ops_gen",
+        "//tensorflow/python:packing_ops_gen",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
@@ -45,7 +47,10 @@ tf_custom_op_py_library(
 cuda_py_test(
     name = "cudnn_rnn_ops_test",
     size = "large",
-    srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
+    srcs = [
+		"python/kernel_tests/cudnn_rnn_ops_test.py",
+		"python/kernel_tests/packing_ops_test.py"		
+	],
     additional_deps = [
         ":cudnn_rnn_py",
         "//tensorflow/core:protos_all_py",

@@ -1584,6 +1584,13 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "packing_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )

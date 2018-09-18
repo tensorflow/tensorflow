@@ -122,7 +122,7 @@ struct CudaLaunchConfig {
 // This is assuming the kernel is quite simple and will largely be
 // memory-limited.
 // REQUIRES: work_element_count > 0.
-inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
+inline CudaLaunchConfig GetCudaLaunchConfig(const int work_element_count,
                                             const Eigen::GpuDevice& d) {
   CHECK_GT(work_element_count, 0);
   CudaLaunchConfig config;
