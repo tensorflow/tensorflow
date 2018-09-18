@@ -725,7 +725,9 @@ class GradientTape(object):
     self._persistent = persistent
     self._watch_accessed_variables = watch_accessed_variables
     self._recording = False
-    context.context().start_step()
+    self._created_eagerly = context.executing_eagerly()
+    if self._created_eagerly:
+      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -755,7 +757,8 @@ class GradientTape(object):
     self._recording = False
 
   def __del__(self):
-    context.context().end_step()
+    if self._created_eagerly:
+      context.context().end_step()
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
