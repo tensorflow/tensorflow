@@ -42,5 +42,4 @@ bazel test --config=cuda --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
     -//tensorflow/python/kernel_tests:softplus_op_test \
-    -//tensorflow/python/kernel_tests:softsign_op_test \
-    -//tensorflow/python:timeline_test
+    -//tensorflow/python/kernel_tests:softsign_op_test
