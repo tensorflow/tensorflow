@@ -3393,8 +3393,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
 
-class NTMCell(rnn_cell_impl.RNNCell):
-  """Neural Turing Machine Cell with LSTM controller.
+class NTMCell(rnn_cell_impl.LayerRNNCell):
+  """Neural Turing Machine Cell with RNN controller.
 
     Implementation based on:
     https://arxiv.org/abs/1807.08518
@@ -3408,15 +3408,14 @@ class NTMCell(rnn_cell_impl.RNNCell):
     https://arxiv.org/abs/1410.5401
     A Graves, G Wayne, I Danihelka
   """
-  def __init__(self, controller_layers, controller_units, memory_size,
+  def __init__(self, controller, memory_size,
     memory_vector_dim, read_head_num, write_head_num, shift_range=1,
-    output_dim=None, clip_value=20, dtype=dtypes.float32, reuse=False):
+    output_dim=None, clip_value=20, dtype=dtypes.float32,
+    reuse=None, name=None):
     """Initialize the NTM Cell.
 
       Args:
-        controller_layers: int, The number of layers in the LSTM controller.
-        controller_units: int, The number of units per layer in the
-          LSTM controller
+        controller: an RNNCell, the RNN controller.
         memory_size: int, The number of memory locations in the
           NTM memory matrix
         memory_vector_dim: int, The dimensionality of each location in the
@@ -3437,11 +3436,15 @@ class NTMCell(rnn_cell_impl.RNNCell):
         reuse: (optional) Python boolean describing whether to reuse variables
           in an existing scope.  If not `True`, and the existing scope already
           has the given variables, an error is raised.
+        name: String, the name of the layer. Layers with the same name will
+          share weights, but to avoid mistakes we require reuse=True in such
+          cases.
     """
-    super(NTMCell, self).__init__(_reuse=reuse, dtype=dtype)
+    super(NTMCell, self).__init__(_reuse=reuse, dtype=dtype, name=name)
 
-    self.controller_layers = controller_layers
-    self.controller_units = controller_units
+    rnn_cell_impl.assert_like_rnncell("NTM RNN controller cell", controller)
+
+    self.controller = controller
     self.memory_size = memory_size
     self.memory_vector_dim = memory_vector_dim
     self.read_head_num = read_head_num
@@ -3449,27 +3452,62 @@ class NTMCell(rnn_cell_impl.RNNCell):
     self.clip_value = clip_value
     self.reuse = reuse
 
-    def single_cell(num_units):
-      return rnn_cell_impl.BasicLSTMCell(num_units, forget_bias=1.0)
-
-    self.controller = rnn_cell_impl.MultiRNNCell(
-      [single_cell(self.controller_units)
-        for _ in range(self.controller_layers)])
     self.NTMControllerState = collections.namedtuple('NTMControllerState',
       ('controller_state', 'read_vector_list', 'w_list', 'M'))
 
-    self.step = 0
     self.output_dim = output_dim
     self.shift_range = shift_range
 
-    self.o2p_initializer = init_ops.truncated_normal_initializer(
-      stddev=1.0 / math.sqrt(self.controller_units), dtype=self.dtype)
-    self.o2o_initializer = init_ops.truncated_normal_initializer(
-      stddev=1.0 / math.sqrt(
-        self.controller_units + self.memory_vector_dim * self.read_head_num),
-      dtype=self.dtype)
+    self.num_parameters_per_head = self.memory_vector_dim + \
+      2 * self.shift_range + 4
+    self.num_heads = self.read_head_num + self.write_head_num
+    self.total_parameter_num = self.num_parameters_per_head * self.num_heads + \
+      self.memory_vector_dim * 2 * self.write_head_num
 
-  def __call__(self, x, prev_state):
+  @property
+  def state_size(self):
+    return self.NTMControllerState(
+      controller_state=self.controller.state_size,
+      read_vector_list=[self.memory_vector_dim
+        for _ in range(self.read_head_num)],
+      w_list=[self.memory_size
+        for _ in range(self.read_head_num + self.write_head_num)],
+      M=tensor_shape.TensorShape([self.memory_size * self.memory_vector_dim]))
+
+  @property
+  def output_size(self):
+    return self.output_dim
+
+  def build(self, inputs_shape):
+    if self.output_dim is None:
+      if inputs_shape[1].value is None:
+        raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                         % inputs_shape)
+      else:
+        self.output_dim = inputs_shape[1].value
+
+    self._ntm_params_kernel = self.add_variable(
+        'ntm_parameters_kernel',
+        shape=[self.controller.output_size, self.total_parameter_num])
+
+    self._ntm_params_bias = self.add_variable(
+        'ntm_parameters_bias',
+        shape=[self.total_parameter_num],
+        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+
+    self._output_kernel = self.add_variable(
+        'ntm_output_kernel',
+        shape=[self.controller.output_size + \
+          self.memory_vector_dim * self.read_head_num, self.output_dim])
+
+    self._output_bias = self.add_variable(
+        'ntm_output_bias',
+        shape=[self.output_dim],
+        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+
+    self.built = True
+
+  def call(self, x, prev_state):
     prev_read_vector_list = prev_state.read_vector_list
 
     controller_input = array_ops.concat([x] + prev_read_vector_list, axis=1)
@@ -3477,21 +3515,18 @@ class NTMCell(rnn_cell_impl.RNNCell):
       controller_output, controller_state = self.controller(controller_input,
         prev_state.controller_state)
 
-    num_parameters_per_head = self.memory_vector_dim + 2 * self.shift_range + 4
-    num_heads = self.read_head_num + self.write_head_num
-    total_parameter_num = num_parameters_per_head * num_heads + \
-      self.memory_vector_dim * 2 * self.write_head_num
-    with vs.variable_scope('o2p', reuse=(self.step > 0) or self.reuse):
-      parameters = layers.fully_connected(
-        controller_output, total_parameter_num, activation_fn=None,
-        weights_initializer=self.o2p_initializer)
+    parameters = math_ops.matmul(controller_output, self._ntm_params_kernel)
+    parameters = nn_ops.bias_add(parameters, self._ntm_params_bias)
     parameters = clip_ops.clip_by_value(parameters,
       -self.clip_value, self.clip_value)
     head_parameter_list = array_ops.split(
-      parameters[:, :num_parameters_per_head * num_heads], num_heads, axis=1)
+      parameters[:, :self.num_parameters_per_head * self.num_heads],
+      self.num_heads,
+      axis=1)
     erase_add_list = array_ops.split(
-      parameters[:, num_parameters_per_head * num_heads:],
-      2 * self.write_head_num, axis=1)
+      parameters[:, self.num_parameters_per_head * self.num_heads:],
+      2 * self.write_head_num,
+      axis=1)
 
     prev_w_list = prev_state.w_list
     prev_M = prev_state.M
@@ -3525,21 +3560,14 @@ class NTMCell(rnn_cell_impl.RNNCell):
       erase_M = array_ops.ones(M.get_shape()) - math_ops.matmul(w, erase_vector)
       M = M * erase_M + math_ops.matmul(w, add_vector)
 
-    if not self.output_dim:
-      output_dim = x.get_shape()[1]
-    else:
-      output_dim = self.output_dim
-    with vs.variable_scope('o2o', reuse=(self.step > 0) or self.reuse):
-      NTM_output = layers.fully_connected(
-        array_ops.concat([controller_output] + read_vector_list, axis=1),
-        output_dim,
-        activation_fn=None,
-        weights_initializer=self.o2o_initializer)
-      NTM_output = clip_ops.clip_by_value(NTM_output,
-        -self.clip_value, self.clip_value)
+    ntm_output = math_ops.matmul(
+      array_ops.concat([controller_output] + read_vector_list, axis=1),
+      self._output_kernel)
+    ntm_output = nn_ops.bias_add(ntm_output, self._output_bias)
+    ntm_output = clip_ops.clip_by_value(ntm_output,
+      -self.clip_value, self.clip_value)
 
-    self.step += 1
-    return NTM_output, self.NTMControllerState(
+    return ntm_output, self.NTMControllerState(
       controller_state=controller_state, read_vector_list=read_vector_list,
       w_list=w_list, M=M)
 
@@ -3577,22 +3605,28 @@ class NTMCell(rnn_cell_impl.RNNCell):
     return w
 
   def zero_state(self, batch_size, dtype):
+    self._init_read_vectors = [self.add_variable(
+        'initial_read_vector_%d' % i,
+        shape=[self.memory_vector_dim])
+        for i in range(self.read_head_num)]
+
+    self._init_address_weights = [self.add_variable(
+        'initial_address_weights_%d' % i,
+        shape=[self.memory_size])
+        for i in range(self.read_head_num + self.write_head_num)]
+
     def expand(x, dim, N):
       return array_ops.concat(
         [array_ops.expand_dims(x, dim) for _ in range(N)], axis=dim)
-
-    def learned_init(units):
-      return array_ops.squeeze(layers.fully_connected(array_ops.ones([1, 1]),
-        units, activation_fn=None, biases_initializer=None))
     
     with vs.variable_scope('init', reuse=self.reuse):
       read_vector_list = [expand(
-        math_ops.tanh(learned_init(self.memory_vector_dim)),
+        math_ops.tanh(self._init_read_vectors[i]),
         dim=0, N=batch_size)
         for i in range(self.read_head_num)]
 
       w_list = [expand(
-          nn_ops.softmax(learned_init(self.memory_size)), dim=0, N=batch_size)
+          nn_ops.softmax(self._init_address_weights[i]), dim=0, N=batch_size)
         for i in range(self.read_head_num + self.write_head_num)]
 
       controller_init_state = self.controller.zero_state(batch_size, dtype)
@@ -3607,17 +3641,3 @@ class NTMCell(rnn_cell_impl.RNNCell):
         read_vector_list=read_vector_list,
         w_list=w_list,
         M=M)
-
-  @property
-  def state_size(self):
-    return self.NTMControllerState(
-      controller_state=self.controller.state_size,
-      read_vector_list=[self.memory_vector_dim
-        for _ in range(self.read_head_num)],
-      w_list=[self.memory_size
-        for _ in range(self.read_head_num + self.write_head_num)],
-      M=tensor_shape.TensorShape([self.memory_size * self.memory_vector_dim]))
-
-  @property
-  def output_size(self):
-    return self.output_dim
