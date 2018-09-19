@@ -136,8 +136,8 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
 
   MPIRendezvousMgr* mgr =
       reinterpret_cast<MPIRendezvousMgr*>(this->rendezvous_mgr_);
-  mgr->QueueRequest(string(parsed.FullKey()), step_id_,
-                    std::move(request_call), rendezvous_call);
+  mgr->QueueRequest(string(parsed.FullKey()), step_id_, std::move(request_call),
+                    rendezvous_call);
 }
 
 MPIRemoteRendezvous::~MPIRemoteRendezvous() {}
