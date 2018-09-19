@@ -750,6 +750,7 @@ tf_kernel_library(
         ":map_and_batch_dataset_op",
         ":map_dataset_op",
         ":map_defun_op",
+        ":matching_files_dataset_op",
         ":model_dataset_op",
         ":multi_device_iterator_ops",
         ":optimize_dataset_op",
@@ -808,3 +809,17 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
     ],
 )
+
+
+tf_kernel_library(
+    name = "matching_files_dataset_op",
+    srcs = ["matching_files_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
