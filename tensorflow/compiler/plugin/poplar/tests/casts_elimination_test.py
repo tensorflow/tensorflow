@@ -126,36 +126,5 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'Cast_1/convert.*/Cast']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
-  def testReductionSumVectorF16NoConverts(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float16, [1, 20, 20, 2], name="a")
-      output = nn.avg_pool(pa, ksize=[1, 10, 10, 1], strides=[1, 1, 1, 1],
-                           data_format='NHWC',
-                           padding='VALID', name="avg")
-
-    with ops.device('cpu'):
-      report = gen_ipu_ops.ipu_event_trace()
-
-    with tu.ipu_session() as sess:
-      sess.run(report)
-      fd = {
-        pa: np.ones([1, 20, 20, 2])
-      }
-      result = sess.run(output, fd)
-      self.assertAllClose(result, np.ones([1, 11, 11, 2]))
-
-      result = sess.run(report)
-
-      s = tu.extract_all_strings_from_event_trace(result)
-      cs_list = tu.get_compute_sets_from_report(s)
-
-      # Check that there are no casts to float at the beginning
-      # Note that intermidiates are still floats, so there is a final cast
-      ok = [
-        'progIdCopy',
-        'avg/call/avgPool10x10']
-
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
-
 if __name__ == "__main__":
     googletest.main()
