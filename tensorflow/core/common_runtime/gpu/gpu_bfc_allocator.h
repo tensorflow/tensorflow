@@ -34,11 +34,11 @@ namespace tensorflow {
 // Suballocator for GPU memory.
 class GPUMemAllocator : public SubAllocator {
  public:
-  // 'cuda_gpu_id' refers to the ID of the GPU device within
+  // 'platform_gpu_id' refers to the ID of the GPU device within
   // the process and must reference a valid ID in the process.
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(se::StreamExecutor* stream_exec, CudaGpuId gpu_id,
-                           bool use_unified_memory,
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
+                           PlatformGpuId gpu_id, bool use_unified_memory,
                            const std::vector<Visitor>& alloc_visitors,
                            const std::vector<Visitor>& free_visitors)
       : SubAllocator(alloc_visitors, free_visitors),
@@ -76,7 +76,7 @@ class GPUMemAllocator : public SubAllocator {
 
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
-  const CudaGpuId gpu_id_;
+  const PlatformGpuId gpu_id_;
   const bool use_unified_memory_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);

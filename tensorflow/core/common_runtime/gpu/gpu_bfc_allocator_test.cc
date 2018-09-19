@@ -47,10 +47,10 @@ static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
 }
 
 TEST(GPUBFCAllocatorTest, NoDups) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
@@ -80,10 +80,10 @@ TEST(GPUBFCAllocatorTest, NoDups) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   // Allocate 256 raw pointers of sizes between 100 bytes and about
   // a meg
@@ -142,10 +142,10 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 }
 
 TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
@@ -181,29 +181,29 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocateZeroBufSize) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   float* ptr = a.Allocate<float>(0);
   EXPECT_EQ(nullptr, ptr);
 }
 
 TEST(GPUBFCAllocatorTest, TracksSizes) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   float* t1 = a.Allocate<float>(1);
   EXPECT_EQ(4, a.RequestedSize(t1));
@@ -212,10 +212,10 @@ TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
 }
 
 TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   // Configure a 1MiB byte limit
   GPUBFCAllocator a(sub_allocator, 1 << 20, "GPU_0_bfc");
 
@@ -232,10 +232,10 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   options.set_allow_growth(true);
 
   // Max of 2GiB, but starts out small.
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1LL << 31, "GPU_0_bfc");
 
   // Allocate 10 raw pointers of sizes between 100 bytes and about
@@ -297,14 +297,14 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1UL << 60, "GPU_0_bfc");
   sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator b(sub_allocator, 1UL << 60, "GPU_0_bfc");
   void* amem = a.AllocateRaw(1, 1);
   void* bmem = b.AllocateRaw(1, 1 << 30);
@@ -313,10 +313,10 @@ TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
 }
 
 static void BM_Allocation(int iters) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1uLL << 33, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<size_t> sizes = {256,        4096,      16384,    524288,
@@ -333,10 +333,10 @@ static void BM_Allocation(int iters) {
 BENCHMARK(BM_Allocation);
 
 static void BM_AllocationThreaded(int iters, int num_threads) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1uLL << 33, "GPU_0_bfc");
   thread::ThreadPool pool(Env::Default(), "test", num_threads);
   std::atomic_int_fast32_t count(iters);
@@ -373,10 +373,10 @@ BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
 // A more complex benchmark that defers deallocation of an object for
 // "delay" allocations.
 static void BM_AllocationDelayed(int iters, int delay) {
-  CudaGpuId cuda_gpu_id(0);
+  PlatformGpuId platform_gpu_id(0);
   GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-      GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-      false /*use_unified_memory*/, {}, {});
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
@@ -415,10 +415,10 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
   // only methods inside this class can access private members of BFCAllocator.
 
   void TestBinDebugInfo() {
-    CudaGpuId cuda_gpu_id(0);
+    PlatformGpuId platform_gpu_id(0);
     GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-        GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-        false /*use_unified_memory*/, {}, {});
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
     GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
 
     std::vector<void*> initial_ptrs;
@@ -497,10 +497,10 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
   }
 
   void TestLog2FloorNonZeroSlow() {
-    CudaGpuId cuda_gpu_id(0);
+    PlatformGpuId platform_gpu_id(0);
     GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-        GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
-        false /*use_unified_memory*/, {}, {});
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
     GPUBFCAllocator a(sub_allocator, 1 /* total_memory */, "GPU_0_bfc");
     EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
     EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
