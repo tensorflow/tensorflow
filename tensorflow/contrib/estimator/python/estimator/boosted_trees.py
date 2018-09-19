@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import boosted_trees as canned_boosted_trees
+from tensorflow.python.estimator.canned import head as head_lib
 
 
 def _validate_input_fn_and_repeat_dataset(train_input_fn):
@@ -33,7 +34,18 @@ def _validate_input_fn_and_repeat_dataset(train_input_fn):
   return _input_fn
 
 
-class _BoostedTreesEstimator(estimator.Estimator):
+# pylint: disable=protected-access
+def _is_classification_head(head):
+  """Infers if the head is a classification head."""
+  # Check using all classification heads defined in canned/head.py. However, it
+  # is not a complete list - it does not check for other classification heads
+  # not defined in the head library.
+  return isinstance(head,
+                    (head_lib._BinaryLogisticHeadWithSigmoidCrossEntropyLoss,
+                     head_lib._MultiClassHeadWithSoftmaxCrossEntropyLoss))
+
+
+class _BoostedTreesEstimator(canned_boosted_trees._BoostedTreesBase):
   """An Estimator for Tensorflow Boosted Trees models."""
 
   def __init__(self,
@@ -96,8 +108,10 @@ class _BoostedTreesEstimator(estimator.Estimator):
         negative gain). For pre and post pruning, you MUST provide
         tree_complexity >0.
 
+    Raises:
+      ValueError: when wrong arguments are given or unsupported functionalities
+         are requested.
     """
-    # pylint:disable=protected-access
     # HParams for the model.
     tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
@@ -115,8 +129,14 @@ class _BoostedTreesEstimator(estimator.Estimator):
           config=config)
 
     super(_BoostedTreesEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
-    # pylint:enable=protected-access
+        model_fn=_model_fn,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=feature_columns,
+        head=head,
+        center_bias=center_bias,
+        is_classification=_is_classification_head(head))
+    # pylint: enable=protected-access
 
 
 def boosted_trees_classifier_train_in_memory(
