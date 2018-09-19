@@ -693,9 +693,10 @@ class Converter {
       // TODO(jie): tf protobuf seems to be omitting the :0 suffix
       string output_name = node_def.name();
       if (i != 0) output_name = StrCat(output_name, ":", i);
-      if (output.is_tensor()) {
-        output.tensor()->setName(output_name.c_str());
-      }
+      // We should not call output.tensor()->setName(), since the name may have
+      // already been set before (e.g. for Identity op where the output is the
+      // input, if its input is one of the engine input, setting the name here
+      // will overwrite engine input bindings which will cause runtime error).
       VLOG(2) << "Adding out tensor " << output_name << ": "
               << output.DebugString();
       if (!trt_tensors_.insert({output_name, output}).second) {
@@ -779,8 +780,7 @@ class Converter {
       // skip control nodes
       if (input_name[0] == '^') continue;
       string name = input_name;
-      auto first = name.find_first_of(':');
-      // TODO(aaroey): why removing the colon but not the zero? A bug?
+      auto first = name.find_last_of(':');
       // TODO(aaroey): use TensorId
       if (first != string::npos && first + 2 == name.size() &&
           name[first + 1] == '0') {
@@ -1301,7 +1301,6 @@ tensorflow::Status ConvertConv2DHelper(
 
   layer->setStride(stride);
   layer->setPadding({padding[0].first, padding[1].first});
-  layer->setName(node_def.name().c_str());
   layer->setNbGroups(num_groups);
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   VLOG(2) << "TENSOR out: " << DebugString(output_tensor->getDimensions());
@@ -1547,7 +1546,6 @@ tensorflow::Status ConvertPool(Converter& ctx,
 
   layer->setStride(stride);
   layer->setPadding({padding[0].first, padding[1].first});
-  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   if (data_format == "NHWC") {
@@ -2697,7 +2695,6 @@ tensorflow::Status ConvertGraphDefToEngine(
   TrtUniquePtrType<nvinfer1::IBuilder> builder(
       nvinfer1::createInferBuilder(*logger));
   builder->setMaxBatchSize(max_batch_size);
-  // TODO(aaroey): use the allocator to allocate the TRT workspace.
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
 #if NV_TENSORRT_MAJOR > 3
   builder->setGpuAllocator(allocator);
