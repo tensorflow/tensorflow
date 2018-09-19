@@ -308,6 +308,8 @@ class EstimatorSpec(
     for key, value in six.iteritems(eval_metric_ops):
       if isinstance(value, Metric):
         vars_to_add.update(value.variables)
+        # Convert Metric instances to (value_tensor, update_op) tuple.
+        eval_metric_ops[key] = (value.result(), value.updates[0])
     # Remove variables that are in the local variables collection already.
     vars_to_add = vars_to_add.difference(local_vars)
     for v in vars_to_add:
