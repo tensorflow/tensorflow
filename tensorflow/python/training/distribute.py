@@ -195,6 +195,10 @@ class _SameScopeAgainContext(object):
 class DistributionStrategy(object):
   """A list of devices with a state & compute distribution policy.
 
+  See [tensorflow/contrib/distribute/README.md](
+  https://www.tensorflow.org/code/tensorflow/contrib/distribute/README.md)
+  for overview and examples.
+
   The intent is that you can write an algorithm in a stylized way and
   it will be usable with a variety of different `DistributionStrategy`
   implementations. Each descendant will implement a different strategy

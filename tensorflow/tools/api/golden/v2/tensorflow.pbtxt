@@ -1321,6 +1321,10 @@ tf_module {
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_library"
+    argspec: "args=[\'library_location\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "load_op_library"
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
   }
