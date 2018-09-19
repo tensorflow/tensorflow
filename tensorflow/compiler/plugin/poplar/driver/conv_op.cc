@@ -53,10 +53,15 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
 
   if ((n_i >= n_j) && (n_o >= n_p)) {
     // Forward and backward passes
+    if (n_g != (n_i / n_j) * (n_o / n_p)) {
+      LOG(WARNING) << "Mismatch of the feature group for convolution "
+                   << parameters_inst->name();
+    }
     n_i = n_i / n_g;
     n_o = n_o / n_g;
   } else {
     // Weight update
+    n_g = (n_j / n_i) * (n_p / n_o);
     n_b = n_b / n_g;
   }
 
