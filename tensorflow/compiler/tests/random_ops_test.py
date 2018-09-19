@@ -145,9 +145,6 @@ class RandomOpsTest(xla_test.XLATestCase):
         self.assertAllClose(actual_variance, expected_variance, rtol=2*1e-3)
 
   def testShuffle1d(self):
-    # TODO(b/26783907): this test requires the CPU backend to implement sort.
-    if self.device in ["XLA_CPU"]:
-      return
     with self.cached_session() as sess:
       with self.test_scope():
         x = math_ops.range(1 << 16)
