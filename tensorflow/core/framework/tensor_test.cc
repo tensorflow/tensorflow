@@ -1295,6 +1295,63 @@ TEST(SummarizeValue, STRING) {
   EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
 }
 
+TEST(SummarizeValue, INT32_PRINT_V2) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(-1, true));
+  EXPECT_EQ("[1 2 ... 4 0]", x.SummarizeValue(2, true));
+  EXPECT_EQ("[1 ... 0]", x.SummarizeValue(1, true));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[1 2]\n [3 4]]", x.SummarizeValue(16, true));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[[1]]\n\n  [[2]]]\n\n\n [[[3]]\n\n  [[4]]]]",
+            x.SummarizeValue(16, true));
+  x = MkTensor<int>(DT_INT32, TensorShape({0}), {});
+  EXPECT_EQ("[]", x.SummarizeValue(16, true));
+}
+
+TEST(SummarizeValue, INT32Dims_PRINT_V2) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({3, 4}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  EXPECT_EQ("[[1 ... 4]\n ...\n [9 ... 12]]", x.SummarizeValue(1, true));
+  EXPECT_EQ("[[1 2 3 4]\n [5 6 7 8]\n [9 10 11 12]]",
+            x.SummarizeValue(10, true));
+  EXPECT_EQ("[[1 2 3 4]\n [5 6 7 8]\n [9 10 11 12]]",
+            x.SummarizeValue(-1, true));
+}
+
+TEST(SummarizeValue, FLOAT_PRINT_V2) {
+  Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(-1, true));
+  EXPECT_EQ("[1 2 ... 4 0]", x.SummarizeValue(2, true));
+  EXPECT_EQ("[1 ... 0]", x.SummarizeValue(1, true));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[1 2]\n [3 4]]", x.SummarizeValue(16, true));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[[1]]\n\n  [[2]]]\n\n\n [[[3]]\n\n  [[4]]]]",
+            x.SummarizeValue(16, true));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({0}), {});
+  EXPECT_EQ("[]", x.SummarizeValue(16, true));
+}
+
+TEST(SummarizeValue, BOOL_PRINT_V2) {
+  Tensor x = MkTensor<bool>(DT_BOOL, TensorShape({5}), {false, true, true});
+  EXPECT_EQ("[0 1 1 0 1]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[0 1 1 0 1]", x.SummarizeValue(-1, true));
+  EXPECT_EQ("[0 1 ... 0 1]", x.SummarizeValue(2, true));
+}
+
+TEST(SummarizeValue, STRING_PRINT_V2) {
+  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
+                              {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("[one two three four five]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[one two three four five]", x.SummarizeValue(-1, true));
+  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+                       {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("[one two three four five one...]", x.SummarizeValue(6, true));
+}
+
 void BM_CreateAndDestroy(int iters) {
   TensorShape shape({10, 20});
   while (--iters) {
