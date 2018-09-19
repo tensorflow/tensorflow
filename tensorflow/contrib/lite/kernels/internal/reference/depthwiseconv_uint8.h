@@ -26,6 +26,9 @@ limitations under the License.
 namespace tflite {
 namespace reference_ops {
 
+// TODO(b/80418076): Move to legacy ops file, along with invocations.
+static constexpr int kDepthwiseReverseShift = -1;
+
 inline void DepthwiseConv(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
@@ -95,7 +98,7 @@ inline void DepthwiseConv(
               acc += bias_data[oc];
             }
             acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                                -output_shift);
+                                                output_shift);
             acc += output_offset;
             acc = std::max(acc, output_activation_min);
             acc = std::min(acc, output_activation_max);
@@ -137,7 +140,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kDepthwiseReverseShift * output_shift;
 
   DepthwiseConv(op_params, DimsToShape(input_dims), input_data,
                 DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),

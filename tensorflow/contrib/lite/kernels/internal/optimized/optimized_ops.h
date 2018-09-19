@@ -88,7 +88,7 @@ using reference_ops::Transpose;
 // This will be phased out as the shifts are revised with more thought. Use of a
 // constant enables us to track progress on this work.
 //
-// Used mainly to convert from old-style shifts (right) to new-style (left).
+// Used to convert from old-style shifts (right) to new-style (left).
 static constexpr int kReverseShift = -1;
 
 // Make a local VectorMap typedef allowing to map a float array
@@ -977,7 +977,7 @@ inline void FullyConnectedAsGEMV(
   const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
                                       output_shape, output_dim_count - 1);
   static constexpr int kPeel = 4;
-  const bool shift_left = (output_shift <= 0);
+  const bool shift_left = (output_shift > 0);
   for (int k = 0; k < input_size; k += 64) {
     optimized_ops_preload_l1_stream(input_data + k);
   }
@@ -1090,7 +1090,7 @@ inline void FullyConnectedAsGEMV(
     bias_ptr += 4;
     reduced = vaddq_s32(reduced, bias_vec);
     if (shift_left) {
-      const int32 multiplier_power_of_two = 1 << -output_shift;
+      const int32 multiplier_power_of_two = 1 << output_shift;
       reduced = vmulq_n_s32(reduced, multiplier_power_of_two);
       reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
     } else {
@@ -1098,7 +1098,7 @@ inline void FullyConnectedAsGEMV(
       reduced = vqrdmulhq_n_s32(reduced, output_multiplier);
       // Rounding-shift-right.
       using gemmlowp::RoundingDivideByPOT;
-      reduced = RoundingDivideByPOT(reduced, output_shift);
+      reduced = RoundingDivideByPOT(reduced, -output_shift);
     }
     // Add the output offset.
     const int32x4_t output_offset_vec = vdupq_n_s32(output_offset);
@@ -1195,7 +1195,7 @@ inline void FullyConnected(
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, batches, output_rows);
   const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
-      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
+      bias_data, output_rows, output_offset, output_multiplier, output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -1219,7 +1219,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -1274,14 +1275,14 @@ inline void FullyConnected(
     if (filter_offset == -128 && !(output_depth % 4) && !(accum_depth % 64)) {
       GEMVForLstmCellWithSymmetricRange(
           input_shape, input_data, filter_shape, filter_data, bias_shape,
-          bias_data_int32, output_multiplier, -output_shift, output_shape,
+          bias_data_int32, output_multiplier, output_shift, output_shape,
           output_data);
       return;
     }
     if (!(output_depth % 4) && !(accum_depth % 8)) {
       GEMVForLstmCell(input_shape, input_data, filter_shape, filter_data,
                       filter_offset, bias_shape, bias_data_int32,
-                      output_multiplier, -output_shift, output_shape,
+                      output_multiplier, output_shift, output_shape,
                       output_data);
       return;
     }
@@ -1302,7 +1303,7 @@ inline void FullyConnected(
   scale_stage.result_offset_after_shift = 0;
   scale_stage.result_fixedpoint_multiplier = output_multiplier;
   // Note that this shift is negated wrt ordinary FC.
-  scale_stage.result_exponent = -output_shift;
+  scale_stage.result_exponent = output_shift;
   gemmlowp::OutputStageClamp clamp_stage;
   clamp_stage.min = output_activation_min;
   clamp_stage.max = output_activation_max;
@@ -1330,7 +1331,8 @@ inline void FullyConnected(
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -1376,8 +1378,8 @@ inline void ShuffledFullyConnectedWorkerImpl(
 #if defined USE_NEON
   const int8* shuffled_weights_ptr = shuffled_weights_data;
   if (batches == 1) {
-    const int right_shift = output_shift > 0 ? output_shift : 0;
-    const int left_shift = output_shift > 0 ? 0 : -output_shift;
+    const int right_shift = output_shift > 0 ? 0 : -output_shift;
+    const int left_shift = output_shift > 0 ? output_shift : 0;
     for (int c = 0; c < output_depth; c += 4) {
       // Accumulation loop.
       int32x4_t row_accum0 = vdupq_n_s32(0);
@@ -1443,8 +1445,8 @@ inline void ShuffledFullyConnectedWorkerImpl(
       vst1_s16(output_data + c, res16);
     }
   } else if (batches == 4) {
-    const int right_shift = output_shift > 0 ? output_shift : 0;
-    const int left_shift = output_shift > 0 ? 0 : -output_shift;
+    const int right_shift = output_shift > 0 ? 0 : -output_shift;
+    const int left_shift = output_shift > 0 ? output_shift : 0;
     for (int c = 0; c < output_depth; c += 4) {
       const int8* shuffled_input_ptr =
           reinterpret_cast<const int8*>(shuffled_input_workspace_data);
@@ -1575,8 +1577,8 @@ inline void ShuffledFullyConnectedWorkerImpl(
         // (16-bit, typically 3 integer bits) fixed-point format. The quantized
         // multiplier and shift here have been pre-computed offline
         // (e.g. by toco).
-        acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                            -output_shift);
+        acc =
+            MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
         // Saturate, cast to int16, and store to output array.
         acc = std::max(acc, -32768);
         acc = std::min(acc, 32767);
@@ -1627,7 +1629,7 @@ inline void ShuffledFullyConnectedWorkerImpl(
           // quantized multiplier and shift here have been pre-computed offline
           // (e.g. by toco).
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              -output_shift);
+                                              output_shift);
           // Saturate, cast to int16, and store to output array.
           acc = std::max(acc, -32768);
           acc = std::min(acc, 32767);
@@ -1818,7 +1820,8 @@ inline void ShuffledFullyConnected(
     uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
   tflite::FullyConnectedParams op_params;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -2437,7 +2440,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols);
   const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
-      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
+      bias_data, output_rows, output_offset, output_multiplier, output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2471,7 +2474,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -2792,6 +2796,7 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  // Convert right shift (right is positive) to left shift.
   *output_shift *= kReverseShift;
 }
 
@@ -5018,7 +5023,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
                  MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     kReverseShift * reverse_scaling_right_shift));
+                     -reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff = static_cast<int32>(block_input_data[c]) - max_in_row;
