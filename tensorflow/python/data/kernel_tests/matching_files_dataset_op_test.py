@@ -56,8 +56,8 @@ def timeit(fn, msg, N=0):
   return res
 
 
-width = 10
-depth = 2
+width = 1000
+depth = 20
 
 
 class MatchingFilesDatasetTest(test.TestCase):
@@ -219,7 +219,9 @@ class MatchingFilesDatasetTest(test.TestCase):
     get_next = iterator.get_next()
     result = []
     with self.cached_session() as sess:
-      search_patterns = [base + "/*/*/*.txt"]
+      pattern = '{}/{}/*.txt'\
+        .format(base, os.path.join(*['**' for _ in range(depth)]))
+      search_patterns = [pattern]
       sess.run(init_op, feed_dict={patterns: search_patterns})
       result.extend(timeit(partial(self._read_data_with_result, get_next, sess),
         "read first filename"))
@@ -231,8 +233,6 @@ class MatchingFilesDatasetTest(test.TestCase):
       result.extend(filename)
 
     matched_filenames = [compat.as_bytes(x) for x in result]
-    for file in matched_filenames:
-      print(file)
     self.assertItemsEqual(matched_filenames, test_filenames)
 
 
