@@ -472,11 +472,8 @@ cuda_py_test(
         "//tensorflow/python:summary",
     ],
     tags = [
-        "manual",
         "multi_and_single_gpu",
         "no_pip",
-        "nogpu",
-        "notap",
     ],
 )
 
