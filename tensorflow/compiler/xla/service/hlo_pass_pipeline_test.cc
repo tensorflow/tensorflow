@@ -19,21 +19,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class HloPassPipelineTest : public HloTestBase {
+class HloPassPipelineTest : public HloVerifiedTestBase {
  protected:
   StatusOr<HloModuleGroup> ParseModuleGroup(
       absl::Span<const string> hlo_strings) {
     HloModuleGroup group(TestName());
     for (const string& hlo_string : hlo_strings) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
       group.push_back(std::move(module));
     }
     return std::move(group);
@@ -106,8 +106,8 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<FooToBarModulePass>();
 
@@ -129,8 +129,8 @@ ENTRY main {
   ROOT blahblah = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<FooToBarModulePass>();
 
@@ -191,8 +191,8 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
   {
     // Run a pipeline with just the invariant checker. It should not fail
     // because there is no 'bar' instruction in the module.
@@ -243,8 +243,8 @@ ENTRY main {
   ROOT foo = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModuleGroupPass>();
 

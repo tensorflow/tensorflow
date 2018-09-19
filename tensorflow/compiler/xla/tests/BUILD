@@ -154,8 +154,28 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_verified_test_base_test",
+    srcs = ["hlo_verified_test_base_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":hlo_verified_test_base",
+        ":test_macros_cpu",
+        ":test_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 
