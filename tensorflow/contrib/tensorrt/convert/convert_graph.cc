@@ -678,7 +678,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
 // Function to construct a funcdef from the segment and add it to the graph.
 tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     tensorflow::Graph* graph, const tensorflow::GraphDef& segment,
-    const string& name) {
+    const string& engine_name) {
   tensorflow::Graph sgraph(graph->flib_def());
   tensorflow::GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(
@@ -761,9 +761,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   tensorflow::FunctionDefLibrary fdeflib;
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(tensorflow::GraphToFunctionDef(
-      sgraph, StrCat(name, "_native_segment"), native_segment));
+      sgraph, StrCat(engine_name, "_native_segment"), native_segment));
   if (VLOG_IS_ON(7)) {
-    VLOG(7) << name << " Function_Def ";
+    VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
   }
   VLOG(1) << "Adding funcdef to graphlib";
