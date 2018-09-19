@@ -422,9 +422,13 @@ class _EnsembleGrower(object):
     self._pruning_mode_parsed = boosted_trees_ops.PruningMode.from_str(
         tree_hparams.pruning_mode)
 
-    if (self._pruning_mode_parsed != boosted_trees_ops.PruningMode.NO_PRUNING
-        and tree_hparams.tree_complexity <= 0):
-      raise ValueError('For pruning, tree_complexity must be positive.')
+    if tree_hparams.tree_complexity > 0:
+      if self._pruning_mode_parsed == boosted_trees_ops.PruningMode.NO_PRUNING:
+        raise ValueError(
+            'Tree complexity have no effect unless pruning mode is chosen.')
+    else:
+      if self._pruning_mode_parsed != boosted_trees_ops.PruningMode.NO_PRUNING:
+        raise ValueError('For pruning, tree_complexity must be positive.')
     # pylint: enable=protected-access
 
   @abc.abstractmethod
