@@ -92,9 +92,9 @@ Status RunCudnnConvolutionImpl(CudnnConvParams params,
   VLOG(3) << "tensor_ops_enabled: "
           << algorithm.algorithm().tensor_ops_enabled();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
-  VLOG(3) << "input shape: { " << ShapeUtil::HumanString(input_shape) << " }";
-  VLOG(3) << "filter shape: { " << ShapeUtil::HumanString(filter_shape) << " }";
-  VLOG(3) << "Output shape: { " << ShapeUtil::HumanString(output_shape) << " }";
+  VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
+  VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
+  VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);
   VLOG(3) << "Window: { " << window.ShortDebugString() << " }";
   VLOG(3) << "Dim nums: { " << dnums.ShortDebugString() << " }";
 
