@@ -6,8 +6,8 @@ export OS=$(uname)
 if [ "${OS}" = "Linux" ]; then
     export DS_ROOT_TASK=$(/usr/bin/realpath "${HOME}")
 
-    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.10.0/bazel-0.10.0-installer-linux-x86_64.sh
-    BAZEL_SHA256=ffff2632e32d5009fd48b7f51971a66012eefa2004c6448c13dc3976ad1db6b0
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.15.2/bazel-0.15.2-installer-linux-x86_64.sh
+    BAZEL_SHA256=13eae0f09565cf17fc1c9ce1053b9eac14c11e726a2215a79ebaf5bdbf435241
 
     CUDA_URL=https://developer.nvidia.com/compute/cuda/9.0/Prod/local_installers/cuda_9.0.176_384.81_linux-run
     CUDA_SHA256=96863423feaa50b5c1c5e1b9ec537ef7ba77576a3986652351ae43e66bcd080c
@@ -26,8 +26,8 @@ elif [ "${OS}" = "Darwin" ]; then
 
     export DS_ROOT_TASK=${TASKCLUSTER_TASK_DIR}
 
-    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.10.0/bazel-0.10.0-installer-darwin-x86_64.sh
-    BAZEL_SHA256=636d1ce68616a903928798908c16fb68ebb85eb28d2f18fb215f4d09f3bb05ca
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.15.2/bazel-0.15.2-installer-darwin-x86_64.sh
+    BAZEL_SHA256=84ee271274e7c8904a48f7894fe0569174d162c7428a19dda57fc6a6c95c628b
 fi;
 
 # /tmp/artifacts for docker-worker on linux,
