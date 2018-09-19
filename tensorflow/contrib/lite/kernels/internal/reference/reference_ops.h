@@ -384,7 +384,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
             acc += bias_data[out_channel];
           }
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              kReverseShift * output_shift);
+                                              output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -422,7 +422,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -714,8 +715,7 @@ inline void FullyConnected(
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                          kReverseShift * output_shift);
+      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -740,7 +740,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -793,8 +794,8 @@ inline void FullyConnected(
       // (16-bit, typically 3 integer bits) fixed-point format. The quantized
       // multiplier and shift here have been pre-computed offline
       // (e.g. by toco).
-      accum = MultiplyByQuantizedMultiplier(accum, output_multiplier,
-                                            -output_shift);
+      accum =
+          MultiplyByQuantizedMultiplier(accum, output_multiplier, output_shift);
       // Saturate, cast to int16, and store to output array.
       accum = std::max(accum, output_activation_min - output_offset);
       accum = std::min(accum, output_activation_max - output_offset);
@@ -820,7 +821,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -919,8 +921,8 @@ inline void ShuffledFullyConnected(
         // (16-bit, typically 3 integer bits) fixed-point format. The quantized
         // multiplier and shift here have been pre-computed offline
         // (e.g. by toco).
-        acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                            -output_shift);
+        acc =
+            MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
         // Saturate, cast to int16, and store to output array.
         acc = std::max(acc, output_activation_min);
         acc = std::min(acc, output_activation_max);
@@ -971,7 +973,7 @@ inline void ShuffledFullyConnected(
           // quantized multiplier and shift here have been pre-computed offline
           // (e.g. by toco).
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              -output_shift);
+                                              output_shift);
           // Saturate, cast to int16, and store to output array.
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -996,7 +998,8 @@ inline void ShuffledFullyConnected(
     uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
   tflite::FullyConnectedParams op_params;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -1154,6 +1157,7 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  // Convert right shift (right is positive) to left shift.
   *output_shift *= kReverseShift;
 }
 
@@ -3464,7 +3468,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
                  MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     kReverseShift * reverse_scaling_right_shift));
+                     -reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =
@@ -4959,9 +4963,11 @@ inline void Comparison(int left_shift, const T* input1_data,
   op_params.left_shift = left_shift;
   op_params.input1_offset = input1_offset;
   op_params.input1_multiplier = input1_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input1_shift = kReverseShift * input1_shift;
   op_params.input2_offset = input2_offset;
   op_params.input2_multiplier = input2_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input2_shift = kReverseShift * input2_shift;
 
   ComparisonWithScaling<T, F>(op_params, DimsToShape(input1_dims), input1_data,
@@ -5093,9 +5099,11 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
   op_params.left_shift = left_shift;
   op_params.input1_offset = input1_offset;
   op_params.input1_multiplier = input1_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input1_shift = kReverseShift * input1_shift;
   op_params.input2_offset = input2_offset;
   op_params.input2_multiplier = input2_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input2_shift = kReverseShift * input2_shift;
 
   BroadcastComparison4DSlowWithScaling<T, F>(

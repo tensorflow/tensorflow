@@ -24,6 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace optimized_ops {
 
+// TODO(b/80418076): Move to legacy ops file, along with invocations.
+static constexpr int kDepthwiseReverseShift = -1;
+
 // Implementation of quantized DepthwiseConv
 
 template <bool kAllowStrided, int kFixedInputDepth, int kFixedDepthMultiplier>
@@ -1712,8 +1715,8 @@ inline void DepthwiseConv(
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
 #ifdef USE_NEON
-  const bool shift_left = (output_shift <= 0);
-  const int32 multiplier_power_of_two = shift_left ? (1 << -output_shift) : 1;
+  const bool shift_left = (output_shift > 0);
+  const int32 multiplier_power_of_two = shift_left ? (1 << output_shift) : 1;
 #endif
   TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
@@ -1872,7 +1875,7 @@ inline void DepthwiseConv(
               acc[j] = vqrdmulhq_n_s32(acc[j], output_multiplier);
             }
             for (int j = 0; j < 4; j++) {
-              acc[j] = RoundingDivideByPOT(acc[j], output_shift);
+              acc[j] = RoundingDivideByPOT(acc[j], -output_shift);
             }
           } else {
             // Fixed-point multiplication.
@@ -1916,8 +1919,8 @@ inline void DepthwiseConv(
             acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
             acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
             // Rounding right shift.
-            acc0 = RoundingDivideByPOT(acc0, output_shift);
-            acc1 = RoundingDivideByPOT(acc1, output_shift);
+            acc0 = RoundingDivideByPOT(acc0, -output_shift);
+            acc1 = RoundingDivideByPOT(acc1, -output_shift);
           } else {
             // Fixed-point multiplication.
             acc0 = vmulq_n_s32(acc0, multiplier_power_of_two);
@@ -1953,7 +1956,7 @@ inline void DepthwiseConv(
             // Fixed-point multiplication.
             acc = vqrdmulhq_n_s32(acc, output_multiplier);
             // Rounding right shift.
-            acc = RoundingDivideByPOT(acc, output_shift);
+            acc = RoundingDivideByPOT(acc, -output_shift);
           } else {
             // Fixed-point multiplication.
             acc = vmulq_n_s32(acc, multiplier_power_of_two);
@@ -1980,7 +1983,7 @@ inline void DepthwiseConv(
         for (; i < num_output_values; i++) {
           int32 acc = acc_buffer[i];
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              -output_shift);
+                                              output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -2020,7 +2023,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kDepthwiseReverseShift * output_shift;
 
   DepthwiseConv(op_params, DimsToShape(input_dims), input_data,
                 DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
