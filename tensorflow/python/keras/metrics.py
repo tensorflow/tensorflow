@@ -635,7 +635,9 @@ def categorical_accuracy(y_true, y_pred):
 
 @tf_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  y_true = math_ops.reduce_max(y_true, axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
   y_pred = math_ops.argmax(y_pred, axis=-1)
 
   # If the expected labels are float, we need to cast the int returned by
@@ -654,11 +656,12 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(
-      nn.in_top_k(y_pred,
-                  math_ops.cast(math_ops.reduce_max(y_true, axis=-1), 'int32'),
-                  k),
-      axis=-1)
+  # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
+  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+    y_true = array_ops.squeeze(y_true, [-1])
+
+  return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k),
+                axis=-1)
 
 # Aliases
 
