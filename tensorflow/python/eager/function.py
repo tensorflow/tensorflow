@@ -826,7 +826,12 @@ def _get_defun_inputs_from_args(args):
   return nest.pack_sequence_as(args, function_inputs)
 
 
-def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
+def func_graph_from_py_func(name,
+                            python_func,
+                            args,
+                            kwds,
+                            signature=None,
+                            func_graph=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -841,6 +846,8 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
       `kwds` are ignored, and `python_func` is traced with Tensors conforming
       to `signature`. If `None`, the shapes and dtypes are inferred from the
       inputs.
+    func_graph: Optional. An instance of FuncGraph. If provided, we will use
+      this graph else a new one is built and returned.
 
   Returns:
     A FuncGraph.
@@ -849,7 +856,9 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
     TypeError: If any of `python_func`'s return values is neither `None` nor a
       `Tensor`.
   """
-  func_graph = FuncGraph(name)
+  if func_graph is None:
+    func_graph = FuncGraph(name)
+  assert isinstance(func_graph, FuncGraph)
   with func_graph.as_default(), AutomaticControlDependencies() as a:
     variable_scope.get_variable_scope().set_use_resource(True)
 
