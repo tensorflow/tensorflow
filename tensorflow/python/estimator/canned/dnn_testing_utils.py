@@ -34,6 +34,7 @@ from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -104,6 +105,7 @@ def create_checkpoint(weights_and_biases,
     weights_and_biases: Iterable of tuples of weight and bias values.
     global_step: Initial global step to save in checkpoint.
     model_dir: Directory into which checkpoint is saved.
+    batch_norm_vars: Variables used for batch normalization.
   """
   weights, biases = zip(*weights_and_biases)
   if batch_norm_vars:
@@ -244,8 +246,9 @@ def mock_optimizer(testcase, hidden_units, expected_loss=None):
 class BaseDNNModelFnTest(object):
   """Tests that _dnn_model_fn passes expected logits to mock head."""
 
-  def __init__(self, dnn_model_fn):
+  def __init__(self, dnn_model_fn, is_fc_v2=False):
     self._dnn_model_fn = dnn_model_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -260,6 +263,11 @@ class BaseDNNModelFnTest(object):
     """Tests that the expected logits are passed to mock head."""
     with ops.Graph().as_default():
       training_util.create_global_step()
+      age_column = feature_column.numeric_column(
+          'age', shape=np.array(inputs).shape[1:])
+      if self._is_fc_v2:
+        age_column = feature_column_v2.numeric_column(
+            'age', shape=np.array(inputs).shape[1:])
       head = mock_head(
           self,
           hidden_units=hidden_units,
@@ -271,10 +279,7 @@ class BaseDNNModelFnTest(object):
           mode=mode,
           head=head,
           hidden_units=hidden_units,
-          feature_columns=[
-              feature_column.numeric_column(
-                  'age', shape=np.array(inputs).shape[1:])
-          ],
+          feature_columns=[age_column],
           optimizer=mock_optimizer(self, hidden_units))
       with monitored_session.MonitoredTrainingSession(
           checkpoint_dir=self._model_dir) as sess:
@@ -441,6 +446,16 @@ class BaseDNNModelFnTest(object):
     inputs = ([[10.]], [[8.]])
     expected_logits = [[-0.48, 0.48, 0.39]]
 
+    feature_columns = [
+        feature_column.numeric_column('age'),
+        feature_column.numeric_column('height')
+    ]
+    if self._is_fc_v2:
+      feature_columns = [
+          feature_column_v2.numeric_column('age'),
+          feature_column_v2.numeric_column('height')
+      ]
+
     for mode in [
         model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
         model_fn.ModeKeys.PREDICT
@@ -461,10 +476,7 @@ class BaseDNNModelFnTest(object):
             mode=mode,
             head=head,
             hidden_units=hidden_units,
-            feature_columns=[
-                feature_column.numeric_column('age'),
-                feature_column.numeric_column('height')
-            ],
+            feature_columns=feature_columns,
             optimizer=mock_optimizer(self, hidden_units))
         with monitored_session.MonitoredTrainingSession(
             checkpoint_dir=self._model_dir) as sess:
@@ -508,8 +520,9 @@ class BaseDNNModelFnTest(object):
 class BaseDNNLogitFnTest(object):
   """Tests correctness of logits calculated from _dnn_logit_fn_builder."""
 
-  def __init__(self, dnn_logit_fn_builder):
+  def __init__(self, dnn_logit_fn_builder, is_fc_v2=False):
     self._dnn_logit_fn_builder = dnn_logit_fn_builder
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -533,6 +546,12 @@ class BaseDNNLogitFnTest(object):
       training_util.create_global_step()
       # Use a variable scope here with 'dnn', emulating the dnn model_fn, so
       # the checkpoint naming is shared.
+      age_column = feature_column.numeric_column(
+          'age', shape=np.array(inputs).shape[1:])
+      if self._is_fc_v2:
+        age_column = feature_column_v2.numeric_column(
+            'age', shape=np.array(inputs).shape[1:])
+
       with variable_scope.variable_scope('dnn'):
         input_layer_partitioner = (
             partitioned_variables.min_max_variable_partitioner(
@@ -540,10 +559,7 @@ class BaseDNNLogitFnTest(object):
         logit_fn = self._dnn_logit_fn_builder(
             units=logits_dimension,
             hidden_units=hidden_units,
-            feature_columns=[
-                feature_column.numeric_column(
-                    'age', shape=np.array(inputs).shape[1:])
-            ],
+            feature_columns=[age_column],
             activation_fn=nn.relu,
             dropout=None,
             input_layer_partitioner=input_layer_partitioner,
@@ -768,6 +784,16 @@ class BaseDNNLogitFnTest(object):
     inputs = ([[10.]], [[8.]])
     expected_logits = [[-0.48, 0.48, 0.39]]
 
+    feature_columns = [
+        feature_column.numeric_column('age'),
+        feature_column.numeric_column('height')
+    ]
+    if self._is_fc_v2:
+      feature_columns = [
+          feature_column_v2.numeric_column('age'),
+          feature_column_v2.numeric_column('height')
+      ]
+
     for mode in [
         model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
         model_fn.ModeKeys.PREDICT
@@ -785,10 +811,7 @@ class BaseDNNLogitFnTest(object):
           logit_fn = self._dnn_logit_fn_builder(
               units=logits_dimension,
               hidden_units=hidden_units,
-              feature_columns=[
-                  feature_column.numeric_column('age'),
-                  feature_column.numeric_column('height')
-              ],
+              feature_columns=feature_columns,
               activation_fn=nn.relu,
               dropout=None,
               input_layer_partitioner=input_layer_partitioner,
@@ -806,9 +829,10 @@ class BaseDNNLogitFnTest(object):
 
 class BaseDNNWarmStartingTest(object):
 
-  def __init__(self, _dnn_classifier_fn, _dnn_regressor_fn):
+  def __init__(self, _dnn_classifier_fn, _dnn_regressor_fn, is_fc_v2=False):
     self._dnn_classifier_fn = _dnn_classifier_fn
     self._dnn_regressor_fn = _dnn_regressor_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     # Create a directory to save our old checkpoint and vocabularies to.
@@ -847,6 +871,11 @@ class BaseDNNWarmStartingTest(object):
         feature_column.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
+    if self._is_fc_v2:
+      city = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_list(
+              'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+          dimension=5)
 
     # Create a DNNClassifier and train to save a checkpoint.
     dnn_classifier = self._dnn_classifier_fn(
@@ -879,6 +908,11 @@ class BaseDNNWarmStartingTest(object):
         feature_column.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
+    if self._is_fc_v2:
+      city = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_list(
+              'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+          dimension=5)
 
     # Create a DNNRegressor and train to save a checkpoint.
     dnn_regressor = self._dnn_regressor_fn(
@@ -909,6 +943,11 @@ class BaseDNNWarmStartingTest(object):
         feature_column.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
+    if self._is_fc_v2:
+      city = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_list(
+              'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+          dimension=5)
 
     # Create a DNNClassifier and train to save a checkpoint.
     dnn_classifier = self._dnn_classifier_fn(
@@ -964,6 +1003,13 @@ class BaseDNNWarmStartingTest(object):
             vocabulary_file=vocab_file,
             vocabulary_size=len(vocab_list)),
         dimension=2)
+    if self._is_fc_v2:
+      occupation = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_file(
+              'occupation',
+              vocabulary_file=vocab_file,
+              vocabulary_size=len(vocab_list)),
+          dimension=2)
 
     # Create a DNNClassifier and train to save a checkpoint.
     partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2)
@@ -991,6 +1037,13 @@ class BaseDNNWarmStartingTest(object):
             vocabulary_file=new_vocab_file,
             vocabulary_size=len(new_vocab_list)),
         dimension=2)
+    if self._is_fc_v2:
+      new_occupation = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_file(
+              'occupation',
+              vocabulary_file=new_vocab_file,
+              vocabulary_size=len(new_vocab_list)),
+          dimension=2)
     # We can create our VocabInfo object from the new and old occupation
     # FeatureColumn's.
     occupation_vocab_info = estimator.VocabInfo(
@@ -1055,6 +1108,11 @@ class BaseDNNWarmStartingTest(object):
         feature_column.categorical_column_with_vocabulary_list(
             'locality', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
+    if self._is_fc_v2:
+      locality = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_list(
+              'locality', vocabulary_list=['Mountain View', 'Palo Alto']),
+          dimension=5)
 
     # Create a DNNClassifier and train to save a checkpoint.
     dnn_classifier = self._dnn_classifier_fn(
@@ -1072,6 +1130,11 @@ class BaseDNNWarmStartingTest(object):
         feature_column.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
+    if self._is_fc_v2:
+      city = feature_column_v2.embedding_column(
+          feature_column_v2.categorical_column_with_vocabulary_list(
+              'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+          dimension=5)
     warm_started_dnn_classifier = self._dnn_classifier_fn(
         hidden_units=[256, 128],
         feature_columns=[city],
@@ -1101,8 +1164,9 @@ class BaseDNNWarmStartingTest(object):
 
 class BaseDNNClassifierEvaluateTest(object):
 
-  def __init__(self, dnn_classifier_fn):
+  def __init__(self, dnn_classifier_fn, is_fc_v2=False):
     self._dnn_classifier_fn = dnn_classifier_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1119,9 +1183,12 @@ class BaseDNNClassifierEvaluateTest(object):
         (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
          ([[-1.], [1.]], [.3]),), global_step, self._model_dir)
 
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age')],
+        feature_columns=[age_column],
         model_dir=self._model_dir)
     def _input_fn():
       # batch_size = 2, one false label, and one true.
@@ -1159,9 +1226,12 @@ class BaseDNNClassifierEvaluateTest(object):
                                            .0]),), global_step, self._model_dir)
     n_classes = 3
 
+    age_column = feature_column.numeric_column('age', shape=[2])
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age', shape=[2])
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        feature_columns=[age_column],
         n_classes=n_classes,
         model_dir=self._model_dir)
     def _input_fn():
@@ -1190,9 +1260,12 @@ class BaseDNNClassifierEvaluateTest(object):
         (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
          ([[-1.], [1.]], [.3]),), global_step, self._model_dir)
 
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age')],
+        feature_columns=[age_column],
         model_dir=self._model_dir)
     def _input_fn():
       # batch_size = 2, one false label, and one true.
@@ -1216,9 +1289,12 @@ class BaseDNNClassifierEvaluateTest(object):
                       global_step, self._model_dir)
     n_classes = 3
 
+    age_column = feature_column.numeric_column('age', shape=[2])
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age', shape=[2])
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        feature_columns=[age_column],
         n_classes=n_classes,
         weight_column='w',
         model_dir=self._model_dir)
@@ -1238,8 +1314,9 @@ class BaseDNNClassifierEvaluateTest(object):
 
 class BaseDNNRegressorEvaluateTest(object):
 
-  def __init__(self, dnn_regressor_fn):
+  def __init__(self, dnn_regressor_fn, is_fc_v2=False):
     self._dnn_regressor_fn = dnn_regressor_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1257,9 +1334,12 @@ class BaseDNNRegressorEvaluateTest(object):
         (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
          ([[-1.], [1.]], [.3]),), global_step, self._model_dir)
 
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age')],
+        feature_columns=[age_column],
         model_dir=self._model_dir)
     def _input_fn():
       return {'age': [[10.]]}, [[1.]]
@@ -1287,9 +1367,12 @@ class BaseDNNRegressorEvaluateTest(object):
                                            .0]),), global_step, self._model_dir)
     label_dimension = 3
 
+    age_column = feature_column.numeric_column('age', shape=[2])
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age', shape=[2])
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        feature_columns=[age_column],
         label_dimension=label_dimension,
         model_dir=self._model_dir)
     def _input_fn():
@@ -1318,9 +1401,12 @@ class BaseDNNRegressorEvaluateTest(object):
                       global_step, self._model_dir)
     label_dimension = 3
 
+    age_column = feature_column.numeric_column('age', shape=[2])
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age', shape=[2])
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        feature_columns=[age_column],
         label_dimension=label_dimension,
         weight_column='w',
         model_dir=self._model_dir)
@@ -1339,8 +1425,9 @@ class BaseDNNRegressorEvaluateTest(object):
 
 class BaseDNNClassifierPredictTest(object):
 
-  def __init__(self, dnn_classifier_fn):
+  def __init__(self, dnn_classifier_fn, is_fc_v2=False):
     self._dnn_classifier_fn = dnn_classifier_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1358,10 +1445,13 @@ class BaseDNNClassifierPredictTest(object):
         global_step=0,
         model_dir=self._model_dir)
 
+    x_column = feature_column.numeric_column('x')
+    if self._is_fc_v2:
+      x_column = feature_column_v2.numeric_column('x')
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
         label_vocabulary=label_vocabulary,
-        feature_columns=(feature_column.numeric_column('x'),),
+        feature_columns=(x_column,),
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
         x={'x': np.array([[10.]])}, batch_size=1, shuffle=False)
@@ -1403,9 +1493,12 @@ class BaseDNNClassifierPredictTest(object):
         global_step=0,
         model_dir=self._model_dir)
 
+    x_column = feature_column.numeric_column('x', shape=(2,))
+    if self._is_fc_v2:
+      x_column = feature_column_v2.numeric_column('x', shape=(2,))
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
-        feature_columns=(feature_column.numeric_column('x', shape=(2,)),),
+        feature_columns=(x_column,),
         label_vocabulary=label_vocabulary,
         n_classes=3,
         model_dir=self._model_dir)
@@ -1453,8 +1546,9 @@ class BaseDNNClassifierPredictTest(object):
 
 class BaseDNNRegressorPredictTest(object):
 
-  def __init__(self, dnn_regressor_fn):
+  def __init__(self, dnn_regressor_fn, is_fc_v2=False):
     self._dnn_regressor_fn = dnn_regressor_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1473,9 +1567,12 @@ class BaseDNNRegressorPredictTest(object):
         global_step=0,
         model_dir=self._model_dir)
 
+    x_column = feature_column.numeric_column('x')
+    if self._is_fc_v2:
+      x_column = feature_column_v2.numeric_column('x')
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=(2, 2),
-        feature_columns=(feature_column.numeric_column('x'),),
+        feature_columns=(x_column,),
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
         x={'x': np.array([[10.]])}, batch_size=1, shuffle=False)
@@ -1495,9 +1592,12 @@ class BaseDNNRegressorPredictTest(object):
                                                [.3, -.3,
                                                 .0]),), 100, self._model_dir)
 
+    x_column = feature_column.numeric_column('x', shape=(2,))
+    if self._is_fc_v2:
+      x_column = feature_column_v2.numeric_column('x', shape=(2,))
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=(2, 2),
-        feature_columns=(feature_column.numeric_column('x', shape=(2,)),),
+        feature_columns=(x_column,),
         label_dimension=3,
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
@@ -1594,8 +1694,9 @@ def _assert_simple_summary(testcase, expected_values, actual_summary):
 
 class BaseDNNClassifierTrainTest(object):
 
-  def __init__(self, dnn_classifier_fn):
+  def __init__(self, dnn_classifier_fn, is_fc_v2=False):
     self._dnn_classifier_fn = dnn_classifier_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1606,10 +1707,13 @@ class BaseDNNClassifierTrainTest(object):
       shutil.rmtree(self._model_dir)
 
   def test_from_scratch_with_default_optimizer_binary(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     hidden_units = (2, 2)
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         model_dir=self._model_dir)
 
     # Train for a few steps, then validate final checkpoint.
@@ -1621,11 +1725,14 @@ class BaseDNNClassifierTrainTest(object):
         output_units=1, model_dir=self._model_dir)
 
   def test_from_scratch_with_default_optimizer_multi_class(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     hidden_units = (2, 2)
     n_classes = 3
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         n_classes=n_classes,
         model_dir=self._model_dir)
 
@@ -1638,12 +1745,15 @@ class BaseDNNClassifierTrainTest(object):
         output_units=n_classes, model_dir=self._model_dir)
 
   def test_from_scratch_validate_summary(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     hidden_units = (2, 2)
     opt = mock_optimizer(
         self, hidden_units=hidden_units)
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         optimizer=opt,
         model_dir=self._model_dir)
     self.assertEqual(0, opt.minimize.call_count)
@@ -1667,6 +1777,9 @@ class BaseDNNClassifierTrainTest(object):
       self.assertIn(metric_keys.MetricKeys.LOSS_MEAN, summary_keys)
 
   def test_binary_classification(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     base_global_step = 100
     hidden_units = (2, 2)
     create_checkpoint(
@@ -1682,7 +1795,7 @@ class BaseDNNClassifierTrainTest(object):
         self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         optimizer=opt,
         model_dir=self._model_dir)
     self.assertEqual(0, opt.minimize.call_count)
@@ -1713,6 +1826,9 @@ class BaseDNNClassifierTrainTest(object):
         hidden_units=hidden_units, output_units=1, model_dir=self._model_dir)
 
   def test_binary_classification_float_labels(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     base_global_step = 100
     hidden_units = (2, 2)
     create_checkpoint(
@@ -1728,7 +1844,7 @@ class BaseDNNClassifierTrainTest(object):
         self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         optimizer=opt,
         model_dir=self._model_dir)
     self.assertEqual(0, opt.minimize.call_count)
@@ -1741,6 +1857,9 @@ class BaseDNNClassifierTrainTest(object):
     self.assertEqual(1, opt.minimize.call_count)
 
   def test_multi_class(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     n_classes = 3
     base_global_step = 100
     hidden_units = (2, 2)
@@ -1759,7 +1878,7 @@ class BaseDNNClassifierTrainTest(object):
     dnn_classifier = self._dnn_classifier_fn(
         n_classes=n_classes,
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         optimizer=opt,
         model_dir=self._model_dir)
     self.assertEqual(0, opt.minimize.call_count)
@@ -1793,8 +1912,9 @@ class BaseDNNClassifierTrainTest(object):
 
 class BaseDNNRegressorTrainTest(object):
 
-  def __init__(self, dnn_regressor_fn):
+  def __init__(self, dnn_regressor_fn, is_fc_v2=False):
     self._dnn_regressor_fn = dnn_regressor_fn
+    self._is_fc_v2 = is_fc_v2
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1805,10 +1925,13 @@ class BaseDNNRegressorTrainTest(object):
       shutil.rmtree(self._model_dir)
 
   def test_from_scratch_with_default_optimizer(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     hidden_units = (2, 2)
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         model_dir=self._model_dir)
 
     # Train for a few steps, then validate final checkpoint.
@@ -1820,11 +1943,14 @@ class BaseDNNRegressorTrainTest(object):
         output_units=1, model_dir=self._model_dir)
 
   def test_from_scratch(self):
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     hidden_units = (2, 2)
     opt = mock_optimizer(self, hidden_units=hidden_units)
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         optimizer=opt,
         model_dir=self._model_dir)
     self.assertEqual(0, opt.minimize.call_count)
@@ -1849,6 +1975,9 @@ class BaseDNNRegressorTrainTest(object):
 
   def test_one_dim(self):
     """Asserts train loss for one-dimensional input and logits."""
+    age_column = feature_column.numeric_column('age')
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column('age')
     base_global_step = 100
     hidden_units = (2, 2)
     create_checkpoint(
@@ -1864,7 +1993,7 @@ class BaseDNNRegressorTrainTest(object):
         self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
+        feature_columns=(age_column,),
         optimizer=opt,
         model_dir=self._model_dir)
     self.assertEqual(0, opt.minimize.call_count)
@@ -1911,13 +2040,17 @@ class BaseDNNRegressorTrainTest(object):
     # See that test for calculation of logits.
     # logits = [[-0.48, 0.48, 0.39]]
     # loss = (1+0.48)^2 + (-1-0.48)^2 + (0.5-0.39)^2 = 4.3929
+    age_column = feature_column.numeric_column('age', shape=[input_dimension])
+    if self._is_fc_v2:
+      age_column = feature_column_v2.numeric_column(
+          'age', shape=[input_dimension])
+
     expected_loss = 4.3929
     opt = mock_optimizer(
         self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_regressor = self._dnn_regressor_fn(
         hidden_units=hidden_units,
-        feature_columns=[
-            feature_column.numeric_column('age', shape=[input_dimension])],
+        feature_columns=[age_column],
         label_dimension=label_dimension,
         optimizer=opt,
         model_dir=self._model_dir)

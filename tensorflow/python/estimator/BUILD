@@ -251,6 +251,7 @@ py_library(
         ":prediction_keys",
         "//tensorflow:tensorflow_py_no_contrib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )
@@ -273,6 +274,7 @@ py_test(
         ":pandas_io",
         ":prediction_keys",
         "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

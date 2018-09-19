@@ -31,7 +31,7 @@ namespace tensorflow {
 
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
                            bool allow_growth, const string& name)
-    : suballocator_(sub_allocator),
+    : sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
@@ -72,7 +72,7 @@ BFCAllocator::~BFCAllocator() {
   VLOG(2) << "Number of regions allocated: "
           << region_manager_.regions().size();
   for (const auto& region : region_manager_.regions()) {
-    suballocator_->Free(region.ptr(), region.memory_size());
+    sub_allocator_->Free(region.ptr(), region.memory_size());
   }
 
   for (BinNum b = 0; b < kNumBins; b++) {
@@ -108,7 +108,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = suballocator_->Alloc(alignment, bytes);
+  void* mem_addr = sub_allocator_->Alloc(alignment, bytes);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -119,7 +119,7 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
       if (bytes < rounded_bytes) break;
-      mem_addr = suballocator_->Alloc(alignment, bytes);
+      mem_addr = sub_allocator_->Alloc(alignment, bytes);
     }
   }
 
@@ -158,10 +158,6 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
-  // Invoke visitors on newly allocated region.
-  for (const auto& visitor : region_visitors_) {
-    visitor(mem_addr, bytes);
-  }
   return true;
 }
 
@@ -488,15 +484,6 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
   }
 
   InsertFreeChunkIntoBin(coalesced_chunk);
-}
-
-void BFCAllocator::AddAllocVisitor(Visitor visitor) {
-  VLOG(1) << "AddVisitor";
-  mutex_lock l(lock_);
-  region_visitors_.push_back(visitor);
-  for (const auto& region : region_manager_.regions()) {
-    visitor(region.ptr(), region.memory_size());
-  }
 }
 
 bool BFCAllocator::TracksAllocationSizes() { return true; }

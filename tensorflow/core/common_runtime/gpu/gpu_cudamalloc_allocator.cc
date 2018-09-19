@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-GPUcudaMallocAllocator::GPUcudaMallocAllocator(VisitableAllocator* allocator,
+GPUcudaMallocAllocator::GPUcudaMallocAllocator(Allocator* allocator,
                                                CudaGpuId cuda_gpu_id)
     : base_allocator_(allocator) {
   stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
@@ -58,14 +58,6 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
     LOG(ERROR) << "cuMemFree failed to free " << ptr;
   }
 #endif  // GOOGLE_CUDA
-}
-
-void GPUcudaMallocAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
-}
-
-void GPUcudaMallocAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
 }
 
 bool GPUcudaMallocAllocator::TracksAllocationSizes() { return false; }

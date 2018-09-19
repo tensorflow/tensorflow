@@ -26,6 +26,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -626,6 +627,15 @@ tf_cc_test(
         "//tensorflow/core:ops",
         "//tensorflow/core:test_main",
     ],
+)
+
+tf_custom_op_py_library(
+    name = "xla_ops_py",
+    kernels = ["//tensorflow/compiler/jit/ops:xla_ops"],
+    visibility = [
+        ":friends",
+    ],
+    deps = ["//tensorflow/compiler/jit/ops:xla_ops_wrapper_py"],
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.

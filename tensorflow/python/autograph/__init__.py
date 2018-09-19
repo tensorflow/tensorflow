@@ -27,6 +27,7 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core.errors import GraphConstructionError
 from tensorflow.python.autograph.core.errors import TfRuntimeError
 from tensorflow.python.autograph.core.errors import improved_errors
+from tensorflow.python.autograph.impl.api import ConversionOptions
 from tensorflow.python.autograph.impl.api import RunMode
 from tensorflow.python.autograph.impl.api import convert
 from tensorflow.python.autograph.impl.api import converted_call
@@ -42,6 +43,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     # Main API
+    'ConversionOptions',
     'RunMode',
     'convert',
     'converted_call',

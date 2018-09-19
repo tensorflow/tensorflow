@@ -518,7 +518,7 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinReshape:
-        if (version == 1) {
+        if (version == 1 && node->inputs->size == 2) {
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             return ANEURALNETWORKS_RESHAPE;
