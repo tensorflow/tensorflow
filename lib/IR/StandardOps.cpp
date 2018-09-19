@@ -62,6 +62,18 @@ parseDimAndSymbolList(OpAsmParser *parser,
   return false;
 }
 
+/// If this is a vector type, or a tensor type, return the scalar element type
+/// that it is built around, otherwise return the type unmodified.
+static Type *getTensorOrVectorElementType(Type *type) {
+  if (auto *vec = dyn_cast<VectorType>(type))
+    return vec->getElementType();
+
+  // Look through tensor<vector<...>> to find the underlying element type.
+  if (auto *tensor = dyn_cast<TensorType>(type))
+    return getTensorOrVectorElementType(tensor->getElementType());
+  return type;
+}
+
 //===----------------------------------------------------------------------===//
 // AddFOp
 //===----------------------------------------------------------------------===//
@@ -90,7 +102,9 @@ void AddFOp::print(OpAsmPrinter *p) const {
 }
 
 bool AddFOp::verify() const {
-  // TODO: check that the single type is a float type.
+  if (!isa<FloatType>(getTensorOrVectorElementType(getType())))
+    return emitOpError("requires a floating point type");
+
   return false;
 }
 
@@ -211,9 +225,11 @@ bool AllocOp::parse(OpAsmParser *parser, OperationState *result) {
 
   // Check that the number of symbol operands matches the number of symbols in
   // the first affinemap of the memref's affine map composition.
-  // Note that a memref must specify at least one affine map in the composition.
-  if (result->operands.size() - numDimOperands !=
-      type->getAffineMaps()[0]->getNumSymbols()) {
+  unsigned numSymbols = 0;
+  if (!type->getAffineMaps().empty())
+    numSymbols = type->getAffineMaps()[0]->getNumSymbols();
+
+  if (result->operands.size() - numDimOperands != numSymbols) {
     return parser->emitError(
         parser->getNameLoc(),
         "affine map symbol operand count does not equal memref affine map "

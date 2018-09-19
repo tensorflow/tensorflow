@@ -143,3 +143,10 @@ bb0(%a : f32):
   %sf = addf{%a, %a} : f32  // expected-error {{invalid operand}}
 }
 
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i32) {
+bb0(%a : i32):
+  %sf = addf %a, %a : i32  // expected-error {{'addf' op requires a floating point type}}
+}
