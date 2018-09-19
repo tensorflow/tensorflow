@@ -961,6 +961,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "string_format_op_test",
+    size = "small",
+    srcs = ["string_format_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+tf_py_test(
     name = "string_join_op_test",
     size = "small",
     srcs = ["string_join_op_test.py"],
