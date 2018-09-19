@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -176,9 +177,9 @@ class DeviceBase {
     return nullptr;
   }
 
-  // DEPRECATED: Use `this->GetAllocator()` or `this->GetScopedAllocator()`.
   // This method is provided for backwards compatibility, and will be removed
   // in a future release.
+  ABSL_DEPRECATED("Use `this->GetAllocator()` or `this->GetScopedAllocator()`.")
   Allocator* GetStepAllocator(AllocatorAttributes attr, ResourceMgr*) {
     return GetAllocator(attr);
   }
