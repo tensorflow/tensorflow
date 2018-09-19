@@ -76,7 +76,8 @@ class RandomOpsTest(xla_test.XLATestCase):
     for dtype in self._random_types():
       # TODO (b/112272078): enable bfloat16 for CPU and GPU when the bug is
       # fixed.
-      if (self.device in ["XLA_GPU", "XLA_CPU"]) and (dtype == dtypes.bfloat16):
+      if (self.device in ["XLA_GPU", "XLA_CPU"
+                         ]) and (dtype in [dtypes.bfloat16, dtypes.half]):
         continue
       with self.cached_session() as sess:
         with self.test_scope():
