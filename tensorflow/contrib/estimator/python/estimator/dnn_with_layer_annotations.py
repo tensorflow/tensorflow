@@ -76,7 +76,6 @@ def make_input_layer_with_layer_annotations(original_input_layer, mode):
                                          weight_collections=None,
                                          trainable=True,
                                          cols_to_vars=None,
-                                         scope=None,
                                          cols_to_output_tensors=None):
     """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
@@ -113,7 +112,6 @@ def make_input_layer_with_layer_annotations(original_input_layer, mode):
         'some_variable:0' shape=(5, 10), <tf.Variable 'some_variable:1'
           shape=(5, 10)]} If a column creates no variables, its value will be an
           empty list.
-      scope: A name or variable scope to use
       cols_to_output_tensors: If not `None`, must be a dictionary that will be
         filled with a mapping from '_FeatureColumn' to the associated output
         `Tensor`s.
@@ -134,7 +132,6 @@ def make_input_layer_with_layer_annotations(original_input_layer, mode):
         weight_collections=weight_collections,
         trainable=trainable,
         cols_to_vars=cols_to_vars,
-        scope=scope,
         cols_to_output_tensors=local_cols_to_output_tensors)
 
     if cols_to_output_tensors is not None:
@@ -304,9 +301,9 @@ def DNNClassifierWithLayerAnnotations(  # pylint: disable=invalid-name
 
   def _model_fn(features, labels, mode, config):
     with _monkey_patch(
-        feature_column_lib, '_internal_input_layer',
-        make_input_layer_with_layer_annotations(
-            feature_column_lib._internal_input_layer, mode)):  # pylint: disable=protected-access
+        feature_column_lib, 'input_layer',
+        make_input_layer_with_layer_annotations(feature_column_lib.input_layer,
+                                                mode)):
       return original.model_fn(features, labels, mode, config)
 
   return estimator.Estimator(
@@ -425,9 +422,9 @@ def DNNRegressorWithLayerAnnotations(  # pylint: disable=invalid-name
 
   def _model_fn(features, labels, mode, config):
     with _monkey_patch(
-        feature_column_lib, '_internal_input_layer',
-        make_input_layer_with_layer_annotations(
-            feature_column_lib._internal_input_layer, mode)):  # pylint: disable=protected-access
+        feature_column_lib, 'input_layer',
+        make_input_layer_with_layer_annotations(feature_column_lib.input_layer,
+                                                mode)):
       return original.model_fn(features, labels, mode, config)
 
   return estimator.Estimator(
