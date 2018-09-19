@@ -564,6 +564,41 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
     self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
 
+  def testTreeComplexityIsSetCorrectly(self):
+    input_fn = _make_train_input_fn(is_classification=True)
+
+    num_steps = 10
+    # Tree complexity is set but no pruning.
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        tree_complexity=1e-3)
+    with self.assertRaisesRegexp(ValueError, 'Tree complexity have no effect'):
+      est.train(input_fn, steps=num_steps)
+
+    # Pruning but no tree complexity.
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        pruning_mode='pre')
+    with self.assertRaisesRegexp(ValueError,
+                                 'tree_complexity must be positive'):
+      est.train(input_fn, steps=num_steps)
+
+    # All is good.
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        pruning_mode='pre',
+        tree_complexity=1e-3)
+    est.train(input_fn, steps=num_steps)
+
 
 class BoostedTreesDebugOutputsTest(test_util.TensorFlowTestCase):
   """Test debug/model explainability outputs for individual predictions.
