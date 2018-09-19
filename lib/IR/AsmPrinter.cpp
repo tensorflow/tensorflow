@@ -477,6 +477,9 @@ void ModulePrinter::printType(const Type *type) {
   case Type::Kind::TFControl:
     os << "tf_control";
     return;
+  case Type::Kind::TFResource:
+    os << "tf_resource";
+    return;
   case Type::Kind::TFString:
     os << "tf_string";
     return;

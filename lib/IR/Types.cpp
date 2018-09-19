@@ -63,7 +63,8 @@ VectorType::VectorType(ArrayRef<unsigned> shape, Type *elementType,
 /// Return true if the specified element type is ok in a tensor.
 static bool isValidTensorElementType(Type *type, MLIRContext *context) {
   return isa<FloatType>(type) || isa<VectorType>(type) ||
-         isa<IntegerType>(type) || type == Type::getTFString(context);
+         isa<IntegerType>(type) || type == Type::getTFString(context) ||
+         type == Type::getTFResource(context);
 }
 
 TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)

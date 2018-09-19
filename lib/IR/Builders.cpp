@@ -64,6 +64,8 @@ OtherType *Builder::getAffineIntType() { return Type::getAffineInt(context); }
 
 OtherType *Builder::getTFControlType() { return Type::getTFControl(context); }
 
+OtherType *Builder::getTFResourceType() { return Type::getTFResource(context); }
+
 OtherType *Builder::getTFStringType() { return Type::getTFString(context); }
 
 IntegerType *Builder::getIntegerType(unsigned width) {

@@ -40,6 +40,7 @@ public:
 
     // TensorFlow types.
     TFControl,
+    TFResource,
     TFString,
 
     /// These are marker for the first and last 'other' type.
@@ -64,9 +65,7 @@ public:
   };
 
   /// Return the classification for this type.
-  Kind getKind() const {
-    return kind;
-  }
+  Kind getKind() const { return kind; }
 
   /// Return the LLVMContext in which this type was uniqued.
   MLIRContext *getContext() const { return context; }
@@ -75,6 +74,7 @@ public:
   // derived types should use isa/dyn_cast.
   bool isAffineInt() const { return getKind() == Kind::AffineInt; }
   bool isTFControl() const { return getKind() == Kind::TFControl; }
+  bool isTFResource() const { return getKind() == Kind::TFResource; }
   bool isTFString() const { return getKind() == Kind::TFString; }
   bool isBF16() const { return getKind() == Kind::BF16; }
   bool isF16() const { return getKind() == Kind::F16; }
@@ -93,6 +93,7 @@ public:
   static OtherType *getAffineInt(MLIRContext *ctx);
   static OtherType *getTFControl(MLIRContext *ctx);
   static OtherType *getTFString(MLIRContext *ctx);
+  static OtherType *getTFResource(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -216,6 +217,9 @@ inline OtherType *Type::getAffineInt(MLIRContext *ctx) {
 }
 inline OtherType *Type::getTFControl(MLIRContext *ctx) {
   return OtherType::get(Kind::TFControl, ctx);
+}
+inline OtherType *Type::getTFResource(MLIRContext *ctx) {
+  return OtherType::get(Kind::TFResource, ctx);
 }
 inline OtherType *Type::getTFString(MLIRContext *ctx) {
   return OtherType::get(Kind::TFString, ctx);
