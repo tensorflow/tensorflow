@@ -51,6 +51,10 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "if_mkl_ml",
@@ -1106,7 +1110,7 @@ tf_cuda_cc_test(
     name = "depthwise_conv_ops_test",
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":conv_ops",
         ":image",

@@ -2,6 +2,10 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 def all_backends():
     b = ["cpu"] + plugins.keys()
@@ -65,7 +69,7 @@ def tf_xla_py_test(
                 "--test_device=XLA_GPU",
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_INT8,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16",
             ]
-            backend_tags += ["requires-gpu-sm35"]
+            backend_tags += tf_cuda_tests_tags()
         elif backend in plugins:
             backend_args += [
                 "--test_device=" + plugins[backend]["device"],
