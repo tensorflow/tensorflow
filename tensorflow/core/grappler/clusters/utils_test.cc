@@ -31,22 +31,22 @@ TEST(UtilsTest, GetLocalGPUInfo) {
   LOG(INFO) << "CUDA is enabled.";
   DeviceProperties properties;
 
-  // Invalid CUDA GPU ID.
-  properties = GetLocalGPUInfo(CudaGpuId(100));
+  // Invalid platform GPU ID.
+  properties = GetLocalGPUInfo(PlatformGpuId(100));
   EXPECT_EQ("UNKNOWN", properties.type());
 
-  // Succeed when a valid CUDA GPU id was inserted.
-  properties = GetLocalGPUInfo(CudaGpuId(0));
+  // Succeed when a valid platform GPU id was inserted.
+  properties = GetLocalGPUInfo(PlatformGpuId(0));
   EXPECT_EQ("GPU", properties.type());
   EXPECT_EQ("NVIDIA", properties.vendor());
 #else
   LOG(INFO) << "CUDA is not enabled.";
   DeviceProperties properties;
 
-  properties = GetLocalGPUInfo(CudaGpuId(0));
+  properties = GetLocalGPUInfo(PlatformGpuId(0));
   EXPECT_EQ("GPU", properties.type());
 
-  properties = GetLocalGPUInfo(CudaGpuId(100));
+  properties = GetLocalGPUInfo(PlatformGpuId(100));
   EXPECT_EQ("GPU", properties.type());
 #endif
 }
@@ -74,20 +74,20 @@ TEST(UtilsTest, GetDeviceInfo) {
   EXPECT_EQ("NVIDIA", properties.vendor());
 #endif
 
-  // TF to CUDA GPU id mapping entry doesn't exist.
+  // TF to platform GPU id mapping entry doesn't exist.
   device.has_id = true;
   device.id = 0;
   properties = GetDeviceInfo(device);
   EXPECT_EQ("UNKNOWN", properties.type());
 
 #if GOOGLE_CUDA
-  // Invalid CUDA GPU id.
-  GpuIdManager::InsertTfCudaGpuIdPair(TfGpuId(0), CudaGpuId(100));
+  // Invalid platform GPU id.
+  GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(0), PlatformGpuId(100));
   properties = GetDeviceInfo(device);
   EXPECT_EQ("UNKNOWN", properties.type());
 
-  // Valid CUDA GPU id.
-  GpuIdManager::InsertTfCudaGpuIdPair(TfGpuId(1), CudaGpuId(0));
+  // Valid platform GPU id.
+  GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(1), PlatformGpuId(0));
   device.id = 1;
   properties = GetDeviceInfo(device);
   EXPECT_EQ("GPU", properties.type());
