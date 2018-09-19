@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -74,7 +75,7 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
       ("SumFive", 5),
       ("SumTen", 10),
   )
-  def testReduceDataset(self, stop):
+  def testReduceDatasetSum(self, stop):
     def init_fn(_):
       return np.int64(0)
 
@@ -93,6 +94,36 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       value = sess.run(element, feed_dict={stop_t: stop})
       self.assertEqual(stop * (stop - 1) / 2, value)
+
+  @parameterized.named_parameters(
+      ("AverageZero", 0),
+      ("AverageOne", 1),
+      ("AverageFive", 5),
+      ("AverageTen", 10),
+  )
+  def testReduceDatasetAverage(self, stop):
+    def init_fn(_):
+      return 0.0, 0.0
+
+    def reduce_fn(x, y):
+      return (x[0] * x[1] + math_ops.cast(y, dtypes.float32)) / (
+          x[1] + 1), x[1] + 1
+
+    def finalize_fn(x, _):
+      return x
+
+    average_reducer = grouping.Reducer(init_fn, reduce_fn, finalize_fn)
+
+    stop_t = array_ops.placeholder(dtypes.int64, shape=[])
+    dataset = dataset_ops.Dataset.range(stop_t)
+    element = get_single_element.reduce_dataset(dataset, average_reducer)
+
+    with self.cached_session() as sess:
+      value = sess.run(element, feed_dict={stop_t: stop})
+      if stop == 0:
+          self.assertEqual(0.0, value)
+      else:
+          self.assertEqual(stop * (stop - 1) / (2 * stop), value)
 
 
 if __name__ == "__main__":
