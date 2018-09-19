@@ -20,11 +20,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-bool RunTest(const int64_t alignment, const int64_t size,
-             const intptr_t orig_ptr_val, const int64_t orig_space) {
+bool RunTest(const uint64_t alignment, const uint64_t size,
+             const intptr_t orig_ptr_val, const uint64_t orig_space) {
   void* const orig_ptr = reinterpret_cast<void*>(orig_ptr_val);
   void* ptr = orig_ptr;
-  int64_t space = orig_space;
+  uint64_t space = orig_space;
   void* result = Align(alignment, size, ptr, space);
   if (result == nullptr) {
     EXPECT_EQ(orig_ptr, ptr);
@@ -43,25 +43,26 @@ bool RunTest(const int64_t alignment, const int64_t size,
 }
 
 TEST(TRTAllocatorTest, Align) {
-  for (const int64_t space : {1l, 2l, 3l, 4l, 7l, 8l, 9l, 10l, 16l, 32l, 511l,
-                              512l, 513l, 700l, 12345l, 1l << 32}) {
-    for (int64_t alignment = 1; alignment <= space * 4; alignment *= 2) {
+  for (const uint64_t space :
+       {1ul, 2ul, 3ul, 4ul, 7ul, 8ul, 9ul, 10ul, 16ul, 32ul, 511ul, 512ul,
+        513ul, 700ul, 12345ul, 1ul << 32}) {
+    for (uint64_t alignment = 1; alignment <= space * 4; alignment *= 2) {
       for (const uintptr_t ptr_val :
-           {1l, alignment == 1 ? 1l : alignment - 1, alignment, alignment + 1,
+           {1ul, alignment == 1 ? 1ul : alignment - 1, alignment, alignment + 1,
             alignment + (alignment / 2)}) {
         if (ptr_val % alignment == 0) {
-          for (const int64_t size :
-               {1l, space == 1 ? 1l : space - 1, space, space + 1}) {
+          for (const uint64_t size :
+               {1ul, space == 1 ? 1ul : space - 1, space, space + 1}) {
             EXPECT_EQ(space >= size, RunTest(alignment, size, ptr_val, space));
           }
         } else {
           EXPECT_FALSE(RunTest(alignment, space, ptr_val, space));
-          const int64_t diff = alignment - ptr_val % alignment;
+          const uint64_t diff = alignment - ptr_val % alignment;
           if (space > diff) {
             EXPECT_TRUE(
                 RunTest(alignment, space - diff, ptr_val + diff, space - diff));
-            for (const int64_t size :
-                 {1l, space - diff > 1 ? space - diff - 1 : 1l, space - diff,
+            for (const uint64_t size :
+                 {1ul, space - diff > 1 ? space - diff - 1 : 1ul, space - diff,
                   space - diff + 1, space - 1}) {
               EXPECT_EQ(space - diff >= size,
                         RunTest(alignment, size, ptr_val, space));
