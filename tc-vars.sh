@@ -16,6 +16,9 @@ if [ "${OS}" = "Linux" ]; then
     CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v7.2.1/cudnn-9.0-linux-x64-v7.2.1.38.tgz
     CUDNN_SHA256=cf007437b9ac6250ec63b89c25f248d2597fdd01369c80146567f78e75ce4e37
 
+    NCCL_URL=https://s3.amazonaws.com/pytorch/nccl_2.2.13-1%2Bcuda9.0_x86_64.txz
+    NCCL_SHA256=5ae976f47f9dd1caf4f5fa0da51be9ecbdeed54065d1b654ce308cc803e0af0d
+
 elif [ "${OS}" = "Darwin" ]; then
     if [ -z "${TASKCLUSTER_TASK_DIR}" -o -z "${TASKCLUSTER_ARTIFACTS}" ]; then
         echo "Inconsistent OSX setup: missing some vars."
@@ -65,6 +68,7 @@ export TF_NEED_GDR=0
 export TF_NEED_NGRAPH=0
 export TF_DOWNLOAD_CLANG=0
 export TF_SET_ANDROID_WORKSPACE=0
+export TF_NEED_TENSORRT=0
 export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 export PYTHON_BIN_PATH=/usr/bin/python2.7
 
@@ -99,7 +103,7 @@ if [ "${OS}" = "Darwin" ]; then
 fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
-TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.2 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_CUDA_FLAGS="--config=cuda"

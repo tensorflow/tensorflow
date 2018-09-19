@@ -33,6 +33,7 @@ download $BAZEL_URL $BAZEL_SHA256
 if [ ! -z "${install_cuda}" ]; then
     download $CUDA_URL $CUDA_SHA256
     download $CUDNN_URL $CUDNN_SHA256
+    download $NCCL_URL $NCCL_SHA256
 fi;
 
 # For debug
@@ -62,6 +63,9 @@ if [ ! -z "${install_cuda}" ]; then
 
         CUDNN_FILE=`basename ${CUDNN_URL}`
         tar xvf ${DS_ROOT_TASK}/dls/${CUDNN_FILE} --strip-components=1 -C ${DS_ROOT_TASK}/DeepSpeech/CUDA/
+
+        NCCL_FILE=`basename ${NCCL_URL}`
+        tar xvf ${DS_ROOT_TASK}/dls/${NCCL_FILE} --strip-components=1 -C ${DS_ROOT_TASK}/DeepSpeech/CUDA/
     popd
 
     LD_LIBRARY_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/:${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/:$LD_LIBRARY_PATH
