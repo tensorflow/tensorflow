@@ -402,5 +402,124 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'GradientDescent/update_vs/c2/bias/ResourceApplyGradientDescent/call.*/Reduce']
       self.assertTrue(tu.check_some_compute_sets_in_list(cs_list, ok))
 
+  def testAvgPoolValid(self):
+    np.random.seed(0)
+    shape = [1, 10, 10, 1]
+    data = np.random.uniform(0, 1, shape)
+    # The expected answer was generated using TF on the cpu
+    expected = [[[[ 0.47279388]]]]
+
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, shape, name="a")
+      output = nn.avg_pool(pa, ksize=[1, 10, 10, 1], strides=[1, 1, 1, 1],
+                           data_format='NHWC',
+                           padding='VALID', name="avg")
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      fd = {
+        pa: data
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, expected)
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 4)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'avg/call/avgPool10x10',
+            'host-exchange-local-copy-']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testAvgPoolValidWithBroadcast(self):
+    np.random.seed(0)
+    shape = [1, 10, 10, 1]
+    data = np.random.uniform(0, 1, shape)
+    # The expected answer was generated using TF on the cpu
+    expected = [[[[ 0.52647954], [ 0.44196457], [ 0.49284577]],
+                 [[ 0.44039682], [ 0.44067329], [ 0.44934618]],
+                 [[ 0.46444583], [ 0.45419583], [ 0.38236427]]]]
+
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, shape, name="a")
+      output = nn.avg_pool(pa, ksize=[1, 5, 5, 1], strides=[1, 2, 2, 1],
+                           data_format='NHWC',
+                           padding='VALID', name="avg")
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      fd = {
+        pa: data
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, expected)
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 4)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['progIdCopy',
+            'avg/call/avgPool5x5',
+            'host-exchange-local-copy-']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+
+  def testAvgPoolSameWithReshape(self):
+    np.random.seed(0)
+    shape = [1, 10, 10, 1]
+    data = np.random.uniform(0, 1, shape)
+    # The expected answer was generated using TF on the cpu
+    expected = [[[[ 0.64431685], [ 0.51738459], [ 0.49705142], [ 0.60235918], [ 0.73694557]],
+                 [[ 0.57755166], [ 0.47387227], [ 0.40451217], [ 0.4876942 ], [ 0.55843753]],
+                 [[ 0.49037799], [ 0.4466258 ], [ 0.35829377], [ 0.40070742], [ 0.37205362]],
+                 [[ 0.47563809], [ 0.4075647 ], [ 0.34894851], [ 0.35470542], [ 0.3322109 ]],
+                 [[ 0.52914065], [ 0.45464769], [ 0.38156652], [ 0.32455513], [ 0.33199897]]]]
+
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, shape, name="a")
+      output = nn.avg_pool(pa, ksize=[1, 5, 5, 1], strides=[1, 2, 2, 1],
+                           data_format='NHWC',
+                           padding='SAME', name="avg")
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+
+      fd = {
+        pa: data
+      }
+      result = sess.run(output, fd)
+      self.assertAllClose(result, expected)
+
+      result = sess.run(report)
+      self.assertEqual(len(result), 4)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+      ok = ['progIdCopy',
+            'avg/call/avgPool5x5']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
 if __name__ == "__main__":
     googletest.main()
