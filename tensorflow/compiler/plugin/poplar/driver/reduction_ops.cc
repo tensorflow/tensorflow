@@ -304,7 +304,7 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
       TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
 
       popops::mapInPlace(graph, op, out, init_val, seq,
-                        GetDebugName(inst) + "_initval");
+                         GetDebugName(inst) + "_initval");
     }
 
     TF_CHECK_OK(
@@ -411,7 +411,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
       TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
 
       popops::mapInPlace(graph, op, out, init_val, seq,
-                        GetDebugName(inst) + "_initval");
+                         GetDebugName(inst) + "_initval");
     }
     TF_CHECK_OK(
         AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
@@ -502,27 +502,26 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     // non-default base case.
 
     // What is the operation, MAX, SUM etc.
-    HloInstruction* root(inst->to_apply()->root_instruction());
+    HloInstruction* root(pooling_inst->to_apply()->root_instruction());
     popops::Operation op = PoplibsReductionOperation(root);
 
     // What is the default base case for the op, MAX: -largest, SUM: 0, etc.
     Literal identity_literal = GetIdentityConstantLiteral(root);
-    auto* init_inst = inst->operand(1);
+    auto* init_inst = pooling_inst->operand(1);
 
-    //Apply the base case if necessary
+    // Apply the base case if necessary
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
       poplar::Tensor init_val;
       TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
-      init_val = init_val.reshape({1}).
-                          broadcast(out.numElements(), 0).
-                          reshape(out.shape());
+      init_val = init_val.reshape({1})
+                     .broadcast(out.numElements(), 0)
+                     .reshape(out.shape());
       popops::expr::BinaryOpType op;
       TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(root));
       popops::mapInPlace(graph, op, out, init_val, prog,
-                        GetDebugName(inst) + "_initval");
+                         GetDebugName(pooling_inst) + "_initval");
     }
-
 
     const auto shuffle_out =
         GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
@@ -693,7 +692,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
     TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(scatter_root));
 
     popops::mapInPlace(graph, op, out, init_val, program_seq,
-                      GetDebugName(inst) + "_initval");
+                       GetDebugName(inst) + "_initval");
   }
 
   TF_CHECK_OK(AddOutputTensor(graph, res, program_seq, tensor_map, inst, 0, out)
