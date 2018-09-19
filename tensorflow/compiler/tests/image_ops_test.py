@@ -605,10 +605,6 @@ class ResizeBilinearTest(xla_test.XLATestCase):
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
   def testNMS128From1024(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       num_boxes = 1024
       boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
@@ -644,10 +640,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
         self.assertEqual(indices_tf.size, max_output_size)
 
   def testNMS3From6Boxes(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       # Three boxes are selected based on IOU.
       boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
@@ -692,10 +684,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
   def testNMS3Then2WithScoreThresh(self):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
-
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
 
     with compat.forward_compatibility_horizon(2018, 8, 8):
       boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
