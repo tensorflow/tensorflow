@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-package ovic.demo.app;
+package org.tensorflow.ovic;
 
 import android.graphics.Bitmap;
 import android.os.SystemClock;
@@ -22,8 +22,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
-import org.tensorflow.ovic.OvicClassifier;
-import org.tensorflow.ovic.OvicSingleImageResult;
 
 /**
  * Class that benchmarks image classifier models.

@@ -87,11 +87,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                     "Expected len(dense_defaults) == len(dense_keys) but got: ",
                     dense_default_tensors.size(), " vs. ", dense_keys_.size()));
 
-    std::vector<Tensor> dense_defaults;
-    dense_defaults.reserve(dense_default_tensors.size());
-    for (const Tensor& dense_default_t : dense_default_tensors) {
-      dense_defaults.push_back(dense_default_t);
-    }
+    std::vector<Tensor> dense_defaults(dense_default_tensors.begin(),
+                                       dense_default_tensors.end());
 
     for (int d = 0; d < dense_keys_.size(); ++d) {
       const Tensor& def_value = dense_defaults[d];

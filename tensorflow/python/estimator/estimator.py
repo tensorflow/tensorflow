@@ -41,7 +41,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import metrics
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -329,7 +328,7 @@ class Estimator(object):
                                  run_config.TaskType.PS):
       raise ValueError(
           'Train has been called wrong configuration. Please use '
-          'tf.estimator.train_and_evaluate which calls propper API according '
+          'tf.estimator.train_and_evaluate which calls proper API according '
           'to given configuration. Current configuration: {}.'.format(
               self.config))
 
@@ -489,6 +488,10 @@ class Estimator(object):
               checkpoint_path=None,
               yield_single_examples=True):
     """Yields predictions for given features.
+
+    Please note that interleaving two predict outputs does not work. See:
+    [issue/20506](
+    https://github.com/tensorflow/tensorflow/issues/20506#issuecomment-422208517)
 
     Args:
       input_fn: A function that constructs the features. Prediction continues
@@ -1653,7 +1656,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
   def _unwrap_and_concat(value):
     value = nest.flatten(distribution.unwrap(value))
     if len(value) != 1:
-      return array_ops.concat(value)
+      return array_ops.concat(value, 0)
     return value[0]
 
   ready_op = distribution.call_for_each_tower(
@@ -1788,18 +1791,9 @@ def _extract_metric_update_ops(eval_dict, distribution=None):
   value_ops = {}
   # Sort metrics lexicographically so graph is identical every time.
   for name, value in sorted(six.iteritems(eval_dict)):
-    if isinstance(value, metrics.Metric):
-      metric_result = value.result()
-      # We expect only one update op for every metric when there is no
-      # distribution strategy.
-      metric_update = value.updates if distribution else value.updates[0]
-    else:
-      metric_result = value[0]
-      metric_update = value[1]
-
-    value_ops[name] = metric_result
+    value_ops[name] = value[0]
     update_ops.append(
-        distribution.group(metric_update) if distribution else metric_update)
+        distribution.group(value[1]) if distribution else value[1])
 
   update_op = control_flow_ops.group(*update_ops) if update_ops else None
   return update_op, value_ops

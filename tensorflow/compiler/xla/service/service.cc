@@ -812,7 +812,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(module_proto, *module_config));
 
-  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
+  TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*module));
 
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor,
@@ -1160,7 +1160,7 @@ StatusOr<std::vector<se::StreamExecutor*>> Service::Replicas(
   return replicas;
 }
 
-Status Service::MaybeDumpHloModule(const HloModule& module) const {
+Status Service::MaybeDumpUnoptimizedHloModule(const HloModule& module) const {
   const string xla_dump_unoptimized_hlo_proto_to =
       module.config().debug_options().xla_dump_unoptimized_hlo_proto_to();
   if (xla_dump_unoptimized_hlo_proto_to.empty()) {
@@ -1168,7 +1168,8 @@ Status Service::MaybeDumpHloModule(const HloModule& module) const {
   }
   HloProto proto = MakeHloProto(module);
   return protobuf_util::DumpProtoToDirectory(
-      proto, xla_dump_unoptimized_hlo_proto_to, module.name());
+      proto, xla_dump_unoptimized_hlo_proto_to,
+      StrCat(module.name(), ".unoptimized"));
 }
 
 }  // namespace xla

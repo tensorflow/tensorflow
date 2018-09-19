@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/experimental_implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
@@ -70,6 +71,16 @@ int NumIterations(const RewriterConfig& cfg) {
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer";
+}
+
+// Check if the graphdef contains nodes that indicate TPU execution.
+bool IsTPUGraphDef(const GraphDef& def) {
+  for (auto node : def.node()) {
+    if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -186,8 +197,18 @@ Status MetaOptimizer::InitializeOptimizersByName(
 Status MetaOptimizer::InitializeCustomGraphOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
-    auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
-        optimizer_config.name());
+    // Initialize the ExperimentalImplementationSelector here instead of
+    // CustomizeOptimizer registry, due the static link issue in TensorRT for
+    // double registry.
+    // TODO(laigd): Remove this hack and change it back to use the registry once
+    // the duplicate static import issue is fixed.
+    std::unique_ptr<CustomGraphOptimizer> custom_optimizer;
+    if (optimizer_config.name() == "ExperimentalImplementationSelector") {
+      custom_optimizer.reset(new ExperimentalImplementationSelector());
+    } else {
+      custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
+          optimizer_config.name());
+    }
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();
@@ -331,12 +352,25 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
-  LOG(INFO) << "Starting optimization for grappler item: " << item.id;
+  VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
   // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
   VLOG(1) << "Optimized main graph.";
+
+  // Skip optimizing functions if this is a TPU graph. Currently, Grappler
+  // passes do not handle TPU functions correctly in a variety of ways (Note
+  // that due to the pre-placement TPU graph rewriting passes, the TPU-related
+  // ops are encapsulated away into functions). For example, TPU graphs contain
+  // TPUReplicateMetadata node that carries relevant TPU metadata and Grappler
+  // passes could prune that away. Grappler passes could also cause issues
+  // around shape inference. Since the desired and existing behavior is to not
+  // optimize TPU functions with Grappler, this check preserves that.
+  if (IsTPUGraphDef(*optimized_graph)) {
+    VLOG(2) << "Skipping optimizing funcs for TPU graphs";
+    return Status::OK();
+  }
 
   // 2. Optimize function library
   FunctionLibraryDefinition flib(OpRegistry::Global(),

@@ -367,9 +367,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
 
   // Deduplicate large constant arrays.
-  if (toco_flags.has_dedupe_array_min_size_bytes()) {
-    DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
-  }
+  DedupeConstantArrays(model, toco_flags.dedupe_array_min_size_bytes());
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 

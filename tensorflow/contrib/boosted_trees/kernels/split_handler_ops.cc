@@ -579,13 +579,6 @@ class BuildSparseInequalitySplitsOp : public OpKernel {
         const int end_index =
             partition_boundaries[non_empty_partitions[root_idx]][j + 1]
                 .start_index;
-        CHECK(bucket_ids_and_dimensions(start_index, 1) ==
-              bucket_ids_and_dimensions(end_index - 1, 1))
-            << "For bucket " << bucket_ids_and_dimensions(start_index, 0)
-            << " the dimension was "
-            << bucket_ids_and_dimensions(start_index, 1) << " and for "
-            << bucket_ids_and_dimensions(end_index - 1, 0) << " "
-            << bucket_ids_and_dimensions(end_index - 1, 1);
         if (bucket_ids_and_dimensions(start_index, 0) == bias_feature_id) {
           // 0-dimension case which has a first bucket for catch all feature.
           CHECK(bucket_ids_and_dimensions(start_index, 1) == 0)
@@ -862,6 +855,15 @@ class BuildCategoricalEqualitySplitsOp : public OpKernel {
       auto* equality_split = split_info.mutable_split_node()
                                  ->mutable_categorical_id_binary_split();
       equality_split->set_feature_column(state->feature_column_group_id());
+      CHECK(feature_ids(best_feature_idx, 0) != bias_feature_id)
+          << "Unexpected feature ID selected. "
+          << "Start feature ID: [" << start_index << "] "
+          << feature_ids(start_index, 0) << ", " << feature_ids(start_index, 1)
+          << "\nBest feature ID: [" << best_feature_idx << "] "
+          << feature_ids(best_feature_idx, 0) << ", "
+          << feature_ids(best_feature_idx, 1)
+          << "\nPartition IDS: " << partition_ids(start_index) << "  "
+          << partition_ids(best_feature_idx);
       equality_split->set_feature_id(feature_ids(best_feature_idx, 0));
       auto* left_child = split_info.mutable_left_child();
       auto* right_child = split_info.mutable_right_child();

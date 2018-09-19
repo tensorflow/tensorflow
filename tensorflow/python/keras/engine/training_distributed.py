@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -742,8 +743,9 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
   for name, tensor in zip(model.output_names, model.outputs):
     # TODO(priyag): This is a workaround as we do not know the batch dimension
     # of the model's output at this point.
-    tensor.shape.dims = [batch_dimension] + tensor.shape.dims[1:]
-    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+    shape = tensor_shape.TensorShape(tensor.shape.dims)
+    shape.dims = [batch_dimension] + shape.dims[1:]
+    initial_loop_values[name] = array_ops.zeros(shape, tensor.dtype)
 
   with current_strategy.scope():
     # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.

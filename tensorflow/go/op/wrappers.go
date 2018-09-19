@@ -332,7 +332,7 @@ func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQua
 // Creates a new tensor by applying sparse `updates` to individual values or
 // slices within a tensor (initially zero for numeric, empty for string) of
 // the given `shape` according to indices.  This operator is the inverse of the
-// @{tf.gather_nd} operator which extracts values or slices from a given tensor.
+// `tf.gather_nd` operator which extracts values or slices from a given tensor.
 //
 // If `indices` contains duplicates, then their updates are accumulated (summed).
 //
@@ -1473,7 +1473,7 @@ type StridedSliceAttr func(optionalAttr)
 //
 // value: a bitmask where a bit i being 1 means to ignore the begin
 // value and instead use the largest interval possible. At runtime
-// begin[i] will be replaced with `[0, n-1) if `stride[i] > 0` or
+// begin[i] will be replaced with `[0, n-1)` if `stride[i] > 0` or
 // `[-1, n-1]` if `stride[i] < 0`
 // If not specified, defaults to 0
 func StridedSliceBeginMask(value int64) StridedSliceAttr {
@@ -1849,6 +1849,32 @@ func ReverseSequence(scope *Scope, input tf.Output, seq_lengths tf.Output, seq_d
 		Type: "ReverseSequence",
 		Input: []tf.Input{
 			input, seq_lengths,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Ensures that the tensor's shape matches the expected shape.
+//
+// Raises an error if the input tensor's shape does not match the specified shape.
+// Returns the input tensor otherwise.
+//
+// Arguments:
+//	input: A tensor, whose shape is to be validated.
+//	shape: The expected (possibly partially specified) shape of the input tensor.
+//
+// Returns A tensor with the same shape and contents as the input tensor or value.
+func EnsureShape(scope *Scope, input tf.Output, shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shape": shape}
+	opspec := tf.OpSpec{
+		Type: "EnsureShape",
+		Input: []tf.Input{
+			input,
 		},
 		Attrs: attrs,
 	}
@@ -2259,7 +2285,7 @@ func CheckNumerics(scope *Scope, tensor tf.Output, message string) (output tf.Ou
 //
 //     output[\\(i_0, ..., i_{K-2}\\)] = params[indices[\\(i_0, ..., i_{K-2}\\)]]
 //
-// Whereas in @{tf.gather} `indices` defines slices into the first
+// Whereas in `tf.gather` `indices` defines slices into the first
 // dimension of `params`, in `tf.gather_nd`, `indices` defines slices into the
 // first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 //
@@ -2356,6 +2382,8 @@ func CheckNumerics(scope *Scope, tensor tf.Output, message string) (output tf.Ou
 //     output = [['b0', 'b1'], ['d0', 'c1']]
 // ```
 //
+// See also `tf.gather` and `tf.batch_gather`.
+//
 // Arguments:
 //	params: The tensor from which to gather values.
 //	indices: Index tensor.
@@ -2444,6 +2472,16 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 // fill([2, 3], 9) ==> [[9, 9, 9]
 //                      [9, 9, 9]]
 // ```
+//
+// `tf.fill` differs from `tf.constant` in a few ways:
+//
+// *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
+//     Tensor values.
+// *   `tf.fill` creates an Op in the computation graph that constructs the actual
+//     Tensor value at runtime. This is in contrast to `tf.constant` which embeds
+//     the entire Tensor into the graph with a `Const` node.
+// *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
+//     based on other runtime Tensors, unlike `tf.constant`.
 //
 // Arguments:
 //	dims: 1-D. Represents the shape of the output tensor.
@@ -2853,6 +2891,25 @@ func GuaranteeConst(scope *Scope, input tf.Output) (output tf.Output) {
 		Input: []tf.Input{
 			input,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns a constant tensor on the host. Only for writing C++ tests.
+//
+// Arguments:
+//	value: Attr `value` is the tensor to return.
+//
+func HostConst(scope *Scope, value tf.Tensor, dtype tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value": value, "dtype": dtype}
+	opspec := tf.OpSpec{
+		Type: "HostConst",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -3377,6 +3434,204 @@ func PopulationCount(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Bucketize each feature based on bucket boundaries.
+//
+// An op that returns a list of float tensors, where each tensor represents the
+// bucketized values for a single feature.
+//
+// Arguments:
+//	float_values: float; List of Rank 2 Tensor each containing float values for a single feature.
+//	bucket_boundaries: float; List of Rank 1 Tensors each containing the bucket boundaries for a single
+// feature.
+//
+// Returns int; List of Rank 2 Tensors each containing the bucketized values for a single feature.
+func BoostedTreesBucketize(scope *Scope, float_values []tf.Output, bucket_boundaries []tf.Output) (buckets []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesBucketize",
+		Input: []tf.Input{
+			tf.OutputList(float_values), tf.OutputList(bucket_boundaries),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if buckets, idx, err = makeOutputList(op, idx, "buckets"); err != nil {
+		scope.UpdateErr("BoostedTreesBucketize", err)
+		return
+	}
+	return buckets
+}
+
+// BoostedTreesQuantileStreamResourceFlushAttr is an optional argument to BoostedTreesQuantileStreamResourceFlush.
+type BoostedTreesQuantileStreamResourceFlushAttr func(optionalAttr)
+
+// BoostedTreesQuantileStreamResourceFlushGenerateQuantiles sets the optional generate_quantiles attribute to value.
+//
+// value: bool; If True, the output will be the num_quantiles for each stream where the ith
+// entry is the ith quantile of the input with an approximation error of epsilon.
+// Duplicate values may be present.
+// If False, the output will be the points in the histogram that we got which roughly
+// translates to 1/epsilon boundaries and without any duplicates.
+// Default to False.
+// If not specified, defaults to false
+func BoostedTreesQuantileStreamResourceFlushGenerateQuantiles(value bool) BoostedTreesQuantileStreamResourceFlushAttr {
+	return func(m optionalAttr) {
+		m["generate_quantiles"] = value
+	}
+}
+
+// Flush the summaries for a quantile stream resource.
+//
+// An op that flushes the summaries for a quantile stream resource.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
+//	num_buckets: int; approximate number of buckets unless using generate_quantiles.
+//
+// Returns the created operation.
+func BoostedTreesQuantileStreamResourceFlush(scope *Scope, quantile_stream_resource_handle tf.Output, num_buckets tf.Output, optional ...BoostedTreesQuantileStreamResourceFlushAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceFlush",
+		Input: []tf.Input{
+			quantile_stream_resource_handle, num_buckets,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Add the quantile summaries to each quantile stream resource.
+//
+// An op that adds a list of quantile summaries to a quantile stream resource. Each
+// summary Tensor is rank 2, containing summaries (value, weight, min_rank, max_rank)
+// for a single feature.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
+//	summaries: string; List of Rank 2 Tensor each containing the summaries for a single feature.
+//
+// Returns the created operation.
+func BoostedTreesQuantileStreamResourceAddSummaries(scope *Scope, quantile_stream_resource_handle tf.Output, summaries []tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceAddSummaries",
+		Input: []tf.Input{
+			quantile_stream_resource_handle, tf.OutputList(summaries),
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Makes the summary of quantiles for the batch.
+//
+// An op that takes a list of tensors and outputs the quantile summaries for each tensor.
+//
+// Arguments:
+//	float_values: float; List of Rank 2 Tensors each containing values for a single feature.
+//	example_weights: float; Rank 1 Tensor with weights per instance.
+//	epsilon: float; The required maximum approximation error.
+//
+// Returns float; List of Rank 2 Tensors each containing the quantile summary (value, weight,
+// min_rank, max_rank) of a single feature.
+func BoostedTreesMakeQuantileSummaries(scope *Scope, float_values []tf.Output, example_weights tf.Output, epsilon tf.Output) (summaries []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesMakeQuantileSummaries",
+		Input: []tf.Input{
+			tf.OutputList(float_values), example_weights, epsilon,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if summaries, idx, err = makeOutputList(op, idx, "summaries"); err != nil {
+		scope.UpdateErr("BoostedTreesMakeQuantileSummaries", err)
+		return
+	}
+	return summaries
+}
+
+// BoostedTreesCreateQuantileStreamResourceAttr is an optional argument to BoostedTreesCreateQuantileStreamResource.
+type BoostedTreesCreateQuantileStreamResourceAttr func(optionalAttr)
+
+// BoostedTreesCreateQuantileStreamResourceMaxElements sets the optional max_elements attribute to value.
+//
+// value: int; The maximum number of data points that can be fed to the stream.
+// If not specified, defaults to 1099511627776
+func BoostedTreesCreateQuantileStreamResourceMaxElements(value int64) BoostedTreesCreateQuantileStreamResourceAttr {
+	return func(m optionalAttr) {
+		m["max_elements"] = value
+	}
+}
+
+// Create the Resource for Quantile Streams.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource; Handle to quantile stream resource.
+//	epsilon: float; The required approximation error of the stream resource.
+//	num_streams: int; The number of streams managed by the resource that shares the same epsilon.
+//
+// Returns the created operation.
+func BoostedTreesCreateQuantileStreamResource(scope *Scope, quantile_stream_resource_handle tf.Output, epsilon tf.Output, num_streams tf.Output, optional ...BoostedTreesCreateQuantileStreamResourceAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesCreateQuantileStreamResource",
+		Input: []tf.Input{
+			quantile_stream_resource_handle, epsilon, num_streams,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Checks whether a quantile stream has been initialized.
+//
+// An Op that checks if quantile stream resource is initialized.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource; The reference to quantile stream resource handle.
+//
+// Returns bool; True if the resource is initialized, False otherwise.
+func IsBoostedTreesQuantileStreamResourceInitialized(scope *Scope, quantile_stream_resource_handle tf.Output) (is_initialized tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IsBoostedTreesQuantileStreamResourceInitialized",
+		Input: []tf.Input{
+			quantile_stream_resource_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Calculates the prior from the training data (the bias) and fills in the first node with the logits' prior. Returns a boolean indicating whether to continue centering.
 //
 // Arguments:
@@ -3491,8 +3746,9 @@ func BoostedTreesExampleDebugOutputs(scope *Scope, tree_ensemble_handle tf.Outpu
 // Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
 // misisng, the `output` tensor at that position will be zeroed.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // For example:
 //
@@ -3601,8 +3857,9 @@ func Asin(scope *Scope, x tf.Output) (y tf.Output) {
 
 // Computes the sum along sparse segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
 // dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -3668,28 +3925,32 @@ func Sinh(scope *Scope, x tf.Output) (y tf.Output) {
 
 // Computes the minimum along segments of a tensor.
 //
-// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+// for an explanation of segments.
 //
 // This operator is similar to the unsorted segment sum operator found
 // [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 // Instead of computing the sum over segments, it computes the minimum such that:
 //
-// \\(output_i = \min_j data_j\\) where min is over `j` such
-// that `segment_ids[j] == i`.
+// \\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
+// that `segment_ids[j...] == i`.
 //
 // If the minimum is empty for a given segment ID `i`, it outputs the largest
 // possible value for the specific numeric type,
 // `output[i] = numeric_limits<T>::max()`.
 //
+// If the given segment ID `i` is negative, then the corresponding value is
+// dropped, and will not be included in the result.
+//
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-// first dimension.
+//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
 //
 //
-// Returns Has same shape as data, except for dimension 0 which
-// has size `num_segments`.
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimension which has size
+// `num_segments`.
 func UnsortedSegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -3721,11 +3982,12 @@ func Relu6(scope *Scope, features tf.Output) (activations tf.Output) {
 
 // Computes the sum along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Computes a tensor such that
-// \\(output[i] = sum_{j...} data[j...]\\) where the sum is over tuples `j...` such
+// \\(output[i] = \sum_{j...} data[j...]\\) where the sum is over tuples `j...` such
 // that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 // need not be sorted and need not cover all values in the full
 // range of valid values.
@@ -4353,19 +4615,23 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 
 // Computes the maximum along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // This operator is similar to the unsorted segment sum operator found
 // [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 // Instead of computing the sum over segments, it computes the maximum such that:
 //
-// \\(output_i = \max_j data_j\\) where max is over `j` such
-// that `segment_ids[j] == i`.
+// \\(output_i = \max_{j...} data[j...]\\) where max is over tuples `j...` such
+// that `segment_ids[j...] == i`.
 //
 // If the maximum is empty for a given segment ID `i`, it outputs the smallest
 // possible value for the specific numeric type,
 // `output[i] = numeric_limits<T>::lowest()`.
+//
+// If the given segment ID `i` is negative, then the corresponding value is
+// dropped, and will not be included in the result.
 //
 // <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 // <img style="width:100%" src="https://www.tensorflow.org/images/UnsortedSegmentMax.png" alt>
@@ -4373,12 +4639,15 @@ func NthElement(scope *Scope, input tf.Output, n tf.Output, optional ...NthEleme
 //
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-// first dimension.
+//	segment_ids: A tensor whose shape is a prefix of `data.shape`.END
+//   }
+//   out_arg {
+//     name: "output"
+//     description: <<END
+// Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimension which has size
+// `num_segments`.
 //
-//
-// Returns Has same shape as data, except for dimension 0 which
-// has size `num_segments`.
 func UnsortedSegmentMax(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -5220,6 +5489,47 @@ func Reciprocal(scope *Scope, x tf.Output) (y tf.Output) {
 		Input: []tf.Input{
 			x,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Transforms `input_dataset` containing `Example` protos as vectors of DT_STRING into a dataset of `Tensor` or `SparseTensor` objects representing the parsed features.
+//
+// Arguments:
+//
+//
+//	dense_defaults: A dict mapping string keys to `Tensor`s.
+// The keys of the dict must match the dense_keys of the feature.
+//	sparse_keys: A list of string keys in the examples features.
+// The results for these keys will be returned as `SparseTensor` objects.
+//	dense_keys: A list of Ndense string Tensors (scalars).
+// The keys expected in the Examples features associated with dense values.
+//	sparse_types: A list of `DTypes` of the same length as `sparse_keys`.
+// Only `tf.float32` (`FloatList`), `tf.int64` (`Int64List`),
+// and `tf.string` (`BytesList`) are supported.
+//	dense_shapes: List of tuples with the same length as `dense_keys`.
+// The shape of the data for each dense feature referenced by `dense_keys`.
+// Required for any input tensors identified by `dense_keys`.  Must be
+// either fully defined, or may contain an unknown first dimension.
+// An unknown first dimension means the feature is treated as having
+// a variable number of blocks, and the output shape along this dimension
+// is considered unknown at graph build time.  Padding is applied for
+// minibatch elements smaller than the maximum number of blocks for the
+// given feature along this dimension.
+//	output_types: The type list for the return values.
+//	output_shapes: The list of shapes being produced.
+func ParseExampleDataset(scope *Scope, input_dataset tf.Output, num_parallel_calls tf.Output, dense_defaults []tf.Output, sparse_keys []string, dense_keys []string, sparse_types []tf.DataType, dense_shapes []tf.Shape, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"sparse_keys": sparse_keys, "dense_keys": dense_keys, "sparse_types": sparse_types, "dense_shapes": dense_shapes, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ParseExampleDataset",
+		Input: []tf.Input{
+			input_dataset, num_parallel_calls, tf.OutputList(dense_defaults),
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -6476,7 +6786,7 @@ func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset
 	return offset
 }
 
-// Compute the lower regularized incomplete Gamma function `Q(a, x)`.
+// Compute the lower regularized incomplete Gamma function `P(a, x)`.
 //
 // The lower regularized incomplete Gamma function is defined as:
 //
@@ -7910,6 +8220,214 @@ func QueueDequeueV2(scope *Scope, handle tf.Output, component_types []tf.DataTyp
 	return components
 }
 
+// ParseSequenceExampleAttr is an optional argument to ParseSequenceExample.
+type ParseSequenceExampleAttr func(optionalAttr)
+
+// ParseSequenceExampleNcontextSparse sets the optional Ncontext_sparse attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func ParseSequenceExampleNcontextSparse(value int64) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["Ncontext_sparse"] = value
+	}
+}
+
+// ParseSequenceExampleNcontextDense sets the optional Ncontext_dense attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func ParseSequenceExampleNcontextDense(value int64) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["Ncontext_dense"] = value
+	}
+}
+
+// ParseSequenceExampleNfeatureListSparse sets the optional Nfeature_list_sparse attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func ParseSequenceExampleNfeatureListSparse(value int64) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["Nfeature_list_sparse"] = value
+	}
+}
+
+// ParseSequenceExampleNfeatureListDense sets the optional Nfeature_list_dense attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func ParseSequenceExampleNfeatureListDense(value int64) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["Nfeature_list_dense"] = value
+	}
+}
+
+// ParseSequenceExampleContextSparseTypes sets the optional context_sparse_types attribute to value.
+//
+// value: A list of Ncontext_sparse types; the data types of data in
+// each context Feature given in context_sparse_keys.
+// Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
+// DT_INT64 (Int64List), and DT_STRING (BytesList).
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func ParseSequenceExampleContextSparseTypes(value []tf.DataType) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["context_sparse_types"] = value
+	}
+}
+
+// ParseSequenceExampleFeatureListDenseTypes sets the optional feature_list_dense_types attribute to value.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func ParseSequenceExampleFeatureListDenseTypes(value []tf.DataType) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["feature_list_dense_types"] = value
+	}
+}
+
+// ParseSequenceExampleContextDenseShapes sets the optional context_dense_shapes attribute to value.
+//
+// value: A list of Ncontext_dense shapes; the shapes of data in
+// each context Feature given in context_dense_keys.
+// The number of elements in the Feature corresponding to context_dense_key[j]
+// must always equal context_dense_shapes[j].NumEntries().
+// The shape of context_dense_values[j] will match context_dense_shapes[j].
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func ParseSequenceExampleContextDenseShapes(value []tf.Shape) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["context_dense_shapes"] = value
+	}
+}
+
+// ParseSequenceExampleFeatureListSparseTypes sets the optional feature_list_sparse_types attribute to value.
+//
+// value: A list of Nfeature_list_sparse types; the data types
+// of data in each FeatureList given in feature_list_sparse_keys.
+// Currently the ParseSingleSequenceExample supports DT_FLOAT (FloatList),
+// DT_INT64 (Int64List), and DT_STRING (BytesList).
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func ParseSequenceExampleFeatureListSparseTypes(value []tf.DataType) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["feature_list_sparse_types"] = value
+	}
+}
+
+// ParseSequenceExampleFeatureListDenseShapes sets the optional feature_list_dense_shapes attribute to value.
+//
+// value: A list of Nfeature_list_dense shapes; the shapes of
+// data in each FeatureList given in feature_list_dense_keys.
+// The shape of each Feature in the FeatureList corresponding to
+// feature_list_dense_key[j] must always equal
+// feature_list_dense_shapes[j].NumEntries().
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func ParseSequenceExampleFeatureListDenseShapes(value []tf.Shape) ParseSequenceExampleAttr {
+	return func(m optionalAttr) {
+		m["feature_list_dense_shapes"] = value
+	}
+}
+
+// Transforms a vector of brain.SequenceExample protos (as strings) into typed tensors.
+//
+// Arguments:
+//	serialized: A vector containing binary serialized SequenceExample protos.
+//	debug_name: A vector containing the names of the serialized protos.
+// May contain, for example, table key (descriptive) name for the
+// corresponding serialized proto.  This is purely useful for debugging
+// purposes, and the presence of values here has no effect on the output.
+// May also be an empty vector if no name is available.
+//	context_dense_defaults: A list of Ncontext_dense Tensors (some may be empty).
+// context_dense_defaults[j] provides default values
+// when the SequenceExample's context map lacks context_dense_key[j].
+// If an empty Tensor is provided for context_dense_defaults[j],
+// then the Feature context_dense_keys[j] is required.
+// The input type is inferred from context_dense_defaults[j], even when it's
+// empty.  If context_dense_defaults[j] is not empty, its shape must match
+// context_dense_shapes[j].
+//	feature_list_dense_missing_assumed_empty: A vector listing the
+// FeatureList keys which may be missing from the SequenceExamples.  If the
+// associated FeatureList is missing, it is treated as empty.  By default,
+// any FeatureList not listed in this vector must exist in the SequenceExamples.
+//	context_sparse_keys: A list of Ncontext_sparse string Tensors (scalars).
+// The keys expected in the Examples' features associated with context_sparse
+// values.
+//	context_dense_keys: A list of Ncontext_dense string Tensors (scalars).
+// The keys expected in the SequenceExamples' context features associated with
+// dense values.
+//	feature_list_sparse_keys: A list of Nfeature_list_sparse string Tensors
+// (scalars).  The keys expected in the FeatureLists associated with sparse
+// values.
+//	feature_list_dense_keys: A list of Nfeature_list_dense string Tensors (scalars).
+// The keys expected in the SequenceExamples' feature_lists associated
+// with lists of dense values.
+func ParseSequenceExample(scope *Scope, serialized tf.Output, debug_name tf.Output, context_dense_defaults []tf.Output, feature_list_dense_missing_assumed_empty []string, context_sparse_keys []string, context_dense_keys []string, feature_list_sparse_keys []string, feature_list_dense_keys []string, optional ...ParseSequenceExampleAttr) (context_sparse_indices []tf.Output, context_sparse_values []tf.Output, context_sparse_shapes []tf.Output, context_dense_values []tf.Output, feature_list_sparse_indices []tf.Output, feature_list_sparse_values []tf.Output, feature_list_sparse_shapes []tf.Output, feature_list_dense_values []tf.Output, feature_list_dense_lengths []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"feature_list_dense_missing_assumed_empty": feature_list_dense_missing_assumed_empty, "context_sparse_keys": context_sparse_keys, "context_dense_keys": context_dense_keys, "feature_list_sparse_keys": feature_list_sparse_keys, "feature_list_dense_keys": feature_list_dense_keys}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ParseSequenceExample",
+		Input: []tf.Input{
+			serialized, debug_name, tf.OutputList(context_dense_defaults),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if context_sparse_indices, idx, err = makeOutputList(op, idx, "context_sparse_indices"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if context_sparse_values, idx, err = makeOutputList(op, idx, "context_sparse_values"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if context_sparse_shapes, idx, err = makeOutputList(op, idx, "context_sparse_shapes"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if context_dense_values, idx, err = makeOutputList(op, idx, "context_dense_values"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if feature_list_sparse_indices, idx, err = makeOutputList(op, idx, "feature_list_sparse_indices"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if feature_list_sparse_values, idx, err = makeOutputList(op, idx, "feature_list_sparse_values"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if feature_list_sparse_shapes, idx, err = makeOutputList(op, idx, "feature_list_sparse_shapes"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if feature_list_dense_values, idx, err = makeOutputList(op, idx, "feature_list_dense_values"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	if feature_list_dense_lengths, idx, err = makeOutputList(op, idx, "feature_list_dense_lengths"); err != nil {
+		scope.UpdateErr("ParseSequenceExample", err)
+		return
+	}
+	return context_sparse_indices, context_sparse_values, context_sparse_shapes, context_dense_values, feature_list_sparse_indices, feature_list_sparse_values, feature_list_sparse_shapes, feature_list_dense_values, feature_list_dense_lengths
+}
+
 // Computes the Gauss error function of `x` element-wise.
 func Erf(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
@@ -9188,6 +9706,49 @@ func StringToHashBucket(scope *Scope, string_tensor tf.Output, num_buckets int64
 	return op.Output(0)
 }
 
+// StaticRegexReplaceAttr is an optional argument to StaticRegexReplace.
+type StaticRegexReplaceAttr func(optionalAttr)
+
+// StaticRegexReplaceReplaceGlobal sets the optional replace_global attribute to value.
+//
+// value: If True, the replacement is global, otherwise the replacement
+// is done only on the first match.
+// If not specified, defaults to true
+func StaticRegexReplaceReplaceGlobal(value bool) StaticRegexReplaceAttr {
+	return func(m optionalAttr) {
+		m["replace_global"] = value
+	}
+}
+
+// Replaces the match of pattern in input with rewrite.
+//
+// It follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+//
+// Arguments:
+//	input: The text to be processed.
+//	pattern: The regular expression to match the input.
+//	rewrite: The rewrite to be applied to the matched expresion.
+//
+// Returns The text after applying pattern and rewrite.
+func StaticRegexReplace(scope *Scope, input tf.Output, pattern string, rewrite string, optional ...StaticRegexReplaceAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"pattern": pattern, "rewrite": rewrite}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StaticRegexReplace",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes gradients for the exponential linear (Elu) operation.
 //
 // Arguments:
@@ -10054,7 +10615,7 @@ func ResourceScatterNdAddUseLocking(value bool) ResourceScatterNdAddAttr {
 //
 //     [1, 12, 3, 14, 14, 6, 7, 20]
 //
-// See @{tf.scatter_nd} for more details about how to make updates to
+// See `tf.scatter_nd` for more details about how to make updates to
 // slices.
 //
 // Arguments:
@@ -11397,6 +11958,29 @@ func SparseAddGrad(scope *Scope, backprop_val_grad tf.Output, a_indices tf.Outpu
 	return op.Output(0), op.Output(1)
 }
 
+// String lengths of `input`.
+//
+// Computes the length of each string given in the input tensor.
+//
+// Arguments:
+//	input: The string for which to compute the length.
+//
+// Returns Integer tensor that has the same shape as `input`. The output contains the
+// element-wise string lengths of `input`.
+func StringLength(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StringLength",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Converts each string in the input Tensor to its hash mod by a number of buckets.
 //
 // The hash function is deterministic on the content of the string within the
@@ -11747,7 +12331,7 @@ func ResourceScatterNdUpdateUseLocking(value bool) ResourceScatterNdUpdateAttr {
 //
 //     [1, 11, 3, 10, 9, 6, 7, 12]
 //
-// See @{tf.scatter_nd} for more details about how to make updates to
+// See `tf.scatter_nd` for more details about how to make updates to
 // slices.
 //
 // Arguments:
@@ -12232,8 +12816,9 @@ func MutexLock(scope *Scope, mutex tf.Output) (mutex_lock tf.Output) {
 
 // Computes the mean along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Computes a tensor such that
 // \\(output_i = \frac{\sum_j data_j}{N}\\) where `mean` is
@@ -12248,7 +12833,7 @@ func MutexLock(scope *Scope, mutex tf.Output) (mutex_lock tf.Output) {
 //
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
 //
 // Returns Has same shape as data, except for dimension 0 which
@@ -12367,7 +12952,7 @@ func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, o
 //
 // Arguments:
 //	input: A string tensor of the text to be processed.
-//	pattern: A 1-D string tensor of the regular expression to match the input.
+//	pattern: A scalar string tensor containing the regular expression to match the input.
 //
 // Returns A bool tensor with the same shape as `input`.
 func RegexFullMatch(scope *Scope, input tf.Output, pattern tf.Output) (output tf.Output) {
@@ -14443,6 +15028,25 @@ func ResourceApplyProximalGradientDescent(scope *Scope, var_ tf.Output, alpha tf
 	return scope.AddOperation(opspec)
 }
 
+// Returns 0 if the denominator is zero.
+//
+//
+// *NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func DivNoNan(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DivNoNan",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the gradient for the sqrt of `x` wrt its input.
 //
 // Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
@@ -15350,6 +15954,36 @@ func BytesProducedStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Out
 	return op.Output(0)
 }
 
+// Check if the input matches the regex pattern.
+//
+// The input is a string tensor of any shape. The pattern is the
+// regular expression to be matched with every element of the input tensor.
+// The boolean values (True or False) of the output tensor indicate
+// if the input matches the regex pattern provided.
+//
+// The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+//
+// Arguments:
+//	input: A string tensor of the text to be processed.
+//	pattern: The regular expression to match the input.
+//
+// Returns A bool tensor with the same shape as `input`.
+func StaticRegexFullMatch(scope *Scope, input tf.Output, pattern string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"pattern": pattern}
+	opspec := tf.OpSpec{
+		Type: "StaticRegexFullMatch",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ResourceSparseApplyProximalGradientDescentAttr is an optional argument to ResourceSparseApplyProximalGradientDescent.
 type ResourceSparseApplyProximalGradientDescentAttr func(optionalAttr)
 
@@ -15945,6 +16579,23 @@ func ResourceApplyAdagradDA(scope *Scope, var_ tf.Output, gradient_accumulator t
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Creates a dataset containing elements of first component of `input_dataset` having true in the last component.
+func FilterByLastComponentDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "FilterByLastComponentDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // CudnnRNNCanonicalToParamsAttr is an optional argument to CudnnRNNCanonicalToParams.
@@ -16806,7 +17457,8 @@ func DecodeCSVSelectCols(value []int64) DecodeCSVAttr {
 //	records: Each string is a record/row in the csv and all records should have
 // the same format.
 //	record_defaults: One tensor per column of the input record, with either a
-// scalar default value for that column or empty if the column is required.
+// scalar default value for that column or an empty vector if the column is
+// required.
 //
 // Returns Each tensor will have the same shape as records.
 func DecodeCSV(scope *Scope, records tf.Output, record_defaults []tf.Output, optional ...DecodeCSVAttr) (output []tf.Output) {
@@ -17573,8 +18225,9 @@ func ReaderNumRecordsProducedV2(scope *Scope, reader_handle tf.Output) (records_
 
 // Computes the sum along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Computes a tensor such that
 // \\(output_i = \sum_j data_j\\) where sum is over `j` such
@@ -17588,7 +18241,7 @@ func ReaderNumRecordsProducedV2(scope *Scope, reader_handle tf.Output) (records_
 //
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
 //
 // Returns Has same shape as data, except for dimension 0 which
@@ -19505,8 +20158,9 @@ func QuantizedResizeBilinear(scope *Scope, images tf.Output, size tf.Output, min
 
 // Computes the minimum along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Computes a tensor such that
 // \\(output_i = \min_j(data_j)\\) where `min` is over `j` such
@@ -19520,7 +20174,7 @@ func QuantizedResizeBilinear(scope *Scope, images tf.Output, size tf.Output, min
 //
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
 //
 // Returns Has same shape as data, except for dimension 0 which
@@ -20266,27 +20920,31 @@ func LoopCond(scope *Scope, input tf.Output) (output tf.Output) {
 
 // Computes the product along segments of a tensor.
 //
-// Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+// for an explanation of segments.
 //
 // This operator is similar to the unsorted segment sum operator found
 // [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
 // Instead of computing the sum over segments, it computes the product of all
 // entries belonging to a segment such that:
 //
-// \\(output_i = \prod_j data_j\\) where the product is over `j` such
-// that `segment_ids[j] == i`.
+// \\(output_i = \prod_{j...} data[j...]\\) where the product is over tuples
+// `j...` such that `segment_ids[j...] == i`.
 //
 // If there is no entry for a given segment ID `i`, it outputs 1.
 //
+// If the given segment ID `i` is negative, then the corresponding value is
+// dropped, and will not be included in the result.
+//
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
-// first dimension.
+//	segment_ids: A tensor whose shape is a prefix of `data.shape`.
 //
 //
-// Returns Has same shape as data, except for dimension 0 which
-// has size `num_segments`.
+// Returns Has same shape as data, except for the first `segment_ids.rank`
+// dimensions, which are replaced with a single dimension which has size
+// `num_segments`.
 func UnsortedSegmentProd(scope *Scope, data tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -20363,8 +21021,9 @@ func RandomUniformInt(scope *Scope, shape tf.Output, minval tf.Output, maxval tf
 
 // Computes the mean along sparse segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
 // dimension, selecting a subset of dimension 0, specified by `indices`.
@@ -20433,8 +21092,9 @@ func Cosh(scope *Scope, x tf.Output) (y tf.Output) {
 // Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
 // misisng, the `output` tensor at that position will be zeroed.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Arguments:
 //
@@ -20579,8 +21239,9 @@ func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segm
 //
 // N is the size of the segment being reduced.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Arguments:
 //
@@ -20638,8 +21299,9 @@ func Igammac(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 // Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
 // misisng, the `output` tensor at that position will be zeroed.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Arguments:
 //
@@ -21000,8 +21662,9 @@ func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output
 
 // Computes the maximum along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Computes a tensor such that
 // \\(output_i = \max_j(data_j)\\) where `max` is over `j` such
@@ -21015,7 +21678,7 @@ func Imag(scope *Scope, input tf.Output, optional ...ImagAttr) (output tf.Output
 //
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
 //
 // Returns Has same shape as data, except for dimension 0 which
@@ -23431,29 +24094,57 @@ func TensorListSetItem(scope *Scope, input_handle tf.Output, index tf.Output, it
 	return op.Output(0)
 }
 
-// Computes the matrix exponential of one or more square matrices:
+// Creates a Tensor by indexing into the TensorList.
+//
+// Each row in the produced Tensor corresponds to the element in the TensorList
+// specified by the given index (see `tf.gather`).
+//
+// input_handle: The input tensor list.
+// indices: The indices used to index into the list.
+// values: The tensor.
+func TensorListGather(scope *Scope, input_handle tf.Output, indices tf.Output, element_dtype tf.DataType) (values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorListGather",
+		Input: []tf.Input{
+			input_handle, indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a TensorList by indexing into a Tensor.
+//
+// Each member of the TensorList corresponds to one row of the input tensor,
+// specified by the given index (see `tf.gather`).
+//
+// tensor: The input tensor.
+// indices: The indices used to index into the list.
+// element_shape: The shape of the elements in the list (can be less specified than
+//   the shape of the tensor).
+// output_handle: The TensorList.
+func TensorListScatter(scope *Scope, tensor tf.Output, indices tf.Output, element_shape tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListScatter",
+		Input: []tf.Input{
+			tensor, indices, element_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Deprecated, use python implementation tf.linalg.matrix_exponential.
 //
 // DEPRECATED at GraphDef version 27: Use Python implementation tf.linalg.matrix_exponential instead.
-//
-// \\(exp(A) = \sum_{n=0}^\infty A^n/n!\\)
-//
-// The exponential is computed using a combination of the scaling and squaring
-// method and the Pade approximation. Details can be founds in:
-// Nicholas J. Higham, "The scaling and squaring method for the matrix exponential
-// revisited," SIAM J. Matrix Anal. Applic., 26:1179-1193, 2005.
-//
-// The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices. The output is a tensor of the same shape as the input
-// containing the exponential for all input submatrices `[..., :, :]`.
-//
-// Arguments:
-//	input: Shape is `[..., M, M]`.
-//
-// Returns Shape is `[..., M, M]`.
-//
-// @compatibility(scipy)
-// Equivalent to scipy.linalg.expm
-// @end_compatibility
 func MatrixExponential(scope *Scope, input tf.Output) (output tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -23959,8 +24650,9 @@ func QueueEnqueueManyV2(scope *Scope, handle tf.Output, components []tf.Output, 
 
 // Computes the product along segments of a tensor.
 //
-// Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-// segments.
+// Read
+// [the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+// for an explanation of segments.
 //
 // Computes a tensor such that
 // \\(output_i = \prod_j data_j\\) where the product is over `j` such
@@ -23974,7 +24666,7 @@ func QueueEnqueueManyV2(scope *Scope, handle tf.Output, components []tf.Output, 
 //
 // Arguments:
 //
-//	segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+//	segment_ids: A 1-D tensor whose size is equal to the size of `data`'s
 // first dimension.  Values should be sorted and can be repeated.
 //
 // Returns Has same shape as data, except for dimension 0 which
@@ -24999,7 +25691,7 @@ func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
 
 // Update '*var' according to the Adam algorithm.
 //
-// $$lr_t := \text{learning_rate} * \sqrt{(1 - beta_2^t) / (1 - beta_1^t)}$$
+// $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
 // $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
 // $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
 // $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
@@ -27016,8 +27708,10 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 // If `len` defines a substring that would extend beyond the length of the input
 // string, then as many characters as possible are used.
 //
-// If `pos` is negative or specifies a character index larger than any of the input
-// strings, then an `InvalidArgumentError` is thrown.
+// A negative `pos` indicates distance within the string backwards from the end.
+//
+// If `pos` specifies an index which is out of range for any of the input strings,
+// then an `InvalidArgumentError` is thrown.
 //
 // `pos` and `len` must have the same shape, otherwise a `ValueError` is thrown on
 // Op creation.
@@ -27643,6 +28337,8 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 // On GPU, if an out of bound index is found, a 0 is stored in the
 // corresponding output value.
 //
+// See also `tf.batch_gather` and `tf.gather_nd`.
+//
 // Arguments:
 //	params: The tensor from which to gather values. Must be at least rank
 // `axis + 1`.
@@ -28148,6 +28844,30 @@ func FFT(scope *Scope, input tf.Output) (output tf.Output) {
 		Input: []tf.Input{
 			input,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Identity transformation that models performance.
+//
+// Identity transformation that models performance.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//
+//
+func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ModelDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -28842,10 +29562,16 @@ func EncodeBase64(scope *Scope, input tf.Output, optional ...EncodeBase64Attr) (
 //
 // Arguments:
 //
-//	window_size: A scalar representing the number of elements to accumulate in a window.
+//	size: A scalar representing the number of elements to accumulate in a window.
+//	shift: A scalar representing the steps moving the sliding window forward in one
+// iteration. It must be positive.
+//	stride: A scalar representing the stride of the input elements of the sliding window.
+// It must be positive.
+//	drop_remainder: A scalar representing whether a window should be dropped in case its size is
+// smaller than desired.
 //
 //
-func WindowDataset(scope *Scope, input_dataset tf.Output, window_size tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func WindowDataset(scope *Scope, input_dataset tf.Output, size tf.Output, shift tf.Output, stride tf.Output, drop_remainder tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -28853,7 +29579,7 @@ func WindowDataset(scope *Scope, input_dataset tf.Output, window_size tf.Output,
 	opspec := tf.OpSpec{
 		Type: "WindowDataset",
 		Input: []tf.Input{
-			input_dataset, window_size,
+			input_dataset, size, shift, stride, drop_remainder,
 		},
 		Attrs: attrs,
 	}
@@ -30063,7 +30789,7 @@ func BoostedTreesCreateEnsemble(scope *Scope, tree_ensemble_handle tf.Output, st
 //
 //     [1, 13, 3, 14, 14, 6, 7, 20]
 //
-// See @{tf.scatter_nd} for more details about how to make updates to slices.
+// See `tf.scatter_nd` for more details about how to make updates to slices.
 //
 // Arguments:
 //	input: A Tensor.
@@ -30680,6 +31406,41 @@ func MapIncompleteSize(scope *Scope, dtypes []tf.DataType, optional ...MapIncomp
 	return op.Output(0)
 }
 
+// Generate the bucket boundaries for each feature based on accumulated summaries.
+//
+// An op that returns a list of float tensors for a quantile stream resource. Each
+// tensor is Rank 1 containing bucket boundaries for a single feature.
+//
+// Arguments:
+//	quantile_stream_resource_handle: resource handle referring to a QuantileStreamResource.
+//	num_features: inferred int; number of features to get bucket boundaries for.
+//
+// Returns float; List of Rank 1 Tensors each containing the bucket boundaries for a feature.
+func BoostedTreesQuantileStreamResourceGetBucketBoundaries(scope *Scope, quantile_stream_resource_handle tf.Output, num_features int64) (bucket_boundaries []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_features": num_features}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceGetBucketBoundaries",
+		Input: []tf.Input{
+			quantile_stream_resource_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if bucket_boundaries, idx, err = makeOutputList(op, idx, "bucket_boundaries"); err != nil {
+		scope.UpdateErr("BoostedTreesQuantileStreamResourceGetBucketBoundaries", err)
+		return
+	}
+	return bucket_boundaries
+}
+
 // OrderedMapUnstageAttr is an optional argument to OrderedMapUnstage.
 type OrderedMapUnstageAttr func(optionalAttr)
 
@@ -30749,6 +31510,43 @@ func OrderedMapUnstage(scope *Scope, key tf.Output, indices tf.Output, dtypes []
 		return
 	}
 	return values
+}
+
+// BoostedTreesQuantileStreamResourceHandleOpAttr is an optional argument to BoostedTreesQuantileStreamResourceHandleOp.
+type BoostedTreesQuantileStreamResourceHandleOpAttr func(optionalAttr)
+
+// BoostedTreesQuantileStreamResourceHandleOpContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func BoostedTreesQuantileStreamResourceHandleOpContainer(value string) BoostedTreesQuantileStreamResourceHandleOpAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// BoostedTreesQuantileStreamResourceHandleOpSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func BoostedTreesQuantileStreamResourceHandleOpSharedName(value string) BoostedTreesQuantileStreamResourceHandleOpAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Creates a handle to a BoostedTreesQuantileStreamResource.
+func BoostedTreesQuantileStreamResourceHandleOp(scope *Scope, optional ...BoostedTreesQuantileStreamResourceHandleOpAttr) (resource tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "BoostedTreesQuantileStreamResourceHandleOp",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // OrderedMapSizeAttr is an optional argument to OrderedMapSize.

@@ -84,7 +84,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
   def testAllTypeOps(self):
-    for dtype in self.numeric_types:
+    for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
           array_ops.diag, np.array([1, 2, 3, 4], dtype=dtype),
           np.array(
@@ -633,7 +633,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([-1, 0, -2, -17, -43], dtype=dtype))
 
   def testNumericOps(self):
-    for dtype in self.numeric_types:
+    for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[2, -1]], dtype=dtype),

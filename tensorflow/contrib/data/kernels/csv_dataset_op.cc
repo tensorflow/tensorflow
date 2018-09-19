@@ -49,6 +49,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->input_list("record_defaults", &record_defaults_list));
     for (int i = 0; i < record_defaults_list.size(); ++i) {
+      OP_REQUIRES(ctx, record_defaults_list[i].dims() <= 1,
+                  errors::InvalidArgument(
+                      "Each record default should be at most rank 1"));
       OP_REQUIRES(ctx, record_defaults_list[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,

@@ -145,44 +145,18 @@ GeneratorDatasetOp::GeneratorDatasetOp(OpKernelConstruction* ctx)
 
 void GeneratorDatasetOp::MakeDataset(OpKernelContext* ctx,
                                      DatasetBase** output) {
-  OpInputList init_func_other_args_input;
-  OP_REQUIRES_OK(ctx, ctx->input_list("init_func_other_args",
-                                      &init_func_other_args_input));
-  std::vector<Tensor> init_func_other_args;
-  init_func_other_args.reserve(init_func_other_args_input.size());
-  for (const Tensor& t : init_func_other_args_input) {
-    init_func_other_args.push_back(t);
-  }
   std::unique_ptr<CapturedFunction> init_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(init_func_, std::move(init_func_other_args),
-                                    &init_func));
-
-  OpInputList next_func_other_args_input;
-  OP_REQUIRES_OK(ctx, ctx->input_list("next_func_other_args",
-                                      &next_func_other_args_input));
-  std::vector<Tensor> next_func_other_args;
-  next_func_other_args.reserve(next_func_other_args_input.size());
-  for (const Tensor& t : next_func_other_args_input) {
-    next_func_other_args.push_back(t);
-  }
-  std::unique_ptr<CapturedFunction> next_func;
-  OP_REQUIRES_OK(
-      ctx, CapturedFunction::Create(next_func_, std::move(next_func_other_args),
-                                    &next_func));
-
-  OpInputList finalize_func_other_args_input;
-  OP_REQUIRES_OK(ctx, ctx->input_list("finalize_func_other_args",
-                                      &finalize_func_other_args_input));
-  std::vector<Tensor> finalize_func_other_args;
-  finalize_func_other_args.reserve(finalize_func_other_args_input.size());
-  for (const Tensor& t : finalize_func_other_args_input) {
-    finalize_func_other_args.push_back(t);
-  }
-  std::unique_ptr<CapturedFunction> finalize_func;
   OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                          finalize_func_, std::move(finalize_func_other_args),
-                          &finalize_func));
+                          init_func_, ctx, "init_func_other_args", &init_func));
+
+  std::unique_ptr<CapturedFunction> next_func;
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                          next_func_, ctx, "next_func_other_args", &next_func));
+
+  std::unique_ptr<CapturedFunction> finalize_func;
+  OP_REQUIRES_OK(ctx, CapturedFunction::Create(finalize_func_, ctx,
+                                               "finalize_func_other_args",
+                                               &finalize_func));
 
   *output =
       new Dataset(ctx, std::move(init_func), std::move(next_func),

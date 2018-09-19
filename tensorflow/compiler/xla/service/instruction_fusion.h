@@ -56,7 +56,7 @@ class FusionQueue {
 // with the intent that the loops which compute their values will be fused in
 // code generation. Derived classes define ShouldFuse method to select which
 // instructions to fuse.
-class InstructionFusion : public HloPassInterface {
+class InstructionFusion : public HloModulePass {
  public:
   explicit InstructionFusion(
       std::function<bool(const HloInstruction& instruction)> is_expensive,

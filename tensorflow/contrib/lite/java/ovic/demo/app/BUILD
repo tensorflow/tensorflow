@@ -6,7 +6,6 @@ licenses(["notice"])  # Apache 2.0
 android_binary(
     name = "ovic_benchmarker_binary",
     srcs = [
-        "OvicBenchmarker.java",
         "OvicBenchmarkerActivity.java",
     ],
     assets = [

@@ -852,7 +852,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Reset and retry
     print('Invalid path to CUDA %s toolkit. %s cannot be found' %
-          (tf_cuda_version, cuda_toolkit_path_full))
+          (tf_cuda_version, cuda_toolkit_paths_full))
     environ_cp['TF_CUDA_VERSION'] = ''
     environ_cp['CUDA_TOOLKIT_PATH'] = ''
 
@@ -1571,6 +1571,9 @@ def main():
   set_system_libs_flag(environ_cp)
   if is_windows():
     set_windows_build_flags(environ_cp)
+
+  # Add a config option to build TensorFlow 2.0 API.
+  write_to_bazelrc('build:v2 --define=tf_api_version=2')
 
   if get_var(
       environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',

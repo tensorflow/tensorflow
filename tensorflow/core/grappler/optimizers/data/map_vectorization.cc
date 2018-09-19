@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -52,8 +53,8 @@ FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
   // Add MapDefun node
   NodeDef* map_defun_node = vectorized_func->mutable_node_def()->Add();
   map_defun_node->set_op("MapDefun");
-  graph_utils::SetUniqueFunctionNodeName(map_defun_node->op(), vectorized_func,
-                                         map_defun_node);
+  function_utils::SetUniqueFunctionNodeName(map_defun_node->op(),
+                                            vectorized_func, map_defun_node);
 
   // Set attrs and inputs
   for (const string& k : {"f", "output_types", "output_shapes"}) {

@@ -628,7 +628,7 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
         else:
           np_ans = np.max(np_ans, axis=ra, keepdims=keep_dims)
 
-    with self.test_session():
+    with self.cached_session():
       if do_sum:
         tf_dense_ans = sparse_ops.sparse_reduce_sum(sp_t, reduction_axes,
                                                     keep_dims)

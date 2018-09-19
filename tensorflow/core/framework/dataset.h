@@ -47,6 +47,8 @@ class GraphDefBuilder;
 class Node;
 
 namespace data {
+// A constant that can be used to enable auto-tuning.
+constexpr int kAutoTune = -1;
 
 class DatasetBase;
 class SerializationContext;
@@ -670,13 +672,34 @@ class DatasetBaseIterator : public IteratorBase {
     return strings::StrCat(params_.prefix, ":", name);
   }
 
-  // When performance modeling is enabled, this method sets metadata entry for
-  // the model node corresponding to this iterator.
-  void SetMetadata(IteratorContext* ctx, const string& key, int64 value) {
+  // When performance modeling is enabled, this method adds a constant parameter
+  // to the model node corresponding to this iterator.
+  void AddConstantParameter(IteratorContext* ctx, const string& name,
+                            int64 value) {
     if (ctx->model()) {
       std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
       if (node) {
-        node->set_metadata(key, value);
+        node->add_constant_param(name, value);
+      }
+    }
+  }
+
+  // When performance modeling is enabled, this method adds a tunable parameter
+  // to the model node corresponding to this iterator.
+  //
+  // The `set_fn` function should set the tunable parameter to the value of
+  // its input argument. The function should be thread-safe; in particular, the
+  // state it updates should be protected by a lock as the function can be
+  // invoked asynchronously. It is guaranteed that this function will not be
+  // invoked after the iterator is deleted because the model node that owns
+  // the function is deleted when the iterator is deleted.
+  void AddTunableParameter(IteratorContext* ctx, const string& name,
+                           int64 value, int64 min, int64 max,
+                           std::function<void(int64)>&& set_fn) {
+    if (ctx->model()) {
+      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
+      if (node) {
+        node->add_tunable_param(name, value, min, max, std::move(set_fn));
       }
     }
   }

@@ -30,6 +30,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_cc_tests",
     "tf_cc_binary",
     "tf_copts",
@@ -48,6 +49,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library",
     "tf_kernel_tests_linkstatic",
+)
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -1105,7 +1110,7 @@ tf_cuda_cc_test(
     name = "depthwise_conv_ops_test",
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":conv_ops",
         ":image",
@@ -6226,6 +6231,26 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_conv_ops_test",
+    size = "small",
+    srcs = ["mkl_conv_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_mkl_kernel_library(

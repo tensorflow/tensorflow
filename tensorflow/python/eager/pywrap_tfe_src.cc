@@ -860,7 +860,7 @@ static tensorflow::int64 MakeInt(PyObject* integer) {
 
 static tensorflow::int64 FastTensorId(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    return EagerTensor_id(tensor);
+    return PyEagerTensor_ID(tensor);
   }
   PyObject* id_field = PyObject_GetAttrString(tensor, "_id");
   if (id_field == nullptr) {
@@ -873,7 +873,7 @@ static tensorflow::int64 FastTensorId(PyObject* tensor) {
 
 static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    return EagerTensor_dtype(tensor);
+    return PyEagerTensor_Dtype(tensor);
   }
   PyObject* dtype_field = PyObject_GetAttrString(tensor, "dtype");
   if (dtype_field == nullptr) {
@@ -1178,7 +1178,7 @@ void TFE_Py_TapeWatch(PyObject* tape, PyObject* tensor) {
 static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
-    tensorflow::int64 id = EagerTensor_id(tensor);
+    tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::TensorShape tensor_shape;
     const tensorflow::Status status = t->handle->Shape(&tensor_shape);
 
@@ -1400,12 +1400,19 @@ class PyVSpace
   }
 
   tensorflow::int64 NumElements(PyObject* tensor) const final {
+    if (EagerTensor_CheckExact(tensor)) {
+      return PyEagerTensor_NumElements(tensor);
+    }
     PyObject* arglist =
         Py_BuildValue("(O)", reinterpret_cast<PyObject*>(tensor));
     PyObject* result = PyEval_CallObject(num_elements_, arglist);
+    Py_DECREF(arglist);
+    if (result == nullptr) {
+      // The caller detects whether a python exception has been raised.
+      return -1;
+    }
     tensorflow::int64 r = MakeInt(result);
     Py_DECREF(result);
-    Py_DECREF(arglist);
     return r;
   }
 
@@ -1739,6 +1746,9 @@ PyObject* MaybeGetDTypeForAttr(const string& attr,
 
   Py_RETURN_NONE;
 }
+
+// TODO(agarwal): use an automatic mechanism for handling None arguments to
+// gradient functions.
 
 // Returns a pair where the first value of the pair indicates whether or not all
 // outputs are unused. If the first value is false, the second value is a

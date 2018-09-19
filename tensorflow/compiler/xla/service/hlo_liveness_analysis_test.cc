@@ -398,5 +398,89 @@ TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "loop_var.1"), {2}));
 }
 
+TEST_F(HloLivenessAnalysisTest, WhileWithOutfeed) {
+  auto module = ParseHloString(R"(
+  HloModule OutfeedLoop
+  WhileBody {
+    body_param = (s32[]) parameter(0)
+    token = token[] after-all()
+    constant.2 = s32[] constant(2)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token)
+    get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]) tuple(add)
+  }
+  WhileCondition {
+    cond_param = (s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
+    constant.2 = s32[] constant(10)
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    tuple.1 = (s32[]) tuple(constant.3)
+    while = (s32[]) while(tuple.1), condition=WhileCondition,
+      body=WhileBody
+    ROOT rtuple = () tuple()
+  })")
+                    .ValueOrDie();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.3"), {}));
+}
+
+TEST_F(HloLivenessAnalysisTest, NestedWhileWithOutfeed) {
+  auto module = ParseHloString(R"(
+  HloModule OutfeedLoop
+  InnerWhileBody {
+    body_param = (s32[]) parameter(0)
+    token = token[] after-all()
+    constant.2 = s32[] constant(2)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token)
+    get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
+    constant.1 = s32[] constant(1)
+    add = s32[] add(get-tuple-element.1, constant.1)
+    ROOT tuple = (s32[]) tuple(add)
+  }
+  InnerWhileCondition {
+    cond_param = (s32[]) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
+    constant.2 = s32[] constant(10)
+    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+  }
+  OuterWhileCondition {
+    cond_param.2 = (s32[]) parameter(0)
+    get-tuple-element.5 = s32[] get-tuple-element(cond_param.2), index=0
+    constant.5 = s32[] constant(5)
+    ROOT less-than.2 = pred[] less-than(get-tuple-element.5, constant.5)
+  }
+  OuterWhileBody {
+    body_param.2 = (s32[]) parameter(0)
+    get-tuple-element.8 = s32[] get-tuple-element(body_param.2), index=0
+    constant.6 = s32[] constant(0)
+    tuple.2 = (s32[]) tuple(constant.6)
+    inner_while = (s32[]) while(tuple.2), condition=InnerWhileCondition,
+      body=InnerWhileBody
+    constant.7 = s32[] constant(1)
+    add.2 = s32[] add(get-tuple-element.8, constant.7)
+    ROOT rtuple = (s32[]) tuple(add.2)
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[] constant(0)
+    tuple.1 = (s32[]) tuple(constant.3)
+    while = (s32[]) while(tuple.1), condition=OuterWhileCondition,
+      body=OuterWhileBody
+    ROOT rtuple = () tuple()
+  })")
+                    .ValueOrDie();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "add.2"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "constant.3"), {}));
+}
+
 }  // namespace
 }  // namespace xla
