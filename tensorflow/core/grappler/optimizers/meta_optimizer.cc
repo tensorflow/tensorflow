@@ -352,7 +352,7 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
-  LOG(INFO) << "Starting optimization for grappler item: " << item.id;
+  VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
   // 1. Optimize main graph
