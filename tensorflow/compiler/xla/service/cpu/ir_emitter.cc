@@ -607,8 +607,9 @@ Status IrEmitter::HandleSort(HloInstruction* sort) {
       keys_native_type = b_.getDoubleTy()->getPointerTo();
       break;
     default:
-      DLOG(FATAL) << "Element type " << PrimitiveType_Name(keys_type)
-                  << " not supported in the Sort op on CPU.";
+      return Unimplemented(
+          "Element type %s not supported in the Sort op on CPU.",
+          PrimitiveType_Name(keys_type));
   }
 
   llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
