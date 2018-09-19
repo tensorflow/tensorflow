@@ -11,7 +11,10 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 py_library(
     name = "stateless",
-    srcs = ["__init__.py"],
+    srcs = [
+        "__init__.py",
+        "python/stateless_ops.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework_ops",
