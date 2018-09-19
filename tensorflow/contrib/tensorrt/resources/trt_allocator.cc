@@ -27,12 +27,12 @@ namespace tensorflow {
 namespace tensorrt {
 
 // std::align is not supported, so this method mimic its behavior.
-void* Align(int64_t alignment, int64_t size, void*& ptr, int64_t& space) {
-  QCHECK_GT(alignment, 0) << "alignment must be greater than 0.";
+void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space) {
+  QCHECK_GT(alignment, 0ul) << "alignment must be greater than 0.";
   QCHECK_EQ(0, alignment & (alignment - 1)) << "Alignment must be power of 2.";
-  QCHECK_GT(size, 0) << "size must be greater than 0.";
+  QCHECK_GT(size, 0ul) << "size must be greater than 0.";
   QCHECK(ptr) << "ptr must not be nullptr.";
-  QCHECK_GT(space, 0) << "space must be greater than 0.";
+  QCHECK_GT(space, 0ul) << "space must be greater than 0.";
   const uintptr_t ptr_val = reinterpret_cast<uintptr_t>(ptr);
   QCHECK_GE(ptr_val + space, ptr_val) << "Provided space overflows.";
 
@@ -73,7 +73,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   // See issue #20856
   alignment = 512;
   assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.
-  int64_t total_size = size + alignment;
+  uint64_t total_size = size + alignment;
   // TODO(aaroey): AllocateRaw takes size_t size as input, so it'll produce
   // unexpected result when TRT tries to allocate more bytes than size_t can
   // carry. Fix this.

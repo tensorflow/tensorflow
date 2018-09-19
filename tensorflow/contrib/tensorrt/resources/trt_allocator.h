@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 // std::align is not supported, so this function mimic its behavior.
-void* Align(int64_t alignment, int64_t size, void*& ptr, int64_t& space);
+void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
