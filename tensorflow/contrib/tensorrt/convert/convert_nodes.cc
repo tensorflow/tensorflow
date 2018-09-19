@@ -780,11 +780,11 @@ class Converter {
       // skip control nodes
       if (input_name[0] == '^') continue;
       string name = input_name;
-      auto first = name.find_last_of(':');
+      auto last = name.find_last_of(':');
       // TODO(aaroey): use TensorId
-      if (first != string::npos && first + 2 == name.size() &&
-          name[first + 1] == '0') {
-        name.erase(first);
+      if (last != string::npos && last + 2 == name.size() &&
+          name[last + 1] == '0') {
+        name.erase(last);
       }
 
       if (trt_tensors_.count(name)) {
