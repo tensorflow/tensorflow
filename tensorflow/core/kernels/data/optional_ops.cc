@@ -108,11 +108,8 @@ class OptionalFromValueOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     OpInputList components_input;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &components_input));
-    std::vector<Tensor> components;
-    components.reserve(components_input.size());
-    for (const Tensor& component_t : components_input) {
-      components.push_back(component_t);
-    }
+    std::vector<Tensor> components(components_input.begin(),
+                                   components_input.end());
     OP_REQUIRES_OK(
         ctx, WriteOptionalWithValueToOutput(ctx, 0, std::move(components)));
   }

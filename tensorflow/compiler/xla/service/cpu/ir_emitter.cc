@@ -495,8 +495,150 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 }
 
 Status IrEmitter::HandleSort(HloInstruction* sort) {
-  // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("Sort is not implemented on CPU.");
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(sort));
+  auto keys = sort->operand(0);
+  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  ShapeIndex keys_shape_index({});
+  ShapeIndex values_shape_index({});
+  if (values != nullptr) {
+    keys_shape_index = ShapeIndex({0});
+    values_shape_index = ShapeIndex({1});
+  }
+  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
+  auto keys_destination_address =
+      EmitBufferPointer(keys_destination, keys->shape());
+  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
+  llvm::Value* values_destination_address = nullptr;
+
+  // The sort is implemented in-place, therefore we first copy the operand
+  // buffer to the output buffer if they are not the same.
+  if (keys_destination != GetAllocationSlice(*keys)) {
+    int64 primitive_type_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(keys->shape().element_type());
+    auto source_buffer = GetEmittedValueFor(keys);
+    int64 keys_size = ByteSizeOf(keys->shape());
+    MemCpy(keys_destination_address, /*DstAlign=*/primitive_type_size,
+           source_buffer,
+           /*SrcAlign=*/primitive_type_size, keys_size);
+  }
+  if (values != nullptr) {
+    values_destination_address =
+        EmitBufferPointer(values_destination, values->shape());
+    if (values_destination != GetAllocationSlice(*values)) {
+      int64 primitive_type_size =
+          ShapeUtil::ByteSizeOfPrimitiveType(values->shape().element_type());
+      auto source_buffer = GetEmittedValueFor(values);
+      int64 values_size = ByteSizeOf(values->shape());
+      MemCpy(values_destination_address, /*DstAlign=*/primitive_type_size,
+             source_buffer,
+             /*SrcAlign=*/primitive_type_size, values_size);
+    }
+  }
+
+  // Normalize the shape and the dimension to sort.
+  Shape normalized_keys_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          keys->shape());
+  int64 physical_dimension_to_sort = LayoutUtil::MakeLogicalToPhysical(
+      keys->shape().layout())[sort->dimensions(0)];
+
+  int64 sort_dimension_elements =
+      normalized_keys_shape.dimensions(physical_dimension_to_sort);
+  int64 higher_dimensions = 1;
+  for (int64 i = 0; i < physical_dimension_to_sort; ++i) {
+    higher_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+  int64 lower_dimensions = 1;
+  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+       i > physical_dimension_to_sort; --i) {
+    lower_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+
+  PrimitiveType keys_type = keys->shape().element_type();
+  const char* fn_name = nullptr;
+  llvm::Type* keys_native_type = nullptr;
+  switch (keys_type) {
+    case PRED:
+      fn_name = runtime::kKeyValueSortPREDSymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case S8:
+      fn_name = runtime::kKeyValueSortS8SymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case U8:
+      fn_name = runtime::kKeyValueSortU8SymbolName;
+      keys_native_type = b_.getInt8PtrTy();
+      break;
+    case S16:
+      fn_name = runtime::kKeyValueSortS16SymbolName;
+      keys_native_type = b_.getInt16Ty()->getPointerTo();
+      break;
+    case U16:
+      fn_name = runtime::kKeyValueSortU16SymbolName;
+      keys_native_type = b_.getInt16Ty()->getPointerTo();
+      break;
+    case F16:
+      fn_name = runtime::kKeyValueSortF16SymbolName;
+      keys_native_type = b_.getHalfTy()->getPointerTo();
+      break;
+    case S32:
+      fn_name = runtime::kKeyValueSortS32SymbolName;
+      keys_native_type = b_.getInt32Ty()->getPointerTo();
+      break;
+    case U32:
+      fn_name = runtime::kKeyValueSortU32SymbolName;
+      keys_native_type = b_.getInt32Ty()->getPointerTo();
+      break;
+    case F32:
+      fn_name = runtime::kKeyValueSortF32SymbolName;
+      keys_native_type = b_.getFloatTy()->getPointerTo();
+      break;
+    case S64:
+      fn_name = runtime::kKeyValueSortS64SymbolName;
+      keys_native_type = b_.getInt64Ty()->getPointerTo();
+      break;
+    case U64:
+      fn_name = runtime::kKeyValueSortU64SymbolName;
+      keys_native_type = b_.getInt64Ty()->getPointerTo();
+      break;
+    case F64:
+      fn_name = runtime::kKeyValueSortF64SymbolName;
+      keys_native_type = b_.getDoubleTy()->getPointerTo();
+      break;
+    default:
+      return Unimplemented(
+          "Element type %s not supported in the Sort op on CPU.",
+          PrimitiveType_Name(keys_type));
+  }
+
+  llvm::FunctionType* key_value_sort_type = llvm::FunctionType::get(
+      b_.getVoidTy(),
+      {keys_native_type, b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
+       b_.getInt8PtrTy(), b_.getInt32Ty()},
+      /*isVarArg=*/false);
+  auto* key_value_sort_func = llvm::cast<llvm::Function>(
+      module_->getOrInsertFunction(fn_name, key_value_sort_type));
+  key_value_sort_func->setCallingConv(llvm::CallingConv::C);
+  key_value_sort_func->setDoesNotThrow();
+  key_value_sort_func->setOnlyAccessesArgMemory();
+  Call(key_value_sort_func,
+       {PointerCast(keys_destination_address, keys_native_type),
+        b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
+        b_.getInt64(lower_dimensions),
+        values != nullptr
+            ? PointerCast(values_destination_address, b_.getInt8PtrTy())
+            : llvm::Constant::getNullValue(b_.getInt8PtrTy()),
+        b_.getInt32(values != nullptr ? ShapeUtil::ByteSizeOfPrimitiveType(
+                                            values->shape().element_type())
+                                      : 0)});
+
+  if (values != nullptr) {
+    llvm_ir::EmitTuple(GetIrArrayFor(sort),
+                       {keys_destination_address, values_destination_address},
+                       &b_, module_);
+  }
+  return Status::OK();
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {

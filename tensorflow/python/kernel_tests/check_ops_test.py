@@ -785,7 +785,7 @@ class EnsureShapeTest(test.TestCase):
     derived = math_ops.divide(placeholder, 3, name="MyDivide")
     derived = check_ops.ensure_shape(derived, (3, 3, 3))
     feed_val = [[1], [2]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesWithPredicateMatch(
           errors.InvalidArgumentError,
           r"Shape of tensor MyDivide \[2,1\] is not compatible with "
@@ -797,7 +797,7 @@ class EnsureShapeTest(test.TestCase):
     derived = placeholder / 3
     derived = check_ops.ensure_shape(derived, (None, None, 3))
     feed_val = [[1], [2]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesWithPredicateMatch(
           errors.InvalidArgumentError,
           r"Shape of tensor [A-Za-z_]* \[2,1\] is not compatible with "
@@ -809,7 +809,7 @@ class EnsureShapeTest(test.TestCase):
     derived = placeholder / 3
     derived = check_ops.ensure_shape(derived, (2, 1))
     feed_val = [[1], [2]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(derived, feed_dict={placeholder: feed_val})
 
   def testEnsuresDynamicShape_WithUnknownDims(self):
@@ -817,7 +817,7 @@ class EnsureShapeTest(test.TestCase):
     derived = placeholder / 3
     derived = check_ops.ensure_shape(derived, (None, None))
     feed_val = [[1], [2]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(derived, feed_dict={placeholder: feed_val})
 
   def testGradient(self):
@@ -826,7 +826,7 @@ class EnsureShapeTest(test.TestCase):
     gradient = gradients.gradients(derived, placeholder)
 
     feed_val = [[4.0], [-1.0]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       gradient_values, = sess.run(gradient, feed_dict={placeholder: feed_val})
 
     expected = [[1.0], [1.0]]

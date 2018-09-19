@@ -10,11 +10,12 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "cc_library_with_android_deps",
     "tf_cc_binary",
+    "tf_cc_test",
     "tf_copts",
     "tf_gen_op_wrappers_cc",
-    "cc_library_with_android_deps",
+    "transitive_hdrs",
 )
 
 cc_library(
@@ -714,5 +715,28 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+transitive_hdrs(
+    name = "headers",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":coordinator",
+        ":gradient_checker",
+        ":gradients",
+        ":ops",
+        ":queue_runner",
+        ":remote_fused_graph_ops",
+        ":scope",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/cc/saved_model:signature_constants",
+        "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/cc/tools:freeze_saved_model",
     ],
 )

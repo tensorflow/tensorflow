@@ -50,9 +50,7 @@ StatusOr<bool> RunWhileDCE(HloModule* module, HloLivenessAnalysis* liveness) {
       auto* while_body_root = while_body_comp->root_instruction();
 
       if (!ShapeUtil::IsTuple(xla_while->shape()) ||
-          while_body_root->opcode() != HloOpcode::kTuple ||
-          while_body_comp->HasSideEffect() ||
-          xla_while->while_condition()->HasSideEffect()) {
+          while_body_root->opcode() != HloOpcode::kTuple) {
         // Only run DCE on tuple-shaped while loops where body root is Tuple,
         // with no I/O instructions.
         VLOG(1) << "WhileDCE SKIP while: " << xla_while->ToString();

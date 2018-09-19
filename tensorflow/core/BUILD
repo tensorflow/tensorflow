@@ -85,11 +85,12 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
+    "tf_features_nomodules_if_android",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "tf_features_nomodules_if_android",
+    "transitive_hdrs",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -120,16 +121,16 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
-    "tf_additional_proto_hdrs",
     "tf_additional_proto_compiler_hdrs",
+    "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
     "tf_additional_test_srcs",
     "tf_additional_verbs_lib_defines",
     "tf_jspb_proto_library",
     "tf_kernel_tests_linkstatic",
-    "tf_lib_proto_parsing_deps",
     "tf_lib_proto_compiler_deps",
+    "tf_lib_proto_parsing_deps",
     "tf_nano_proto_library",
     "tf_platform_hdrs",
     "tf_platform_srcs",
@@ -178,7 +179,6 @@ COMMON_PROTO_SRCS = [
     "framework/iterator.proto",
     "framework/kernel_def.proto",
     "framework/log_memory.proto",
-    "framework/model.proto",
     "framework/node_def.proto",
     "framework/op_def.proto",
     "framework/reader_base.proto",
@@ -842,7 +842,6 @@ tf_cuda_library(
         "framework/log_memory.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
-        "framework/model.h",
         "framework/node_def_builder.h",
         "framework/node_def_util.h",
         "framework/numeric_op.h",
@@ -1429,9 +1428,11 @@ cc_library(
         ":test",
         ":testlib_ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/kernels:random_ops",
     ],
 )
 
@@ -1921,6 +1922,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "protobuf/config_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/config.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "protobuf/device_properties_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/device_properties.proto",
@@ -2087,6 +2095,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
@@ -2279,6 +2288,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:jpeg",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2311,6 +2321,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform/default/build_config:gif",
         "//tensorflow/core/platform/default/build_config:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2775,7 +2786,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
     "common_runtime/tracing_device.h",
-    "common_runtime/visitable_allocator.h",
     "common_runtime/process_state.h",
     "common_runtime/pool_allocator.h",
     "graph/gradients.h",
@@ -4711,6 +4721,18 @@ cc_library(
     deps = [
         ":lib",
     ] + tf_additional_libdevice_deps(),
+)
+
+transitive_hdrs(
+    name = "headers",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:stream_executor",
+    ],
 )
 
 # -----------------------------------------------------------------------------

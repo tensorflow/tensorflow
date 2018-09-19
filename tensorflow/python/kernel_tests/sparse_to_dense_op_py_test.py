@@ -81,7 +81,7 @@ class SparseToDenseTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   def testZeroDefault(self):
-    with self.test_session():
+    with self.cached_session():
       x = sparse_ops.sparse_to_dense(2, [4], 7).eval()
       self.assertAllEqual(x, [0, 0, 7, 0])
 
@@ -94,12 +94,12 @@ class SparseToDenseTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   def testBadShape(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesWithPredicateMatch(ValueError, "must be rank 1"):
         _SparseToDense([1, 3], [[5], [3]], 1, -1)
 
   def testBadValue(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense([1, 3], [5], [[5], [3]], -1)
       with self.assertRaisesOpError(
           r"sparse_values has incorrect shape \[2,1\], "
@@ -107,20 +107,20 @@ class SparseToDenseTest(test.TestCase):
         dense.eval()
 
   def testBadNumValues(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense([1, 3], [5], [1, 2, 3], -1)
       with self.assertRaisesOpError(
           r"sparse_values has incorrect shape \[3\], should be \[\] or \[2\]"):
         dense.eval()
 
   def testBadDefault(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense([1, 3], [5], [1, 2], [0])
       with self.assertRaisesOpError("default_value should be a scalar"):
         dense.eval()
 
   def testOutOfBoundsIndicesWithWithoutValidation(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense(
           sparse_indices=[[1], [10]],
           output_size=[5],
@@ -140,7 +140,7 @@ class SparseToDenseTest(test.TestCase):
         dense_without_validation.eval()
 
   def testRepeatingIndicesWithWithoutValidation(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense(
           sparse_indices=[[1], [1]],
           output_size=[5],
@@ -158,7 +158,7 @@ class SparseToDenseTest(test.TestCase):
       dense_without_validation.eval()
 
   def testUnsortedIndicesWithWithoutValidation(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense(
           sparse_indices=[[2], [1]],
           output_size=[5],

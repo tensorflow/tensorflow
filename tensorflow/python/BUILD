@@ -1998,6 +1998,29 @@ py_library(
 )
 
 py_library(
+    name = "while_v2",
+    srcs = [
+        "ops/while_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":cond_v2_impl",
+        ":constant_op",
+        ":control_flow_util",
+        ":framework_ops",
+        ":function_def_to_graph",
+        ":functional_ops_gen",
+        ":gradients_impl",
+        ":list_ops",
+        ":tensor_shape",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
     name = "cond_v2_impl",
     srcs = [
         "ops/cond_v2_impl.py",
@@ -3090,7 +3113,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/image_grad_test.py"],
     additional_deps = [
         ":client_testlib",

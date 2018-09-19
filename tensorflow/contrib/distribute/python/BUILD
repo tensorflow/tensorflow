@@ -472,11 +472,8 @@ cuda_py_test(
         "//tensorflow/python:summary",
     ],
     tags = [
-        "manual",
         "multi_and_single_gpu",
         "no_pip",
-        "nogpu",
-        "notap",
     ],
 )
 
@@ -485,7 +482,6 @@ py_library(
     srcs = ["single_loss_example.py"],
     deps = [
         ":step_fn",
-        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:layers",

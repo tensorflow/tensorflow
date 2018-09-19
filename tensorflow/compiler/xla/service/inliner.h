@@ -24,7 +24,7 @@ namespace xla {
 // A pass which performs inlining. Which can result, for example, in functions
 // that were previously being mapped by Map instead directly applied to the
 // forwarded operands (i.e., map({X, Y}, max) -> max(X, Y)).
-class Inliner : public HloPassInterface {
+class Inliner : public HloModulePass {
  public:
   ~Inliner() override = default;
   absl::string_view name() const override { return "inline"; }

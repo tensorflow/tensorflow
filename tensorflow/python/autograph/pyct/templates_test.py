@@ -132,6 +132,18 @@ class TemplatesTest(test.TestCase):
     self.assertIsInstance(node.body[0].targets[0].elts[0].ctx, gast.Store)
     self.assertIsInstance(node.body[0].targets[0].elts[1].ctx, gast.Store)
 
+  def test_replace_expression_context(self):
+    template = """
+      def test_fn(foo):
+        foo
+    """
+
+    node = templates.replace(
+        template, foo=parser.parse_expression('a + 2 * b / -c'))[0]
+    self.assertIsInstance(node.body[0].ctx, gast.Load)
+    self.assertIsInstance(node.body[0].left.ctx, gast.Load)
+    self.assertIsInstance(node.body[0].right.left.right.ctx, gast.Load)
+
   def test_replace_complex_context(self):
     template = """
       def test_fn(foo):

@@ -448,7 +448,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm"]),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -602,6 +602,7 @@ def tf_gen_op_wrappers_cc(
 #     is invalid to specify both "hidden" and "op_whitelist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
 #     specified ops.
+
 def tf_gen_op_wrapper_py(
         name,
         out = None,
@@ -623,7 +624,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        linkopts = if_not_windows(["-lm"]) + cc_linkopts,
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         copts = tf_copts(),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = ([
@@ -1215,9 +1216,11 @@ def tf_mkl_kernel_library(
     if prefix:
         srcs = srcs + native.glob(
             [prefix + "*.cc"],
+            exclude = [prefix + "*test*"],
         )
         hdrs = hdrs + native.glob(
             [prefix + "*.h"],
+            exclude = [prefix + "*test*"],
         )
 
     # -fno-exceptions in nocopts breaks compilation if header modules are enabled.

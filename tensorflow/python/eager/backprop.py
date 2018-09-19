@@ -120,27 +120,6 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
 pywrap_tensorflow.TFE_Py_RegisterGradientFunction(_gradient_function)
 
 
-_tracing = False
-
-
-# TODO(agarwal): use an automatic mechanism for handling None arguments to
-# gradient functions.
-# Some gradient functions can accept None arguments for gradients. The following
-# maps the operation name to the indices at which the corresponding gradient
-# function can accept None values.
-# e.g. FusedBatchNorm outputs 5 values and hence receives 5 gradient values
-# during backprop. However the gradient function uses only the first of those
-# values and ignores the rest. The entry, "FusedBatchNorm": [1, 2, 3, 4],
-# indicates that only the gradient corresponding to index 0 is used, and the
-# gradient values at indices 1-4 are ignored (and hence can be None). The
-# backprop algorithm can then leverage this by not constructing zeros to
-# pass for those indices.
-_grad_fn_accepts_none_for_indices = {
-    "SoftmaxCrossEntropyWithLogits": [1],
-    "FusedBatchNorm": [1, 2, 3, 4]
-}
-
-
 def _record_gradient(op_name, inputs, attrs, results, name):
   return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
                                                  results, name)
@@ -648,8 +627,8 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.Variable` or `tf.get_variable`,
-  trainable=True is default in both cases) are automatically watched. Tensors
+  Trainable variables (created by `tf.Variable` or `tf.get_variable`, where
+  `trainable=True` is default in both cases) are automatically watched. Tensors
   can be manually watched by invoking the `watch` method on this context
   manager.
 
@@ -669,6 +648,7 @@ class GradientTape(object):
   ```python
   x = tf.constant(3.0)
   with tf.GradientTape() as g:
+    g.watch(x)
     with tf.GradientTape() as gg:
       gg.watch(x)
       y = x * x
@@ -745,7 +725,9 @@ class GradientTape(object):
     self._persistent = persistent
     self._watch_accessed_variables = watch_accessed_variables
     self._recording = False
-    context.context().start_step()
+    self._created_eagerly = context.executing_eagerly()
+    if self._created_eagerly:
+      context.context().start_step()
 
   def __enter__(self):
     """Enters a context inside which operations are recorded on this tape."""
@@ -775,7 +757,8 @@ class GradientTape(object):
     self._recording = False
 
   def __del__(self):
-    context.context().end_step()
+    if self._created_eagerly:
+      context.context().end_step()
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.

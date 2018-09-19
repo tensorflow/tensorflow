@@ -23,6 +23,7 @@ import collections
 import functools
 import sys
 import threading
+import weakref
 
 import numpy as np
 import six
@@ -65,7 +66,7 @@ gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-ac
 WHITELIST_FUNCTION_ATTRIBUTE_PREFIX = "experimental_"
 
 
-def _create_substitute_placeholder(value, name, dtype=None):
+def _create_substitute_placeholder(value, name=None, dtype=None):
   """Creates a placeholder for `value` and propagates shape info to it."""
   # Note: setting ops.control_dependencies(None) ensures we always put
   # capturing placeholders outside of any control flow context.
@@ -180,7 +181,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.structured_outputs = None
-    self.variables = []
+    self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
     self.captures = collections.OrderedDict()
 
@@ -216,6 +217,31 @@ class FuncGraph(ops.Graph):
     # optimizers.
     self._graph_key = graph._graph_key
     # pylint: enable=protected-access
+
+  @property
+  def variables(self):
+    """A list of variables accessed by this FuncGraph.
+
+    Note that functions keep only weak references to variables. Calling the
+    function after a variable it accesses has been deleted is an error.
+
+    Yields:
+      Strong references to variables accessed by this FuncGraph.
+    """
+    for weak_v in self._weak_variables:
+      v = weak_v()
+      if v is None:
+        raise AssertionError(
+            "Called a function referencing variables which have been deleted. "
+            "This likely means that function-local variables were created and "
+            "not referenced elsewhere in the program. This is generally a "
+            "mistake; consider storing variables in an object attribute on "
+            "first call.")
+      yield v
+
+  @variables.setter
+  def variables(self, var_list):
+    self._weak_variables = [weakref.ref(v) for v in var_list]
 
   def create_op(
       self,
@@ -529,7 +555,7 @@ class Function(object):
     self._num_outputs = len(self._func_graph.outputs)
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
-    self._attrs = _parse_func_attrs(attrs)
+    self._attrs = _parse_func_attrs(attrs or {})
     self._device_functions = tuple(
         self._func_graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
 
@@ -550,7 +576,19 @@ class Function(object):
           self._distributed_variables[component_variable.handle] = variable
 
   def __call__(self, *args):
-    """Executes the wrapped function."""
+    """Executes the wrapped function.
+
+    Args:
+      *args: a list of Tensors or Variables.
+
+    Returns:
+      The result of applying the TF function to `args`.
+
+    Raises:
+      ValueError: If the current device stack does not match the device stack
+        under which the function was created, or if `args` contains anything
+        other than Tensors or Variables.
+    """
     ctx = context.context()
     device_functions = _get_device_functions(ctx, ops.get_default_graph())
     if device_functions != self._device_functions:
@@ -566,7 +604,18 @@ class Function(object):
         tape.variable_accessed(v)
 
     captures = self._resolve_captured_inputs()
-    tensor_inputs = [x for x in nest.flatten(args) if isinstance(x, ops.Tensor)]
+    tensor_inputs = []
+    for i, arg in enumerate(nest.flatten(args)):
+      if isinstance(arg, resource_variable_ops.ResourceVariable):
+        if arg.trainable:
+          tape.variable_accessed(arg)
+        tensor_inputs.append(arg.handle)
+      elif isinstance(arg, ops.Tensor):
+        tensor_inputs.append(arg)
+      else:
+        raise ValueError("All inputs to `Function`s must be Tensors; "
+                         "on invocation of %s, the %d-th input (%s) was not a "
+                         "Tensor." % (self._func_graph.name, i, str(arg)))
     args = tensor_inputs + captures
 
     if tape.should_record(tensor_inputs) or tape.should_record(captures):
@@ -579,11 +628,6 @@ class Function(object):
   def graph(self):
     """Returns the graph from which this function was constructed."""
     return self._func_graph
-
-  @property
-  def variables(self):
-    """Returns all variables touched by this function."""
-    return self._func_graph.variables
 
   @property
   def inputs(self):
@@ -782,7 +826,12 @@ def _get_defun_inputs_from_args(args):
   return nest.pack_sequence_as(args, function_inputs)
 
 
-def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
+def func_graph_from_py_func(name,
+                            python_func,
+                            args,
+                            kwds,
+                            signature=None,
+                            func_graph=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -797,6 +846,8 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
       `kwds` are ignored, and `python_func` is traced with Tensors conforming
       to `signature`. If `None`, the shapes and dtypes are inferred from the
       inputs.
+    func_graph: Optional. An instance of FuncGraph. If provided, we will use
+      this graph else a new one is built and returned.
 
   Returns:
     A FuncGraph.
@@ -805,7 +856,9 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
     TypeError: If any of `python_func`'s return values is neither `None` nor a
       `Tensor`.
   """
-  func_graph = FuncGraph(name)
+  if func_graph is None:
+    func_graph = FuncGraph(name)
+  assert isinstance(func_graph, FuncGraph)
   with func_graph.as_default(), AutomaticControlDependencies() as a:
     variable_scope.get_variable_scope().set_use_resource(True)
 
@@ -817,10 +870,6 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
       func_kwds = {}
 
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
-    func_graph.inputs.extend(
-        x for x in nest.flatten(func_args) + nest.flatten(func_kwds)
-        if isinstance(x, ops.Tensor))
-
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
     func_args_before = nest.pack_sequence_as(func_args, nest.flatten(func_args))
@@ -867,6 +916,28 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
     finally:
       tape.pop_tape(this_tape)
 
+    # Variables in `func_args`, `func_kwds` should be explicit inputs
+    # to the function, not captured inputs.
+    tape_variables = this_tape.watched_variables()
+    arg_variables = set()
+    inputs = []
+    for arg in nest.flatten(func_args) + nest.flatten(func_kwds):
+      if isinstance(arg, resource_variable_ops.ResourceVariable):
+        try:
+          resource_placeholder = func_graph.captures.pop(arg.handle)
+          arg_variables.add(arg)
+        except KeyError:
+          # This case occurs if a Variable among the inputs is not actually
+          # used by the function; we still add an explicit input for it
+          # because the user should presumably pass the Variable as an input
+          # to the corresponding graph function.
+          resource_placeholder = _create_substitute_placeholder(arg.handle)
+        inputs.append(resource_placeholder)
+      elif isinstance(arg, ops.Tensor):
+        inputs.append(arg)
+    variables = [v for v in tape_variables if v not in arg_variables]
+    func_graph.inputs = inputs + list(func_graph.captures.values())
+
     func_graph.structured_outputs = func_outputs
     # Returning a closed-over tensor does not trigger convert_to_tensor.
     func_graph.outputs.extend(
@@ -878,7 +949,6 @@ def func_graph_from_py_func(name, python_func, args, kwds, signature=None):
     # Instead of storing non-distributed component variables, we
     # store their distributed containers so we can retrieve the correct
     # component variables at call-time.
-    variables = list(this_tape.watched_variables())
     strategy = distribution_strategy_context.get_distribution_strategy()
     for i, variable in enumerate(variables):
       # If variable is not distributed value_container returns itself.
@@ -930,7 +1000,16 @@ def _encode_arg(arg):
     return tuple(
         (_encode_arg(key), _encode_arg(arg[key])) for key in sorted(arg))
   else:
-    return arg
+    try:
+      # If possible, keep only a weak reference to Python objects. Weak
+      # references hash to the same value as the original object.
+      # TODO(allenl): Clean up dead functions and their cache keys if the cache
+      # gets large. Right now creating objects with a defunned method, calling
+      # the method, and losing a reference to the object in a loop will leak
+      # memory here.
+      return weakref.ref(arg)
+    except TypeError:
+      return arg
 
 
 def _deterministic_dict_values(dictionary):
@@ -980,7 +1059,6 @@ class PolymorphicFunction(object):
       self._kwds_to_include = {}
     self._name = name
     self._function_cache = collections.OrderedDict()
-    self._variables = []
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
@@ -1025,12 +1103,6 @@ class PolymorphicFunction(object):
   def python_function(self):
     """Returns the wrapped Python function."""
     return self._python_function
-
-  # TODO(akshayka): Remove this property.
-  @property
-  def variables(self):
-    """Returns the union of all variables referenced by cached `Function`s`."""
-    return self._variables
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
@@ -1198,10 +1270,39 @@ class PolymorphicFunction(object):
             func_graph_from_py_func(self._name, self._python_function, args,
                                     kwds, self._input_signature),
             self._function_attributes)
-        self._variables.extend(
-            [v for v in graph_function.variables if v not in self._variables])
         self._function_cache[cache_key] = graph_function
-      return graph_function, (args, kwds)
+      return graph_function, [
+          t for t in nest.flatten((args, kwds))
+          if isinstance(t, (ops.Tensor, resource_variable_ops.ResourceVariable))
+      ]
+
+
+def register(func, *args, **kwargs):
+  """Register the defun function into the graph.
+
+  This won't actually call the function with the inputs, and only put the
+  function definition into graph. Register function with different input param
+  will result into multiple version of functions registered in graph.
+
+  Args:
+    func: the PolymorphicFunction instance that generated by a @defun
+    *args: input arguments for the Python function.
+    **kwargs: input keyword arguments for the Python function.
+
+  Returns:
+    a `Function` object specialized to inputs and execution context.
+
+  Raises:
+    ValueError: When the input function is not a defun wrapped python function.
+  """
+  if not isinstance(func, PolymorphicFunction):
+    raise ValueError("Only defun function is allowed to be registered. "
+                     "Got type: %s" % type(func))
+  concrete_func = func.get_concrete_function(*args, **kwargs)
+  graph = ops.get_default_graph()
+  concrete_func._inference_function.add_to_graph(graph)   # pylint: disable=protected-access
+  # TODO(scottzhu): support concrete_func._backward_graph_function in future.
+  return concrete_func
 
 
 def _validate_signature(signature):

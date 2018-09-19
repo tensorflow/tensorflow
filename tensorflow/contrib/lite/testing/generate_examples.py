@@ -1434,6 +1434,7 @@ def make_depthwiseconv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3], [1, 10, 10, 3]],
           "filter_size": [[1, 1], [1, 2], [3, 3]],
           "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
+          "dilations": [[1, 1, 1, 1], [1, 3, 2, 1], [1, 2, 2, 1]],
           "channel_multiplier": [1, 2],
           "rate": [[1, 1]],
           "padding": ["SAME", "VALID"],
@@ -1444,6 +1445,7 @@ def make_depthwiseconv_tests(zip_path):
           "input_shape": [[1, 3, 4, 3]],
           "filter_size": [[1, 1]],
           "strides": [[1, 1, 2, 1]],  # TF needs [1, x, x, 1]
+          "dilations": [[1, 1, 1, 1], [1, 2, 2, 1]],
           "channel_multiplier": [2],
           "rate": [[2, 2]],  #  Only [1, 1] is supported
           "padding": ["SAME"],
@@ -2822,6 +2824,31 @@ def make_neg_tests(zip_path):
         name="input",
         shape=parameters["input_shape"])
     out = tf.negative(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = create_tensor_data(parameters["input_dtype"],
+                                parameters["input_shape"])
+    return [values], sess.run(outputs, feed_dict=dict(zip(inputs, [values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_zeros_like_tests(zip_path):
+  """Make a set of tests to do zeros_like."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+  }]
+
+  def build_graph(parameters):
+    """Build the zeros_like op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.zeros_like(input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

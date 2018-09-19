@@ -131,6 +131,7 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
       CHECK_LE(operand_number, 2);
       return operand_number == 0 || index.empty();
 
+    case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
       return false;

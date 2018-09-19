@@ -608,6 +608,47 @@ exports_files(
     ],
 )
 
+genrule(
+    name = "install_headers",
+    srcs = [
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/cc:headers",
+        "//tensorflow/core:headers",
+    ],
+    outs = ["include"],
+    cmd = """
+    mkdir $@
+    for f in $(SRCS); do
+      d="$${f%/*}"
+      d="$${d#bazel-out*genfiles/}"
+      d="$${d#*external/eigen_archive/}"
+
+      if [[ $${d} == *local_config_* ]]; then
+        continue
+      fi
+
+      mkdir -p "$@/$${d}"
+      cp "$${f}" "$@/$${d}/"
+    done
+    """,
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "root_init_gen",
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }),
+    outs = ["__init__.py"],
+    cmd = select({
+        "api_version_2": "cp $(@D)/_api/v2/__init__.py $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/__init__.py $(OUTS)",
+    }),
+)
+
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
     srcs = ["api_template.__init__.py"],
@@ -627,19 +668,6 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
     root_init_template = "api_template.__init__.py",
-)
-
-genrule(
-    name = "root_init_gen",
-    srcs = select({
-        "api_version_2": [":tf_python_api_gen_v2"],
-        "//conditions:default": [":tf_python_api_gen_v1"],
-    }),
-    outs = ["__init__.py"],
-    cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/__init__.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/__init__.py $(OUTS)",
-    }),
 )
 
 py_library(

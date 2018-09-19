@@ -24,6 +24,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
+# A constant that can be used to enable auto-tuning.
+AUTOTUNE = -1
+
 
 # TODO(jsimsa): Support RE matching for both individual transformation (e.g. to
 # account for indexing) and transformation sequence.

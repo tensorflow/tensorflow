@@ -22,39 +22,96 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 
-/* static */
-Status CapturedFunction::Create(
-    const NameAttrList& func, std::vector<Tensor> captured_inputs,
-    std::unique_ptr<CapturedFunction>* out_function) {
-  return Create(func, std::move(captured_inputs), true, out_function);
-}
+namespace {
 
-/* static */
-Status CapturedFunction::Create(
-    const NameAttrList& func, std::vector<Tensor> captured_inputs,
-    bool use_inter_op_parallelism,
-    std::unique_ptr<CapturedFunction>* out_function) {
-  out_function->reset(new CapturedFunction(func, std::move(captured_inputs),
-                                           use_inter_op_parallelism));
-  return Status::OK();
-}
+// Simplistic implementation of the `StepStatsCollectorInterface` that only
+// cares about collecting the CPU time needed to execute a captured function.
+class SimpleStepStatsCollector : public StepStatsCollectorInterface {
+ public:
+  void IncrementProcessingTime(int64 delta) {
+    mutex_lock l(mu_);
+    processing_time_ += delta;
+  }
+
+  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override {
+    return new SimpleNodeExecStats(this);
+  }
+
+  string ReportAllocsOnResourceExhausted(const string& err) override {
+    return "";
+  }
+
+  int64 processing_time() {
+    tf_shared_lock l(mu_);
+    return processing_time_;
+  }
+
+ private:
+  class SimpleNodeExecStats : public NodeExecStatsInterface {
+   public:
+    explicit SimpleNodeExecStats(SimpleStepStatsCollector* step_stats_collector)
+        : step_stats_collector_(step_stats_collector) {}
+
+    void Done(const string& device) override {
+      step_stats_collector_->IncrementProcessingTime(end_time_ns_ -
+                                                     start_time_ns_);
+      delete this;
+    }
+
+    void RecordExecutorStarted() override {
+      start_time_ns_ = Env::Default()->NowNanos();
+    }
+
+    void RecordComputeStarted() override {}
+
+    void RecordComputeEnded() override {}
+
+    void RecordExecutorEnded() override {
+      end_time_ns_ = Env::Default()->NowNanos();
+    }
+
+    void SetMemory(OpKernelContext* ctx) override {}
+
+    void SetOutput(int slot, const Tensor* tensor) override {}
+
+    void SetReferencedTensors(const TensorReferenceVector& tensors) override {}
+
+    void SetScheduled(int64 nanos) override {}
+
+   private:
+    int64 start_time_ns_ = 0;
+    int64 end_time_ns_ = 0;
+    SimpleStepStatsCollector* step_stats_collector_;  // Not owned.
+  };
+
+  mutex mu_;
+  int64 processing_time_ GUARDED_BY(mu_) = 0;
+};
+
+}  // namespace
 
 /* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx, const string& argument,
     std::unique_ptr<CapturedFunction>* out_function) {
-  OpInputList argument_inputs;
-  TF_RETURN_IF_ERROR(ctx->input_list(argument, &argument_inputs));
-  std::vector<Tensor> arguments_t;
-  arguments_t.reserve(argument_inputs.size());
-  for (const Tensor& t : argument_inputs) {
-    arguments_t.push_back(t);
-  }
-  return CapturedFunction::Create(func, std::move(arguments_t), out_function);
+  return CapturedFunction::Create(func, ctx, argument, true, out_function);
+}
+
+Status CapturedFunction::Create(
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    bool use_inter_op_parallelism,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  OpInputList inputs;
+  TF_RETURN_IF_ERROR(ctx->input_list(argument, &inputs));
+  std::vector<Tensor> arguments(inputs.begin(), inputs.end());
+  *out_function = WrapUnique(new CapturedFunction(func, std::move(arguments),
+                                                  use_inter_op_parallelism));
+  return Status::OK();
 }
 
 CapturedFunction::~CapturedFunction() {
@@ -370,17 +427,17 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
     done(s);
     return;
   }
-  auto frame =
-      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
+  std::shared_ptr<OwnedArgsCallFrame> frame(
+      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_));
 
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = CapturedFunction::generate_step_id();
   ResourceMgr* resource_mgr = ctx->lib()->device()->resource_manager();
-  auto step_container = new ScopedStepContainer(
+  std::shared_ptr<ScopedStepContainer> step_container(new ScopedStepContainer(
       f_opts.step_id, [resource_mgr](const string& name) {
         resource_mgr->Cleanup(name).IgnoreError();
-      });
-  f_opts.step_container = step_container;
+      }));
+  f_opts.step_container = step_container.get();
   f_opts.runner = ctx->runner();
   if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
     f_opts.create_rendezvous = true;
@@ -391,43 +448,33 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
   // (such as queue kernels) that depend on the non-nullness of
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
-  auto c_mgr = new CancellationManager;
-  f_opts.cancellation_manager = c_mgr;
-  StepStats* stats = nullptr;
-  StepStatsCollector* stats_collector = nullptr;
+  std::shared_ptr<CancellationManager> c_mgr(new CancellationManager);
+  f_opts.cancellation_manager = c_mgr.get();
+  std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   std::shared_ptr<model::Node> node;
   if (ctx->model()) {
     node = ctx->model()->LookupNode(prefix);
     if (node) {
-      // TODO(b/114104975): Use something light-weight here.
-      stats = new StepStats();
-      stats_collector = new StepStatsCollector(stats);
+      stats_collector = MakeUnique<SimpleStepStatsCollector>();
     }
   }
-  f_opts.stats_collector = stats_collector;
+  f_opts.stats_collector = stats_collector.get();
 
+  OwnedArgsCallFrame* raw_frame = frame.get();
   auto callback = std::bind(
-      [rets, step_container, c_mgr, frame, stats, stats_collector, node](
-          FunctionLibraryRuntime::DoneCallback done,
-          // Begin unbound arguments.
-          Status s) {
-        delete step_container;
-        delete c_mgr;
+      [rets](const std::shared_ptr<CancellationManager>& c_mgr,
+             const FunctionLibraryRuntime::DoneCallback& done,
+             const std::shared_ptr<OwnedArgsCallFrame>& frame,
+             const std::shared_ptr<model::Node>& node,
+             const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
+             const std::shared_ptr<ScopedStepContainer>& step_container,
+             // Begin unbound arguments.
+             Status s) {
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
         }
-        delete frame;
         if (node) {
-          int64 delta = 0;
-          stats_collector->Finalize();
-          for (auto dev_stats : stats->dev_stats()) {
-            for (auto node_stats : dev_stats.node_stats()) {
-              delta += node_stats.all_end_rel_nanos();
-            }
-          }
-          delete stats_collector;
-          delete stats;
-          node->add_processing_time(delta);
+          node->add_processing_time(stats_collector->processing_time());
           node->start_work();
         }
         done(s);
@@ -435,9 +482,11 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
           node->stop_work();
         }
       },
-      std::move(done), std::placeholders::_1);
+      std::move(c_mgr), std::move(done), std::move(frame), std::move(node),
+      std::move(stats_collector), std::move(step_container),
+      std::placeholders::_1);
 
-  ctx->lib()->Run(f_opts, handle, frame, std::move(callback));
+  ctx->lib()->Run(f_opts, handle, raw_frame, std::move(callback));
 }
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,

@@ -275,6 +275,8 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
               << DataTypeString(type);
       if (type == DT_RESOURCE) {
+        TF_RET_CHECK(kernel->outputs[i].input_index >= 0)
+            << "Invalid input for outputs " << i;
         ctx->set_output(i, ctx->input(kernel->outputs[i].input_index));
       } else {
         se::DeviceMemoryBase buffer = output.buffer({output_num});

@@ -63,7 +63,6 @@ from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 from tensorflow.contrib import legacy_seq2seq
-from tensorflow.contrib import linalg
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
