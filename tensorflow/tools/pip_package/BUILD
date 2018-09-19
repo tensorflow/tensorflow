@@ -210,6 +210,7 @@ filegroup(
         "@ngraph//:LICENSE",
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
+        "@tbb//:LICENSE",
     ]) + tf_additional_license_deps(),
 )
 
