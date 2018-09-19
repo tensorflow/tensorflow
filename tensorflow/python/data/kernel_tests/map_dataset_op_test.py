@@ -397,6 +397,28 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
       # Randomness is repeatable given same seed
       self.assertAllClose(random_values, random_values_2)
 
+  def testStatefulMapKeepsStateAcrossIterators(self):
+    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
+                .map(lambda _: random_ops.random_uniform((), seed=11))
+                .repeat(1000)
+                .batch(10)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(init_op)
+      random_values = sess.run(get_next)
+
+      # Assert that one of the next 99 batches yielded by the iterator is
+      # different from the first.
+      i = 0
+      while i < 99:
+        if np.any(random_values != sess.run(get_next)):
+          break
+        i += 1
+      self.assertLess(i, 99)
+
   def testMapDict(self):
     iterator = (dataset_ops.Dataset.range(10)
                 .map(lambda x: {"foo": x * 2, "bar": x ** 2})
