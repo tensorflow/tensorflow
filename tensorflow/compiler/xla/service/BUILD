@@ -1169,6 +1169,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":hlo_module_group",
+        ":hlo_module_group_metadata",
         ":hlo_parser",
         ":hlo_proto",
         "//tensorflow/compiler/xla:test",
