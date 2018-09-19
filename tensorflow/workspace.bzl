@@ -905,11 +905,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "rccl_archive",
         urls = [
-            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rccl/archive/v0.4.tar.gz",
-            "https://github.com/ROCmSoftwarePlatform/rccl/archive/v0.4.tar.gz",
+            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/rccl/archive/v0.5.tar.gz",
+            "https://github.com/ROCmSoftwarePlatform/rccl/archive/v0.5.tar.gz",
         ],
-        sha256 = "606d2528321fe174d259e45cb3e24647a03d7528b15ebc9602411449ddfe1226",
-        strip_prefix = "rccl-0.4",
+        sha256 = "4a0feea251463f87b93a35e60cf41b597e38f402ee676e67058a86660ea718a7",
+        strip_prefix = "rccl-0.5",
         build_file = clean_dep("//third_party:rccl.BUILD"),
     )
 
