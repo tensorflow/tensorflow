@@ -3204,3 +3204,28 @@ tf_py_test(
     grpc_enabled = True,
     tags = ["no_gpu"],  # TODO(b/111656070)
 )
+
+# TODO(b/116053459): Replace with cuda_py_test.
+tf_py_test(
+    name = "while_v2_test",
+    size = "medium",
+    srcs = ["while_v2_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients_impl",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python:while_v2",
+    ],
+    grpc_enabled = True,
+    tags = ["no_gpu"],  # TODO(b/116053459)
+)

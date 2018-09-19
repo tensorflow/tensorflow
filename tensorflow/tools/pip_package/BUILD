@@ -114,6 +114,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
+    "//tensorflow/python:while_v2",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
