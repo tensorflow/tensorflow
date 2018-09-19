@@ -49,6 +49,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
+        ":function_utils",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -67,6 +68,7 @@ tf_cc_test(
     srcs = ["fusion_utils_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":function_utils",
         ":fusion_utils",
         ":graph_utils",
         "//tensorflow/core:framework",
@@ -75,6 +77,40 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
     ] + tf_protos_all(),
+)
+
+cc_library(
+    name = "function_utils",
+    srcs = ["function_utils.cc"],
+    hdrs = [
+        "function_utils.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "function_utils_test",
+    srcs = ["function_utils_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":function_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/tools/graph_transforms:transform_utils",
+    ],
 )
 
 cc_library(
@@ -137,6 +173,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":function_utils",
         ":graph_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
@@ -408,4 +445,43 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
     ],
+)
+
+cc_library(
+    name = "vectorization_utils",
+    srcs = ["vectorization_utils.cc"],
+    hdrs = [
+        "vectorization_utils.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":function_utils",
+        ":graph_utils",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/utils:functions",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "vectorization_utils_test",
+    srcs = ["vectorization_utils_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":function_utils",
+        ":vectorization_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/tools/graph_transforms:transform_utils",
+    ] + tf_protos_all(),
 )
