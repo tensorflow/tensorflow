@@ -1916,7 +1916,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const float* input2_data,
                                const RuntimeShape& output_shape,
                                float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/float");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/float");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -1957,7 +1957,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const uint8* input2_data,
                                const RuntimeShape& output_shape,
                                uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/uint8");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/uint8");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -2021,7 +2021,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const int32* input2_data,
                                const RuntimeShape& output_shape,
                                int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/int32");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/int32");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -2061,7 +2061,7 @@ void BroadcastSub4DSlow(const ArithmeticParams& params,
                         const RuntimeShape& input1_shape, const T* input1_data,
                         const RuntimeShape& input2_shape, const T* input2_data,
                         const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/templated");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/templated");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -3637,8 +3637,7 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   LogSoftmax(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const float* input_data,
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3649,13 +3648,13 @@ inline void Logistic(const LogisticParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
-                     const RuntimeShape& output_shape, float* output_data) {
-  LogisticParams params;
-  // No params currently needed by float Logistic.
-  Logistic(params, input_shape, input_data, output_shape, output_data);
+// Convenience version that allows, for example, generated-code calls to be
+// uniform between data types.
+inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
+                     const float* input_data, const RuntimeShape& output_shape,
+                     float* output_data) {
+  // Drop params: not needed.
+  Logistic(input_shape, input_data, output_shape, output_data);
 }
 
 inline void Logistic(const LogisticParams& params,
@@ -3741,9 +3740,8 @@ inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
   Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const float* input_data, const RuntimeShape& output_shape,
-                 float* output_data) {
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
@@ -3753,13 +3751,13 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  TanhParams params;
-  // Currently no params needed for float Tanh.
-  Tanh(params, input_shape, input_data, output_shape, output_data);
+// Convenience version that allows, for example, generated-code calls to be
+// uniform between data types.
+inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& output_shape,
+                 float* output_data) {
+  // Drop params: not needed.
+  Tanh(input_shape, input_data, output_shape, output_data);
 }
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
@@ -4735,6 +4733,16 @@ void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
   }
 }
 
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+template <typename T>
+inline void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
+                    const RuntimeShape&, const T* input2_data,
+                    const RuntimeShape& output_shape, T* output_data) {
+  // Drop shape of second input: not needed.
+  Minimum(input1_shape, input1_data, input2_data, output_shape, output_data);
+}
+
 template <typename T>
 void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
              const T* input2_data, const RuntimeShape& output_shape,
@@ -4745,6 +4753,16 @@ void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
   for (int i = 0; i < flat_size; i++) {
     output_data[i] = input1_data[i] < max_value ? max_value : input1_data[i];
   }
+}
+
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+template <typename T>
+inline void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
+                    const RuntimeShape&, const T* input2_data,
+                    const RuntimeShape& output_shape, T* output_data) {
+  // Drop shape of second input: not needed.
+  Maximum(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
 template <typename T, typename Op>
@@ -4820,6 +4838,16 @@ void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
             T2* output_data) {
   ArgMinMax(input1_shape, input1_data, input2_data, output_shape, output_data,
             std::greater<T1>());
+}
+
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+template <typename T1, typename T2, typename T3>
+inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
+                   const RuntimeShape& input2_shape, const T3* input2_data,
+                   const RuntimeShape& output_shape, T2* output_data) {
+  // Drop shape of second input: not needed.
+  ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
 template <typename T>
