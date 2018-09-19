@@ -256,6 +256,7 @@ TestUtilsTest.UnusedParam POPLAR // Decide what to do with strange reductions
 HloTestBase.ReduceWindowIdentity POPLAR
 HloTestBase.ReduceWindowS32 POPLAR
 ReduceWindowTest.NonstandardReduceFunction POPLAR
+R4ReduceWindowTest POPLAR // Very slow engine creation for the bigger reductions
 
 MultiOutputFusionTest POPLAR // Don't support fusion
 FusionTest.FusionWithLayout POPLAR
