@@ -58,6 +58,15 @@ class RenamedDevice : public Device {
     return underlying_->GetAllocator(attr);
   }
 
+  Allocator* GetScopedAllocator(AllocatorAttributes attr,
+                                int64 step_id) override {
+    return underlying_->GetScopedAllocator(attr, step_id);
+  }
+
+  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
+    return underlying_->GetScopedAllocatorMgr();
+  }
+
   const Eigen::ThreadPoolDevice* eigen_cpu_device() override {
     return underlying_->eigen_cpu_device();
   }
