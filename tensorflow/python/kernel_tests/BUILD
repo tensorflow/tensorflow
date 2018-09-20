@@ -3235,7 +3235,6 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:list_ops",
-        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:while_v2",
     ],
