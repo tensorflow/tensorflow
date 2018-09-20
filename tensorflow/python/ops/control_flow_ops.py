@@ -610,9 +610,10 @@ def _EnforceShapeInvariant(merge_var, next_var):
           "less-specific shape." %
           (input_t.name, input_t.shape, n_shape))
   else:
-    if not isinstance(var, (ops.IndexedSlices, sparse_tensor.SparseTensor)):
-      raise TypeError("Type %s not supported" % type(var))
-    if isinstance(var, ops.IndexedSlices):
+    if not isinstance(merge_var,
+                      (ops.IndexedSlices, sparse_tensor.SparseTensor)):
+      raise TypeError("Type %s not supported" % type(merge_var))
+    if isinstance(merge_var, ops.IndexedSlices):
       m_values_shape = merge_var.values.get_shape()
       m_indices_shape = merge_var.indices.get_shape()
       m_shape_shape = tensor_shape.TensorShape(None)
