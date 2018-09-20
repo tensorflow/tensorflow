@@ -168,13 +168,8 @@ Here are the basic instructions:
 ```
 # Grab the repo
 cd $HOME
-git clone https://github.com/tensorflow/benchmarks.git
+git clone -b cnn_tf_v1.10_compatible https://github.com/tensorflow/benchmarks.git
 cd benchmarks
-
-# Temporary workaround to allow support for TF 1.8 without NCCL
-
-git checkout -b may22 ddb23306fdc60fefe620e6ce633bcd645561cb0d && \
-sed -i 's|from tensorflow.contrib import nccl|#from tensorflow.contrib import nccl|g' ./scripts/tf_cnn_benchmarks/variable_mgr.py
 
 # Run the training benchmark (e.g. ResNet-50)
 python ./scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=resnet50 --num_gpus=1
