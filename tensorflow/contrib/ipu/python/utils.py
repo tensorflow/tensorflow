@@ -27,27 +27,22 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
                       report_every_nth_execution=0, type='IPU_MODEL'):
   """Create the IPU options for an IPU model device.
 
-  Args:
-    profiling: Enable all IPU profiling
-    num_ipus: Number of IPUs in the model
-    tiles_per_ipu: Number of tiles per IPU in the model
-    use_poplar_text_report: Enable the poplar textual report summary
-    report_every_nth_execution: Only produce an execution report on every Nth
-                                execution.  0=One report only.
-    type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
+  ```python
+  opts = create_ipu_config(profiling=True, num_ipus=1, tiles_per_ipu=64)
+  with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ...
+  ```
 
-  Returns:
-    An IPUOptions configuration protobuf, suitable for using in the creation
+  :param profiling: Enable all IPU profiling
+  :param num_ipus: Number of IPUs in the model
+  :param tiles_per_ipu: Number of tiles per IPU in the model
+  :param use_poplar_text_report: Enable the poplar textual report summary
+  :param report_every_nth_execution: Only produce an execution report on every
+                                     Nth execution.  0=One report only.
+  :param type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
+  :return: An IPUOptions configuration protobuf, suitable for using in the creation
     of the ConfigProto session options.
-
-    ```python
-    opts = create_ipu_config(profiling=True, num_ipus=1, tiles_per_ipu=64)
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
-      ...
-    ```
-
   """
-
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
   if type == 'IPU':
@@ -77,13 +72,11 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
 def extract_all_strings_from_event_trace(events):
   """Extract a concatenation of all data strings from an IPU event trace.
 
-  Args:
-    events: An array of IPU events as returned from the `ipu_compile_summary`
-            operation.
+  :param events: An array of IPU events as returned from the
+                 `ipu_compile_summary` operation.
 
-  Returns:
-    A string containing the concatenation of all of the data fields of the
-    events.
+  :return: A string containing the concatenation of all of the data fields of
+           the events.
 
   """
   result = ""
@@ -116,16 +109,54 @@ def extract_all_strings_from_event_trace(events):
 
   return result
 
+def extract_all_types_from_event_trace(events):
+  """Return a list of the types of each event in an event trace tensor
+
+  :param events: A tensor containing a list of IPU events as protobuf strings
+  :return: A list containing the type of each event
+  """
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    result += [evt.type]
+  return result
+
+def extract_all_events(events):
+  """Extract a list containing each event as an event object
+  :param events: A tensor containing a list of IPU events as protobuf strings
+  :return: A list containing IpuTraceEvent objects
+  """
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    result += [evt]
+  return result
+
+def extract_all_io_events(events):
+  """Extract a list of all of the IO events from an IPU event trace tensor
+  :param events: A tensor containing a list of IPU events as protobuf strings
+  :return: A list containing only IO events as IpuTraceEvent objects
+  """
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
+                    IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
+      try:
+        payload = json.loads(evt.data_str.decode('utf-8'))
+        for t in payload["tensors"]:
+          result += [(evt.type, t["name"])]
+      except UnicodeDecodeError:
+        pass
+  return result
+
 def move_variable_initialization_to_cpu(graph=None):
   """For all variables in the VARIABLES collection, move any initialization
   ops onto the CPU.
 
-  Args:
-    graph: Operations are moved around on this graph.  The default graph
-           will be used if not specified.
-
-  Returns:
-    None
+  :param graph: Operations are moved around on this graph.  The default graph
+                will be used if not specified.
+  :return: None
   """
   if not graph:
     graph = ops.get_default_graph()

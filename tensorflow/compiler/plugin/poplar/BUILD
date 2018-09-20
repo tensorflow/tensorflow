@@ -631,39 +631,6 @@ py_test(
 )
 
 py_test(
-    name = "conditional_test",
-    size = "small",
-    srcs = ["tests/conditional_test.py"],
-    deps = [
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
-    ],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "while_loop_perf_test",
-    size = "small",
-    srcs = ["tests/while_loop_perf_test.py"],
-    deps = [
-        ":ipu_ops",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-    ],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
     name = "estimator_test",
     size = "medium",
     srcs = ["tests/estimator_test.py"],
@@ -769,8 +736,6 @@ test_suite(
         "fuse_ops_test",
         "wide_const_finder_test",
         "monitored_session_test",
-        "conditional_test",
-        "while_loop_perf_test",
         "estimator_test",
         "expression_outliner_test",
         "convolution_classifier_test",
@@ -807,7 +772,6 @@ test_suite(
         "fuse_ops_test",
         "wide_const_finder_test",
         "monitored_session_test",
-        "conditional_test",
         "estimator_test",
         "expression_outliner_test",
         "convolution_classifier_test",

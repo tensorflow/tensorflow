@@ -4,7 +4,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.contrib.compiler import xla
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
@@ -20,6 +22,9 @@ from tensorflow.python.platform import googletest
 from tensorflow.contrib import ipu
 from tensorflow.python.training import gradient_descent
 
+def count_event_type(events, type, payload=0):
+  return sum(map((lambda x: 1 if x.type==type and len(x.data_str) > payload
+                              else 0), events))
 
 class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
@@ -81,23 +86,49 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       dump = ipu.utils.extract_all_strings_from_event_trace(e);
       self.assertTrue(len(dump) > 100)
 
-  def testIpuScope(self):
+  def testIpuSimpleScope(self):
+    def my_net(a, b):
+      c = a + b
+      return [c]
+
+    with ops.device('cpu'):
+      a = array_ops.placeholder(np.float32, [1], name="a")
+      b = array_ops.placeholder(np.float32, [1], name="b")
+      events = gen_ipu_ops.ipu_event_trace()
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[a, b])
+
+    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
+    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+
+      fd = {
+        a: [1],
+        b: [2],
+      }
+
+      sess.run(events)
+
+      res = sess.run(r[0], fd)
+      self.assertEqual(res, [3])
+
+      e = sess.run(events)
+      evts = ipu.utils.extract_all_events(e)
+      self.assertEqual(count_event_type(evts, IpuTraceEvent.COMPILE_END, 10), 1)
+
+  def testIpuWhileScope(self):
     # 1: design is targetted at the device
     # 2: variables are resource variables
     # 3: training a while_loop is possible
-    def RNN(x):
-      lstm_cell = rnn_cell.BasicLSTMCell(1, forget_bias=1.0)
-      outputs, states = rnn.dynamic_rnn(lstm_cell, x, dtype=np.float32)
-      return outputs[-1]
-
-    with ipu.ops.ipu_scope("/device:IPU:0"):
-
-      a = array_ops.placeholder(np.float32, [1,8,1], name="a")
-      b = array_ops.placeholder(np.float32, [1,8,1], name="b")
-
+    def my_net(a, b):
       c = variable_scope.get_variable('c', initializer=[1.0])
+      self.assertTrue("ResourceVariable" in str(type(c)))
 
-      logits = RNN(a) * c
+      lstm_cell = rnn_cell.LSTMCell(1, forget_bias=1.0)
+      outputs, states = rnn.dynamic_rnn(lstm_cell, a, dtype=np.float32)
+
+      logits = outputs[-1] * c
+      self.assertEqual(logits.device, "/device:IPU:0")
 
       res = array_ops.reshape(logits, [1,8,1])
 
@@ -106,8 +137,15 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(l)
 
-    self.assertTrue("ResourceVariable" in str(type(c)))
-    self.assertEqual(logits.device, "/device:IPU:0")
+      return [l, train]
+
+    with ops.device('cpu'):
+      a = array_ops.placeholder(np.float32, [1,8,1], name="a")
+      b = array_ops.placeholder(np.float32, [1,8,1], name="b")
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+
+      l = xla.compile(my_net, inputs=[a, b])
 
     cfg = ipu.utils.create_ipu_config(profiling=False, type='IPU_MODEL')
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
@@ -119,12 +157,12 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
         b: [[[1.],[1.],[1.],[1.],[1.],[1.],[1.],[1.]]],
       }
 
-      l_initial, _ = sess.run([l, train], fd)
+      l_initial = sess.run([l], fd)
 
       for _ in range(100):
-        _, _ = sess.run([l, train], fd)
+        _ = sess.run([l], fd)
 
-      l_final, _ = sess.run([l, train], fd)
+      l_final = sess.run([l], fd)
 
       self.assertTrue(l_initial > l_final)
 

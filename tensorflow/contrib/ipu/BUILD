@@ -18,6 +18,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/plugin/poplar:ipu_ops",
+        "//tensorflow/contrib/compiler:compiler_py",
     ],
 )
 
@@ -27,8 +28,51 @@ tf_py_test(
     srcs = ["python/ops_test.py"],
     additional_deps = [
         ":ipu",
-        "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:layers",
+    ],
+)
+
+tf_py_test(
+    name = "while_loop_perf_test",
+    size = "small",
+    srcs = ["python/while_loop_perf_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/compiler/plugin/poplar:ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
+    name = "conditional_test",
+    size = "small",
+    srcs = ["python/conditional_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+test_suite(
+    name = "all_tests",
+    tests = [
+        "ops_test",
+        "while_loop_perf_test",
+        "conditional_test",
     ],
 )
