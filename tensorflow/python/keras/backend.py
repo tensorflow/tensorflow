@@ -73,7 +73,16 @@ _SESSION = None
 # This dictionary holds a mapping {graph: learning_phase}.
 # A learning phase is a bool tensor used to run Keras models in
 # either train mode (learning_phase == 1) or test mode (learning_phase == 0).
-_GRAPH_LEARNING_PHASES = {}
+_GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
+
+
+# _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
+# We keep a separate reference to it to make sure it does not get removed from
+# _GRAPH_LEARNING_PHASES. We use a dummy class instead of something like a
+# string because strings are not weakly-referencable.
+class _DummyEagerGraph(object):
+  pass
+_DUMMY_EAGER_GRAPH = _DummyEagerGraph()
 
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
@@ -96,11 +105,11 @@ _LOCAL_DEVICES = None
 
 # This dictionary holds a mapping between a graph and variables to initialize
 # in the graph.
-_GRAPH_VARIABLES = {}
+_GRAPH_VARIABLES = weakref.WeakKeyDictionary()
 
 # This dictionary holds a mapping between a graph and TF optimizers created in
 # the graph.
-_GRAPH_TF_OPTIMIZERS = {}
+_GRAPH_TF_OPTIMIZERS = weakref.WeakKeyDictionary()
 
 
 @tf_export('keras.backend.backend')
@@ -359,10 +368,10 @@ def learning_phase():
       Learning phase (scalar integer tensor or Python integer).
   """
   if context.executing_eagerly():
-    if 'eager' not in _GRAPH_LEARNING_PHASES:
+    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
       # Fallback to inference mode as default.
       return 0
-    return _GRAPH_LEARNING_PHASES['eager']
+    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
   graph = ops.get_default_graph()
   if graph not in _GRAPH_LEARNING_PHASES:
@@ -386,7 +395,7 @@ def set_learning_phase(value):
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
   if context.executing_eagerly():
-    _GRAPH_LEARNING_PHASES['eager'] = value
+    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
   else:
     _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
 
@@ -415,7 +424,7 @@ def learning_phase_scope(value):
   finally:
     # Restore learning phase to initial value.
     if context.executing_eagerly():
-      _GRAPH_LEARNING_PHASES['eager'] = previous_value
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
     else:
       _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
@@ -683,14 +692,14 @@ def track_variable(v):
     return
   graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
   if graph not in _GRAPH_VARIABLES:
-    _GRAPH_VARIABLES[graph] = set()
+    _GRAPH_VARIABLES[graph] = weakref.WeakSet()
   _GRAPH_VARIABLES[graph].add(v)
 
 
 def _get_variables(graph=None):
   """Returns variables corresponding to the given graph for initialization."""
   assert not context.executing_eagerly()
-  variables = _GRAPH_VARIABLES.get(graph, set())
+  variables = _GRAPH_VARIABLES.setdefault(graph, weakref.WeakSet())
   for opt in _GRAPH_TF_OPTIMIZERS.get(graph, set()):
     variables.update(opt.optimizer.variables())
   return variables
