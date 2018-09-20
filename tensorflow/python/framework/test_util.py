@@ -1340,7 +1340,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     msgs = [msg]
     if not np.allclose(a, b, rtol=rtol, atol=atol):
-      # Add more details than np.testing.assert_allclose.
+      # Adds more details to np.testing.assert_allclose.
       #
       # NOTE: numpy.allclose (and numpy.testing.assert_allclose)
       # checks whether two arrays are element-wise equal within a
@@ -1551,7 +1551,7 @@ class TensorFlowTestCase(googletest.TestCase):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     msgs = [msg]
     if not np.all(same):
-      # Add more details than np.testing.assert_array_equal.
+      # Adds more details to np.testing.assert_array_equal.
       diff = np.logical_not(same)
       if a.ndim:
         x = a[np.where(diff)]
