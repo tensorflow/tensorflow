@@ -181,7 +181,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_XLA_Args/arg*_to_bwdWeights',
-            'Copy_{<const>,bwdWeights}_to_weightsRearranged',
+            'Copy_{<const>,bwdWeights}_to_Conv3DBackpropInputV2/convolution.*/Conv_2x2x2weightsRearranged',
             'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
             'Conv3DBackpropInputV2/convolution.*/Conv_2x2x2',
             'Conv3DBackpropInputV2/convolution.*/WeightTranspose']
@@ -219,7 +219,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
-            'Copy_XLA_Args/arg0.*_input_to_inRearranged',
+            'Copy_XLA_Args/arg0.*_input_to_Conv3DBackpropFilterV2/convolution.*/Conv_8x8x8/inRearranged',
             'Conv3DBackpropFilterV2/convolution.*/Conv_8x8x8']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
