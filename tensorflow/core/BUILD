@@ -2988,12 +2988,16 @@ tf_cuda_library(
     ] + tf_additional_device_tracer_deps(),
 )
 
-cc_library(
-    name = "session_ref",
-    srcs = ["common_runtime/session_ref.cc"],
-    hdrs = ["common_runtime/session_ref.h"],
-    copts = tf_copts(),
-    deps = [":core_cpu_base"],
+tf_proto_library_cc(
+    name = "replay_log_proto",
+    srcs = ["protobuf/replay_log.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":master_proto",
+    ] + tf_additional_all_protos(),
+    visibility = [
+        "//tensorflow:internal",
+    ],
 )
 
 cc_library(
