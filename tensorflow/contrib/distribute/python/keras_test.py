@@ -732,14 +732,22 @@ class CorrectnessWithDistributionStrategyTest(test.TestCase,
     with self.cached_session():
       keras.backend.set_image_data_format('channels_last')
       num_samples = 10000
+
+      # Train and predict datasets are created with the same input numpy arrays.
       x_train = np.random.rand(num_samples, 1)
       y_train = 3 * x_train
       x_train = x_train.astype('float32')
       y_train = y_train.astype('float32')
 
+      # The model is built once and the initial weights are saved.
+      # This is used to initialize the model for both the distribution and
+      # non-distribution run.
+      model = keras.Sequential()
+      model.add(keras.layers.Dense(1, input_shape=(1,)))
+      initial_weights = model.get_weights()
+
       def fit_and_predict(with_distribution=None):
-        model = keras.Sequential()
-        model.add(keras.layers.Dense(1, input_shape=(1,)))
+        model.set_weights(initial_weights)
         model.compile(
             loss=keras.losses.mean_squared_error,
             optimizer=gradient_descent.GradientDescentOptimizer(0.5),
@@ -751,12 +759,14 @@ class CorrectnessWithDistributionStrategyTest(test.TestCase,
         train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train,
                                                                 y_train))
         train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
-        # Running only 100 steps instead of the full dataset to keep test
-        # duration small.
-        model.fit(x=train_dataset, epochs=1, steps_per_epoch=100)
+        # We have initialized the model to the same weight for the distribution
+        # and non-distribution run. If you want to initialize the model to
+        # random weights for each run, you need to run the model through the
+        # entire dataset at least once to ensure that the weights converge to
+        # the same value.
+        model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
 
         weights = model.get_weights()
-
         x_predict = [[1.], [2.], [3.], [4.]]
         predict_batch_size = 4
         if with_distribution:

@@ -48,6 +48,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -438,10 +439,17 @@ class FunctionTest(test.TestCase):
     def f():
       x = constant_op.constant([[1, 2], [3, 4]])
       out = math_ops.matmul(v, x)
-      self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+      self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
+      # We do not return v directly since the tensor conversion function of
+      # ResourceVariable returns the read value and not the resource itself.
+      return v._handle
 
     compiled = function.defun(f)
-    compiled()
+    var_handle = compiled()
+    self.assertEqual(var_handle.dtype, dtypes.resource)
+    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
+    self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testVariableInLoopInFunction(self):
 
@@ -465,10 +473,17 @@ class FunctionTest(test.TestCase):
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
         out = math_ops.matmul(v, x)
-        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+        self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
+        # We do not return v directly since the tensor conversion function of
+        # ResourceVariable returns the read value and not the resource itself.
+        return v._handle
 
       compiled = function.defun(f)
-      compiled()
+      var_handle = compiled()
+      self.assertEqual(var_handle.dtype, dtypes.resource)
+      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
+      self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testDefunShapeInferenceWithCapturedVariableInGraphMode(self):
     with context.graph_mode():
@@ -477,11 +492,33 @@ class FunctionTest(test.TestCase):
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
         out = math_ops.matmul(v, x)
-        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+        self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
 
       # Check that shape inference works while creating the defun
       compiled = function.defun(f)
       compiled()
+
+  def testDefunShapeInferenceWithCapturedTensorListInGraphMode(self):
+    with context.graph_mode():
+      tensor_list = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      tensor_list = list_ops.tensor_list_push_back(tensor_list,
+                                                   constant_op.constant(1.0))
+      tensor_list = list_ops.tensor_list_push_back(tensor_list,
+                                                   constant_op.constant(2.0))
+
+      def f():
+        tl, value = list_ops.tensor_list_pop_back(
+            tensor_list, element_dtype=dtypes.float32)
+        self.assertEqual(value.shape, tensor_shape.scalar())
+        return tl
+
+      compiled = function.defun(f)
+      output_tensor_list = compiled()
+      _, value = list_ops.tensor_list_pop_back(
+          output_tensor_list, element_dtype=dtypes.float32)
+      self.assertEqual(value.shape, tensor_shape.scalar())
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):

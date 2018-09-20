@@ -301,17 +301,17 @@ class InputLayer(object):
                feature_columns,
                weight_collections=None,
                trainable=True,
-               cols_to_vars=None,
-               name='feature_column_input_layer'):
+               cols_to_vars=None):
     """See `input_layer`."""
 
     self._feature_columns = feature_columns
     self._weight_collections = weight_collections
     self._trainable = trainable
     self._cols_to_vars = cols_to_vars
-    self._name = name
     self._input_layer_template = template.make_template(
-        self._name, _internal_input_layer, create_scope_now_=True)
+        'feature_column_input_layer',
+        _internal_input_layer,
+        create_scope_now_=True)
     self._scope = self._input_layer_template.variable_scope
 
   def __call__(self, features):
@@ -322,10 +322,6 @@ class InputLayer(object):
         trainable=self._trainable,
         cols_to_vars=None,
         scope=self._scope)
-
-  @property
-  def name(self):
-    return self._name
 
   @property
   def non_trainable_variables(self):

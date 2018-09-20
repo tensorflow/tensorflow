@@ -53,6 +53,7 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
   ```
 
   Current limitations of this approach are:
+
   * It doesn't support multi-node distributed mode.
   * It doesn't support saveable objects other than variables (such as boosted
     tree support)

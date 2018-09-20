@@ -384,7 +384,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
             acc += bias_data[out_channel];
           }
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              kReverseShift * output_shift);
+                                              output_shift);
           acc += output_offset;
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -422,7 +422,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -714,8 +715,7 @@ inline void FullyConnected(
       if (bias_data) {
         acc += bias_data[out_c];
       }
-      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                          kReverseShift * output_shift);
+      acc = MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
       acc += output_offset;
       acc = std::max(acc, output_activation_min);
       acc = std::min(acc, output_activation_max);
@@ -740,7 +740,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -793,8 +794,8 @@ inline void FullyConnected(
       // (16-bit, typically 3 integer bits) fixed-point format. The quantized
       // multiplier and shift here have been pre-computed offline
       // (e.g. by toco).
-      accum = MultiplyByQuantizedMultiplier(accum, output_multiplier,
-                                            -output_shift);
+      accum =
+          MultiplyByQuantizedMultiplier(accum, output_multiplier, output_shift);
       // Saturate, cast to int16, and store to output array.
       accum = std::max(accum, output_activation_min - output_offset);
       accum = std::min(accum, output_activation_max - output_offset);
@@ -820,7 +821,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -919,8 +921,8 @@ inline void ShuffledFullyConnected(
         // (16-bit, typically 3 integer bits) fixed-point format. The quantized
         // multiplier and shift here have been pre-computed offline
         // (e.g. by toco).
-        acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                            -output_shift);
+        acc =
+            MultiplyByQuantizedMultiplier(acc, output_multiplier, output_shift);
         // Saturate, cast to int16, and store to output array.
         acc = std::max(acc, output_activation_min);
         acc = std::min(acc, output_activation_max);
@@ -971,7 +973,7 @@ inline void ShuffledFullyConnected(
           // quantized multiplier and shift here have been pre-computed offline
           // (e.g. by toco).
           acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
-                                              -output_shift);
+                                              output_shift);
           // Saturate, cast to int16, and store to output array.
           acc = std::max(acc, output_activation_min);
           acc = std::min(acc, output_activation_max);
@@ -996,7 +998,8 @@ inline void ShuffledFullyConnected(
     uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
   tflite::FullyConnectedParams op_params;
   op_params.output_multiplier = output_multiplier;
-  op_params.output_shift = output_shift;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
+  op_params.output_shift = kReverseShift * output_shift;
   op_params.quantized_activation_min = output_activation_min;
   op_params.quantized_activation_max = output_activation_max;
 
@@ -1154,6 +1157,7 @@ inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  // Convert right shift (right is positive) to left shift.
   *output_shift *= kReverseShift;
 }
 
@@ -1912,7 +1916,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const float* input2_data,
                                const RuntimeShape& output_shape,
                                float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/float");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/float");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -1953,7 +1957,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const uint8* input2_data,
                                const RuntimeShape& output_shape,
                                uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/uint8");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/uint8");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -2017,7 +2021,7 @@ inline void BroadcastSub4DSlow(const ArithmeticParams& params,
                                const int32* input2_data,
                                const RuntimeShape& output_shape,
                                int32* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/int32");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/int32");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -2057,7 +2061,7 @@ void BroadcastSub4DSlow(const ArithmeticParams& params,
                         const RuntimeShape& input1_shape, const T* input1_data,
                         const RuntimeShape& input2_shape, const T* input2_data,
                         const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/templated");
+  gemmlowp::ScopedProfilingLabel label("BroadcastSub4DSlow/templated");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
@@ -2408,6 +2412,125 @@ void DepthConcatenation(const Scalar* const* input_data,
                             output_data, output_dims);
 }
 
+inline void LstmCell(
+    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
+    const float* input_data, const RuntimeShape& unextended_prev_activ_shape,
+    const float* prev_activ_data, const RuntimeShape& weights_shape,
+    const float* weights_data, const RuntimeShape& unextended_bias_shape,
+    const float* bias_data, const RuntimeShape& unextended_prev_state_shape,
+    const float* prev_state_data,
+    const RuntimeShape& unextended_output_state_shape, float* output_state_data,
+    const RuntimeShape& unextended_output_activ_shape, float* output_activ_data,
+    const RuntimeShape& unextended_concat_temp_shape, float* concat_temp_data,
+    const RuntimeShape& unextended_activ_temp_shape, float* activ_temp_data) {
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_bias_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_concat_temp_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_activ_temp_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape prev_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_activ_shape);
+  const RuntimeShape bias_shape =
+      RuntimeShape::ExtendedShape(4, unextended_bias_shape);
+  const RuntimeShape prev_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_state_shape);
+  const RuntimeShape output_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_state_shape);
+  const RuntimeShape output_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_activ_shape);
+  const RuntimeShape concat_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_concat_temp_shape);
+  const RuntimeShape activ_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_activ_temp_shape);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
+
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  const int batches =
+      MatchingDim(input_shape, 0, prev_activ_shape, 0, prev_state_shape, 0,
+                  output_state_shape, 0, output_activ_shape, 0);
+  const int height =
+      MatchingDim(input_shape, 1, prev_activ_shape, 1, prev_state_shape, 1,
+                  output_state_shape, 1, output_activ_shape, 1);
+  const int width =
+      MatchingDim(input_shape, 2, prev_activ_shape, 2, prev_state_shape, 2,
+                  output_state_shape, 2, output_activ_shape, 2);
+  const int input_depth = input_shape.Dims(3);
+  const int prev_activ_depth = prev_activ_shape.Dims(3);
+  const int total_input_depth = prev_activ_depth + input_depth;
+  TFLITE_DCHECK_EQ(weights_shape.Dims(weights_dim_count - 1),
+                   total_input_depth);
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(bias_shape, 3), 1);
+  const int intern_activ_depth =
+      MatchingDim(weights_shape, weights_dim_count - 2, bias_shape, 3);
+  TFLITE_DCHECK_EQ(weights_shape.FlatSize(),
+                   intern_activ_depth * total_input_depth);
+  TFLITE_DCHECK_EQ(intern_activ_depth % 4, 0);
+  const int output_depth =
+      MatchingDim(prev_state_shape, 3, prev_activ_shape, 3, output_state_shape,
+                  3, output_activ_shape, 3);
+  TFLITE_DCHECK_EQ(output_depth, intern_activ_depth / 4);
+
+  // Concatenate prev_activ and input data together
+  std::vector<float const*> concat_input_arrays_data;
+  std::vector<RuntimeShape const*> concat_input_arrays_shapes;
+  concat_input_arrays_data.push_back(input_data);
+  concat_input_arrays_data.push_back(prev_activ_data);
+  concat_input_arrays_shapes.push_back(&input_shape);
+  concat_input_arrays_shapes.push_back(&prev_activ_shape);
+  tflite::ConcatenationParams concat_params;
+  concat_params.axis = 3;
+  concat_params.inputs_count = concat_input_arrays_data.size();
+  Concatenation(concat_params, &(concat_input_arrays_shapes[0]),
+                &(concat_input_arrays_data[0]), concat_temp_shape,
+                concat_temp_data);
+
+  // Fully connected
+  tflite::FullyConnectedParams fc_params;
+  fc_params.float_activation_min = std::numeric_limits<float>::lowest();
+  fc_params.float_activation_max = std::numeric_limits<float>::max();
+  FullyConnected(fc_params, concat_temp_shape, concat_temp_data, weights_shape,
+                 weights_data, bias_shape, bias_data, activ_temp_shape,
+                 activ_temp_data);
+
+  // Memory state update (the LSTM "guts")
+  for (int b = 0; b < batches; ++b) {
+    for (int w = 0; w < width; ++w) {
+      for (int h = 0; h < height; ++h) {
+        for (int c = 0; c < output_depth; ++c) {
+          const float input_gate =
+              1.f /
+              (1.f + std::exp(-activ_temp_data[Offset(activ_temp_shape, b, h, w,
+                                                      0 * output_depth + c)]));
+          const float new_input = std::tanh(activ_temp_data[Offset(
+              activ_temp_shape, b, h, w, 1 * output_depth + c)]);
+          const float forget_gate =
+              1.f /
+              (1.f + std::exp(-activ_temp_data[Offset(activ_temp_shape, b, h, w,
+                                                      2 * output_depth + c)]));
+          const float output_gate =
+              1.f /
+              (1.f + std::exp(-activ_temp_data[Offset(activ_temp_shape, b, h, w,
+                                                      3 * output_depth + c)]));
+          const float new_state =
+              input_gate * new_input +
+              forget_gate *
+                  prev_state_data[Offset(prev_state_shape, b, h, w, c)];
+          output_state_data[Offset(output_state_shape, b, h, w, c)] = new_state;
+          output_activ_data[Offset(output_activ_shape, b, h, w, c)] =
+              output_gate * std::tanh(new_state);
+        }
+      }
+    }
+  }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
 inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
                      const float* prev_activ_data,
                      const Dims<4>& prev_activ_dims, const float* weights_data,
@@ -2418,77 +2541,17 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
                      const Dims<4>& output_activ_dims, float* concat_temp_data,
                      const Dims<4>& concat_temp_dims, float* activ_temp_data,
                      const Dims<4>& activ_temp_dims) {
-  const int batches =
-      MatchingArraySize(input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3,
-                        output_state_dims, 3, output_activ_dims, 3);
-  const int height =
-      MatchingArraySize(input_dims, 2, prev_activ_dims, 2, prev_state_dims, 2,
-                        output_state_dims, 2, output_activ_dims, 2);
-  const int width =
-      MatchingArraySize(input_dims, 1, prev_activ_dims, 1, prev_state_dims, 1,
-                        output_state_dims, 1, output_activ_dims, 1);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 2), 1);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 3), 1);
-  const int input_depth = ArraySize(input_dims, 0);
-  const int prev_activ_depth = ArraySize(prev_activ_dims, 0);
-  const int total_input_depth = prev_activ_depth + input_depth;
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 0), total_input_depth);
-  TFLITE_CHECK_EQ(MatchingArraySize(bias_dims, 1, bias_dims, 2, bias_dims, 3),
-                  1);
-  const int intern_activ_depth =
-      MatchingArraySize(weights_dims, 1, bias_dims, 0);
-  TFLITE_CHECK_EQ(intern_activ_depth % 4, 0);
-  const int output_depth =
-      MatchingArraySize(prev_state_dims, 0, prev_activ_dims, 0,
-                        output_state_dims, 0, output_activ_dims, 0);
-  TFLITE_CHECK_EQ(output_depth, intern_activ_depth / 4);
+  tflite::LstmCellParams op_params;
+  // Float LSTM cell does not need parameters to be set: leave untouched.
 
-  // Concatenate prev_activ and input data together
-  std::vector<float const*> concat_input_arrays_data;
-  std::vector<Dims<4> const*> concat_input_arrays_dims;
-  concat_input_arrays_data.push_back(input_data);
-  concat_input_arrays_data.push_back(prev_activ_data);
-  concat_input_arrays_dims.push_back(&input_dims);
-  concat_input_arrays_dims.push_back(&prev_activ_dims);
-  Concatenation<FusedActivationFunctionType::kNone, float>(
-      0, &(concat_input_arrays_data[0]), &(concat_input_arrays_dims[0]),
-      concat_input_arrays_data.size(), concat_temp_data, concat_temp_dims);
-
-  // Fully connected
-  FullyConnected<FusedActivationFunctionType::kNone>(
-      concat_temp_data, concat_temp_dims, weights_data, weights_dims, bias_data,
-      bias_dims, activ_temp_data, activ_temp_dims);
-
-  // Memory state update (the LSTM "guts")
-  for (int b = 0; b < batches; ++b) {
-    for (int w = 0; w < width; ++w) {
-      for (int h = 0; h < height; ++h) {
-        for (int c = 0; c < output_depth; ++c) {
-          const float input_gate =
-              1.f /
-              (1.f + std::exp(-activ_temp_data[Offset(
-                         activ_temp_dims, 0 * output_depth + c, w, h, b)]));
-          const float new_input = std::tanh(activ_temp_data[Offset(
-              activ_temp_dims, 1 * output_depth + c, w, h, b)]);
-          const float forget_gate =
-              1.f /
-              (1.f + std::exp(-activ_temp_data[Offset(
-                         activ_temp_dims, 2 * output_depth + c, w, h, b)]));
-          const float output_gate =
-              1.f /
-              (1.f + std::exp(-activ_temp_data[Offset(
-                         activ_temp_dims, 3 * output_depth + c, w, h, b)]));
-          const float new_state =
-              input_gate * new_input +
-              forget_gate *
-                  prev_state_data[Offset(prev_state_dims, c, w, h, b)];
-          output_state_data[Offset(output_state_dims, c, w, h, b)] = new_state;
-          output_activ_data[Offset(output_activ_dims, c, w, h, b)] =
-              output_gate * std::tanh(new_state);
-        }
-      }
-    }
-  }
+  LstmCell(op_params, DimsToShape(input_dims), input_data,
+           DimsToShape(prev_activ_dims), prev_activ_data,
+           DimsToShape(weights_dims), weights_data, DimsToShape(bias_dims),
+           bias_data, DimsToShape(prev_state_dims), prev_state_data,
+           DimsToShape(output_state_dims), output_state_data,
+           DimsToShape(output_activ_dims), output_activ_data,
+           DimsToShape(concat_temp_dims), concat_temp_data,
+           DimsToShape(activ_temp_dims), activ_temp_data);
 }
 
 // Quantized LSTM cell implementation.
@@ -2576,52 +2639,90 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 // aiming for 16-bit fixed-point quantization of these internal nodes here.
 //
 template <int StateIntegerBits>
-void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
-              const uint8* prev_activ_data_uint8,
-              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
-              const Dims<4>& weights_dims, const int32* bias_data_int32,
-              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
-              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
-              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
-              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
-              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
-              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift,
-              gemmlowp::GemmContext* gemm_context) {
+inline void LstmCell(
+    const LstmCellParams& params, const RuntimeShape& unextended_input_shape,
+    const uint8* input_data_uint8,
+    const RuntimeShape& unextended_prev_activ_shape,
+    const uint8* prev_activ_data_uint8, const RuntimeShape& weights_shape,
+    const uint8* weights_data_uint8, const RuntimeShape& unextended_bias_shape,
+    const int32* bias_data_int32,
+    const RuntimeShape& unextended_prev_state_shape,
+    const int16* prev_state_data_int16,
+    const RuntimeShape& unextended_output_state_shape,
+    int16* output_state_data_int16,
+    const RuntimeShape& unextended_output_activ_shape,
+    uint8* output_activ_data_uint8,
+    const RuntimeShape& unextended_concat_temp_shape,
+    uint8* concat_temp_data_uint8,
+    const RuntimeShape& unextended_activ_temp_shape,
+    int16* activ_temp_data_int16, gemmlowp::GemmContext* gemm_context) {
   (void)gemm_context;  // only used in optimized code.
+  int32 weights_zero_point = params.weights_zero_point;
+  int32 accum_multiplier = params.accum_multiplier;
+  int accum_shift = params.accum_shift;
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_bias_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_prev_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_state_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_activ_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_concat_temp_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_activ_temp_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape prev_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_activ_shape);
+  const RuntimeShape bias_shape =
+      RuntimeShape::ExtendedShape(4, unextended_bias_shape);
+  const RuntimeShape prev_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_prev_state_shape);
+  const RuntimeShape output_state_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_state_shape);
+  const RuntimeShape output_activ_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_activ_shape);
+  const RuntimeShape concat_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_concat_temp_shape);
+  const RuntimeShape activ_temp_shape =
+      RuntimeShape::ExtendedShape(4, unextended_activ_temp_shape);
+  TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
 
   // Gather dimensions information, and perform consistency checks.
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_dims, 0, prev_activ_dims, prev_state_dims,
-                              output_state_dims, output_activ_dims);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 2), 1);
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 3), 1);
-  const int input_depth = ArraySize(input_dims, 0);
-  const int prev_activ_depth = ArraySize(prev_activ_dims, 0);
+  const int weights_dim_count = weights_shape.DimensionsCount();
+  const int outer_size = MatchingFlatSizeSkipDim(
+      input_shape, 3, prev_activ_shape, prev_state_shape, output_state_shape,
+      output_activ_shape);
+  const int input_depth = input_shape.Dims(3);
+  const int prev_activ_depth = prev_activ_shape.Dims(3);
   const int total_input_depth = prev_activ_depth + input_depth;
-  TFLITE_CHECK_EQ(ArraySize(weights_dims, 0), total_input_depth);
-  TFLITE_CHECK_EQ(MatchingArraySize(bias_dims, 1, bias_dims, 2, bias_dims, 3),
-                  1);
+  TFLITE_DCHECK_EQ(weights_shape.Dims(weights_dim_count - 1),
+                   total_input_depth);
   const int intern_activ_depth =
-      MatchingArraySize(weights_dims, 1, bias_dims, 0);
-  TFLITE_CHECK_EQ(intern_activ_depth % 4, 0);
+      MatchingDim(weights_shape, weights_dim_count - 2, bias_shape, 3);
+  TFLITE_DCHECK_EQ(weights_shape.FlatSize(),
+                   intern_activ_depth * total_input_depth);
+  TFLITE_DCHECK_EQ(FlatSizeSkipDim(bias_shape, 3), 1);
+  TFLITE_DCHECK_EQ(intern_activ_depth % 4, 0);
   const int output_depth =
-      MatchingArraySize(prev_state_dims, 0, prev_activ_dims, 0,
-                        output_state_dims, 0, output_activ_dims, 0);
-  TFLITE_CHECK_EQ(output_depth, intern_activ_depth / 4);
-  const int fc_batches = FlatSizeSkipDim(activ_temp_dims, 0);
+      MatchingDim(prev_state_shape, 3, prev_activ_shape, 3, output_state_shape,
+                  3, output_activ_shape, 3);
+  TFLITE_DCHECK_EQ(output_depth, intern_activ_depth / 4);
+  const int fc_batches = FlatSizeSkipDim(activ_temp_shape, 3);
   const int fc_output_depth =
-      MatchingArraySize(weights_dims, 1, activ_temp_dims, 0);
-  const int fc_accum_depth = ArraySize(weights_dims, 0);
-  TFLITE_CHECK_EQ(fc_output_depth, 4 * output_depth);
+      MatchingDim(weights_shape, weights_dim_count - 2, activ_temp_shape, 3);
+  const int fc_accum_depth = total_input_depth;
+  TFLITE_DCHECK_EQ(fc_output_depth, 4 * output_depth);
 
   // Depth-concatenate prev_activ and input data together.
   uint8 const* concat_input_arrays_data[2] = {input_data_uint8,
                                               prev_activ_data_uint8};
-  Dims<4> const* concat_input_arrays_dims[2] = {&input_dims, &prev_activ_dims};
-  Concatenation<FusedActivationFunctionType::kNone, uint8>(
-      0, concat_input_arrays_data, concat_input_arrays_dims, 2,
-      concat_temp_data_uint8, concat_temp_dims);
+  const RuntimeShape* concat_input_arrays_shapes[2] = {&input_shape,
+                                                       &prev_activ_shape};
+  tflite::ConcatenationParams concat_params;
+  concat_params.axis = 3;
+  concat_params.inputs_count = 2;
+  Concatenation(concat_params, concat_input_arrays_shapes,
+                concat_input_arrays_data, concat_temp_shape,
+                concat_temp_data_uint8);
 
   // Implementation of the fully connected node inside the LSTM cell.
   // The operands are 8-bit integers, the accumulators are internally 32bit
@@ -2725,6 +2826,37 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
           128 + clamped_output_activ;
     }
   }
+}
+
+// TODO(b/80418076): Move to legacy ops file, update invocations.
+// Legacy.
+template <int StateIntegerBits>
+void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
+              const uint8* prev_activ_data_uint8,
+              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
+              const Dims<4>& weights_dims, const int32* bias_data_int32,
+              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
+              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
+              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
+              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
+              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
+              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
+              int32 accum_multiplier, int accum_shift,
+              gemmlowp::GemmContext* gemm_context) {
+  tflite::LstmCellParams op_params;
+  op_params.weights_zero_point = weights_zero_point;
+  op_params.accum_multiplier = accum_multiplier;
+  op_params.accum_shift = accum_shift;
+
+  LstmCell<StateIntegerBits>(
+      op_params, DimsToShape(input_dims), input_data_uint8,
+      DimsToShape(prev_activ_dims), prev_activ_data_uint8,
+      DimsToShape(weights_dims), weights_data_uint8, DimsToShape(bias_dims),
+      bias_data_int32, DimsToShape(prev_state_dims), prev_state_data_int16,
+      DimsToShape(output_state_dims), output_state_data_int16,
+      DimsToShape(output_activ_dims), output_activ_data_uint8,
+      DimsToShape(concat_temp_dims), concat_temp_data_uint8,
+      DimsToShape(activ_temp_dims), activ_temp_data_int16, gemm_context);
 }
 
 template <typename Scalar>
@@ -3464,7 +3596,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
         std::max(diff_min - 1,  // Note use of > below instead of >= above.
                  MultiplyByQuantizedMultiplierSmallerThanOneExp(
                      rescaled_diff_min, reverse_scaling_divisor,
-                     kReverseShift * reverse_scaling_right_shift));
+                     -reverse_scaling_right_shift));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =
@@ -3505,8 +3637,7 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   LogSoftmax(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const float* input_data,
+inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3517,13 +3648,13 @@ inline void Logistic(const LogisticParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
-                     const RuntimeShape& output_shape, float* output_data) {
-  LogisticParams params;
-  // No params currently needed by float Logistic.
-  Logistic(params, input_shape, input_data, output_shape, output_data);
+// Convenience version that allows, for example, generated-code calls to be
+// uniform between data types.
+inline void Logistic(const LogisticParams&, const RuntimeShape& input_shape,
+                     const float* input_data, const RuntimeShape& output_shape,
+                     float* output_data) {
+  // Drop params: not needed.
+  Logistic(input_shape, input_data, output_shape, output_data);
 }
 
 inline void Logistic(const LogisticParams& params,
@@ -3609,9 +3740,8 @@ inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
   Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const float* input_data, const RuntimeShape& output_shape,
-                 float* output_data) {
+inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
@@ -3621,13 +3751,13 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
-  TanhParams params;
-  // Currently no params needed for float Tanh.
-  Tanh(params, input_shape, input_data, output_shape, output_data);
+// Convenience version that allows, for example, generated-code calls to be
+// uniform between data types.
+inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& output_shape,
+                 float* output_data) {
+  // Drop params: not needed.
+  Tanh(input_shape, input_data, output_shape, output_data);
 }
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
@@ -4603,6 +4733,16 @@ void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
   }
 }
 
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+template <typename T>
+inline void Minimum(const RuntimeShape& input1_shape, const T* input1_data,
+                    const RuntimeShape&, const T* input2_data,
+                    const RuntimeShape& output_shape, T* output_data) {
+  // Drop shape of second input: not needed.
+  Minimum(input1_shape, input1_data, input2_data, output_shape, output_data);
+}
+
 template <typename T>
 void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
              const T* input2_data, const RuntimeShape& output_shape,
@@ -4613,6 +4753,16 @@ void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
   for (int i = 0; i < flat_size; i++) {
     output_data[i] = input1_data[i] < max_value ? max_value : input1_data[i];
   }
+}
+
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+template <typename T>
+inline void Maximum(const RuntimeShape& input1_shape, const T* input1_data,
+                    const RuntimeShape&, const T* input2_data,
+                    const RuntimeShape& output_shape, T* output_data) {
+  // Drop shape of second input: not needed.
+  Maximum(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
 template <typename T, typename Op>
@@ -4688,6 +4838,16 @@ void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
             T2* output_data) {
   ArgMinMax(input1_shape, input1_data, input2_data, output_shape, output_data,
             std::greater<T1>());
+}
+
+// Convenience version that allows, for example, generated-code calls to be
+// the same as other binary ops.
+template <typename T1, typename T2, typename T3>
+inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
+                   const RuntimeShape& input2_shape, const T3* input2_data,
+                   const RuntimeShape& output_shape, T2* output_data) {
+  // Drop shape of second input: not needed.
+  ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
 template <typename T>
@@ -4959,9 +5119,11 @@ inline void Comparison(int left_shift, const T* input1_data,
   op_params.left_shift = left_shift;
   op_params.input1_offset = input1_offset;
   op_params.input1_multiplier = input1_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input1_shift = kReverseShift * input1_shift;
   op_params.input2_offset = input2_offset;
   op_params.input2_multiplier = input2_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input2_shift = kReverseShift * input2_shift;
 
   ComparisonWithScaling<T, F>(op_params, DimsToShape(input1_dims), input1_data,
@@ -5093,9 +5255,11 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
   op_params.left_shift = left_shift;
   op_params.input1_offset = input1_offset;
   op_params.input1_multiplier = input1_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input1_shift = kReverseShift * input1_shift;
   op_params.input2_offset = input2_offset;
   op_params.input2_multiplier = input2_multiplier;
+  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.input2_shift = kReverseShift * input2_shift;
 
   BroadcastComparison4DSlowWithScaling<T, F>(

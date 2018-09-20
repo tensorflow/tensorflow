@@ -2084,6 +2084,7 @@ class Model {
     }
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
+  ArrayMap& GetMutableArrayMap() { return arrays; }
 
   int64 ArithmeticOpsCount() const { return ops_count; }
 

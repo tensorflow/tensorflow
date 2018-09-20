@@ -2045,14 +2045,6 @@ class DenseColumn(FeatureColumn):
     pass
 
 
-def is_feature_column_v2(feature_columns):
-  """Returns True if all feature columns are V2."""
-  for feature_column in feature_columns:
-    if not isinstance(feature_column, FeatureColumn):
-      return False
-  return True
-
-
 def _create_weighted_sum(column,
                          transformation_cache,
                          state_manager,
@@ -2788,12 +2780,6 @@ class SharedEmbeddingStateManager(Layer):
     if name not in self._var_dict:
       raise ValueError('Variable name: {} not recognized.'.format(name))
     return self._var_dict[name]
-
-
-def maybe_create_shared_state_manager(feature_columns):
-  if is_feature_column_v2(feature_columns):
-    return SharedEmbeddingStateManager()
-  return None
 
 
 class SharedEmbeddingColumn(
