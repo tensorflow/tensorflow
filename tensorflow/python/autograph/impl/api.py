@@ -302,8 +302,9 @@ def to_graph(e,
                                                   arg_types)
 
   nodes = []
-  for dep in reversed(tuple(program_ctx.dependency_cache.values())):
-    nodes.extend(dep)
+  for dep in reversed(program_ctx.conversion_order):
+    nodes.extend(program_ctx.dependency_cache[dep])
+
   compiled_module, compiled_src = compiler.ast_to_object(
       nodes,
       source_prefix=program_ctx.required_imports,
@@ -371,7 +372,7 @@ def to_code(e,
   conversion.entity_to_graph(e, program_ctx, arg_values, arg_types)
 
   code = '\n'.join(
-      compiler.ast_to_source(dep, indentation)
-      for dep in reversed(tuple(program_ctx.dependency_cache.values())))
+      compiler.ast_to_source(program_ctx.dependency_cache[dep], indentation)
+      for dep in reversed(program_ctx.conversion_order))
 
   return program_ctx.required_imports + '\n\n' + code
