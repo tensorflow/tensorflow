@@ -413,6 +413,31 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
         self._testOneLSTMParamsSize(num_layers, num_units, input_size,
                                     direction)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testLSTMParamsSizeShape(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          constant_op.constant([4]), 200, 200,
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      params_size = model.params_size()
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          4, constant_op.constant([200]), 200,
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      params_size = model.params_size()
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          4, 200, constant_op.constant([200]),
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      params_size = model.params_size()
+
 
 class CudnnRNNTestInference(TensorFlowTestCase):
 
