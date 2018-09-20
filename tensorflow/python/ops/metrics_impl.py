@@ -815,8 +815,8 @@ def auc(labels,
 
     auc_value = distribute_lib.get_tower_context().merge_call(
         aggregate_auc, values)
-    update_op = compute_auc(update_ops['tp'], update_ops['fn'],
-                            update_ops['tn'], update_ops['fp'], 'update_op')
+    update_op = control_flow_ops.group(update_ops['tp'], update_ops['fn'],
+                                       update_ops['tn'], update_ops['fp'])
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
