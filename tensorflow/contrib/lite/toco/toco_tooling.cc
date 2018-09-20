@@ -101,7 +101,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
-  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
@@ -282,6 +281,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     }
   }
   transformations.Add(new ResolveConstantConcatenation);
+  // TODO(b/116063589): TF GraphDef doesn't support dilations on its depthwise
+  // conv, so we need to make sure we don't convert to dilated depthwise conv
+  // when outputing to TF GraphDef.
+  auto* identify_dilated_conv = new IdentifyDilatedConv;
+  if (output_format == TENSORFLOW_GRAPHDEF) {
+    identify_dilated_conv->set_identify_depthwise_conv(false);
+  }
+  transformations.Add(identify_dilated_conv);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
