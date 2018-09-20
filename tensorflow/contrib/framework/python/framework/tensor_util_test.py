@@ -186,7 +186,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2x2_with_partial_expected_shape(self):
-    with self.test_session():
+    with self.cached_session():
       value = [[42, 43], [44, 45]]
       actual_shape = [2, 2]
       tensor = constant_op.constant(value, shape=actual_shape)

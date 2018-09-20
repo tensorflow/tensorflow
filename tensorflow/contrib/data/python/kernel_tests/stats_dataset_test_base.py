@@ -52,3 +52,12 @@ class StatsDatasetTestBase(test.TestCase):
         self.assertEqual(expected_value, value.histo.sum)
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
+
+  def _assertSummaryHasScalarValue(self, summary_str, tag, expected_value):
+    summary_proto = summary_pb2.Summary()
+    summary_proto.ParseFromString(summary_str)
+    for value in summary_proto.value:
+      if tag == value.tag:
+        self.assertEqual(expected_value, value.simple_value)
+        return
+    self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))

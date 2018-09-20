@@ -981,9 +981,10 @@ def parse_sequence_example(serialized,
     name: A name for this operation (optional).
 
   Returns:
-    A tuple of two `dict`s, each mapping keys to `Tensor`s and `SparseTensor`s.
-    The first dict contains the context key/values.
-    The second dict contains the feature_list key/values.
+    A tuple of three `dict`s, each mapping keys to `Tensor`s and
+    `SparseTensor`s. The first dict contains the context key/values,
+    the second dict contains the feature_list key/values, and the final dict
+    contains the lengths of any dense feature_list features.
 
   Raises:
     ValueError: if any feature is invalid.

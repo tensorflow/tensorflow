@@ -234,7 +234,7 @@ class GraphActionsTest(test.TestCase):
         self.assertTrue(test_ops.resource_initialized_op(handle).eval())
 
   def test_infer_different_default_graph(self):
-    with self.test_session():
+    with self.cached_session():
       self._assert_ckpt(self._output_dir, False)
       with ops.Graph().as_default():
         in0, in1, out = self._build_inference_graph()

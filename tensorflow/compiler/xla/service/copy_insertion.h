@@ -43,7 +43,7 @@ namespace xla {
 //   (3) The buffer set of the root instruction of the entry computation must be
 //       unambiguous and distinct. That is, InstructionAliasSet::IsAmbiguous and
 //       InstructionAliasSet::IsDistinct return true.
-class CopyInsertion : public HloPassInterface {
+class CopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
 

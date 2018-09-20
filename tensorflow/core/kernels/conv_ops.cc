@@ -731,9 +731,15 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmDesc> algorithms;
-    CHECK(stream->parent()->GetConvolveAlgorithms(
-        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-        &algorithms));
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetConvolveAlgorithms(
+            conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+                stream->parent()),
+            &algorithms),
+        errors::Unknown("Failed to get convolution algorithm. This is probably "
+                        "because cuDNN failed to initialize, so try looking to "
+                        "see if a warning log message was printed above."));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {

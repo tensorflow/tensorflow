@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_INLINED_VECTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_INLINED_VECTOR_H_
 
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "absl/container/inlined_vector.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::gtl::InlinedVector;
+using absl::InlinedVector;
 
 }  // namespace port
 }  // namespace stream_executor

@@ -90,7 +90,7 @@ StatusOr<HloInstructionSequence> ScheduleComputation(
 // A pass which schedules the HLO instructions in a module. The HloModule's
 // schedule field is set to the resulting HloSchedule using
 // HloModule::set_schedule.
-class HloMemoryScheduler : public HloPassInterface {
+class HloMemoryScheduler : public HloModulePass {
  public:
   // size_function is the function returning the number of bytes required for a
   // LogicalBuffer. algorithm is the memory scheduling algorithm to use. If not
@@ -109,7 +109,7 @@ class HloMemoryScheduler : public HloPassInterface {
 
 // A trivial pass which clears the schedule currently set on the
 // HloModule. After this pass runs HloModudle::has_schedule will return false.
-class HloDescheduler : public HloPassInterface {
+class HloDescheduler : public HloModulePass {
  public:
   HloDescheduler() = default;
   ~HloDescheduler() override = default;

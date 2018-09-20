@@ -434,6 +434,16 @@ Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
   return status;
 }
 
+void XlaDevice::SetRequiresSyncOnCompletion(bool sync_on_completion) {
+  mutex_lock lock(mu_);
+  sync_on_completion_ = sync_on_completion;
+}
+
+bool XlaDevice::RequiresSyncOnCompletion() const {
+  mutex_lock lock(mu_);
+  return sync_on_completion_;
+}
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
   // Any op assigned to the device that isn't rewritten by the graph rewriter

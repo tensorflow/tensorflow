@@ -39,8 +39,10 @@ NameUniquer::NameUniquer(const string& separator) {
 }
 
 /*static*/ string NameUniquer::GetSanitizedName(const string& name) {
+  if (name.empty()) {
+    return "";
+  }
   string result = name;
-  CHECK(!result.empty()) << "name should not be empty";
   char c = static_cast<unsigned char>(result[0]);
   if (!isalpha(c) && c != '_') {
     result[0] = '_';

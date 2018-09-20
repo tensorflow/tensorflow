@@ -24,7 +24,7 @@ namespace gpu {
 // An HLO pass that canonicalizes convolution instructions for GPU codegen. It
 // inserts Pad instructions before Convolution instructions with uncanonicalized
 // padding, so that they can be lowered to cuDNN convolution.
-class PadInsertion : public HloPassInterface {
+class PadInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "pad insertion"; }
 

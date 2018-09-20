@@ -44,14 +44,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
-
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
@@ -83,8 +75,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(
-                 interleave_func_, std::move(other_arguments), &captured_func));
+        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
+                                      &captured_func));
 
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
@@ -252,7 +244,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        SetMetadata(ctx, "parallelism", dataset()->cycle_length_);
+        AddConstantParameter(ctx, "parallelism", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(ctx);
@@ -1102,9 +1094,6 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    OpInputList inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
-
     int64 cycle_length = 0;
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument(ctx, "cycle_length", &cycle_length));
@@ -1120,7 +1109,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
     int64 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0,
+    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
                 errors::InvalidArgument(
                     "num_parallel_calls must be greater than zero."));
     OP_REQUIRES(
@@ -1128,16 +1117,10 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         errors::InvalidArgument(
             "num_parallel_calls must less than or equal to cycle_length."));
 
-    // TODO(b/114267189): Use `other_arguments(inputs.begin(), inputs.end());`.
-    std::vector<Tensor> other_arguments;
-    other_arguments.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      other_arguments.push_back(t);
-    }
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(
-                 interleave_func_, std::move(other_arguments), &captured_func));
+        ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
+                                      &captured_func));
 
     *output = new Dataset(ctx, input, interleave_func_,
                           std::move(captured_func), cycle_length, block_length,
@@ -1233,6 +1216,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
             args_list_(params.dataset->cycle_length_),
             current_elements_(params.dataset->cycle_length_),
             element_in_use_(params.dataset->cycle_length_, false),
+            num_parallel_calls_(params.dataset->num_parallel_calls_),
             thread_pool_(new thread::ThreadPool(
                 Env::Default(), ThreadOptions(), "parallel_interleave",
                 dataset()->cycle_length_ /* num_threads */,
@@ -1250,7 +1234,24 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        SetMetadata(ctx, "parallelism", dataset()->num_parallel_calls_);
+        mutex_lock l(mu_);
+        if (num_parallel_calls_ == kAutoTune) {
+          num_parallel_calls_ = 1;
+          auto set_fn = [this](int64 value) {
+            {
+              mutex_lock l(mu_);
+              num_parallel_calls_ = value;
+            }
+            VLOG(2) << "setting parallelism knob to " << value;
+            cond_var_.notify_all();
+          };
+          AddTunableParameter(
+              ctx, "parallelism", num_parallel_calls_ /* value */, 1 /* min */,
+              dataset()->cycle_length_ /* max */, std::move(set_fn));
+        } else {
+          AddConstantParameter(ctx, "parallelism", num_parallel_calls_);
+        }
+        AddConstantParameter(ctx, "cycle_length", dataset()->cycle_length_);
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         return dataset()->captured_func_->Instantiate(ctx);
@@ -1459,7 +1460,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
             // not in use and there is space in the `invocation_results_` queue.
             while (!cancelled_ && (!end_of_input_ || num_open_ > 0) &&
                    (element_in_use_[cycle_index_] ||
-                    num_calls_ >= dataset()->num_parallel_calls_ ||
+                    num_calls_ >= num_parallel_calls_ ||
                     invocation_results_.size() >= MaxInvocationResults())) {
               StopWork(ctx.get());
               cond_var_.wait(l);
@@ -1472,7 +1473,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
             while (!element_in_use_[cycle_index_] &&
                    (!end_of_input_ || num_open_ > 0) &&
-                   num_calls_ < dataset()->num_parallel_calls_ &&
+                   num_calls_ < num_parallel_calls_ &&
                    invocation_results_.size() < MaxInvocationResults()) {
               if (!current_elements_[cycle_index_]) {
                 // Try to create a new iterator from the next input element.
@@ -1646,6 +1647,9 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
       // Identifies the number of open iterators.
       int64 num_open_ GUARDED_BY(mu_) = 0;
+
+      // Identifies the maximum number of parallel calls.
+      int64 num_parallel_calls_ GUARDED_BY(mu_) = 0;
 
       // Identifies the number of outstanding calls.
       int64 num_calls_ GUARDED_BY(mu_) = 0;
