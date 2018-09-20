@@ -314,12 +314,6 @@ def _experimental_fit_loop(
     distributed_model = current_strategy.unwrap(model._grouped_model)[0]
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
-
-  # TODO(sourabhbajaj): Convert this into a proper validation function
-  if callbacks:
-    raise NotImplementedError(
-        'Callbacks are not supported with TPUStrategy right now.')
-
   callbacks = cbks.configure_callbacks(
       callbacks,
       model,
@@ -345,9 +339,7 @@ def _experimental_fit_loop(
     step_index = 0
     prev_step_count = None
     for step_count in steps_to_run:
-      # TODO(sourabhbajaj): Replace size with a combination of steps_per_run
-      # and batch_size
-      batch_logs = {'batch': step_index, 'size': 1}
+      batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks.on_batch_begin(step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
         steps_per_run_var.load(step_count, K.get_session())
