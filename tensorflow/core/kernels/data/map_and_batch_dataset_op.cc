@@ -206,9 +206,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             {
               mutex_lock l(mu_);
               num_parallel_calls_ = value;
+              cond_var_.notify_all();
             }
             VLOG(2) << "setting parallelism knob to " << value;
-            cond_var_.notify_all();
           };
           AddTunableParameter(
               ctx, "parallelism", num_parallel_calls_ /* value */, 1 /* min */,
@@ -236,8 +236,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           }
           std::swap(result, batch_results_.front());
           batch_results_.pop_front();
+          cond_var_.notify_all();
         }
-        cond_var_.notify_all();
         return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
 
@@ -340,11 +340,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       void CallCompleted(const std::shared_ptr<BatchResult>& result)
           LOCKS_EXCLUDED(mu_) {
-        {
           mutex_lock l(mu_);
           num_calls_--;
           result->num_calls--;
-        }
         cond_var_.notify_all();
       }
 
