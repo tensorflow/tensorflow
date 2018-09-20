@@ -80,7 +80,7 @@ tf_gen_op_libs(
         "tpu_embedding_ops",
     ],
     deps = [
-        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -99,7 +99,7 @@ tf_custom_op_library(
         "ops/tpu_embedding_ops.cc",
     ],
     deps = [
-        "//tensorflow/contrib/tpu/proto:tpu_embedding_config_proto_cc",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core:lib_proto_parsing",
     ],
 )
