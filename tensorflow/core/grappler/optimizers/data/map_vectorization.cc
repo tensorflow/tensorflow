@@ -86,8 +86,8 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
 FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
                                    const FunctionDef& orig_func,
                                    FunctionDefLibrary* library) {
-  // Vectorizes orig_func naively by wrapping in a MapDefun op, then tries to
-  // do true vectorization with Vectorize.
+  // Vectorizes orig_func naively by wrapping in a MapDefun op, then performing
+  // efficient vectorization with VectorizeMapDefun.
   FunctionDef* vectorized_func =
       CreateMapDefunWrapper(map_node, orig_func, library);
   NodeDef* map_defun_node = vectorized_func->mutable_node_def()->Mutable(0);
