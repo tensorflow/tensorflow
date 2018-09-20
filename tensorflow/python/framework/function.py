@@ -762,13 +762,12 @@ class _FuncGraph(ops.Graph):
         if handle_data:
           handle_data = handle_data.SerializeToString()
       else:
-        handle_data = c_api.GetResourceHandleShapeAndType(
-            tensor.graph._c_graph, tensor._as_tf_output())
+        handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
+                                                  tensor._as_tf_output())
 
       if handle_data:
-        c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
-                                            ph._as_tf_output(),
-                                            compat.as_bytes(handle_data))
+        c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
+                                    compat.as_bytes(handle_data))
     else:
       ph._handle_data = tensor._handle_data
     # pylint: enable=protected-access
