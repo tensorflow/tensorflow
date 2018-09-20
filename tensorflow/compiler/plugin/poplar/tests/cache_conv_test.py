@@ -126,7 +126,7 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
             'Copy_XLA_Args/arg1.*_weights_to_weights/OnTileCopy',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'Copy_{<const>,XLA_Args/arg2.*_weights}_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1weightsRearranged',
-            'Copy_partials_to_partials[[]cloned[]]/OnTileCopy',
+            'Copy_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1/partials_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1/partials[[]cloned[]]',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -160,7 +160,7 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
             'Copy_XLA_Args/arg1.*_weights_to_weights/OnTileCopy',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'Copy_{<const>,XLA_Args/arg2.*_weights}_to_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1_stride2x1weightsRearranged',
-            'Copy_partials_to_partials[[]cloned[]]/OnTileCopy',
+            'Copy_vs/conv2d_1/Conv2D/convolution.*/Conv_1x1_stride2x1/partials_to_vs/conv2d_1/Conv2D/convolution.1.5/Conv_1x1_stride2x1/partials[[]cloned[]]',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
