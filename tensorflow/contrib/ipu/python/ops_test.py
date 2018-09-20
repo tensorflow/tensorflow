@@ -149,6 +149,30 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       e = sess.run(events)
       self.assertEqual(len(e), 2) # compile begin/end, no load/execute
 
+  def testDeviceConfigIndex(self):
+    # We only allow 1 device config for IPU_MODEL, so if one is requested and it
+    # is not 0, then an exception should occur.
+    try:
+      with ops.device("/device:IPU:0"):
+        a = array_ops.placeholder(np.float32, [1], name="a")
+        b = array_ops.placeholder(np.float32, [1], name="b")
+        out = a + b
+
+      cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL',
+                                        ipu_device_config_index=1)
+      with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+        fd = {
+          a: [1.0],
+          b: [2.0],
+        }
+        result = sess.run(out, fd)
+    except Exception as e:
+      self.assertEqual(type(e).__name__, 'InvalidArgumentError')
+      self.assertEqual(
+        e.message,
+        'Requested device configuration index 1, but 1 configuration was available.'
+      )
+
 
 if __name__ == "__main__":
     googletest.main()

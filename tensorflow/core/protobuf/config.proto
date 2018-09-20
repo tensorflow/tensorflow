@@ -212,6 +212,13 @@ message IPUOptions {
 
     // Set to a directory in which to establish a cache of compiled executables
     string engine_cache_directory = 6;
+
+    // Options to control Poplar DeviceConfigIndex
+    message DeviceConfigIndex {
+      bool has_index = 1;
+      int32 index = 2;
+    };
+    DeviceConfigIndex device_config_index = 7;
   };
 
   // Options controlling the configuration of each IPU device
