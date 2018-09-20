@@ -78,6 +78,9 @@ public:
   OtherType *getTFStringType();
   OtherType *getTFResourceType();
   OtherType *getTFVariantType();
+  OtherType *getTFComplex64Type();
+  OtherType *getTFComplex128Type();
+
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);

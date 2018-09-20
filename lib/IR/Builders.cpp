@@ -68,6 +68,14 @@ OtherType *Builder::getTFResourceType() { return Type::getTFResource(context); }
 
 OtherType *Builder::getTFVariantType() { return Type::getTFVariant(context); }
 
+OtherType *Builder::getTFComplex64Type() {
+  return Type::getTFComplex64(context);
+}
+
+OtherType *Builder::getTFComplex128Type() {
+  return Type::getTFComplex128(context);
+}
+
 OtherType *Builder::getTFStringType() { return Type::getTFString(context); }
 
 IntegerType *Builder::getIntegerType(unsigned width) {

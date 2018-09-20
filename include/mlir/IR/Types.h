@@ -42,6 +42,8 @@ public:
     TFControl,
     TFResource,
     TFVariant,
+    TFComplex64,
+    TFComplex128,
     TFString,
 
     /// These are marker for the first and last 'other' type.
@@ -77,6 +79,8 @@ public:
   bool isTFControl() const { return getKind() == Kind::TFControl; }
   bool isTFResource() const { return getKind() == Kind::TFResource; }
   bool isTFVariant() const { return getKind() == Kind::TFVariant; }
+  bool isTFComplex64() const { return getKind() == Kind::TFComplex64; }
+  bool isTFComplex128() const { return getKind() == Kind::TFComplex128; }
   bool isTFString() const { return getKind() == Kind::TFString; }
   bool isBF16() const { return getKind() == Kind::BF16; }
   bool isF16() const { return getKind() == Kind::F16; }
@@ -97,6 +101,8 @@ public:
   static OtherType *getTFString(MLIRContext *ctx);
   static OtherType *getTFResource(MLIRContext *ctx);
   static OtherType *getTFVariant(MLIRContext *ctx);
+  static OtherType *getTFComplex64(MLIRContext *ctx);
+  static OtherType *getTFComplex128(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -229,6 +235,12 @@ inline OtherType *Type::getTFString(MLIRContext *ctx) {
 }
 inline OtherType *Type::getTFVariant(MLIRContext *ctx) {
   return OtherType::get(Kind::TFVariant, ctx);
+}
+inline OtherType *Type::getTFComplex64(MLIRContext *ctx) {
+  return OtherType::get(Kind::TFComplex64, ctx);
+}
+inline OtherType *Type::getTFComplex128(MLIRContext *ctx) {
+  return OtherType::get(Kind::TFComplex128, ctx);
 }
 
 /// Function types map from a list of inputs to a list of results.

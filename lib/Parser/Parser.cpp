@@ -339,6 +339,12 @@ Type *Parser::parseType() {
   case Token::kw_tf_variant:
     consumeToken(Token::kw_tf_variant);
     return builder.getTFVariantType();
+  case Token::kw_tf_complex64:
+    consumeToken(Token::kw_tf_complex64);
+    return builder.getTFComplex64Type();
+  case Token::kw_tf_complex128:
+    consumeToken(Token::kw_tf_complex128);
+    return builder.getTFComplex128Type();
   case Token::kw_tf_string:
     consumeToken(Token::kw_tf_string);
     return builder.getTFStringType();

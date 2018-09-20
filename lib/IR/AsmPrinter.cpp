@@ -483,6 +483,12 @@ void ModulePrinter::printType(const Type *type) {
   case Type::Kind::TFVariant:
     os << "tf_variant";
     return;
+  case Type::Kind::TFComplex64:
+    os << "tf_complex64";
+    return;
+  case Type::Kind::TFComplex128:
+    os << "tf_complex128";
+    return;
   case Type::Kind::TFString:
     os << "tf_string";
     return;
