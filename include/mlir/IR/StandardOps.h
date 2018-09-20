@@ -48,6 +48,8 @@ public:
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
 
 private:
   friend class Operation;
@@ -203,6 +205,10 @@ protected:
 class ConstantOp
     : public OpBase<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult> {
 public:
+  /// Builds a constant op with the specified attribute value and result type.
+  static void build(Builder *builder, OperationState *result, Attribute *value,
+                    Type *type);
+
   Attribute *getValue() const { return getAttr("value"); }
 
   static StringRef getOperationName() { return "constant"; }
@@ -211,6 +217,8 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
 
 protected:
   friend class Operation;

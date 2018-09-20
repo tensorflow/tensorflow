@@ -30,11 +30,25 @@
 
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SSAValue.h"
+#include <type_traits>
 
 namespace mlir {
 class Type;
 class OpAsmParser;
 class OpAsmPrinter;
+namespace OpTrait {
+template <typename ConcreteType> class OneResult;
+}
+
+/// This type trait produces true if the specified type is in the specified
+/// type list.
+template <typename same, typename first, typename... more>
+struct typelist_contains {
+  static const bool value = std::is_same<same, first>::value ||
+                            typelist_contains<same, more...>::value;
+};
+template <typename same, typename first>
+struct typelist_contains<same, first> : std::is_same<same, first> {};
 
 /// This pointer represents a notional "Operation*" but where the actual
 /// storage of the pointer is maintained in the templated "OpType" class.
@@ -146,11 +160,65 @@ private:
   Operation *state;
 };
 
+/// This template defines the constantFoldHook as used by AbstractOperation.
+/// The default implementation uses a general constantFold method that can be
+/// defined on custom ops which can return multiple results.
+template <typename ConcreteType, bool isSingleResult, typename = void>
+class ConstFoldingHook {
+public:
+  /// This hook implements a constant folder for this operation.  It returns
+  /// true if folding failed, or returns false and fills in `results` on
+  /// success.
+  static bool constantFoldHook(const Operation *op,
+                               ArrayRef<Attribute *> operands,
+                               SmallVectorImpl<Attribute *> &results) {
+    return op->getAs<ConcreteType>()->constantFold(operands, results,
+                                                   op->getContext());
+  }
+
+  /// The fallback for the constant folder is to always fail to fold.
+  ///
+  bool constantFold(ArrayRef<Attribute *> operands,
+                    SmallVectorImpl<Attribute *> &results,
+                    MLIRContext *context) const {
+    return true;
+  }
+};
+
+/// This template specialization defines the constantFoldHook as used by
+/// AbstractOperation for single-result operations.  This gives the hook a nicer
+/// signature that is easier to implement.
+template <typename ConcreteType, bool isSingleResult>
+class ConstFoldingHook<ConcreteType, isSingleResult,
+                       typename std::enable_if<isSingleResult>::type> {
+public:
+  /// This hook implements a constant folder for this operation.  It returns
+  /// true if folding failed, or returns false and fills in `results` on
+  /// success.
+  static bool constantFoldHook(const Operation *op,
+                               ArrayRef<Attribute *> operands,
+                               SmallVectorImpl<Attribute *> &results) {
+    auto *result =
+        op->getAs<ConcreteType>()->constantFold(operands, op->getContext());
+    if (!result)
+      return true;
+
+    results.push_back(result);
+    return false;
+  }
+};
+
 /// This provides public APIs that all operations should have.  The template
 /// argument 'ConcreteType' should be the concrete type by CRTP and the others
 /// are base classes by the policy pattern.
 template <typename ConcreteType, template <typename T> class... Traits>
-class OpBase : public OpBaseState, public Traits<ConcreteType>... {
+class OpBase
+    : public OpBaseState,
+      public Traits<ConcreteType>...,
+      public ConstFoldingHook<
+          ConcreteType,
+          typelist_contains<OpTrait::OneResult<ConcreteType>, OpBaseState,
+                            Traits<ConcreteType>...>::value> {
 public:
   /// Return the operation that this refers to.
   const Operation *getOperation() const { return OpBaseState::getOperation(); }
@@ -447,6 +515,14 @@ public:
   static const char *verifyTrait(const Operation *op) {
     if (op->getNumResults() != 1)
       return "requires one result";
+    return nullptr;
+  }
+
+  /// This hook implements a constant folder for this operation.  If the
+  /// operation can be folded successfully, a non-null result is returned.  If
+  /// not, a null pointer is returned.
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const {
     return nullptr;
   }
 };

@@ -31,6 +31,9 @@ class FunctionPass;
 class MLFunctionPass;
 class ModulePass;
 
+/// Creates a constant folding pass.
+FunctionPass *createConstantFoldPass();
+
 /// Creates a loop unrolling pass. Default option or command-line options take
 /// effect if -1 is passed as parameter.
 MLFunctionPass *createLoopUnrollPass(int unrollFactor = -1,

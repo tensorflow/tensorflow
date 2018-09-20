@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -o - -loop-unroll-jam -unroll-jam-factor=2 | FileCheck %s
+// RUN: mlir-opt %s -loop-unroll-jam -unroll-jam-factor=2 | FileCheck %s
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 // This should be matched to M1, but M1 is defined later.

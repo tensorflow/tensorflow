@@ -22,6 +22,7 @@
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
@@ -172,6 +173,21 @@ void Operation::emitError(const Twine &message) const {
 /// convenient for verifiers.
 bool Operation::emitOpError(const Twine &message) const {
   emitError(Twine('\'') + getName().str() + "' op " + message);
+  return true;
+}
+
+/// Attempt to constant fold this operation with the specified constant
+/// operand values.  If successful, this returns false and fills in the
+/// results vector.  If not, this returns true and results is unspecified.
+bool Operation::constantFold(ArrayRef<Attribute *> operands,
+                             SmallVectorImpl<Attribute *> &results) const {
+  // If we have a registered operation definition matching this one, use it to
+  // try to constant fold the operation.
+  if (auto *abstractOp = getAbstractOperation())
+    if (!abstractOp->constantFoldHook(this, operands, results))
+      return false;
+
+  // TODO: Otherwise, fall back on the dialect hook to handle it.
   return true;
 }
 

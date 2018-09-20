@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -o - | FileCheck %s
+// RUN: mlir-opt %s | FileCheck %s
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 

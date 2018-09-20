@@ -121,6 +121,10 @@ class FloatAttr : public Attribute {
 public:
   static FloatAttr *get(double value, MLIRContext *context);
 
+  // TODO: This should really be implemented in terms of APFloat for
+  // correctness, otherwise constant folding will be done with host math.  This
+  // is completely incorrect for BF16 and other datatypes, and subtly wrong
+  // for float32.
   double getValue() const {
     return value;
   }

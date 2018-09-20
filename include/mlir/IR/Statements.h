@@ -167,9 +167,6 @@ public:
   // Other
   //===--------------------------------------------------------------------===//
 
-  /// Unlink this statement from its StmtBlock and delete it.
-  void eraseFromBlock();
-
   void destroy();
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

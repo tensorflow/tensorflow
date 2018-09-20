@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -o - -simplify-affine-expr | FileCheck %s
+// RUN: mlir-opt %s -simplify-affine-expr | FileCheck %s
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> (0, 0)
 #map0 = (d0, d1) -> ((d0 - d0 mod 4) mod 4, (d0 - d0 mod 128 - 64) mod 64)

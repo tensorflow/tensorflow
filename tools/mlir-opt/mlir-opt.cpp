@@ -65,6 +65,7 @@ static cl::opt<bool>
                       cl::init(false));
 
 enum Passes {
+  ConstantFold,
   ConvertToCFG,
   LoopUnroll,
   LoopUnrollAndJam,
@@ -75,7 +76,9 @@ enum Passes {
 
 static cl::list<Passes> passList(
     "", cl::desc("Compiler passes to run"),
-    cl::values(clEnumValN(ConvertToCFG, "convert-to-cfg",
+    cl::values(clEnumValN(ConstantFold, "constant-fold",
+                          "Constant fold operations in functions"),
+               clEnumValN(ConvertToCFG, "convert-to-cfg",
                           "Convert all ML functions in the module to CFG ones"),
                clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
                clEnumValN(LoopUnrollAndJam, "loop-unroll-jam",
@@ -166,6 +169,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     auto passKind = passList[i];
     Pass *pass = nullptr;
     switch (passKind) {
+    case ConstantFold:
+      pass = createConstantFoldPass();
+      break;
     case ConvertToCFG:
       pass = createConvertToCFGPass();
       break;

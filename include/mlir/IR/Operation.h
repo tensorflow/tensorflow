@@ -258,6 +258,12 @@ public:
                                          : OperationKind::Statement;
   }
 
+  /// Attempt to constant fold this operation with the specified constant
+  /// operand values.  If successful, this returns false and fills in the
+  /// `results` vector.  If not, this returns true and `results` is unspecified.
+  bool constantFold(ArrayRef<Attribute *> operands,
+                    SmallVectorImpl<Attribute *> &results) const;
+
 protected:
   Operation(bool isInstruction, Identifier name, ArrayRef<NamedAttribute> attrs,
             MLIRContext *context);

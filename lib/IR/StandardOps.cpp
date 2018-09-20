@@ -108,6 +108,18 @@ bool AddFOp::verify() const {
   return false;
 }
 
+Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "addf takes two operands");
+
+  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+      return FloatAttr::get(lhs->getValue() + rhs->getValue(), context);
+  }
+
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // AffineApplyOp
 //===----------------------------------------------------------------------===//
@@ -384,6 +396,13 @@ bool CallIndirectOp::verify() const {
 // Constant*Op
 //===----------------------------------------------------------------------===//
 
+/// Builds a constant op with the specified attribute value and result type.
+void ConstantOp::build(Builder *builder, OperationState *result,
+                       Attribute *value, Type *type) {
+  result->addAttribute("value", value);
+  result->types.push_back(type);
+}
+
 void ConstantOp::print(OpAsmPrinter *p) const {
   *p << "constant " << *getValue();
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
@@ -446,10 +465,15 @@ bool ConstantOp::verify() const {
       "requires a result type that aligns with the 'value' attribute");
 }
 
+Attribute *ConstantOp::constantFold(ArrayRef<Attribute *> operands,
+                                    MLIRContext *context) const {
+  assert(operands.empty() && "constant has no operands");
+  return getValue();
+}
+
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
                             double value, FloatType *type) {
-  result->addAttribute("value", builder->getFloatAttr(value));
-  result->types.push_back(type);
+  ConstantOp::build(builder, result, builder->getFloatAttr(value), type);
 }
 
 bool ConstantFloatOp::isClassFor(const Operation *op) {
@@ -465,8 +489,8 @@ bool ConstantIntOp::isClassFor(const Operation *op) {
 
 void ConstantIntOp::build(Builder *builder, OperationState *result,
                           int64_t value, unsigned width) {
-  result->addAttribute("value", builder->getIntegerAttr(value));
-  result->types.push_back(builder->getIntegerType(width));
+  ConstantOp::build(builder, result, builder->getIntegerAttr(value),
+                    builder->getIntegerType(width));
 }
 
 /// ConstantAffineIntOp only matches values whose result type is AffineInt.
@@ -477,8 +501,8 @@ bool ConstantAffineIntOp::isClassFor(const Operation *op) {
 
 void ConstantAffineIntOp::build(Builder *builder, OperationState *result,
                                 int64_t value) {
-  result->addAttribute("value", builder->getIntegerAttr(value));
-  result->types.push_back(builder->getAffineIntType());
+  ConstantOp::build(builder, result, builder->getIntegerAttr(value),
+                    builder->getAffineIntType());
 }
 
 //===----------------------------------------------------------------------===//

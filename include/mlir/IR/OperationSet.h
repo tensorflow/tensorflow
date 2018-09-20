@@ -26,6 +26,7 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
+class Attribute;
 class Operation;
 class OperationState;
 class OpAsmParser;
@@ -44,7 +45,7 @@ public:
   static AbstractOperation get() {
     return AbstractOperation(T::getOperationName(), T::isClassFor,
                              T::parseAssembly, T::printAssembly,
-                             T::verifyInvariants);
+                             T::verifyInvariants, T::constantFoldHook);
   }
 
   /// This is the name of the operation.
@@ -64,16 +65,24 @@ public:
   /// if everything is ok.
   bool (&verifyInvariants)(const Operation *op);
 
-  // TODO: Parsing hook.
+  /// This hook implements a constant folder for this operation.  It returns
+  /// true if folding failed, or returns false and fills in `results` on
+  /// success.
+  bool (&constantFoldHook)(const Operation *op, ArrayRef<Attribute *> operands,
+                           SmallVectorImpl<Attribute *> &results);
 
 private:
-  AbstractOperation(StringRef name, bool (&isClassFor)(const Operation *op),
-                    bool (&parseAssembly)(OpAsmParser *parser,
-                                          OperationState *result),
-                    void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
-                    bool (&verifyInvariants)(const Operation *op))
+  AbstractOperation(
+      StringRef name, bool (&isClassFor)(const Operation *op),
+      bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
+      void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
+      bool (&verifyInvariants)(const Operation *op),
+      bool (&constantFoldHook)(const Operation *op,
+                               ArrayRef<Attribute *> operands,
+                               SmallVectorImpl<Attribute *> &results))
       : name(name), isClassFor(isClassFor), parseAssembly(parseAssembly),
-        printAssembly(printAssembly), verifyInvariants(verifyInvariants) {}
+        printAssembly(printAssembly), verifyInvariants(verifyInvariants),
+        constantFoldHook(constantFoldHook) {}
 };
 
 /// An instance of OperationSet is owned and maintained by MLIRContext.  It
