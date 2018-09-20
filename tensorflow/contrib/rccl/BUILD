@@ -31,7 +31,7 @@ tf_custom_op_library(
         "kernels/rccl_ops.cc",
     ]),
     deps = if_rocm([
-        "@rccl_archive//:rccl",
+        "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:gpu_headers_lib",
     ]),
 )
@@ -61,7 +61,7 @@ tf_gpu_cc_test(
             "//tensorflow/core:test",
             "//tensorflow/core:test_main",
             "//tensorflow/core:testlib",
-            "@rccl_archive//:rccl",
+            "@local_config_rocm//rocm:rccl",
         ],
 )
 
@@ -80,7 +80,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:stream_executor",
-        "@rccl_archive//:rccl",
+        "@local_config_rocm//rocm:rccl",
     ],
     alwayslink = 1,
 )
