@@ -451,19 +451,15 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
   CancellationManager* c_mgr = new CancellationManager;
   f_opts.cancellation_manager = c_mgr;
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
-  std::shared_ptr<model::Node> node;
   if (ctx->model()) {
-    node = ctx->model()->LookupNode(prefix);
-    if (node) {
-      stats_collector = MakeUnique<SimpleStepStatsCollector>();
-    }
+    stats_collector = MakeUnique<SimpleStepStatsCollector>();
   }
   f_opts.stats_collector = stats_collector.get();
 
   auto callback = std::bind(
       [rets, step_container, c_mgr, frame](
           const FunctionLibraryRuntime::DoneCallback& done,
-          const std::shared_ptr<model::Node>& node,
+          const std::shared_ptr<model::Model>& model, const string& prefix,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
@@ -473,16 +469,16 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        if (node) {
-          node->add_processing_time(stats_collector->processing_time());
-          node->start_work();
+        if (model) {
+          model->AddProcessingTime(prefix, stats_collector->processing_time());
+          model->RecordStart(prefix, false /* stop_output */);
         }
         done(s);
-        if (node) {
-          node->stop_work();
+        if (model) {
+          model->RecordStop(prefix, false /* start_output */);
         }
       },
-      std::move(done), std::move(node), std::move(stats_collector),
+      std::move(done), ctx->model(), prefix, std::move(stats_collector),
       std::placeholders::_1);
 
   ctx->lib()->Run(f_opts, handle, frame, std::move(callback));

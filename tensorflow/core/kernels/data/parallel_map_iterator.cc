@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_iterator.h"
 
+#include <atomic>
 #include <deque>
 #include <functional>
 #include <utility>
@@ -40,11 +41,6 @@ class ParallelMapIterator : public DatasetBaseIterator {
         num_parallel_calls_(num_parallel_calls) {}
 
   ~ParallelMapIterator() override {
-    // TODO(mrry): Replace this cancellation logic with a
-    // CancellationManager. The syntax would be more heavyweight,
-    // but it would be possible to thread a cancellation manager
-    // through the IteratorContext to upstream,
-    // potentially-blocking iterators, when we add these.
     mutex_lock l(mu_);
     // Cancel the runner thread.
     cancelled_ = true;
@@ -59,19 +55,11 @@ class ParallelMapIterator : public DatasetBaseIterator {
     mutex_lock l(mu_);
     if (num_parallel_calls_ == kAutoTune) {
       num_parallel_calls_ = 1;
-      auto set_fn = [this](int64 value) {
-        {
-          mutex_lock l(mu_);
-          num_parallel_calls_ = value;
-          cond_var_.notify_all();
-        }
-        VLOG(2) << "setting parallelism knob to " << value;
-      };
       // TODO(jsimsa): Surface the number of threads used by `ctx->runner()` and
       // use it here for the maximum.
-      AddTunableParameter(ctx, "parallelism", num_parallel_calls_ /* value */,
+      AddTunableParameter(ctx, "parallelism", &num_parallel_calls_ /* value */,
                           1 /* min */, port::NumSchedulableCPUs() /* max */,
-                          std::move(set_fn));
+                          &cond_var_);
     } else {
       AddConstantParameter(ctx, "parallelism", num_parallel_calls_);
     }
@@ -90,17 +78,17 @@ class ParallelMapIterator : public DatasetBaseIterator {
       mutex_lock l(mu_);
       EnsureRunnerThreadStarted(ctx);
       while (invocation_results_.empty()) {
-        StopWork(ctx);
+        RecordStop(ctx);
         cond_var_.wait(l);
-        StartWork(ctx);
+        RecordStart(ctx);
       }
       std::swap(result, invocation_results_.front());
       invocation_results_.pop_front();
       cond_var_.notify_all();
     }
-    StopWork(ctx);
+    RecordStop(ctx);
     result->notification.WaitForNotification();
-    StartWork(ctx);
+    RecordStart(ctx);
     return ProcessResult(result, out_tensors, end_of_sequence);
   }
 
@@ -218,9 +206,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
       return;
     }
 
-    // Call `func_(input_element)`, store the result in
-    // `result->return_values`, and notify `result->notification` to unblock
-    // a consumer.
+    // Call `func_(input_element)`, store the result in `result->return_values`,
+    // and notify `result->notification` to unblock a consumer.
     auto done = [this, result](Status status) {
       result->status.Update(status);
       CallCompleted(result);
@@ -249,28 +236,27 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   void RunnerThread(const std::shared_ptr<IteratorContext>& ctx) {
-    StartWork(ctx.get());
-    auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
+    RecordStart(ctx.get());
+    auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
     std::vector<std::shared_ptr<InvocationResult>> new_calls;
-    {
-      tf_shared_lock l(mu_);
-      new_calls.reserve(num_parallel_calls_);
-    }
+    new_calls.reserve(num_parallel_calls_);
+    auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(mu_) -> bool {
+      int64 num_parallel_calls = num_parallel_calls_;
+      return num_calls_ >= num_parallel_calls ||
+             invocation_results_.size() >= num_parallel_calls;
+    };
     while (true) {
       {
         mutex_lock l(mu_);
-        while (!cancelled_ &&
-               (num_calls_ >= num_parallel_calls_ ||
-                invocation_results_.size() >= num_parallel_calls_)) {
-          StopWork(ctx.get());
+        while (!cancelled_ && busy()) {
+          RecordStop(ctx.get());
           cond_var_.wait(l);
-          StartWork(ctx.get());
+          RecordStart(ctx.get());
         }
         if (cancelled_) {
           return;
         }
-        while (num_calls_ < num_parallel_calls_ &&
-               invocation_results_.size() < num_parallel_calls_) {
+        while (!busy()) {
           invocation_results_.emplace_back(new InvocationResult());
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
@@ -334,7 +320,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   // buffer.
   condition_variable cond_var_;
   // Identifies the maximum number of parallel calls.
-  int64 num_parallel_calls_ GUARDED_BY(mu_) = 0;
+  std::atomic<int64> num_parallel_calls_;
   // Counts the number of outstanding calls.
   int64 num_calls_ GUARDED_BY(mu_) = 0;
   std::unique_ptr<IteratorBase> input_impl_;
