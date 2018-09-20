@@ -540,16 +540,15 @@ def rot90ND(image, rot_dims, k=1, name=None):
   else:
     ndims = shape.ndims
 
-  def _swap(mylist, dims):
-    assert len(dims) == 2
-    tmp = mylist[dims[0]]
-    mylist[dims[0]] = mylist[dims[1]]
-    mylist[dims[1]] = tmp
+  def _swap(mylist, dim0, dim1):
+    tmp = mylist[dim0]
+    mylist[dim0] = mylist[dim1]
+    mylist[dim1] = tmp
     return mylist
 
   def _rot90():
     t_pos = list(range(ndims))
-    t_pos = _swap(t_pos, rot_dims)
+    t_pos = _swap(t_pos, rot_dims[0], rot_dims[1])
     return array_ops.transpose(array_ops.reverse_v2(image, [rot_dims[1]]), t_pos)
 
   def _rot180():
@@ -557,7 +556,7 @@ def rot90ND(image, rot_dims, k=1, name=None):
 
   def _rot270():
     t_pos = list(range(ndims))
-    t_pos = _swap(t_pos, rot_dims)
+    t_pos = _swap(t_pos, rot_dims[0], rot_dims[1])
     return array_ops.reverse_v2(array_ops.transpose(image, t_pos), [rot_dims[1]])
 
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
