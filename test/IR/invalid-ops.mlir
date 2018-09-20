@@ -82,7 +82,7 @@ cfgfunc @bad_alloc_wrong_symbol_count() {
 bb0:
   %0 = "constant"() {value: 7} : () -> affineint
   // Test alloc with wrong number of symbols
-  %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{custom op 'alloc' affine map symbol operand count does not equal memref affine map symbol count}}
+  %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{operand count does not equal dimension plus symbol operand count}}
   return
 }
 
@@ -96,6 +96,14 @@ bb0:
   %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
   // Test that store returns zero results.
   %4 = store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1> // expected-error {{cannot name an operation with no results}}
+  return
+}
+
+// -----
+
+cfgfunc @test_alloc_memref_map_rank_mismatch() {
+bb0:
+  %0 = alloc() : memref<1024x64xf32, (d0) -> (d0), 1> // expected-error {{affine map dimension count must equal memref rank}}
   return
 }
 

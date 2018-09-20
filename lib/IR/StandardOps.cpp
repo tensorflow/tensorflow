@@ -229,31 +229,47 @@ bool AllocOp::parse(OpAsmParser *parser, OperationState *result) {
     return true;
 
   // Check numDynamicDims against number of question marks in memref type.
+  // Note: this check remains here (instead of in verify()), because the
+  // partition between dim operands and symbol operands is lost after parsing.
+  // Verification still checks that the total number of operands matches
+  // the number of symbols in the affine map, plus the number of dynamic
+  // dimensions in the memref.
   if (numDimOperands != type->getNumDynamicDims()) {
     return parser->emitError(parser->getNameLoc(),
                              "dimension operand count does not equal memref "
                              "dynamic dimension count");
   }
-
-  // Check that the number of symbol operands matches the number of symbols in
-  // the first affinemap of the memref's affine map composition.
-  unsigned numSymbols = 0;
-  if (!type->getAffineMaps().empty())
-    numSymbols = type->getAffineMaps()[0]->getNumSymbols();
-
-  if (result->operands.size() - numDimOperands != numSymbols) {
-    return parser->emitError(
-        parser->getNameLoc(),
-        "affine map symbol operand count does not equal memref affine map "
-        "symbol count");
-  }
-
   result->types.push_back(type);
   return false;
 }
 
 bool AllocOp::verify() const {
-  // TODO(andydavis): Verify alloc.
+  auto *memRefType = dyn_cast<MemRefType>(getMemRef()->getType());
+  if (!memRefType)
+    return emitOpError("result must be a memref");
+
+  unsigned numSymbols = 0;
+  if (!memRefType->getAffineMaps().empty()) {
+    AffineMap *affineMap = memRefType->getAffineMaps()[0];
+    // Store number of symbols used in affine map (used in subsequent check).
+    numSymbols = affineMap->getNumSymbols();
+    // Verify that the layout affine map matches the rank of the memref.
+    if (affineMap->getNumDims() != memRefType->getRank())
+      return emitOpError("affine map dimension count must equal memref rank");
+  }
+  unsigned numDynamicDims = memRefType->getNumDynamicDims();
+  // Check that the total number of operands matches the number of symbols in
+  // the affine map, plus the number of dynamic dimensions specified in the
+  // memref type.
+  if (getOperation()->getNumOperands() != numDynamicDims + numSymbols) {
+    return emitOpError(
+        "operand count does not equal dimension plus symbol operand count");
+  }
+  // Verify that all operands are of type AffineInt.
+  for (auto *operand : getOperands()) {
+    if (!operand->getType()->isAffineInt())
+      return emitOpError("requires operands to be of type AffineInt");
+  }
   return false;
 }
 
