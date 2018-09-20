@@ -108,13 +108,13 @@ class KerasMetricsTest(test.TestCase):
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([1, 0]))
       result = K.eval(
-        metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
+          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
       self.assertEqual(result, 1)
       result = K.eval(
-        metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
+          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
       self.assertEqual(result, 0.5)
       result = K.eval(
-        metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
+          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
       self.assertEqual(result, 0.)
 
   def test_top_k_categorical_accuracy(self):
