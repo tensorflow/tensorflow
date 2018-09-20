@@ -62,7 +62,7 @@ sudo bash ~/bazel*.sh
 cd ~ && git clone -b r1.10-rocm https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git
 
 # Python 2: Build and install TensorFlow ROCm port pip package
-cd ~/tensorflow && ./build_rocma
+cd ~/tensorflow && ./build_rocm
 
 # Python 3: Build and install TensorFlow ROCm port pip3 package
 cd ~/tensorflow && ./build_rocm_python3
