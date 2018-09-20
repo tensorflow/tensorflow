@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #define EIGEN_USE_THREADS
 
+#include <atomic>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
@@ -202,17 +203,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         if (num_parallel_calls_ == kAutoTune) {
           num_parallel_calls_ = 1;
-          std::function<void(int64)> set_fn = [this](int64 value) {
-            {
-              mutex_lock l(mu_);
-              num_parallel_calls_ = value;
-              cond_var_.notify_all();
-            }
-            VLOG(2) << "setting parallelism knob to " << value;
-          };
-          AddTunableParameter(
-              ctx, "parallelism", num_parallel_calls_ /* value */, 1 /* min */,
-              port::NumSchedulableCPUs() /* max */, std::move(set_fn));
+          AddTunableParameter(ctx, "parallelism",
+                              &num_parallel_calls_ /* value */, 1 /* min */,
+                              port::NumSchedulableCPUs() /* max */, &cond_var_);
         } else {
           AddConstantParameter(ctx, "parallelism", num_parallel_calls_);
         }
@@ -230,9 +223,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EnsureRunnerThreadStarted(ctx);
           while (batch_results_.empty() ||
                  batch_results_.front()->num_calls > 0) {
-            StopWork(ctx);
+            RecordStop(ctx);
             cond_var_.wait(l);
-            StartWork(ctx);
+            RecordStart(ctx);
           }
           std::swap(result, batch_results_.front());
           batch_results_.pop_front();
@@ -340,9 +333,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       void CallCompleted(const std::shared_ptr<BatchResult>& result)
           LOCKS_EXCLUDED(mu_) {
-          mutex_lock l(mu_);
-          num_calls_--;
-          result->num_calls--;
+        mutex_lock l(mu_);
+        num_calls_--;
+        result->num_calls--;
         cond_var_.notify_all();
       }
 
@@ -435,11 +428,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         result->output_allocated = true;
       }
 
-      int MaxBatchResults() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        return (num_parallel_calls_ + dataset()->batch_size_ - 1) /
-               dataset()->batch_size_;
-      }
-
       Status ProcessResult(IteratorContext* ctx,
                            const std::shared_ptr<BatchResult>& result,
                            std::vector<Tensor>* out_tensors,
@@ -488,34 +476,34 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
           LOCKS_EXCLUDED(mu_) {
         std::vector<std::pair<std::shared_ptr<BatchResult>, int64>> new_calls;
-        StartWork(ctx.get());
+        RecordStart(ctx.get());
         auto stop_cleanup =
-            gtl::MakeCleanup([this, &ctx]() { StopWork(ctx.get()); });
-        {
-          tf_shared_lock l(mu_);
-          new_calls.reserve(num_parallel_calls_);
-        }
+            gtl::MakeCleanup([this, &ctx]() { RecordStop(ctx.get()); });
+        new_calls.reserve(num_parallel_calls_);
+        auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(mu_) -> bool {
+          int64 num_parallel_calls = num_parallel_calls_;
+          int64 max_batch_results =
+              (num_parallel_calls + dataset()->batch_size_ - 1) /
+              dataset()->batch_size_;
+          return num_calls_ >= num_parallel_calls ||
+                 (batch_results_.size() > max_batch_results ||
+                  (batch_results_.size() == max_batch_results &&
+                   call_counter_ % dataset()->batch_size_ == 0));
+        };
         while (true) {
           {
             mutex_lock l(mu_);
-            while (!cancelled_ &&
-                   (num_calls_ >= num_parallel_calls_ ||
-                    batch_results_.size() > MaxBatchResults() ||
-                    (batch_results_.size() == MaxBatchResults() &&
-                     call_counter_ % dataset()->batch_size_ == 0))) {
-              StopWork(ctx.get());
+            while (!cancelled_ && busy()) {
+              RecordStop(ctx.get());
               cond_var_.wait(l);
-              StartWork(ctx.get());
+              RecordStart(ctx.get());
             }
 
             if (cancelled_) {
               return;
             }
 
-            while (num_calls_ < num_parallel_calls_ &&
-                   (batch_results_.size() < MaxBatchResults() ||
-                    (batch_results_.size() == MaxBatchResults() &&
-                     call_counter_ % dataset()->batch_size_ != 0))) {
+            while (!busy()) {
               if (call_counter_ % dataset()->batch_size_ == 0) {
                 batch_results_.emplace_back(
                     new BatchResult(dataset()->batch_size_));
@@ -660,7 +648,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       // the `batch_results_` buffer.
       condition_variable cond_var_;
       // Identifies the maximum number of parallel calls.
-      int64 num_parallel_calls_ GUARDED_BY(mu_) = 0;
+      std::atomic<int64> num_parallel_calls_;
       // Counts the number of outstanding calls for this batch.
       int64 num_calls_ GUARDED_BY(mu_) = 0;
       // Counts the total number of calls.

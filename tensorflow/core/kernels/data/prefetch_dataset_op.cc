@@ -112,9 +112,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
                auto_tuner_.buffer_limit() != 0) {
           auto_tuner_.RecordEmpty();
-          StopWork(ctx);
+          RecordStop(ctx);
           cond_var_.wait(l);
-          StartWork(ctx);
+          RecordStart(ctx);
         }
 
         if (cancelled_) {
@@ -255,8 +255,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     //
     // It owns the iterator context passed to it.
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
-      StartWork(ctx.get());
-      auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
+      RecordStart(ctx.get());
+      auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       while (true) {
         std::vector<Tensor> value;
 
@@ -264,9 +264,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           while (!cancelled_ && buffer_.size() >= auto_tuner_.buffer_limit()) {
-            StopWork(ctx.get());
+            RecordStop(ctx.get());
             cond_var_.wait(l);
-            StartWork(ctx.get());
+            RecordStart(ctx.get());
           }
 
           if (cancelled_) {
