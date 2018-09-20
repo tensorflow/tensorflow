@@ -5,7 +5,7 @@ upper_tabs:
 # Dropdown menu
 - name: Ecosystem
   path: /ecosystem
-  is_default: True
+  is_default: true
   menu:
   - include: /ecosystem/_menu_toc.yaml
   lower_tabs:
@@ -23,7 +23,7 @@ upper_tabs:
         path: /lite/demo_ios
       - title: Performance
         path: /lite/performance
-      - break: True
+      - break: true
       - title: TensorFlow Lite APIs
         path: /lite/apis
       - title: Custom operators
