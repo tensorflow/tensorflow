@@ -63,9 +63,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
         {
           mutex_lock l(mu_);
           num_parallel_calls_ = value;
+          cond_var_.notify_all();
         }
         VLOG(2) << "setting parallelism knob to " << value;
-        cond_var_.notify_all();
       };
       // TODO(jsimsa): Surface the number of threads used by `ctx->runner()` and
       // use it here for the maximum.
@@ -96,8 +96,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
       }
       std::swap(result, invocation_results_.front());
       invocation_results_.pop_front();
+      cond_var_.notify_all();
     }
-    cond_var_.notify_all();
     StopWork(ctx);
     result->notification.WaitForNotification();
     StartWork(ctx);
@@ -201,9 +201,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
     {
       mutex_lock l(mu_);
       num_calls_--;
+      cond_var_.notify_all();
     }
     result->notification.Notify();
-    cond_var_.notify_all();
   }
 
   void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
@@ -275,8 +275,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
         }
+        cond_var_.notify_all();
       }
-      cond_var_.notify_all();
       for (const auto& call : new_calls) {
         CallFunction(ctx, call);
       }

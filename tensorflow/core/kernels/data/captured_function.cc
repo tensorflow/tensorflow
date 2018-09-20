@@ -427,17 +427,17 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
     done(s);
     return;
   }
-  std::shared_ptr<OwnedArgsCallFrame> frame(
-      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_));
+  OwnedArgsCallFrame* frame =
+      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
 
   FunctionLibraryRuntime::Options f_opts;
   f_opts.step_id = CapturedFunction::generate_step_id();
   ResourceMgr* resource_mgr = ctx->lib()->device()->resource_manager();
-  std::shared_ptr<ScopedStepContainer> step_container(new ScopedStepContainer(
+  ScopedStepContainer* step_container = new ScopedStepContainer(
       f_opts.step_id, [resource_mgr](const string& name) {
         resource_mgr->Cleanup(name).IgnoreError();
-      }));
-  f_opts.step_container = step_container.get();
+      });
+  f_opts.step_container = step_container;
   f_opts.runner = ctx->runner();
   if (ctx->lib()->device()->device_type() != DEVICE_CPU) {
     f_opts.create_rendezvous = true;
@@ -448,8 +448,8 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
   // (such as queue kernels) that depend on the non-nullness of
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
-  std::shared_ptr<CancellationManager> c_mgr(new CancellationManager);
-  f_opts.cancellation_manager = c_mgr.get();
+  CancellationManager* c_mgr = new CancellationManager;
+  f_opts.cancellation_manager = c_mgr;
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   std::shared_ptr<model::Node> node;
   if (ctx->model()) {
@@ -460,19 +460,19 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
   }
   f_opts.stats_collector = stats_collector.get();
 
-  OwnedArgsCallFrame* raw_frame = frame.get();
   auto callback = std::bind(
-      [rets](const std::shared_ptr<CancellationManager>& c_mgr,
-             const FunctionLibraryRuntime::DoneCallback& done,
-             const std::shared_ptr<OwnedArgsCallFrame>& frame,
-             const std::shared_ptr<model::Node>& node,
-             const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
-             const std::shared_ptr<ScopedStepContainer>& step_container,
-             // Begin unbound arguments.
-             Status s) {
+      [rets, step_container, c_mgr, frame](
+          const FunctionLibraryRuntime::DoneCallback& done,
+          const std::shared_ptr<model::Node>& node,
+          const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
+          // Begin unbound arguments.
+          Status s) {
+        delete step_container;
+        delete c_mgr;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets);
         }
+        delete frame;
         if (node) {
           node->add_processing_time(stats_collector->processing_time());
           node->start_work();
@@ -482,11 +482,10 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
           node->stop_work();
         }
       },
-      std::move(c_mgr), std::move(done), std::move(frame), std::move(node),
-      std::move(stats_collector), std::move(step_container),
+      std::move(done), std::move(node), std::move(stats_collector),
       std::placeholders::_1);
 
-  ctx->lib()->Run(f_opts, handle, raw_frame, std::move(callback));
+  ctx->lib()->Run(f_opts, handle, frame, std::move(callback));
 }
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,

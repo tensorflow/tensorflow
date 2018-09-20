@@ -1241,9 +1241,9 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
             {
               mutex_lock l(mu_);
               num_parallel_calls_ = value;
+              cond_var_.notify_all();
             }
             VLOG(2) << "setting parallelism knob to " << value;
-            cond_var_.notify_all();
           };
           AddTunableParameter(
               ctx, "parallelism", num_parallel_calls_ /* value */, 1 /* min */,
@@ -1278,8 +1278,8 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
               *end_of_sequence = true;
               return Status::OK();
             }
+            cond_var_.notify_all();
           }
-          cond_var_.notify_all();
           StopWork(ctx);
           result->notification.WaitForNotification();
           StartWork(ctx);
@@ -1425,17 +1425,15 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
         // Release the ownership of the cycle element iterator, closing the
         // iterator if end of input was encountered.
-        {
-          if (end_of_input) {
-            current_elements_[cycle_index].reset();
-          }
-          mutex_lock l(mu_);
-          element_in_use_[cycle_index] = false;
-          num_calls_--;
-          if (end_of_input) {
-            args_list_[cycle_index].clear();
-            num_open_--;
-          }
+        if (end_of_input) {
+          current_elements_[cycle_index].reset();
+        }
+        mutex_lock l(mu_);
+        element_in_use_[cycle_index] = false;
+        num_calls_--;
+        if (end_of_input) {
+          args_list_[cycle_index].clear();
+          num_open_--;
         }
         cond_var_.notify_all();
       }
@@ -1453,32 +1451,44 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         StartWork(ctx.get());
         auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
         while (true) {
-          {
-            mutex_lock l(mu_);
-            // Wait until this thread is cancelled, the end of input has been
-            // reached, or the cycle element at the `cycle_index_` position is
-            // not in use and there is space in the `invocation_results_` queue.
-            while (!cancelled_ && (!end_of_input_ || num_open_ > 0) &&
-                   (element_in_use_[cycle_index_] ||
-                    num_calls_ >= num_parallel_calls_ ||
-                    invocation_results_.size() >= MaxInvocationResults())) {
-              StopWork(ctx.get());
-              cond_var_.wait(l);
-              StartWork(ctx.get());
-            }
+          mutex_lock l(mu_);
+          // Wait until this thread is cancelled, the end of input has been
+          // reached, or the cycle element at the `cycle_index_` position is
+          // not in use and there is space in the `invocation_results_` queue.
+          while (!cancelled_ && (!end_of_input_ || num_open_ > 0) &&
+                 (element_in_use_[cycle_index_] ||
+                  num_calls_ >= num_parallel_calls_ ||
+                  invocation_results_.size() >= MaxInvocationResults())) {
+            StopWork(ctx.get());
+            cond_var_.wait(l);
+            StartWork(ctx.get());
+          }
 
-            if (cancelled_ || (end_of_input_ && num_open_ == 0)) {
-              return;
-            }
+          if (cancelled_ || (end_of_input_ && num_open_ == 0)) {
+            return;
+          }
 
-            while (!element_in_use_[cycle_index_] &&
-                   (!end_of_input_ || num_open_ > 0) &&
-                   num_calls_ < num_parallel_calls_ &&
-                   invocation_results_.size() < MaxInvocationResults()) {
-              if (!current_elements_[cycle_index_]) {
-                // Try to create a new iterator from the next input element.
-                Status status = input_impl_->GetNext(
-                    ctx.get(), &args_list_[cycle_index_], &end_of_input_);
+          while (!element_in_use_[cycle_index_] &&
+                 (!end_of_input_ || num_open_ > 0) &&
+                 num_calls_ < num_parallel_calls_ &&
+                 invocation_results_.size() < MaxInvocationResults()) {
+            if (!current_elements_[cycle_index_]) {
+              // Try to create a new iterator from the next input element.
+              Status status = input_impl_->GetNext(
+                  ctx.get(), &args_list_[cycle_index_], &end_of_input_);
+              if (!status.ok()) {
+                invocation_results_.emplace_back(new InvocationResult());
+                std::shared_ptr<InvocationResult>& result =
+                    invocation_results_.back();
+                result->status.Update(status);
+                result->notification.Notify();
+                break;
+              }
+              if (!end_of_input_) {
+                Status status = MakeIteratorFromInputElement(
+                    ctx.get(), args_list_[cycle_index_], cycle_index_,
+                    dataset()->captured_func_.get(), prefix(),
+                    &current_elements_[cycle_index_]);
                 if (!status.ok()) {
                   invocation_results_.emplace_back(new InvocationResult());
                   std::shared_ptr<InvocationResult>& result =
@@ -1487,39 +1497,25 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
                   result->notification.Notify();
                   break;
                 }
-                if (!end_of_input_) {
-                  Status status = MakeIteratorFromInputElement(
-                      ctx.get(), args_list_[cycle_index_], cycle_index_,
-                      dataset()->captured_func_.get(), prefix(),
-                      &current_elements_[cycle_index_]);
-                  if (!status.ok()) {
-                    invocation_results_.emplace_back(new InvocationResult());
-                    std::shared_ptr<InvocationResult>& result =
-                        invocation_results_.back();
-                    result->status.Update(status);
-                    result->notification.Notify();
-                    break;
-                  }
-                  ++num_open_;
-                }
+                ++num_open_;
               }
-              if (current_elements_[cycle_index_]) {
-                // Pre-allocate invocation results for outputs to be fetched
-                // and then fetch the outputs asynchronously.
-                std::vector<std::shared_ptr<InvocationResult>> results;
-                results.reserve(dataset()->block_length_);
-                for (int i = 0; i < dataset()->block_length_; ++i) {
-                  invocation_results_.emplace_back(new InvocationResult());
-                  results.push_back(invocation_results_.back());
-                }
-                num_calls_++;
-                element_in_use_[cycle_index_] = true;
-                thread_pool_->Schedule(std::bind(&Iterator::FetchOutputs, this,
-                                                 ctx, cycle_index_,
-                                                 std::move(results)));
-              }
-              cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
             }
+            if (current_elements_[cycle_index_]) {
+              // Pre-allocate invocation results for outputs to be fetched
+              // and then fetch the outputs asynchronously.
+              std::vector<std::shared_ptr<InvocationResult>> results;
+              results.reserve(dataset()->block_length_);
+              for (int i = 0; i < dataset()->block_length_; ++i) {
+                invocation_results_.emplace_back(new InvocationResult());
+                results.push_back(invocation_results_.back());
+              }
+              num_calls_++;
+              element_in_use_[cycle_index_] = true;
+              thread_pool_->Schedule(std::bind(&Iterator::FetchOutputs, this,
+                                               ctx, cycle_index_,
+                                               std::move(results)));
+            }
+            cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
           }
           cond_var_.notify_all();
         }
