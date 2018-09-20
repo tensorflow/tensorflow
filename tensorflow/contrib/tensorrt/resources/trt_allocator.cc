@@ -27,6 +27,10 @@ namespace tensorflow {
 namespace tensorrt {
 
 // std::align is not supported, so this method mimic its behavior.
+//
+// NOTE(aaroey): according to the TensorRT API,
+// nvinfer1::IGpuAllocator::allocate() uses uint64_t type for size and alignment
+// parameters, so here we use the same type to make it compatible.
 void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space) {
   QCHECK_GT(alignment, 0ul) << "alignment must be greater than 0.";
   QCHECK_EQ(0, alignment & (alignment - 1)) << "Alignment must be power of 2.";
