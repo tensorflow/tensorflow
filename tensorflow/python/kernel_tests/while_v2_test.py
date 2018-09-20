@@ -25,7 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
@@ -218,30 +217,55 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(sess.run(grad), [32.])
 
   @parameterized.named_parameters(
-      ("Unknown shape", None),
-      ("Partially defined shape", [None]),
-      ("Fully defined shape", [1, 2]),
+      ("UnknownShape", None),
+      ("PartiallyDefinedShape", [None, 2]),
+      ("FullyDefinedShape", [1, 2]),
   )
   def testTensorListOutputElementShape(self, shape):
-    self.skipTest("b/115982901")
+
+    def MatchShape(actual_tensor_shape):
+      # Compare the shapes, treating None dimensions as equal. We do not
+      # directly check actual_tensor_shape and tf.TensorShape(shape) for
+      # equality because tf.Dimension.__eq__ returns None if either dimension is
+      # None.
+      if shape is None:
+        self.assertIsNone(actual_tensor_shape.dims)
+      else:
+        self.assertListEqual(actual_tensor_shape.as_list(), shape)
+
+    def GetAccumulatorForInputAtIndex(while_op, idx):
+      body_graph = while_v2._get_body_graph(while_op)
+      y_input_t = body_graph.inputs[idx]
+      push_back_node = [c for c in y_input_t.consumers()
+                        if c.type == "TensorListPushBack"][0]
+      output_idx = body_graph.outputs.index(push_back_node.outputs[0])
+      return while_op.outputs[output_idx]
+
     x = constant_op.constant(2.)
     y = array_ops.placeholder(dtype=dtypes.float32, shape=shape)
-    ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
 
+    # Forward pass.
+    ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
+    while_op = ret[0].op
     # Get the TensorList output of While op containing the accumulated values
     # of y.
-    while_op = ret[0].op
-    body_graph = while_v2._get_body_graph(while_op)
-    # body_graph.inputs: [counter_arg, x_arg, y_arg, *accumulators]
-    y_input_t = body_graph.inputs[2]
-    push_back_node = [c for c in y_input_t.consumers()
-                      if c.type == "TensorListPushBack"][0]
-    output_idx = body_graph.outputs.index(push_back_node.outputs[0])
-    output = while_op.outputs[output_idx]
-
+    # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
+    output = GetAccumulatorForInputAtIndex(while_op, 2)
     _, val = list_ops.tensor_list_pop_back(output,
                                            element_dtype=dtypes.float32)
-    self.assertEqual(val.shape, tensor_shape.TensorShape(shape))
+    MatchShape(val.shape)
+
+    # Gradient pass.
+    grad = gradients_impl.gradients(ret[1], y)
+    grad_while_op = grad[0].op
+    # Get the TensorList output of gradient While op containing the accumulated
+    # values of grad_y.
+    # grad_while_op.inputs:
+    # [counter_arg, total_iters_arg, grad_x_arg, grad_y_arg, *other_args]
+    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 4)
+    _, val = list_ops.tensor_list_pop_back(grad_output,
+                                           element_dtype=dtypes.float32)
+    MatchShape(val.shape)
 
 
 def ScalarShape():
