@@ -106,6 +106,10 @@ class Device : public DeviceBase {
   // at completion.
   virtual Status Sync() = 0;
 
+  // Override this to return true for devices that require a Sync() call before
+  // session completion.
+  virtual bool RequiresSyncOnCompletion() const { return false; }
+
   // Optionally modify the device's GraphDef before execution.
   //
   // This method should be considered experimental and is supplied to enable
