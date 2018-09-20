@@ -333,6 +333,11 @@ void Vectorization::Vectorize() {
 
 void VectorizeMapDefun(FunctionDef* outer_scope, FunctionDef* map_defun_fn,
                        NodeDef* map_defun_node) {
+  if (map_defun_node->attr().at("f").func().name() !=
+      map_defun_fn->signature().name()) {
+    LOG(ERROR) << "`map_defun_fn` and `map_defun_node` do not match";
+    return;
+  }
   Vectorization(outer_scope, map_defun_fn, map_defun_node).Vectorize();
 }
 
