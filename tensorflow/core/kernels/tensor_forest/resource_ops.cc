@@ -109,7 +109,7 @@ class TensorForestTreeSizeOp : public OpKernel {
     Tensor* output_t = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape(), &output_t));
-    output_t->scalar<int32>()() = decision_tree_resource->get_size();
+    output_t->scalar<int32>()() = decision_tree_resource->GetSize();
   }
 };
 

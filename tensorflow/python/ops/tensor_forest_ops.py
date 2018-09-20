@@ -90,20 +90,40 @@ def tree_variable(tree_config, name, container=None):
       gen_tensor_forest_ops.tensor_forest_tree_deserialize).resource
 
 
+def fertile_variable(fertile_config, name, container=None):
+  print(dir(gen_tensor_forest_ops))
+  return VariableSavable(
+      "FertileVariable",
+      name,
+      container,
+      fertile_config,
+      gen_tensor_forest_ops.tensor_forest_fertile_stats_resource_handle_op,
+      gen_tensor_forest_ops.tensor_forest_create_fertile_stats_variable,
+      gen_tensor_forest_ops.tensor_forest_fertile_stats_is_initialized_op,
+      gen_tensor_forest_ops.tensor_forest_fertile_stats_serialize,
+      gen_tensor_forest_ops.tensor_forest_fertile_stats_deserialize).resource
+
+
 class ForestVariables(object):
 
   def __init__(self, params,
-               tree_configs=None):
+               tree_configs=None,
+               fertile_configs=None):
 
     self._variables = []
 
     for i in range(params.n_trees):
-      tree_config = ''
+      fertile_config, tree_config = '', ''
       if tree_configs is not None:
         tree_config = tree_configs[i]
-      self._variables.append(tree_variable(
+      if fertile_configs is not None:
+        fertile_config = fertile_configs[i]
+      self._variables.append((tree_variable(
           tree_config,
-          'tree-%s' % i,
+          'tree-%s' % i),
+          fertile_variable(
+          fertile_config,
+          'fertile-%s' % i)
       ))
 
   def __getitem__(self, t):

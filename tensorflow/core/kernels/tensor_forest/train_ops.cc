@@ -54,7 +54,7 @@ class TensorForestTraverseTreeOp : public OpKernel {
                                                      &output_predictions));
     auto out = output_predictions->matrix<int32>();
 
-    if (decision_tree_resource->get_size() <= 0) {
+    if (decision_tree_resource->GetSize() <= 0) {
       out.setZero();
       return;
     }
@@ -209,8 +209,8 @@ class TensorForestProcessInputOp : public OpKernel {
       if (fertile_stats_resource->IsSlotInitialized(leaf_id,
                                                     splits_to_consider_)) {
         fertile_stats_resource->UpdateSlotStats(is_regression, leaf_id,
-                                                example_id, dense_data, labels,
-                                                num_targets);
+                                                num_targets, example_id,
+                                                dense_data, labels);
       } else {
         int32 feature_id;
         {
@@ -219,7 +219,9 @@ class TensorForestProcessInputOp : public OpKernel {
         }
         auto bias = (*dense_data)(example_id, feature_id);
 
-        fertile_stats_resource->AddSplitToSlot(leaf_id, feature_id, bias);
+        fertile_stats_resource->AddSplitToSlot(leaf_id, feature_id, bias,
+                                               example_id, num_targets,
+                                               dense_data, labels);
       }
       leaf_lock->unlock();
     } else {
@@ -238,66 +240,60 @@ class TensorForestProcessInputOp : public OpKernel {
   std::unique_ptr<random::PhiloxRandom> single_rand_;
   std::unique_ptr<random::SimplePhilox> rng_;
 };
-/*
+
 // Op for growing finished nodes.
 class TensorForestGrowTreeOp : public OpKernel {
  public:
   explicit TensorForestGrowTreeOp(OpKernelConstruction* context)
-      : OpKernel(context) {
-    string serialized_params;
-    OP_REQUIRES_OK(context, context->GetAttr("params", &serialized_params));
-    ParseProtoUnlimited(&param_proto_, serialized_params);
-  }
+      : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    FertileStatsResource* fertile_stats_resource;
-    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 1),
-                                           &fertile_stats_resource));
-    DecisionTreeResource* tree_resource;
+    TensorForestTreeResource* tree_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
                                            &tree_resource));
+
+    TensorForestFertileStatsResource* fertile_stats_resource;
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 1),
+                                           &fertile_stats_resource));
+
     mutex_lock l1(*fertile_stats_resource->get_mutex());
     mutex_lock l2(*tree_resource->get_mutex());
 
     core::ScopedUnref unref_stats(fertile_stats_resource);
     core::ScopedUnref unref_tree(tree_resource);
 
-    const Tensor& finished_nodes = context->input(2);
+    const Tensor* finished_nodes_ = nullptr;
+    OP_REQUIRES_OK(context, context->input("finished_nodes", &finished_nodes_));
 
-    const auto finished = finished_nodes.unaligned_flat<int32>();
+    auto finished = finished_nodes_->unaligned_flat<int32>();
 
-    const int32 num_nodes =
-        static_cast<int32>(finished_nodes.shape().dim_size(0));
+    const int32 batch_size = finished_nodes_->dim_size(0);
 
-    for (int i = 0;
-         i < num_nodes &&
-         tree_resource->decision_tree().decision_tree().nodes_size() <
-             param_proto_.max_nodes();
-         ++i) {
-      const int32 node = finished(i);
-      std::unique_ptr<SplitCandidate> best(new SplitCandidate);
-      int32 parent_depth;
-      bool found =
-          fertile_stats_resource->BestSplit(node, best.get(), &parent_depth);
+    for (int32 i = 0; i < batch_size; i++) {
+      auto node = finished(i);
+      std::unique_ptr<tensor_forest::SplitCandidate> best_candidate(
+          new tensor_forest::SplitCandidate);
+      std::unique_ptr<tensor_forest::FertileSlot> best_slot(
+          new tensor_forest::FertileSlot);
+      bool found = fertile_stats_resource->BestSplitFromSlot(
+          node, best_slot.get(), best_candidate.get());
       if (found) {
         std::vector<int32> new_children;
-        tree_resource->SplitNode(node, best.get(), &new_children);
-
-        // fertile_stats_resource->Allocate(new_children);
+        tree_resource->SplitNode(node, best_slot.get(), best_candidate.get(),
+                                 &new_children);
+        for (auto new_node : new_children)
+          fertile_stats_resource->Allocate(new_node);
         //
         // We are done with best, so it is now safe to clear node.
         fertile_stats_resource->Clear(node);
-        CHECK(tree_resource->get_mutable_tree_node(node)->has_leaf() == false);
+        CHECK(tree_resource->NodeHasLeaf(node) == false)
+            << "Node:" << node << " should have being splitted";
       } else {  // reset
         fertile_stats_resource->ResetSplitStats(node);
       }
     }
   }
-
- private:
-  TensorForestParams param_proto_;
 };
-*/
 
 REGISTER_KERNEL_BUILDER(Name("TensorForestProcessInput").Device(DEVICE_CPU),
                         TensorForestProcessInputOp);

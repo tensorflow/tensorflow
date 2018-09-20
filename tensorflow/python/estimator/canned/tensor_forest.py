@@ -27,6 +27,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.ops import gen_tensor_forest_ops
 from tensorflow.python.ops import tensor_forest_ops, math_ops, array_ops
+from tensorflow.python.ops import control_flow_ops
 
 # from tensorflow.python.util.tf_export import estimator_export
 
@@ -60,7 +61,7 @@ class RandomForestGraphs(object):
             tree_variable,
             dense_features,
             self._params.logits_dimension)
-        for tree_variable in self._variables
+        for tree_variable, _ in self._variables
     ]
 
     # shape of all_predict should be [batch_size, n_trees, logits_dimension]
@@ -78,9 +79,37 @@ class RandomForestGraphs(object):
 
     return average_values, regression_variance
 
+  def train_graph(self, dense_features, labels):
+    update_ops = []
+    for tree_variable, fertile_variable in self._variables:
+      leaf_ids = gen_tensor_forest_ops.tensor_forest_traverse_tree(
+          tree_variable, dense_features)
+      update_model = gen_tensor_forest_ops.tensor_forest_update_model(
+          tree_variable,
+          leaf_ids,
+          labels)
+      finished_nodes = gen_tensor_forest_ops.process_input(
+          tree_variable,
+          fertile_variable,
+          dense_features,
+          leaf_ids,
+          labels,
+          random_seed=self.configs.random_seed,
+          split_node_after_samples=self._params.split_node_after_samples,
+          num_splits_to_consider=self._params.num_splits_to_consider,
+          is_regression=self._params.is_regression)
+
+      with ops.control_dependencies([update_model]):
+              update_ops.append(gen_tensor_forest_ops.grow_tree(
+                  tree_variable,
+                  fertile_variable,
+                  finished_nodes))
+
+    return control_flow_ops.group(*update_ops)
+
   def average_size(self):
     sizes = [gen_tensor_forest_ops.tensor_forest_tree_size(tree_variable)
-             for tree_variable in self._variables]
+             for tree_variable, _ in self._variables]
     return math_ops.reduce_mean(math_ops.to_float(array_ops.stack(sizes)))
 
 
@@ -111,7 +140,7 @@ def _tensor_forest_model_fn(features,
 
   def _train_op_fn(unused_loss):
     del unused_loss
-    return training_graph
+    return graph_builder.train_graph(dense_features, labels)
 
   estimator_spec = head.create_estimator_spec(
       features=features,

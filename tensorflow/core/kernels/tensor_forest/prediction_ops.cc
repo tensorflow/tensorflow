@@ -47,7 +47,7 @@ class TensorForestTreePredictOp : public OpKernel {
                                             &output_predictions));
     auto out = output_predictions->matrix<float>();
 
-    if (decision_tree_resource->get_size() <= 0) {
+    if (decision_tree_resource->GetSize() <= 0) {
       out.setZero();
       return;
     }
@@ -55,12 +55,12 @@ class TensorForestTreePredictOp : public OpKernel {
     const int32 num_threads = worker_threads->num_threads;
     const int64 cost_per_traverse = 500;
     auto traverse = [this, &out, &data_set, decision_tree_resource, batch_size](
-        int64 start, int64 end) {
+                        int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= batch_size);
       for (int example_id = start; example_id < end; ++example_id) {
         const int32 leaf_id =
-            decision_tree_resource->TraverseTree(&data_set, example_id);
+            decision_tree_resource->TraverseTree(example_id, &data_set);
         set_output_value(example_id, leaf_id, decision_tree_resource, &out);
       };
     };
@@ -72,7 +72,7 @@ class TensorForestTreePredictOp : public OpKernel {
                         const TensorForestTreeResource* decision_tree_resource,
                         TTypes<float>::Matrix* out) const {
     for (int j = 0; j < logits_dimension_; ++j) {
-      const float logit = decision_tree_resource->get_prediction(leaf_id, j);
+      const float logit = decision_tree_resource->GetPrediction(leaf_id, j);
       (*out)(example_id, j) = logit;
     }
   };

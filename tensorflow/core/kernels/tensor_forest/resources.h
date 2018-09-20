@@ -34,7 +34,7 @@ class TensorForestTreeResource : public ResourceBase {
             protobuf::Arena::CreateMessage<boosted_trees::Tree>(&arena_)){};
 
   string DebugString() override {
-    return strings::StrCat("TensorForestTree[size=", get_size(), "]");
+    return strings::StrCat("TensorForestTree[size=", GetSize(), "]");
   }
 
   mutex* get_mutex() { return &mu_; }
@@ -47,16 +47,18 @@ class TensorForestTreeResource : public ResourceBase {
 
   const boosted_trees::Tree& decision_tree() const { return *decision_tree_; }
 
-  const int32 get_size() const { return decision_tree_->nodes_size(); }
+  const int32 GetSize() const { return decision_tree_->nodes_size(); }
 
-  const float get_prediction(const int32 id, const int32 dimension) const;
+  const float GetPrediction(const int32 id, const int32 dimension) const;
 
   const int32 TraverseTree(const int32 example_id,
                            const TTypes<float>::ConstMatrix* dense_data) const;
 
-  // void SplitNode(node, best, new_children);
+  void SplitNode(const int32 node, tensor_forest::FertileSlot* slot,
+                 tensor_forest::SplitCandidate* best,
+                 std::vector<int32>* new_children);
 
-  const bool node_has_leaf(const int32 node_id);
+  const bool NodeHasLeaf(const int32 node_id);
 
  protected:
   mutex mu_;
@@ -93,16 +95,25 @@ class TensorForestFertileStatsResource : public ResourceBase {
                                const int32 splits_to_consider) const;
 
   void UpdateSlotStats(const bool is_regression, const int32 node_id,
-                       const int32 example_id,
+                       const int32 example_id, const int32 num_targets,
                        const TTypes<float>::ConstMatrix* dense_feature,
-                       const TTypes<float>::ConstMatrix* labels,
-                       const int32 num_labels);
+                       const TTypes<float>::ConstMatrix* labels);
 
   const bool AddSplitToSlot(const int32 node_id, const int32 feature_id,
-                            const float threshold);
+                            const float threshold, const int32 example_id,
+                            const int32 num_targets,
+                            const TTypes<float>::ConstMatrix* dense_feature,
+                            const TTypes<float>::ConstMatrix* labels);
 
   const bool BestSplitFromSlot(const int32 node_id,
-                               tensor_forest::SplitCandidate& best);
+                               tensor_forest::FertileSlot* slot,
+                               tensor_forest::SplitCandidate* best);
+
+  void Allocate(const int32 node_id);
+
+  void Clear(const int32 node_id);
+
+  void ResetSplitStats(const int32 node_id);
 
  protected:
   // Mutex for using random number generator.
