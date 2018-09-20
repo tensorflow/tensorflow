@@ -279,6 +279,9 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     }
 
     try {
+      // Only log the device_id when device type has been specified
+      bool log_device_id =
+          type != tensorflow::IPUOptions::DeviceConfig::DEFAULT;
       auto device_list =
           device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
 
@@ -338,6 +341,25 @@ Status PoplarExecutor::ConfigurePoplarDevice(
             if (tiles_per_ipu > 0) {
               poplar_device_ =
                   poplar_device_.createVirtualDevice(tiles_per_ipu);
+            }
+            if (log_device_id) {
+              // Log the device ID's in the current config
+              std::stringstream ss;
+              ss << "Attached to IPU";
+              if (poplar_device_.getDriverIDs().size() > 1) {
+                ss << "s";
+              }
+              ss << ": ";
+              auto first_pass = true;
+              for (const auto& id : poplar_device_.getDriverIDs()) {
+                if (first_pass) {
+                  first_pass = false;
+                } else {
+                  ss << ", ";
+                }
+                ss << id;
+              }
+              LOG(INFO) << ss.str();
             }
           }
           break;

@@ -153,6 +153,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     # We only allow 1 device config for IPU_MODEL, so if one is requested and it
     # is not 0, then an exception should occur.
     try:
+      raised = False
       with ops.device("/device:IPU:0"):
         a = array_ops.placeholder(np.float32, [1], name="a")
         b = array_ops.placeholder(np.float32, [1], name="b")
@@ -172,6 +173,8 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
         e.message,
         'Requested device configuration index 1, but 1 configuration was available.'
       )
+      raised = True
+    self.assertTrue(raised)
 
 
 if __name__ == "__main__":
