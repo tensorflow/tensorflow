@@ -80,8 +80,7 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   interpreter->Invoke();
 
   auto output = interpreter->typed_tensor<float>(2);
-  auto output_number_of_pixels =
-      wanted_height * wanted_width * wanted_channels;
+  auto output_number_of_pixels = wanted_height * wanted_width * wanted_channels;
 
   for (int i = 0; i < output_number_of_pixels; i++) {
     if (s->input_floating)
