@@ -19,11 +19,10 @@ limitations under the License.
 
 #include <atomic>
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-
-namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 
@@ -47,8 +46,7 @@ class TEST_EventMgrHelper {
     return em_->free_events_.size();
   }
 
-  void QueueTensors(perftools::gputools::Stream* stream,
-                    TensorReferenceVector* tensors) {
+  void QueueTensors(se::Stream* stream, TensorReferenceVector* tensors) {
     mutex_lock l(em_->mu_);
     em_->QueueTensors(stream, tensors);
   }
@@ -121,8 +119,8 @@ TEST(EventMgr, DelayedPolling) {
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, th.queue_size());
   TensorReferenceVector* v = nullptr;
-  std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
-  CHECK(stream.get());
+  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     v = new TensorReferenceVector;
@@ -153,8 +151,8 @@ TEST(EventMgr, FlushLargeTensorImmediately) {
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
-  CHECK(stream.get());
+  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     TensorReferenceVector v;
@@ -170,8 +168,8 @@ TEST(EventMgr, ManySmallTensorsFlushedImmediately) {
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
-  CHECK(stream.get());
+  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     TensorReferenceVector v;
@@ -189,8 +187,8 @@ TEST(EventMgr, StreamSwitchingFlushesImmediately) {
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<gpu::Stream> stream1(new gpu::Stream(stream_exec));
-  std::unique_ptr<gpu::Stream> stream2(new gpu::Stream(stream_exec));
+  std::unique_ptr<se::Stream> stream1(new se::Stream(stream_exec));
+  std::unique_ptr<se::Stream> stream2(new se::Stream(stream_exec));
   stream1->Init();
   stream2->Init();
   TensorReferenceVector v1;
@@ -211,8 +209,8 @@ TEST(EventMgr, ManySmallTensorsSeparateCallsFlushed) {
   EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, live_tensor_bytes);
-  std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
-  CHECK(stream.get());
+  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     for (int i = 0; i < 1000; i++) {
@@ -234,8 +232,8 @@ TEST(EventMgr, NonEmptyShutdown) {
   TEST_EventMgrHelper th(&em);
   EXPECT_EQ(0, th.queue_size());
   EXPECT_EQ(0, th.free_size());
-  std::unique_ptr<gpu::Stream> stream(new gpu::Stream(stream_exec));
-  CHECK(stream.get());
+  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
+  CHECK(stream);
   stream->Init();
   for (int i = 0; i < 5; ++i) {
     TensorReferenceVector* v = new TensorReferenceVector;
@@ -244,6 +242,28 @@ TEST(EventMgr, NonEmptyShutdown) {
     EXPECT_EQ(1 + i, th.queue_size());
     EXPECT_EQ(0, th.free_size());
   }
+}
+
+// Tests that WarnIfInCallback() triggers correctly.
+TEST(EventMgr, WarnIfInCallback) {
+  auto stream_exec = GPUMachineManager()->ExecutorForDevice(0).ValueOrDie();
+  EventMgr em(stream_exec, GPUOptions());
+  TEST_EventMgrHelper th(&em);
+  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
+  CHECK(stream);
+  stream->Init();
+  bool hit = false;
+  gpu_event_mgr::WarnIfInCallback([&hit] { hit = true; });
+  EXPECT_FALSE(hit);
+  Notification note;
+  em.ThenExecute(stream.get(), [&hit, &note]() {
+    gpu_event_mgr::WarnIfInCallback([&hit, &note] {
+      hit = true;
+      note.Notify();
+    });
+  });
+  note.WaitForNotification();
+  EXPECT_TRUE(hit);
 }
 
 }  // namespace

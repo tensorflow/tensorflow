@@ -29,7 +29,7 @@ static Status StatelessShape(shape_inference::InferenceContext* context) {
   TF_RETURN_IF_ERROR(context->WithValue(context->Dim(seed, 0), 2, &unused));
 
   // Set output shape
-  shape_inference::ShapeHandle out;
+  ShapeHandle out;
   TF_RETURN_IF_ERROR(context->MakeShapeFromShapeTensor(0, &out));
   context->set_output(0, out);
   return Status::OK();
@@ -53,6 +53,32 @@ REGISTER_STATELESS_OP("StatelessRandomNormal");
 
 // This op is exposed through contrib/stateless only.  The interface may change.
 REGISTER_STATELESS_OP("StatelessTruncatedNormal");
+
+// This op is exposed through contrib/stateless only.  The interface may change.
+REGISTER_OP("StatelessMultinomial")
+    .Input("logits: T")
+    .Input("num_samples: int32")
+    .Input("seed: Tseed")
+    .Output("output: output_dtype")
+    .Attr("T: realnumbertype")
+    .Attr("Tseed: {int32, int64} = DT_INT64")
+    .Attr("output_dtype: {int32, int64} = DT_INT64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Check seed shape
+      ShapeHandle seed;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &seed));
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(seed, 0), 2, &unused_dim));
+
+      ShapeHandle logits_shape;
+      ShapeHandle unused;
+      DimensionHandle num_samples;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &logits_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(1, &num_samples));
+      c->set_output(0, c->Matrix(c->Dim(logits_shape, 0), num_samples));
+      return Status::OK();
+    });
 
 #undef REGISTER_STATELESS_OP
 

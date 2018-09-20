@@ -43,7 +43,7 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
     std::vector<int64> cpu_array(s);
     memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
     int64* gpu_array = a.Allocate<int64>(cpu_array.size());
-    gpu::DeviceMemory<int64> gpu_array_ptr{gpu::DeviceMemoryBase{gpu_array}};
+    se::DeviceMemory<int64> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
     ASSERT_TRUE(stream_exec->SynchronousMemcpy(&gpu_array_ptr, &cpu_array[0],
                                                s * sizeof(int64)));
     EXPECT_TRUE(a.CheckHeader(gpu_array));
@@ -68,13 +68,13 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
           int64* gpu_array = a.Allocate<int64>(cpu_array.size());
 
-          gpu::DeviceMemory<int64> gpu_array_ptr{
-              gpu::DeviceMemoryBase{gpu_array}};
+          se::DeviceMemory<int64> gpu_array_ptr{
+              se::DeviceMemoryBase{gpu_array}};
           ASSERT_TRUE(stream_exec->SynchronousMemcpy(
               &gpu_array_ptr, &cpu_array[0], cpu_array.size() * sizeof(int64)));
 
-          gpu::DeviceMemory<int64> gpu_hdr_ptr{
-              gpu::DeviceMemoryBase{gpu_array - 1}};
+          se::DeviceMemory<int64> gpu_hdr_ptr{
+              se::DeviceMemoryBase{gpu_array - 1}};
           // Clobber first word of the header.
           float pi = 3.1417;
           ASSERT_TRUE(
@@ -101,14 +101,14 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
           int64* gpu_array = a.Allocate<int64>(cpu_array.size());
 
-          gpu::DeviceMemory<int64> gpu_array_ptr{
-              gpu::DeviceMemoryBase{gpu_array}};
+          se::DeviceMemory<int64> gpu_array_ptr{
+              se::DeviceMemoryBase{gpu_array}};
           ASSERT_TRUE(stream_exec->SynchronousMemcpy(
               &gpu_array_ptr, &cpu_array[0], cpu_array.size() * sizeof(int64)));
 
           // Clobber word of the footer.
-          gpu::DeviceMemory<int64> gpu_ftr_ptr{
-              gpu::DeviceMemoryBase{gpu_array + s}};
+          se::DeviceMemory<int64> gpu_ftr_ptr{
+              se::DeviceMemoryBase{gpu_array + s}};
           float pi = 3.1417;
           ASSERT_TRUE(
               stream_exec->SynchronousMemcpy(&gpu_ftr_ptr, &pi, sizeof(float)));
@@ -131,7 +131,7 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
 
   // Allocate 1024 floats
   float* gpu_array = a.Allocate<float>(cpu_array.size());
-  gpu::DeviceMemory<float> gpu_array_ptr{gpu::DeviceMemoryBase{gpu_array}};
+  se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
   ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
                                              cpu_array.size() * sizeof(float)));
   for (float f : cpu_array) {
@@ -174,7 +174,7 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 
   // Allocate 1024 floats
   float* gpu_array = a.Allocate<float>(cpu_array.size());
-  gpu::DeviceMemory<float> gpu_array_ptr{gpu::DeviceMemoryBase{gpu_array}};
+  se::DeviceMemory<float> gpu_array_ptr{se::DeviceMemoryBase{gpu_array}};
   ASSERT_TRUE(stream_exec->SynchronousMemcpy(&cpu_array[0], gpu_array_ptr,
                                              cpu_array.size() * sizeof(float)));
   for (float f : cpu_array) {

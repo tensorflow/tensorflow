@@ -28,7 +28,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import linalg_ops
 
 
 def conjugate_gradient(operator,
@@ -41,7 +40,7 @@ def conjugate_gradient(operator,
   r"""Conjugate gradient solver.
 
   Solves a linear system of equations `A*x = rhs` for selfadjoint, positive
-  definite matrix `A` and righ-hand side vector `rhs`, using an iterative,
+  definite matrix `A` and right-hand side vector `rhs`, using an iterative,
   matrix-free algorithm where the action of the matrix A is represented by
   `operator`. The iteration terminates when either the number of iterations
   exceeds `max_iter` or when the residual norm has been reduced to `tol`

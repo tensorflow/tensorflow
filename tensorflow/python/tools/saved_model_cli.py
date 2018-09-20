@@ -15,7 +15,7 @@
 """Command-line interface to inspect and execute a graph in a SavedModel.
 
 For detailed usages and examples, please refer to:
-https://www.tensorflow.org/programmers_guide/saved_model_cli
+https://www.tensorflow.org/guide/saved_model_cli
 
 """
 
@@ -33,15 +33,19 @@ import numpy as np
 
 from six import integer_types
 from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
+from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
+
+# Set of ops to blacklist.
+_OP_BLACKLIST = set(['WriteFile', 'ReadFile'])
 
 
 def _show_tag_sets(saved_model_dir):
@@ -92,8 +96,7 @@ def _get_inputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps input tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).inputs
+  return meta_graph_def.signature_def[signature_def_key].inputs
 
 
 def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
@@ -111,8 +114,7 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Returns:
     A dictionary that maps output tensor keys to TensorInfos.
   """
-  return signature_def_utils.get_signature_def_by_key(meta_graph_def,
-                                                      signature_def_key).outputs
+  return meta_graph_def.signature_def[signature_def_key].outputs
 
 
 def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
@@ -135,7 +137,7 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
   outputs_tensor_info = _get_outputs_tensor_info_from_meta_graph_def(
       meta_graph_def, signature_def_key)
 
-  indent_str = "  " * indent
+  indent_str = '  ' * indent
   def in_print(s):
     print(indent_str + s)
 
@@ -161,7 +163,7 @@ def _print_tensor_info(tensor_info, indent=0):
     tensor_info: TensorInfo object to be printed.
     indent: How far (in increments of 2 spaces) to indent each line output
   """
-  indent_str = "  " * indent
+  indent_str = '  ' * indent
   def in_print(s):
     print(indent_str + s)
 
@@ -190,14 +192,14 @@ def _show_all(saved_model_dir):
   """
   tag_sets = reader.get_saved_model_tag_sets(saved_model_dir)
   for tag_set in sorted(tag_sets):
-    tag_set = ', '.join(tag_set)
-    print('\nMetaGraphDef with tag-set: \'' + tag_set +
-          '\' contains the following SignatureDefs:')
+    print("\nMetaGraphDef with tag-set: '%s' "
+          "contains the following SignatureDefs:" % ', '.join(tag_set))
 
+    tag_set = ','.join(tag_set)
     signature_def_map = get_signature_def_map(saved_model_dir, tag_set)
     for signature_def_key in sorted(signature_def_map.keys()):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
-      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, 
+      _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
 
 
@@ -242,9 +244,30 @@ def get_signature_def_map(saved_model_dir, tag_set):
   return meta_graph.signature_def
 
 
+def scan_meta_graph_def(meta_graph_def):
+  """Scans meta_graph_def and reports if there are ops on blacklist.
+
+  Print ops if they are on black list, or print success if no blacklisted ops
+  found.
+
+  Args:
+    meta_graph_def: MetaGraphDef protocol buffer.
+  """
+  all_ops_set = set(
+      meta_graph_lib.ops_used_by_graph_def(meta_graph_def.graph_def))
+  blacklisted_ops = _OP_BLACKLIST & all_ops_set
+  if blacklisted_ops:
+    # TODO(yifeif): print more warnings
+    print('MetaGraph with tag set %s contains the following blacklisted ops:' %
+          meta_graph_def.meta_info_def.tags, blacklisted_ops)
+  else:
+    print('MetaGraph with tag set %s does not contain blacklisted ops.' %
+          meta_graph_def.meta_info_def.tags)
+
+
 def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
                                    input_tensor_key_feed_dict, outdir,
-                                   overwrite_flag, tf_debug=False):
+                                   overwrite_flag, worker=None, tf_debug=False):
   """Runs SavedModel and fetch all outputs.
 
   Runs the input dictionary through the MetaGraphDef within a SavedModel
@@ -262,6 +285,8 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
         it will be created.
     overwrite_flag: A boolean flag to allow overwrite output file if file with
         the same name exists.
+    worker: If provided, the session will be run on the worker.  Valid worker
+        specification is a bns or gRPC path.
     tf_debug: A boolean flag to use TensorFlow Debugger (TFDBG) to observe the
         intermediate Tensor values and runtime GraphDefs while running the
         SavedModel.
@@ -282,7 +307,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
 
   # Check if input tensor keys are valid.
   for input_key_name in input_tensor_key_feed_dict.keys():
-    if input_key_name not in inputs_tensor_info.keys():
+    if input_key_name not in inputs_tensor_info:
       raise ValueError(
           '"%s" is not a valid input key. Please choose from %s, or use '
           '--show option.' %
@@ -302,7 +327,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
       for tensor_key in output_tensor_keys_sorted
   ]
 
-  with session.Session(graph=ops_lib.Graph()) as sess:
+  with session.Session(worker, graph=ops_lib.Graph()) as sess:
     loader.load(sess, tag_set.split(','), saved_model_dir)
 
     if tf_debug:
@@ -518,7 +543,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(filename)
+    data = np.load(file_io.FileIO(filename, mode='rb'))
 
     # When a variable_name key is specified for the input file
     if variable_name:
@@ -606,7 +631,23 @@ def run(args):
       args.inputs, args.input_exprs, args.input_examples)
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
-                                 args.overwrite, tf_debug=args.tf_debug)
+                                 args.overwrite, worker=args.worker,
+                                 tf_debug=args.tf_debug)
+
+
+def scan(args):
+  """Function triggered by scan command.
+
+  Args:
+    args: A namespace parsed from command line.
+  """
+  if args.tag_set:
+    scan_meta_graph_def(
+        saved_model_utils.get_meta_graph_def(args.dir, args.tag_set))
+  else:
+    saved_model = reader.read_saved_model(args.dir)
+    for meta_graph_def in saved_model.meta_graphs:
+      scan_meta_graph_def(meta_graph_def)
 
 
 def create_parser():
@@ -679,7 +720,7 @@ def create_parser():
              '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' \\\n'
              '   --outdir=/out\n\n'
              'For more information about input file format, please see:\n'
-             'https://www.tensorflow.org/programmers_guide/saved_model_cli\n')
+             'https://www.tensorflow.org/guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
       'run', description=run_msg, formatter_class=argparse.RawTextHelpFormatter)
   parser_run.add_argument(
@@ -728,7 +769,33 @@ def create_parser():
       help='if set, will use TensorFlow Debugger (tfdbg) to watch the '
            'intermediate Tensors and runtime GraphDefs while running the '
            'SavedModel.')
+  parser_run.add_argument(
+      '--worker',
+      type=str,
+      default=None,
+      help='if specified, a Session will be run on the worker. '
+           'Valid worker specification is a bns or gRPC path.')
   parser_run.set_defaults(func=run)
+
+  # scan command
+  scan_msg = ('Usage example:\n'
+              'To scan for blacklisted ops in SavedModel:\n'
+              '$saved_model_cli scan --dir /tmp/saved_model\n'
+              'To scan a specific MetaGraph, pass in --tag_set\n')
+  parser_scan = subparsers.add_parser(
+      'scan',
+      description=scan_msg,
+      formatter_class=argparse.RawTextHelpFormatter)
+  parser_scan.add_argument(
+      '--dir',
+      type=str,
+      required=True,
+      help='directory containing the SavedModel to execute')
+  parser_scan.add_argument(
+      '--tag_set',
+      type=str,
+      help='tag-set of graph in SavedModel to scan, separated by \',\'')
+  parser_scan.set_defaults(func=scan)
 
   return parser
 

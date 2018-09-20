@@ -20,16 +20,16 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class GatherNdTest(XLATestCase):
+class GatherNdTest(xla_test.XLATestCase):
 
   def _runGather(self, params, indices):
-    with self.test_session():
+    with self.cached_session():
       paramsp = array_ops.placeholder(params.dtype)
       indicesp = array_ops.placeholder(indices.dtype)
       with self.test_scope():
@@ -46,7 +46,7 @@ class GatherNdTest(XLATestCase):
               np.array([[4], [4], [0]], np.int32)))
 
   def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):
-    with self.test_session():
+    with self.cached_session():
       params = np.ones((3, 3), dtype=np.float32)
 
       indices_empty = np.empty((0, 2), dtype=np.int32)

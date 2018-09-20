@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 
-#include "grpc++/grpc++.h"
-#include "grpc++/impl/codegen/service_type.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/server_builder.h"
 
 namespace tensorflow {
 

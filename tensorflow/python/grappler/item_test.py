@@ -111,7 +111,7 @@ class ItemTest(test.TestCase):
     with ops.Graph().as_default() as g:
       c = constant_op.constant([10])
       v = variables.Variable([3], dtype=dtypes.int32)
-      i = gen_array_ops._ref_identity(v)
+      i = gen_array_ops.ref_identity(v)
       a = state_ops.assign(i, c)
       train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
       train_op.append(a)

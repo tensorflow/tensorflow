@@ -1,0 +1,113 @@
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+
+#include "tensorflow/core/platform/logging.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "cuda/include/cuda_runtime_api.h"
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
+
+namespace tensorflow {
+namespace tensorrt {
+
+// std::align is not supported, so this method mimic its behavior.
+void* Align(size_t alignment, size_t size, void*& ptr, size_t& space) {
+  QCHECK_GT(alignment, 0) << "alignment must be greater than 0.";
+  QCHECK_EQ(0, alignment & (alignment - 1)) << "Alignment must be power of 2.";
+  QCHECK_GT(size, 0) << "size must be greater than 0.";
+  QCHECK(ptr) << "ptr must not be nullptr.";
+  QCHECK_GT(space, 0) << "space must be greater than 0.";
+  const uintptr_t ptr_val = reinterpret_cast<uintptr_t>(ptr);
+  QCHECK_GE(ptr_val + space, ptr_val) << "Provided space overflows.";
+
+  if (size > space) return nullptr;
+  const uintptr_t aligned_ptr_val = ((ptr_val + alignment - 1) & -alignment);
+  if (aligned_ptr_val > ptr_val + space - size) return nullptr;
+  ptr = reinterpret_cast<void*>(aligned_ptr_val);
+  const uintptr_t diff = aligned_ptr_val - ptr_val;
+  space -= diff;
+  return ptr;
+}
+
+}  // namespace tensorrt
+}  // namespace tensorflow
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#if NV_TENSORRT_MAJOR > 2
+
+namespace tensorflow {
+namespace tensorrt {
+
+void* TRTCudaAllocator::allocate(uint64_t size, uint64_t alignment,
+                                 uint32_t flags) {
+  assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.
+  void* memory;
+  cudaMalloc(&memory, size);
+  return memory;
+}
+
+void TRTCudaAllocator::free(void* memory) { cudaFree(memory); }
+
+void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
+                                   uint32_t flags) {
+  // WAR for allocator alignment requirement. Certain cuda API calls require GPU
+  // memory with alignemtn to cudaDeviceProp::textureAlignment.
+  // See issue #20856
+  alignment = 512;
+  assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.
+  size_t total_size = size + alignment;
+  void* mem = allocator_->AllocateRaw(alignment, total_size);
+  if (!mem) return nullptr;
+
+  void* alloc_mem = mem;
+  QCHECK(Align(alignment, size, mem, total_size));
+  if (mem != alloc_mem) {
+    QCHECK(mem_map_.insert({mem, alloc_mem}).second);
+  }
+  VLOG(2) << "Allocated " << total_size << " bytes memory @" << alloc_mem
+          << "; aligned to " << size << " bytes @" << mem << " with alignment "
+          << alignment;
+  return mem;
+}
+
+TRTDeviceAllocator::TRTDeviceAllocator(tensorflow::Allocator* allocator)
+    : allocator_(allocator) {
+  VLOG(1) << "Using " << allocator->Name() << " allocator from TensorFlow";
+}
+
+void TRTDeviceAllocator::free(void* memory) {
+  VLOG(2) << "Deallocating @ " << memory;
+  // allocated memory adjusted for alignment, restore the original pointer
+  if (memory) {
+    auto alloc_mem = mem_map_.find(memory);
+    if (alloc_mem != mem_map_.end()) {
+      memory = alloc_mem->second;
+      mem_map_.erase(alloc_mem->first);
+    }
+    allocator_->DeallocateRaw(memory);
+  }
+}
+
+}  // namespace tensorrt
+}  // namespace tensorflow
+
+#endif
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/master.pb.h"
 
 namespace grpc {
 class ServerBuilder;
@@ -28,9 +29,9 @@ namespace tensorflow {
 class AsyncServiceInterface;
 class Master;
 
-AsyncServiceInterface* NewGrpcMasterService(Master* master,
-                                            int64 default_timeout_in_ms,
-                                            ::grpc::ServerBuilder* builder);
+AsyncServiceInterface* NewGrpcMasterService(
+    Master* master, const ConfigProto& default_session_config,
+    ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow
 

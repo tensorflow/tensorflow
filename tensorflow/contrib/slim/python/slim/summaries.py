@@ -144,7 +144,7 @@ def add_zero_fraction_summary(tensor, name=None, prefix=None,
     A scalar `Tensor` of type `string` whose contents are the serialized
     `Summary` protocol buffer.
   """
-  name = _get_summary_name(tensor, name, prefix, 'Fraction of Zero Values')
+  name = _get_summary_name(tensor, name, prefix, 'Fraction_of_Zero_Values')
   tensor = nn.zero_fraction(tensor)
   return add_scalar_summary(tensor, name, print_summary=print_summary)
 

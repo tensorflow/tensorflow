@@ -34,29 +34,29 @@ class RelaxedBernoulliTest(test.TestCase):
     temperature = 1.0
     p = [0.1, 0.4]
     dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(p, dist.probs.eval())
 
   def testLogits(self):
     temperature = 2.0
     logits = [-42., 42.]
     dist = relaxed_bernoulli.RelaxedBernoulli(temperature, logits=logits)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(logits, dist.logits.eval())
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(scipy.special.expit(logits), dist.probs.eval())
 
     p = [0.01, 0.99, 0.42]
     dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(scipy.special.logit(p), dist.logits.eval())
 
   def testInvalidP(self):
     temperature = 1.0
     invalid_ps = [1.01, 2.]
     for p in invalid_ps:
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError("probs has components greater than 1"):
           dist = relaxed_bernoulli.RelaxedBernoulli(temperature,
                                                     probs=p,
@@ -65,7 +65,7 @@ class RelaxedBernoulliTest(test.TestCase):
 
     invalid_ps = [-0.01, -3.]
     for p in invalid_ps:
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError("Condition x >= 0"):
           dist = relaxed_bernoulli.RelaxedBernoulli(temperature,
                                                     probs=p,
@@ -74,13 +74,13 @@ class RelaxedBernoulliTest(test.TestCase):
 
     valid_ps = [0.0, 0.5, 1.0]
     for p in valid_ps:
-      with self.test_session():
+      with self.cached_session():
         dist = relaxed_bernoulli.RelaxedBernoulli(temperature,
                                                   probs=p)
         self.assertEqual(p, dist.probs.eval())
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         temperature = 1.0
         p = np.random.random(batch_shape).astype(np.float32)
@@ -96,7 +96,7 @@ class RelaxedBernoulliTest(test.TestCase):
     p = constant_op.constant([0.1, 0.4])
     dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p,
                                               validate_args=True)
-    with self.test_session():
+    with self.cached_session():
       sample = dist.sample()
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sample.eval()
@@ -117,7 +117,7 @@ class RelaxedBernoulliTest(test.TestCase):
     self.assertEqual(dist64.dtype, dist64.sample(5).dtype)
 
   def testLogProb(self):
-    with self.test_session():
+    with self.cached_session():
       t = np.array(1.0, dtype=np.float64)
       p = np.array(0.1, dtype=np.float64)  # P(x=1)
       dist = relaxed_bernoulli.RelaxedBernoulli(t, probs=p)
@@ -131,7 +131,7 @@ class RelaxedBernoulliTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, log_pdf)
 
   def testBoundaryConditions(self):
-    with self.test_session():
+    with self.cached_session():
       temperature = 1e-2
       dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=1.0)
       self.assertAllClose(np.nan, dist.log_prob(0.0).eval())
@@ -139,7 +139,7 @@ class RelaxedBernoulliTest(test.TestCase):
 
   def testSampleN(self):
     """mean of quantized samples still approximates the Bernoulli mean."""
-    with self.test_session():
+    with self.cached_session():
       temperature = 1e-2
       p = [0.2, 0.6, 0.5]
       dist = relaxed_bernoulli.RelaxedBernoulli(temperature, probs=p)

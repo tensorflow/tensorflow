@@ -33,17 +33,37 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   if (conv_op->stride_width != conv_op->stride_height) {
     return false;
   }
-  auto& weights_array = model->GetArray(conv_op->inputs[1]);
+  if ((conv_op->dilation_width_factor != 1) ||
+      (conv_op->dilation_height_factor != 1)) {
+    // Depthwise conv does not support dilation
+    return false;
+  }
+  auto& input_array = model->GetArray(conv_op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // Shapes not propagated yet
+    return false;
+  }
+  if (input_array.shape().dims(3) != 1) {
+    // Not a pure convolution: Conv does accumulation across the depth
+    // dimension.
+    return false;
+  }
+
+  const auto& weights_name = conv_op->inputs[1];
+  if (CountOpsWithInput(*model, weights_name) > 1) {
+    // TODO(yunluli): Come up with a way to do the weights shuffling only once.
+    AddMessageF(
+        "Not changing %s to DepthwiseConv because the weights is consumed by "
+        "another op.",
+        LogName(*conv_op));
+    return false;
+  }
+  auto& weights_array = model->GetArray(weights_name);
   if (!weights_array.buffer) {
     // Yield until the weights are resolved as a constant array.
     return false;
   }
   if (weights_array.data_type != ArrayDataType::kFloat) {
-    return false;
-  }
-  if (weights_array.shape().dims(3) != 1) {
-    // Not a pure convolution: Conv does accumulation across the depth
-    // dimension.
     return false;
   }
   // At this point we know we have a pure conv. Rewrite it as DepthwiseConv.

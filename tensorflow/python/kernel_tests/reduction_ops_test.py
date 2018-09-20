@@ -61,7 +61,7 @@ class ReducedShapeTest(test.TestCase):
     self.assertAllEqual(output.eval(), result)
 
   def testSimple(self):
-    with self.test_session():
+    with self.cached_session():
       self._check([3], [], [3])
       self._check([3], [0], [1])
       self._check([5, 3], [], [5, 3])
@@ -71,7 +71,7 @@ class ReducedShapeTest(test.TestCase):
 
   def testZeros(self):
     """Check that reduced_shape does the right thing with zero dimensions."""
-    with self.test_session():
+    with self.cached_session():
       self._check([0], [], [0])
       self._check([0], [0], [1])
       self._check([0, 3], [], [0, 3])
@@ -84,7 +84,7 @@ class ReducedShapeTest(test.TestCase):
       self._check([3, 0], [0, 1], [1, 1])
 
   def testNegAxes(self):
-    with self.test_session():
+    with self.cached_session():
       self._check([10, 10, 10], [-1], [10, 10, 1])
       self._check([10, 10, 10], [-1, 2], [10, 10, 1])
       self._check([10, 10, 10], [-1, -1], [10, 10, 1])
@@ -95,7 +95,7 @@ class ReducedShapeTest(test.TestCase):
 class ReductionUnknownShape(test.TestCase):
 
   def testBasic(self):
-    with self.test_session():
+    with self.cached_session():
       for dtype, reductions in [(dtypes.float32,
                                  (math_ops.reduce_sum, math_ops.reduce_mean,
                                   math_ops.reduce_prod, math_ops.reduce_max,
@@ -617,7 +617,7 @@ class MinReductionTest(test.TestCase):
   def testGradient(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_min(t, [1, 2])
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -627,7 +627,7 @@ class MinReductionTest(test.TestCase):
   def testGradient2(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_min(t, [1])
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -637,7 +637,7 @@ class MinReductionTest(test.TestCase):
   def testGradient3(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_min(t, [2])
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -647,7 +647,7 @@ class MinReductionTest(test.TestCase):
   def testGradient4(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_min(t)
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -655,7 +655,7 @@ class MinReductionTest(test.TestCase):
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testEmptyGradients(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.zeros([0, 3])
       y = math_ops.reduce_min(x, [1])
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
@@ -744,7 +744,7 @@ class MaxReductionTest(test.TestCase):
   def testGradient(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_max(t, [1, 2])
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -754,7 +754,7 @@ class MaxReductionTest(test.TestCase):
   def testGradient2(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_max(t, [1])
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -764,7 +764,7 @@ class MaxReductionTest(test.TestCase):
   def testGradient3(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_max(t, [2])
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -774,7 +774,7 @@ class MaxReductionTest(test.TestCase):
   def testGradient4(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       t = ops.convert_to_tensor(x)
       su = math_ops.reduce_max(t)
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -782,7 +782,7 @@ class MaxReductionTest(test.TestCase):
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
   def testEmptyGradients(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.zeros([0, 3])
       y = math_ops.reduce_max(x, [1])
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
@@ -889,9 +889,9 @@ class AnyReductionTest(test.TestCase):
 
 class CountNonzeroReductionTest(test.TestCase):
 
-  def _compare(self, x, reduction_axes, keepdims, use_gpu=False,
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False, zero=0,
                feed_dict=None):
-    np_ans = (x != 0).astype(np.int32)
+    np_ans = (x != zero).astype(np.int32)
     if reduction_axes is None:
       np_ans = np.sum(np_ans, keepdims=keepdims)
     else:
@@ -957,6 +957,37 @@ class CountNonzeroReductionTest(test.TestCase):
           x = array_ops.zeros((0, 9938), dtype=dtype)
           y = math_ops.count_nonzero(x, [0])
           self.assertAllEqual(y.eval(), np.zeros(9938))
+
+  def testStringReduce(self):
+    # Test case for GitHub issue 18712
+    with self.cached_session() as sess:
+      v = math_ops.count_nonzero(constant_op.constant(["test"]))
+      self.assertAllClose(sess.run(v), 1)
+
+  def testStringReduce1D(self):
+    # Create a 1D array of strings
+    x = np.asarray(["", "", "a", "", "", "b"])
+    self._compare(x, None, keepdims=False, zero=np.str(""))
+    self._compare(x, [], keepdims=False, zero=np.str(""))
+    self._compare(x, [0], keepdims=False, zero=np.str(""))
+    self._compare(x, None, keepdims=True, zero=np.str(""))
+    self._compare(x, [], keepdims=True, zero=np.str(""))
+    self._compare(x, [0], keepdims=True, zero=np.str(""))
+
+  def testStringReduce2D(self):
+    # Create a 2D array of strings
+    x = np.asarray([["", "", "a", "", "", "b"],
+                    ["", "c", "", "d", "", ""],
+                    ["e", "", "f", "", "", ""]])
+    self._compare(x, None, keepdims=False, zero=np.str(""))
+    self._compare(x, [], keepdims=False, zero=np.str(""))
+    self._compare(x, [0], keepdims=False, zero=np.str(""))
+    self._compare(x, [1], keepdims=False, zero=np.str(""))
+    self._compare(x, [0, 1], keepdims=False, zero=np.str(""))
+    self._compare(x, None, keepdims=True, zero=np.str(""))
+    self._compare(x, [], keepdims=True, zero=np.str(""))
+    self._compare(x, [0], keepdims=True, zero=np.str(""))
+    self._compare(x, [0, 1], keepdims=True, zero=np.str(""))
 
 
 if __name__ == "__main__":

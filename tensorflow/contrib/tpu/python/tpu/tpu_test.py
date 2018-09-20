@@ -26,6 +26,7 @@ from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 
@@ -37,7 +38,8 @@ class TPUContextTest(test.TestCase):
   def testIsInContext(self):
     """Test that control_flow_util can check that we're in a TPU context."""
     z1 = array_ops.identity(1)
-    context = tpu.TPUReplicateContext(b"context")
+    pivot = control_flow_ops.no_op()
+    context = tpu.TPUReplicateContext(b"context", 1, pivot=pivot)
     context.Enter()
     z2 = array_ops.identity(1)
     context.Exit()

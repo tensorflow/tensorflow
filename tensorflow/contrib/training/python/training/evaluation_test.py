@@ -27,7 +27,6 @@ import numpy as np
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.losses.python.losses import loss_ops
-from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.contrib.training.python.training import evaluation
 from tensorflow.contrib.training.python.training import training
 from tensorflow.core.protobuf import config_pb2
@@ -38,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
@@ -67,7 +67,7 @@ class CheckpointIteratorTest(test.TestCase):
     global_step = variables.get_or_create_global_step()
     saver = saver_lib.Saver()  # Saves the global step.
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       session.run(variables_lib.global_variables_initializer())
       save_path = os.path.join(checkpoint_dir, 'model.ckpt')
       saver.save(session, save_path, global_step=global_step)
@@ -196,7 +196,8 @@ class EvaluateOnceTest(test.TestCase):
     logits = logistic_classifier(inputs)
     predictions = math_ops.round(logits)
 
-    accuracy, update_op = metric_ops.streaming_accuracy(predictions, labels)
+    accuracy, update_op = metrics.accuracy(
+        predictions=predictions, labels=labels)
 
     checkpoint_path = evaluation.wait_for_new_checkpoint(checkpoint_dir)
 
@@ -311,7 +312,8 @@ class EvaluateRepeatedlyTest(test.TestCase):
     logits = logistic_classifier(inputs)
     predictions = math_ops.round(logits)
 
-    accuracy, update_op = metric_ops.streaming_accuracy(predictions, labels)
+    accuracy, update_op = metrics.accuracy(
+        predictions=predictions, labels=labels)
 
     final_values = evaluation.evaluate_repeatedly(
         checkpoint_dir=checkpoint_dir,
@@ -365,7 +367,8 @@ class EvaluateRepeatedlyTest(test.TestCase):
     logits = logistic_classifier(inputs)
     predictions = math_ops.round(logits)
 
-    accuracy, update_op = metric_ops.streaming_accuracy(predictions, labels)
+    accuracy, update_op = metrics.accuracy(
+        predictions=predictions, labels=labels)
 
     timeout_fn_calls = [0]
     def timeout_fn():
@@ -417,16 +420,17 @@ class EvaluateRepeatedlyTest(test.TestCase):
     self.assertEqual(final_values['my_var'], expected_value)
 
   def _create_names_to_metrics(self, predictions, labels):
-    accuracy0, update_op0 = metric_ops.streaming_accuracy(predictions, labels)
-    accuracy1, update_op1 = metric_ops.streaming_accuracy(
-        predictions + 1, labels)
+    accuracy0, update_op0 = metrics.accuracy(labels, predictions)
+    accuracy1, update_op1 = metrics.accuracy(labels, predictions + 1)
 
     names_to_values = {'Accuracy': accuracy0, 'Another_accuracy': accuracy1}
     names_to_updates = {'Accuracy': update_op0, 'Another_accuracy': update_op1}
     return names_to_values, names_to_updates
 
-  def _verify_summaries(self, output_dir, names_to_values):
+  def _verify_events(self, output_dir, names_to_values):
     """Verifies that the given `names_to_values` are found in the summaries.
+
+    Also checks that a GraphDef was written out to the events file.
 
     Args:
       output_dir: An existing directory where summaries are found.
@@ -438,7 +442,13 @@ class EvaluateRepeatedlyTest(test.TestCase):
     self.assertEqual(len(output_filepath), 1)
 
     events = summary_iterator.summary_iterator(output_filepath[0])
-    summaries = [e.summary for e in events if e.summary.value]
+    summaries = []
+    graph_def = None
+    for event in events:
+      if event.summary.value:
+        summaries.append(event.summary)
+      elif event.graph_def:
+        graph_def = event.graph_def
     values = []
     for summary in summaries:
       for value in summary.value:
@@ -446,6 +456,7 @@ class EvaluateRepeatedlyTest(test.TestCase):
     saved_results = {v.tag: v.simple_value for v in values}
     for name in names_to_values:
       self.assertAlmostEqual(names_to_values[name], saved_results[name], 5)
+    self.assertIsNotNone(graph_def)
 
   def testSummariesAreFlushedToDisk(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'summaries_are_flushed')
@@ -473,7 +484,23 @@ class EvaluateRepeatedlyTest(test.TestCase):
         ],
         max_number_of_evaluations=1)
 
-    self._verify_summaries(logdir, names_to_values)
+    self._verify_events(logdir, names_to_values)
+
+  def testSummaryAtEndHookWithoutSummaries(self):
+    logdir = os.path.join(self.get_temp_dir(),
+                          'summary_at_end_hook_without_summaires')
+    if gfile.Exists(logdir):
+      gfile.DeleteRecursively(logdir)
+
+    with ops.Graph().as_default():
+      # Purposefully don't add any summaries. The hook will just dump the
+      # GraphDef event.
+      hook = evaluation.SummaryAtEndHook(log_dir=logdir)
+      hook.begin()
+      with self.cached_session() as session:
+        hook.after_create_session(session, None)
+        hook.end(session)
+    self._verify_events(logdir, {})
 
 
 if __name__ == '__main__':

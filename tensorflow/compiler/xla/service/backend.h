@@ -21,15 +21,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -44,8 +44,8 @@ namespace xla {
 class BackendOptions {
  public:
   // Set the platform backing the backend, or nullptr for the default platform.
-  BackendOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
+  BackendOptions& set_platform(se::Platform* platform);
+  se::Platform* platform() const;
 
   // Sets the thread pool size for parallel execution of an individual operator.
   // The default value of -1 will result in initializing the thread pool with
@@ -54,7 +54,7 @@ class BackendOptions {
   int intra_op_parallelism_threads() const;
 
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
+  se::Platform* platform_ = nullptr;
   int intra_op_parallelism_threads_ = -1;
 };
 
@@ -63,11 +63,9 @@ class BackendOptions {
 //
 // It also offers a pooling API for creation/use of initialized streams:
 //
-//    StreamPtr stream = backend->BorrowStream().ConsumeValueOrDie();
+//    StreamPool::Ptr stream = backend->BorrowStream().ConsumeValueOrDie();
 class Backend {
  public:
-  using StreamPtr = Pool<perftools::gputools::Stream>::SmartPtr;
-
   // Creates a new backend.
   static StatusOr<std::unique_ptr<Backend>> CreateBackend(
       const BackendOptions& options);
@@ -79,7 +77,7 @@ class Backend {
   ~Backend();
 
   // Accessors for the various objects.
-  perftools::gputools::Platform* platform() const { return platform_; }
+  se::Platform* platform() const { return platform_; }
   Compiler* compiler() const { return compiler_; }
   DeviceMemoryAllocator* memory_allocator() const {
     return memory_allocator_.get();
@@ -96,19 +94,17 @@ class Backend {
 
   // Returns stream executors of all supported devices for this backend. The
   // executors are ordered by the device ordinal.
-  const std::vector<perftools::gputools::StreamExecutor*>& stream_executors()
-      const {
+  const std::vector<se::StreamExecutor*>& stream_executors() const {
     return stream_executors_;
   }
 
   // Returns the stream executor for the given device ordinal.
-  StatusOr<perftools::gputools::StreamExecutor*> stream_executor(
-      int device_ordinal) const;
+  StatusOr<se::StreamExecutor*> stream_executor(int device_ordinal) const;
 
   // Returns the stream executor for the default device ordinal. This stream
   // executor can only be used when the number of computations is 1 (replication
   // can be > 1).
-  perftools::gputools::StreamExecutor* default_stream_executor() const {
+  se::StreamExecutor* default_stream_executor() const {
     CHECK(!stream_executors_.empty());
     return stream_executors_[0];
   }
@@ -116,14 +112,13 @@ class Backend {
   // Borrows a stream for use by the caller, either by grabbing it from an
   // internal pool, or by constructing/initializating it, and returns the result
   // to the caller.
-  StatusOr<StreamPtr> BorrowStream(int device_ordinal);
-  StatusOr<StreamPtr> BorrowStream(
-      perftools::gputools::StreamExecutor* executor);
+  StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal);
+  StatusOr<StreamPool::Ptr> BorrowStream(se::StreamExecutor* executor);
 
   // Returns a function to borrow a stream, as `BorrowStream` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<StreamPtr>(int)> StreamBorrower() {
+  std::function<StatusOr<StreamPool::Ptr>(int)> StreamBorrower() {
     return [this](int device_ordinal) { return BorrowStream(device_ordinal); };
   }
 
@@ -135,17 +130,13 @@ class Backend {
 
   // Return a string identifier for the given device, eg: "GPU:3".
   string device_name(int device_ordinal) const {
-    return tensorflow::strings::StrCat(platform_->Name(), ":", device_ordinal);
+    return absl::StrCat(platform_->Name(), ":", device_ordinal);
   }
 
   // Returns true if the devices with the given ordinals are equivalent from
   // XLA's perspective. That is, an executable compiled for one device would
   // be equivalent to an executable compiled for the other.
   StatusOr<bool> devices_equivalent(int device_ordinal_a, int device_ordinal_b);
-
-  // For the host platform, returns the threadpool to use when scheduling
-  // parallel operators. For other platforms, returns NULL.
-  tensorflow::thread::ThreadPool* inter_op_thread_pool() const;
 
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
@@ -157,35 +148,29 @@ class Backend {
 
  private:
   struct EigenThreadPoolWrapper;
-  Backend(perftools::gputools::Platform* platform, Compiler* compiler,
-          tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
-              stream_executors,
+  Backend(se::Platform* platform, Compiler* compiler,
+          absl::Span<se::StreamExecutor* const> stream_executors,
           TransferManager* transfer_manager,
           ComputationPlacer* computation_placer,
           int intra_op_parallelism_threads);
   Backend(const Backend&) = delete;
   Backend& operator=(const Backend&) = delete;
 
-  perftools::gputools::Platform* platform_;
+  se::Platform* platform_;
   Compiler* compiler_;
   TransferManager* transfer_manager_;
   ComputationPlacer* computation_placer_;
 
   // Vector of stream executors. stream_executors_[0] is the default executor.
-  std::vector<perftools::gputools::StreamExecutor*> stream_executors_;
+  std::vector<se::StreamExecutor*> stream_executors_;
 
   tensorflow::mutex mu_;
 
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
-  std::map<perftools::gputools::StreamExecutor*,
-           Pool<perftools::gputools::Stream>>
-      stream_pools_ GUARDED_BY(mu_);
+  std::map<se::StreamExecutor*, StreamPool> stream_pools_ GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;
-
-  // For the CPU backend, a threadpool for scheduling parallel operators.
-  std::unique_ptr<tensorflow::thread::ThreadPool> inter_op_thread_pool_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
   std::unique_ptr<EigenThreadPoolWrapper> intra_op_thread_pool_wrapper_;

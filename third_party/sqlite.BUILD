@@ -4,7 +4,7 @@
 licenses(["unencumbered"])  # Public Domain
 
 SQLITE_COPTS = [
-    "-Os",
+    "-DSQLITE_ENABLE_JSON1",
     "-DHAVE_DECL_STRERROR_R=1",
     "-DHAVE_STDINT_H=1",
     "-DHAVE_INTTYPES_H=1",
@@ -14,15 +14,14 @@ SQLITE_COPTS = [
     "@org_tensorflow//tensorflow:windows": [
         "-DSQLITE_MAX_TRIGGER_DEPTH=100",
     ],
-    "@org_tensorflow//tensorflow:windows_msvc": [
-        "-DSQLITE_MAX_TRIGGER_DEPTH=100",
-    ],
     "@org_tensorflow//tensorflow:darwin": [
+        "-Os",
         "-DHAVE_GMTIME_R=1",
         "-DHAVE_LOCALTIME_R=1",
         "-DHAVE_USLEEP=1",
     ],
     "//conditions:default": [
+        "-Os",
         "-DHAVE_FDATASYNC=1",
         "-DHAVE_GMTIME_R=1",
         "-DHAVE_LOCALTIME_R=1",
@@ -47,7 +46,7 @@ cc_library(
         "SQLITE_OMIT_DEPRECATED",
     ],
     linkopts = select({
-        "@org_tensorflow//tensorflow:windows_msvc": [],
+        "@org_tensorflow//tensorflow:windows": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",

@@ -35,7 +35,11 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # Assert and Print are special symbols in python, so we must
-# use an upper-case version of them.
+# have an upper-case version of them.
+#
+# For users with Python 3 or Python 2.7
+# with `from __future__ import print_function`, we could also allow lowercase.
+# See https://github.com/tensorflow/tensorflow/issues/18053
 @tf_export("Print")
 def Print(input_, data, message=None, first_n=None, summarize=None,
           name=None):
@@ -109,7 +113,7 @@ def histogram_summary(tag, values, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "HistogramSummary", [tag, values]) as scope:
-    val = gen_logging_ops._histogram_summary(
+    val = gen_logging_ops.histogram_summary(
         tag=tag, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
@@ -346,7 +350,7 @@ def scalar_summary(tags, values, collections=None, name=None):
     buffer.
   """
   with ops.name_scope(name, "ScalarSummary", [tags, values]) as scope:
-    val = gen_logging_ops._scalar_summary(tags=tags, values=values, name=scope)
+    val = gen_logging_ops.scalar_summary(tags=tags, values=values, name=scope)
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 

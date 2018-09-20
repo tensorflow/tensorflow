@@ -20,18 +20,9 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/subprocess.h"
 
 namespace tensorflow {
 namespace testing {
-
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
-  std::unique_ptr<SubProcess> proc(new SubProcess());
-  proc->SetProgram(argv[0], argv);
-  proc->SetChannelAction(CHAN_STDERR, ACTION_DUPPARENT);
-  proc->SetChannelAction(CHAN_STDOUT, ACTION_DUPPARENT);
-  return proc;
-}
 
 int PickUnusedPortOrDie() { return internal::PickUnusedPortOrDie(); }
 

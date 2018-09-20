@@ -210,7 +210,7 @@ class GMMTestQueues(test.TestCase):
     return _fn
 
   # This test makes sure that there are no deadlocks when using a QueueRunner.
-  # Note that since cluster initialization is dependendent on inputs, if input
+  # Note that since cluster initialization is dependent on inputs, if input
   # is generated using a QueueRunner, one has to make sure that these runners
   # are started before the initialization.
   def test_queues(self):

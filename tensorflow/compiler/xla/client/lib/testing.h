@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -34,9 +34,9 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
 
 // Returns vector of GlobalData handles of fake data (created using
 // MakeFakeDataOrDie) that are correctly shaped arguments for the given
-// computation.
+// xla computation.
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const Computation& computation, Client* client);
+    const XlaComputation& computation, Client* client);
 
 }  // namespace xla
 

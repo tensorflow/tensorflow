@@ -56,6 +56,7 @@ tf_py_test(
     srcs = ["input_data_test.py"],
     additional_deps = [
         ":input_data",
+        ":models",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -244,16 +245,4 @@ tf_cc_binary(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

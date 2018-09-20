@@ -60,27 +60,26 @@ bool IdentifyRelu1::Run(Model* model, std::size_t op_index) {
   // Follow sequences of min+max and max+min. First get the leading op.
   const auto op_it = model->operators.begin() + op_index;
   const auto* op_0 = op_it->get();
-  if (op_0->type != OperatorType::kTensorFlowMinimum &&
-      op_0->type != OperatorType::kTensorFlowMaximum) {
+  if (op_0->type != OperatorType::kMinimum &&
+      op_0->type != OperatorType::kMaximum) {
     return false;
   }
 
   // Get the paired op and ensure it's the counter to the first.
   const auto* op_1 = GetOpWithInput(*model, op_0->outputs[0]);
   if (!op_1 ||
-      (op_1->type != OperatorType::kTensorFlowMinimum &&
-       op_1->type != OperatorType::kTensorFlowMaximum) ||
+      (op_1->type != OperatorType::kMinimum &&
+       op_1->type != OperatorType::kMaximum) ||
       op_0->type == op_1->type) {
     return false;
   }
 
-  const auto* min_op =
-      op_0->type == OperatorType::kTensorFlowMinimum ? op_0 : op_1;
-  const auto* max_op =
-      op_0->type == OperatorType::kTensorFlowMaximum ? op_0 : op_1;
+  const auto* min_op = op_0->type == OperatorType::kMinimum ? op_0 : op_1;
+  const auto* max_op = op_0->type == OperatorType::kMaximum ? op_0 : op_1;
 
-  CHECK_EQ(min_op->inputs.size(), 2);
-  CHECK_EQ(max_op->inputs.size(), 2);
+  if (min_op->inputs.size() != 2 || max_op->inputs.size() != 2) {
+    return false;
+  }
   if (min_op->outputs.size() != 1 || max_op->outputs.size() != 1) {
     return false;
   }

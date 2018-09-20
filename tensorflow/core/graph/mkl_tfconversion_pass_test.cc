@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_graph_util.h"
 
 #include <algorithm>
-#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/op.h"

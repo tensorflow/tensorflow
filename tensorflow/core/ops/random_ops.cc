@@ -43,7 +43,12 @@ REGISTER_OP("RandomUniformInt")
     .Attr("seed2: int = 0")
     .Attr("Tout: {int32, int64}")
     .Attr("T: {int32, int64}")
-    .SetShapeFn(shape_inference::RandomShape);
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::RandomShape(c);
+    });
 
 REGISTER_OP("RandomStandardNormal")
     .Input("shape: T")
@@ -67,7 +72,15 @@ REGISTER_OP("ParameterizedTruncatedNormal")
     .Attr("seed2: int = 0")
     .Attr("dtype: {half,bfloat16,float,double}")
     .Attr("T: {int32, int64}")
-    .SetShapeFn(shape_inference::RandomShape);
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      // Parameters must be 0-d or 1-d.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(3), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &unused));
+      return shape_inference::RandomShape(c);
+    });
 
 REGISTER_OP("TruncatedNormal")
     .Input("shape: T")
@@ -124,6 +137,13 @@ REGISTER_OP("RandomGamma")
       c->set_output(0, out);
       return Status::OK();
     });
+
+REGISTER_OP("RandomGammaGrad")
+    .Input("alpha: T")
+    .Input("sample: T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("RandomPoisson")
     .SetIsStateful()

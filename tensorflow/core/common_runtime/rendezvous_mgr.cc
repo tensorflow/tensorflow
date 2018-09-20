@@ -110,7 +110,7 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
                      recv_args.device_context, src_device, dst_device,
                      send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     std::move(done));
+                     0 /*dev_to_dev_stream_index*/, std::move(done));
 }
 
 void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
@@ -121,27 +121,36 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
   // Recv the tensor from local_.
   local_->RecvAsync(
       parsed, recv_args,
-      [this, parsed, done](
-          const Status& status, const Rendezvous::Args& send_args,
-          const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
-        // If "in" is an uninitialized tensor, do copy-construction to preserve
-        // the uninitialized state, along with data type and shape info, which
-        // is useful for debugger purposes.
-        Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
+      std::bind(
+          [this, parsed](DoneCallback done,
+                         // Begin unbound arguments.
+                         const Status& status,
+                         const Rendezvous::Args& send_args,
+                         const Rendezvous::Args& recv_args, const Tensor& in,
+                         bool is_dead) {
+            // If "in" is an uninitialized tensor, do copy-construction to
+            // preserve the uninitialized state, along with data type and shape
+            // info, which is useful for debugger purposes.
+            Tensor* out = in.IsInitialized() ? new Tensor : new Tensor(in);
 
-        StatusCallback final_callback = [done, send_args, recv_args, out,
-                                         is_dead](const Status& s) {
-          done(s, send_args, recv_args, *out, is_dead);
-          delete out;
-        };
+            auto final_callback = std::bind(
+                [send_args, recv_args, out, is_dead](DoneCallback done,
+                                                     // Begin unbound arguments.
+                                                     const Status& s) {
+                  done(s, send_args, recv_args, *out, is_dead);
+                  delete out;
+                },
+                std::move(done), std::placeholders::_1);
 
-        if (status.ok() && in.IsInitialized()) {
-          SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
-                             std::move(final_callback));
-        } else {
-          final_callback(status);
-        }
-      });
+            if (status.ok() && in.IsInitialized()) {
+              SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+                                 std::move(final_callback));
+            } else {
+              final_callback(status);
+            }
+          },
+          std::move(done), std::placeholders::_1, std::placeholders::_2,
+          std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 }
 
 void IntraProcessRendezvous::StartAbort(const Status& s) {

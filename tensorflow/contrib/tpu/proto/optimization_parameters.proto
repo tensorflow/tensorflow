@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package tensorflow.tpu;
+
+import "google/protobuf/wrappers.proto";
+
+message ClippingLimits {
+  google.protobuf.FloatValue lower = 1;  // -inf if not set
+  google.protobuf.FloatValue upper = 2;  // +inf if not set
+}
+
+// Get the learning rate from the parameters of the SendTPUEmbeddingGradients
+// op.
+message DynamicLearningRate {
+}
+
+// Source of learning rate to use.
+message LearningRate {
+  oneof learning_rate {
+    float constant = 1;
+    DynamicLearningRate dynamic = 2;
+  }
+}
+
+message AdagradParameters {
+  float initial_accumulator = 1;
+}
+
+message StochasticGradientDescentParameters {
+}
+
+message FtrlParameters {
+  float l1 = 1;
+  float l2 = 2;
+  float lr_power = 3;
+  float initial_accum = 4;
+  float initial_linear = 5;
+}
+
+// The Adam optimizer does not implement hyper-parameter update; use the dynamic
+// learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+// https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L54
+message AdamParameters {
+  float beta1 = 3;
+  float beta2 = 4;
+  float epsilon = 5;
+  float initial_m = 6;
+  float initial_v = 7;
+}
+
+message MomentumParameters {
+  float momentum = 1;
+  bool use_nesterov = 2;
+  float initial_accum = 3;
+}
+
+message RmsPropParameters {
+  float rho = 1;
+  float momentum = 2;
+  float epsilon = 3;
+  float initial_ms = 4;
+  float initial_mom = 5;
+}
+
+message CenteredRmsPropParameters {
+  float rho = 1;
+  float momentum = 2;
+  float epsilon = 3;
+  float initial_ms = 4;
+  float initial_mom = 5;
+  float initial_mg = 6;
+}
+
+message MdlAdagradLightParameters {
+  float l2 = 1;
+  float lr_power = 2;
+  float min_servable_mdl_benefit = 3;
+  float mdl_mix_in_margin = 4;
+  float mdl_benefit_rampup_coeff = 5;
+  float mdl_min_weight = 6;
+  float benefit_revisit_scale = 7;
+  float max_event_benefit = 8;
+  float max_total_benefit = 9;
+  float mdl_hard_limit = 10;
+  bool hard_limit_min_benefit = 11;
+  bool mdl_regularize = 12;
+  float initial_accumulator = 13;
+  float initial_weight = 14;
+  float initial_benefit = 15;
+}
+
+message AdadeltaParameters {
+  float rho = 1;
+  float epsilon = 2;
+  float initial_accumulator = 3;
+  float initial_update = 4;
+}
+
+message ProximalAdagradParameters {
+  float l1 = 1;
+  float l2 = 2;
+  float initial_accumulator = 3;
+}
+
+message OptimizationParameters {
+  // Learning rate used for updating the embedding layer parameters.
+  LearningRate learning_rate = 13;
+  reserved 1;  // Old learning rate tag.
+
+  // Limits to which to clip the weight values after the backward pass; not
+  // present means no limits are applied.
+  ClippingLimits clipping_limits = 2;
+
+  // Limits to which to clip the backward pass gradient before using it for
+  // updates; not present means no limits are applied.
+  ClippingLimits gradient_clipping_limits = 7;
+
+  // Whether to use gradient accumulation (do two passes over the input
+  // gradients: one to accumulate them into a temporary array and another to
+  // apply them using the actual optimization algorithm). This feature is
+  // experimental -- it has not been fully verified and may cause training
+  // crashes and/or failures.
+  bool use_gradient_accumulation = 15;
+
+  // Optimization algorithm parameters; which field is selected determines which
+  // algorithm to use.
+  oneof parameters {
+    AdagradParameters adagrad = 3;
+    StochasticGradientDescentParameters stochastic_gradient_descent = 4;
+    FtrlParameters ftrl = 5;
+    AdamParameters adam = 6;
+    MomentumParameters momentum = 8;
+    RmsPropParameters rms_prop = 9;
+    CenteredRmsPropParameters centered_rms_prop = 10;
+    MdlAdagradLightParameters mdl_adagrad_light = 11;
+    AdadeltaParameters adadelta = 12;
+    ProximalAdagradParameters proximal_adagrad = 14;
+  }
+}
+
+// Specification of an optimization algorithm's state variables (both the main
+// value vector and any extra accumulators, etc.).
+message StateVariableSpecification {
+  // Parameter name for the state variable.
+  string name = 1;
+
+  // A normal state variable that should be saved and restored in checkpoints
+  // and used as an input or output to non-debug TensorFlow ops.
+  message UserDefined {
+  }
+
+  // A state variable that should be filled with a constant and normally hidden
+  // from users (used for intermediate gradients being accumulated, for
+  // example).
+  message FillWithConstant {
+    double initial_value = 1;
+  }
+
+  // Usage type of this state variable.
+  oneof usage {
+    UserDefined user_defined = 2;
+    FillWithConstant fill_with_constant = 3;
+  }
+}

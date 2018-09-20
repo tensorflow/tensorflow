@@ -17,8 +17,8 @@ limitations under the License.
 // #category: operations on strings
 // #summary: Merges strings or numbers with no delimiter.
 //
-#ifndef TENSORFLOW_LIB_STRINGS_STRCAT_H_
-#define TENSORFLOW_LIB_STRINGS_STRCAT_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 
 #include <string>
 
@@ -26,10 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace Eigen {
-struct half;
-}
 
 // The AlphaNum type was designed to be used as the parameter type for StrCat().
 // Any routine accepting either a string or a number may accept it.
@@ -63,29 +59,29 @@ namespace tensorflow {
 namespace strings {
 
 enum PadSpec {
-  NO_PAD = 1,
-  ZERO_PAD_2,
-  ZERO_PAD_3,
-  ZERO_PAD_4,
-  ZERO_PAD_5,
-  ZERO_PAD_6,
-  ZERO_PAD_7,
-  ZERO_PAD_8,
-  ZERO_PAD_9,
-  ZERO_PAD_10,
-  ZERO_PAD_11,
-  ZERO_PAD_12,
-  ZERO_PAD_13,
-  ZERO_PAD_14,
-  ZERO_PAD_15,
-  ZERO_PAD_16,
+  kNoPad = 1,
+  kZeroPad2,
+  kZeroPad3,
+  kZeroPad4,
+  kZeroPad5,
+  kZeroPad6,
+  kZeroPad7,
+  kZeroPad8,
+  kZeroPad9,
+  kZeroPad10,
+  kZeroPad11,
+  kZeroPad12,
+  kZeroPad13,
+  kZeroPad14,
+  kZeroPad15,
+  kZeroPad16
 };
 
 struct Hex {
   uint64 value;
   enum PadSpec spec;
   template <class Int>
-  explicit Hex(Int v, PadSpec s = NO_PAD) : spec(s) {
+  explicit Hex(Int v, PadSpec s = kNoPad) : spec(s) {
     // Prevent sign-extension by casting integers to
     // their unsigned counterparts.
     static_assert(
@@ -105,33 +101,32 @@ class AlphaNum {
   // A bool ctor would also convert incoming pointers (bletch).
 
   AlphaNum(int i32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt32ToBufferLeft(i32, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastInt32ToBufferLeft(i32, digits_)) {}
   AlphaNum(unsigned int u32)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt32ToBufferLeft(u32, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastUInt32ToBufferLeft(u32, digits_)) {}
   AlphaNum(long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(x, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastInt64ToBufferLeft(x, digits_)) {}
   AlphaNum(unsigned long x)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(x, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastUInt64ToBufferLeft(x, digits_)) {}
   AlphaNum(long long int i64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastInt64ToBufferLeft(i64, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastInt64ToBufferLeft(i64, digits_)) {}
   AlphaNum(unsigned long long int u64)  // NOLINT(runtime/explicit)
-      : piece_(digits_, FastUInt64ToBufferLeft(u64, digits_) - &digits_[0]) {}
+      : piece_(digits_, FastUInt64ToBufferLeft(u64, digits_)) {}
 
   AlphaNum(float f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, strlen(FloatToBuffer(f, digits_))) {}
-  AlphaNum(bfloat16 f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, strlen(FloatToBuffer(static_cast<float>(f), digits_))) {
-  }
+      : piece_(digits_, FloatToBuffer(f, digits_)) {}
   AlphaNum(double f)  // NOLINT(runtime/explicit)
-      : piece_(digits_, strlen(DoubleToBuffer(f, digits_))) {}
+      : piece_(digits_, DoubleToBuffer(f, digits_)) {}
 
-  AlphaNum(const Eigen::half &f);  // NOLINT(runtime/explicit)
   AlphaNum(Hex hex);               // NOLINT(runtime/explicit)
 
   AlphaNum(const char *c_str) : piece_(c_str) {}   // NOLINT(runtime/explicit)
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
+  template <typename A>
+  AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
+      : piece_(str) {}  // NOLINT(runtime/explicit)
 
   StringPiece::size_type size() const { return piece_.size(); }
   const char *data() const { return piece_.data(); }
@@ -241,4 +236,4 @@ inline void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STRCAT_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_

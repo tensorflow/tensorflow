@@ -128,9 +128,7 @@ bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
   }
   const Array& input_array = model->GetArray(op->inputs[0]);
 
-  if (input_array.minmax) {
-    output_array.GetOrCreateMinMax() = input_array.GetMinMax();
-  }
+  CopyMinMaxAndQuantizationRelatedFields(input_array, &output_array);
 
   if (op->perm.empty()) {
     // Yield until perm has been populated by ResolveTransposeAttributes.
@@ -163,6 +161,8 @@ bool ResolveConstantTranspose::Run(Model* model, std::size_t op_index) {
                  << op->outputs[0] << "\"";
       break;
   }
+
+  AddMessageF("Resolving constant transpose of %s", LogName(*op));
 
   // Erase input arrays if no longer used.
   for (const auto& input : op->inputs) {

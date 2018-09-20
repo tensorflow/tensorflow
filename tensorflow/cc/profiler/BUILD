@@ -9,6 +9,9 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 tf_cuda_cc_test(
     name = "profiler_test",
     srcs = ["profiler_test.cc"],
+    tags = [
+        "noguitar",  # b/77649654
+    ],
     deps = [
         ":profiler",
         "//tensorflow/cc:cc_ops",

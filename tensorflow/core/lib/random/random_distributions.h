@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
-#define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -23,8 +23,10 @@ limitations under the License.
 
 #include <string.h>
 #include <algorithm>
+#include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 
 namespace tensorflow {
@@ -38,6 +40,20 @@ PHILOX_DEVICE_INLINE bfloat16 Uint16ToGfloat16(uint16 x);
 PHILOX_DEVICE_INLINE float Uint32ToFloat(uint32 x);
 // Helper function to convert two 32-bit integers to a double between [0..1).
 PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1);
+
+// Computes a + b. Requires that the result is representable in the destination
+// type and that b is not maximal (i.e. b + 1 is not 0). Notably, the addend b
+// need *not* be representable in that type. (The condition on b excludes the
+// extremal case INT_MIN + UINT_MAX = INT_MAX, which this function cannot
+// compute.)
+template <typename Int>
+PHILOX_DEVICE_INLINE Int SignedAdd(Int a,
+                                   typename std::make_unsigned<Int>::type b) {
+  // Implementation note: both b_div_2 and b - b_div_2 are positive and
+  // representatble as Int.
+  auto b_div_2 = b >> 1;
+  return a + static_cast<Int>(b_div_2) + static_cast<Int>(b - b_div_2);
+}
 
 // A class that generates uniform distribution random numbers from the
 // underlying random integer generator.
@@ -163,14 +179,15 @@ class UniformDistribution<Generator, int32> {
   typedef int32 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int32 lo, int32 hi) : lo_(lo), range_(hi - lo) {}
+  UniformDistribution(int32 lo, int32 hi)
+      : lo_(lo), range_(static_cast<uint32>(hi) - static_cast<uint32>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
     typename Generator::ResultType sample = (*gen)();
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
-      result[i] = lo_ + static_cast<int32>(sample[i] % range_);
+      result[i] = SignedAdd(lo_, sample[i] % range_);
     }
     return result;
   }
@@ -197,7 +214,8 @@ class UniformDistribution<Generator, int64> {
   typedef int64 ResultElementType;
 
   // Must have lo < hi
-  UniformDistribution(int64 lo, int64 hi) : lo_(lo), range_(hi - lo) {}
+  UniformDistribution(int64 lo, int64 hi)
+      : lo_(lo), range_(static_cast<uint64>(hi) - static_cast<uint64>(lo)) {}
 
   PHILOX_DEVICE_INLINE
   ResultType operator()(Generator* gen) {
@@ -205,7 +223,7 @@ class UniformDistribution<Generator, int64> {
     ResultType result;
     for (int i = 0; i < kResultElementCount; ++i) {
       auto bits = sample[2 * i] | static_cast<uint64>(sample[2 * i + 1]) << 32;
-      result[i] = lo_ + static_cast<int64>(bits % range_);
+      result[i] = SignedAdd(lo_, bits % range_);
     }
     return result;
   }
@@ -726,4 +744,4 @@ PHILOX_DEVICE_INLINE double Uint64ToDouble(uint32 x0, uint32 x1) {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_

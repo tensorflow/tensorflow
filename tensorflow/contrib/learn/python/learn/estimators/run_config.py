@@ -221,7 +221,7 @@ class ClusterConfig(object):
 class RunConfig(ClusterConfig, core_run_config.RunConfig):
   """This class specifies the configurations for an `Estimator` run.
 
-  This class is a deprecated implementation of @{tf.estimator.RunConfig}
+  This class is a deprecated implementation of `tf.estimator.RunConfig`
   interface.
   """
   _USE_DEFAULT = 0
@@ -240,6 +240,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
+               protocol=None,
                evaluation_master='',
                model_dir=None,
                session_config=None):
@@ -289,9 +290,20 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
       session_config: a ConfigProto used to set session parameters, or None.
         Note - using this argument, it is easy to provide settings which break
         otherwise perfectly good models. Use with care.
+      protocol: An optional argument which specifies the protocol used when
+        starting server. None means default to grpc.
     """
-    super(RunConfig, self).__init__(
-        master=master, evaluation_master=evaluation_master)
+    # Neither parent class calls super().__init__(), so here we have to
+    # manually call their __init__() methods.
+    ClusterConfig.__init__(
+        self, master=master, evaluation_master=evaluation_master)
+    # For too long this code didn't call:
+    #   core_run_config.RunConfig.__init__(self)
+    # so instead of breaking compatibility with that assumption, we
+    # just manually initialize this field:
+    self._train_distribute = None
+    self._eval_distribute = None
+    self._device_fn = None
 
     gpu_options = config_pb2.GPUOptions(
         per_process_gpu_memory_fraction=gpu_memory_fraction)
@@ -305,6 +317,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
     self._log_step_count_steps = log_step_count_steps
+    self._protocol = protocol
     self._session_config = session_config
     if save_checkpoints_secs == RunConfig._USE_DEFAULT:
       if save_checkpoints_steps is None:

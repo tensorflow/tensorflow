@@ -22,7 +22,7 @@ import itertools
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -35,7 +35,15 @@ def MakePlaceholder(x):
   return array_ops.placeholder(dtypes.as_dtype(x.dtype), shape=x.shape)
 
 
-class MatrixTriangularSolveOpTest(XLATestCase):
+class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
+
+  #  MatrixTriangularSolve defined for float64, float32, complex64, complex128
+  # (https://www.tensorflow.org/api_docs/python/tf/matrix_triangular_solve)
+  @property
+  def float_types(self):
+    return set(super(MatrixTriangularSolveOpTest,
+                     self).float_types).intersection(
+                         (np.float64, np.float32, np.complex64, np.complex128))
 
   def _VerifyTriangularSolveBase(self, sess, placeholder_a, placeholder_ca,
                                  placeholder_b, a, clean_a, b, verification,
@@ -46,7 +54,7 @@ class MatrixTriangularSolveOpTest(XLATestCase):
 
   def _VerifyTriangularSolve(self, a, b, lower, adjoint, atol):
     clean_a = np.tril(a) if lower else np.triu(a)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       placeholder_a = MakePlaceholder(a)
       placeholder_ca = MakePlaceholder(clean_a)
       placeholder_b = MakePlaceholder(b)

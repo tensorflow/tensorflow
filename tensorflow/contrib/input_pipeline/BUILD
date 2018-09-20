@@ -114,14 +114,3 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-)

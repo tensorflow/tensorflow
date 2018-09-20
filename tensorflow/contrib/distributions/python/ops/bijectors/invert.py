@@ -18,14 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Invert",
 ]
 
 
-class Invert(bijector_lib.Bijector):
+class Invert(bijector.Bijector):
   """Bijector which inverts another Bijector.
 
   Example Use: [ExpGammaDistribution (see Background & Context)](
@@ -40,6 +41,14 @@ class Invert(bijector_lib.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, bijector, validate_args=False, name=None):
     """Creates a `Bijector` which swaps the meaning of `inverse` and `forward`.
 
@@ -66,8 +75,9 @@ class Invert(bijector_lib.Bijector):
 
     self._bijector = bijector
     super(Invert, self).__init__(
-        event_ndims=bijector.event_ndims,
         graph_parents=bijector.graph_parents,
+        forward_min_event_ndims=bijector.inverse_min_event_ndims,
+        inverse_min_event_ndims=bijector.forward_min_event_ndims,
         is_constant_jacobian=bijector.is_constant_jacobian,
         validate_args=validate_args,
         dtype=bijector.dtype,

@@ -34,7 +34,7 @@ class TensorSpec(object):
   construction and configuration.
   """
 
-  __slots__ = ["_shape", "_dtype", "_name"]
+  __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
 
   def __init__(self, shape, dtype, name=None):
     """Creates a TensorSpec.
@@ -49,6 +49,10 @@ class TensorSpec(object):
         not convertible to a `tf.DType`.
     """
     self._shape = tensor_shape.TensorShape(shape)
+    try:
+      self._shape_tuple = tuple(self.shape.as_list())
+    except ValueError:
+      self._shape_tuple = None
     self._dtype = dtypes.as_dtype(dtype)
     self._name = name
 
@@ -65,6 +69,11 @@ class TensorSpec(object):
     else:
       raise ValueError("`tensor` should be a tf.Tensor")
 
+  @classmethod
+  def is_bounded(cls):
+    del cls
+    return False
+
   @property
   def shape(self):
     """Returns the `TensorShape` that represents the shape of the tensor."""
@@ -80,6 +89,16 @@ class TensorSpec(object):
     """Returns the name of the described tensor."""
     return self._name
 
+  @property
+  def is_discrete(self):
+    """Whether spec is discrete."""
+    return self.dtype.is_integer
+
+  @property
+  def is_continuous(self):
+    """Whether spec is continuous."""
+    return self.dtype.is_floating
+
   def is_compatible_with(self, spec_or_tensor):
     """True if the shape and dtype of `spec_or_tensor` are compatible."""
     return (self._dtype.is_compatible_with(spec_or_tensor.dtype) and
@@ -89,11 +108,17 @@ class TensorSpec(object):
     return "TensorSpec(shape={}, dtype={}, name={})".format(
         self.shape, repr(self.dtype), repr(self.name))
 
+  def __hash__(self):
+    return hash((self._shape_tuple, self.dtype))
+
   def __eq__(self, other):
     return self.shape == other.shape and self.dtype == other.dtype
 
   def __ne__(self, other):
     return not self == other
+
+  def __reduce__(self):
+    return TensorSpec, (self._shape, self._dtype, self._name)
 
 
 class BoundedTensorSpec(TensorSpec):
@@ -164,6 +189,11 @@ class BoundedTensorSpec(TensorSpec):
     self._maximum.setflags(write=False)
 
   @classmethod
+  def is_bounded(cls):
+    del cls
+    return True
+
+  @classmethod
   def from_spec(cls, spec):
     dtype = dtypes.as_dtype(spec.dtype)
     minimum = getattr(spec, "minimum", dtype.min)
@@ -190,4 +220,7 @@ class BoundedTensorSpec(TensorSpec):
     return (tensor_spec_eq and np.allclose(self.minimum, other.minimum) and
             np.allclose(self.maximum, other.maximum))
 
+  def __reduce__(self):
+    return BoundedTensorSpec, (self._shape, self._dtype, self._minimum,
+                               self._maximum, self._name)
 

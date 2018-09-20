@@ -30,8 +30,9 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                           int32 input_offset, const uint8* filter_data,
                           const Dims<4>& filter_dims, int32 filter_offset,
                           const int32* bias_data, const Dims<4>& bias_dims,
-                          int stride_width, int stride_height, int pad_width,
-                          int pad_height, int depth_multiplier,
+                          int stride_width, int stride_height,
+                          int dilation_width_factor, int dilation_height_factor,
+                          int pad_width, int pad_height, int depth_multiplier,
                           int32 output_offset, int32 output_multiplier,
                           int output_shift, int32 output_activation_min,
                           int32 output_activation_max, uint8* output_data,
@@ -58,8 +59,9 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
             int32 acc = 0;
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-                const int in_x = in_x_origin + filter_x;
-                const int in_y = in_y_origin + filter_y;
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
                 // If the location is outside the bounds of the input image,
                 // use zero as a default value.
                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
@@ -76,8 +78,8 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
             if (bias_data) {
               acc += bias_data[Offset(bias_dims, oc, 0, 0, 0)];
             }
-            acc = MultiplyByQuantizedMultiplierSmallerThanOne(
-                acc, output_multiplier, output_shift);
+            acc = MultiplyByQuantizedMultiplier(acc, output_multiplier,
+                                                -output_shift);
             acc += output_offset;
             acc = std::max(acc, output_activation_min);
             acc = std::min(acc, output_activation_max);
@@ -88,6 +90,24 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
+                          int32 input_offset, const uint8* filter_data,
+                          const Dims<4>& filter_dims, int32 filter_offset,
+                          const int32* bias_data, const Dims<4>& bias_dims,
+                          int stride_width, int stride_height, int pad_width,
+                          int pad_height, int depth_multiplier,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_shift, int32 output_activation_min,
+                          int32 output_activation_max, uint8* output_data,
+                          const Dims<4>& output_dims) {
+  DepthwiseConv(input_data, input_dims, input_offset, filter_data, filter_dims,
+                filter_offset, bias_data, bias_dims, stride_width,
+                stride_height, 1, 1, pad_width, pad_height, depth_multiplier,
+                output_offset, output_multiplier, output_shift,
+                output_activation_min, output_activation_max, output_data,
+                output_dims);
 }
 
 // Legacy, for compatibility with old checked-in code.

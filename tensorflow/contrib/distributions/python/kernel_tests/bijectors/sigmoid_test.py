@@ -31,28 +31,30 @@ class SigmoidBijectorTest(test.TestCase):
   """Tests correctness of the Y = g(X) = (1 + exp(-X))^-1 transformation."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual("sigmoid", Sigmoid().name)
       x = np.linspace(-10., 10., 100).reshape([2, 5, 10]).astype(np.float32)
       y = special.expit(x)
       ildj = -np.log(y) - np.log1p(-y)
-      self.assertAllClose(y, Sigmoid().forward(x).eval(), atol=0., rtol=1e-2)
-      self.assertAllClose(x, Sigmoid().inverse(y).eval(), atol=0., rtol=1e-4)
-      self.assertAllClose(ildj, Sigmoid().inverse_log_det_jacobian(y).eval(),
-                          atol=0., rtol=1e-6)
-      self.assertAllClose(-ildj, Sigmoid().forward_log_det_jacobian(x).eval(),
-                          atol=0., rtol=1e-4)
+      bijector = Sigmoid()
+      self.assertAllClose(y, bijector.forward(x).eval(), atol=0., rtol=1e-2)
+      self.assertAllClose(x, bijector.inverse(y).eval(), atol=0., rtol=1e-4)
+      self.assertAllClose(ildj, bijector.inverse_log_det_jacobian(
+          y, event_ndims=0).eval(), atol=0., rtol=1e-6)
+      self.assertAllClose(-ildj, bijector.forward_log_det_jacobian(
+          x, event_ndims=0).eval(), atol=0., rtol=1e-4)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       assert_scalar_congruency(Sigmoid(), lower_x=-7., upper_x=7.)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.linspace(-7., 7., 100).astype(np.float32)
       eps = 1e-3
       y = np.linspace(eps, 1. - eps, 100).astype(np.float32)
-      assert_bijective_and_finite(Sigmoid(), x, y, atol=0., rtol=1e-4)
+      assert_bijective_and_finite(
+          Sigmoid(), x, y, event_ndims=0, atol=0., rtol=1e-4)
 
 
 if __name__ == "__main__":

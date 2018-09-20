@@ -96,6 +96,20 @@ def _set_float_split(split, feat_col, thresh, l_id, r_id, feature_dim_id=None):
     split.dimension_id = feature_dim_id
 
 
+def _set_float_oblivious_split(split, feat_col, thresh):
+  """Helper method for building tree float splits.
+
+  Sets split feature column and threshold.
+
+  Args:
+    split: split node to update.
+    feat_col: feature column for the split.
+    thresh: threshold to split on forming rule x <= thresh.
+  """
+  split.feature_column = feat_col
+  split.threshold = thresh
+
+
 def _set_categorical_id_split(split, feat_col, feat_id, l_id, r_id):
   """Helper method for building tree categorical id splits.
 
@@ -119,15 +133,17 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
   def setUp(self):
     """Sets up the prediction tests.
 
-    Create a batch of two examples having one dense float, two sparse float
-    single valued, one sparse float multidimensionl and one sparse int features.
-    The data looks like the following:
-    | Instance | Dense0 | SparseF0 | SparseF1 | SparseI0 | SparseM
-    | 0        |  7     |    -3    |          |    9,1   | __, 5.0
-    | 1        | -2     |          | 4        |          |  3, ___
+    Creates, a batch of two examples having three dense float, two sparse float
+    single valued, one sparse float multidimensional and one sparse int
+    features.  The data looks like the following:
+    |Instance |Dense0 |Dense1 |Dense2 |SparseF0 |SparseF1 |SparseI0 |SparseM
+    | 0       |  7    |  1    |  2    |  -3     |         |   9,1   | __, 5.0
+    | 1       | -2    |  2    |  0.5  |         |  4      |         |  3, ___
     """
     super(PredictionOpsTest, self).setUp()
-    self._dense_float_tensor = np.array([[7.0], [-2.0]])
+    self._dense_float_tensor1 = np.array([[7.0], [-2.0]])
+    self._dense_float_tensor2 = np.array([[1.0], [2.0]])
+    self._dense_float_tensor3 = np.array([[2.0], [0.5]])
     self._sparse_float_indices1 = np.array([[0, 0]])
     self._sparse_float_values1 = np.array([-3.0])
     self._sparse_float_shape1 = np.array([2, 1])
@@ -153,7 +169,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
                        reduce_dim=False):
     return prediction_ops.gradient_trees_prediction(
         tree_ensemble_handle,
-        self._seed, [self._dense_float_tensor],
+        self._seed, [self._dense_float_tensor1],
         [self._sparse_float_indices1, self._sparse_float_indices2],
         [self._sparse_float_values1, self._sparse_float_values2],
         [self._sparse_float_shape1, self._sparse_float_shape2],
@@ -165,8 +181,27 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
         center_bias=center_bias,
         reduce_dim=reduce_dim)
 
+  def _get_predictions_oblivious_case(self,
+                                      tree_ensemble_handle,
+                                      learner_config,
+                                      apply_dropout=False,
+                                      apply_averaging=False,
+                                      center_bias=False,
+                                      reduce_dim=False):
+    return prediction_ops.gradient_trees_prediction(
+        tree_ensemble_handle,
+        self._seed, [
+            self._dense_float_tensor1, self._dense_float_tensor2,
+            self._dense_float_tensor3
+        ], [], [], [], [], [], [],
+        learner_config=learner_config,
+        apply_dropout=apply_dropout,
+        apply_averaging=apply_averaging,
+        center_bias=center_bias,
+        reduce_dim=reduce_dim)
+
   def testEmptyEnsemble(self):
-    with self.test_session():
+    with self.cached_session():
       # Empty tree ensenble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
 
@@ -189,7 +224,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testBiasEnsembleSingleClass(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree = tree_ensemble_config.trees.add()
       tree_ensemble_config.tree_metadata.add().is_finalized = True
@@ -217,7 +252,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testBiasEnsembleMultiClass(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree = tree_ensemble_config.trees.add()
       tree_ensemble_config.tree_metadata.add().is_finalized = True
@@ -247,7 +282,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testFullEnsembleSingleClass(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -295,8 +330,55 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Empty dropout.
       self.assertAllEqual([[], []], dropout_info.eval())
 
+  def testObliviousEnsemble(self):
+    with self.cached_session():
+      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      # Bias tree.
+      tree1 = tree_ensemble_config.trees.add()
+      tree_ensemble_config.tree_metadata.add().is_finalized = True
+      _append_to_leaf(tree1.nodes.add().leaf, 0, -0.4)
+
+      # Depth 3 tree.
+      tree2 = tree_ensemble_config.trees.add()
+      _set_float_oblivious_split(
+          tree2.nodes.add().oblivious_dense_float_binary_split, 0, 5.0)
+      _set_float_oblivious_split(
+          tree2.nodes.add().oblivious_dense_float_binary_split, 1, 3.0)
+      _set_float_oblivious_split(
+          tree2.nodes.add().oblivious_dense_float_binary_split, 2, 1.0)
+      for i in range(1, 9):
+        _append_to_leaf(tree2.nodes.add().leaf, 0, i / 10.0)
+
+      tree_ensemble_config.tree_weights.append(1.0)
+      tree_ensemble_config.tree_weights.append(1.0)
+
+      tree_ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0,
+          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
+          name="full_ensemble")
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # Prepare learner config.
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.num_classes = 2
+
+      result, dropout_info = self._get_predictions_oblivious_case(
+          tree_ensemble_handle,
+          learner_config=learner_config.SerializeToString(),
+          reduce_dim=True)
+
+      # The first example will get bias -0.4 from first tree and 0.6 from
+      # the 5th leaf of the second tree corresponding to node_id = 8, hence a
+      # prediction of 0.2.
+      # The second example will get bias -0.4 and 0.1 from the 0th leaf of the
+      # second tree corresponding to node_id = 3, hence a prediction of -0.3
+      self.assertAllClose([[0.2], [-0.3]], result.eval())
+
+      # Empty dropout.
+      self.assertAllEqual([[], []], dropout_info.eval())
+
   def testFullEnsembleWithMultidimensionalSparseSingleClass(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -358,7 +440,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
       result, dropout_info = prediction_ops.gradient_trees_prediction(
           tree_ensemble_handle,
-          self._seed, [self._dense_float_tensor], [
+          self._seed, [self._dense_float_tensor1], [
               self._sparse_float_indices1, self._sparse_float_indices2,
               self._sparse_float_indices_m
           ], [
@@ -384,7 +466,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testExcludeNonFinalTree(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -431,7 +513,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testIncludeNonFinalTree(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -482,7 +564,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
   def testMetadataMissing(self):
     # Sometimes we want to do prediction on trees that are not added to ensemble
     # (for example in
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -530,7 +612,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
 
   # For TREE_PER_CLASS strategy, predictions size is num_classes-1
   def testFullEnsembleMultiClassTreePerClassStrategy(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree only for second class.
       tree1 = tree_ensemble_config.trees.add()
@@ -581,7 +663,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
   # This test is when leafs have SPARSE weights stored (class id and
   # contribution).
   def testFullEnsembleMultiNotClassTreePerClassStrategySparseVector(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree only for second class.
       tree1 = tree_ensemble_config.trees.add()
@@ -631,7 +713,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
   # will have the size of the number of classes.
   # This test is when leafs have DENSE weights stored (weight for each class)
   def testFullEnsembleMultiNotClassTreePerClassStrategyDenseVector(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree only for second class.
       tree1 = tree_ensemble_config.trees.add()
@@ -678,7 +760,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testDropout(self):
-    with self.test_session():
+    with self.cached_session():
       # Empty tree ensenble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 1000 trees with some weights.
@@ -741,7 +823,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
     # This is for normal non-batch mode where ensemble does not contain the tree
     # that is being built currently.
     num_trees = 10
-    with self.test_session():
+    with self.cached_session():
       # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 10 trees with some weights.
@@ -809,8 +891,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
     # This is batch mode where ensemble already contains the tree that we are
     # building. This tree should never be dropped.
     num_trees = 10
-    with self.test_session():
-      # Empty tree ensenble.
+    with self.cached_session():
+      # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 10 trees with some weights.
       for i in range(0, num_trees):
@@ -877,7 +959,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
                           dropout_info_center[0][num_dropped_center - 1])
 
   def testDropoutSeed(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 10 trees with some weights.
       for i in range(0, 999):
@@ -917,7 +999,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       # Different seed.
       _, dropout_info_3 = prediction_ops.gradient_trees_prediction(
           tree_ensemble_handle,
-          112314, [self._dense_float_tensor],
+          112314, [self._dense_float_tensor1],
           [self._sparse_float_indices1, self._sparse_float_indices2],
           [self._sparse_float_values1, self._sparse_float_values2],
           [self._sparse_float_shape1, self._sparse_float_shape2],
@@ -950,8 +1032,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
           len(dropout_info_4.eval()[0]) + 1, len(dropout_info_1.eval()[0]))
 
   def testDropOutZeroProb(self):
-    with self.test_session():
-      # Empty tree ensenble.
+    with self.cached_session():
+      # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Add 1000 trees with some weights.
       for i in range(0, 999):
@@ -993,8 +1075,8 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result.eval(), result_no_dropout.eval())
 
   def testAveragingAllTrees(self):
-    with self.test_session():
-      # Empty tree ensenble.
+    with self.cached_session():
+      # Empty tree ensemble.
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       adjusted_tree_ensemble_config = (
           tree_config_pb2.DecisionTreeEnsembleConfig())
@@ -1057,7 +1139,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(dropout_info.eval(), pattern_dropout_info.eval())
 
   def testAveragingSomeTrees(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       adjusted_tree_ensemble_config = (
           tree_config_pb2.DecisionTreeEnsembleConfig())
@@ -1138,7 +1220,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(dropout_info_2.eval(), pattern_dropout_info.eval())
 
   def testAverageMoreThanNumTreesExist(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       adjusted_tree_ensemble_config = (
           tree_config_pb2.DecisionTreeEnsembleConfig())
@@ -1204,15 +1286,18 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
   def setUp(self):
     """Sets up the prediction tests.
 
-    Create a batch of two examples having one dense float, two sparse float and
-    one sparse int features.
+    Create a batch of two examples having three dense float, two sparse float
+    and one sparse int features.
     The data looks like the following:
-    | Instance | Dense0 | SparseF0 | SparseF1 | SparseI0 |
-    | 0        |  7     |    -3    |          |    9,1   |
-    | 1        | -2     |          | 4        |          |
+    |Instance |Dense0 |Dense1 |Dense2 |SparseF0 |SparseF1 |SparseI0 |
+    | 0       |  7    |  1    |  2    |   -3    |         |    9,1  |
+    | 1       | -2    |  2    |  0.5  |         |   4     |         |
+
     """
     super(PartitionExamplesOpsTest, self).setUp()
-    self._dense_float_tensor = np.array([[7.0], [-2.0]])
+    self._dense_float_tensor1 = np.array([[7.0], [-2.0]])
+    self._dense_float_tensor2 = np.array([[1.0], [2.0]])
+    self._dense_float_tensor3 = np.array([[2.0], [0.5]])
     self._sparse_float_indices1 = np.array([[0, 0]])
     self._sparse_float_values1 = np.array([-3.0])
     self._sparse_float_shape1 = np.array([2, 1])
@@ -1224,7 +1309,7 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
     self._sparse_int_shape1 = np.array([2, 2])
 
   def testEnsembleEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
 
       tree_ensemble_handle = model_ops.tree_ensemble_variable(
@@ -1234,17 +1319,17 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       result = prediction_ops.gradient_trees_partition_examples(
-          tree_ensemble_handle, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1])
+          tree_ensemble_handle, [self._dense_float_tensor1],
+          [self._sparse_float_indices1, self._sparse_float_indices2],
+          [self._sparse_float_values1, self._sparse_float_values2],
+          [self._sparse_float_shape1, self._sparse_float_shape2],
+          [self._sparse_int_indices1], [self._sparse_int_values1],
+          [self._sparse_int_shape1])
 
       self.assertAllEqual([0, 0], result.eval())
 
   def testTreeNonFinalized(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Depth 3 tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -1269,17 +1354,17 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       result = prediction_ops.gradient_trees_partition_examples(
-          tree_ensemble_handle, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1])
+          tree_ensemble_handle, [self._dense_float_tensor1],
+          [self._sparse_float_indices1, self._sparse_float_indices2],
+          [self._sparse_float_values1, self._sparse_float_values2],
+          [self._sparse_float_shape1, self._sparse_float_shape2],
+          [self._sparse_int_indices1], [self._sparse_int_values1],
+          [self._sparse_int_shape1])
 
       self.assertAllEqual([5, 3], result.eval())
 
   def testTreeFinalized(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Depth 3 tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -1304,14 +1389,50 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
       resources.initialize_resources(resources.shared_resources()).run()
 
       result = prediction_ops.gradient_trees_partition_examples(
-          tree_ensemble_handle, [self._dense_float_tensor], [
-              self._sparse_float_indices1, self._sparse_float_indices2
-          ], [self._sparse_float_values1, self._sparse_float_values2],
-          [self._sparse_float_shape1,
-           self._sparse_float_shape2], [self._sparse_int_indices1],
-          [self._sparse_int_values1], [self._sparse_int_shape1])
+          tree_ensemble_handle, [self._dense_float_tensor1],
+          [self._sparse_float_indices1, self._sparse_float_indices2],
+          [self._sparse_float_values1, self._sparse_float_values2],
+          [self._sparse_float_shape1, self._sparse_float_shape2],
+          [self._sparse_int_indices1], [self._sparse_int_values1],
+          [self._sparse_int_shape1])
 
       self.assertAllEqual([0, 0], result.eval())
+
+  def testObliviousTreeNonFinalized(self):
+    with self.cached_session():
+      tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
+      # Depth 3 tree.
+      tree1 = tree_ensemble_config.trees.add()
+      _set_float_oblivious_split(
+          tree1.nodes.add().oblivious_dense_float_binary_split, 0, 5.0)
+      _set_float_oblivious_split(
+          tree1.nodes.add().oblivious_dense_float_binary_split, 1, 3.0)
+      _set_float_oblivious_split(
+          tree1.nodes.add().oblivious_dense_float_binary_split, 2, 1.0)
+      for i in range(1, 9):
+        _append_to_leaf(tree1.nodes.add().leaf, 0, i / 10.0)
+      tree_ensemble_config.tree_weights.append(1.0)
+      tree_ensemble_config.tree_metadata.add().is_finalized = False
+
+      tree_ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0,
+          tree_ensemble_config=tree_ensemble_config.SerializeToString(),
+          name="full_ensemble")
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      result = prediction_ops.gradient_trees_partition_examples(
+          tree_ensemble_handle, [
+              self._dense_float_tensor1,
+              self._dense_float_tensor2,
+              self._dense_float_tensor3
+          ], [], [], [], [], [], [])
+
+      # The first example goes right, left, right in the tree and the second
+      # example goes lef, left, left. Since the depth of the tree is 3, the
+      # partition id's are as follows:
+      # First example: 3 + 5 = 8
+      # Second exampel: 3 + 0 = 3
+      self.assertAllEqual([8, 3], result.eval())
 
 
 if __name__ == "__main__":

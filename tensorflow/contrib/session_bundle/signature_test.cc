@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 
@@ -33,8 +34,8 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
-static bool HasSubstr(const string& base, const string& substr) {
-  bool ok = StringPiece(base).contains(substr);
+static bool HasSubstr(StringPiece base, StringPiece substr) {
+  bool ok = str_util::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }
@@ -69,8 +70,8 @@ TEST(GetClassificationSignature, MissingSignature) {
   ClassificationSignature signature;
   const Status status = GetClassificationSignature(meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected a classification signature"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Expected a classification signature"))
       << status.error_message();
 }
 
@@ -86,8 +87,8 @@ TEST(GetClassificationSignature, WrongSignatureType) {
   ClassificationSignature signature;
   const Status status = GetClassificationSignature(meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected a classification signature"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Expected a classification signature"))
       << status.error_message();
 }
 
@@ -122,8 +123,8 @@ TEST(GetNamedClassificationSignature, MissingSignature) {
   const Status status =
       GetNamedClassificationSignature("foo", meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Missing signature named \"foo\""))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Missing signature named \"foo\""))
       << status.error_message();
 }
 
@@ -141,9 +142,9 @@ TEST(GetNamedClassificationSignature, WrongSignatureType) {
   const Status status =
       GetNamedClassificationSignature("foo", meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(
-      StringPiece(status.error_message())
-          .contains("Expected a classification signature for name \"foo\""))
+  EXPECT_TRUE(str_util::StrContains(
+      status.error_message(),
+      "Expected a classification signature for name \"foo\""))
       << status.error_message();
 }
 
@@ -176,8 +177,8 @@ TEST(GetRegressionSignature, MissingSignature) {
   RegressionSignature signature;
   const Status status = GetRegressionSignature(meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected a regression signature"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Expected a regression signature"))
       << status.error_message();
 }
 
@@ -193,8 +194,8 @@ TEST(GetRegressionSignature, WrongSignatureType) {
   RegressionSignature signature;
   const Status status = GetRegressionSignature(meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected a regression signature"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Expected a regression signature"))
       << status.error_message();
 }
 
@@ -227,8 +228,8 @@ TEST(GetNamedSignature, MissingSignature) {
   Signature signature;
   const Status status = GetNamedSignature("foo", meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Missing signature named \"foo\""))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Missing signature named \"foo\""))
       << status.error_message();
 }
 
@@ -370,7 +371,7 @@ TEST(RunClassification, RunNotOk) {
   const Status status = RunClassification(signature, input_tensor, &session,
                                           &classes_tensor, nullptr);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("Data is gone"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Data is gone"))
       << status.error_message();
 }
 
@@ -386,7 +387,8 @@ TEST(RunClassification, TooManyOutputs) {
   const Status status = RunClassification(signature, input_tensor, &session,
                                           &classes_tensor, nullptr);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("Expected 1 output"))
+  EXPECT_TRUE(
+      str_util::StrContains(status.error_message(), "Expected 1 output"))
       << status.error_message();
 }
 
@@ -402,8 +404,9 @@ TEST(RunClassification, WrongBatchOutputs) {
   const Status status = RunClassification(signature, input_tensor, &session,
                                           &classes_tensor, nullptr);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Input batch size did not match output batch size"))
+  EXPECT_TRUE(
+      str_util::StrContains(status.error_message(),
+                            "Input batch size did not match output batch size"))
       << status.error_message();
 }
 
@@ -449,7 +452,7 @@ TEST_F(RunRegressionTest, RunNotOk) {
   const Status status =
       RunRegression(signature_, input_tensor_, &session_, &output_tensor_);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("Data is gone"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Data is gone"))
       << status.error_message();
 }
 
@@ -460,8 +463,9 @@ TEST_F(RunRegressionTest, MismatchedSizeForBatchInputAndOutput) {
   const Status status =
       RunRegression(signature_, input_tensor_, &session_, &output_tensor_);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Input batch size did not match output batch size"))
+  EXPECT_TRUE(
+      str_util::StrContains(status.error_message(),
+                            "Input batch size did not match output batch size"))
       << status.error_message();
 }
 
@@ -488,7 +492,7 @@ TEST(GetSignatures, MissingSignature) {
   const auto status = GetSignatures(meta_graph_def, &read_signatures);
   EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
   EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("Expected exactly one"))
+      str_util::StrContains(status.error_message(), "Expected exactly one"))
       << status.error_message();
 }
 
@@ -502,9 +506,9 @@ TEST(GetSignatures, WrongProtoInAny) {
   Signatures read_signatures;
   const auto status = GetSignatures(meta_graph_def, &read_signatures);
   EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected Any type_url for: "
-                            "tensorflow.serving.Signatures"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Expected Any type_url for: "
+                                    "tensorflow.serving.Signatures"))
       << status.error_message();
 }
 
@@ -519,7 +523,7 @@ TEST(GetSignatures, JunkInAny) {
   Signatures read_signatures;
   const auto status = GetSignatures(meta_graph_def, &read_signatures);
   EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
-  EXPECT_TRUE(StringPiece(status.error_message()).contains("Failed to unpack"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Failed to unpack"))
       << status.error_message();
 }
 
@@ -567,7 +571,7 @@ TEST(GetSignatures, MultipleSignaturesNotOK) {
   const auto status = GetSignatures(meta_graph_def, &read_signatures);
   EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
   EXPECT_TRUE(
-      StringPiece(status.error_message()).contains("Expected exactly one"))
+      str_util::StrContains(status.error_message(), "Expected exactly one"))
       << status.error_message();
 }
 
@@ -641,8 +645,8 @@ TEST(GetGenericSignature, WrongSignatureType) {
   const Status status =
       GetGenericSignature("generic_bindings", meta_graph_def, &signature);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(StringPiece(status.error_message())
-                  .contains("Expected a generic signature:"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(),
+                                    "Expected a generic signature:"))
       << status.error_message();
 }
 

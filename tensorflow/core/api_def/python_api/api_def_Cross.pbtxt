@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Cross"
+  endpoint {
+    name: "linalg.cross"
+  }
+  endpoint {
+    name: "cross"
+    deprecated: true
+  }
+}

@@ -15,6 +15,8 @@ message TreeNode {
     CategoricalIdBinarySplit categorical_id_binary_split = 5;
     CategoricalIdSetMembershipBinarySplit
         categorical_id_set_membership_binary_split = 6;
+    ObliviousDenseFloatBinarySplit oblivious_dense_float_binary_split = 7;
+    ObliviousCategoricalIdBinarySplit oblivious_categorical_id_binary_split = 8;
   }
   TreeNodeMetadata node_metadata = 777;
 }
@@ -26,6 +28,9 @@ message TreeNodeMetadata {
 
   // The original leaf node before this node was split.
   Leaf original_leaf = 2;
+
+  // The original layer of leaves before that layer was converted to a split.
+  repeated Leaf original_oblivious_leaves = 3;
 }
 
 // Leaves can either hold dense or sparse information.
@@ -53,7 +58,7 @@ message DenseFloatBinarySplit {
   // Float feature column and split threshold describing
   // the rule feature <= threshold.
   int32 feature_column = 1;
-  // If feature column is multivalent, this holds the index of the dimensiong
+  // If feature column is multivalent, this holds the index of the dimension
   // for the split. Defaults to 0.
   int32 dimension_id = 5;
   float threshold = 2;
@@ -99,6 +104,28 @@ message CategoricalIdSetMembershipBinarySplit {
   // vector of nodes starting from the root.
   int32 left_id = 3;
   int32 right_id = 4;
+}
+
+// Split rule for dense float features in the oblivious case.
+message ObliviousDenseFloatBinarySplit {
+  // Float feature column and split threshold describing
+  // the rule feature <= threshold.
+  int32 feature_column = 1;
+  float threshold = 2;
+  // We don't store children ids, because either the next node represents the
+  // whole next layer of the tree or starting with the next node we only have
+  // leaves.
+}
+
+// Split rule for categorical features with a single feature Id in the oblivious
+// case.
+message ObliviousCategoricalIdBinarySplit {
+  // Categorical feature column and Id describing the rule feature == Id.
+  int32 feature_column = 1;
+  int64 feature_id = 2;
+  // We don't store children ids, because either the next node represents the
+  // whole next layer of the tree or starting with the next node we only have
+  // leaves.
 }
 
 // DecisionTreeConfig describes a list of connected nodes.

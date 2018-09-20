@@ -6,15 +6,18 @@ export OS=$(uname)
 if [ "${OS}" = "Linux" ]; then
     export DS_ROOT_TASK=$(/usr/bin/realpath "${HOME}")
 
-    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.10.0/bazel-0.10.0-installer-linux-x86_64.sh
-    BAZEL_SHA256=ffff2632e32d5009fd48b7f51971a66012eefa2004c6448c13dc3976ad1db6b0
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.15.2/bazel-0.15.2-installer-linux-x86_64.sh
+    BAZEL_SHA256=13eae0f09565cf17fc1c9ce1053b9eac14c11e726a2215a79ebaf5bdbf435241
 
     CUDA_URL=https://developer.nvidia.com/compute/cuda/9.0/Prod/local_installers/cuda_9.0.176_384.81_linux-run
     CUDA_SHA256=96863423feaa50b5c1c5e1b9ec537ef7ba77576a3986652351ae43e66bcd080c
 
     # From https://gitlab.com/nvidia/cuda/blob/centos7/9.0/devel/cudnn7/Dockerfile
-    CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v7.0.5/cudnn-9.0-linux-x64-v7.tgz
-    CUDNN_SHA256=1a3e076447d5b9860c73d9bebe7087ffcb7b0c8814fd1e506096435a2ad9ab0e
+    CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v7.2.1/cudnn-9.0-linux-x64-v7.2.1.38.tgz
+    CUDNN_SHA256=cf007437b9ac6250ec63b89c25f248d2597fdd01369c80146567f78e75ce4e37
+
+    NCCL_URL=https://s3.amazonaws.com/pytorch/nccl_2.2.13-1%2Bcuda9.0_x86_64.txz
+    NCCL_SHA256=5ae976f47f9dd1caf4f5fa0da51be9ecbdeed54065d1b654ce308cc803e0af0d
 
 elif [ "${OS}" = "Darwin" ]; then
     if [ -z "${TASKCLUSTER_TASK_DIR}" -o -z "${TASKCLUSTER_ARTIFACTS}" ]; then
@@ -26,8 +29,8 @@ elif [ "${OS}" = "Darwin" ]; then
 
     export DS_ROOT_TASK=${TASKCLUSTER_TASK_DIR}
 
-    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.10.0/bazel-0.10.0-installer-darwin-x86_64.sh
-    BAZEL_SHA256=636d1ce68616a903928798908c16fb68ebb85eb28d2f18fb215f4d09f3bb05ca
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.15.2/bazel-0.15.2-installer-darwin-x86_64.sh
+    BAZEL_SHA256=84ee271274e7c8904a48f7894fe0569174d162c7428a19dda57fc6a6c95c628b
 fi;
 
 # /tmp/artifacts for docker-worker on linux,
@@ -59,9 +62,13 @@ export TF_NEED_OPENCL_SYCL=0
 export TF_NEED_MKL=0
 export TF_NEED_VERBS=0
 export TF_NEED_MPI=0
-export TF_NEED_S3=0
+export TF_NEED_AWS=0
+export TF_NEED_KAFKA=0
 export TF_NEED_GDR=0
+export TF_NEED_NGRAPH=0
+export TF_DOWNLOAD_CLANG=0
 export TF_SET_ANDROID_WORKSPACE=0
+export TF_NEED_TENSORRT=0
 export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 export PYTHON_BIN_PATH=/usr/bin/python2.7
 
@@ -96,7 +103,7 @@ if [ "${OS}" = "Darwin" ]; then
 fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
-TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.2 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_CUDA_FLAGS="--config=cuda"
@@ -108,8 +115,4 @@ BUILD_TARGET_GRAPH_TRANSFORMS="//tensorflow/tools/graph_transforms:transform_gra
 BUILD_TARGET_GRAPH_SUMMARIZE="//tensorflow/tools/graph_transforms:summarize_graph"
 BUILD_TARGET_GRAPH_BENCHMARK="//tensorflow/tools/benchmark:benchmark_model"
 BUILD_TARGET_CONVERT_MMAP="//tensorflow/contrib/util:convert_graphdef_memmapped_format"
-
-## Use lstm_layer_inference as a pre-building target. This is a tf_library
-## code-path, so it should build us everything to get tfcompile ready to run
-## on the host itself. Later, DeepSpeech code build should leverage that.
-BUILD_TARGET_AOT_DEPS="//tensorflow/compiler/tests:lstm_layer_inference"
+BUILD_TARGET_TOCO="//tensorflow/contrib/lite/toco:toco"

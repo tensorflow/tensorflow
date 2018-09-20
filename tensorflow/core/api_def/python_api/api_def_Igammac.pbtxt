@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Igammac"
+  endpoint {
+    name: "math.igammac"
+  }
+  endpoint {
+    name: "igammac"
+    deprecated: true
+  }
+}

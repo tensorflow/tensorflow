@@ -12,18 +12,6 @@ load(
     "tf_kernel_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_kernel_library(
     name = "neon_depthwise_conv_op",
     hdrs = [

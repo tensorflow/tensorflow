@@ -23,7 +23,7 @@
 #     E.g.: tensorflow/tf_grpc_test_server:0.11.0rc1
 #
 #   whl_file_location: URL from which the TensorFlow whl file will be downloaded.
-#     E.g.: https://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
+#     E.g.: https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.5.0-cp27-none-linux_x86_64.whl
 #     E.g.: /path/to/folder/tensorflow-0.11.0rc1-cp27-none-linux_x86_64.whl
 #
 # The optional flag --test lets the script to use the Dockerfile for the

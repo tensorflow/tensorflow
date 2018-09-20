@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -38,7 +39,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                      const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) {
+                     FunctionLibraryRuntime::LocalHandle* handle) override {
     mutex_lock l(mu_);
     *handle = next_handle_;
     next_handle_++;
@@ -48,7 +49,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-           FunctionLibraryRuntime::DoneCallback done) {}
+           FunctionLibraryRuntime::DoneCallback done) override {}
 
  private:
   mutex mu_;
@@ -132,7 +133,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                    });
     done2.WaitForNotification();
     EXPECT_TRUE(errors::IsNotFound(status));
-    EXPECT_TRUE(StringPiece(status.error_message()).contains("not found."));
+    EXPECT_TRUE(str_util::StrContains(status.error_message(), "not found."));
 
     return Status::OK();
   }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_TYPES_H_
-#define TENSORFLOW_PLATFORM_TYPES_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TYPES_H_
+#define TENSORFLOW_CORE_PLATFORM_TYPES_H_
 
 #include <string>
 #include "tensorflow/core/platform/platform.h"
@@ -30,12 +30,6 @@ limitations under the License.
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
-
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
-#endif
-
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 
 namespace tensorflow {
 
@@ -66,4 +60,10 @@ typedef uint64 Fprint;
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_TYPES_H_
+// Alias namespace ::stream_executor as ::tensorflow::se.
+namespace stream_executor {}
+namespace tensorflow {
+namespace se = ::stream_executor;
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PLATFORM_TYPES_H_

@@ -41,9 +41,9 @@ enum FileFormat {
 // Classify the contents of a file based on starting bytes (the magic number).
 FileFormat ClassifyFileFormat(StringPiece data) {
   // The 4th byte of JPEG is '\xe0' or '\xe1', so check just the first three
-  if (data.starts_with("\xff\xd8\xff")) return kJpgFormat;
-  if (data.starts_with("\x89PNG\r\n\x1a\n")) return kPngFormat;
-  if (data.starts_with("\x47\x49\x46\x38")) return kGifFormat;
+  if (str_util::StartsWith(data, "\xff\xd8\xff")) return kJpgFormat;
+  if (str_util::StartsWith(data, "\x89PNG\r\n\x1a\n")) return kPngFormat;
+  if (str_util::StartsWith(data, "\x47\x49\x46\x38")) return kGifFormat;
   return kUnknownFormat;
 }
 

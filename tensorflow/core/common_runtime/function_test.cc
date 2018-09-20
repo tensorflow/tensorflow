@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -53,8 +55,8 @@ Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
-void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+void HasError(const Status& s, StringPiece substr) {
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 
@@ -240,7 +242,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsInvalidArgument(status2));
     EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
+        str_util::StrContains(status2.error_message(), "remote execution."));
 
     return status;
   }
@@ -310,7 +312,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
     EXPECT_TRUE(errors::IsInvalidArgument(status2));
     EXPECT_TRUE(
-        StringPiece(status2.error_message()).contains("remote execution."));
+        str_util::StrContains(status2.error_message(), "remote execution."));
 
     return status;
   }
@@ -530,57 +532,67 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
   }
 }
 
-TEST_F(FunctionLibraryRuntimeTest, DefaultThreadpool) {
-  using test::function::blocking_op_state;
-  using test::function::BlockingOpState;
-
-  thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "FLRTest", 1);
-  Init({test::function::BlockingOpFn(), test::function::XTimesTwo()}, tp);
-
-  auto x = test::AsScalar<float>(1.3);
-  Tensor y;
-  blocking_op_state = new BlockingOpState();
-
-  thread::ThreadPool* tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
-  bool finished_running = false;
-  tp1->Schedule([&x, &y, &finished_running, this]() {
-    TF_CHECK_OK(InstantiateAndRun(flr0_, "BlockingOpFn", {}, {x}, {&y},
-                                  false /* add_runner */));
-    finished_running = true;
-  });
-
-  // InstantiateAndRun shouldn't finish because BlockingOpFn should be blocked.
-  EXPECT_FALSE(finished_running);
-
-  FunctionLibraryRuntime::Handle h;
-  TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &h));
-
-  auto x1 = test::AsTensor<float>({1, 2, 3, 4});
-  Tensor y1;
-  std::atomic<int32> num_done(0);
-  FunctionLibraryRuntime::Options opts;
-  for (int i = 0; i < 4; ++i) {
-    tp1->Schedule([&h, &x1, &y1, &opts, &num_done, this]() {
-      TF_CHECK_OK(Run(flr0_, h, opts, {x1}, {&y1}, false /* add_runner */));
-      num_done.fetch_add(1);
-    });
+namespace {
+class DummyExecutorRegistrar {
+ public:
+  DummyExecutorRegistrar() {
+    ExecutorFactory::Register("DUMMY", new Factory());
   }
-  // All the 4 Run() calls should be blocked because the runner is occupied.
-  EXPECT_EQ(0, num_done.load());
 
-  blocking_op_state->AwaitState(1);
-  blocking_op_state->MoveToState(1, 2);
-  // Now the runner should be unblocked and all the other Run() calls should
-  // proceed.
-  blocking_op_state->AwaitState(3);
-  blocking_op_state->MoveToState(3, 0);
-  delete tp1;
-  EXPECT_TRUE(finished_running);
-  EXPECT_EQ(4, num_done.load());
+ private:
+  class Factory : public ExecutorFactory {
+    Status NewExecutor(const LocalExecutorParams& params,
+                       std::unique_ptr<const Graph> graph,
+                       std::unique_ptr<Executor>* out_executor) override {
+      return errors::Internal("This is a dummy.");
+    }
+  };
+};
+static DummyExecutorRegistrar registrar;
+}  // namespace
 
-  delete blocking_op_state;
-  blocking_op_state = nullptr;
-  delete tp;
+TEST_F(FunctionLibraryRuntimeTest, ExecutorFactory) {
+  Init({test::function::XTimesTwo()});
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  // Test that the default executor works.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "";
+    TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                                  options, {x}, {&y}));
+    test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  }
+
+  // Test the explicit registration for the default executor.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "DEFAULT";
+    TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                                  options, {x}, {&y}));
+    test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  }
+
+  // Test that a non-default executor factory can be invoked.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "DUMMY";
+    HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                               {x}, {&y}),
+             "Internal: This is a dummy.");
+  }
+
+  // Test that non-existent exector types trigger an error.
+  {
+    FunctionLibraryRuntime::InstantiateOptions options;
+    options.executor_type = "UNKNOWN_EXECUTOR";
+    HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                               {x}, {&y}),
+             "Not found: No executor factory registered for the given executor "
+             "type: UNKNOWN_EXECUTOR");
+  }
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
@@ -790,9 +802,9 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
       // Name
       "SquareAndAddOneWithStatefulNodes",
       // Args
-      {"x: int32"},
+      {"x: int32", "y: float32"},
       // Return values
-      {"y: int32"},
+      {"z: int32"},
       // Attrs
       {},
       // Nodes
@@ -810,12 +822,13 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
         "RandomUniform",
         {"shape"},
         {{"T", T}, {"dtype", DT_FLOAT}}},
-       // y = Add<T>(a, o)
-       {{"y"}, "Add", {"a", "o"}, {{"T", T}}}});
+       // z = Add<T>(a, o)
+       {{"z"}, "Add", {"a", "o"}, {{"T", T}}}});
   Init({stateful_func});
 
   auto x = test::AsTensor<int32>({1, 2, 3, 4});
-  Tensor y;
+  auto y = test::AsTensor<float>({1.0, 2.0, 3.0, 4.0});
+  Tensor z;
 
   FunctionLibraryRuntime::Handle handle;
   TF_CHECK_OK(
@@ -825,18 +838,19 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   StepStatsCollector stats_collector(&stats);
   FunctionLibraryRuntime::Options opts;
   opts.stats_collector = &stats_collector;
-  TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  TF_CHECK_OK(Run(flr0_, handle, opts, {x, y}, {&z}));
   TF_CHECK_OK(flr0_->ReleaseHandle(handle));
 
   TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
-                                {x}, {&y}));
-  test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({2, 5, 10, 17}));
+                                {x, y}, {&z}));
+  test::ExpectTensorEqual<int>(z, test::AsTensor<int32>({2, 5, 10, 17}));
 
   stats_collector.FinalizeAndSwap(&stats);
 
-  // Note that we do not expect the nodes named "x1", "x2", or "x3" to execute.
+  // Note that we do not expect the nodes named "y", "x1", "x2", or "x3" to
+  // execute.
   std::set<string> expected_node_names(
-      {"_SOURCE", "shape", "x", "o", "a", "keep_me", "y", "y_RetVal"});
+      {"_SOURCE", "shape", "x", "o", "a", "keep_me", "z", "z_RetVal"});
   std::set<string> executed_node_names;
   for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
     executed_node_names.insert(node_stats.node_name());
@@ -897,7 +911,7 @@ TEST_F(FunctionLibraryRuntimeTest, ManySwapsNodeDef) {
   ASSERT_TRUE(g != nullptr);
   OptimizeGraph(flr0_, &g);
   const char* e0 = R"P(
-(n3:float, n2:float) -> (n3:float) {
+(n2:float, n3:float) -> (n2:float) {
 }
 )P";
   EXPECT_EQ(e0, DebugString(g.get()));
@@ -965,7 +979,7 @@ TEST_F(FunctionLibraryRuntimeTest, Error_NotFound) {
            "Not found: Function Foo is not defined.");
 }
 
-TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
+TEST_F(FunctionLibraryRuntimeTest, Error_InstantiationError) {
   auto bad_x_times_two = FDH::Define(
       // Name
       "XTimesTwo",
@@ -1007,8 +1021,9 @@ TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
   DCHECK_EQ(x.dtype(), DT_INT32);
   Tensor y;
   HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
-           "The node 'add' has inputs from different frames. The input 'enter' "
-           "is in frame 'while'. The input 'i' is in frame ''.");
+           "{{node add}} has inputs from different frames. The input"
+           " {{node enter}} is in frame 'while'. The input {{node i}} is in"
+           " frame ''.");
 }
 
 TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {

@@ -52,6 +52,11 @@ TEST(SplitTest, SplitUint8) {
   EXPECT_THAT(Split<uint8_t>("1,-1,258", ","), ElementsAre(1, 255, 2));
 }
 
+TEST(SplitTest, SplitBool) {
+  EXPECT_THAT(Split<bool>("1, 0, 0, 1", ","),
+              ElementsAre(true, false, false, true));
+}
+
 }  // namespace
 }  // namespace testing
 }  // namespace tflite

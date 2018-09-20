@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
 
@@ -46,6 +46,9 @@ class GraphInfo {
 
   // Returns the indices of the output tensors.
   virtual const std::vector<int>& outputs() const = 0;
+
+  // Returns the indices of the variable tensors.
+  virtual const std::vector<int>& variables() const = 0;
 };
 
 // Represents a subgraph of a TensorFlow Lite graph.

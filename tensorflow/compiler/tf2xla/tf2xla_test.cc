@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -69,14 +71,14 @@ TEST(ConvertGraphDefToXla, Sum) {
   tf2xla::Config config = SumConfig();
 
   xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
-  xla::Computation computation;
+  xla::XlaComputation computation;
   TF_EXPECT_OK(ConvertGraphDefToXla(graph_def, config, client, &computation));
 
   // Set up arguments.
-  auto x_literal = xla::Literal::CreateR0<int32>(10);
-  auto y_literal = xla::Literal::CreateR0<int32>(32);
-  auto x_global_or = client->TransferToServer(*x_literal);
-  auto y_global_or = client->TransferToServer(*y_literal);
+  auto x_literal = xla::LiteralUtil::CreateR0<int32>(10);
+  auto y_literal = xla::LiteralUtil::CreateR0<int32>(32);
+  auto x_global_or = client->TransferToServer(x_literal);
+  auto y_global_or = client->TransferToServer(y_literal);
   TF_EXPECT_OK(x_global_or.status());
   TF_EXPECT_OK(y_global_or.status());
   std::unique_ptr<xla::GlobalData> x_global =
@@ -88,8 +90,13 @@ TEST(ConvertGraphDefToXla, Sum) {
   auto result_or =
       client->ExecuteAndTransfer(computation, {x_global.get(), y_global.get()});
   TF_EXPECT_OK(result_or.status());
-  std::unique_ptr<xla::Literal> result = std::move(result_or.ValueOrDie());
-  EXPECT_EQ("(s32[]) (\n42\n)", result->ToString());
+  xla::Literal result = std::move(result_or.ValueOrDie());
+  EXPECT_EQ("(s32[]) (\n42\n)", result.ToString());
+
+  config.mutable_feed(0)->mutable_id()->set_output_index(
+      123); /* invalid output_index */
+  EXPECT_TRUE(errors::IsInvalidArgument(
+      ConvertGraphDefToXla(graph_def, config, client, &computation)));
 }
 
 }  // namespace

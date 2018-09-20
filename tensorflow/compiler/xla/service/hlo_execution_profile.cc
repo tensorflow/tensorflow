@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
@@ -49,7 +51,7 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
   size_t profile_counters_size = hlo_profile_index_map.total_count();
 
   std::unique_ptr<HloProfilePrinterData> profile_printer_data =
-      MakeUnique<HloProfilePrinterData>();
+      absl::make_unique<HloProfilePrinterData>();
   profile_printer_data->set_profile_counters_size(profile_counters_size);
   profile_printer_data->mutable_computation_infos()->Reserve(
       hlo_profile_index_map.computation_count());
@@ -67,11 +69,11 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
 
   // The profile indices were computed deterministically in
   // HloProfileIndexMap::HloProfileIndexMap.
-  c_sort(computation_and_profile_idx_list,
-         [](const std::pair<const HloComputation*, int64>& left,
-            const std::pair<const HloComputation*, int64>& right) {
-           return left.second < right.second;
-         });
+  absl::c_sort(computation_and_profile_idx_list,
+               [](const std::pair<const HloComputation*, int64>& left,
+                  const std::pair<const HloComputation*, int64>& right) {
+                 return left.second < right.second;
+               });
 
   for (const auto& pair : computation_and_profile_idx_list) {
     CHECK_LT(pair.second, profile_counters_size);
@@ -111,8 +113,8 @@ HloExecutionProfile::HloExecutionProfile(
     : hlo_profile_printer_data_(*hlo_profile_printer_data),
       hlo_profile_index_map_(*hlo_profile_index_map),
       profile_counters_(
-          /*count*/ hlo_profile_index_map_.total_count(),
-          /*value*/ 0) {}
+          /*count=*/hlo_profile_index_map_.total_count(),
+          /*value=*/0) {}
 
 void HloExecutionProfile::SetCyclesTakenBy(const HloInstruction* hlo,
                                            uint64 cycles_taken) {

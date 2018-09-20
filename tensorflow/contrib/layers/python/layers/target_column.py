@@ -270,7 +270,7 @@ class _RegressionTargetColumn(_TargetColumn):
 
   def logits_to_predictions(self, logits, proba=False):
     if self.num_label_columns == 1:
-      return array_ops.squeeze(logits, squeeze_dims=[1])
+      return array_ops.squeeze(logits, axis=[1])
     return logits
 
   def get_eval_ops(self, features, logits, labels, metrics=None):
@@ -418,7 +418,7 @@ def _softmax_cross_entropy_loss(logits, target):
                      "Instead got %s." % target.dtype)
   # sparse_softmax_cross_entropy_with_logits requires [batch_size] target.
   if len(target.get_shape()) == 2:
-    target = array_ops.squeeze(target, squeeze_dims=[1])
+    target = array_ops.squeeze(target, axis=[1])
   loss_vec = nn.sparse_softmax_cross_entropy_with_logits(
       labels=target, logits=logits)
   return loss_vec

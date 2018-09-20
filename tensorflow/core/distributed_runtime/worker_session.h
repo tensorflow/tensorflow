@@ -40,10 +40,14 @@ struct WorkerSession {
   // Object from which WorkerInterface instances can be obtained.
   const std::unique_ptr<WorkerCacheInterface> worker_cache;
 
-  // Collection of local devices. These devices are typically RenamedDevices
-  // in all except the SessionMgr.legacy_session_. legacy_session_.device_mgr
-  // == worker_env_.device_mgr, which holds the true devices.
-  const std::unique_ptr<DeviceMgr> device_mgr;
+  // Collection of local devices. These devices are typically
+  // RenamedDevices in all except the SessionMgr.legacy_session_ and
+  // sessions created with `isolate_session_state == false`. In the
+  // those cases, this method returns a pointer to a borrowed
+  // DeviceMgr (typically the `worker_env.device_mgr`).
+  DeviceMgr* device_mgr() {
+    return device_mgr_ ? device_mgr_.get() : borrowed_device_mgr_;
+  }
 
   // graph_mgr keeps track of the registered graphs of this session.
   //
@@ -57,6 +61,22 @@ struct WorkerSession {
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
                 std::unique_ptr<DeviceMgr> device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr);
+
+  static std::shared_ptr<WorkerSession> CreateWithBorrowedDeviceMgr(
+      const string& session_name, const string& worker_name,
+      std::unique_ptr<WorkerCacheInterface> worker_cache,
+      DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr);
+
+  ~WorkerSession();
+
+ private:
+  WorkerSession(const string& session_name, const string& worker_name,
+                std::unique_ptr<WorkerCacheInterface> worker_cache,
+                DeviceMgr* borrowed_device_mgr,
+                std::unique_ptr<GraphMgr> graph_mgr);
+
+  const std::unique_ptr<DeviceMgr> device_mgr_;
+  DeviceMgr* const borrowed_device_mgr_;  // Not owned.
 };
 
 }  // namespace tensorflow

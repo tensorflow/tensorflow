@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
@@ -44,7 +43,7 @@ namespace wrap {
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define PERFTOOLS_GPUTOOLS_CUFFT_WRAP(__name)                    \
+#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                       \
   struct WrapperShim__##__name {                                 \
     template <typename... Args>                                  \
     cufftResult operator()(CUDAExecutor *parent, Args... args) { \
@@ -68,7 +67,7 @@ namespace wrap {
                                               __macro(cufftGetSizeMany)        \
                                                   __macro(cufftMakePlanMany)
 
-CUFFT_ROUTINE_EACH(PERFTOOLS_GPUTOOLS_CUFFT_WRAP)
+CUFFT_ROUTINE_EACH(STREAM_EXECUTOR_CUFFT_WRAP)
 
 }  // namespace wrap
 
@@ -139,8 +138,8 @@ port::Status CUDAFftPlan::Initialize(
                                   CUDAFftType(type), 1 /* = batch */);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 1d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to create cuFFT 1d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to create cuFFT 1d plan.");
           }
           return port::Status::OK();
         case 2:
@@ -149,8 +148,8 @@ port::Status CUDAFftPlan::Initialize(
                                   elem_count_[1], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 2d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to create cuFFT 2d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to create cuFFT 2d plan.");
           }
           return port::Status::OK();
         case 3:
@@ -160,29 +159,29 @@ port::Status CUDAFftPlan::Initialize(
                                 elem_count_[2], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to create cuFFT 3d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to create cuFFT 3d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to create cuFFT 3d plan.");
           }
           return port::Status::OK();
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return port::Status{port::error::INVALID_ARGUMENT,
-                              "cufftPlan only takes rank 1, 2, or 3."};
+          return port::Status(port::error::INVALID_ARGUMENT,
+                              "cufftPlan only takes rank 1, 2, or 3.");
       }
     } else {
       ret = wrap::cufftCreate(parent, &plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to create cuFFT plan.");
       }
       ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for cuFFT plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to set auto allocation for cuFFT plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to set auto allocation for cuFFT plan.");
       }
       switch (rank) {
         case 1:
@@ -191,8 +190,8 @@ port::Status CUDAFftPlan::Initialize(
                                       &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 1d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to make cuFFT 1d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to make cuFFT 1d plan.");
           }
           break;
         case 2:
@@ -201,8 +200,8 @@ port::Status CUDAFftPlan::Initialize(
                                       &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 2d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to make cuFFT 2d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to make cuFFT 2d plan.");
           }
           break;
         case 3:
@@ -211,16 +210,16 @@ port::Status CUDAFftPlan::Initialize(
                                       CUDAFftType(type), &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "failed to make cuFFT 3d plan:" << ret;
-            return port::Status{port::error::INTERNAL,
-                                "Failed to make cuFFT 3d plan."};
+            return port::Status(port::error::INTERNAL,
+                                "Failed to make cuFFT 3d plan.");
           }
           break;
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return port::Status{port::error::INVALID_ARGUMENT,
-                              "cufftPlan only takes rank 1, 2, or 3."};
+          return port::Status(port::error::INVALID_ARGUMENT,
+                              "cufftPlan only takes rank 1, 2, or 3.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
@@ -234,23 +233,23 @@ port::Status CUDAFftPlan::Initialize(
           output_distance, CUDAFftType(type), batch_count);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT batched plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to create cuFFT batched plan.");
       }
     } else {
       auto ret = wrap::cufftCreate(parent, &plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to create cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to create cuFFT batched plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to create cuFFT batched plan.");
       }
       ret = wrap::cufftSetAutoAllocation(parent, plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to set auto allocation for cuFFT batched plan:"
                    << ret;
-        return port::Status{
+        return port::Status(
             port::error::INTERNAL,
-            "Failed to set auto allocation for cuFFT batched plan."};
+            "Failed to set auto allocation for cuFFT batched plan.");
       }
       ret = wrap::cufftMakePlanMany(
           parent, plan_, rank, elem_count_,
@@ -260,8 +259,8 @@ port::Status CUDAFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "failed to make cuFFT batched plan:" << ret;
-        return port::Status{port::error::INTERNAL,
-                            "Failed to make cuFFT batched plan."};
+        return port::Status(port::error::INTERNAL,
+                            "Failed to make cuFFT batched plan.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
@@ -294,8 +293,8 @@ port::Status CUDAFftPlan::UpdateScratchAllocator(
   cufftResult_t ret = wrap::cufftSetWorkArea(parent_, plan_, scratch_.opaque());
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to set work area for cuFFT plan:" << ret;
-    return port::Status{port::error::INTERNAL,
-                        "Failed to set work area for cuFFT plan."};
+    return port::Status(port::error::INTERNAL,
+                        "Failed to set work area for cuFFT plan.");
   }
   return port::Status::OK();
 }
@@ -514,62 +513,59 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   return true;
 }
 
-#define PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2, \
-                                           __fft_type3)                      \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<std::complex<__type>> &input,       \
-                      DeviceMemory<std::complex<__type>> *output) {          \
-    return DoFftWithDirectionInternal(                                       \
-        stream, plan, wrap::cufftExec##__fft_type1, input, output);          \
-  }                                                                          \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<__type> &input,                     \
-                      DeviceMemory<std::complex<__type>> *output) {          \
-    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type2, input,  \
-                         output);                                            \
-  }                                                                          \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                       \
-                      const DeviceMemory<std::complex<__type>> &input,       \
-                      DeviceMemory<__type> *output) {                        \
-    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type3, input,  \
-                         output);                                            \
+#define STREAM_EXECUTOR_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,   \
+                                        __fft_type3)                        \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
+                      const DeviceMemory<std::complex<__type>> &input,      \
+                      DeviceMemory<std::complex<__type>> *output) {         \
+    return DoFftWithDirectionInternal(                                      \
+        stream, plan, wrap::cufftExec##__fft_type1, input, output);         \
+  }                                                                         \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
+                      const DeviceMemory<__type> &input,                    \
+                      DeviceMemory<std::complex<__type>> *output) {         \
+    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type2, input, \
+                         output);                                           \
+  }                                                                         \
+  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                      \
+                      const DeviceMemory<std::complex<__type>> &input,      \
+                      DeviceMemory<__type> *output) {                       \
+    return DoFftInternal(stream, plan, wrap::cufftExec##__fft_type3, input, \
+                         output);                                           \
   }
 
-PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(float, C2C, R2C, C2R)
-PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
+STREAM_EXECUTOR_CUDA_DEFINE_FFT(float, C2C, R2C, C2R)
+STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 
-#undef PERFTOOLS_GPUTOOLS_CUDA_DEFINE_FFT
+#undef STREAM_EXECUTOR_CUDA_DEFINE_FFT
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
 
-namespace gpu = ::perftools::gputools;
+void initialize_cufft() {
+  port::Status status =
+      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
+          cuda::kCudaPlatformId, cuda::kCuFftPlugin, "cuFFT",
+          [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
+            cuda::CUDAExecutor *cuda_executor =
+                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            if (cuda_executor == nullptr) {
+              LOG(ERROR) << "Attempting to initialize an instance of the cuFFT "
+                         << "support library with a non-CUDA StreamExecutor";
+              return nullptr;
+            }
 
-REGISTER_MODULE_INITIALIZER(register_cufft, {
-  gpu::port::Status status =
-      gpu::PluginRegistry::Instance()
-          ->RegisterFactory<gpu::PluginRegistry::FftFactory>(
-              gpu::cuda::kCudaPlatformId, gpu::cuda::kCuFftPlugin, "cuFFT",
-              [](gpu::internal::StreamExecutorInterface
-                     *parent) -> gpu::fft::FftSupport * {
-                gpu::cuda::CUDAExecutor *cuda_executor =
-                    dynamic_cast<gpu::cuda::CUDAExecutor *>(parent);
-                if (cuda_executor == nullptr) {
-                  LOG(ERROR)
-                      << "Attempting to initialize an instance of the cuFFT "
-                      << "support library with a non-CUDA StreamExecutor";
-                  return nullptr;
-                }
-
-                return new gpu::cuda::CUDAFft(cuda_executor);
-              });
+            return new cuda::CUDAFft(cuda_executor);
+          });
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: "
                << status.error_message();
   }
 
-  gpu::PluginRegistry::Instance()->SetDefaultFactory(gpu::cuda::kCudaPlatformId,
-                                                     gpu::PluginKind::kFft,
-                                                     gpu::cuda::kCuFftPlugin);
-});
+  PluginRegistry::Instance()->SetDefaultFactory(
+      cuda::kCudaPlatformId, PluginKind::kFft, cuda::kCuFftPlugin);
+}
+
+}  // namespace stream_executor
+
+REGISTER_MODULE_INITIALIZER(register_cufft,
+                            { stream_executor::initialize_cufft(); });

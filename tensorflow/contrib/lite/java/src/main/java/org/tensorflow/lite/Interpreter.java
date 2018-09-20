@@ -16,10 +16,11 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import javax.validation.constraints.NotNull;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 /**
  * Driver class to drive model inference with TensorFlow Lite.
@@ -60,11 +61,47 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
    */
-  public Interpreter(@NotNull File modelFile) {
+  public Interpreter(@NonNull File modelFile) {
     if (modelFile == null) {
       return;
     }
     wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath());
+  }
+
+  /**
+   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
+   *
+   * @param modelFile: a file of a pre-trained TF Lite model
+   * @param numThreads: number of threads to use for inference
+   */
+  public Interpreter(@NonNull File modelFile, int numThreads) {
+    if (modelFile == null) {
+      return;
+    }
+    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), numThreads);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file.
+   *
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   */
+  public Interpreter(@NonNull ByteBuffer byteBuffer) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and specifies the
+   * number of threads used for inference.
+   *
+   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
+   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
+   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   */
+  public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
   }
 
   /**
@@ -73,8 +110,19 @@ public final class Interpreter implements AutoCloseable {
    * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
    * Interpreter}.
    */
-  public Interpreter(@NotNull MappedByteBuffer mappedByteBuffer) {
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
     wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
+   * specifies the number of threads used for inference.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
   }
 
   /**
@@ -87,9 +135,10 @@ public final class Interpreter implements AutoCloseable {
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
    *     input data. When {@link ByteBuffer} is used, its content should remain unchanged until
    *     model inference is done.
-   * @param output a multidimensional array of output data.
+   * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
+   *     types including int, float, long, and byte.
    */
-  public void run(@NotNull Object input, @NotNull Object output) {
+  public void run(@NonNull Object input, @NonNull Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
     outputs.put(0, output);
@@ -107,26 +156,14 @@ public final class Interpreter implements AutoCloseable {
    *     primitive types including int, float, long, and byte. {@link ByteBuffer} is the preferred
    *     way to pass large input data. When {@link ByteBuffer} is used, its content should remain
    *     unchanged until model inference is done.
-   * @param outputs a map mapping output indices to multidimensional arrays of output data. It only
-   *     needs to keep entries for the outputs to be used.
+   * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
+   *     ByteBuffer}s of primitive types including int, float, long, and byte. It only needs to keep
+   *     entries for the outputs to be used.
    */
   public void runForMultipleInputsOutputs(
-      @NotNull Object[] inputs, @NotNull Map<Integer, Object> outputs) {
-    if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
-    }
-    Tensor[] tensors = wrapper.run(inputs);
-    if (outputs == null || tensors == null || outputs.size() > tensors.length) {
-      throw new IllegalArgumentException("Outputs do not match with model outputs.");
-    }
-    final int size = tensors.length;
-    for (Integer idx : outputs.keySet()) {
-      if (idx == null || idx < 0 || idx >= size) {
-        throw new IllegalArgumentException(
-            String.format("Invalid index of output %d (should be in range [0, %d))", idx, size));
-      }
-      tensors[idx].copyTo(outputs.get(idx));
-    }
+      @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {
+    checkNotClosed();
+    wrapper.run(inputs, outputs);
   }
 
   /**
@@ -134,11 +171,15 @@ public final class Interpreter implements AutoCloseable {
    *
    * <p>IllegalArgumentException will be thrown if it fails to resize.
    */
-  public void resizeInput(int idx, @NotNull int[] dims) {
-    if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
-    }
+  public void resizeInput(int idx, @NonNull int[] dims) {
+    checkNotClosed();
     wrapper.resizeInput(idx, dims);
+  }
+
+  /** Gets the number of input tensors. */
+  public int getInputTensorCount() {
+    checkNotClosed();
+    return wrapper.getInputTensorCount();
   }
 
   /**
@@ -148,10 +189,24 @@ public final class Interpreter implements AutoCloseable {
    * to initialize the {@link Interpreter}.
    */
   public int getInputIndex(String opName) {
-    if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
-    }
+    checkNotClosed();
     return wrapper.getInputIndex(opName);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied input index.
+   *
+   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   */
+  public Tensor getInputTensor(int inputIndex) {
+    checkNotClosed();
+    return wrapper.getInputTensor(inputIndex);
+  }
+
+  /** Gets the number of output Tensors. */
+  public int getOutputTensorCount() {
+    checkNotClosed();
+    return wrapper.getOutputTensorCount();
   }
 
   /**
@@ -161,10 +216,18 @@ public final class Interpreter implements AutoCloseable {
    * to initialize the {@link Interpreter}.
    */
   public int getOutputIndex(String opName) {
-    if (wrapper == null) {
-      throw new IllegalStateException("The Interpreter has already been closed.");
-    }
+    checkNotClosed();
     return wrapper.getOutputIndex(opName);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied output index.
+   *
+   * <p>IllegalArgumentException will be thrown if the provided index is invalid.
+   */
+  public Tensor getOutputTensor(int outputIndex) {
+    checkNotClosed();
+    return wrapper.getOutputTensor(outputIndex);
   }
 
   /**
@@ -173,26 +236,43 @@ public final class Interpreter implements AutoCloseable {
    * {@link Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
-    if (wrapper == null) {
-      throw new IllegalStateException("The interpreter has already been closed.");
-    }
+    checkNotClosed();
     return wrapper.getLastNativeInferenceDurationNanoseconds();
   }
 
   /** Turns on/off Android NNAPI for hardware acceleration when it is available. */
   public void setUseNNAPI(boolean useNNAPI) {
-    if (wrapper != null) {
-      wrapper.setUseNNAPI(useNNAPI);
-    } else {
-      throw new IllegalStateException("NativeInterpreterWrapper has already been closed.");
-    }
+    checkNotClosed();
+    wrapper.setUseNNAPI(useNNAPI);
+  }
+
+  public void setNumThreads(int numThreads) {
+    checkNotClosed();
+    wrapper.setNumThreads(numThreads);
   }
 
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
-    wrapper.close();
-    wrapper = null;
+    if (wrapper != null) {
+      wrapper.close();
+      wrapper = null;
+    }
+  }
+
+  @Override
+  protected void finalize() throws Throwable {
+    try {
+      close();
+    } finally {
+      super.finalize();
+    }
+  }
+
+  private void checkNotClosed() {
+    if (wrapper == null) {
+      throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
+    }
   }
 
   NativeInterpreterWrapper wrapper;

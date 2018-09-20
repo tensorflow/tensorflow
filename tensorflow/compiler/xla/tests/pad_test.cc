@@ -16,12 +16,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -85,7 +85,7 @@ class PadTestFloat : public PadTest,
 
 // Tests a Pad() with a zero-element input and output.
 XLA_TEST_P(PadTestFloat, Pad1DS0ToS0Array) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Set up the padding configuration {low: 0, high: 0, interior: 0}.
   PaddingConfig padding_config;
   auto dimension = padding_config.add_dimensions();
@@ -93,14 +93,14 @@ XLA_TEST_P(PadTestFloat, Pad1DS0ToS0Array) {
   dimension->set_edge_padding_high(0);
   dimension->set_interior_padding(0);
 
-  b.Pad(AddParam(*Literal::CreateR1<float>({}), &b),
-        AddParam(*Literal::CreateR0<float>(0.1), &b), padding_config);
+  Pad(AddParam(LiteralUtil::CreateR1<float>({}), &b),
+      AddParam(LiteralUtil::CreateR0<float>(0.1), &b), padding_config);
   ComputeAndCompareR1<float>(&b, {}, {}, DefaultErrorSpec());
 }
 
 // Tests a Pad() with a zero-element input but a non-zero-element output.
 XLA_TEST_P(PadTestFloat, Pad1DS0ToS5Array) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Set up the padding configuration {low: 3, high: 0, interior: 1}.
   PaddingConfig padding_config;
   auto dimension = padding_config.add_dimensions();
@@ -108,14 +108,14 @@ XLA_TEST_P(PadTestFloat, Pad1DS0ToS5Array) {
   dimension->set_edge_padding_high(4);
   dimension->set_interior_padding(7);
 
-  b.Pad(AddParam(*Literal::CreateR1<float>({}), &b),
-        AddParam(*Literal::CreateR0<float>(0.1), &b), padding_config);
+  Pad(AddParam(LiteralUtil::CreateR1<float>({}), &b),
+      AddParam(LiteralUtil::CreateR0<float>(0.1), &b), padding_config);
   ComputeAndCompareR1<float>(&b, std::vector<float>(5, 0.1), {},
                              DefaultErrorSpec());
 }
 
 XLA_TEST_P(PadTestFloat, Pad1DS3Array) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
   // Set up the padding configuration {low: 3, high: 0, interior: 1}.
   PaddingConfig padding_config;
   auto dimension = padding_config.add_dimensions();
@@ -123,23 +123,24 @@ XLA_TEST_P(PadTestFloat, Pad1DS3Array) {
   dimension->set_edge_padding_high(0);
   dimension->set_interior_padding(1);
 
-  b.Pad(AddParam(*Literal::CreateR1<float>({1, 2, 3}), &b),
-        AddParam(*Literal::CreateR0<float>(0.1), &b), padding_config);
+  Pad(AddParam(LiteralUtil::CreateR1<float>({1, 2, 3}), &b),
+      AddParam(LiteralUtil::CreateR0<float>(0.1), &b), padding_config);
   std::vector<float> expected({0.1, 0.1, 0.1, 1, 0.1, 2, 0.1, 3});
   ComputeAndCompareR1<float>(&b, expected, {}, DefaultErrorSpec());
 }
 
 XLA_TEST_P(PadTestFloat, Pad4D_2x0x3x2_FloatArray) {
-  ComputationBuilder b(client_, TestName());
-  b.Pad(AddParam(Array4D<float>(2, 0, 3, 2), &b),
-        AddParam(*Literal::CreateR0<float>(1.5), &b), r4_padding_on_dim0_dim1_);
+  XlaBuilder b(TestName());
+  Pad(AddParam(Array4D<float>(2, 0, 3, 2), &b),
+      AddParam(LiteralUtil::CreateR0<float>(1.5), &b),
+      r4_padding_on_dim0_dim1_);
   ComputeAndCompareR4<float>(&b, Array4D<float>(5, 2, 3, 2, 1.5f), {},
                              DefaultErrorSpec());
 }
 
 TEST_P(PadTestFloat, Pad4DFloat_1x1x3x2_Array) {
-  ComputationBuilder b(client_, TestName());
-  auto input = MakeUnique<Array4D<float>>(1, 1, 3, 2);
+  XlaBuilder b(TestName());
+  auto input = absl::make_unique<Array4D<float>>(1, 1, 3, 2);
   Array2D<float> input_xy({
       {1.0f, 2.0f},  // row 0
       {3.0f, 4.0f},  // row 1
@@ -147,10 +148,10 @@ TEST_P(PadTestFloat, Pad4DFloat_1x1x3x2_Array) {
   });
   input->FillWithYX(input_xy);
 
-  b.Pad(AddParam(*input, &b), AddParam(*Literal::CreateR0<float>(1.5), &b),
-        r4_padding_on_dim0_dim1_);
+  Pad(AddParam(*input, &b), AddParam(LiteralUtil::CreateR0<float>(1.5), &b),
+      r4_padding_on_dim0_dim1_);
 
-  auto expected = MakeUnique<Array4D<float>>(2, 3, 3, 2);
+  auto expected = absl::make_unique<Array4D<float>>(2, 3, 3, 2);
   expected->Fill(1.5);
   (*expected)(1, 0, 0, 0) = 1.0f;
   (*expected)(1, 0, 0, 1) = 2.0f;
@@ -162,14 +163,15 @@ TEST_P(PadTestFloat, Pad4DFloat_1x1x3x2_Array) {
 }
 
 TEST_P(PadTestFloat, Pad4DFloatArrayWithInteriorPadding) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   const float pad_value = 1.5f;
   Array4D<float> input(3, 2, 1, 1, {1, 2, 3, 4, 5, 6});
-  b.Pad(AddParam(input, &b), AddParam(*Literal::CreateR0<float>(pad_value), &b),
-        r4_padding_on_dim0_dim1_);
+  Pad(AddParam(input, &b),
+      AddParam(LiteralUtil::CreateR0<float>(pad_value), &b),
+      r4_padding_on_dim0_dim1_);
 
-  auto expected = MakeUnique<Array4D<float>>(8, 5, 1, 1);
+  auto expected = absl::make_unique<Array4D<float>>(8, 5, 1, 1);
   expected->Fill(pad_value);
   (*expected)(1, 0, 0, 0) = 1.0f;
   (*expected)(1, 2, 0, 0) = 2.0f;
@@ -181,7 +183,7 @@ TEST_P(PadTestFloat, Pad4DFloatArrayWithInteriorPadding) {
 }
 
 TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstSmall) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   PaddingConfig padding_config;
   auto dimension0 = padding_config.add_dimensions();
@@ -205,11 +207,11 @@ TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstSmall) {
 
   const float pad_value = -5.123f;
   Array4D<float> input_array(1, 1, 2, 3, {1, 2, 3, 4, 5, 6});
-  auto input = Literal::CreateR4FromArray4D<float>(input_array);
-  input = input->Relayout(layout);
+  auto input = LiteralUtil::CreateR4FromArray4D<float>(input_array);
+  input = input.Relayout(layout);
 
-  b.Pad(AddParam(*input, &b),
-        AddParam(*Literal::CreateR0<float>(pad_value), &b), padding_config);
+  Pad(AddParam(input, &b),
+      AddParam(LiteralUtil::CreateR0<float>(pad_value), &b), padding_config);
 
   Array4D<float> expected_array(1, 1, 5, 8);
   expected_array.Fill(pad_value);
@@ -223,7 +225,7 @@ TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstSmall) {
 }
 
 XLA_TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   PaddingConfig padding_config;
   auto dimension0 = padding_config.add_dimensions();
@@ -251,11 +253,11 @@ XLA_TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
   input_array(0, 0, 0, 0) = 1.0f;
   input_array(0, 24, 6, 6) = 2.0f;
   input_array(0, 17, 2, 5) = 3.0f;
-  auto input = Literal::CreateR4FromArray4D<float>(input_array);
-  input = input->Relayout(layout);
+  auto input = LiteralUtil::CreateR4FromArray4D<float>(input_array);
+  input = input.Relayout(layout);
 
-  b.Pad(AddParam(*input, &b),
-        AddParam(*Literal::CreateR0<float>(pad_value), &b), padding_config);
+  Pad(AddParam(input, &b),
+      AddParam(LiteralUtil::CreateR0<float>(pad_value), &b), padding_config);
 
   Array4D<float> expected_array(1, 25, 17, 11);
   expected_array.Fill(pad_value);
@@ -266,8 +268,8 @@ XLA_TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
 }
 
 XLA_TEST_F(PadTest, Pad4DU8Array) {
-  ComputationBuilder b(client_, TestName());
-  auto input = MakeUnique<Array4D<uint8>>(1, 1, 3, 2);
+  XlaBuilder b(TestName());
+  auto input = absl::make_unique<Array4D<uint8>>(1, 1, 3, 2);
   Array2D<uint8> input_xy({
       {1, 2},  // row 0
       {3, 4},  // row 1
@@ -275,10 +277,10 @@ XLA_TEST_F(PadTest, Pad4DU8Array) {
   });
   input->FillWithYX(input_xy);
 
-  b.Pad(AddParam(*input, &b), b.ConstantR0<uint8>(35),
-        r4_padding_on_dim0_dim1_);
+  Pad(AddParam(*input, &b), ConstantR0<uint8>(&b, 35),
+      r4_padding_on_dim0_dim1_);
 
-  auto expected = MakeUnique<Array4D<uint8>>(2, 3, 3, 2);
+  auto expected = absl::make_unique<Array4D<uint8>>(2, 3, 3, 2);
   expected->Fill(35);
   (*expected)(1, 0, 0, 0) = 1;
   (*expected)(1, 0, 0, 1) = 2;
@@ -290,22 +292,22 @@ XLA_TEST_F(PadTest, Pad4DU8Array) {
 }
 
 XLA_TEST_F(PadTest, Pad4DPredArray) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   // Since bool is currently not well supported, use Broadcast operation to
   // create the operand for Pad.
-  auto input = b.Broadcast(b.ConstantR0<bool>(true), {1, 1, 3, 2});
+  auto input = Broadcast(ConstantR0<bool>(&b, true), {1, 1, 3, 2});
   auto padded =
-      b.Pad(input, b.ConstantR0<bool>(false), r4_padding_on_dim0_dim1_);
+      Pad(input, ConstantR0<bool>(&b, false), r4_padding_on_dim0_dim1_);
 
   // For the same reason, use Select to convert boolean values to int32.
-  auto zeros = MakeUnique<Array4D<int32>>(2, 3, 3, 2);
-  auto ones = MakeUnique<Array4D<int32>>(2, 3, 3, 2);
+  auto zeros = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
+  auto ones = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
   zeros->Fill(0);
   ones->Fill(1);
-  b.Select(padded, AddParam(*ones, &b), AddParam(*zeros, &b));
+  Select(padded, AddParam(*ones, &b), AddParam(*zeros, &b));
 
-  auto expected = MakeUnique<Array4D<int32>>(2, 3, 3, 2);
+  auto expected = absl::make_unique<Array4D<int32>>(2, 3, 3, 2);
   expected->Fill(0);
   (*expected)(1, 0, 0, 0) = 1;
   (*expected)(1, 0, 0, 1) = 1;
@@ -317,9 +319,9 @@ XLA_TEST_F(PadTest, Pad4DPredArray) {
 }
 
 XLA_TEST_P(PadTestFloat, Large2DPad) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
-  auto ones = MakeUnique<Array2D<float>>(4, 4);
+  auto ones = absl::make_unique<Array2D<float>>(4, 4);
   ones->Fill(1.0f);
   auto input = AddParam(*ones, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -329,19 +331,18 @@ XLA_TEST_P(PadTestFloat, Large2DPad) {
     padding_config.mutable_dimensions(dim)->set_edge_padding_high(58 +
                                                                   100 * dim);
   }
-  auto padded = b.Pad(input, AddParam(*Literal::CreateR0<float>(0.0f), &b),
-                      padding_config);
+  Pad(input, AddParam(LiteralUtil::CreateR0<float>(0.0f), &b), padding_config);
 
   auto expected = ReferenceUtil::PadArray2D(*ones, padding_config, 0.0f);
   ComputeAndCompareR2<float>(&b, *expected, {}, DefaultErrorSpec());
 }
 
 XLA_TEST_P(PadTestFloat, AllTypes2DPad) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   constexpr int64 in_rows = 35;
   constexpr int64 in_cols = 35;
-  auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
+  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(0.0f);
   auto input = AddParam(*operand, &b);
 
@@ -352,22 +353,21 @@ XLA_TEST_P(PadTestFloat, AllTypes2DPad) {
   padding_config.mutable_dimensions(1)->set_edge_padding_low(6);
   padding_config.mutable_dimensions(1)->set_edge_padding_high(4);
   padding_config.mutable_dimensions(1)->set_interior_padding(2);
-  auto padded = b.Pad(input, AddParam(*Literal::CreateR0<float>(3.14f), &b),
-                      padding_config);
+  Pad(input, AddParam(LiteralUtil::CreateR0<float>(3.14f), &b), padding_config);
 
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 3.14f);
   ComputeAndCompareR2<float>(&b, *expected, {}, DefaultErrorSpec());
 }
 
 XLA_TEST_P(PadTestFloat, High2DPad) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   constexpr int64 in_rows = 129;
   constexpr int64 in_cols = 129;
   constexpr int64 low_padding = 0;
   int64 high_padding[2] = {5, 7};
   constexpr int64 interior_padding = 0;
-  auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
+  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -378,8 +378,8 @@ XLA_TEST_P(PadTestFloat, High2DPad) {
     padding_config.mutable_dimensions(dim)->set_interior_padding(
         interior_padding);
   }
-  auto padded = b.Pad(input, AddParam(*Literal::CreateR0<float>(2.718f), &b),
-                      padding_config);
+  Pad(input, AddParam(LiteralUtil::CreateR0<float>(2.718f), &b),
+      padding_config);
 
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
 
@@ -387,14 +387,14 @@ XLA_TEST_P(PadTestFloat, High2DPad) {
 }
 
 XLA_TEST_P(PadTestFloat, NegativePadding2D) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   constexpr int64 in_rows = 129;
   constexpr int64 in_cols = 129;
   int64 low_padding[2] = {-1, -2};
   int64 high_padding[2] = {-3, 4};
   constexpr int64 interior_padding = 0;
-  auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
+  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -406,8 +406,8 @@ XLA_TEST_P(PadTestFloat, NegativePadding2D) {
     padding_config.mutable_dimensions(dim)->set_interior_padding(
         interior_padding);
   }
-  auto padded = b.Pad(input, AddParam(*Literal::CreateR0<float>(2.718f), &b),
-                      padding_config);
+  Pad(input, AddParam(LiteralUtil::CreateR0<float>(2.718f), &b),
+      padding_config);
 
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
 
@@ -415,14 +415,14 @@ XLA_TEST_P(PadTestFloat, NegativePadding2D) {
 }
 
 XLA_TEST_P(PadTestFloat, NegativeAndInteriorPadding2D) {
-  ComputationBuilder b(client_, TestName());
+  XlaBuilder b(TestName());
 
   constexpr int64 in_rows = 8;
   constexpr int64 in_cols = 11;
   int64 low_padding[2] = {4, -1};
   int64 high_padding[2] = {-2, -4};
   int64 interior_padding[2] = {1, 2};
-  auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
+  auto operand = absl::make_unique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
   auto input = AddParam(*operand, &b);
   PaddingConfig padding_config = MakeNoPaddingConfig(2);
@@ -434,8 +434,8 @@ XLA_TEST_P(PadTestFloat, NegativeAndInteriorPadding2D) {
     padding_config.mutable_dimensions(dim)->set_interior_padding(
         interior_padding[dim]);
   }
-  auto padded = b.Pad(input, AddParam(*Literal::CreateR0<float>(2.718f), &b),
-                      padding_config);
+  Pad(input, AddParam(LiteralUtil::CreateR0<float>(2.718f), &b),
+      padding_config);
 
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
 
@@ -444,20 +444,19 @@ XLA_TEST_P(PadTestFloat, NegativeAndInteriorPadding2D) {
 
 // Regression test for b/31827337.
 XLA_TEST_P(PadTestFloat, ReducePad) {
-  ComputationBuilder b(client_, TestName());
-  auto ones = MakeUnique<Array4D<float>>(2, 2, 2, 2);
+  XlaBuilder b(TestName());
+  auto ones = absl::make_unique<Array4D<float>>(2, 2, 2, 2);
   ones->Fill(1.0);
   auto input = AddParam(*ones, &b);
 
-  Computation add = CreateScalarAddComputation(FloatType(), &b);
+  XlaComputation add = CreateScalarAddComputation(FloatType(), &b);
   auto reduce =
-      b.Reduce(input, AddParam(*Literal::CreateR0<float>(0.0), &b), add, {0});
+      Reduce(input, AddParam(LiteralUtil::CreateR0<float>(0.0), &b), add, {0});
 
   PaddingConfig padding_config = MakeNoPaddingConfig(3);
   padding_config.mutable_dimensions(0)->set_edge_padding_low(1);
   padding_config.mutable_dimensions(0)->set_edge_padding_high(1);
-  auto padded = b.Pad(reduce, AddParam(*Literal::CreateR0<float>(0.0f), &b),
-                      padding_config);
+  Pad(reduce, AddParam(LiteralUtil::CreateR0<float>(0.0f), &b), padding_config);
 
   Array3D<float> expected({{{0.0, 0.0}, {0.0, 0.0}},
                            {{2.0, 2.0}, {2.0, 2.0}},

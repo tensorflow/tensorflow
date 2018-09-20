@@ -25,14 +25,13 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
-# This is a tuple of PS ops used by tf.estimator.Esitmator which should work in
+# This is a tuple of PS ops used by tf.estimator.Estimator which should work in
 # almost all of cases.
-STANDARD_PS_OPS = (
-    "Variable", "VariableV2", "AutoReloadVariable", "MutableHashTable",
-    "MutableHashTableV2", "MutableHashTableOfTensors",
-    "MutableHashTableOfTensorsV2", "MutableDenseHashTable",
-    "MutableDenseHashTableV2", "VarHandleOp"
-)
+STANDARD_PS_OPS = ("Variable", "VariableV2", "AutoReloadVariable",
+                   "MutableHashTable", "MutableHashTableV2",
+                   "MutableHashTableOfTensors", "MutableHashTableOfTensorsV2",
+                   "MutableDenseHashTable", "MutableDenseHashTableV2",
+                   "VarHandleOp", "BoostedTreesEnsembleResourceHandleOp")
 
 
 class _RoundRobinStrategy(object):

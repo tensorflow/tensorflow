@@ -131,12 +131,8 @@ func ReadTensor(dataType DataType, shape []int64, r io.Reader) (*Tensor, error) 
 	}
 	runtime.SetFinalizer(t, (*Tensor).finalize)
 	raw := tensorData(t.c)
-	n, err := r.Read(raw)
-	if err != nil {
+	if _, err := io.ReadFull(r, raw); err != nil {
 		return nil, err
-	}
-	if uintptr(n) != nbytes {
-		return nil, fmt.Errorf("expected serialized tensor to be %v bytes, read %v", nbytes, n)
 	}
 	return t, nil
 }

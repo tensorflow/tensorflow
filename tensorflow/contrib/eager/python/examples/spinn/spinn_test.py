@@ -36,7 +36,8 @@ from third_party.examples.eager.spinn import spinn
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
-from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 # pylint: enable=g-bad-import-order
 
 
@@ -417,12 +418,15 @@ class SpinnTest(test_util.TensorFlowTestCase):
                     if event.summary.value
                     and event.summary.value[0].tag == "train/loss"]
     self.assertEqual(config.epochs, len(train_losses))
-    self.assertLess(train_losses[-1], train_losses[0])
 
     # 5. Verify that checkpoints exist and contains all the expected variables.
     self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
-    ckpt_variable_names = [
-        item[0] for item in checkpoint_utils.list_variables(config.logdir)]
+    object_graph = checkpointable_utils.object_metadata(
+        checkpoint_management.latest_checkpoint(config.logdir))
+    ckpt_variable_names = set()
+    for node in object_graph.nodes:
+      for attribute in node.attributes:
+        ckpt_variable_names.add(attribute.full_name)
     self.assertIn("global_step", ckpt_variable_names)
     for v in trainer.variables:
       variable_name = v.name[:v.name.index(":")] if ":" in v.name else v.name

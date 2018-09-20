@@ -17,13 +17,15 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -62,11 +63,20 @@ class BatchNormalizationTest
         {5.0f, 4.4f},   // p2
     });
     input_array_.FillWithPZ(pz);
-    input_literal_ = std::move(*Literal::CreateR4FromArray4D(input_array_));
+    input_literal_ = LiteralUtil::CreateR4FromArray4D(input_array_);
     CHECK_EQ(kSamples, input_array_.planes());
     CHECK_EQ(kZ, input_array_.depth());
     CHECK_EQ(kY, input_array_.height());
     CHECK_EQ(kY, input_array_.width());
+  }
+
+  XlaOp CheckShape(XlaBuilder* b, const XlaOp& operand,
+                   const Shape& expected_shape) const {
+    Shape actual_shape = b->GetShape(operand).ConsumeValueOrDie();
+    CHECK(ShapeUtil::Equal(expected_shape, actual_shape))
+        << "want " << ShapeUtil::HumanString(expected_shape) << " got "
+        << ShapeUtil::HumanString(actual_shape);
+    return operand;
   }
 
   static constexpr int64 kSamples = 3;
@@ -91,10 +101,10 @@ INSTANTIATE_TEST_CASE_P(BatchNormalizationTestInstance, BatchNormalizationTest,
 #endif
 
 XLA_TEST_P(BatchNormalizationTest, SubtractInZ) {
-  ComputationBuilder builder(client_, "subtract_in_z_one_sample");
-  auto x = builder.ConstantLiteral(input_literal_);
-  auto y = builder.ConstantR1<float>({3.14, 4.25});
-  builder.Sub(x, y, /*broadcast_dimensions=*/{1});
+  XlaBuilder builder("subtract_in_z_one_sample");
+  auto x = ConstantLiteral(&builder, input_literal_);
+  auto y = ConstantR1<float>(&builder, {3.14, 4.25});
+  Sub(x, y, /*broadcast_dimensions=*/{1});
 
   Array4D<float> expected(kSamples, kZ, kY, kX);
   Array2D<float> pz({
@@ -107,9 +117,9 @@ XLA_TEST_P(BatchNormalizationTest, SubtractInZ) {
 }
 
 XLA_TEST_P(BatchNormalizationTest, SquareTesseractElementwise) {
-  ComputationBuilder builder(client_, "square_tesseract_elementwise");
-  auto x = builder.ConstantLiteral(input_literal_);
-  builder.SquareF32(x);
+  XlaBuilder builder("square_tesseract_elementwise");
+  auto x = ConstantLiteral(&builder, input_literal_);
+  Square(x);
 
   using tensorflow::MathUtil;
 
@@ -124,36 +134,34 @@ XLA_TEST_P(BatchNormalizationTest, SquareTesseractElementwise) {
 }
 
 XLA_TEST_P(BatchNormalizationTest, SumToZ) {
-  ComputationBuilder builder(client_, "sum_to_z");
-  auto input_activations = builder.ConstantLiteral(input_literal_);
-  Computation add = CreateScalarAddComputation(F32, &builder);
+  XlaBuilder builder("sum_to_z");
+  auto input_activations = ConstantLiteral(&builder, input_literal_);
+  XlaComputation add = CreateScalarAddComputation(F32, &builder);
   // Reduce all but the Z dimension.
-  builder.Reduce(input_activations, builder.ConstantR0<float>(0.0f), add,
-                 {0, 2, 3});
+  Reduce(input_activations, ConstantR0<float>(&builder, 0.0f), add, {0, 2, 3});
 
   std::vector<float> expected = {6, 12.6};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
 XLA_TEST_P(BatchNormalizationTest, SquareAndReduce) {
-  ComputationBuilder builder(client_, "square_and_reduce");
-  auto input_activations = builder.ConstantLiteral(input_literal_);
-  auto set_means = builder.ConstantR1<float>({2.f, 4.2f});
-  auto activation_deviations = builder.Sub(input_activations, set_means,
-                                           /*broadcast_dimensions=*/{1});
-  Computation add = CreateScalarAddComputation(F32, &builder);
-  auto dev_squares = builder.SquareF32(activation_deviations);
-  auto sum_of_squares = builder.Reduce(
-      dev_squares, builder.ConstantR0<float>(0.0f), add, {0, 2, 3});
+  XlaBuilder builder("square_and_reduce");
+  auto input_activations = ConstantLiteral(&builder, input_literal_);
+  auto set_means = ConstantR1<float>(&builder, {2.f, 4.2f});
+  auto activation_deviations = Sub(input_activations, set_means,
+                                   /*broadcast_dimensions=*/{1});
+  XlaComputation add = CreateScalarAddComputation(F32, &builder);
+  auto dev_squares = Square(activation_deviations);
+  Reduce(dev_squares, ConstantR0<float>(&builder, 0.0f), add, {0, 2, 3});
 
   std::vector<float> expected = {18, 0.06};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
 XLA_TEST_P(BatchNormalizationTest, VarianceToStddev) {
-  ComputationBuilder builder(client_, "variance_to_stddev");
-  auto variance = builder.ConstantR1<float>({6.f, .02f});
-  auto sqrt = builder.SqrtF32(variance);
+  XlaBuilder builder("variance_to_stddev");
+  auto variance = ConstantR1<float>(&builder, {6.f, .02f});
+  Sqrt(variance);
 
   std::vector<float> expected = {2.44948974f, 0.14142136f};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
@@ -162,49 +170,52 @@ XLA_TEST_P(BatchNormalizationTest, VarianceToStddev) {
 // Compare against a forward batch normalization example in the NN spec
 // reference.
 XLA_TEST_P(BatchNormalizationTest, SpecComparisonForward) {
-  ComputationBuilder builder(client_, "batch_normalize_per_spec");
+  XlaBuilder builder("batch_normalize_per_spec");
   auto input_activations =
-      builder.CheckShape(builder.ConstantLiteral(input_literal_),
-                         ShapeUtil::MakeShape(F32, {3, 2, 1, 1}));
-  auto gamma = builder.ConstantR1<float>({1.0, 1.0});
-  auto beta = builder.ConstantR1<float>({0.0, 0.0});
-  Computation add = CreateScalarAddComputation(F32, &builder);
+      CheckShape(&builder, ConstantLiteral(&builder, input_literal_),
+                 ShapeUtil::MakeShape(F32, {3, 2, 1, 1}));
+  auto gamma = ConstantR1<float>(&builder, {1.0, 1.0});
+  auto beta = ConstantR1<float>(&builder, {0.0, 0.0});
+  XlaComputation add = CreateScalarAddComputation(F32, &builder);
   // Reduce all dimensions except dimension 1.
   Shape TwoElementVectorF32 = ShapeUtil::MakeShape(F32, {2});
-  auto sum = builder.CheckShape(
-      builder.Reduce(input_activations, builder.ConstantR0<float>(0.0f), add,
-                     /*dimensions_to_reduce=*/{0, 2, 3}),
+  auto sum = CheckShape(
+      &builder,
+      Reduce(input_activations, ConstantR0<float>(&builder, 0.0f), add,
+             /*dimensions_to_reduce=*/{0, 2, 3}),
       TwoElementVectorF32);
   auto input_shape = builder.GetShape(input_activations).ConsumeValueOrDie();
   auto sum_shape = builder.GetShape(sum).ConsumeValueOrDie();
-  auto count = builder.ConstantR0<float>(ShapeUtil::ElementsIn(*input_shape) /
-                                         ShapeUtil::ElementsIn(*sum_shape));
-  auto set_means = builder.Div(sum, count);
+  auto count =
+      ConstantR0<float>(&builder, ShapeUtil::ElementsIn(input_shape) /
+                                      ShapeUtil::ElementsIn(sum_shape));
+  auto set_means = Div(sum, count);
 
   const float kEpsilon = 1e-9f;
-  auto epsilon = builder.ConstantR0<float>(kEpsilon);
-  auto epsilon2 = builder.ConstantR1<float>({kEpsilon, kEpsilon});
-  auto activation_deviations = builder.Sub(input_activations, set_means,
-                                           /*broadcast_dimensions=*/{1});
-  auto dev_squares = builder.SquareF32(activation_deviations);
-  auto sum_of_squares = builder.CheckShape(
-      builder.Reduce(dev_squares, builder.ConstantR0<float>(0.0f), add,
-                     /*dimensions_to_reduce=*/{0, 2, 3}),
-      TwoElementVectorF32);
-  auto variance = builder.Div(sum_of_squares, count);
-  auto standard_deviation = builder.SqrtF32(variance);
-  auto standard_deviation_above_epsilon = builder.CheckShape(
-      builder.Gt(standard_deviation, epsilon), ShapeUtil::MakeShape(PRED, {2}));
-  auto gt_eps = builder.Select(standard_deviation_above_epsilon,
-                               standard_deviation, epsilon2);
-  auto normalization_factors = builder.ReciprocalF32(gt_eps);
+  auto epsilon = ConstantR0<float>(&builder, kEpsilon);
+  auto epsilon2 = ConstantR1<float>(&builder, {kEpsilon, kEpsilon});
+  auto activation_deviations = Sub(input_activations, set_means,
+                                   /*broadcast_dimensions=*/{1});
+  auto dev_squares = Square(activation_deviations);
+  auto sum_of_squares =
+      CheckShape(&builder,
+                 Reduce(dev_squares, ConstantR0<float>(&builder, 0.0f), add,
+                        /*dimensions_to_reduce=*/{0, 2, 3}),
+                 TwoElementVectorF32);
+  auto variance = Div(sum_of_squares, count);
+  auto standard_deviation = Sqrt(variance);
+  auto standard_deviation_above_epsilon =
+      CheckShape(&builder, Gt(standard_deviation, epsilon),
+                 ShapeUtil::MakeShape(PRED, {2}));
+  auto gt_eps =
+      Select(standard_deviation_above_epsilon, standard_deviation, epsilon2);
+  auto normalization_factors = Reciprocal(gt_eps);
   auto normalized_input_activations =
-      builder.Mul(activation_deviations, normalization_factors,
-                  /*broadcast_dimensions=*/{1});
-  /* auto output_activations = */ builder.Add(
-      builder.Mul(normalized_input_activations, gamma,
-                  /*broadcast_dimensions=*/{1}),
-      beta, /*broadcast_dimensions=*/{1});
+      Mul(activation_deviations, normalization_factors,
+          /*broadcast_dimensions=*/{1});
+  /* auto output_activations = */ Add(Mul(normalized_input_activations, gamma,
+                                          /*broadcast_dimensions=*/{1}),
+                                      beta, /*broadcast_dimensions=*/{1});
 
   Array4D<float> expected(kSamples, kZ, kY, kX);
   Array2D<float> pz({
@@ -219,80 +230,78 @@ XLA_TEST_P(BatchNormalizationTest, SpecComparisonForward) {
 
 XLA_TEST_P(BatchNormalizationTest, BasicTraining) {
   const int kFeatureIndex = 3;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
-  auto operand = builder.ConstantR4FromArray4D<float>(
-      {{{{1.f, 2.f}}, {{3.f, 4.f}}}, {{{5.f, 6.f}}, {{7.f, 8.f}}}});
+  auto operand = ConstantR4FromArray4D<float>(
+      &builder, {{{{1.f, 2.f}}, {{3.f, 4.f}}}, {{{5.f, 6.f}}, {{7.f, 8.f}}}});
 
-  auto scale = builder.ConstantR1<float>({2.0f, 3.0f});
+  auto scale = ConstantR1<float>(&builder, {2.0f, 3.0f});
 
-  auto offset = builder.ConstantR1<float>({1.0f, 2.0f});
+  auto offset = ConstantR1<float>(&builder, {1.0f, 2.0f});
 
-  auto tuple = builder.BatchNormTraining(operand, scale, offset,
-                                         /*epsilon=*/0.001, kFeatureIndex);
+  BatchNormTraining(operand, scale, offset,
+                    /*epsilon=*/0.001, kFeatureIndex);
 
-  auto expected = Literal::MakeTuple(
-      {Literal::CreateR4<float>({{{{-1.6f, -2.0f}}, {{0.1f, 0.6f}}},
-                                 {{{1.9f, 3.3f}}, {{3.7f, 6.0f}}}})
-           .get(),
-       Literal::CreateR1<float>({4, 5}).get(),
-       Literal::CreateR1<float>({5, 5}).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR4<float>({{{{-1.6f, -2.0f}}, {{0.1f, 0.6f}}},
+                                     {{{1.9f, 3.3f}}, {{3.7f, 6.0f}}}}),
+       LiteralUtil::CreateR1<float>({4, 5}),
+       LiteralUtil::CreateR1<float>({5, 5})});
 
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.1));
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
-XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnSublane) {
+XLA_TEST_P(BatchNormalizationTest, BasicTrainingOnDimension2) {
   const int kFeatureIndex = 2;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
-  auto operand = builder.ConstantR4FromArray4D<float>(
+  auto operand = ConstantR4FromArray4D<float>(
+      &builder,
       {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
 
-  auto scale = builder.ConstantR1<float>({2.0f, 3.0f});
+  auto scale = ConstantR1<float>(&builder, {2.0f, 3.0f});
 
-  auto offset = builder.ConstantR1<float>({1.0f, 2.0f});
+  auto offset = ConstantR1<float>(&builder, {1.0f, 2.0f});
 
-  auto tuple = builder.BatchNormTraining(operand, scale, offset,
-                                         /*epsilon=*/0.001, kFeatureIndex);
+  BatchNormTraining(operand, scale, offset,
+                    /*epsilon=*/0.001, kFeatureIndex);
 
-  auto expected = Literal::MakeTuple(
-      {Literal::CreateR4<float>({{{{-1.6f}, {-2.0f}}, {{0.1f}, {0.6f}}},
-                                 {{{1.9f}, {3.3f}}, {{3.7f}, {6.0f}}}})
-           .get(),
-       Literal::CreateR1<float>({4, 5}).get(),
-       Literal::CreateR1<float>({5, 5}).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR4<float>({{{{-1.6f}, {-2.0f}}, {{0.1f}, {0.6f}}},
+                                     {{{1.9f}, {3.3f}}, {{3.7f}, {6.0f}}}}),
+       LiteralUtil::CreateR1<float>({4, 5}),
+       LiteralUtil::CreateR1<float>({5, 5})});
 
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.1));
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
 XLA_TEST_P(BatchNormalizationTest, TrainingWithFeatureOnLowDimension) {
   // Use 0 dimension as feature, tests layout analyzer.
   const int kFeatureIndex = 0;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
-  ComputationDataHandle h0;
+  XlaOp h0;
   auto operand = CreateR3Parameter<float>(Array3D<float>(260, 2, 2, 1.0f),
                                           /*parameter_number=*/0, "operand",
                                           &builder, &h0);
-  ComputationDataHandle h1;
+  XlaOp h1;
   auto scale =
       CreateR1Parameter<float>(std::vector<float>(260, 1.0f),
                                /*parameter_number=*/1, "scale", &builder, &h1);
-  ComputationDataHandle h2;
+  XlaOp h2;
   auto offset =
       CreateR1Parameter<float>(std::vector<float>(260, 1.0f),
                                /*parameter_number=*/2, "offset", &builder, &h2);
 
-  auto tuple = builder.BatchNormTraining(h0, h1, h2,
-                                         /*epsilon=*/1, kFeatureIndex);
+  BatchNormTraining(h0, h1, h2,
+                    /*epsilon=*/1, kFeatureIndex);
 
-  auto expected = Literal::MakeTuple(
-      {Literal::CreateR3FromArray3D<float>(Array3D<float>(260, 2, 2, 1.0f))
-           .get(),
-       Literal::CreateR1<float>(std::vector<float>(260, 1.0f)).get(),
-       Literal::CreateR1<float>(std::vector<float>(260, 0.0f)).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(260, 2, 2, 1.0f)),
+       LiteralUtil::CreateR1<float>(std::vector<float>(260, 1.0f)),
+       LiteralUtil::CreateR1<float>(std::vector<float>(260, 0.0f))});
 
-  ComputeAndCompareTuple(&builder, *expected,
+  ComputeAndCompareTuple(&builder, expected,
                          {operand.get(), scale.get(), offset.get()},
                          ErrorSpec(0.1));
 }
@@ -300,63 +309,63 @@ XLA_TEST_P(BatchNormalizationTest, TrainingWithFeatureOnLowDimension) {
 XLA_TEST_P(BatchNormalizationTest, LargeEpsilonTest) {
   // Test the correctness of choosing a large epsilon value.
   const int kFeatureIndex = 2;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
-  ComputationDataHandle h0;
+  XlaOp h0;
   auto operand = CreateR3Parameter<float>({{{0.0f}, {10.0f}, {20.0f}, {30.0f}}},
                                           /*parameter_number=*/0, "operand",
                                           &builder, &h0);
-  ComputationDataHandle h1;
+  XlaOp h1;
   auto scale =
       CreateR1Parameter<float>(std::vector<float>(1, 1.0f),
                                /*parameter_number=*/1, "scale", &builder, &h1);
-  ComputationDataHandle h2;
+  XlaOp h2;
   auto offset =
       CreateR1Parameter<float>(std::vector<float>(1, 0.0f),
                                /*parameter_number=*/2, "offset", &builder, &h2);
 
   // var = 125, mean = 15, epsilon = -100
-  auto tuple = builder.BatchNormTraining(h0, h1, h2,
-                                         /*epsilon=*/-100, kFeatureIndex);
+  BatchNormTraining(h0, h1, h2,
+                    /*epsilon=*/-100, kFeatureIndex);
 
-  auto expected = Literal::MakeTuple(
-      {Literal::CreateR3FromArray3D<float>({{{-3.0f}, {-1.0f}, {1.0f}, {3.0f}}})
-           .get(),
-       Literal::CreateR1<float>(std::vector<float>(1, 15.0f)).get(),
-       Literal::CreateR1<float>(std::vector<float>(1, 125.0f)).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR3FromArray3D<float>(
+           {{{-3.0f}, {-1.0f}, {1.0f}, {3.0f}}}),
+       LiteralUtil::CreateR1<float>(std::vector<float>(1, 15.0f)),
+       LiteralUtil::CreateR1<float>(std::vector<float>(1, 125.0f))});
 
-  ComputeAndCompareTuple(&builder, *expected,
+  ComputeAndCompareTuple(&builder, expected,
                          {operand.get(), scale.get(), offset.get()},
                          ErrorSpec(0.1));
 }
 
 XLA_TEST_P(BatchNormalizationTest, BatchNormGradBasic) {
   const int kFeatureIndex = 2;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   auto operand =
-      builder.ConstantR4FromArray4D<float>(Array4D<float>(2, 2, 2, 1, 0.0f));
+      ConstantR4FromArray4D<float>(&builder, Array4D<float>(2, 2, 2, 1, 0.0f));
 
-  auto scale = builder.ConstantR1<float>({1.0f, 1.0f});
+  auto scale = ConstantR1<float>(&builder, {1.0f, 1.0f});
 
-  auto mean = builder.ConstantR1<float>({0.0f, 0.0f});
+  auto mean = ConstantR1<float>(&builder, {0.0f, 0.0f});
 
-  auto var = builder.ConstantR1<float>({1.0f, 1.0f});
+  auto var = ConstantR1<float>(&builder, {1.0f, 1.0f});
 
-  auto grad_output = builder.ConstantR4FromArray4D<float>(
+  auto grad_output = ConstantR4FromArray4D<float>(
+      &builder,
       {{{{1.f}, {2.f}}, {{3.f}, {4.f}}}, {{{5.f}, {6.f}}, {{7.f}, {8.f}}}});
 
-  builder.BatchNormGrad(operand, scale, mean, var, grad_output,
-                        /*epsilon=*/0.0, kFeatureIndex);
+  BatchNormGrad(operand, scale, mean, var, grad_output,
+                /*epsilon=*/0.0, kFeatureIndex);
 
-  auto expected = Literal::MakeTuple(
-      {Literal::CreateR4<float>({{{{-3.f}, {-3.f}}, {{-1.f}, {-1.f}}},
-                                 {{{1.f}, {1.f}}, {{3.f}, {3.f}}}})
-           .get(),
-       Literal::CreateR1<float>({0, 0}).get(),
-       Literal::CreateR1<float>({16, 20}).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR4<float>({{{{-3.f}, {-3.f}}, {{-1.f}, {-1.f}}},
+                                     {{{1.f}, {1.f}}, {{3.f}, {3.f}}}}),
+       LiteralUtil::CreateR1<float>({0, 0}),
+       LiteralUtil::CreateR1<float>({16, 20})});
 
-  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.1));
+  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.1));
 }
 
 struct BatchNormTestParam {
@@ -368,7 +377,7 @@ struct BatchNormTestParam {
 
   friend ::std::ostream& operator<<(::std::ostream& os,
                                     const BatchNormTestParam& p) {
-    os << "bounds={" << tensorflow::str_util::Join(p.bounds, ", ") << "}, ";
+    os << "bounds={" << absl::StrJoin(p.bounds, ", ") << "}, ";
     os << "feature_index=" << p.feature_index << ", ";
     os << "random_value_mean=" << p.random_value_mean << ", ";
     os << "random_value_var=" << p.random_value_var;
@@ -439,7 +448,7 @@ INSTANTIATE_TEST_CASE_P(BatchNormTest_Instantiation, BatchNormTestManySizes,
 
 XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   float epsilon = 0.001;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
@@ -500,46 +509,47 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean4D, var4D,
                                                 scale4D, offset4D, epsilon);
 
-  auto expected_normalized = Literal::CreateR4FromArray4D<float>(normalized);
+  auto expected_normalized =
+      LiteralUtil::CreateR4FromArray4D<float>(normalized);
 
-  auto offset_literal = Literal::CreateR1<float>(offset);
-  auto scale_literal = Literal::CreateR1<float>(scale);
-  auto input_literal = Literal::CreateR4FromArray4D<float>(input_array);
+  auto offset_literal = LiteralUtil::CreateR1<float>(offset);
+  auto scale_literal = LiteralUtil::CreateR1<float>(scale);
+  auto input_literal = LiteralUtil::CreateR4FromArray4D<float>(input_array);
 
   auto input_activations =
-      builder.Parameter(0, input_literal->shape(), "input");
+      Parameter(&builder, 0, input_literal.shape(), "input");
   auto scale_activations =
-      builder.Parameter(1, scale_literal->shape(), "offset");
+      Parameter(&builder, 1, scale_literal.shape(), "offset");
   auto offset_activations =
-      builder.Parameter(2, offset_literal->shape(), "scale");
+      Parameter(&builder, 2, offset_literal.shape(), "scale");
 
-  auto expected = Literal::MakeTuple({expected_normalized.get(),
-                                      Literal::CreateR1<float>(mean).get(),
-                                      Literal::CreateR1<float>(var).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {expected_normalized, LiteralUtil::CreateR1<float>(mean),
+       LiteralUtil::CreateR1<float>(var)});
 
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> scale_data =
-      client_->TransferToServer(*scale_literal).ConsumeValueOrDie();
+      client_->TransferToServer(scale_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> offset_data =
-      client_->TransferToServer(*offset_literal).ConsumeValueOrDie();
+      client_->TransferToServer(offset_literal).ConsumeValueOrDie();
 
-  builder.BatchNormTraining(input_activations, scale_activations,
-                            offset_activations, epsilon, feature_index);
+  BatchNormTraining(input_activations, scale_activations, offset_activations,
+                    epsilon, feature_index);
 
   // Run all HLO passes during this test.  In particular, ClientLibraryTestBase
   // disables constant folding, but we want it enabled for our zero-sized tensor
   // testcase.
   execution_options_.mutable_debug_options()->clear_xla_disable_hlo_passes();
   ComputeAndCompareTuple(
-      &builder, *expected,
+      &builder, expected,
       {input_data.get(), scale_data.get(), offset_data.get()},
       ErrorSpec(0.01, 1));
 }
 
 XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   float epsilon = 0.001;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
@@ -600,38 +610,38 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   auto normalized = *ReferenceUtil::BatchNorm4D(input_array, mean4D, var4D,
                                                 scale4D, offset4D, epsilon);
 
-  auto offset_literal = Literal::CreateR1<float>(offset);
-  auto scale_literal = Literal::CreateR1<float>(scale);
-  auto mean_literal = Literal::CreateR1<float>(mean);
-  auto var_literal = Literal::CreateR1<float>(var);
-  auto input_literal = Literal::CreateR4FromArray4D<float>(input_array);
+  auto offset_literal = LiteralUtil::CreateR1<float>(offset);
+  auto scale_literal = LiteralUtil::CreateR1<float>(scale);
+  auto mean_literal = LiteralUtil::CreateR1<float>(mean);
+  auto var_literal = LiteralUtil::CreateR1<float>(var);
+  auto input_literal = LiteralUtil::CreateR4FromArray4D<float>(input_array);
 
   auto input_activations =
-      builder.Parameter(0, input_literal->shape(), "input");
+      Parameter(&builder, 0, input_literal.shape(), "input");
   auto scale_activations =
-      builder.Parameter(1, scale_literal->shape(), "offset");
+      Parameter(&builder, 1, scale_literal.shape(), "offset");
   auto offset_activations =
-      builder.Parameter(2, offset_literal->shape(), "scale");
-  auto mean_activations = builder.Parameter(3, mean_literal->shape(), "mean");
+      Parameter(&builder, 2, offset_literal.shape(), "scale");
+  auto mean_activations = Parameter(&builder, 3, mean_literal.shape(), "mean");
   auto variance_activations =
-      builder.Parameter(4, var_literal->shape(), "variance");
+      Parameter(&builder, 4, var_literal.shape(), "variance");
 
   Array4D<float> expected = normalized;
 
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> scale_data =
-      client_->TransferToServer(*scale_literal).ConsumeValueOrDie();
+      client_->TransferToServer(scale_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> offset_data =
-      client_->TransferToServer(*offset_literal).ConsumeValueOrDie();
+      client_->TransferToServer(offset_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> mean_data =
-      client_->TransferToServer(*mean_literal).ConsumeValueOrDie();
+      client_->TransferToServer(mean_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> variance_data =
-      client_->TransferToServer(*var_literal).ConsumeValueOrDie();
+      client_->TransferToServer(var_literal).ConsumeValueOrDie();
 
-  builder.BatchNormInference(input_activations, scale_activations,
-                             offset_activations, mean_activations,
-                             variance_activations, epsilon, feature_index);
+  BatchNormInference(input_activations, scale_activations, offset_activations,
+                     mean_activations, variance_activations, epsilon,
+                     feature_index);
 
   // Run all HLO passes during this test.  In particular, ClientLibraryTestBase
   // disables constant folding, but we want it enabled for our zero-sized tensor
@@ -647,7 +657,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
 
 XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   float epsilon = 0.001;
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   const std::vector<int64>& bounds = GetParam().bounds;
   Array4D<float> input_array(bounds[0], bounds[1], bounds[2], bounds[3]);
   input_array.FillRandom(GetParam().random_value_var,
@@ -718,7 +728,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       var4D, [epsilon](float a) { return a + epsilon; });
 
   auto rsqrt_var_add_epsilon = *ReferenceUtil::MapArray4D(
-      var_add_epsilon, [epsilon](float a) { return 1 / std::sqrt(a); });
+      var_add_epsilon, [](float a) { return 1 / std::sqrt(a); });
 
   auto grad_output_times_var =
       *ReferenceUtil::MapArray4D(grad_output_array, var_add_epsilon,
@@ -787,48 +797,46 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       });
 
   auto expected_grad_activation =
-      Literal::CreateR4FromArray4D<float>(grad_activation);
+      LiteralUtil::CreateR4FromArray4D<float>(grad_activation);
 
-  auto input_literal = Literal::CreateR4FromArray4D<float>(input_array);
-  auto scale_literal = Literal::CreateR1<float>(scale);
-  auto mean_literal = Literal::CreateR1<float>(mean);
-  auto var_literal = Literal::CreateR1<float>(var);
+  auto input_literal = LiteralUtil::CreateR4FromArray4D<float>(input_array);
+  auto scale_literal = LiteralUtil::CreateR1<float>(scale);
+  auto mean_literal = LiteralUtil::CreateR1<float>(mean);
+  auto var_literal = LiteralUtil::CreateR1<float>(var);
   auto grad_output_literal =
-      Literal::CreateR4FromArray4D<float>(grad_output_array);
+      LiteralUtil::CreateR4FromArray4D<float>(grad_output_array);
 
-  auto input_parameter = builder.Parameter(0, input_literal->shape(), "input");
-  auto scale_parameter = builder.Parameter(1, scale_literal->shape(), "scale");
-  auto mean_parameter = builder.Parameter(2, mean_literal->shape(), "mean");
-  auto var_parameter = builder.Parameter(3, var_literal->shape(), "variance");
+  auto input_parameter = Parameter(&builder, 0, input_literal.shape(), "input");
+  auto scale_parameter = Parameter(&builder, 1, scale_literal.shape(), "scale");
+  auto mean_parameter = Parameter(&builder, 2, mean_literal.shape(), "mean");
+  auto var_parameter = Parameter(&builder, 3, var_literal.shape(), "variance");
   auto grad_output_parameter =
-      builder.Parameter(4, grad_output_literal->shape(), "grad_output");
+      Parameter(&builder, 4, grad_output_literal.shape(), "grad_output");
 
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> scale_data =
-      client_->TransferToServer(*scale_literal).ConsumeValueOrDie();
+      client_->TransferToServer(scale_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> mean_data =
-      client_->TransferToServer(*mean_literal).ConsumeValueOrDie();
+      client_->TransferToServer(mean_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> var_data =
-      client_->TransferToServer(*var_literal).ConsumeValueOrDie();
+      client_->TransferToServer(var_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> grad_output_data =
-      client_->TransferToServer(*grad_output_literal).ConsumeValueOrDie();
+      client_->TransferToServer(grad_output_literal).ConsumeValueOrDie();
 
-  auto t = builder.BatchNormGrad(input_parameter, scale_parameter,
-                                 mean_parameter, var_parameter,
-                                 grad_output_parameter, epsilon, feature_index);
+  BatchNormGrad(input_parameter, scale_parameter, mean_parameter, var_parameter,
+                grad_output_parameter, epsilon, feature_index);
 
-  auto expected =
-      Literal::MakeTuple({expected_grad_activation.get(),
-                          Literal::CreateR1<float>(grad_scale).get(),
-                          Literal::CreateR1<float>(grad_offset).get()});
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {expected_grad_activation, LiteralUtil::CreateR1<float>(grad_scale),
+       LiteralUtil::CreateR1<float>(grad_offset)});
 
   // Run all HLO passes during this test.  In particular, ClientLibraryTestBase
   // disables constant folding, but we want it enabled for our zero-sized tensor
   // testcase.
   execution_options_.mutable_debug_options()->clear_xla_disable_hlo_passes();
 
-  ComputeAndCompareTuple(&builder, *expected,
+  ComputeAndCompareTuple(&builder, expected,
                          {input_data.get(), scale_data.get(), mean_data.get(),
                           var_data.get(), grad_output_data.get()},
                          ErrorSpec(0.01, 1));

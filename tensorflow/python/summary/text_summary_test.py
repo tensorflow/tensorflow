@@ -33,7 +33,7 @@ class TextPluginTest(test_util.TensorFlowTestCase):
   """
 
   def testTextSummaryAPI(self):
-    with self.test_session():
+    with self.cached_session():
 
       with self.assertRaises(ValueError):
         num = array_ops.constant(1)

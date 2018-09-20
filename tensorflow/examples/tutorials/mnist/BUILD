@@ -51,6 +51,7 @@ py_binary(
         "fully_connected_feed.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["optonly"],
     deps = [
         ":input_data",
         ":mnist",
@@ -96,7 +97,7 @@ py_binary(
 
 py_test(
     name = "fully_connected_feed_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "fully_connected_feed.py",
     ],
@@ -131,16 +132,4 @@ py_test(
         ":input_data",
         "//tensorflow:tensorflow_py",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

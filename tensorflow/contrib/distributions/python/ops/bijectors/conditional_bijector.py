@@ -44,12 +44,16 @@ class ConditionalBijector(bijector.Bijector):
       "**condition_kwargs":
       "Named arguments forwarded to subclass implementation."})
   def inverse_log_det_jacobian(
-      self, y, name="inverse_log_det_jacobian", **condition_kwargs):
-    return self._call_inverse_log_det_jacobian(y, name, **condition_kwargs)
+      self, y, event_ndims, name="inverse_log_det_jacobian",
+      **condition_kwargs):
+    return self._call_inverse_log_det_jacobian(
+        y, event_ndims, name, **condition_kwargs)
 
   @distribution_util.AppendDocstring(kwargs_dict={
       "**condition_kwargs":
       "Named arguments forwarded to subclass implementation."})
   def forward_log_det_jacobian(
-      self, x, name="forward_log_det_jacobian", **condition_kwargs):
-    return self._call_forward_log_det_jacobian(x, name, **condition_kwargs)
+      self, x, event_ndims, name="forward_log_det_jacobian",
+      **condition_kwargs):
+    return self._call_forward_log_det_jacobian(
+        x, event_ndims, name, **condition_kwargs)

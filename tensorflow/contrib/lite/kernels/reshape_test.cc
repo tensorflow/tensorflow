@@ -22,18 +22,27 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 
 class ReshapeOpModel : public SingleOpModel {
  public:
   ReshapeOpModel(std::initializer_list<int> input_shape,
-                 std::initializer_list<int> new_shape) {
+                 std::initializer_list<int> new_shape,
+                 bool use_shape_input_tensor = false) {
     input_ = AddInput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
+    int shape_input_tensor =
+        use_shape_input_tensor ? AddInput(TensorType_INT32) : -1;
     SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
         CreateReshapeOptions(builder_, builder_.CreateVector<int>(new_shape))
             .Union());
-    BuildInterpreter({input_shape});
+    if (use_shape_input_tensor) {
+      BuildInterpreter({input_shape, GetShape(shape_input_tensor)});
+      PopulateTensor<int>(shape_input_tensor, new_shape);
+    } else {
+      BuildInterpreter({input_shape});
+    }
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -60,11 +69,19 @@ TEST(ReshapeOpTest, TooManyDimensions) {
 
 TEST(ReshapeOpTest, TooManySpecialDimensions) {
   EXPECT_DEATH(ReshapeOpModel({1, 2, 4, 1}, {-1, -1, 2, 4}),
-               "strech_dim != -1");
+               "stretch_dim != -1");
 }
 
 TEST(ReshapeOpTest, SimpleTest) {
   ReshapeOpModel m({1, 2, 4, 1}, {2, 2, 2});
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
+TEST(ReshapeOpTest, ShapeTensorInput) {
+  ReshapeOpModel m({1, 2, 4, 1}, {2, 2, 2}, /*use_shape_input_tensor=*/true);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
@@ -77,6 +94,22 @@ TEST(ReshapeOpTest, WithStretchDimension) {
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 4}));
+}
+
+TEST(ReshapeOpTest, ScalarOutput) {
+  ReshapeOpModel m({1}, {});
+  m.SetInput({3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+}
+
+TEST(ReshapeOpTest, LegacyScalarOutput) {
+  ReshapeOpModel m({1}, {0});
+  m.SetInput({3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
 }
 
 }  // namespace

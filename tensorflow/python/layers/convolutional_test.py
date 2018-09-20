@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional as conv_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -34,7 +33,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class ConvTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -266,7 +264,7 @@ class ConvTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv2DInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -325,8 +323,13 @@ class ConvTest(test.TestCase):
     self.assertEqual(conv3d.kernel_constraint, k_constraint)
     self.assertEqual(conv3d.bias_constraint, b_constraint)
 
+  def testConv3DChannelsFirst(self):
+    # Test case for GitHub issue 15655
+    images = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[None, 1, 32, 32, 32])
+    conv_layers.conv3d(images, 32, 9, data_format='channels_first')
 
-@test_util.with_c_api
+
 class SeparableConv1DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -488,7 +491,6 @@ class SeparableConv1DTest(test.TestCase):
     self.assertEqual(layer.bias_constraint, b_constraint)
 
 
-@test_util.with_c_api
 class SeparableConv2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -645,7 +647,7 @@ class SeparableConv2DTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 3)
 
   def testFunctionalConv2DInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -732,7 +734,6 @@ class SeparableConv2DTest(test.TestCase):
     self.assertEqual(layer.bias_constraint, b_constraint)
 
 
-@test_util.with_c_api
 class Conv2DTransposeTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -881,7 +882,7 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv2DTransposeInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -918,7 +919,6 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertEqual(layer.bias_constraint, b_constraint)
 
 
-@test_util.with_c_api
 class Conv3DTransposeTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -1061,7 +1061,7 @@ class Conv3DTransposeTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv3DTransposeInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         depth, height, width = 5, 7, 9

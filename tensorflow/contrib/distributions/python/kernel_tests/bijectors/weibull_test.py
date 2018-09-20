@@ -31,12 +31,12 @@ class WeibullBijectorTest(test.TestCase):
   """Tests correctness of the weibull bijector."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       scale = 5.
       concentration = 0.3
       bijector = Weibull(
           scale=scale, concentration=concentration,
-          event_ndims=1, validate_args=True)
+          validate_args=True)
       self.assertEqual("weibull", bijector.name)
       x = np.array([[[0.], [1.], [14.], [20.], [100.]]], dtype=np.float32)
       # Weibull distribution
@@ -45,31 +45,29 @@ class WeibullBijectorTest(test.TestCase):
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          # We should lose a dimension from calculating the determinant of the
-          # jacobian.
-          np.squeeze(weibull_dist.logpdf(x), axis=2),
-          bijector.forward_log_det_jacobian(x).eval())
+          weibull_dist.logpdf(x),
+          bijector.forward_log_det_jacobian(x, event_ndims=0).eval())
       self.assertAllClose(
-          -bijector.inverse_log_det_jacobian(y).eval(),
-          bijector.forward_log_det_jacobian(x).eval(),
+          -bijector.inverse_log_det_jacobian(y, event_ndims=0).eval(),
+          bijector.forward_log_det_jacobian(x, event_ndims=0).eval(),
           rtol=1e-4,
           atol=0.)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       assert_scalar_congruency(
           Weibull(scale=20., concentration=0.3),
           lower_x=1., upper_x=100., rtol=0.02)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Weibull(
-          scale=20., concentration=2., event_ndims=0, validate_args=True)
+          scale=20., concentration=2., validate_args=True)
       x = np.linspace(1., 8., num=10).astype(np.float32)
       y = np.linspace(
           -np.expm1(-1 / 400.),
           -np.expm1(-16), num=10).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, y, rtol=1e-3)
+      assert_bijective_and_finite(bijector, x, y, event_ndims=0, rtol=1e-3)
 
 
 if __name__ == "__main__":
