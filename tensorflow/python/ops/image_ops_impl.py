@@ -520,11 +520,12 @@ def rot90ND(image, dim0, dim1, k=1, name=None):
     image: N-D Tensor where N >= 3 
     k: A scalar integer. The number of times the image is rotated by 90 degrees.
     dim0: The first dimension to be rotated. 
-    dim1: The second dimension to be rotated.
+    dim1: The second dimension to be rotated. 
     name: A name for this operation (optional).
 
   Returns:
-    A rotated tensor of the same type and shape as `image`.
+    A tensor of the same type and shape as `image`, rotated about the axis 
+      perpendicular to `dim0` and `dim1`.
 
   Raises:
     ValueError: if the shape of `image` not supported.
@@ -538,6 +539,11 @@ def rot90ND(image, dim0, dim1, k=1, name=None):
     ndims = 3
   else:
     ndims = shape.ndims
+
+  if dim0 >= ndims:
+    raise ValueError('\'dim0\' must be less than the number of dims in \'image\'')
+  if dim1 >= ndims:
+    raise ValueError('\'dim1\' must be less than the number of dims in \'image\'')
 
   def _swap(mylist, dim0, dim1):
     mylist[dim0], mylist[dim1] = mylist[dim1], mylist[dim0]
