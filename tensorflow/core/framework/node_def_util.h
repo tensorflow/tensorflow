@@ -249,6 +249,10 @@ const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                         int input_port, DataType* input_type);
+// Computes the input types for a specific node.
+// REQUIRES: ValidateOpDef(op_def).ok()
+Status InputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                         DataTypeVector* inputs);
 // Computes the output type for a specific node output.
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
