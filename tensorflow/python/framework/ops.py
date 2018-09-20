@@ -2532,8 +2532,8 @@ def _set_shape_and_handle_data_for_outputs_c_api(op):
     output._shape_val = output._c_api_shape()
     # Set the resource handle data for compatibility with the Python shape
     # inference code.
-    serialized = c_api.GetResourceHandleShapeAndType(op._graph._c_graph,
-                                                     output._as_tf_output())
+    serialized = c_api.GetHandleShapeAndType(op._graph._c_graph,  # pylint: disable=protected-access
+                                             output._as_tf_output())
     if serialized:
       output._handle_data = (
           cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData

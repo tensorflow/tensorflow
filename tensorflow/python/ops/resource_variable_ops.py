@@ -48,7 +48,7 @@ def get_resource_handle_data(graph_op):
   assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  handle_data = pywrap_tensorflow.GetResourceHandleShapeAndType(
+  handle_data = pywrap_tensorflow.GetHandleShapeAndType(
       graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
