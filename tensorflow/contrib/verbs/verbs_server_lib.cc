@@ -15,6 +15,8 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_VERBS
 
+#include <mutex>
+
 #include "tensorflow/contrib/verbs/verbs_server_lib.h"
 
 #include "grpc/support/alloc.h"
@@ -77,7 +79,7 @@ Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
 }
 
 namespace {
-std::once_call reg_mem_visitors_call;
+std::once_flag reg_mem_visitors_call;
 }  // namespace
 
 Status VerbsServer::Init(ServiceInitFunction service_func,
