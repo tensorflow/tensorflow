@@ -30,7 +30,7 @@ namespace xla {
 //  - Elements of a while loop's tuple that the loop doesn't use are removed
 //    from the tuple.
 //
-class WhileLoopSimplifier : public HloPassInterface {
+class WhileLoopSimplifier : public HloModulePass {
  public:
   ~WhileLoopSimplifier() override {}
   absl::string_view name() const override { return "simplify-while-loops"; }

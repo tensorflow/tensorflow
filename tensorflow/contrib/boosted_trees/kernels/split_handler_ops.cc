@@ -579,13 +579,6 @@ class BuildSparseInequalitySplitsOp : public OpKernel {
         const int end_index =
             partition_boundaries[non_empty_partitions[root_idx]][j + 1]
                 .start_index;
-        CHECK(bucket_ids_and_dimensions(start_index, 1) ==
-              bucket_ids_and_dimensions(end_index - 1, 1))
-            << "For bucket " << bucket_ids_and_dimensions(start_index, 0)
-            << " the dimension was "
-            << bucket_ids_and_dimensions(start_index, 1) << " and for "
-            << bucket_ids_and_dimensions(end_index - 1, 0) << " "
-            << bucket_ids_and_dimensions(end_index - 1, 1);
         if (bucket_ids_and_dimensions(start_index, 0) == bias_feature_id) {
           // 0-dimension case which has a first bucket for catch all feature.
           CHECK(bucket_ids_and_dimensions(start_index, 1) == 0)

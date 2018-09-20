@@ -107,14 +107,15 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    CudaGpuId cuda_gpu_id;
-    TF_CHECK_OK(GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id));
+    PlatformGpuId platform_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     int bus_id = BusIdForGPU(tf_gpu_id);
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
     GPUMemAllocator* sub_allocator = new GPUMemAllocator(
-        GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie(), cuda_gpu_id,
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id,
         (options.per_process_gpu_memory_fraction() > 1.0 ||
          options.experimental().use_unified_memory()),
         gpu_visitors_[bus_id], {});
@@ -125,20 +126,21 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
     if (useCudaMemoryGuardAllocator()) {
-      gpu_allocator = new GPUDebugAllocator(gpu_allocator, cuda_gpu_id);
-      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, cuda_gpu_id);
+      gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
+      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
     } else if (useCudaMallocAllocator()) {
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
-      gpu_allocator = new GPUcudaMallocAllocator(gpu_allocator, cuda_gpu_id);
+      gpu_allocator =
+          new GPUcudaMallocAllocator(gpu_allocator, platform_gpu_id);
     }
 
     Allocator* recording_allocator = nullptr;
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
       md.loc = ProcessState::MemDesc::GPU;
-      md.dev_index = cuda_gpu_id.value();
+      md.dev_index = platform_gpu_id.value();
       md.gpu_registered = false;
       md.nic_registered = true;
       recording_allocator = new internal::RecordingAllocator(

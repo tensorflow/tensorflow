@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/python:safe_ptr",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -146,6 +147,7 @@ cuda_py_test(
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
+        "//tensorflow/python:list_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],

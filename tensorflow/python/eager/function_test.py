@@ -26,6 +26,7 @@ import weakref
 import numpy
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
@@ -47,6 +48,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -437,10 +439,17 @@ class FunctionTest(test.TestCase):
     def f():
       x = constant_op.constant([[1, 2], [3, 4]])
       out = math_ops.matmul(v, x)
-      self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+      self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
+      # We do not return v directly since the tensor conversion function of
+      # ResourceVariable returns the read value and not the resource itself.
+      return v._handle
 
     compiled = function.defun(f)
-    compiled()
+    var_handle = compiled()
+    self.assertEqual(var_handle.dtype, dtypes.resource)
+    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
+    self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testVariableInLoopInFunction(self):
 
@@ -464,10 +473,17 @@ class FunctionTest(test.TestCase):
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
         out = math_ops.matmul(v, x)
-        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+        self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
+        # We do not return v directly since the tensor conversion function of
+        # ResourceVariable returns the read value and not the resource itself.
+        return v._handle
 
       compiled = function.defun(f)
-      compiled()
+      var_handle = compiled()
+      self.assertEqual(var_handle.dtype, dtypes.resource)
+      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
+      self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testDefunShapeInferenceWithCapturedVariableInGraphMode(self):
     with context.graph_mode():
@@ -476,11 +492,33 @@ class FunctionTest(test.TestCase):
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
         out = math_ops.matmul(v, x)
-        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+        self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
 
       # Check that shape inference works while creating the defun
       compiled = function.defun(f)
       compiled()
+
+  def testDefunShapeInferenceWithCapturedTensorListInGraphMode(self):
+    with context.graph_mode():
+      tensor_list = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      tensor_list = list_ops.tensor_list_push_back(tensor_list,
+                                                   constant_op.constant(1.0))
+      tensor_list = list_ops.tensor_list_push_back(tensor_list,
+                                                   constant_op.constant(2.0))
+
+      def f():
+        tl, value = list_ops.tensor_list_pop_back(
+            tensor_list, element_dtype=dtypes.float32)
+        self.assertEqual(value.shape, tensor_shape.scalar())
+        return tl
+
+      compiled = function.defun(f)
+      output_tensor_list = compiled()
+      _, value = list_ops.tensor_list_pop_back(
+          output_tensor_list, element_dtype=dtypes.float32)
+      self.assertEqual(value.shape, tensor_shape.scalar())
 
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
@@ -1728,6 +1766,51 @@ class FunctionTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'All inputs to `Function`s must '
                                  'be Tensors;.*'):
       graph_function('Not a Tensor.')
+
+  def testSwapImplementationWithGrapplerPlugin(self):
+    rewrites = rewriter_config_pb2.RewriterConfig()
+    # function_optimizer has to be turn off, otherwise it will delete the
+    # registered function if it does not get called.
+    # TODO(scottzhu): Move the ExperimentalImplementationSelector to be called
+    # before function_optimizer in future.
+    rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
+    customer_optimizer = rewrites.custom_optimizers.add()
+    customer_optimizer.name = 'ExperimentalImplementationSelector'
+    rewrites.min_graph_nodes = -1
+    graph_options = config_pb2.GraphOptions(
+        rewrite_options=rewrites, build_cost_model=1)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+
+    with context.graph_mode(), self.cached_session(
+        config=config, graph=ops.Graph(), use_gpu=True) as sess:
+
+      @function.defun_with_attributes(
+          attributes={
+              'experimental_api_implements': 'random_boost',
+              'experimental_api_preferred_device': 'CPU'
+          })
+      def cpu_boost(x):
+        return math_ops.add(x, 2.0)
+
+      @function.defun_with_attributes(
+          attributes={
+              'experimental_api_implements': 'random_boost',
+              'experimental_api_preferred_device': 'GPU'
+          })
+      def gpu_boost(x):
+        return math_ops.add(x, 4.0)
+
+      x = constant_op.constant(1.0)
+
+      function.register(cpu_boost, x)
+      y = gpu_boost(x)
+      y_value = sess.run(y)
+
+      if test.is_gpu_available():
+        self.assertEquals(y_value, 5.0)
+      else:
+        # Grappler fallback to use the CPU impl even called with GPU function.
+        self.assertEquals(y_value, 3.0)
 
 
 @test_util.with_c_shapes

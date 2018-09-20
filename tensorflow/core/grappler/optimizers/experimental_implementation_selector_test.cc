@@ -45,9 +45,8 @@ TEST_F(ExperimentalImplementationSelectorTest, NoUpdate) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  std::unique_ptr<CustomGraphOptimizer> optimizer =
-      CustomGraphOptimizerRegistry::CreateByNameOrNull(
-          "ExperimentalImplementationSelector");
+  std::unique_ptr<CustomGraphOptimizer> optimizer(
+      new ExperimentalImplementationSelector);
   ASSERT_NE(nullptr, optimizer);
   TF_ASSERT_OK(optimizer->Init());
 

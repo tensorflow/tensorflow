@@ -151,7 +151,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
 // HLO pass that verifies invariants of HLO instructions for each computation in
 // the module.
-class HloVerifier : public HloPassInterface {
+class HloVerifier : public HloModulePass {
  public:
   using ShapeVerifierFactory = std::function<std::unique_ptr<ShapeVerifier>()>;
 

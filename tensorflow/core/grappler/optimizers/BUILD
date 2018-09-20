@@ -515,6 +515,7 @@ cc_library(
         ":custom_graph_optimizer_registry",
         ":debug_stripper",
         ":dependency_optimizer",
+        ":experimental_implementation_selector",
         ":function_optimizer",
         ":graph_optimizer",
         ":layout_optimizer",

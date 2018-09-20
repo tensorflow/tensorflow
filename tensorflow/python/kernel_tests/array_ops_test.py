@@ -1276,5 +1276,203 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class SortedSearchTest(test_util.TensorFlowTestCase):
+
+  def testUpperBoundFloatHandCoded(self):
+    cdf = np.array([0, .2, .5, .6, .8, 1.], dtype=np.float32)
+    arr = np.array([.04, .99, .53, .58, .31, .01, .79, .8, .21],
+                   dtype=np.float32)
+    result = np.searchsorted(cdf, arr, side="right")
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
+    self.assertAllEqual(result, tf_result)
+
+  def testUpperBoundFloatRandomNd(self):
+    dim_size = 7
+    for d in range(1, 5):
+      shape = [dim_size] * d
+      cdf = np.cumsum(
+          np.random.uniform(size=shape).astype(np.float32), axis=(d - 1))
+      arr = np.random.uniform(size=shape).astype(np.float32) * dim_size
+
+      tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
+
+      cdf = cdf.reshape([-1, dim_size])
+      arr = arr.reshape([-1, dim_size])
+      result = np.zeros(arr.shape, dtype=np.int32)
+      for i in range(dim_size**(d - 1)):
+        result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="right")
+
+      result = result.reshape(shape)
+
+      self.assertAllEqual(result, tf_result)
+
+  def testUpperBoundFloatUneven(self):
+    batch_size = 7
+    size_search_array = 1000
+    size_values = 47
+    cdf = np.cumsum(
+        np.random.uniform(size=[batch_size, size_search_array]).astype(
+            np.float32),
+        axis=1)
+    arr = np.random.uniform(size=[batch_size, size_values]).astype(
+        np.float32) * size_search_array
+
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
+
+    result = np.zeros(arr.shape, dtype=np.int32)
+    for i in range(batch_size):
+      result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="right")
+
+    self.assertAllEqual(result, tf_result)
+
+  def testLowerBoundFloatHandCoded(self):
+    cdf = np.array([0, .2, .5, .6, .8, 1.], dtype=np.float32)
+    arr = np.array([.04, .99, .53, .58, .31, .01, .79, .8, .21],
+                   dtype=np.float32)
+    result = np.searchsorted(cdf, arr, side="left")
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="left"))
+    self.assertAllEqual(result, tf_result)
+
+  def testLowerBoundFloatRandomNd(self):
+    dim_size = 7
+    for d in range(1, 5):
+      shape = [dim_size] * d
+      cdf = np.cumsum(
+          np.random.uniform(size=shape).astype(np.float32), axis=(d - 1))
+      arr = np.random.uniform(size=shape).astype(np.float32) * dim_size
+
+      tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="left"))
+
+      cdf = cdf.reshape([-1, dim_size])
+      arr = arr.reshape([-1, dim_size])
+      result = np.zeros(arr.shape, dtype=np.int32)
+      for i in range(dim_size**(d - 1)):
+        result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="left")
+
+      result = result.reshape(shape)
+
+      self.assertAllEqual(result, tf_result)
+
+  def testLowerBoundFloatUneven(self):
+    batch_size = 7
+    size_search_array = 1000
+    size_values = 47
+    cdf = np.cumsum(
+        np.random.uniform(size=[batch_size, size_search_array]).astype(
+            np.float32),
+        axis=1)
+    arr = np.random.uniform(size=[batch_size, size_values]).astype(
+        np.float32) * size_search_array
+
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="left"))
+
+    result = np.zeros(arr.shape, dtype=np.int32)
+    for i in range(batch_size):
+      result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="left")
+
+    self.assertAllEqual(result, tf_result)
+
+  def testUpperBoundIntHandCoded(self):
+    cdf = np.array([0, 20, 50, 60, 80, 100], dtype=np.int64)
+    arr = np.array([4, 99, 53, 58, 31, 1, 79, 8, 21], dtype=np.int64)
+    result = np.searchsorted(cdf, arr, side="right")
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
+    self.assertAllEqual(result, tf_result)
+
+  def testUpperBoundIntRandomNd(self):
+    dim_size = 7
+    for d in range(1, 5):
+      shape = [dim_size] * d
+      cdf = np.cumsum(
+          np.random.randint(low=0, high=10, size=shape).astype(np.int64),
+          axis=(d - 1))
+      arr = np.random.randint(
+          low=0, high=10 * dim_size, size=shape).astype(np.int64)
+
+      tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
+
+      cdf = cdf.reshape([-1, dim_size])
+      arr = arr.reshape([-1, dim_size])
+      result = np.zeros(arr.shape, dtype=np.int32)
+      for i in range(dim_size**(d - 1)):
+        result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="right")
+
+      result = result.reshape(shape)
+
+      self.assertAllEqual(result, tf_result)
+
+  def testUpperBoundIntUneven(self):
+    batch_size = 7
+    size_search_array = 1000
+    size_values = 47
+    cdf = np.cumsum(
+        np.random.randint(low=0, high=10,
+                          size=[batch_size,
+                                size_search_array]).astype(np.int64),
+        axis=1)
+    arr = np.random.randint(
+        low=0, high=10 * size_search_array, size=[batch_size,
+                                                  size_values]).astype(np.int64)
+
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="right"))
+
+    result = np.zeros(arr.shape, dtype=np.int32)
+    for i in range(batch_size):
+      result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="right")
+
+    self.assertAllEqual(result, tf_result)
+
+  def testLowerBoundIntHandCoded(self):
+    cdf = np.array([0, 20, 50, 60, 80, 100], dtype=np.int64)
+    arr = np.array([4, 99, 53, 58, 31, 1, 79, 8, 21], dtype=np.int64)
+    result = np.searchsorted(cdf, arr, side="left")
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="left"))
+    self.assertAllEqual(result, tf_result)
+
+  def testLowerBoundIntRandomNd(self):
+    dim_size = 7
+    for d in range(1, 5):
+      shape = [dim_size] * d
+      cdf = np.cumsum(
+          np.random.randint(low=0, high=10, size=shape).astype(np.int64),
+          axis=(d - 1))
+      arr = np.random.randint(
+          low=0, high=10 * dim_size, size=shape).astype(np.int64)
+
+      tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="left"))
+
+      cdf = cdf.reshape([-1, dim_size])
+      arr = arr.reshape([-1, dim_size])
+      result = np.zeros(arr.shape, dtype=np.int32)
+      for i in range(dim_size**(d - 1)):
+        result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="left")
+
+      result = result.reshape(shape)
+
+      self.assertAllEqual(result, tf_result)
+
+  def testLowerBoundIntUneven(self):
+    batch_size = 7
+    size_search_array = 1000
+    size_values = 47
+    cdf = np.cumsum(
+        np.random.randint(low=0, high=10,
+                          size=[batch_size,
+                                size_search_array]).astype(np.int64),
+        axis=1)
+    arr = np.random.randint(
+        low=0, high=10 * size_search_array, size=[batch_size,
+                                                  size_values]).astype(np.int64)
+
+    tf_result = self.evaluate(array_ops.searchsorted(cdf, arr, side="left"))
+
+    result = np.zeros(arr.shape, dtype=np.int32)
+    for i in range(batch_size):
+      result[i, :] = np.searchsorted(cdf[i, :], arr[i, :], side="left")
+
+    self.assertAllEqual(result, tf_result)
+
+
 if __name__ == "__main__":
   test_lib.main()

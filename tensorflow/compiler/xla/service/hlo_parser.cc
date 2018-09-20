@@ -64,14 +64,11 @@ class HloParser {
  public:
   using LocTy = HloLexer::LocTy;
 
-  explicit HloParser(absl::string_view str, const HloModuleConfig& config)
-      : lexer_(str), config_(config) {}
+  explicit HloParser(absl::string_view str) : lexer_(str) {}
 
-  // Runs the parser. Returns false if an error occurred.
-  bool Run();
-
-  // Returns the parsed HloModule.
-  std::unique_ptr<HloModule> ConsumeHloModule() { return std::move(module_); }
+  // Runs the parser and constructs the resulting HLO in the given (empty)
+  // HloModule. Returns false if an error occurred.
+  bool Run(HloModule* module);
 
   // Returns the error information.
   string GetError() const { return StrJoin(error_, "\n"); }
@@ -98,8 +95,8 @@ class HloParser {
       const string& name, const optional<Shape>& shape = nullopt);
 
   // ParseXXX returns false if an error occurred.
-  bool ParseHloModule();
-  bool ParseComputations();
+  bool ParseHloModule(HloModule* module);
+  bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation::Builder* builder,
                             string* root_name);
@@ -293,9 +290,7 @@ class HloParser {
       computation_pool_;
 
   HloLexer lexer_;
-  std::unique_ptr<HloModule> module_;
   std::vector<std::unique_ptr<HloComputation>> computations_;
-  const HloModuleConfig config_;
   std::vector<string> error_;
 
   // Function that gets invoked when we try to resolve an instruction
@@ -349,9 +344,9 @@ bool HloParser::TokenError(absl::string_view msg) {
   return Error(lexer_.GetLoc(), msg);
 }
 
-bool HloParser::Run() {
+bool HloParser::Run(HloModule* module) {
   lexer_.Lex();
-  return ParseHloModule();
+  return ParseHloModule(module);
 }
 
 std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
@@ -366,7 +361,7 @@ std::pair<HloInstruction*, HloParser::LocTy>* HloParser::FindInstruction(
 }
 
 // ::= 'HloModule' name computations
-bool HloParser::ParseHloModule() {
+bool HloParser::ParseHloModule(HloModule* module) {
   if (lexer_.GetKind() != TokKind::kw_HloModule) {
     return TokenError("expects HloModule");
   }
@@ -385,22 +380,20 @@ bool HloParser::ParseHloModule() {
     return false;
   }
 
-  module_ = absl::make_unique<HloModule>(name, config_);
-
-  if (!ParseComputations()) {
+  module->set_name(name);
+  if (!ParseComputations(module)) {
     return false;
   }
 
   if (is_scheduled.has_value() && *is_scheduled) {
-    TF_CHECK_OK(
-        module_->set_schedule(ScheduleFromInstructionOrder(module_.get())));
+    TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
   }
 
   return true;
 }
 
 // computations ::= (computation)+
-bool HloParser::ParseComputations() {
+bool HloParser::ParseComputations(HloModule* module) {
   HloComputation* entry_computation = nullptr;
   do {
     if (!ParseComputation(&entry_computation)) {
@@ -416,21 +409,20 @@ bool HloParser::ParseComputations() {
     if ((entry_computation != nullptr &&
          computations_[i].get() != entry_computation) ||
         (entry_computation == nullptr && i != computations_.size() - 1)) {
-      module_->AddEmbeddedComputation(std::move(computations_[i]));
+      module->AddEmbeddedComputation(std::move(computations_[i]));
       continue;
     }
-    auto computation =
-        module_->AddEntryComputation(std::move(computations_[i]));
+    auto computation = module->AddEntryComputation(std::move(computations_[i]));
     // The parameters and result layouts were set to default layout. Here we
     // set the layouts to what the hlo text says.
     for (int p = 0; p < computation->num_parameters(); p++) {
       const Shape& param_shape = computation->parameter_instruction(p)->shape();
-      TF_CHECK_OK(module_->mutable_entry_computation_layout()
+      TF_CHECK_OK(module->mutable_entry_computation_layout()
                       ->mutable_parameter_layout(p)
                       ->CopyLayoutFromShape(param_shape));
     }
     const Shape& result_shape = computation->root_instruction()->shape();
-    TF_CHECK_OK(module_->mutable_entry_computation_layout()
+    TF_CHECK_OK(module->mutable_entry_computation_layout()
                     ->mutable_result_layout()
                     ->CopyLayoutFromShape(result_shape));
   }
@@ -3247,53 +3239,62 @@ Status HloParser::ParseSingleInstruction(HloComputation::Builder* builder,
 
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(
     absl::string_view str, const HloModuleConfig& config) {
-  HloParser parser(str, config);
-  if (!parser.Run()) {
+  auto module = absl::make_unique<HloModule>(/*name=*/"", config);
+  HloParser parser(str);
+  if (!parser.Run(module.get())) {
     return InvalidArgument("Syntax error:\n%s", parser.GetError());
   }
-  return parser.ConsumeHloModule();
+  return std::move(module);
 }
 
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str) {
-  HloModuleConfig config;
-  return ParseHloString(str, config);
+  auto module = absl::make_unique<HloModule>(/*name=*/"", HloModuleConfig());
+  HloParser parser(str);
+  if (!parser.Run(module.get())) {
+    return InvalidArgument("Syntax error:\n%s", parser.GetError());
+  }
+  return std::move(module);
+}
+
+Status ParseHloString(absl::string_view str, HloModule* module) {
+  TF_RET_CHECK(module->computation_count() == 0);
+  HloParser parser(str);
+  if (!parser.Run(module)) {
+    return InvalidArgument("Syntax error:\n%s", parser.GetError());
+  }
+  return Status::OK();
 }
 
 StatusOr<std::unique_ptr<HloModule>> ParseHloOpToModule(
     absl::string_view str, absl::string_view name) {
-  HloModuleConfig config;
-  HloParser parser(str, config);
+  HloParser parser(str);
   auto builder = absl::make_unique<HloComputation::Builder>(string(name));
   string root_name;
   TF_RETURN_IF_ERROR(parser.ParseSingleInstruction(builder.get(), &root_name));
   std::unique_ptr<HloComputation> computation = builder->Build();
-  auto module = absl::make_unique<HloModule>(string(name), config);
+  auto module = absl::make_unique<HloModule>(string(name), HloModuleConfig());
   module->AddEntryComputation(std::move(computation));
   return std::move(module);
 }
 
 StatusOr<HloSharding> ParseSharding(absl::string_view str) {
-  HloModuleConfig config;
-  HloParser parser(str, config);
+  HloParser parser(str);
   return parser.ParseShardingOnly();
 }
 
 StatusOr<Window> ParseWindow(absl::string_view str) {
-  HloModuleConfig config;
-  HloParser parser(str, config);
+  HloParser parser(str);
   return parser.ParseWindowOnly();
 }
 
 StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
     absl::string_view str) {
-  HloModuleConfig config;
-  HloParser parser(str, config);
+  HloParser parser(str);
   return parser.ParseConvolutionDimensionNumbersOnly();
 }
 
 StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
-  HloModuleConfig config;
-  HloParser parser(str, config);
+  HloParser parser(str);
   return parser.ParsePaddingConfigOnly();
 }
 

@@ -45,7 +45,8 @@ class BatchReshape(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   dtype = np.float32
   dims = 2

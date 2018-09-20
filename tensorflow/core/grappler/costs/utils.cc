@@ -209,13 +209,13 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
       TfGpuId tf_gpu_id(parsed.id);
-      CudaGpuId cuda_gpu_id;
-      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (!s.ok()) {
         // We are probably running simulation without linking cuda libraries.
-        cuda_gpu_id = CudaGpuId(parsed.id);
+        platform_gpu_id = PlatformGpuId(parsed.id);
       }
-      return GetLocalGPUInfo(cuda_gpu_id);
+      return GetLocalGPUInfo(platform_gpu_id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }

@@ -1022,6 +1022,18 @@ class BackpropTest(test.TestCase):
         resource_variable_ops.ResourceVariable(2.0))
     self.assertAllEqual(gradients_constants, gradients_variables)
 
+  def testUnknownShapes(self):
+    with context.graph_mode():
+      with backprop.GradientTape() as tape:
+        a = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+        tape.watch(a)
+        b = a**3
+
+      db_da = tape.gradient(b, a)
+
+      with self.cached_session() as sess:
+        self.assertEqual((8.0, 12.0), sess.run((b, db_da), feed_dict={a: 2.0}))
+
 
 if __name__ == '__main__':
   test.main()

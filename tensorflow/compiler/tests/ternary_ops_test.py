@@ -122,8 +122,7 @@ class TernaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[2], [5]], dtype=dtype))
 
   def testClipByValue(self):
-    # TODO(b/78258593): enable integer types here too.
-    for dtype in self.float_types:
+    for dtype in self.numeric_types - self.complex_types:
       test_cases = [
           (np.array([2, 4, 5], dtype=dtype), dtype(7)),  #
           (dtype(1), np.array([2, 4, 5], dtype=dtype)),  #

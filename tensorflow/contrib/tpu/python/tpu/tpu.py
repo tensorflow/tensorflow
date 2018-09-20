@@ -76,7 +76,7 @@ def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
-    embedding_config: If not None, an `EmbeddingLayerConfiguration` proto
+    embedding_config: If not None, a `TPUEmbeddingConfiguration` proto
       describing the desired configuration of the hardware embedding lookup
       tables. If embedding_config is None, no hardware embeddings can be used.
     job: The job (the XXX in TensorFlow device specification /job:XXX) that
