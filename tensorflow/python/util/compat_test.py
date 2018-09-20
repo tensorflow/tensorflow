@@ -75,4 +75,3 @@ class CompatPathToStrTest(test.TestCase):
         transformed = compat.path_to_str(tensor_input)
         self.assertEqual(tensor_input, transformed)
 
-    
