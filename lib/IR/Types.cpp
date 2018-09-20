@@ -60,16 +60,9 @@ VectorType::VectorType(ArrayRef<unsigned> shape, Type *elementType,
     : VectorOrTensorType(Kind::Vector, context, elementType, shape.size()),
       shapeElements(shape.data()) {}
 
-/// Return true if the specified element type is ok in a tensor.
-static bool isValidTensorElementType(Type *type, MLIRContext *context) {
-  return isa<FloatType>(type) || isa<VectorType>(type) ||
-         isa<IntegerType>(type) || type == Type::getTFString(context) ||
-         type == Type::getTFResource(context);
-}
-
 TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
     : VectorOrTensorType(kind, context, elementType) {
-  assert(isValidTensorElementType(elementType, context));
+  assert(isValidTensorElementType(elementType));
 }
 
 RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,

@@ -480,6 +480,9 @@ void ModulePrinter::printType(const Type *type) {
   case Type::Kind::TFResource:
     os << "tf_resource";
     return;
+  case Type::Kind::TFVariant:
+    os << "tf_variant";
+    return;
   case Type::Kind::TFString:
     os << "tf_string";
     return;

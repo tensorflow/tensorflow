@@ -77,6 +77,7 @@ public:
   OtherType *getTFControlType();
   OtherType *getTFStringType();
   OtherType *getTFResourceType();
+  OtherType *getTFVariantType();
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);

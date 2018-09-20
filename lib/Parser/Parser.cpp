@@ -336,6 +336,9 @@ Type *Parser::parseType() {
   case Token::kw_tf_resource:
     consumeToken(Token::kw_tf_resource);
     return builder.getTFResourceType();
+  case Token::kw_tf_variant:
+    consumeToken(Token::kw_tf_variant);
+    return builder.getTFVariantType();
   case Token::kw_tf_string:
     consumeToken(Token::kw_tf_string);
     return builder.getTFStringType();
@@ -468,8 +471,7 @@ Type *Parser::parseTensorType() {
   if (!elementType || parseToken(Token::greater, "expected '>' in tensor type"))
     return nullptr;
 
-  if (!isa<IntegerType>(elementType) && !isa<FloatType>(elementType) &&
-      !isa<VectorType>(elementType))
+  if (!isValidTensorElementType(elementType))
     return (emitError(typeLoc, "invalid tensor element type"), nullptr);
 
   if (isUnranked)

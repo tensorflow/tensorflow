@@ -41,6 +41,7 @@ public:
     // TensorFlow types.
     TFControl,
     TFResource,
+    TFVariant,
     TFString,
 
     /// These are marker for the first and last 'other' type.
@@ -75,6 +76,7 @@ public:
   bool isAffineInt() const { return getKind() == Kind::AffineInt; }
   bool isTFControl() const { return getKind() == Kind::TFControl; }
   bool isTFResource() const { return getKind() == Kind::TFResource; }
+  bool isTFVariant() const { return getKind() == Kind::TFVariant; }
   bool isTFString() const { return getKind() == Kind::TFString; }
   bool isBF16() const { return getKind() == Kind::BF16; }
   bool isF16() const { return getKind() == Kind::F16; }
@@ -94,6 +96,7 @@ public:
   static OtherType *getTFControl(MLIRContext *ctx);
   static OtherType *getTFString(MLIRContext *ctx);
   static OtherType *getTFResource(MLIRContext *ctx);
+  static OtherType *getTFVariant(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -223,6 +226,9 @@ inline OtherType *Type::getTFResource(MLIRContext *ctx) {
 }
 inline OtherType *Type::getTFString(MLIRContext *ctx) {
   return OtherType::get(Kind::TFString, ctx);
+}
+inline OtherType *Type::getTFVariant(MLIRContext *ctx) {
+  return OtherType::get(Kind::TFVariant, ctx);
 }
 
 /// Function types map from a list of inputs to a list of results.
@@ -431,6 +437,12 @@ private:
              MLIRContext *context);
   ~MemRefType() = delete;
 };
+
+/// Return true if the specified element type is ok in a tensor.
+static bool isValidTensorElementType(Type *type) {
+  return isa<FloatType>(type) || isa<VectorType>(type) ||
+         isa<IntegerType>(type) || isa<OtherType>(type);
+}
 
 } // end namespace mlir
 
