@@ -2301,13 +2301,15 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  if (sync_on_finish_ && status.ok()) {
+  Device* device = impl_->params_.device;
+  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status = impl_->params_.device->Sync();
+    status.Update(device->Sync());
   }
+
   delete this;
   CHECK(done_cb != nullptr);
   runner([=]() { done_cb(status); });
