@@ -107,20 +107,16 @@ Uninstall any previously-installed tensorflow whl packages:
 pip list | grep tensorflow && pip uninstall -y tensorflow
 ```
 
+We maintain `tensorflow-rocm` whl packages on PyPI [here](https://pypi.org/project/tensorflow-rocm).
+
 For Python 2-based systems:
 ```
-# wget the TensorFlow ROCm port whl package
-cd ~/ && wget http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl
-
-# Pip install the whl package 
-cd ~ && sudo pip install tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl && rm tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl
+# Pip install the whl package from PyPI
+pip install --user tensorflow-rocm
 ```
 
 For Python 3-based systems:
 ```
-# wget the TensorFlow ROCm port whl package
-cd ~/ && wget http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl
-
-# Pip3 install the whl package 
-cd ~ && sudo pip3 install tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl && rm tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl
+# Pip3 install the whl package from PyPI
+pip3 install --user tensorflow-rocm
 ```
