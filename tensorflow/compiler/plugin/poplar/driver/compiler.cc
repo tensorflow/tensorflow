@@ -252,7 +252,7 @@ class EntryVisitor : public FullVisitor {
         auto fifo = graph_.addDeviceToHostFIFO(
             GetOutputCopyHandle(o), out.elementType(), out.numElements());
 
-        device_to_host.add(poplar::program::Copy(out, fifo));
+        device_to_host.add(poplar::program::Copy(out, fifo, true));
       }
     }
 
