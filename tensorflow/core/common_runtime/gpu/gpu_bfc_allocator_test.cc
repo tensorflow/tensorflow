@@ -410,6 +410,8 @@ BENCHMARK(BM_AllocationDelayed)->Arg(1)->Arg(10)->Arg(100)->Arg(1000);
 
 class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
  protected:
+  void SetUp() override { CHECK_EQ(unsetenv("TF_FORCE_GPU_ALLOW_GROWTH"), 0); }
+
   // The following test methods are called from tests. The reason for this is
   // that this class is a friend class to BFCAllocator, but tests are not, so
   // only methods inside this class can access private members of BFCAllocator.
@@ -510,12 +512,66 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
     EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1024));
     EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1025));
   }
+
+  void TestForceAllowGrowth() {
+    PlatformGpuId platform_gpu_id(0);
+    GPUOptions options;
+    // Unset flag value uses provided option.
+    unsetenv("TF_FORCE_GPU_ALLOW_GROWTH");
+    options.set_allow_growth(true);
+    GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator unset_flag_allocator(sub_allocator, 1LL << 31, options,
+                                         "GPU_0_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{1048576}),
+              unset_flag_allocator.curr_region_allocation_bytes_);
+
+    // Unparseable flag value uses provided option.
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "unparseable", 1);
+    options.set_allow_growth(true);
+    sub_allocator = new GPUMemAllocator(
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator unparsable_flag_allocator(sub_allocator, 1LL << 31, options,
+                                              "GPU_1_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{1048576}),
+              unparsable_flag_allocator.curr_region_allocation_bytes_);
+
+    // Max of 2GiB total memory. Env variable set forces allow_growth, which
+    // does an initial allocation of 1MiB.
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "true", 1);
+    options.set_allow_growth(false);
+    sub_allocator = new GPUMemAllocator(
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator force_allow_growth_allocator(sub_allocator, 1LL << 31,
+                                                 options, "GPU_2_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{1048576}),
+              force_allow_growth_allocator.curr_region_allocation_bytes_);
+
+    // If env variable forces allow_growth disabled, all available memory is
+    // allocated.
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "false", 1);
+    options.set_allow_growth(true);
+    sub_allocator = new GPUMemAllocator(
+        GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+        platform_gpu_id, false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator force_no_allow_growth_allocator(sub_allocator, 1LL << 31,
+                                                    options, "GPU_3_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(1LL << 31),
+              force_no_allow_growth_allocator.curr_region_allocation_bytes_);
+  }
 };
 
 TEST_F(GPUBFCAllocatorPrivateMethodsTest, BinDebugInfo) { TestBinDebugInfo(); }
 
 TEST_F(GPUBFCAllocatorPrivateMethodsTest, Log2FloorNonZeroSlow) {
   TestLog2FloorNonZeroSlow();
+}
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, ForceAllowGrowth) {
+  TestForceAllowGrowth();
 }
 
 }  // namespace tensorflow
