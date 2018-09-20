@@ -538,6 +538,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "logging_ops_logging_level_test",
+    size = "small",
+    srcs = ["logging_ops_logging_level_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:logging_ops",
+    ],
+    tags = [
+        "no_windows",
+    ],
+)
+
+tf_py_test(
     name = "logging_ops_test",
     size = "small",
     srcs = ["logging_ops_test.py"],
