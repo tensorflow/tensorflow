@@ -31,7 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import app
 from tensorflow.python.training import saver as saver_lib
@@ -143,12 +142,6 @@ def tfsplits(_):
   array_ops.identity(y, name='result')
 
 
-def tftop_k(_):
-  x = array_ops.placeholder(dtypes.int32, shape=[5], name='x')
-  output = nn_ops.top_k(x, 2, name='values')
-  array_ops.identity(output[1], name='indices')
-
-
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
@@ -170,7 +163,6 @@ def main(_):
   write_graph(tfmatmul, FLAGS.out_dir)
   write_graph(tfmatmulandadd, FLAGS.out_dir)
   write_graph(tfsplits, FLAGS.out_dir)
-  write_graph(tftop_k, FLAGS.out_dir)
 
 
 if __name__ == '__main__':
