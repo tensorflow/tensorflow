@@ -37,17 +37,17 @@ def _DeviceTensors(tensors, devices):
   return res
 
 
-def _rcclAllReduce(rccl_fun, tensors, devices):
+def _RcclAllReduce(rccl_fun, tensors, devices):
   return rccl_fun(_DeviceTensors(tensors, devices))
 
 
-def _rcclReduce(rccl_fun, tensors, devices):
+def _RcclReduce(rccl_fun, tensors, devices):
   receiver = np.random.randint(0, len(devices))
   with ops.device(devices[receiver]):
     return [rccl_fun(_DeviceTensors(tensors, devices))]
 
 
-def _rcclBroadcast(tensors, devices):
+def _RcclBroadcast(tensors, devices):
   sender = np.random.randint(0, len(devices))
   with ops.device(devices[sender]):
     tensor = array_ops.identity(tensors[0])
@@ -55,7 +55,7 @@ def _rcclBroadcast(tensors, devices):
   return _DeviceTensors([broadcast] * len(devices), devices)
 
 
-class rcclTestCase(test.TestCase):
+class RcclTestCase(test.TestCase):
 
   def _Test(self,
             rccl_reduce,
@@ -88,8 +88,7 @@ class rcclTestCase(test.TestCase):
             np_ans = numpy_fn(np_ans, t)
 
           reduce_tensors = rccl_reduce(tensors, devices)
-          #self.assertNotEmpty(reduce_tensors)
-          self.assertTrue(reduce_tensors)
+          self.assertNotEmpty(reduce_tensors)
 
           # Test shape inference.
           for r in reduce_tensors:
@@ -128,17 +127,17 @@ class rcclTestCase(test.TestCase):
     self._Test(_Gradient, numpy_fn)
 
 
-class AllReduceTest(rcclTestCase):
+class AllReduceTest(RcclTestCase):
 
   def testAllReduce(self):
-    self._Test(partial(_rcclAllReduce, rccl.all_sum), lambda x, y: x + y)
-    self._Test(partial(_rcclAllReduce, rccl.all_prod), lambda x, y: x * y)
-    self._Test(partial(_rcclAllReduce, rccl.all_min), np.minimum)
-    self._Test(partial(_rcclAllReduce, rccl.all_max), np.maximum)
+    self._Test(partial(_RcclAllReduce, rccl.all_sum), lambda x, y: x + y)
+    self._Test(partial(_RcclAllReduce, rccl.all_prod), lambda x, y: x * y)
+    self._Test(partial(_RcclAllReduce, rccl.all_min), np.minimum)
+    self._Test(partial(_RcclAllReduce, rccl.all_max), np.maximum)
 
   def testAllSumGrad(self):
     self._TestGradient(
-        partial(_rcclAllReduce, rccl.all_sum), lambda x, y: x + y)
+        partial(_RcclAllReduce, rccl.all_sum), lambda x, y: x + y)
 
   def testErrors(self):
     with self.assertRaisesRegexp(ValueError, 'Device assignment required'):
@@ -147,46 +146,46 @@ class AllReduceTest(rcclTestCase):
       rccl.all_sum([])
 
 
-class SingleReduceTest(rcclTestCase):
+class SingleReduceTest(RcclTestCase):
 
   def testSum(self):
-    self._Test(partial(_rcclReduce, rccl.reduce_sum), lambda x, y: x + y)
+    self._Test(partial(_RcclReduce, rccl.reduce_sum), lambda x, y: x + y)
 
   def testSumGrad(self):
-    self._TestGradient(partial(_rcclReduce, rccl.reduce_sum), lambda x, y: x)
+    self._TestGradient(partial(_RcclReduce, rccl.reduce_sum), lambda x, y: x)
 
 
-class BroadcastTest(rcclTestCase):
+class BroadcastTest(RcclTestCase):
 
   def testBroadcast(self):
-    self._Test(_rcclBroadcast, lambda x, y: x)
+    self._Test(_RcclBroadcast, lambda x, y: x)
 
   def testBroadcastSingleDevice(self):
     # Broadcasts on a single device are removed completely during rewrite.
-    self._Test(_rcclBroadcast, lambda x, y: x,
+    self._Test(_RcclBroadcast, lambda x, y: x,
                (['/device:GPU:0', '/device:GPU:0'],))
 
   def testBroadcastToCpuError(self):
     try:
       # Broadcasts to CPU is not supported.
-      self._Test(_rcclBroadcast, lambda x, y: x,
+      self._Test(_RcclBroadcast, lambda x, y: x,
                  (['/device:GPU:0', '/device:CPU:0'],))
     except errors.NotFoundError as e:
       self.assertRegexpMatches(
-          str(e), "No registered '_rcclBroadcastRecv' OpKernel for CPU devices")
+          str(e), "No registered '_RcclBroadcastRecv' OpKernel for CPU devices")
     else:
       # Session isn't executed when no GPU is available.
       if test.is_gpu_available():
         self.fail("Didn't raise NotFoundError trying to broadcast to CPU")
 
 
-class CombinedTest(rcclTestCase):
+class CombinedTest(RcclTestCase):
   """Test all-reduce vs. single-reduce plus broadcast in one session.run."""
 
   def _Combined(self, tensors, devices):
-    all_reduce_tensors = _rcclAllReduce(rccl.all_sum, tensors, devices)
-    single_reduce_tensors = _rcclReduce(rccl.reduce_sum, tensors, devices)
-    broadcast_tensors = _rcclBroadcast(single_reduce_tensors, devices)
+    all_reduce_tensors = _RcclAllReduce(rccl.all_sum, tensors, devices)
+    single_reduce_tensors = _RcclReduce(rccl.reduce_sum, tensors, devices)
+    broadcast_tensors = _RcclBroadcast(single_reduce_tensors, devices)
     return all_reduce_tensors + broadcast_tensors
 
   def testCombined(self):

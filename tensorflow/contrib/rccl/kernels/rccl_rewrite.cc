@@ -25,8 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Replaces rcclReduce node with _rcclReduceRecv reusing one input of same
-// device, adds one _rcclReduceSend for each other input.
+// Replaces RcclReduce node with _RcclReduceRecv reusing one input of same
+// device, adds one _RcclReduceSend for each other input.
 Status ReplaceReduce(Graph* graph, Node* node) {
   string reduction;
   TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "reduction", &reduction));
@@ -53,7 +53,7 @@ Status ReplaceReduce(Graph* graph, Node* node) {
   }
   int recv_dev = node->assigned_device_name_index();
   NodeBuilder recv_builder =
-      make_builder("_rcclReduceRecv", "Recv").ControlInputs(control_inputs);
+      make_builder("_RcclReduceRecv", "Recv").ControlInputs(control_inputs);
   bool recv_input_set = false;
   int send_counter = 0;
   for (const auto& edge : node->in_edges()) {
@@ -67,7 +67,7 @@ Status ReplaceReduce(Graph* graph, Node* node) {
       recv_input_set = true;
       continue;
     }
-    auto send_builder = make_builder("_rcclReduceSend",
+    auto send_builder = make_builder("_RcclReduceSend",
                                      strings::StrCat("Send_", ++send_counter))
                             .Input(src_node)
                             .ControlInputs(control_inputs);
@@ -84,7 +84,7 @@ Status ReplaceReduce(Graph* graph, Node* node) {
   }
   if (!recv_input_set) {
     return errors::InvalidArgument(
-        "No input tensor uses the same device as the rcclReduce op");
+        "No input tensor uses the same device as the RcclReduce op");
   }
   Node* recv_node = nullptr;
   TF_RETURN_IF_ERROR(recv_builder.Finalize(graph, &recv_node));
@@ -110,8 +110,8 @@ TensorProto TensorFromShape(const TensorShapeProto& shape) {
   return result;
 }
 
-// Replaces rcclBroadcast node with _rcclBroadcastSend, connects the input to
-// all outputs of same device, adds one _rcclBroadcastRecv for each other output
+// Replaces RcclBroadcast node with _RcclBroadcastSend, connects the input to
+// all outputs of same device, adds one _RcclBroadcastRecv for each other output
 // device.
 Status ReplaceBroadcast(Graph* graph, Node* node) {
   DataType dtype;
@@ -139,7 +139,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
   }
 
   if (num_devices <= 1) {
-    // Only one participating device, skip rccl op.
+    // Only one participating device, skip RCCL op.
     const Edge* in_edge = nullptr;
     TF_RETURN_IF_ERROR(node->input_edge(0, &in_edge));
     Node* in_node = in_edge->src();
@@ -167,7 +167,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
 
   // Create broadcast send node and replace the original broadcast node.
   NodeBuilder::NodeOut in_node;
-  NodeBuilder send_builder = make_builder("_rcclBroadcastSend", "Send");
+  NodeBuilder send_builder = make_builder("_RcclBroadcastSend", "Send");
   for (const auto& edge : node->in_edges()) {
     if (edge->IsControlEdge()) {
       send_builder.ControlInput(edge->src());
@@ -226,7 +226,7 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
     }
     Node* recv_node;
     TF_RETURN_IF_ERROR(
-        make_builder("_rcclBroadcastRecv", strings::StrCat("Recv_", recv_index))
+        make_builder("_RcclBroadcastRecv", strings::StrCat("Recv_", recv_index))
             .Input(shape_node)
             .Finalize(graph, &recv_node));
     recv_node->set_assigned_device_name_index(recv_dev);
@@ -238,9 +238,9 @@ Status ReplaceBroadcast(Graph* graph, Node* node) {
   return Status::OK();
 }
 
-// Replaces occurrences of rccl{Reduce, Broadcast}Input/Output with their
-// _rccl...Send/Recv counterparts and removes data dependencies between them.
-class rcclReplacePass : public GraphOptimizationPass {
+// Replaces occurrences of Rccl{Reduce, Broadcast}Input/Output with their
+// _Rccl...Send/Recv counterparts and removes data dependencies between them.
+class RcclReplacePass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override {
     if (options.graph == nullptr) {
@@ -249,19 +249,19 @@ class rcclReplacePass : public GraphOptimizationPass {
     Graph* graph = options.graph->get();
     if (graph == nullptr) {
       return errors::Internal(
-          "rccl replacement should happen before partitioning and a "
+          "RCCL replacement should happen before partitioning and a "
           "graph should be available.");
     }
     // Find reduction and broadcast ops and replace them with Send/Recv ops.
     for (Node* node : graph->op_nodes()) {
       StringPiece type = node->type_string();
-      if (!str_util::StartsWith(type, "rccl")) {
+      if (!str_util::StartsWith(type, "Rccl")) {
         continue;
       }
-      if (type == "rcclReduce") {
+      if (type == "RcclReduce") {
         TF_RETURN_IF_ERROR(ReplaceReduce(graph, node));
       }
-      if (type == "rcclBroadcast") {
+      if (type == "RcclBroadcast") {
         TF_RETURN_IF_ERROR(ReplaceBroadcast(graph, node));
       }
     }
@@ -269,7 +269,7 @@ class rcclReplacePass : public GraphOptimizationPass {
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_PLACEMENT, 0,
-                      rcclReplacePass);
+                      RcclReplacePass);
 
 }  // namespace
 }  // namespace tensorflow

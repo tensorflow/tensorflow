@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 
-class rcclDependencyTest(test.TestCase):
+class RcclDependencyTest(test.TestCase):
   """Verifies that importing rccl ops lib does not fail even if RCCL is not
   installed but rccl ops throws an exception on use if RCCL is not installed.
   """

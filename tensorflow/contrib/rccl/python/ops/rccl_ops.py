@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ops for GPU collective operations implemented using NVIDIA rccl."""
+"""Ops for GPU collective operations implemented using AMD rccl."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -49,7 +49,7 @@ def all_sum(tensors):
   return _apply_all_reduce('sum', tensors)
 
 
-@ops.RegisterGradient('rcclAllReduce')
+@ops.RegisterGradient('RcclAllReduce')
 def _all_sum_grad(op, grad):
   """The gradients for `all_sum`.
 
@@ -64,7 +64,7 @@ def _all_sum_grad(op, grad):
     LookupError: If `reduction` is not `sum`.
   """
   if op.get_attr('reduction') != b'sum':
-    raise LookupError('No gradient defined for rcclAllReduce except sum.')
+    raise LookupError('No gradient defined for RcclAllReduce except sum.')
 
   _check_device(grad, expected=op.device)
   num_devices = op.get_attr('num_devices')
@@ -148,7 +148,7 @@ def reduce_sum(tensors):
   return _apply_reduce('sum', tensors)
 
 
-@ops.RegisterGradient('rcclReduce')
+@ops.RegisterGradient('RcclReduce')
 def _reduce_sum_grad(op, grad):
   """The gradients for input `Operation` of `reduce_sum`.
 
@@ -163,7 +163,7 @@ def _reduce_sum_grad(op, grad):
     LookupError: If the reduction attribute of op is not `sum`.
   """
   if op.get_attr('reduction') != b'sum':
-    raise LookupError('No gradient defined for rcclReduce except sum.')
+    raise LookupError('No gradient defined for RcclReduce except sum.')
   _check_device(grad, expected=op.device)
 
   with ops.device(op.device):
@@ -189,7 +189,7 @@ def broadcast(tensor):
     return gen_rccl_ops.rccl_broadcast(input=tensor, shape=tensor.shape)
 
 
-@ops.RegisterGradient('rcclBroadcast')
+@ops.RegisterGradient('RcclBroadcast')
 def _broadcast_grad(op, accumulated_grad):
   """The gradients for input `Operation` of `broadcast`.
 
@@ -283,6 +283,6 @@ def _validate_and_load_rccl_so():
   """
 
   if context.executing_eagerly():
-    raise ValueError('rccl ops are not supported in eager mode')
+    raise ValueError('Rccl ops are not supported in eager mode')
 
   _maybe_load_rccl_ops_so()

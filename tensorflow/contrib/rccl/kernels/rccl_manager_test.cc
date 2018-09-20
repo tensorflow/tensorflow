@@ -49,7 +49,7 @@ static std::vector<BaseGPUDevice*> GetGPUDevices() {
 }
 
 template <typename Scalar>
-class rcclManagerTest : public ::testing::Test {
+class RcclManagerTest : public ::testing::Test {
  public:
   // A single all-reduce to apply.
   struct TestCase {
@@ -64,7 +64,7 @@ class rcclManagerTest : public ::testing::Test {
   };
 
   static void SetUpTestCase() {
-    setenv("rccl_DEBUG", "INFO", 1 /* replace */);
+    setenv("RCCL_DEBUG", "INFO", 1 /* replace */);
     devices_ = new std::vector<BaseGPUDevice*>(GetGPUDevices());
     CHECK(!devices_->empty());
     LOG(ERROR) << "Running test with " << devices_->size() << " gpus";
@@ -157,7 +157,7 @@ class rcclManagerTest : public ::testing::Test {
     }
   }
 
-  rcclManager::DoneCallback CreateDoneCallback(TestCase* test_case) {
+  RcclManager::DoneCallback CreateDoneCallback(TestCase* test_case) {
     return [this, test_case](Status s) {
       mutex_lock l(test_case->mu);
       ++test_case->num_completed;
@@ -174,8 +174,8 @@ class rcclManagerTest : public ::testing::Test {
     return device->GetAllocator(AllocatorAttributes());
   }
 
-  static se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* cuda_memory) {
-    se::DeviceMemoryBase wrapped(const_cast<Scalar*>(cuda_memory));
+  static se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* gpu_memory) {
+    se::DeviceMemoryBase wrapped(const_cast<Scalar*>(gpu_memory));
     se::DeviceMemory<Scalar> typed(wrapped);
     return typed;
   }
@@ -187,20 +187,20 @@ class rcclManagerTest : public ::testing::Test {
 };
 
 template <typename Scalar>
-std::vector<BaseGPUDevice*>* rcclManagerTest<Scalar>::devices_ = nullptr;
+std::vector<BaseGPUDevice*>* RcclManagerTest<Scalar>::devices_ = nullptr;
 template <typename Scalar>
-const DataType rcclManagerTest<Scalar>::data_type_ =
+const DataType RcclManagerTest<Scalar>::data_type_ =
     DataTypeToEnum<Scalar>::value;
 template <typename Scalar>
-const Scalar rcclManagerTest<Scalar>::max_ =
+const Scalar RcclManagerTest<Scalar>::max_ =
     Eigen::NumTraits<Scalar>::highest();
 
 // Instantiate tests for float and half.
 using TypeList = ::testing::Types<float, Eigen::half>;
-TYPED_TEST_CASE(rcclManagerTest, TypeList);
+TYPED_TEST_CASE(RcclManagerTest, TypeList);
 
 // Test basic sum reduction.
-TYPED_TEST(rcclManagerTest, BasicSumReduction) {
+TYPED_TEST(RcclManagerTest, BasicSumReduction) {
   const int num_ranks = 3;
 
   for (int op = 0; op < 4; ++op) {
@@ -211,7 +211,7 @@ TYPED_TEST(rcclManagerTest, BasicSumReduction) {
       auto* device = this->GetDevice(rank);
       auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
       auto* stream = device->tensorflow_gpu_device_info()->stream;
-      rcclManager::instance()->AddToAllReduce(
+      RcclManager::instance()->AddToAllReduce(
           num_ranks, "allreduce", reduction_op, device->executor(),
           device->gpu_id(), event_mgr, stream, &test_case->ins[rank],
           &test_case->outs[rank], this->CreateDoneCallback(test_case.get()));
@@ -229,7 +229,7 @@ TYPED_TEST(rcclManagerTest, BasicSumReduction) {
 // with num_ranks > devices->size(), for some GPUs (e.g. K20m).
 // To test the higher settings, increase num_ranks,
 // num_collectives_per_iteration and time_limit_micros.
-TYPED_TEST(rcclManagerTest, MultipleCallers) {
+TYPED_TEST(RcclManagerTest, MultipleCallers) {
   const int num_ranks = 1;                      // 2;
   const int num_collectives_per_iteration = 1;  // 1000;
   const int num_threads = 3;
@@ -277,7 +277,7 @@ TYPED_TEST(rcclManagerTest, MultipleCallers) {
         auto* event_mgr = device->tensorflow_gpu_device_info()->event_mgr;
         auto* stream = device->tensorflow_gpu_device_info()->stream;
         typename TestFixture::TestCase* test_case = test_cases[test_num].get();
-        rcclManager::instance()->AddToAllReduce(
+        RcclManager::instance()->AddToAllReduce(
             num_ranks, strings::StrCat("allreduce", test_num), rcclSum,
             device->executor(), device->gpu_id(), event_mgr, stream,
             &test_case->ins[rank], &test_case->outs[rank],
@@ -304,4 +304,4 @@ TYPED_TEST(rcclManagerTest, MultipleCallers) {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
