@@ -42,7 +42,7 @@ using xla::ShapedBuffer;
 }  // anonymous namespace
 
 std::map<int, OptionalTensor> SnapshotResourceVariables(
-    OpKernelContext* ctx, const std::vector<int>& variables) {
+    OpKernelContext* ctx, absl::Span<const int> variables) {
   std::map<int, OptionalTensor> snapshot;
   for (int i : variables) {
     Var* variable = nullptr;
