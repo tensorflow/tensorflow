@@ -704,6 +704,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "matching_files_dataset_op",
+    srcs = ["matching_files_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "model_dataset_op",
     srcs = ["model_dataset_op.cc"],
     deps = [
@@ -809,17 +821,3 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
     ],
 )
-
-
-tf_kernel_library(
-    name = "matching_files_dataset_op",
-    srcs = ["matching_files_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
