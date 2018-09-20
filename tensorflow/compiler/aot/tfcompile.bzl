@@ -273,7 +273,6 @@ def tf_library(
             "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
             "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
             "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
