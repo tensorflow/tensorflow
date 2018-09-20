@@ -114,22 +114,21 @@ func (g *Graph) ImportWithDevice(def []byte, prefix string, device string) error
 	C.memcpy(buf.data, unsafe.Pointer(&def[0]), buf.length)
 
 	status := newStatus()
-	C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
+
+	if len(device) != 0 {
+		cdev := C.CString(device)
+		defer C.free(unsafe.Pointer(cdev))
+
+		C.TF_GraphImportGraphDefWithDevice(g.c, buf, opts, cdev, status.c)
+	} else {
+		C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
+	}
+
 	if err := status.Err(); err != nil {
 		return err
 	}
 
-	g.BindToDevice(device)
 	return nil
-}
-
-func (g *Graph) BindToDevice(device string) {
-    if len(device) != 0 {
-	cdev := C.CString(device)
-	defer C.free(unsafe.Pointer(cdev))
-
-	C.TF_BindToDevice(g.c, cdev)
-    }
 }
 
 func (g *Graph) Import(def []byte, prefix string) error {

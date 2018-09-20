@@ -1019,7 +1019,13 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
 
-TF_CAPI_EXPORT extern void TF_BindToDevice(TF_Graph* graph, const char *device);
+// Import the graph serialized in `graph_def` into `graph`.
+// Convenience function for when no results are needed.
+// Optionally try to bind resulted graph to given device ('/gpu:1' for example)
+void TF_GraphImportGraphDefWithDevice(TF_Graph* graph, const TF_Buffer* graph_def,
+                            const TF_ImportGraphDefOptions* options,
+			    const char *device,
+                            TF_Status* status);
 
 // Adds a copy of function `func` and optionally its gradient function `grad`
 // to `g`. Once `func`/`grad` is added to `g`, it can be called by creating

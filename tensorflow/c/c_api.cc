@@ -2129,13 +2129,20 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
   TF_DeleteImportGraphDefResults(results);
 }
 
-void TF_BindToDevice(TF_Graph* graph, const char *device) {
-  if (device == NULL)
-    return;
+void TF_GraphImportGraphDefWithDevice(TF_Graph* graph, const TF_Buffer* graph_def,
+                            const TF_ImportGraphDefOptions* options,
+			    const char *device,
+                            TF_Status* status) {
+  TF_ImportGraphDefResults* results =
+      TF_GraphImportGraphDefWithResults(graph, graph_def, options, status);
 
-  for (Node *node: graph->graph.nodes()) {
-	  node->set_requested_device(device);
+  if ((device != NULL) && (TF_GetCode(status) == TF_OK)) {
+    for (Node *node: graph->graph.nodes()) {
+      node->set_requested_device(device);
+    }
   }
+
+  TF_DeleteImportGraphDefResults(results);
 }
 
 // While loop functions -------------------------------------------------------
