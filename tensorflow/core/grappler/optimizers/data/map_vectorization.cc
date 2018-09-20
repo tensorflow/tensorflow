@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
+#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -38,11 +39,11 @@ void CopyAttribute(const string& attr_name, const NodeDef& from, NodeDef* to) {
   (*to->mutable_attr())[attr_name] = from.attr().at(attr_name);
 }
 
-FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
+// Returns a FunctionDef containing a MapDefun op that wraps the original
+// function.
+FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
                                    const FunctionDef& orig_func,
                                    FunctionDefLibrary* library) {
-  // If we decide to use a different method of vectorization, we can just
-  // swap out this part.
   FunctionDef* vectorized_func = library->add_function();
   // Function inputs and outputs are the same as original, just
   // with different shapes.
@@ -79,6 +80,30 @@ FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
         strings::StrCat(output_prefix, i);
   }
 
+  return vectorized_func;
+}
+
+FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
+                                   const FunctionDef& orig_func,
+                                   FunctionDefLibrary* library) {
+  // Vectorizes orig_func naively by wrapping in a MapDefun op, then tries to
+  // do true vectorization with Vectorize.
+  FunctionDef* vectorized_func =
+      CreateMapDefunWrapper(map_node, orig_func, library);
+  NodeDef* map_defun_node = vectorized_func->mutable_node_def()->Mutable(0);
+  DCHECK_EQ(map_defun_node->op(), "MapDefun");
+
+  // Create a copy of the original function so that we can mutate it, and
+  // attach that to the map defun node.
+  FunctionDef* map_defun_fn = library->add_function();
+  *map_defun_fn = orig_func;
+  graph_utils::SetUniqueGraphFunctionName(orig_func.signature().name(), library,
+                                          map_defun_fn);
+  (*map_defun_node->mutable_attr())["f"].mutable_func()->set_name(
+      map_defun_fn->signature().name());
+
+  vectorization_utils::VectorizeMapDefun(vectorized_func, map_defun_fn,
+                                         map_defun_node);
   return vectorized_func;
 }
 
