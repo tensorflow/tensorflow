@@ -91,8 +91,11 @@ class StudentT(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Define a single scalar Student t distribution.
-  single_dist = tf.distributions.StudentT(df=3)
+  single_dist = tfd.StudentT(df=3)
 
   # Evaluate the pdf at 1, returning a scalar Tensor.
   single_dist.prob(1.)
@@ -100,9 +103,7 @@ class StudentT(distribution.Distribution):
   # Define a batch of two scalar valued Student t's.
   # The first has degrees of freedom 2, mean 1, and scale 11.
   # The second 3, 2 and 22.
-  multi_dist = tf.distributions.StudentT(df=[2, 3],
-                                                 loc=[1, 2.],
-                                                 scale=[11, 22.])
+  multi_dist = tfd.StudentT(df=[2, 3], loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
@@ -117,7 +118,7 @@ class StudentT(distribution.Distribution):
   ```python
   # Define a batch of two Student's t distributions.
   # Both have df 2 and mean 1, but different scales.
-  dist = tf.distributions.StudentT(df=2, loc=1, scale=[11, 22.])
+  dist = tfd.StudentT(df=2, loc=1, scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
@@ -130,7 +131,7 @@ class StudentT(distribution.Distribution):
   df = tf.constant(2.0)
   loc = tf.constant(2.0)
   scale = tf.constant(11.0)
-  dist = tf.distributions.StudentT(df=df, loc=loc, scale=scale)
+  dist = tfd.StudentT(df=df, loc=loc, scale=scale)
   samples = dist.sample(5)  # Shape [5]
   loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
   # Unbiased stochastic gradients of the loss function
@@ -138,7 +139,6 @@ class StudentT(distribution.Distribution):
   ```
 
   """
-  # pylint: enable=line-too-long
 
   def __init__(self,
                df,

@@ -1121,7 +1121,7 @@ class Distribution(_BaseDistribution):
     where `F` denotes the support of the random variable `X ~ P`.
 
     Args:
-      other: `tf.distributions.Distribution` instance.
+      other: `tfp.distributions.Distribution` instance.
       name: Python `str` prepended to names of ops created by this function.
 
     Returns:
@@ -1152,7 +1152,7 @@ class Distribution(_BaseDistribution):
     denotes (Shanon) cross entropy, and `H[.]` denotes (Shanon) entropy.
 
     Args:
-      other: `tf.distributions.Distribution` instance.
+      other: `tfp.distributions.Distribution` instance.
       name: Python `str` prepended to names of ops created by this function.
 
     Returns:
@@ -1164,7 +1164,7 @@ class Distribution(_BaseDistribution):
       return self._kl_divergence(other)
 
   def __str__(self):
-    return ("tf.distributions.{type_name}("
+    return ("tfp.distributions.{type_name}("
             "\"{self_name}\""
             "{maybe_batch_shape}"
             "{maybe_event_shape}"
@@ -1180,7 +1180,7 @@ class Distribution(_BaseDistribution):
                 dtype=self.dtype.name))
 
   def __repr__(self):
-    return ("<tf.distributions.{type_name} "
+    return ("<tfp.distributions.{type_name} "
             "'{self_name}'"
             " batch_shape={batch_shape}"
             " event_shape={event_shape}"
