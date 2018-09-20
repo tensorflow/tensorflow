@@ -93,6 +93,9 @@ class GPUBFCAllocator : public BFCAllocator {
   ~GPUBFCAllocator() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
+
+ private:
+  static bool GetAllowGrowthValue(const GPUOptions& gpu_options);
 };
 
 }  // namespace tensorflow
