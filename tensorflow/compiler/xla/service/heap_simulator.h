@@ -351,6 +351,68 @@ class LazyBestFitHeap : public HeapAlgorithm {
   std::set<Chunk, OrderChunkByIncreasingSize> free_;
 };
 
+// GlobalDecreasingSizeBestFitHeap collects the live intervals of all buffers,
+// then allocates them in decreasing sizes regardless of the alloc/free time. It
+// internally tracks the allocated buffers and their live intervals; when
+// allocating a buffer, it finds the best-fit free chunk during its live
+// interval.
+class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
+ public:
+  GlobalDecreasingSizeBestFitHeap(int64 alignment) : alignment_(alignment) {}
+  ~GlobalDecreasingSizeBestFitHeap() override {}
+
+  void Alloc(const BufferValue* buffer, int64 size) override;
+  void Free(const BufferValue* buffer, int64 size) override;
+  Result Finish() override;
+
+ private:
+  int64 alignment_;
+  Result result_;
+
+  // The current time represented as an integer. It increments by 1 at each
+  // Alloc or Free call.
+  int64 current_time_ = 0;
+
+  // BufferInterval stores a buffer's size and time interval.
+  struct BufferInterval {
+    const BufferValue* buffer;
+    int64 size;
+    // Alloc time of the buffer.
+    int64 start;
+    // Free time of the buffer.
+    int64 end;
+  };
+  tensorflow::gtl::FlatMap<const BufferValue*, BufferInterval>
+      buffer_intervals_;
+};
+
+// A heap algorithm that chooses the best results from other algorithms added to
+// it.
+class ChooseBestHeapAlgorithm : public HeapAlgorithm {
+ public:
+  ChooseBestHeapAlgorithm(
+      std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm>>> algorithms)
+      : algorithms_(std::move(*algorithms)) {}
+  ~ChooseBestHeapAlgorithm() override {}
+
+  void Alloc(const BufferValue* buffer, int64 size) override {
+    for (auto& algorithm : algorithms_) {
+      algorithm->Alloc(buffer, size);
+    }
+  }
+
+  void Free(const BufferValue* buffer, int64 size) override {
+    for (auto& algorithm : algorithms_) {
+      algorithm->Free(buffer, size);
+    }
+  }
+
+  Result Finish() override;
+
+ private:
+  std::vector<std::unique_ptr<HeapAlgorithm>> algorithms_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HEAP_SIMULATOR_H_
