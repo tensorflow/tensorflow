@@ -120,38 +120,50 @@ namespace xla {
 //                                              .WithOperand(1, Op(&c))
 //                                              .WithOperand(2, Op(&d))
 //
+
+struct MatchOption {
+  // If true, actually capture matched item into the user pointer.
+  bool capture;
+};
+
 template <typename Value, typename Pattern>
-bool Match(Value* value, const Pattern& pattern) {
-  return pattern.Match(value);
+bool Match(Value* value, const Pattern& pattern,
+           MatchOption option = {/*.capture=*/true}) {
+  if (option.capture) {
+    auto new_option = option;
+    new_option.capture = false;
+    if (!pattern.Match(value, new_option)) {
+      return false;
+    }
+  }
+  return pattern.Match(value, option);
 }
 
 namespace match {
 
 namespace detail {
+
 template <typename Item, typename... Patterns>
 class AllOfPattern {
  public:
   explicit AllOfPattern(const Patterns&... patterns) : patterns_(patterns...) {}
 
-  bool Match(const Item* item) const {
-    return MatchImpl(item, std::integral_constant<size_t, 0>());
+  bool Match(const Item* item, MatchOption option) const {
+    return MatchImpl(item, option,
+                     absl::make_index_sequence<sizeof...(Patterns)>());
   }
 
-  bool Match(Item* item) const {
-    return MatchImpl(item, std::integral_constant<size_t, 0>());
+  bool Match(Item* item, MatchOption option) const {
+    return MatchImpl(item, option,
+                     absl::make_index_sequence<sizeof...(Patterns)>());
   }
 
  private:
-  template <typename ItemType, size_t index>
-  bool MatchImpl(ItemType* item, std::integral_constant<size_t, index>) const {
-    return std::get<index>(patterns_).Match(item) &&
-           MatchImpl(item, std::integral_constant<size_t, index + 1>());
-  }
-
-  template <typename ItemType>
-  bool MatchImpl(ItemType* item,
-                 std::integral_constant<size_t, sizeof...(Patterns)>) const {
-    return true;
+  template <typename ItemType, size_t... indices>
+  bool MatchImpl(ItemType* item, MatchOption option,
+                 absl::index_sequence<indices...>) const {
+    return std::min<bool>(
+        {std::get<indices>(patterns_).Match(item, option)...});
   }
 
   std::tuple<Patterns...> patterns_;
@@ -181,7 +193,9 @@ class LayoutPattern;
 // nullptr.
 class LayoutPatternBaseImpl {
  public:
-  bool Match(const ::xla::Layout* layout) const { return layout != nullptr; }
+  bool Match(const ::xla::Layout* layout, MatchOption option) const {
+    return layout != nullptr;
+  }
 };
 
 // A LayoutPattern implementation that matches only if the layout equals a
@@ -191,7 +205,7 @@ class LayoutPatternEqualImpl {
   explicit constexpr LayoutPatternEqualImpl(const ::xla::Layout* layout)
       : layout_(layout) {}
 
-  bool Match(const ::xla::Layout* layout) const {
+  bool Match(const ::xla::Layout* layout, MatchOption option) const {
     return LayoutUtil::Equal(*layout_, *layout);
   }
 
@@ -205,7 +219,7 @@ class LayoutPatternFormatImpl {
  public:
   explicit constexpr LayoutPatternFormatImpl(Format format) : format_(format) {}
 
-  bool Match(const ::xla::Layout* layout) const {
+  bool Match(const ::xla::Layout* layout, MatchOption option) const {
     return layout->format() == format_;
   }
 
@@ -231,9 +245,9 @@ class LayoutPattern {
       : impl_(impl), matched_layout_(matched_layout) {}
 
   // Returns true and captures the layout iff it matches the pattern.
-  bool Match(const ::xla::Layout* layout) const {
-    if (impl_.Match(layout)) {
-      if (matched_layout_) {
+  bool Match(const ::xla::Layout* layout, MatchOption option) const {
+    if (impl_.Match(layout, option)) {
+      if (option.capture && matched_layout_) {
         *matched_layout_ = layout;
       }
       return true;
@@ -242,9 +256,9 @@ class LayoutPattern {
   }
 
   // Returns true and captures the layout iff it matches the pattern.
-  bool Match(::xla::Layout* layout) const {
-    if (impl_.Match(layout)) {
-      if (matched_layout_) {
+  bool Match(::xla::Layout* layout, MatchOption option) const {
+    if (impl_.Match(layout, option)) {
+      if (option.capture && matched_layout_) {
         *matched_layout_ = layout;
       }
       return true;
@@ -281,23 +295,24 @@ class AnyOfPattern {
  public:
   explicit AnyOfPattern(const Patterns&... patterns) : patterns_(patterns...) {}
 
-  bool Match(const Item* item) const {
-    return MatchImpl(item, std::integral_constant<size_t, 0>());
+  bool Match(const Item* item, MatchOption option) const {
+    return MatchImpl(item, option, std::integral_constant<size_t, 0>());
   }
 
-  bool Match(Item* item) const {
-    return MatchImpl(item, std::integral_constant<size_t, 0>());
+  bool Match(Item* item, MatchOption option) const {
+    return MatchImpl(item, option, std::integral_constant<size_t, 0>());
   }
 
  private:
   template <typename ItemType, size_t index>
-  bool MatchImpl(ItemType* item, std::integral_constant<size_t, index>) const {
-    return std::get<index>(patterns_).Match(item) ||
-           MatchImpl(item, std::integral_constant<size_t, index + 1>());
+  bool MatchImpl(ItemType* item, MatchOption option,
+                 std::integral_constant<size_t, index>) const {
+    return std::get<index>(patterns_).Match(item, option) ||
+           MatchImpl(item, option, std::integral_constant<size_t, index + 1>());
   }
 
   template <typename ItemType>
-  bool MatchImpl(ItemType* item,
+  bool MatchImpl(ItemType* item, MatchOption option,
                  std::integral_constant<size_t, sizeof...(Patterns)>) const {
     return false;
   }
@@ -345,7 +360,9 @@ class ShapePattern;
 // nullptr.
 class ShapePatternBaseImpl {
  public:
-  bool Match(const ::xla::Shape* shape) const { return shape != nullptr; }
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    return shape != nullptr;
+  }
 };
 
 // A ShapePattern implementation that matches only if the shape equals a Shape
@@ -355,7 +372,7 @@ class ShapePatternEqualImpl {
   explicit constexpr ShapePatternEqualImpl(const ::xla::Shape* shape)
       : shape_(shape) {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::Equal(*shape_, *shape);
   }
 
@@ -370,7 +387,7 @@ class ShapePatternCompatibleImpl {
   explicit constexpr ShapePatternCompatibleImpl(const ::xla::Shape* shape)
       : shape_(shape) {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::Compatible(*shape_, *shape);
   }
 
@@ -385,7 +402,7 @@ class ShapePatternElementTypeImpl {
   explicit constexpr ShapePatternElementTypeImpl(PrimitiveType element_type)
       : element_type_(element_type) {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return shape->element_type() == element_type_;
   }
 
@@ -398,7 +415,7 @@ class ShapePatternIsScalarImpl {
  public:
   explicit constexpr ShapePatternIsScalarImpl() {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::IsScalar(*shape);
   }
 };
@@ -408,7 +425,7 @@ class ShapePatternIsArrayImpl {
  public:
   explicit constexpr ShapePatternIsArrayImpl() {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::IsArray(*shape);
   }
 };
@@ -418,7 +435,7 @@ class ShapePatternIsTupleImpl {
  public:
   explicit constexpr ShapePatternIsTupleImpl() {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::IsTuple(*shape);
   }
 };
@@ -429,7 +446,7 @@ class ShapePatternRankImpl {
  public:
   explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::Rank(*shape) == rank_;
   }
 
@@ -446,13 +463,14 @@ class ShapePatternLayoutImpl {
       const LayoutPattern<LayoutType, LayoutImpl>& layout)
       : layout_(layout) {}
 
-  bool Match(const ::xla::Shape* shape) const {
-    return LayoutUtil::HasLayout(*shape) && layout_.Match(&shape->layout());
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    return LayoutUtil::HasLayout(*shape) &&
+           layout_.Match(&shape->layout(), option);
   }
 
-  bool Match(Shape* shape) const {
+  bool Match(Shape* shape, MatchOption option) const {
     return LayoutUtil::HasLayout(*shape) &&
-           layout_.Match(shape->mutable_layout());
+           layout_.Match(shape->mutable_layout(), option);
   }
 
  private:
@@ -469,14 +487,15 @@ class ShapePatternSubshapeImpl {
       const ShapePattern<SubshapeType, SubshapeImpl>& subshape)
       : index_(index), subshape_(subshape) {}
 
-  bool Match(const ::xla::Shape* shape) const {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::IndexIsValid(*shape, index_) &&
-           subshape_.Match(&ShapeUtil::GetSubshape(*shape, index_));
+           subshape_.Match(&ShapeUtil::GetSubshape(*shape, index_), option);
   }
 
-  bool Match(::xla::Shape* shape) const {
+  bool Match(::xla::Shape* shape, MatchOption option) const {
     return ShapeUtil::IndexIsValid(*shape, index_) &&
-           subshape_.Match(ShapeUtil::GetMutableSubshape(shape, index_));
+           subshape_.Match(ShapeUtil::GetMutableSubshape(shape, index_),
+                           option);
   }
 
  private:
@@ -500,9 +519,9 @@ class ShapePattern {
       : impl_(impl), matched_shape_(matched_shape) {}
 
   // Returns true and captures the shape iff it matches the pattern.
-  bool Match(const ::xla::Shape* shape) const {
-    if (impl_.Match(shape)) {
-      if (matched_shape_) {
+  bool Match(const ::xla::Shape* shape, MatchOption option) const {
+    if (impl_.Match(shape, option)) {
+      if (option.capture && matched_shape_) {
         *matched_shape_ = shape;
       }
       return true;
@@ -511,9 +530,9 @@ class ShapePattern {
   }
 
   // Returns true and captures the shape iff it matches the pattern.
-  bool Match(::xla::Shape* shape) const {
-    if (impl_.Match(shape)) {
-      if (matched_shape_) {
+  bool Match(::xla::Shape* shape, MatchOption option) const {
+    if (impl_.Match(shape, option)) {
+      if (option.capture && matched_shape_) {
         *matched_shape_ = shape;
       }
       return true;
@@ -660,7 +679,7 @@ class HloInstructionPattern;
 // instruction is not nullptr.
 class HloInstructionPatternBaseImpl {
  public:
-  bool Match(const ::xla::HloInstruction* inst) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return inst != nullptr;
   }
 };
@@ -672,7 +691,7 @@ class HloInstructionPatternNameImpl {
   explicit HloInstructionPatternNameImpl(absl::string_view name)
       : name_(name) {}
 
-  bool Match(const ::xla::HloInstruction* inst) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return inst->name() == name_;
   }
 
@@ -688,7 +707,7 @@ class HloInstructionPatternOpcodeImpl {
                                                      bool invert)
       : opcode_(opcode), invert_(invert) {}
 
-  bool Match(const ::xla::HloInstruction* inst) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return (invert_ ^ (inst->opcode() == opcode_));
   }
 
@@ -706,12 +725,12 @@ class HloInstructionPatternShapeImpl {
       const ShapePattern<ShapeType, ShapeImpl>& shape)
       : shape_(shape) {}
 
-  bool Match(const ::xla::HloInstruction* inst) const {
-    return shape_.Match(&inst->shape());
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return shape_.Match(&inst->shape(), option);
   }
 
-  bool Match(::xla::HloInstruction* inst) const {
-    return shape_.Match(inst->mutable_shape());
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return shape_.Match(inst->mutable_shape(), option);
   }
 
  private:
@@ -728,14 +747,14 @@ class HloInstructionPatternOperandImpl {
       const HloInstructionPattern<OperandType, OperandImpl>& operand)
       : operand_index_(operand_index), operand_(operand) {}
 
-  bool Match(const ::xla::HloInstruction* inst) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return operand_index_ < inst->operand_count() &&
-           operand_.Match(inst->operand(operand_index_));
+           operand_.Match(inst->operand(operand_index_), option);
   }
 
-  bool Match(::xla::HloInstruction* inst) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return operand_index_ < inst->operand_count() &&
-           operand_.Match(inst->mutable_operand(operand_index_));
+           operand_.Match(inst->mutable_operand(operand_index_), option);
   }
 
  private:
@@ -751,11 +770,11 @@ class HloInstructionPatternFusionKindImpl {
       ::xla::HloInstruction::FusionKind kind)
       : kind_(kind) {}
 
-  bool Match(const ::xla::HloInstruction* inst) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return inst->opcode() == HloOpcode::kFusion && inst->fusion_kind() == kind_;
   }
 
-  bool Match(::xla::HloInstruction* inst) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return inst->opcode() == HloOpcode::kFusion && inst->fusion_kind() == kind_;
   }
 
@@ -770,12 +789,12 @@ class HloInstructionPatternTupleIndexImpl {
   explicit constexpr HloInstructionPatternTupleIndexImpl(int64 tuple_index)
       : tuple_index_(tuple_index) {}
 
-  bool Match(const ::xla::HloInstruction* inst) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return inst->opcode() == HloOpcode::kGetTupleElement &&
            inst->tuple_index() == tuple_index_;
   }
 
-  bool Match(::xla::HloInstruction* inst) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return inst->opcode() == HloOpcode::kGetTupleElement &&
            inst->tuple_index() == tuple_index_;
   }
@@ -789,9 +808,11 @@ class HloPredicatePatternImpl {
  public:
   explicit HloPredicatePatternImpl(Predicate pred) : pred_(std::move(pred)) {}
 
-  bool Match(const ItemType* item) const { return pred_(item); }
+  bool Match(const ItemType* item, MatchOption option) const {
+    return pred_(item);
+  }
 
-  bool Match(ItemType* item) const { return pred_(item); }
+  bool Match(ItemType* item, MatchOption option) const { return pred_(item); }
 
  private:
   Predicate pred_;
@@ -818,9 +839,9 @@ class HloInstructionPattern {
       : impl_(impl), matched_inst_(matched_inst) {}
 
   // Returns true and captures the instruction iff it matches the pattern.
-  bool Match(const ::xla::HloInstruction* inst) const {
-    if (impl_.Match(inst)) {
-      if (matched_inst_) {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (impl_.Match(inst, option)) {
+      if (option.capture && matched_inst_) {
         *matched_inst_ = inst;
       }
       return true;
@@ -829,9 +850,9 @@ class HloInstructionPattern {
   }
 
   // Returns true and captures the instruction iff it matches the pattern.
-  bool Match(::xla::HloInstruction* inst) const {
-    if (impl_.Match(inst)) {
-      if (matched_inst_) {
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    if (impl_.Match(inst, option)) {
+      if (option.capture && matched_inst_) {
         *matched_inst_ = inst;
       }
       return true;

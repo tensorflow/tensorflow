@@ -318,5 +318,43 @@ TEST(PatternMatcherTest, AllOf) {
       Match(root, AllOf<HloInstruction>(Broadcast(Op()), scalar_pattern)));
 }
 
+TEST(PatternMatcherTest, AllOfNoCaptureIfNotMatch) {
+  using match::AllOf;
+  using match::Broadcast;
+  using match::Constant;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* constant = nullptr;
+  ASSERT_FALSE(
+      Match(root, AllOf<HloInstruction>(Constant(&constant), Broadcast(Op()))));
+  EXPECT_EQ(nullptr, constant);
+  ASSERT_TRUE(Match(root, Constant(&constant)));
+  EXPECT_NE(nullptr, constant);
+}
+
+TEST(PatternMatcherTest, TestNoCapture) {
+  using match::Constant;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* constant = nullptr;
+  ASSERT_TRUE(Match(root, Constant(&constant), {/*capture=*/false}));
+  EXPECT_EQ(nullptr, constant);
+}
+
 }  // namespace
 }  // namespace xla
