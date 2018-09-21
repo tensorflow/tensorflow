@@ -13,6 +13,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/convert/trt_optimization_pass.h"
+#include <fstream>
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -67,6 +68,37 @@ tensorflow::Status TRTOptimizationPass::Init(
     TF_RETURN_IF_ERROR(GetPrecisionMode(
         Uppercase(params.at("precision_mode").s()), &precision_mode_));
   }
+  if (params.count("print_input_graph")) {
+    print_input_graph_ = params.at("print_input_graph").b();
+  }
+  if (params.count("print_engines")) {
+    print_engines_ = params.at("print_engines").b();
+  }
+  if (params.count("print_subgraphs")) {
+    print_subgraphs_ = params.at("print_subgraphs").b();
+    if (print_subgraphs_) print_engines_ = true;
+  }
+  if (params.count("per_engine_workspace_size")) {
+    per_engine_workspace_size_ = params.at("per_engine_workspace_size").b();
+  }
+  if (params.count("print_output_graph")) {
+    print_output_graph_ = params.at("print_output_graph").b();
+  }
+  if (params.count("save_input_graph")) {
+    save_input_graph_ = params.at("save_input_graph").b();
+  }
+  if (params.count("save_output_graph")) {
+    save_output_graph_ = params.at("save_output_graph").b();
+  }
+  saved_input_graph_prefix_ = "NVOptimizerInput";
+  saved_output_graph_prefix_ = "NVOptimizerOutput";
+  if (params.count("saved_input_graph_prefix")) {
+    saved_input_graph_prefix_ = params.at("saved_input_graph_prefix").s();
+  }
+  if (params.count("saved_output_graph_prefix")) {
+    saved_output_graph_prefix_ = params.at("saved_output_graph_prefix").s();
+  }
+
   return tensorflow::Status::OK();
 }
 
@@ -251,8 +283,67 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.is_dyn_op = is_dynamic_op_;
   cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
+
+  if (save_input_graph_) {
+    string fname =
+        StrCat(saved_input_graph_prefix_, "_", converted_graph_count, ".pb");
+    std::fstream f;
+    f.open(fname.c_str(), std::fstream::out | std::fstream::binary);
+    f << item.graph.SerializeAsString();
+    f.close();
+  }
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);
-  VLOG(2) << optimized_graph->DebugString();
+  if (save_output_graph_) {
+    string fname =
+        StrCat(saved_output_graph_prefix_, "_", converted_graph_count, ".pb");
+    std::fstream f;
+    f.open(fname.c_str(), std::fstream::out | std::fstream::binary);
+    f << optimized_graph->SerializeAsString();
+    f.close();
+  }
+
+  std::vector<string> engine_names;
+  for (const auto& n : optimized_graph->node()) {
+    if (n.op() == "TRTEngineOp") {
+      engine_names.push_back(n.name());
+      if (print_engines_) {
+        VLOG(0) << n.DebugString();
+        if (print_subgraphs_) {
+          if (!n.attr().at("static_engine").b()) {
+            tensorflow::GraphDef gd;
+            gd.ParseFromString(n.attr().at("serialized_segment").s());
+            VLOG(0) << "Subsegment of " << n.name() << "\n" << gd.DebugString();
+          } else {
+            const auto& funcdef_name = n.attr().at("segment_funcdef_name").s();
+            const auto& funcs = optimized_graph->library();
+            for (const auto& f : funcs.function()) {
+              if (f.signature().name() == funcdef_name) {
+                VLOG(0) << "Native segment of " << n.name() << "\n"
+                        << f.DebugString();
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  if (engine_names.size()) {
+    string engines = StrCat("Created ", engine_names.size(), " TRTEngineOps");
+    if (VLOG_IS_ON(1)) {
+      StrAppend(&engines, ":\n");
+      for (const auto& e : engine_names) {
+        StrAppend(&engines, "\t", e, "\n");
+      }
+    }
+    VLOG(0) << engines;
+  } else {
+    LOG(WARNING) << "No Engines Created!";
+  }
+  if (print_output_graph_) {
+    VLOG(0) << optimized_graph->DebugString();
+  }
+  converted_graph_count++;
   VLOG(1) << "Returning from " << name_;
   return status;
 }

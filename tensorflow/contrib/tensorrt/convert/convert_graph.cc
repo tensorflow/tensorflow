@@ -591,10 +591,11 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     }
     VLOG(1) << ins;
   }
-  node_builder.Input(inputs);
+  // Add control inputs first, just in case.
   for (const string& c : control_input_names) {
     node_builder.ControlInput(c);
   }
+  node_builder.Input(inputs);
 
   if (info.engine_type == EngineInfo::EngineType::TRTStatic &&
       info.cached_engine_batches.size()) {
@@ -633,11 +634,6 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     return status;
   }
   // Add control input and input edges to the engine node.
-  for (const auto in : control_input_nodes) {
-    VLOG(1) << "Connecting control edge from " << in->name() << " to "
-            << engine_node->name();
-    graph->AddControlEdge(in, engine_node);
-  }
   VLOG(1) << "input_nodes size = " << input_nodes.size();
   for (int i = 0; i < input_nodes.size(); ++i) {
     Node* n = CHECK_NOTNULL(input_nodes[i]);
