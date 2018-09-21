@@ -247,7 +247,9 @@ se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
   se::internal::DeviceDescriptionBuilder builder;
 
   builder.set_name("Poplar");
-  builder.set_platform_version(poplar::versionString());
+  const auto version =
+      poplar::versionString() + " (" + poplar::packageHash() + ")";
+  builder.set_platform_version(version);
 
   auto built = builder.Build();
   return built.release();
