@@ -247,7 +247,7 @@ class Conv2DTransposeTest(test.TestCase):
         'dilation_rate': 2,
         'kernel_initializer': 'ones'
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       model = keras.Sequential()
       model.add(keras.layers.Conv2DTranspose(**kwargs))
       x = np.arange(48).reshape((1, 4, 4, 3)).astype(np.float32)
@@ -262,7 +262,7 @@ class Conv2DTransposeTest(test.TestCase):
         'data_format': 'channels_first',
         'kernel_initializer': 'ones'
     }
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       model = keras.Sequential()
       model.add(keras.layers.Conv2DTranspose(**kwargs))
       x = np.arange(48).reshape((1, 3, 4, 4)).astype(np.float32)
