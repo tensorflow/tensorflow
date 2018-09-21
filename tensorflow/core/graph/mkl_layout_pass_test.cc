@@ -3523,8 +3523,10 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
       " input: ['A', 'D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Int32Input);C(Int32Input);"
-            "D(_MklSlice);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;A->E;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;A:control->DMT/_2:control;"
+            "D(_MklSlice);DMT/_0(Const);DMT/_1(Const);DMT/"
+            "_2(Const);E(Zeta)|A->D;A->E;"
+            "A:control->DMT/_0:control;A:control->DMT/"
+            "_1:control;A:control->DMT/_2:control;"
             "B->D:1;C->D:2;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
 }
 

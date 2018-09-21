@@ -1335,7 +1335,7 @@ Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
 
   return Status::OK();
 }
-} // namespace
+}  // namespace
 
 Status SliceShape(InferenceContext* c) {
   ShapeHandle input = c->input(0);
