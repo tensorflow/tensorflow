@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
-#define TENSORFLOW_TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
 #include <string>
@@ -2222,4 +2222,4 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
-#endif  // TENSORFLOW_TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
