@@ -324,6 +324,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "7068908321ecd2774f145193c4b34a11305bd104b4551b09273dfd1d6a374930",
         strip_prefix = "gast-0.2.0",
         build_file = clean_dep("//third_party:gast.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
     )
 
     tf_http_archive(
