@@ -621,7 +621,13 @@ class MultiDeviceIterator : public ResourceBase {
           incarnation_id_(incarnation_id),
           host_iterator_(std::move(host_iterator)) {}
 
-    ~MultiDeviceBuffer() { Reset(); }
+    ~MultiDeviceBuffer() {
+      {
+        mutex_lock l(mu_);
+        if (!background_thread_started_) return;
+      }
+      Reset();
+    }
 
     void Reset() LOCKS_EXCLUDED(mu_) {
       {
@@ -731,6 +737,10 @@ class MultiDeviceIterator : public ResourceBase {
     }
 
     void BackgroundThread(IteratorContext* ctx) {
+      {
+        mutex_lock l(mu_);
+        background_thread_started_ = true;
+      }
       std::unique_ptr<IteratorContext> cleanup(ctx);
       int shard_to_fetch = 0;
       while (true) {
@@ -799,6 +809,7 @@ class MultiDeviceIterator : public ResourceBase {
     mutex mu_;
     std::unique_ptr<Thread> background_thread_ GUARDED_BY(mu_);
     bool background_thread_finished_ GUARDED_BY(mu_) = false;
+    bool background_thread_started_ GUARDED_BY(mu_) = false;
     bool cancelled_ GUARDED_BY(mu_) = false;
     condition_variable shutdown_cond_var_ GUARDED_BY(mu_);
 
