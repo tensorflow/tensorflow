@@ -2256,10 +2256,7 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   const int output_rows = FlatSizeSkipDim(output_shape, 3);
   TFLITE_DCHECK_EQ(output_cols, filter_rows);
   TFLITE_DCHECK_EQ(output_rows, gemm_input_rows);
-  TFLITE_DCHECK_EQ(bias_shape.Dims(3), output_cols);
-  TFLITE_DCHECK_EQ(bias_shape.Dims(2), 1);
-  TFLITE_DCHECK_EQ(bias_shape.Dims(1), 1);
-  TFLITE_DCHECK_EQ(bias_shape.Dims(0), 1);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_cols);
 
   // MatrixBatchVectorMultiplyAccumulate assumes that each row of the second
   // input matrix has its own scale factor. This code duplicates the scale
