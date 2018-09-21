@@ -818,12 +818,14 @@ class Convolution(object):
     try:
       input_shape.with_rank(num_spatial_dims + 2)
     except ValueError:
-      raise ValueError("input tensor must have rank %d" % (num_spatial_dims + 2))
+      raise ValueError("input tensor must have rank %d" % 
+                       (num_spatial_dims + 2))
 
     try:
       filter_shape.with_rank(num_spatial_dims + 2)
     except ValueError:
-      raise ValueError("filter tensor must have rank %d" % (num_spatial_dims + 2))
+      raise ValueError("filter tensor must have rank %d" % 
+                       (num_spatial_dims + 2))
 
     if data_format is None or not data_format.startswith("NC"):
       input_channels_dim = input_shape[num_spatial_dims + 1]
