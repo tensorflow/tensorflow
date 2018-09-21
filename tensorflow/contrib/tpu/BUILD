@@ -351,7 +351,7 @@ tf_py_test(
 
 tf_py_test(
     name = "topology_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/tpu/topology_test.py"],
     additional_deps = [
         ":tpu",
