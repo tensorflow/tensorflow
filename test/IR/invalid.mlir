@@ -398,6 +398,18 @@ mlfunc @dominance_failure() {
 
 // -----
 
+cfgfunc @dominance_failure() {
+bb0:
+  "foo"(%x) : (i32) -> ()    // expected-error {{operand #0 does not dominate this use}}
+  br bb1
+bb1:
+  %x = "bar"() : () -> i32    // expected-error {{operand defined here}}
+  return
+}
+
+
+// -----
+
 mlfunc @return_type_mismatch() -> i32 {
   %0 = "foo"() : ()->f32
   return %0 : f32  // expected-error {{type of return operand 0 doesn't match function result type}}

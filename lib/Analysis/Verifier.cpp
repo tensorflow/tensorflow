@@ -33,6 +33,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
@@ -163,12 +164,15 @@ bool Verifier::verifyOperation(const Operation &op) {
 namespace {
 struct CFGFuncVerifier : public Verifier {
   const CFGFunction &fn;
+  DominanceInfo domInfo;
 
-  CFGFuncVerifier(const CFGFunction &fn) : Verifier(fn), fn(fn) {}
+  CFGFuncVerifier(const CFGFunction &fn)
+      : Verifier(fn), fn(fn), domInfo(const_cast<CFGFunction *>(&fn)) {}
 
   bool verify();
   bool verifyBlock(const BasicBlock &block);
   bool verifyTerminator(const TerminatorInst &term);
+  bool verifyInstOperands(const Instruction &inst);
 
   bool verifyBBArguments(ArrayRef<InstOperand> operands,
                          const BasicBlock *destBB, const TerminatorInst &term);
@@ -212,6 +216,24 @@ bool CFGFuncVerifier::verify() {
   return false;
 }
 
+bool CFGFuncVerifier::verifyInstOperands(const Instruction &inst) {
+  // Check that operands properly dominate this use.
+  for (unsigned operandNo = 0, e = inst.getNumOperands(); operandNo != e;
+       ++operandNo) {
+    auto *op = inst.getOperand(operandNo);
+    if (domInfo.properlyDominates(op, &inst))
+      continue;
+
+    inst.emitError("operand #" + Twine(operandNo) +
+                   " does not dominate this use");
+    if (auto *useInst = op->getDefiningInst())
+      useInst->emitNote("operand defined here");
+    return true;
+  }
+
+  return false;
+}
+
 bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
   if (!block.getTerminator())
     return failure("basic block with no terminator", block);
@@ -225,7 +247,7 @@ bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
   }
 
   for (auto &inst : block) {
-    if (verifyOperation(inst))
+    if (verifyOperation(inst) || verifyInstOperands(inst))
       return true;
   }
   return false;
@@ -243,6 +265,9 @@ bool CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
     if (operand->getFunction() != &fn)
       return failure("reference to operand defined in another function", term);
   }
+
+  // Verify dominance of values.
+  verifyInstOperands(term);
 
   // Check that successors are in the right function.
   for (auto *succ : term.getBlock()->getSuccessors()) {

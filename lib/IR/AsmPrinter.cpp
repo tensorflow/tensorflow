@@ -1077,6 +1077,8 @@ public:
   void print(const BranchInst *inst);
   void print(const CondBranchInst *inst);
 
+  void printBBName(const BasicBlock *block) { os << "bb" << getBBID(block); }
+
   unsigned getBBID(const BasicBlock *block) {
     auto it = basicBlockIDs.find(block);
     assert(it != basicBlockIDs.end() && "Block not in this function?");
@@ -1129,7 +1131,7 @@ void CFGFunctionPrinter::print() {
 }
 
 void CFGFunctionPrinter::print(const BasicBlock *block) {
-  os << "bb" << getBBID(block);
+  printBBName(block);
 
   if (!block->args_empty()) {
     os << '(';
@@ -1150,7 +1152,8 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
     if (block != &block->getFunction()->front())
       os << "\t// no predecessors";
   } else if (auto *pred = block->getSinglePredecessor()) {
-    os << "\t// pred: bb" << getBBID(pred);
+    os << "\t// pred: ";
+    printBBName(pred);
   } else {
     // We want to print the predecessors in increasing numeric order, not in
     // whatever order the use-list is in, so gather and sort them.
@@ -1198,7 +1201,8 @@ void CFGFunctionPrinter::print(const OperationInst *inst) {
 }
 
 void CFGFunctionPrinter::print(const BranchInst *inst) {
-  os << "br bb" << getBBID(inst->getDest());
+  os << "br ";
+  printBBName(inst->getDest());
 
   if (inst->getNumOperands() != 0) {
     os << '(';
@@ -1215,7 +1219,8 @@ void CFGFunctionPrinter::print(const CondBranchInst *inst) {
   os << "cond_br ";
   printValueID(inst->getCondition());
 
-  os << ", bb" << getBBID(inst->getTrueDest());
+  os << ", ";
+  printBBName(inst->getTrueDest());
   if (inst->getNumTrueOperands() != 0) {
     os << '(';
     interleaveComma(inst->getTrueOperands(),
@@ -1227,7 +1232,8 @@ void CFGFunctionPrinter::print(const CondBranchInst *inst) {
     os << ")";
   }
 
-  os << ", bb" << getBBID(inst->getFalseDest());
+  os << ", ";
+  printBBName(inst->getFalseDest());
   if (inst->getNumFalseOperands() != 0) {
     os << '(';
     interleaveComma(inst->getFalseOperands(),
@@ -1554,6 +1560,17 @@ void BasicBlock::print(raw_ostream &os) const {
 }
 
 void BasicBlock::dump() const { print(llvm::errs()); }
+
+/// Print out the name of the basic block without printing its body.
+void BasicBlock::printAsOperand(raw_ostream &os, bool printType) {
+  if (!getFunction()) {
+    os << "<<UNLINKED BLOCK>>\n";
+    return;
+  }
+  ModuleState state(getFunction()->getContext());
+  ModulePrinter modulePrinter(os, state);
+  CFGFunctionPrinter(getFunction(), modulePrinter).printBBName(this);
+}
 
 void Statement::print(raw_ostream &os) const {
   MLFunction *function = findFunction();

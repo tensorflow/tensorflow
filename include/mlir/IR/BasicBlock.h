@@ -39,9 +39,12 @@ public:
   ~BasicBlock();
 
   /// Return the function that a BasicBlock is part of.
-  CFGFunction *getFunction() const {
-    return function;
-  }
+  CFGFunction *getFunction() { return function; }
+  const CFGFunction *getFunction() const { return function; }
+
+  /// Return the function that a BasicBlock is part of.
+  const CFGFunction *getParent() const { return function; }
+  CFGFunction *getParent() { return function; }
 
   //===--------------------------------------------------------------------===//
   // Block arguments management
@@ -194,6 +197,11 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
+  /// Print out the name of the basic block without printing its body.
+  /// NOTE: The printType argument is ignored.  We keep it for compatibility
+  /// with LLVM dominator machinery that expects it to exist.
+  void printAsOperand(raw_ostream &os, bool printType = true);
+
   /// getSublistAccess() - Returns pointer to member of operation list
   static OperationListType BasicBlock::*getSublistAccess(OperationInst*) {
     return &BasicBlock::operations;
@@ -299,6 +307,9 @@ public:
   SuccessorIterator(BlockType *object, unsigned index)
       : IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
                                 BlockType>(object, index) {}
+
+  SuccessorIterator(const SuccessorIterator &other)
+      : SuccessorIterator(other.object, other.index) {}
 
   /// Support converting to the const variant. This will be a no-op for const
   /// variant.

@@ -77,7 +77,7 @@ CFGFunction *CFGValue::getFunction() {
 //===----------------------------------------------------------------------===//
 
 /// Return the function that this argument is defined in.
-CFGFunction *BBArgument::getFunction() const {
+CFGFunction *BBArgument::getFunction() {
   if (auto *owner = getOwner())
     return owner->getFunction();
   return nullptr;

@@ -77,7 +77,10 @@ public:
   }
 
   /// Return the function that this argument is defined in.
-  CFGFunction *getFunction() const;
+  CFGFunction *getFunction();
+  const CFGFunction *getFunction() const {
+    return const_cast<BBArgument *>(this)->getFunction();
+  }
 
   BasicBlock *getOwner() { return owner; }
   const BasicBlock *getOwner() const { return owner; }

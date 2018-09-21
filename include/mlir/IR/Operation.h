@@ -287,7 +287,8 @@ private:
 template <typename ConcreteType, typename ObjectType, typename ElementType>
 class IndexedAccessorIterator
     : public llvm::iterator_facade_base<
-          ConcreteType, std::random_access_iterator_tag, ElementType *> {
+          ConcreteType, std::random_access_iterator_tag, ElementType *,
+          std::ptrdiff_t, ElementType *, ElementType *> {
 public:
   ptrdiff_t operator-(const IndexedAccessorIterator &rhs) const {
     assert(object == rhs.object && "incompatible iterators");

@@ -1,4 +1,4 @@
-//===- HyperRectangularSet.cpp - MLIR HyperRectangularSet Class--*- C++ -*-===//
+//===- HyperRectangularSet.cpp - MLIR HyperRectangularSet Class -----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,13 +20,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/HyperRectangularSet.h"
-
-#include <algorithm>
-
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/IntegerSet.h"
 #include "llvm/Support/raw_ostream.h"
-
+#include <algorithm>
 using namespace mlir;
 
 // TODO(bondhugula): clean this code up.

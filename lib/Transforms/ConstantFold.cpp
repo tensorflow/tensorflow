@@ -40,7 +40,7 @@ struct ConstantFold : public FunctionPass {
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-/// This returns true if the operation was folded.
+/// This returns false if the operation was successfully folded.
 bool ConstantFold::foldOperation(Operation *op,
                                  SmallVectorImpl<SSAValue *> &existingConstants,
                                  ConstantFactoryType constantFactory) {
@@ -49,7 +49,7 @@ bool ConstantFold::foldOperation(Operation *op,
   // later, and don't try to fold it.
   if (op->is<ConstantOp>()) {
     existingConstants.push_back(op->getResult(0));
-    return false;
+    return true;
   }
 
   // Check to see if each of the operands is a trivial constant.  If so, get
@@ -63,13 +63,13 @@ bool ConstantFold::foldOperation(Operation *op,
       }
     }
     // If one of the operands was non-constant, then we can't fold it.
-    return false;
+    return true;
   }
 
   // Attempt to constant fold the operation.
   SmallVector<Attribute *, 8> resultConstants;
   if (op->constantFold(operandConstants, resultConstants))
-    return false;
+    return true;
 
   // Ok, if everything succeeded, then we can create constants corresponding
   // to the result of the call.
@@ -88,7 +88,7 @@ bool ConstantFold::foldOperation(Operation *op,
     res->replaceAllUsesWith(cst);
   }
 
-  return true;
+  return false;
 }
 
 // For now, we do a simple top-down pass over a function folding constants.  We
@@ -108,7 +108,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
             ->getResult();
       };
 
-      if (foldOperation(&inst, existingConstants, constantFactory)) {
+      if (!foldOperation(&inst, existingConstants, constantFactory)) {
         // At this point the operation is dead, remove it.
         // TODO: This is assuming that all constant foldable operations have no
         // side effects.  When we have side effect modeling, we should verify
@@ -160,7 +160,7 @@ void ConstantFold::foldStmtBlock(
           ->getResult();
     };
 
-    if (foldOperation(opStmt, existingConstants, constantFactory)) {
+    if (!foldOperation(opStmt, existingConstants, constantFactory)) {
       // At this point the operation is dead, remove it.
       // TODO: This is assuming that all constant foldable operations have no
       // side effects.  When we have side effect modeling, we should verify that
