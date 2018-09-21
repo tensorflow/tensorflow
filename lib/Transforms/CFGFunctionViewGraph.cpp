@@ -16,36 +16,11 @@
 // =============================================================================
 
 #include "mlir/Transforms/CFGFunctionViewGraph.h"
+#include "mlir/IR/CFGFunctionGraphTraits.h"
 
 using namespace mlir;
 
 namespace llvm {
-
-// Specialize GraphTraits to treat a CFGFunction as a graph of basic blocks.
-template <>
-struct llvm::GraphTraits<const CFGFunction *> {
-  using NodeRef = const BasicBlock *;
-  using ChildIteratorType = BasicBlock::const_succ_iterator;
-  using nodes_iterator = pointer_iterator<CFGFunction::const_iterator>;
-
-  static NodeRef getEntryNode(const CFGFunction *function) {
-    return &function->front();
-  }
-
-  static nodes_iterator nodes_begin(const CFGFunction *F) {
-    return nodes_iterator(F->begin());
-  }
-  static nodes_iterator nodes_end(const CFGFunction *F) {
-    return nodes_iterator(F->end());
-  }
-
-  static ChildIteratorType child_begin(NodeRef basicBlock) {
-    return basicBlock->succ_begin();
-  }
-  static ChildIteratorType child_end(NodeRef basicBlock) {
-    return basicBlock->succ_end();
-  }
-};
 
 // Specialize DOTGraphTraits to produce more readable output.
 template <>
