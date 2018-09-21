@@ -129,7 +129,7 @@ class OptimizeForInferenceTest(test.TestCase):
     self.assertProtoEquals(expected_output, output)
 
   def testFoldBatchNorms(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 1, 6, 2], dtype=dtypes.float32)
@@ -161,7 +161,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
         original_graph_def)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -224,7 +224,7 @@ class OptimizeForInferenceTest(test.TestCase):
         self.assertNotEqual("FusedBatchNorm", node.op)
 
   def testFuseResizePadAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -242,7 +242,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -255,7 +255,7 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("ResizeBilinear", node.op)
 
   def testFuseResizeAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -271,7 +271,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -284,7 +284,7 @@ class OptimizeForInferenceTest(test.TestCase):
 
 
   def testFusePadAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -300,7 +300,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
