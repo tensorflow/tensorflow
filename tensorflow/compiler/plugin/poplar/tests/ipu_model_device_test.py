@@ -252,10 +252,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'my_ops/my_add_op/add']
 
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testReportEveryNthExecution(self):
     with ops.device("/device:IPU:0"):

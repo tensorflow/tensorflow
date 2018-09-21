@@ -77,10 +77,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_XLA_Args/arg1.*_weights_to_weightsRearranged',
             'convolution/convolution.*/Conv_3x3x3',
             'BiasAdd/call/addToChannel']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConv8x8x8_WithBias(self):
     with ops.device("/device:IPU:0"):
@@ -111,10 +110,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_XLA_Args/arg2.*_weights_to_weightsRearranged/OnTileCopy',
             'Conv3D/convolution.*/Conv_8x8x8_stride4x4x4',
             'BiasAdd/call/addToChannel']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConv1x1x1_WithBias(self):
     with ops.device("/device:IPU:0"):
@@ -145,11 +143,10 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_bwdWeights_to_inRearranged',
             'Conv3D/convolution.*/Conv_1x1',
             'add/add.*/AddTo']
 # TODO = should be addToChannel T3170           'BiasAdd/call/addToChannel']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def test3DConvBackpropInput(self):
     with ops.device("/device:IPU:0"):
@@ -183,10 +180,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'Copy_XLA_Args/arg*_to_bwdWeights',
             'Copy_{<const>,bwdWeights}_to_Conv3DBackpropInputV2/convolution.*/Conv_2x2x2weightsRearranged',
             'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
-            'Conv3DBackpropInputV2/convolution.*/Conv_2x2x2',
-            'Conv3DBackpropInputV2/convolution.*/WeightTranspose']
+            'Conv3DBackpropInputV2/convolution.*/Conv_2x2x2']
 
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
   def test3DConvBackpropFilter(self):
@@ -221,7 +217,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
             'Copy_XLA_Args/arg0.*_input_to_Conv3DBackpropFilterV2/convolution.*/Conv_8x8x8/inRearranged',
             'Conv3DBackpropFilterV2/convolution.*/Conv_8x8x8']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":
     googletest.main()

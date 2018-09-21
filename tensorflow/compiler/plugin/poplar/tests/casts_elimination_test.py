@@ -47,7 +47,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
         'Sum/reduce/ReduceFinalStage/IntermediateToOutput/Reduce',
         'Sum/reduce/ReduceFinalStage/Cast']
 
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testNoCastsF32ToF16ToF32(self):
     with ops.device("/device:IPU:0"):
@@ -124,7 +124,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
             'Cast/convert.*/Cast',
             'add/add.*/AddTo',
             'Cast_1/convert.*/Cast']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":
     googletest.main()

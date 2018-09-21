@@ -45,11 +45,10 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'add/add.*/AddTo',
             'sub/subtract.*/AddTo',
             'add_1/add.*/AddTo']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAddCopyToViewChangingShape(self):
     data_a = np.array([[10, -20], [5, 1]])
@@ -85,7 +84,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
             'Copy_XLA_Args/arg0.*_to_transpose.*.clone/OnTileCopy',
             'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAddCopyToViewChangingShape2(self):
     data_a = np.array([[10, -10], [-5, 5]])
@@ -121,13 +120,12 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'Copy_XLA_Args/arg0.*_to_transpose.*.clone/OnTileCopy',
             'mul/multiply.*/Op/Multiply',
             'add/add.*/AddTo',
             'mul_1/multiply.*/Op/Multiply',
             'truediv/divide.*/Op/Divide']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAddCopyBeforeInplaceOpWithViewChangingParent(self):
     with ops.device("/device:IPU:0"):
@@ -161,12 +159,11 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'Copy_XLA_Args/arg0.*_to_add/add.*/OnTileCopy',
             'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide',
             'add_1/add.*/AddTo']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":
     googletest.main()

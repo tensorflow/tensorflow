@@ -48,9 +48,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'Sigmoid/call/Nonlinearity']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testSigmoidNotInplace(self):
     with ops.device("/device:IPU:0"):
@@ -74,11 +73,10 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'Sigmoid/call/Nonlinearity',
             'Copy_XLA_Args/arg0.*_to_Sigmoid/call/OnTileCopy-0',
             'add/add.*/AddTo']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testSigmoidGrad(self):
     with ops.device("/device:IPU:0"):
@@ -104,9 +102,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'SigmoidGrad/call/NonLinearityGrad']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testRelu(self):
     with ops.device("/device:IPU:0"):
@@ -130,9 +127,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'Relu/call/Nonlinearity']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testReluNotInPlace(self):
     with ops.device("/device:IPU:0"):
@@ -156,11 +152,10 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'Relu/call/Nonlinearity',
             'Copy_XLA_Args/arg0.*_to_Relu/call/OnTileCopy-0',
             'add/add.*/AddTo']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testReluGrad(self):
     with ops.device("/device:IPU:0"):
@@ -186,9 +181,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'ReluGrad/call/NonLinearityGrad']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testMaxPool(self):
     with ops.device("/device:IPU:0"):
@@ -213,9 +207,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'max/call/maxPool']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFwdAndBwdMaxPool(self):
     with ops.device("/device:IPU:0"):
@@ -247,10 +240,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'host-exchange-local-copy-',
             'MaxPool/call/maxPool',
             '/maxPoolBwd']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testScaledAddTo(self):
     with ops.device("/device:IPU:0"):
@@ -282,7 +274,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'add/call/AddTo']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testScaledSubtractFrom(self):
     with ops.device("/device:IPU:0"):
@@ -316,7 +308,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'sub/call/AddTo']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testConvolutionBiasApply(self):
     with ops.device("/device:IPU:0"):
@@ -349,7 +341,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/call.*/Reduce']
-      self.assertTrue(tu.check_some_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
 
   def testConvolutionBiasApply2(self):
     with ops.device("/device:IPU:0"):
@@ -400,7 +392,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       ok = ['GradientDescent/update_vs/c1/bias/ResourceApplyGradientDescent/call.*/Reduce',
             'GradientDescent/update_vs/c2/bias/ResourceApplyGradientDescent/call.*/Reduce']
-      self.assertTrue(tu.check_some_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
 
   def testAvgPoolValid(self):
     np.random.seed(0)
@@ -436,9 +428,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'avg/call/avgPool10x10',
-            'host-exchange-local-copy-']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+            'avg/call/avgPool10x10']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAvgPoolValidWithBroadcast(self):
     np.random.seed(0)
@@ -476,9 +467,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'avg/call/avgPool5x5',
-            'host-exchange-local-copy-']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+            'host-exchange-local-copy-',
+            'avg/call/avgPool5x5']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
   def testAvgPoolSameWithReshape(self):
@@ -519,7 +510,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       ok = ['progIdCopy',
             'avg/call/avgPool5x5']
-      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":
     googletest.main()

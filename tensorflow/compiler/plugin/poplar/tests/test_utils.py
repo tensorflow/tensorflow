@@ -56,7 +56,7 @@ def get_compute_sets_from_report(report):
   cs = [x.split()[0] for x in cs]
   return cs
 
-def check_all_compute_sets_in_list(cs_list, whitelist):
+def check_whitelist_entries_in_compute_sets(cs_list, whitelist):
   result = True
   fail_list = []
   wl = [x+'*' for x in whitelist]
@@ -68,7 +68,7 @@ def check_all_compute_sets_in_list(cs_list, whitelist):
     print("Failed to match " + str(fail_list))
   return result
 
-def check_some_compute_sets_in_list(cs_list, whitelist):
+def check_compute_sets_in_whitelist_entries(cs_list, whitelist):
   result = True
   fail_list = []
   wl = [x+'*' for x in whitelist]
@@ -79,6 +79,10 @@ def check_some_compute_sets_in_list(cs_list, whitelist):
   if not result:
     print("Failed to match " + str(fail_list))
   return result
+
+def check_all_compute_sets_and_list(cs_list, whitelist):
+  return (check_whitelist_entries_in_compute_sets(cs_list, whitelist) and
+          check_compute_sets_in_whitelist_entries(cs_list, whitelist))
 
 def extract_all_strings_from_event_trace(events):
   result = ""
