@@ -540,8 +540,8 @@ class _InternalTPUContext(object):
       """
       if self.model_parallelism_enabled:
         # We put both enqueue/dequeue ops at tpu.core(0) in each replica.
-        replica = self.device_assignment.lookup_replicas(
-            host_id, (0, 0, 0))[shard_index_in_host]
+        replica = self.device_assignment.lookup_replicas(host_id,
+                                                         0)[shard_index_in_host]
         return self.device_assignment.tpu_ordinal(replica=replica)
       else:
         return shard_index_in_host % self.num_of_cores_per_host
