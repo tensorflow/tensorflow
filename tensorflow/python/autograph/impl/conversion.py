@@ -255,6 +255,7 @@ def _add_self_references(namespace, autograph_module):
     # internal modules.
     ag_internal = imp.new_module('autograph')
     ag_internal.converted_call = autograph_module.converted_call
+    ag_internal.ConversionOptions = autograph_module.ConversionOptions
     ag_internal.utils = utils
     ag_internal.rewrite_graph_construction_error = (
         errors.rewrite_graph_construction_error)

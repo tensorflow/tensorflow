@@ -366,7 +366,7 @@ class IndexedArrayAnalysis {
 // A pass that prints all non-trivial results returned by IndexedArrayAnalysis.
 // This pass is a no-op if !VLOG_IS_ON(2) so it should be fine to
 // unconditionally add to the regular HLO pass pipeline.
-class IndexedArrayAnalysisPrinterPass : public HloPassInterface {
+class IndexedArrayAnalysisPrinterPass : public HloModulePass {
  public:
   absl::string_view name() const override;
   StatusOr<bool> Run(HloModule* module) override;

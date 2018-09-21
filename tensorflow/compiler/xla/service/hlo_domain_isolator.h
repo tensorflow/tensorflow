@@ -30,7 +30,7 @@ namespace xla {
 // used to break an HLO graph edge connecting two instructions with different
 // sharding. If a set of connected instructions have all the same sharding, no
 // kDomain instruction will be placed.
-class HloDomainIsolator : public HloPassInterface {
+class HloDomainIsolator : public HloModulePass {
  public:
   // Creates a new kDomain instruction for the edge between the use instruction
   // (the first HloInstruction argument), and the operand instruction (the

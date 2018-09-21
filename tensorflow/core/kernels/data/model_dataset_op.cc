@@ -17,10 +17,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+const int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
 
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -71,9 +74,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params), model_(new model::Model()) {}
-
-      ~Iterator() override { model_->OutputToFile(); }
+          : DatasetIterator<Dataset>(params),
+            model_(std::make_shared<model::Model>()) {}
 
       Status Initialize(IteratorContext* ctx) override {
         IteratorContext ctx_with_model(CreateParams(ctx));
@@ -85,6 +87,21 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        int64 now = ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+        if (last_optimization_ms_ + optimization_period_ms_ < now) {
+          model_->Optimize(port::NumSchedulableCPUs());
+          // Exponentially increase the period of running the optimization until
+          // a threshold is reached.
+          if (optimization_period_ms_ < kOptimizationPeriodThresholdMs) {
+            if (optimization_period_ms_ << 1 < kOptimizationPeriodThresholdMs) {
+              optimization_period_ms_ <<= 1;
+            } else {
+              optimization_period_ms_ = kOptimizationPeriodThresholdMs;
+            }
+          }
+          last_optimization_ms_ =
+              ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+        }
         IteratorContext ctx_with_model(CreateParams(ctx));
         return input_impl_->GetNext(&ctx_with_model, out_tensors,
                                     end_of_sequence);
@@ -113,6 +130,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
      private:
       mutex mu_;
       std::shared_ptr<model::Model> model_;
+      int64 last_optimization_ms_ GUARDED_BY(mu_) = 0;
+      int64 optimization_period_ms_ GUARDED_BY(mu_) = 10;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 

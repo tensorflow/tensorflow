@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -74,8 +75,7 @@ class PrintOp : public OpKernel {
     string msg;
     strings::StrAppend(&msg, message_);
     for (int i = 1; i < ctx->num_inputs(); ++i) {
-      strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
-                         "]");
+      strings::StrAppend(&msg, ctx->input(i).SummarizeValue(summarize_));
     }
     std::cerr << msg << std::endl;
   }
@@ -89,6 +89,59 @@ class PrintOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Print").Device(DEVICE_CPU), PrintOp);
+
+class PrintV2Op : public OpKernel {
+ public:
+  explicit PrintV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_stream", &output_stream_));
+
+    auto output_stream_index =
+        std::find(std::begin(valid_output_streams_),
+                  std::end(valid_output_streams_), output_stream_);
+
+    if (output_stream_index == std::end(valid_output_streams_)) {
+      string error_msg = strings::StrCat(
+          "Unknown output stream: ", output_stream_, ", Valid streams are:");
+      for (auto valid_stream : valid_output_streams_) {
+        strings::StrAppend(&error_msg, " ", valid_stream);
+      }
+      OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* input_;
+    OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
+    const string& msg = input_->scalar<string>()();
+
+    if (output_stream_ == "stdout") {
+      std::cout << msg << std::endl;
+    } else if (output_stream_ == "stderr") {
+      std::cerr << msg << std::endl;
+    } else if (output_stream_ == "log(info)") {
+      LOG(INFO) << msg << std::endl;
+    } else if (output_stream_ == "log(warning)") {
+      LOG(WARNING) << msg << std::endl;
+    } else if (output_stream_ == "log(error)") {
+      LOG(ERROR) << msg << std::endl;
+    } else {
+      string error_msg = strings::StrCat(
+          "Unknown output stream: ", output_stream_, ", Valid streams are:");
+      for (auto valid_stream : valid_output_streams_) {
+        strings::StrAppend(&error_msg, " ", valid_stream);
+      }
+      OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
+    }
+  }
+
+  const char* valid_output_streams_[6] = {"stdout", "stderr", "log(info)",
+                                          "log(warning)", "log(error)"};
+
+ private:
+  string output_stream_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("PrintV2").Device(DEVICE_CPU), PrintV2Op);
 
 class TimestampOp : public OpKernel {
  public:

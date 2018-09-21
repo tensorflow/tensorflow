@@ -25,7 +25,7 @@ namespace xla {
 
 // HLO pass that removes kConditional with a constant predicate, replacing them
 // with their true or false computation as appropriate.
-class ConditionalSimplifier : public HloPassInterface {
+class ConditionalSimplifier : public HloModulePass {
  public:
   absl::string_view name() const override { return "simplify-conditional"; }
   StatusOr<bool> Run(HloModule* module) override;

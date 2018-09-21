@@ -599,8 +599,8 @@ class _InternalTPUContext(object):
             .format(self._eval_batch_size, num_replicas))
       if num_hosts > 1 and not self.is_input_broadcast_with_iterators():
         raise ValueError(
-            'TPUEstimator.evaluate should be running on single TPU worker. '
-            'got {}.'.format(num_hosts))
+            'TPUEstimator.evaluate should be running on single TPU'
+            ' instead of a Pod.')
     else:
       assert mode == model_fn_lib.ModeKeys.PREDICT
       if self._predict_batch_size is None:

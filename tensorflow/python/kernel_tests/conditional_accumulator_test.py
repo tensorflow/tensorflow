@@ -272,7 +272,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       self.assertEqual(15.0, val)
 
   def testAccumulatorTakeGradSum(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32,
           name="Q",
@@ -349,7 +349,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       self.assertEqual(elems_ave + 0.0, val)
 
   def testAccumulatorRepeatedTakeGradSum(self):
-    with self.test_session():
+    with self.cached_session():
       q = data_flow_ops.ConditionalAccumulator(
           dtypes_lib.float32,
           name="Q",

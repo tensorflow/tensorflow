@@ -1198,6 +1198,12 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
           << HumanReadableNumBytes(memory_limit_bytes_);
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
 
+  // Initialize pass object state.
+  computation_peak_memory_.clear();
+  rematerialized_computations_.clear();
+  instructions_rematerialized_ = 0;
+  net_instructions_added_ = 0;
+
   TF_RET_CHECK(module->has_schedule());
   TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
 

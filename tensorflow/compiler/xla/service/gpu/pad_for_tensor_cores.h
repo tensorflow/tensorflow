@@ -30,7 +30,7 @@ namespace gpu {
 // targeting before running this pass.
 //
 // TODO(jlebar): Also pad dots.
-class PadForTensorCores : public HloPassInterface {
+class PadForTensorCores : public HloModulePass {
  public:
   absl::string_view name() const override { return "pad for tensor cores"; }
 

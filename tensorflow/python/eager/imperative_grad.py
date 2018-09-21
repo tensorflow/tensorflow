@@ -23,8 +23,9 @@ import collections
 from tensorflow.python import pywrap_tensorflow
 
 
-VSpace = collections.namedtuple(
-    "VSpace", ["aggregate_fn", "num_elements_fn", "zeros", "ones"])
+VSpace = collections.namedtuple("VSpace", [
+    "aggregate_fn", "num_elements_fn", "zeros_fn", "ones_fn", "graph_shape_fn"
+])
 
 
 def imperative_grad(
