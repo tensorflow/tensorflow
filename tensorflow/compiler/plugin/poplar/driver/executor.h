@@ -253,6 +253,14 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.profiling().enable_poplar_reports_text();
   }
 
+  StatusOr<int32> GetDeviceConfigIndex() const {
+    if (current_config_.device_config_index().has_index()) {
+      return current_config_.device_config_index().index();
+    } else {
+      return Unavailable("No device_config_index provided.");
+    }
+  }
+
   void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
                       const std::string &module_name,
                       const std::string &content, int value);
@@ -323,8 +331,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
                                                     const Args &);
 
   std::tuple<se::DeviceMemoryBase, int64> ConstantOutput(
-      xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-      const int64 n, const std::vector<Literal>& constant);
+      xla::DeviceMemoryAllocator *allocator, const xla::Shape &shape,
+      const int64 n, const std::vector<Literal> &constant);
 
   Status MoveDeviceToHost();
 

@@ -24,9 +24,11 @@ import time
 
 def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
                       use_poplar_text_report=False,
-                      report_every_nth_execution=0, type='IPU_MODEL'):
+                      report_every_nth_execution=0, type='IPU_MODEL',
+                      ipu_device_config_index=None):
   """Create the IPU options for an IPU model device.
 
+<<<<<<< HEAD
   ```python
   opts = create_ipu_config(profiling=True, num_ipus=1, tiles_per_ipu=64)
   with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
@@ -40,8 +42,11 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
   :param report_every_nth_execution: Only produce an execution report on every
                                      Nth execution.  0=One report only.
   :param type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
+  :param ipu_device_config_index: Index into the vector returned by getDevices()
+                                  without specifying the number of IPUs. If not
+                                  specified then first available device is used.
   :return: An IPUOptions configuration protobuf, suitable for using in the creation
-    of the ConfigProto session options.
+           of the ConfigProto session options.
   """
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
@@ -65,6 +70,10 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
 
   if tiles_per_ipu:
     dev.ipu_model_config.tiles_per_ipu = tiles_per_ipu
+
+  if ipu_device_config_index:
+    dev.device_config_index.has_index = True
+    dev.device_config_index.index = ipu_device_config_index
 
   return opts
 
