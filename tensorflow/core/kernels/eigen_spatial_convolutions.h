@@ -22,8 +22,36 @@ namespace Eigen {
 
 namespace internal {
 
-// TODO: Consolidate this part of the code with the image patch extraction code
-// since they are both very similar.
+// WARNING: Most of the code here implicitly assumes that the matrix is in
+// ColMajor layout. This is guaranteed by the tensor contraction (see
+// TensorContraction.h).
+//
+// Inside Eigen a tensor contraction is represented by a matrix multiplication.
+// We don't want to actually extract image patches and reshape the result into
+// a matrix (this involves allocating huge extra memory), so the patch
+// extraction and reshape operations are implicit.
+//
+// TensorContractionInputMapper takes a matrix index and returns the coefficient
+// (or the packet) of the "virtual tensor", that would be at that index if we
+// were to actually reshape the result of patch extraction.
+//
+// TensorContractionSubMapper provides a similar view into the "virtual matrix"
+// at the given vertical and horizontal offsets.
+//
+// "Virtual matrix" dimensions:
+//   *0: kernelChannels * kernelRows * kernelCols;
+//    1: out_height * out_width; * OTHERS (e.g batches, etc...)
+//
+// *) extracted patches are continuous in memory (innermost dimension assuming
+//    col major layout)
+//
+// With this dimensions:
+//   row - offset within a single patch (in code: patchId)
+//   col - index of the extracted patch (in code: patchIndex)
+//         patchIndex ∈ [0..num_patches * OTHERS] (batch and other dimensions)
+//
+// TODO(ezhulenev): Consolidate this part of the code with the image patch
+// extraction code since they are both very similar.
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar_, typename Index,
           typename nocontract_t, typename contract_t, int Side, int packet_size,
@@ -238,6 +266,8 @@ class TensorContractionInputMapper<
       nocontract_t, contract_t, packet_size, inner_dim_contiguous,
       inner_dim_reordered, Alignment>;
 
+  // Load coefficient from a patch specified by the "within patch offset"
+  // (patchId) and the precomputed indices of the first element of the patch.
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE Scalar loadCoeff(Index patchId, Index rowIndex,
                                        Index colIndex, Index otherIndex) const {
@@ -250,6 +280,7 @@ class TensorContractionInputMapper<
         (m_patch_col_inflate_strides == 1)
             ? inputCol
             : ((inputCol >= 0) ? (inputCol / m_fastInputColStride) : 0);
+
     const Index rowOffset = patchOffset - colOffset * m_colStride;
     const Index inputRow = rowIndex + rowOffset * m_in_row_strides;
     const Index origInputRow =
@@ -268,6 +299,8 @@ class TensorContractionInputMapper<
     return m_impl.coeff(inputIndex);
   }
 
+  // This is the same as loadCoeff(...), but optimized for all `inflate_strides`
+  // and `in_strides` equal to 1 (template specialization without templates).
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE Scalar loadCoeffStandard(Index patchId, Index rowIndex,
                                                Index colIndex,
@@ -276,10 +309,9 @@ class TensorContractionInputMapper<
 
     // Find the offset of the element wrt the location of the first element.
     const Index patchOffset = patchId / m_fastDimZero;
-
     const Index colOffset = patchOffset / m_fastColStride;
-    const Index inputCol = colIndex + colOffset;
     const Index rowOffset = patchOffset - colOffset * m_colStride;
+    const Index inputCol = colIndex + colOffset;
     const Index inputRow = rowIndex + rowOffset;
     if (inputCol < 0 || inputCol >= m_inputCols || inputRow < 0 ||
         inputRow >= m_inputRows) {
@@ -291,6 +323,8 @@ class TensorContractionInputMapper<
     return m_impl.coeff(inputIndex);
   }
 
+  // Load packet from a patch specified by the "within patch offset"
+  // (patchId) and the precomputed indices of the first element of the patch.
   EIGEN_DEVICE_FUNC
   EIGEN_ALWAYS_INLINE Packet loadPacket(Index patchId, Index rowIndex,
                                         Index colIndex,
@@ -318,12 +352,14 @@ class TensorContractionInputMapper<
     if ((patchDepth() % packetSize) == 0) {
       return loadPacketFast(patchId, rowIndex, colIndex, otherIndex);
     } else {
+      // Offsets and input calculation here are identical to
+      // loadCoeffStandard(...), but repeated twice.
+
       const Index patchOffsets[2] = {
           patchId / m_fastDimZero, (patchId + packetSize - 1) / m_fastDimZero};
 
       const Index colOffsets[2] = {patchOffsets[0] / m_fastColStride,
                                    patchOffsets[1] / m_fastColStride};
-
       const Index inputCols[2] = {colIndex + colOffsets[0],
                                   colIndex + colOffsets[1]};
       if (inputCols[0] >= m_inputCols || inputCols[1] < 0) {
@@ -371,8 +407,8 @@ class TensorContractionInputMapper<
     eigen_assert((patchId + packetSize - 1) / m_fastDimZero == patchOffset);
 
     const Index colOffset = patchOffset / m_fastColStride;
-    const Index inputCol = colIndex + colOffset;
     const Index rowOffset = patchOffset - colOffset * m_colStride;
+    const Index inputCol = colIndex + colOffset;
     const Index inputRow = rowIndex + rowOffset;
     if (inputCol < 0 || inputRow < 0 || inputCol >= m_inputCols ||
         inputRow >= m_inputRows) {
@@ -401,7 +437,7 @@ class TensorContractionInputMapper<
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void computeBaseIndices(
       Index patchIndex, Index& rowIndex, Index& colIndex,
       Index& otherIndex) const {
-    const int NumInputDims = array_size<
+    const size_t NumInputDims = array_size<
         typename TensorEvaluator<ArgType, Device>::Dimensions>::value;
     otherIndex = (NumInputDims == 3) ? 0 : patchIndex / m_fastNumPatches;
     const Index patch2DIndex = (NumInputDims == 3)
@@ -617,12 +653,44 @@ class TensorContractionSubMapper<
   Index m_depth_offset;               // First row in the input matrix
   Index m_col_offset;                 // First col in the input matrix
 
-  Index m_rowIndex;  // precomputed row index corresponding to the col offset
-  Index m_colIndex;  // precomputed col index corresponding to the col offset
-  Index
-      m_otherIndex;  // precomputed other index corresponding to the col offset
+  // Knowing that: col_offset == patchIndex * OTHERS, we keep precomputed base
+  // indices for the first element in a patch specified by col_offset
+  // (see computeBaseIndices(...) for details).
+  Index m_rowIndex;
+  Index m_colIndex;
+  Index m_otherIndex;
 };
 
+// Arrange a block of the right input matrix (in our case it's always a "virtual
+// matrix" constructed from extracted image patches) in contiguous memory.
+//
+// Given column major input (A0 beside A1 in memory):
+// A0 B0 C0 D0 E0 F0 G0 H0 ... Z0
+// A1 B1 C1 D1 E1 F1 G1 H1 ... Z1
+// A2 B2 C2 D2 E2 F2 G2 H2 ... Z2
+// A3 B3 C3 D3 E3 F3 G3 H3 ... Z3
+// A4 B4 C4 D4 E4 F4 G4 H4 ... Z4
+// A5 B5 C5 D5 E5 F5 G5 H5 ... Z5
+// A6 B6 C6 D6 E6 F6 G6 H6 ... Z6
+// A7 B7 C7 D7 E7 F7 G7 H7 ... Z7
+// A8 ...
+// ...
+//
+// *) A, B, C, ... - patches extracted from the original input.
+// *) A0, A1, A2 ... - values from the same patch at different offsets.
+//
+// The traversal (packed rhs memory) order (B0 besides A0 in memory):
+// A0 B0 C0 D0 A1 B1 C1 D1 ...
+// E0 F0 G0 H0 E1 F1 G1 H1 ...
+// ...
+// Z0 Z1 Z2 Z3 Z4 Z5 Z6 Z7 ... <- doesn't belong to any block (nr = 4)
+//
+// This traversal order must be the same as in default gemm_pack_rhs defined in
+// GeneralBlockPanelKernel.h.
+//
+// *) nr - number of registers along the 'n' dimension.
+//    See GeneralBlockPanelKernel.h and "Anatomy of High-Performance Matrix
+//    Multiplication" paper.
 template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, int packet_size,
