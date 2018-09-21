@@ -14,6 +14,7 @@ py_library(
         ":datasets",
         ":metrics",
         ":network",
+        ":parameter_server",
         ":remote",
         ":saver",
         "//tensorflow/python:framework_ops",
