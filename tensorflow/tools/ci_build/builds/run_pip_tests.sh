@@ -64,7 +64,7 @@ while true; do
   fi
 done
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # PIP tests should have a "different" path. Different than the one we place
 # virtualenv, because we are deleting and recreating it here.
