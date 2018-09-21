@@ -35,7 +35,8 @@ _NUM_CORES_TO_COMPUTATION_SHAPE = {
     1: [1, 1, 1],
     2: [1, 1, 2],
     4: [1, 2, 2],
-    8: [2, 2, 2]
+    8: [2, 2, 2],
+    16: [4, 2, 2],
 }
 
 
@@ -298,6 +299,7 @@ class _InternalTPUContext(object):
 
   @property
   def num_of_replicas_per_host(self):
+    """Return the number of replicas per host."""
     if self.model_parallelism_enabled:
       return self.num_replicas // self.num_hosts
     else:
@@ -579,6 +581,17 @@ class _InternalTPUContext(object):
                 user_provided_num_replicas))
 
         raise ValueError(message)
+
+    if self._config.tpu_config.num_cores_per_replica:
+      num_cores_per_replica = self._config.tpu_config.num_cores_per_replica
+      num_cores_per_host = self._get_tpu_system_metadata().num_of_cores_per_host
+      if num_cores_per_replica > num_cores_per_host:
+        raise ValueError(
+            'The num of cores required by the model parallelism, specified by '
+            'TPUConfig.num_cores_per_replica, is larger than the '
+            'num_cores_per_host. num_cores_per_replica: {}, '
+            'num_cores_per_host: {}'.format(num_cores_per_replica,
+                                            num_cores_per_host))
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       if (self._train_batch_size % num_replicas != 0 and
