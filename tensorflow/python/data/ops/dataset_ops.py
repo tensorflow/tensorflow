@@ -1009,8 +1009,9 @@ class Dataset(object):
   def flat_map(self, map_func):
     """Maps `map_func` across this dataset and flattens the result. 
     
-    Use `flat_map` if you want to make sure, that the order of your dataset stays the same.
-    For example, to flatten a dataset of batches into a dataset of their elements:
+    Use `flat_map` if you want to make sure that the order of your dataset
+    stays the same. For example, to flatten a dataset of batches into a
+    dataset of their elements:
 
     ```python
     # NOTE: The following examples use `{ ... }` to represent the
@@ -1022,7 +1023,8 @@ class Dataset(object):
     ```
     
     `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since 
-    `flat_map` produces the same output as `tf.data.Dataset.interleave(cycle_length=1)`
+    `flat_map` produces the same output as 
+    `tf.data.Dataset.interleave(cycle_length=1)`
     
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
