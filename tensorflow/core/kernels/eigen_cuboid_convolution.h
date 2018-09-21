@@ -40,8 +40,8 @@ namespace internal {
 // at the given vertical and horizontal offsets.
 //
 // "Virtual matrix" dimensions:
-//   *0: kernelChannels * kernelDepth * kernelRows * kernelCols;
-//    1: out_depth * out_height * out_width; * OTHERS (e.g batches, etc...)
+//   *0: kernelChannels * kernelPlanes * kernelRows * kernelCols
+//    1: out_planes * out_height * out_width * OTHERS (e.g batches, etc...)
 //
 // *) extracted patches are continuous in memory (innermost dimension assuming
 //    col major layout)
@@ -391,14 +391,13 @@ class TensorContractionInputMapper<
     const Index patchOffset = patchId / m_fastDimZero;
 
     const Index colOffset = patchOffset / m_fastColStride;
-    const Index inputCol = colIndex + colOffset;
-
     const Index rowOffset =
         (patchOffset - colOffset * m_colStride) / m_fastRowStride;
-    const Index inputRow = rowIndex + rowOffset;
-
     const Index planeOffset =
         patchOffset - colOffset * m_colStride - rowOffset * m_rowStride;
+
+    const Index inputCol = colIndex + colOffset;
+    const Index inputRow = rowIndex + rowOffset;
     const Index inputPlane = planeIndex + planeOffset;
 
     if (inputCol < 0 || inputCol >= m_inputCols || inputRow < 0 ||
@@ -524,12 +523,13 @@ class TensorContractionInputMapper<
     eigen_assert((patchId + packetSize - 1) / m_fastDimZero == patchOffset);
 
     const Index colOffset = patchOffset / m_fastColStride;
-    const Index inputCol = colIndex + colOffset;
     const Index rowOffset =
         (patchOffset - colOffset * m_colStride) / m_fastRowStride;
-    const Index inputRow = rowIndex + rowOffset;
     const Index planeOffset =
         patchOffset - colOffset * m_colStride - rowOffset * m_rowStride;
+
+    const Index inputCol = colIndex + colOffset;
+    const Index inputRow = rowIndex + rowOffset;
     const Index inputPlane = planeIndex + planeOffset;
 
     if (inputCol < 0 || inputRow < 0 || inputPlane < 0 ||
@@ -564,7 +564,7 @@ class TensorContractionInputMapper<
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void computeBaseIndices(
       Index patchIndex, Index& planeIndex, Index& rowIndex, Index& colIndex,
       Index& otherIndex) const {
-    const int NumInputDims = array_size<
+    const size_t NumInputDims = array_size<
         typename TensorEvaluator<ArgType, Device>::Dimensions>::value;
 
     // Check if patchIndex might contain batch and other dimensions.
@@ -859,24 +859,29 @@ class TensorContractionSubMapper<
 // matrix" constructed from extracted volume patches) in contiguous memory.
 //
 // Given column major input (A0 beside A1 in memory):
-// A0 B0 C0 D0 E0 F0 G0 H0 ...
-// A1 B1 C1 D1 E1 F1 G1 H1 ...
-// A2 B2 C2 D2 E2 F2 G2 H2 ...
-// A3 B3 C3 D3 E3 F3 G3 H3 ...
-// A4 B4 C4 D4 E4 F4 G4 H4 ...
-// A5 B5 C5 D5 E5 F5 G5 H5 ...
-// A6 B6 C6 D6 E6 F6 G6 H6 ...
-// A7 B7 C7 D7 E7 F7 G7 H7 ...
+// A0 B0 C0 D0 E0 F0 G0 H0 ... Z0
+// A1 B1 C1 D1 E1 F1 G1 H1 ... Z1
+// A2 B2 C2 D2 E2 F2 G2 H2 ... Z2
+// A3 B3 C3 D3 E3 F3 G3 H3 ... Z3
+// A4 B4 C4 D4 E4 F4 G4 H4 ... Z4
+// A5 B5 C5 D5 E5 F5 G5 H5 ... Z5
+// A6 B6 C6 D6 E6 F6 G6 H6 ... Z6
+// A7 B7 C7 D7 E7 F7 G7 H7 ... Z7
 // A8 ...
 // ...
 //
-// Packing yields row major output (A0 beside A1 in memory):
-// A0 A1 A2 A3 A4 A5 A6 A7
-// B0 B1 B2 B3 B4 B5 B6 B7
-// C0 ...
-// ...
-//
 // *) A, B, C, ... - patches extracted from the original input.
+// *) A0, A1, A2 ... - values from the same patch at different offsets.
+//
+// The traversal (packed rhs memory) order (B0 besides A0 in memory):
+// A0 B0 C0 D0 A1 B1 C1 D1 ...
+// E0 F0 G0 H0 E1 F1 G1 H1 ...
+// ...
+// Z0 Z1 Z2 Z3 Z4 Z5 Z6 Z7 ... <- doesn't belong to any block (nr = 4)
+//
+// This traversal order must be the same as in default gemm_pack_rhs defined in
+// GeneralBlockPanelKernel.h.
+//
 // *) nr - number of registers along the 'n' dimension.
 //    See GeneralBlockPanelKernel.h and "Anatomy of High-Performance Matrix
 //    Multiplication" paper.
@@ -1454,7 +1459,7 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
       isColMajor ? kern.dimensions()[1] : kern.dimensions()[3];
 
   // Spatial size of the kernel.
-  const TensorIndex kernelDepth =
+  const TensorIndex kernelPlanes =
       isColMajor ? kern.dimensions()[2] : kern.dimensions()[2];
   const TensorIndex kernelRows =
       isColMajor ? kern.dimensions()[3] : kern.dimensions()[1];
@@ -1474,27 +1479,27 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
   const TensorIndex inputCols =
       isColMajor ? in.dimension(3) : in.dimension(NumDims - 4);
 
-  TensorIndex out_depth;
+  TensorIndex out_planes;
   TensorIndex out_height;
   TensorIndex out_width;
   switch (padding_type) {
     case PADDING_VALID:
-      out_depth = Eigen::divup(inputPlanes - kernelDepth + 1,
-                               static_cast<TensorIndex>(stridePlanes));
+      out_planes = Eigen::divup(inputPlanes - kernelPlanes + 1,
+                                static_cast<TensorIndex>(stridePlanes));
       out_height = Eigen::divup(inputRows - kernelRows + 1,
                                 static_cast<TensorIndex>(strideRows));
       out_width = Eigen::divup(inputCols - kernelCols + 1,
                                static_cast<TensorIndex>(strideCols));
       break;
     case PADDING_SAME:
-      out_depth =
+      out_planes =
           Eigen::divup(inputPlanes, static_cast<TensorIndex>(stridePlanes));
       out_height =
           Eigen::divup(inputRows, static_cast<TensorIndex>(strideRows));
       out_width = Eigen::divup(inputCols, static_cast<TensorIndex>(strideCols));
       break;
     default:
-      out_depth = 0;
+      out_planes = 0;
       out_height = 0;
       out_width = 0;
       eigen_assert(false && "unexpected padding");
@@ -1503,9 +1508,9 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
   DSizes<TensorIndex, 2> kernel_dims;
   if (isColMajor) {
     kernel_dims[0] = kernelFilters;
-    kernel_dims[1] = kernelChannels * kernelDepth * kernelRows * kernelCols;
+    kernel_dims[1] = kernelChannels * kernelPlanes * kernelRows * kernelCols;
   } else {
-    kernel_dims[0] = kernelChannels * kernelDepth * kernelRows * kernelCols;
+    kernel_dims[0] = kernelChannels * kernelPlanes * kernelRows * kernelCols;
     kernel_dims[1] = kernelFilters;
   }
 
@@ -1516,15 +1521,15 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
   DSizes<TensorIndex, 2> pre_contract_dims;
   if (isColMajor) {
     pre_contract_dims[0] =
-        kernelChannels * kernelDepth * kernelRows * kernelCols;
-    pre_contract_dims[1] = out_depth * out_height * out_width;
+        kernelChannels * kernelPlanes * kernelRows * kernelCols;
+    pre_contract_dims[1] = out_planes * out_height * out_width;
     for (int i = 4; i < NumDims; ++i) {
       pre_contract_dims[1] *= in.dimension(i);
     }
   } else {
     pre_contract_dims[1] =
-        kernelChannels * kernelDepth * kernelRows * kernelCols;
-    pre_contract_dims[0] = out_depth * out_height * out_width;
+        kernelChannels * kernelPlanes * kernelRows * kernelCols;
+    pre_contract_dims[0] = out_planes * out_height * out_width;
     for (int i = 0; i < NumDims - 4; ++i) {
       pre_contract_dims[0] *= in.dimension(i);
     }
@@ -1543,7 +1548,7 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
   DSizes<TensorIndex, NumDims> post_contract_dims;
   if (isColMajor) {
     post_contract_dims[0] = kernelFilters;
-    post_contract_dims[1] = out_depth;
+    post_contract_dims[1] = out_planes;
     post_contract_dims[2] = out_height;
     post_contract_dims[3] = out_width;
     for (int i = 4; i < NumDims; ++i) {
@@ -1551,7 +1556,7 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
     }
   } else {
     post_contract_dims[NumDims - 1] = kernelFilters;
-    post_contract_dims[NumDims - 2] = out_depth;
+    post_contract_dims[NumDims - 2] = out_planes;
     post_contract_dims[NumDims - 3] = out_height;
     post_contract_dims[NumDims - 4] = out_width;
     for (int i = 0; i < NumDims - 4; ++i) {
@@ -1564,13 +1569,13 @@ CuboidConvolution(const Input& input, const Kernel& kernel,
       kernel.reshape(kernel_dims)
           .contract(input
                         .extract_volume_patches(
-                            kernelDepth, kernelRows, kernelCols, stridePlanes,
+                            kernelPlanes, kernelRows, kernelCols, stridePlanes,
                             strideRows, strideCols, padding_type)
                         .reshape(pre_contract_dims),
                     contract_dims)
           .reshape(post_contract_dims),
       input
-          .extract_volume_patches(kernelDepth, kernelRows, kernelCols,
+          .extract_volume_patches(kernelPlanes, kernelRows, kernelCols,
                                   stridePlanes, strideRows, strideCols,
                                   padding_type)
           .reshape(pre_contract_dims)
