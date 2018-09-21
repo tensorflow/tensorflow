@@ -22,7 +22,6 @@ from __future__ import print_function
 import copy
 
 from tensorflow.contrib.recurrent.python.ops import recurrent
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -62,7 +61,7 @@ class _FunctionalRnnCell(object):
     assert initial_state is not None
 
     # TODO(drpng): Dtype needs to be configurable.
-    input_dtypes = [dtypes.float32] + _GetDTypesFromStructure(initial_state)
+    input_dtypes = [seq_inputs.dtype] + _GetDTypesFromStructure(initial_state)
     # See _index.
     like_inputs_t = nest.map_structure(
         lambda x: array_ops.stop_gradient(array_ops.gather(x, 0)), seq_inputs)
@@ -144,7 +143,10 @@ class _FunctionalRnnCell(object):
   @property
   def extended_initial_state(self):
     if self._prepend_output:
-      return [array_ops.zeros(self._output_shape), self._state_template]
+      return [array_ops.zeros(
+          self._output_shape,
+          dtype=_GetDTypesFromStructure(self._state_template)[0]),
+              self._state_template]
     else:
       # The base case, where the output is just the hidden state.
       return self._state_template
@@ -185,7 +187,7 @@ def _ApplyLengthsToBatch(sequence_lengths, tf_output):
   lengths = array_ops.tile(
       array_ops.reshape(sequence_lengths, [-1, 1]), [1, max_time])
   is_less = math_ops.cast(
-      math_ops.less(output_time, lengths), dtype=dtypes.float32)
+      math_ops.less(output_time, lengths), dtype=tf_output.dtype)
   keep_mask = array_ops.tile(
       array_ops.expand_dims(is_less, -1),
       [1, 1, vector_size])
