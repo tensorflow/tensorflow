@@ -1,2 +1,0 @@
-bool small_test();
-

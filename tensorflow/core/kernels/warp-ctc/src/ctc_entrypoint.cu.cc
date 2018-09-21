@@ -1,1 +1,0 @@
-ctc_entrypoint.cu
