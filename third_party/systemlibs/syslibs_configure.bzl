@@ -20,6 +20,7 @@ VALID_LIBS = [
     "cython",
     "double_conversion",
     "flatbuffers",
+    "gast_archive",
     "gif_archive",
     "grpc",
     "jemalloc",
