@@ -103,9 +103,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      auto stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(mu_);
-        auto stats_aggregator = ctx->stats_aggregator();
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
@@ -136,6 +136,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
+      if (stats_aggregator) {
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_size"),
+            static_cast<float>(buffer_.size()));
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_capacity"),
+            static_cast<float>(auto_tuner_.buffer_limit()));
+      }
       return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
@@ -219,6 +227,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             strings::StrCat(prefix_end_, "::buffer_utilization"),
             {static_cast<float>(buffer_.size()) /
              static_cast<float>(auto_tuner_.buffer_limit())});
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_size"),
+            static_cast<float>(buffer_.size()));
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_capacity"),
+            static_cast<float>(auto_tuner_.buffer_limit()));
       }
       // A new element is available. Forward the status from computing it, and
       // (if we successfully got an element) the output values.
