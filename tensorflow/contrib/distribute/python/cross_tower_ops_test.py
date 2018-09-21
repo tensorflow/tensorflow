@@ -114,7 +114,7 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
         self.assertEqual([v.numpy() for v in left._index.values()],
                          list(right._index.values()))
       else:
-        with self.cached_session() as sess:
+        with self.test_session() as sess:
           self.assertEqual(
               sess.run(list(left._index.values())), list(right._index.values()))
 
