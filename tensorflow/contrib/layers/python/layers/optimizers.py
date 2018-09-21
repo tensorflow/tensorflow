@@ -21,8 +21,6 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib import framework as contrib_framework
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
