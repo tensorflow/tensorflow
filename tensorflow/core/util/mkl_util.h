@@ -2098,7 +2098,7 @@ static inline memory::format get_desired_format(int channel,
              (channel % 8) == 0) {
     fmt_desired = is_2d
                       ? memory::format::nChw8c
-                      : memory::format::ncdhw;  // not support avx2 for 3d yet.
+                      : memory::format::ncdhw;  // no avx2 support for 3d yet.
   } else {
     fmt_desired = is_2d ? memory::format::nchw : memory::format::ncdhw;
   }
