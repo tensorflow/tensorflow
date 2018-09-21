@@ -631,7 +631,7 @@ cc_library(
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )

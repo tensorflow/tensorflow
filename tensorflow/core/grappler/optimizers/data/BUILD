@@ -175,6 +175,7 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
+        ":vectorization_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",

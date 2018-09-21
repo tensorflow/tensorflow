@@ -372,6 +372,14 @@ Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                                  node_def.name());
 }
 
+Status InputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                         DataTypeVector* inputs) {
+  for (const auto& arg : op_def.input_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, inputs));
+  }
+  return Status::OK();
+}
+
 Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                          int output_port, DataType* output_type) {
   DataTypeVector output_types;
@@ -397,9 +405,7 @@ Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
-  for (const auto& arg : op_def.input_arg()) {
-    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, inputs));
-  }
+  TF_RETURN_IF_ERROR(InputTypesForNode(node_def, op_def, inputs));
   return OutputTypesForNode(node_def, op_def, outputs);
 }
 

@@ -641,6 +641,7 @@ cc_library(
         ":reshape_op",
         ":reverse_op",
         ":reverse_sequence_op",
+        ":searchsorted_op",
         ":shape_ops",
         ":slice_op",
         ":snapshot_op",
@@ -871,6 +872,12 @@ tf_kernel_library(
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "searchsorted_op",
+    prefix = "searchsorted_op",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(

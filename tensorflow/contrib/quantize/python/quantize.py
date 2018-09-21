@@ -97,8 +97,11 @@ def Quantize(graph,
         layer_match.activation_op)
     add_context = context
     if layer_match.bypass_op:
-      add_context = re.search(r'^(.*)/([^/]+)', context).group(1)
-
+      pattern_match_result = re.search(r'^(.*)/([^/]+)', context)
+      if pattern_match_result is not None:
+        add_context = pattern_match_result.group(1)
+      else:
+        add_context = ''
     # If `scope` is given, only quantize it if the producer of weights
     # (usually it's the layer op) is in the right scope.
     _InsertQuantOp(
@@ -156,8 +159,12 @@ def Quantize(graph,
 
     # Quantize bypass ops that occur after the activation.
     if layer_match.post_activation_bypass_op is not None:
-      post_activation_bypass_context = re.search(
-          r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name).group(1)
+      pattern_match_result = re.search(
+          r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name)
+      if pattern_match_result is not None:
+        post_activation_bypass_context = pattern_match_result.group(1)
+      else:
+        post_activation_bypass_context = ''
       # If `scope` is given, only quantize it if the producer is in the right
       # scope.
       # Make sure the op following this isn't an activation. In which case, we

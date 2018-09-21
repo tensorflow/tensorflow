@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -99,6 +100,31 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       summary_str = sess.run(summary_t)
       self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
                                   100)
+
+  def testFilteredElementsStats(self):
+    stats_aggregator = stats_ops.StatsAggregator()
+    dataset = dataset_ops.Dataset.range(101).filter(
+        lambda x: math_ops.equal(math_ops.mod(x, 3), 0)).apply(
+            stats_ops.set_stats_aggregator(stats_aggregator))
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+    summary_t = stats_aggregator.get_summary()
+
+    with self.test_session() as sess:
+      sess.run(iterator.initializer)
+      for i in range(34):
+        self.assertEqual(i * 3, sess.run(next_element))
+        if i is not 0:
+          self._assertSummaryHasScalarValue(
+              sess.run(summary_t), "Filter::dropped_elements", float(i * 2))
+        self._assertSummaryHasScalarValue(
+            sess.run(summary_t), "Filter::filtered_elements", float(i + 1))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+      self._assertSummaryHasScalarValue(
+          sess.run(summary_t), "Filter::dropped_elements", 67.0)
+      self._assertSummaryHasScalarValue(
+          sess.run(summary_t), "Filter::filtered_elements", 34.0)
 
   def testReinitialize(self):
     stats_aggregator = stats_ops.StatsAggregator()

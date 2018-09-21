@@ -80,9 +80,10 @@ class Reshape(bijector.Bijector):
   Example usage:
   ```python
 
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfb = tfp.bijectors
 
-  r = tfd.bijectors.Reshape(event_shape_out=[1, -1])
+  r = tfb.Reshape(event_shape_out=[1, -1])
 
   r.forward([3., 4.])    # shape [2]
   # ==> [[3., 4.]]       # shape [1, 2]

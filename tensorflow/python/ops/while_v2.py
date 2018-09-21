@@ -151,6 +151,7 @@ def while_loop(cond, body, loop_vars, name=None):
         cond_v2._create_new_tf_function(body_graph),
         name=scope)
 
+    _copy_handle_data(body_graph.outputs, outputs)
     _maybe_set_lowering_attr(outputs[0].op)
 
   # First var is loop counter.
@@ -213,6 +214,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       cond_v2._create_new_tf_function(body_grad_graph),
       name=_get_unique_name("%s_grad" % op.name))
 
+  _copy_handle_data(body_grad_graph.outputs, outputs)
   _maybe_set_lowering_attr(outputs[0].op)
 
   # outputs[0] is the loop counter.
@@ -527,6 +529,11 @@ class _WhileBodyGradFuncGraph(function.FuncGraph):
     self._indirect_captures[tensor] = captured_tensor
     self.popped_tensor_lists[accumulator_ph] = new_tensor_list
     return captured_tensor
+
+
+def _copy_handle_data(src_tensors, tgt_tensors):
+  for src_t, tgt_t in zip(src_tensors, tgt_tensors):
+    function._copy_handle_data(src_t, tgt_t)
 
 
 # TODO(srbs): Move to common utils for cond_v2 and while_v2.

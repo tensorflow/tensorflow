@@ -105,7 +105,7 @@ toco \
   --std_value=127.5 --mean_value=127.5
 ```
 
-See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../mobile/tflite/).
+See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../lite/).
 
 
 ## Quantized accuracy results

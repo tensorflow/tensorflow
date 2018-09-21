@@ -280,7 +280,6 @@ class PrintV2Test(test.TestCase):
         print_op = logging_ops.print_v2(
             tensor, output_stream=tf_logging.info)
         self.evaluate(print_op)
-      self.assertTrue("I" in printed.contents())
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue(expected in printed.contents())
 
@@ -292,7 +291,6 @@ class PrintV2Test(test.TestCase):
         print_op = logging_ops.print_v2(
             tensor, output_stream=tf_logging.warning)
         self.evaluate(print_op)
-      self.assertTrue("W" in printed.contents())
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue(expected in printed.contents())
 
@@ -304,7 +302,6 @@ class PrintV2Test(test.TestCase):
         print_op = logging_ops.print_v2(
             tensor, output_stream=tf_logging.error)
         self.evaluate(print_op)
-      self.assertTrue("E" in printed.contents())
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue(expected in printed.contents())
 

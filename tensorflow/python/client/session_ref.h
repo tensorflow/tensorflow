@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SESSION_REF_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_SESSION_REF_H_
+#ifndef TENSORFLOW_PYTHON_CLIENT_SESSION_REF_H_
+#define TENSORFLOW_PYTHON_CLIENT_SESSION_REF_H_
 
 #include <memory>
 
@@ -22,6 +22,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class SessionLogger;
+
 // A `SessionRef` manages the lifetime of a wrapped `Session` pointer.
 //
 // SessionRef blocks the return of Close() until all pending operations have
@@ -29,8 +31,8 @@ namespace tensorflow {
 // subsequent operations on the SessionRef object will return errors::Cancelled.
 class SessionRef : public Session {
  public:
-  SessionRef(Session* session) : session_(session) {}
-  virtual ~SessionRef() {}
+  explicit SessionRef(Session* session);
+  ~SessionRef() override;
 
   Status Create(const GraphDef& graph) override;
   Status Extend(const GraphDef& graph) override;
@@ -78,9 +80,12 @@ class SessionRef : public Session {
   uint64 run_count_ GUARDED_BY(run_lock_) = {0};
   std::shared_ptr<Session> session_;
 
+  // Borrowed reference to global session logger.
+  SessionLogger* logger_;
+
   Status CheckNotClosed();
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_SESSION_REF_H_
+#endif  // TENSORFLOW_PYTHON_CLIENT_SESSION_REF_H_
