@@ -34,7 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 
 
 class LoggingOpsTest(test.TestCase):
@@ -271,39 +270,6 @@ class PrintV2Test(test.TestCase):
         self.evaluate(print_op)
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue((expected + "\n") in printed.contents())
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testPrintOneTensorLogInfo(self):
-    with self.test_session():
-      tensor = math_ops.range(10)
-      with self.captureWritesToStream(sys.stderr) as printed:
-        print_op = logging_ops.print_v2(
-            tensor, output_stream=tf_logging.info)
-        self.evaluate(print_op)
-      expected = "[0 1 2 ... 7 8 9]"
-      self.assertTrue(expected in printed.contents())
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testPrintOneTensorLogWarning(self):
-    with self.test_session():
-      tensor = math_ops.range(10)
-      with self.captureWritesToStream(sys.stderr) as printed:
-        print_op = logging_ops.print_v2(
-            tensor, output_stream=tf_logging.warning)
-        self.evaluate(print_op)
-      expected = "[0 1 2 ... 7 8 9]"
-      self.assertTrue(expected in printed.contents())
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testPrintOneTensorLogError(self):
-    with self.test_session():
-      tensor = math_ops.range(10)
-      with self.captureWritesToStream(sys.stderr) as printed:
-        print_op = logging_ops.print_v2(
-            tensor, output_stream=tf_logging.error)
-        self.evaluate(print_op)
-      expected = "[0 1 2 ... 7 8 9]"
-      self.assertTrue(expected in printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
   def testInvalidOutputStreamRaisesError(self):
