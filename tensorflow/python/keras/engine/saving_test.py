@@ -683,7 +683,7 @@ class TestWholeModelSaving(test.TestCase):
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
