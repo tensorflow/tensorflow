@@ -2106,7 +2106,8 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
     Tensor axis_t(DT_INT32, TensorShape({}));
     NodeDef* axis_node = optimized_graph->add_node();
     axis_node->set_name(OptimizedNodeName(*node, "_const_axis"));
-    const int axis = node->attr().at("axis").i();
+    const int axis =
+        node->attr().count("axis") == 0 ? 0 : node->attr().at("axis").i();
     if (!SetTensorValue(DT_INT32, axis, &axis_t).ok() ||
         !CreateNodeDef(axis_node->name(), TensorValue(&axis_t), axis_node)
              .ok()) {
