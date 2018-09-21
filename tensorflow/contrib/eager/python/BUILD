@@ -97,6 +97,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "parameter_server",
+    srcs = ["parameter_server.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 cuda_py_test(
     name = "saver_test",
     srcs = ["saver_test.py"],
@@ -241,6 +253,7 @@ py_test(
     srcs = ["remote_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":parameter_server",
         ":remote",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/python:array_ops",
