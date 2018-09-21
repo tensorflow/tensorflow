@@ -1306,6 +1306,8 @@ Status RandomShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
+namespace {
+
 // This SliceHelper processes the output shape of the `slice`
 // when the tensor of `sizes` is available.
 template <typename T>
@@ -1333,6 +1335,7 @@ Status SliceHelper(InferenceContext* c, ShapeHandle begin_value,
 
   return Status::OK();
 }
+} // namespace
 
 Status SliceShape(InferenceContext* c) {
   ShapeHandle input = c->input(0);
@@ -1356,7 +1359,7 @@ Status SliceShape(InferenceContext* c) {
 
   // We check the tensor value here and will only use
   // `MakeShapeFromShapeTensor` when `sizes_value` is null.
-  // The reason is that `sizes`might contain -1, which can't
+  // The reason is that `sizes` might contain -1, which can't
   // be represented (-1 in the ShapeHandle would mean "unknown").
   const Tensor* sizes_value = c->input_tensor(2);
 

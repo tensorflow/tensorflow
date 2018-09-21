@@ -1539,9 +1539,7 @@ REGISTER_OP("Slice")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Index: {int32,int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::SliceShape(c);
-    });
+    .SetShapeFn(shape_inference::SliceShape);
 
 #ifdef INTEL_MKL
 REGISTER_OP("_MklSlice")
@@ -1555,9 +1553,7 @@ REGISTER_OP("_MklSlice")
     .Output("mkl_output: uint8")
     .Attr("T: type")
     .Attr("Index: {int32,int64}")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::SliceShape(c);
-    });
+    .SetShapeFn(shape_inference::SliceShape);
 #endif
 
 REGISTER_OP("StridedSlice")
