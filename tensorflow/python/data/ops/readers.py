@@ -43,7 +43,8 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
     """Creates a `TextLineDataset`.
 
     Args:
-      filenames: A `tf.string` tensor containing one or more filenames or `PathLike` objects.
+      filenames: A `tf.string` tensor containing one or more filenames
+        or `PathLike` objects.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
@@ -94,7 +95,8 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
     """Creates a `TFRecordDataset`.
 
     Args:
-      filenames: A `tf.string` tensor containing one or more filenames or `PathLike` objects.
+      filenames: A `tf.string` tensor containing one or more filenames
+        or `PathLike` objects.
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
@@ -294,7 +296,8 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
-      filenames: A `tf.string` tensor containing one or more filenames or `PathLike` objects.
+      filenames: A `tf.string` tensor containing one or more filenames
+        or `PathLike` objects.
       record_bytes: A `tf.int64` scalar representing the number of bytes in
         each record.
       header_bytes: (Optional.) A `tf.int64` scalar representing the number of

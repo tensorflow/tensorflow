@@ -20,9 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 try:
-    from pathlib import Path
+  from pathlib import Path
 except ImportError:
-    Path = None
+  Path = None
 
 try:
   from collections.abc import Iterable as _Iterable
@@ -37,41 +37,41 @@ from tensorflow.python.util import compat
 from tensorflow.python.ops import array_ops
 
 class CompatPathToStrTest(test.TestCase):
+  """Tests for compat path to string utilities"""
 
-    def testTransformsPathlibPath(self):
-        if Path is None:
-            return # Skip test if pathlib not available.
-        
-        path_input = Path('/tmp/folder')
-        transformed = compat.path_to_str(path_input)
+  def test_transforms_pathlib_path(self):
+    if Path is None:
+      return # Skip test if pathlib not available.
 
-        self.assertTrue(isinstance(transformed, str))
-        self.assertEqual('/tmp/folder', transformed)
+    path_input = Path('/tmp/folder')
+    transformed = compat.path_to_str(path_input)
 
-    def testTransformsIterablePathlibPath(self):
-        if Path is None:
-            return # Skip test if pathlib not available.
-        
-        path_input = [Path('/tmp/folder'), Path('/tmp/folder2')]
-        transformed = compat.path_to_str(path_input)
+    self.assertTrue(isinstance(transformed, str))
+    self.assertEqual('/tmp/folder', transformed)
 
-        self.assertEqual(['/tmp/folder', '/tmp/folder2'], transformed)
+  def test_transforms_iterable_pathlib_path(self):
+    if Path is None:
+      return # Skip test if pathlib not available.
 
-    def testReturnsStrUnchanged(self):
-        str_input = '/tmp/folder'
+    path_input = [Path('/tmp/folder'), Path('/tmp/folder2')]
+    transformed = compat.path_to_str(path_input)
 
-        transformed = compat.path_to_str(str_input)
-        self.assertEqual(str_input, transformed)
+    self.assertEqual(['/tmp/folder', '/tmp/folder2'], transformed)
 
-    def testTransformsIterableStrUnchanged(self):   
-        str_input = ['/tmp/folder', '/tmp/folder2']
-        transformed = compat.path_to_str(str_input)
+  def test_returns_str_unchanged(self):
+    str_input = '/tmp/folder'
 
-        self.assertEqual(['/tmp/folder', '/tmp/folder2'], transformed)
+    transformed = compat.path_to_str(str_input)
+    self.assertEqual(str_input, transformed)
 
-    def testReturnsTensorUnchanged(self):
-        tensor_input = array_ops.constant('/tmp/folder/')
+  def test_transforms_iterable_str_unchanged(self):
+    str_input = ['/tmp/folder', '/tmp/folder2']
+    transformed = compat.path_to_str(str_input)
 
-        transformed = compat.path_to_str(tensor_input)
-        self.assertEqual(tensor_input, transformed)
+    self.assertEqual(['/tmp/folder', '/tmp/folder2'], transformed)
 
+  def test_returns_tensor_unchanged(self):
+    tensor_input = array_ops.constant('/tmp/folder/')
+
+    transformed = compat.path_to_str(tensor_input)
+    self.assertEqual(tensor_input, transformed)
