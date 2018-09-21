@@ -17,6 +17,10 @@ if [ -f "${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/util/convert
     cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/util/convert_graphdef_memmapped_format ${TASKCLUSTER_ARTIFACTS}
 fi;
 
+if [ -f "${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/lite/toco/toco" ]; then
+    cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/lite/toco/toco ${TASKCLUSTER_ARTIFACTS}
+fi;
+
 # It seems that bsdtar and gnutar are behaving a bit differently on the way
 # they deal with --exclude="./public/*" ; this caused ./DeepSpeech/tensorflow/core/public/
 # to be ditched when we just wanted to get rid of ./public/ on OSX.
