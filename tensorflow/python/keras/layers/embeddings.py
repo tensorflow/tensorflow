@@ -168,11 +168,11 @@ class Embedding(Layer):
   def _assert_input_compatibility(self, inputs):
     super(Embedding, self)._assert_input_compatibility(inputs)
     if self.input_length is not None:
-      if isinstance(inputs, list):
-        input = inputs[0]
+      if isinstance(inputs, (list, tuple)):
+        x = list(inputs)[0]
       else:
-        input = inputs
-      input_shape = input.shape
+        x = inputs
+      input_shape = x.shape
       # input_length can be tuple if input is 3D or higher
       if isinstance(self.input_length, (list, tuple)):
         in_lens = list(self.input_length)
