@@ -215,6 +215,16 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
       TF_RETURN_IF_ERROR(custom_optimizer->Init(&optimizer_config));
       optimizers->push_back(std::move(custom_optimizer));
     } else {
+      // if there are no custom optimizers with given name, try to initalize a
+      // default optimizer. This way custom configurable optimizers can be
+      // mixed with default optimizers in any order.
+      auto optimizer = MakeNewOptimizer(optimizer_config.name());
+      if (optimizer) {
+        VLOG(2) << "Registered default graph optimizer: "
+                << optimizer_config.name();
+        optimizers->push_back(std::move(optimizer));
+        continue;
+      }
       VLOG(2) << "Can't register an optimizer by name: "
               << optimizer_config.name();
     }
