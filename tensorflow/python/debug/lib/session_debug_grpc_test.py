@@ -741,7 +741,7 @@ class DelayedDebugServerTest(test_util.TensorFlowTestCase):
      debug_server) = grpc_debug_test_server.start_server_on_separate_thread(
          server_start_delay_sec=2.0, dump_to_filesystem=False)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a_init = constant_op.constant(42.0, name="a_init")
       a = variables.Variable(a_init, name="a")
 
