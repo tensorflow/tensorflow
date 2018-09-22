@@ -75,7 +75,8 @@ class PrintOp : public OpKernel {
     string msg;
     strings::StrAppend(&msg, message_);
     for (int i = 1; i < ctx->num_inputs(); ++i) {
-      strings::StrAppend(&msg, ctx->input(i).SummarizeValue(summarize_));
+      strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
+                         "]");
     }
     std::cerr << msg << std::endl;
   }

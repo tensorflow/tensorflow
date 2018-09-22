@@ -181,7 +181,6 @@ class _ModuleInitCodeBuilder(object):
 _names_with_underscore = [%s]
 __all__ = [_s for _s in dir() if not _s.startswith('_')]
 __all__.extend([_s for _s in _names_with_underscore])
-__all__.remove('print_function')
 ''' % underscore_names_str
 
     return module_text_map

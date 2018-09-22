@@ -144,14 +144,6 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     # mode, which is a bug. Re-enable this when trt library is fixed.
     return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
-  def ExpectedAbsoluteTolerance(self, run_params):
-    """The absolute tolerance to compare floating point results."""
-    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-03
-
-  def ExpectedRelativeTolerance(self, run_params):
-    """The relative tolerance to compare floating point results."""
-    return 1.e-05 if run_params.precision_mode == "FP32" else 1.e-03
-
 
 if __name__ == "__main__":
   test.main()

@@ -126,11 +126,16 @@ py_library(
     }) + if_not_windows_cuda([
         "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
     ]) + if_not_windows([
-        "//tensorflow/contrib/bigtable",  # depends on bigtable
-        "//tensorflow/contrib/cloud:cloud_py",  # doesn't compile on Windows
-        "//tensorflow/contrib/tensorrt:init_py",  # doesn't compile on windows
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
-    ]),
+    ]) + select({
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/bigtable",
+            "//tensorflow/contrib/cloud:cloud_py",
+            "//tensorflow/contrib/tensorrt:init_py",
+            "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        ],
+    }),
 )
 
 cc_library(

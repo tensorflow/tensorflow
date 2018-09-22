@@ -754,11 +754,12 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
   };
 
   auto reshape_if_necessary = [&](HloInstruction* hlo) {
+    hlo = as_type(hlo, dot->shape().element_type());
     if (!ShapeUtil::SameDimensions(hlo->shape(), dot->shape())) {
       hlo = computation_->AddInstruction(
           HloInstruction::CreateReshape(dot->shape(), hlo));
     }
-    return as_type(hlo, dot->shape().element_type());
+    return hlo;
   };
 
   auto add_reduce_in_f32 = [&](HloInstruction* hlo, const int64 dim) {

@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer_stage.h"
-#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -2367,26 +2367,24 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    const auto& p = ctx().graph_properties->GetInputProperties(node->name())[1];
-    for (int i = 0; i < p.shape().dim_size(); ++i) {
-      if (p.shape().dim(i).size() < 0) {
+    const auto& pow_props =
+        ctx().graph_properties->GetInputProperties(node->name())[1];
+    for (int i = 0; i < pow_props.shape().dim_size(); ++i) {
+      if (pow_props.shape().dim(i).size() < 0) {
         // skip if p is is not fully defined.
         return Status::OK();
       }
     }
-    if (TensorShape::IsValid(p.shape()) && p.has_value()) {
-      Tensor pow(p.dtype(), p.shape());
-      if (!pow.FromProto(p.value())) {
+    if (TensorShape::IsValid(pow_props.shape()) && pow_props.has_value()) {
+      Tensor pow(pow_props.dtype(), pow_props.shape());
+      if (!pow.FromProto(pow_props.value())) {
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       p.value().DebugString());
+                                       pow_props.value().DebugString());
       }
 
       complex128 prev, curr;
       for (int i = 0; i < pow.NumElements(); ++i) {
-        if (!GetElementUnexhaustive(pow, i,
-                                    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE,
-                                     DT_COMPLEX64, DT_COMPLEX128},
-                                    &curr)) {
+        if (!GetElementUnexhaustive(pow, i, {pow_props.dtype()}, &curr)) {
           // input data type is not supported by Pow. Skip.
           return Status::OK();
         }
@@ -2399,12 +2397,19 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
       NodeDef *x, *y;
       TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
       TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+      const auto& value_props =
+          ctx().graph_properties->GetInputProperties(node->name())[0];
+      const TensorShapeProto& output_shape =
+          ctx().graph_properties->GetOutputProperties(node->name())[0].shape();
       if (curr == complex128(2, 0)) {
         node->set_op("Square");
         node->set_input(1, AsControlDependency(y->name()));
         AddToOptimizationQueue(node);
         AddToOptimizationQueue(y);
-      } else if (curr == complex128(1, 0)) {
+      } else if (curr == complex128(1, 0) &&
+                 ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
+        // Pow could be used to broadcast, so make sure the shapes of the two
+        // arguments are identical before replacing Pow with Identity.
         node->set_op("Identity");
         node->set_input(1, AsControlDependency(y->name()));
         AddToOptimizationQueue(node);
@@ -2414,20 +2419,20 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         node->set_input(1, AsControlDependency(y->name()));
         AddToOptimizationQueue(node);
         AddToOptimizationQueue(y);
-      } else if (curr == complex128(0, 0)) {
-        const auto& b =
-            ctx().graph_properties->GetInputProperties(node->name())[0];
-        for (int i = 0; i < b.shape().dim_size(); ++i) {
-          if (b.shape().dim(i).size() < 0) {
+      } else if (curr == complex128(0, 0) &&
+                 ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
+        for (int i = 0; i < value_props.shape().dim_size(); ++i) {
+          if (value_props.shape().dim(i).size() < 0) {
             // skip if b is is not fully defined.
             return Status::OK();
           }
         }
-        if (TensorShape::IsValid(b.shape()) && b.has_value()) {
-          Tensor base(b.dtype(), b.shape());
-          if (!base.FromProto(b.value())) {
+        if (TensorShape::IsValid(value_props.shape()) &&
+            value_props.has_value()) {
+          Tensor base(value_props.dtype(), value_props.shape());
+          if (!base.FromProto(value_props.value())) {
             return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                           b.value().DebugString());
+                                           value_props.value().DebugString());
           }
           node->set_op("Const");
           Tensor c(base.dtype(), base.shape());
@@ -2585,12 +2590,10 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
   ~ConvertExpm1Stage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    if (!IsSub(*node))
-      return false;
+    if (!IsSub(*node)) return false;
 
     NodeDef* input;
-    if (!GetInputNode(node->input(0), &input).ok())
-      return false;
+    if (!GetInputNode(node->input(0), &input).ok()) return false;
 
     return IsExp(*input);
   }
@@ -2610,10 +2613,8 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
       return Status::OK();
     }
 
-    const auto& t =
-        ctx().graph_properties->GetInputProperties(exp->name())[0];
-    const auto& c =
-        ctx().graph_properties->GetInputProperties(node->name())[1];
+    const auto& t = ctx().graph_properties->GetInputProperties(exp->name())[0];
+    const auto& c = ctx().graph_properties->GetInputProperties(node->name())[1];
     for (int k = 0; k < c.shape().dim_size(); ++k) {
       // Skip if c shape is not fully determined.
       if (c.shape().dim(k).size() < 0) {

@@ -946,6 +946,15 @@ class CopyToDeviceTest(test.TestCase):
 
 class MultiDeviceIteratorTest(test.TestCase):
 
+  def testNoGetNext(self):
+    dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2"])
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      sess.run(multi_device_iterator.initializer)
+
   def testBasic(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = prefetching_ops.MultiDeviceIterator(
