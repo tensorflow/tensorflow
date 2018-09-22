@@ -295,5 +295,66 @@ TEST(PatternMatcherTest, AnyOfShortCircuit) {
   }
 }
 
+TEST(PatternMatcherTest, AllOf) {
+  using match::AllOf;
+  using match::Broadcast;
+  using match::Constant;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(1) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  auto scalar_pattern = Constant().WithShape(match::Shape().IsScalar());
+  auto f16_pattern = Constant().WithShape(match::Shape().WithElementType(F16));
+  ASSERT_TRUE(Match(root, scalar_pattern));
+  ASSERT_TRUE(Match(root, f16_pattern));
+  EXPECT_TRUE(Match(root, AllOf<HloInstruction>(scalar_pattern, f16_pattern)));
+  EXPECT_TRUE(Match(root, AllOf<HloInstruction>(f16_pattern, scalar_pattern)));
+  EXPECT_FALSE(
+      Match(root, AllOf<HloInstruction>(Broadcast(Op()), f16_pattern)));
+  EXPECT_FALSE(
+      Match(root, AllOf<HloInstruction>(Broadcast(Op()), scalar_pattern)));
+}
+
+TEST(PatternMatcherTest, AllOfNoCaptureIfNotMatch) {
+  using match::AllOf;
+  using match::Broadcast;
+  using match::Constant;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* constant = nullptr;
+  ASSERT_FALSE(
+      Match(root, AllOf<HloInstruction>(Constant(&constant), Broadcast(Op()))));
+  EXPECT_EQ(nullptr, constant);
+  ASSERT_TRUE(Match(root, Constant(&constant)));
+  EXPECT_NE(nullptr, constant);
+}
+
+TEST(PatternMatcherTest, TestNoCapture) {
+  using match::Constant;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* constant = nullptr;
+  ASSERT_TRUE(Match(root, Constant(&constant), {/*capture=*/false}));
+  EXPECT_EQ(nullptr, constant);
+}
+
 }  // namespace
 }  // namespace xla

@@ -46,6 +46,7 @@ py_library(
         ":backprop",
         ":context",
         ":core",
+        ":def_function",
         ":execute",
         ":function",
         ":graph_only_ops",
@@ -378,5 +379,32 @@ cuda_py_test(
     ],
     tags = [
         "optonly",  # The test is too slow in non-opt mode
+    ],
+)
+
+py_library(
+    name = "def_function",
+    srcs = ["def_function.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":context",
+        ":function",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_test(
+    name = "def_function_test",
+    srcs = ["def_function_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
     ],
 )

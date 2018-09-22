@@ -12,7 +12,6 @@ tensorflow/contrib/mpi_collectives
 tensorflow/contrib/session_bundle
 tensorflow/contrib/tensor_forest/proto
 tensorflow/contrib/tensorboard/plugins/projector
-tensorflow/contrib/tensorboard/plugins/trace
 tensorflow/contrib/tpu/proto
 tensorflow/contrib/tpu/profiler
 tensorflow/contrib/training/python/training

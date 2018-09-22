@@ -560,6 +560,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
         dtype(2),
         expected=np.array([[5], [2]], dtype=dtype))
 
+    if dtype in [np.float32, np.float64]:
+      nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
+      divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
+      np_result = np.true_divide(nums, divs)
+      np_result[:, divs[0] == 0] = 0
+      self._testBinary(gen_math_ops.div_no_nan, nums, divs, expected=np_result)
+
     if dtype not in self.complex_types:  # floordiv unsupported for complex.
       self._testBinary(
           gen_math_ops.floor_div,

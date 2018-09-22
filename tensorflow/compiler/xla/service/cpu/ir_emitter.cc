@@ -404,13 +404,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
 
-  // The signature of the acquire infeed buffer function is:
-  //
-  //   (void*)(int32 length);
   llvm::Type* int32_type = b_.getInt32Ty();
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* acquire_type = llvm::FunctionType::get(
-      i8_ptr_type, {int32_type, i8_ptr_type, int32_type},
+      i8_ptr_type,
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*shape_ptr*/ i8_ptr_type, /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* acquire_func;
@@ -423,11 +422,11 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   }
   acquire_func->setCallingConv(llvm::CallingConv::C);
 
-  // The signature of the release infeed buffer function is:
-  //
-  //   (void)(int32 length, void* buffer);
   llvm::FunctionType* release_type = llvm::FunctionType::get(
-      b_.getVoidTy(), {int32_type, i8_ptr_type, i8_ptr_type, int32_type},
+      b_.getVoidTy(),
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*buffer_ptr*/ i8_ptr_type, /*shape_ptr*/ i8_ptr_type,
+       /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* release_func;
@@ -444,9 +443,9 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   // of size exactly 'length_32', and the runtime is responsible for
   // check-failing the process if there is a mismatch, versus passing us back a
   // buffer that we might overrun.
-  llvm::Value* acquired_pointer =
-      Call(acquire_func,
-           {b_.getInt32(length_32), shape_ptr, b_.getInt32(shape_length)});
+  llvm::Value* acquired_pointer = Call(
+      acquire_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                     shape_ptr, b_.getInt32(shape_length)});
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
@@ -458,8 +457,8 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
            /*SrcAlign=*/1, length_32);
   }
 
-  Call(release_func, {b_.getInt32(length_32), acquired_pointer, shape_ptr,
-                      b_.getInt32(shape_length)});
+  Call(release_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                      acquired_pointer, shape_ptr, b_.getInt32(shape_length)});
 
   return Status::OK();
 }
