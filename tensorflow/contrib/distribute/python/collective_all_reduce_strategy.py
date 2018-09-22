@@ -235,8 +235,6 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     if not session_config or not self._cluster_spec:
       return
 
-    session_config.isolate_session_state = True
-
     assert self._task_type
     assert self._task_id is not None
 
