@@ -82,7 +82,7 @@ bazel-bin/tensorflow/core/profiler/profiler \
 #
 # Alternatively, user can pass separate files.
 #
-# --graph_path contains the model architecutre and tensor shapes.
+# --graph_path contains the model architecture and tensor shapes.
 # --run_meta_path contains the memory and time information.
 # --op_log_path contains float operation and code traces.
 # --checkpoint_path contains the model checkpoint data.

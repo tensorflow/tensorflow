@@ -45,7 +45,7 @@ bool IsScalarConstant(const HloInstruction* instruction);
 // multiple matching operands, then the first matching operand is returned. If
 // there are no matching operands then nullptr is returned.
 HloInstruction* GetMatchingOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction);
 
 // Returns whether a binary instruction has a matching operand. Sets
@@ -53,7 +53,7 @@ HloInstruction* GetMatchingOperand(
 // other_operand. Note: in the case where both operands match, the first operand
 // of the instruction is returned.
 bool MatchBinaryInstructionOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction, HloInstruction** matching_operand,
     HloInstruction** other_operand);
 

@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,59 +12,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Benchmarks FilterDataset input pipeline op."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class FilterDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+class FilterBenchmark(test.Benchmark):
 
-  def _build_filter_range_graph(self, div):
-    return dataset_ops.Dataset.range(100).filter(
-        lambda x: math_ops.not_equal(math_ops.mod(x, div), 2))
+  # This benchmark compares the performance of pipeline with multiple chained
+  # filter with and without filter fusion.
+  def benchmarkFilters(self):
+    chain_lengths = [0, 1, 2, 5, 10, 20, 50]
+    for chain_length in chain_lengths:
+      self._benchmarkFilters(chain_length, False)
+      self._benchmarkFilters(chain_length, True)
 
-  def testFilterCore(self):
-    div = 3
-    num_outputs = np.sum([x % 3 is not 2 for x in range(100)])
-    self.run_core_tests(lambda: self._build_filter_range_graph(div),
-                        lambda: self._build_filter_range_graph(div * 2),
-                        num_outputs)
+  def _benchmarkFilters(self, chain_length, optimize_dataset):
+    with ops.Graph().as_default():
+      dataset = dataset_ops.Dataset.from_tensors(5).repeat(None)
+      for _ in range(chain_length):
+        dataset = dataset.filter(lambda x: math_ops.greater_equal(x - 5, 0))
+      if optimize_dataset:
+        dataset = dataset.apply(optimization.optimize(["filter_fusion"]))
 
-  def _build_filter_dict_graph(self):
-    return dataset_ops.Dataset.range(10).map(
-        lambda x: {"foo": x * 2, "bar": x ** 2}).filter(
-            lambda d: math_ops.equal(d["bar"] % 2, 0)).map(
-                lambda d: d["foo"] + d["bar"])
+      iterator = dataset.make_one_shot_iterator()
+      next_element = iterator.get_next()
 
-  def testFilterDictCore(self):
-    num_outputs = np.sum([(x**2) % 2 == 0 for x in range(10)])
-    self.run_core_tests(self._build_filter_dict_graph, None, num_outputs)
+      with session.Session() as sess:
+        for _ in range(10):
+          sess.run(next_element.op)
+        deltas = []
+        for _ in range(100):
+          start = time.time()
+          for _ in range(100):
+            sess.run(next_element.op)
+          end = time.time()
+          deltas.append(end - start)
 
-  def _build_sparse_filter(self):
-
-    def _map_fn(i):
-      return sparse_tensor.SparseTensor(
-          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
-
-    def _filter_fn(_, i):
-      return math_ops.equal(i % 2, 0)
-
-    return dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
-        lambda x, i: x)
-
-  def testSparseCore(self):
-    num_outputs = 5
-    self.run_core_tests(self._build_sparse_filter, None, num_outputs)
+        median_wall_time = np.median(deltas) / 100
+        opt_mark = "opt" if optimize_dataset else "no-opt"
+        print("Filter dataset {} chain length: {} Median wall time: {}".format(
+            opt_mark, chain_length, median_wall_time))
+        self.report_benchmark(
+            iters=1000,
+            wall_time=median_wall_time,
+            name="benchmark_filter_dataset_chain_latency_{}_{}".format(
+                opt_mark, chain_length))
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ package tensorflow.grpc;
 option java_outer_classname = "MasterServiceProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/protobuf/master.proto";
 
 ////////////////////////////////////////////////////////////////////////////////

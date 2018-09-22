@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -31,41 +32,30 @@ class ReduceWindowOp : public XlaOpKernel {
   explicit ReduceWindowOp(OpKernelConstruction* context)
       : XlaOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("computation", &computation_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("window_dimensions", &window_dimensions_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("window_strides", &window_strides_));
-    OP_REQUIRES_OK(context, context->GetAttr("padding_low", &padding_low_));
-    OP_REQUIRES_OK(context, context->GetAttr("padding_high", &padding_high_));
   }
 
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape input_shape = context->InputShape(0);
     const DataType dtype = context->input_type(0);
 
+    std::vector<int64> window_dimensions;
+    std::vector<int64> window_strides;
+    OP_REQUIRES_OK(context, context->ConstantInputAsIntVector(
+                                "window_dimensions", &window_dimensions));
+    OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("window_strides",
+                                                              &window_strides));
+
     const int rank = input_shape.dims();
-    OP_REQUIRES(context, rank == window_dimensions_.size(),
+    OP_REQUIRES(context, rank == window_dimensions.size(),
                 errors::InvalidArgument(
                     "The size of window_dimensions must be equal to the input "
                     "rank (",
-                    window_dimensions_.size(), " vs. ", rank, ")"));
-    OP_REQUIRES(context, rank == window_strides_.size(),
+                    window_dimensions.size(), " vs. ", rank, ")"));
+    OP_REQUIRES(context, rank == window_strides.size(),
                 errors::InvalidArgument(
                     "The size of window_strides must be equal to the input "
                     "rank (",
-                    window_strides_.size(), " vs. ", rank, ")"));
-    OP_REQUIRES(context, rank == padding_low_.size(),
-                errors::InvalidArgument(
-                    "The size of padding_low must be equal to the input "
-                    "rank (",
-                    padding_low_.size(), " vs. ", rank, ")"));
-    OP_REQUIRES(context, rank == padding_high_.size(),
-                errors::InvalidArgument(
-                    "The size of padding_high must be equal to the input "
-                    "rank (",
-                    padding_high_.size(), " vs. ", rank, ")"));
-
-    xla::ComputationBuilder* builder = context->builder();
+                    window_strides.size(), " vs. ", rank, ")"));
 
     // Build the reducer function.
     XlaCompiler::Argument reducer_arg;
@@ -77,6 +67,7 @@ class ReduceWindowOp : public XlaOpKernel {
     compile_options.use_tuple_arg = false;
     compile_options.resolve_compile_time_constants = false;
     compile_options.is_entry_computation = false;
+    compile_options.always_return_tuple = false;
     XlaCompiler::CompilationResult reducer;
     OP_REQUIRES_OK(context, context->compiler()->CompileFunction(
                                 compile_options, *computation_,
@@ -85,51 +76,47 @@ class ReduceWindowOp : public XlaOpKernel {
     xla::Shape scalar_shape;
     OP_REQUIRES_OK(context,
                    TensorShapeToXLAShape(dtype, TensorShape(), &scalar_shape));
+    OP_REQUIRES(
+        context,
+        xla::ShapeUtil::Compatible(reducer.xla_output_shape, scalar_shape),
+        errors::InvalidArgument(
+            "Invalid output shape of ReduceWindow reducer. Expected ",
+            xla::ShapeUtil::HumanString(scalar_shape), " got ",
+            xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
+
+    const TensorShape padding_shape = context->InputShape("padding");
     OP_REQUIRES(context,
-                xla::ShapeUtil::Compatible(
-                    reducer.xla_output_shape,
-                    xla::ShapeUtil::MakeTupleShape({scalar_shape})),
+                TensorShapeUtils::IsMatrix(padding_shape) &&
+                    padding_shape.dim_size(1) == 2,
                 errors::InvalidArgument(
-                    "Invalid output shape of ReduceWindow reducer. Expected ",
-                    xla::ShapeUtil::HumanString(scalar_shape), " got ",
-                    xla::ShapeUtil::HumanString(reducer.xla_output_shape)));
-
-    // Wraps the reducer in a computation that unpacks the output tuple.
-    xla::Computation wrapper;
-    {
-      std::unique_ptr<xla::ComputationBuilder> cb =
-          builder->CreateSubBuilder("wrapper");
-      auto x = cb->Parameter(0, scalar_shape, "x");
-      auto y = cb->Parameter(1, scalar_shape, "y");
-      auto outputs = cb->Call(*reducer.computation, {x, y});
-      cb->GetTupleElement(outputs, 0);
-      xla::StatusOr<xla::Computation> result = cb->Build();
-      OP_REQUIRES_OK(context, result.status());
-      wrapper = std::move(result.ValueOrDie());
+                    "padding must be a matrix with minor dimension 2, got ",
+                    padding_shape.DebugString()));
+    xla::Literal padding_literal;
+    OP_REQUIRES_OK(context, context->ConstantInputAsInt64Literal(
+                                "padding", &padding_literal));
+    std::vector<std::pair<int64, int64>> padding(padding_shape.dim_size(0));
+    for (int i = 0; i < padding.size(); ++i) {
+      padding[i] = {padding_literal.Get<int64>({i, 0}),
+                    padding_literal.Get<int64>({i, 1})};
     }
 
-    std::vector<std::pair<int64, int64>> padding(rank);
-    for (int i = 0; i < rank; ++i) {
-      padding[i] = {padding_low_[i], padding_high_[i]};
-    }
-
-    xla::ComputationDataHandle output = builder->ReduceWindowWithGeneralPadding(
-        context->Input(0), context->Input(1), wrapper, window_dimensions_,
-        window_strides_, padding);
+    xla::XlaOp output = xla::ReduceWindowWithGeneralPadding(
+        context->Input(0), context->Input(1), *reducer.computation,
+        window_dimensions, window_strides, padding);
     context->SetOutput(0, output);
   }
 
  private:
   const NameAttrList* computation_;
-  std::vector<int64> window_dimensions_;
-  std::vector<int64> window_strides_;
-  std::vector<int64> padding_low_;
-  std::vector<int64> padding_high_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ReduceWindowOp);
 };
 
-REGISTER_XLA_OP(Name("XlaReduceWindow"), ReduceWindowOp);
+REGISTER_XLA_OP(Name("XlaReduceWindow")
+                    .CompileTimeConstInput("window_dimensions")
+                    .CompileTimeConstInput("window_strides")
+                    .CompileTimeConstInput("padding"),
+                ReduceWindowOp);
 
 }  // namespace
 }  // namespace tensorflow

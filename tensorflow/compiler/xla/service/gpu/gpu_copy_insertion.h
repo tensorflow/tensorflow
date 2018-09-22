@@ -25,20 +25,11 @@ namespace gpu {
 // Besides the modifications made by the generic xla::CopyInsertion, this
 // GPU-specific copy insertion also materializes operands of library calls by
 // inserting kCopy instructions.
-class GpuCopyInsertion : public HloPassInterface {
+class GpuCopyInsertion : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "copy-insertion"; }
+  absl::string_view name() const override { return "copy-insertion"; }
 
   StatusOr<bool> Run(HloModule* module) override;
-
- protected:
-  // Returns a copy of `hlo`. Looks in hlo_to_copy_map_ first to avoid making
-  // duplicate copies.
-  StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
-
-  // A map containing all copies inserted to materialize operands of library
-  // calls. The key is the copied instruction and the value is the copy.
-  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> hlo_to_copy_map_;
 };
 
 }  // namespace gpu

@@ -5,8 +5,9 @@ option cc_enable_arenas = true;
 option java_outer_classname = "DebugProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
-// EXPERIMENTAL. Option for watching a node.
+// Option for watching a node in TensorFlow Debugger (tfdbg).
 message DebugTensorWatch {
   // Name of the node to watch.
   string node_name = 1;
@@ -50,7 +51,7 @@ message DebugTensorWatch {
   bool tolerate_debug_op_creation_failures = 5;
 }
 
-// EXPERIMENTAL. Options for initializing DebuggerState.
+// Options for initializing DebuggerState in TensorFlow Debugger (tfdbg).
 message DebugOptions {
   // Debugging options
   repeated DebugTensorWatch debug_tensor_watch_opts = 4;
@@ -59,6 +60,12 @@ message DebugOptions {
   // Note that this is distinct from the session run count and the executor
   // step count.
   int64 global_step = 10;
+
+  // Whether the total disk usage of tfdbg is to be reset to zero
+  // in this Session.run call. This is used by wrappers and hooks
+  // such as the local CLI ones to indicate that the dumped tensors
+  // are cleaned up from the disk after each Session.run.
+  bool reset_disk_byte_usage = 11;
 }
 
 message DebuggedSourceFile {

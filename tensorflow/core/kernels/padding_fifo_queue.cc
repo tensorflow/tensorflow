@@ -23,13 +23,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -347,7 +347,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
     default:
       return errors::Unimplemented(
           "HandleElementToLargerSliceWithRank Unhandled data type: ",
-          element.dtype());
+          DataTypeString(element.dtype()));
   }
 }
 
@@ -392,7 +392,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
   TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
-                               element->dtype());
+                               DataTypeString(element->dtype()));
 }
 
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OP_CLIP_H_
-#define TENSORFLOW_KERNELS_CWISE_OP_CLIP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OP_CLIP_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OP_CLIP_H_
 
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
@@ -55,7 +55,7 @@ struct TernaryClipOp {
                   typename TTypes<T>::ConstFlat &in2_flat,
                   typename TTypes<T>::Flat &out_flat) const;
 };
-}
+}  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OP_CLIP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OP_CLIP_H_

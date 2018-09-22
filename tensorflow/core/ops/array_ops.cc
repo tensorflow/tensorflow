@@ -427,7 +427,19 @@ REGISTER_OP("UnravelIndex")
     .Input("dims: Tidx")
     .Output("output: Tidx")
     .Attr("Tidx: {int32, int64} = DT_INT32")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices = c->input(0);
+      ShapeHandle dims;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &dims));
+      if (c->RankKnown(indices) && c->Rank(indices) == 0) {
+        c->set_output(0, c->Vector(c->Dim(dims, 0)));
+      } else if (c->RankKnown(indices)) {
+        c->set_output(0, c->Matrix(c->Dim(dims, 0), c->NumElements(indices)));
+      } else {
+        c->set_output(0, c->UnknownShape());
+      }
+      return Status::OK();
+    });
 
 REGISTER_OP("BroadcastTo")
     .Input("input: T")
@@ -466,7 +478,7 @@ REGISTER_OP("BroadcastTo")
           // so no check needed.
           if (i >= in_offset) {
             DimensionHandle in_dim = c->Dim(in, i - in_offset);
-            if (c->ValueKnown(in_dim)) {
+            if (c->ValueKnown(in_dim) && c->Value(in_dim) != 0) {
               if (c->Value(dim) % c->Value(in_dim) != 0) {
                 return errors::InvalidArgument(
                     "Cannot broadcast a tensor with shape ", c->DebugString(in),
@@ -631,38 +643,41 @@ REGISTER_OP("SplitV")
           return errors::InvalidArgument(
               "Length of size_splits should be equal to num_outputs");
         }
-        int64_t cumsum_outputs = 0;
+        int64_t total_size = 0;
         bool has_neg_one = false;
+        for (const auto size : data) {
+          if (size == -1) {
+            if (has_neg_one) {
+              return errors::InvalidArgument(
+                  "size_splits can only have one -1");
+            }
+            has_neg_one = true;
+          } else {
+            total_size += size;
+          }
+        }
+        auto split_dim_size = c->Value(c->Dim(input, split_dim));
         // If the sizes of the splits are known, then
         // make sure that the sizes add up to the expected
         // dimension size, with the possibility of a -1.
         // Specify the full output shapes.
         for (int i = 0; i < num_outputs; ++i) {
-          output_shape = c->UnknownShapeOfRank(rank);
-          TF_RETURN_IF_ERROR(c->ReplaceDim(input, split_dim,
-                                           c->MakeDim(data[i]), &output_shape));
+          auto size = data[i];
+          if (data[i] == -1 && c->ValueKnown(split_dim_size)) {
+            size = split_dim_size - total_size;
+          }
+          TF_RETURN_IF_ERROR(
+              c->ReplaceDim(input, split_dim, c->MakeDim(size), &output_shape));
           c->set_output(i, output_shape);
-          if (data[i] == -1 && !has_neg_one)
-            has_neg_one = true;
-          else if (data[i] == -1 && has_neg_one)
-            return errors::InvalidArgument("size_splits can only have one -1");
-          else
-            cumsum_outputs += data[i];
         }
-        auto split_dim_size = c->Value(c->Dim(input, split_dim));
-        if (has_neg_one) {
-          if (cumsum_outputs < split_dim_size)
-            cumsum_outputs = split_dim_size;
-          else
-            cumsum_outputs = split_dim_size + 1;
+        if (c->ValueKnown(split_dim_size)) {
+          if (has_neg_one ? total_size > split_dim_size
+                          : total_size != split_dim_size) {
+            return errors::InvalidArgument(
+                "can't split axis of size ", split_dim_size,
+                " into pieces of size [", str_util::Join(data, ","), "]");
+          }
         }
-        if (c->ValueKnown(c->Dim(input, split_dim)) &&
-            cumsum_outputs != c->Value(c->Dim(input, split_dim)))
-          return errors::InvalidArgument(
-              "Sum of output sizes must match "
-              "the size of the original Tensor along the split dimension "
-              "or the sum of the positive sizes must be less if it contains a "
-              "-1");
       }
 
       return Status::OK();
@@ -686,6 +701,16 @@ REGISTER_OP("Const")
       c->set_output(0, c->MakeShape(dims));
       return Status::OK();
     });
+
+// Returns a constant tensor on the host.  Useful for writing C++ tests
+// and benchmarks which run on GPU but require arguments pinned to the host.
+// Used by test::graph::HostConstant.
+// value: Attr `value` is the tensor to return.
+REGISTER_OP("HostConst")
+    .Output("output: dtype")
+    .Attr("value: tensor")
+    .Attr("dtype: type")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 // --------------------------------------------------------------------------
 // TODO(mgubin): Update the doc when the freeze_graph script supports converting
@@ -1420,6 +1445,30 @@ REGISTER_OP("ShapeN")
     .Attr("T: type")
     .Attr("out_type: {int32, int64} = DT_INT32")
     .SetShapeFn(ShapeShapeFn);
+
+REGISTER_OP("EnsureShape")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("shape: shape")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      // Merges desired shape and statically known shape of input
+      PartialTensorShape desired_shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("shape", &desired_shape));
+
+      int rank = desired_shape.dims();
+      ShapeHandle input_shape_handle;
+      ShapeHandle desired_shape_handle;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &input_shape_handle));
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+          desired_shape, &desired_shape_handle));
+
+      ShapeHandle merged_shape;
+      TF_RETURN_IF_ERROR(
+          c->Merge(desired_shape_handle, input_shape_handle, &merged_shape));
+      c->set_output(0, merged_shape);
+      return Status::OK();
+    });
 
 // --------------------------------------------------------------------------
 REGISTER_OP("ReverseSequence")
@@ -2549,14 +2598,16 @@ REGISTER_OP("ExtractImagePatches")
 REGISTER_OP("Bitcast")
     .Input("input: T")
     .Output("output: type")
-    // All supported dtypes are listed here to include qint16 and quint16.
+    // All supported dtypes are listed here to include qint16, quint16, uint32,
+    // and uint64.
     .Attr(
-        "T: {bfloat16, half, float, double, int64, int32, uint8, uint16, int8, "
-        "int16, complex64, complex128, qint8, quint8, qint16, quint16, qint32}")
+        "T: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
+        "uint32, uint64, int8, int16, complex64, complex128, qint8, quint8, "
+        "qint16, quint16, qint32}")
     .Attr(
         "type: {bfloat16, half, float, double, int64, int32, uint8, uint16, "
-        "int8, int16, complex64, complex128, qint8, quint8, qint16, quint16, "
-        "qint32}")
+        "uint32, uint64, int8, int16, complex64, complex128, qint8, quint8, "
+        "qint16, quint16, qint32}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       if (!c->RankKnown(input)) {
@@ -2865,6 +2916,34 @@ Status ScatterNdShape(InferenceContext* c) {
 
 }  // namespace
 
+REGISTER_OP("UpperBound")
+    .Input("sorted_inputs: T")
+    .Input("values: T")
+    .Output("output: out_type")
+    .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &unused_shape));
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    });
+
+REGISTER_OP("LowerBound")
+    .Input("sorted_inputs: T")
+    .Input("values: T")
+    .Output("output: out_type")
+    .Attr("T: type")
+    .Attr("out_type: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &unused_shape));
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    });
+
 REGISTER_OP("ScatterNd")
     .Input("indices: Tindices")
     .Input("updates: T")
@@ -2879,7 +2958,7 @@ REGISTER_OP("ScatterNdNonAliasingAdd")
     .Input("indices: Tindices")
     .Input("updates: T")
     .Output("output: T")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 

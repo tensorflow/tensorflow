@@ -281,6 +281,41 @@ class AttentionWrapperTest(test.TestCase):
             expected_final_alignment_history,
             final_alignment_history_info)
 
+  def testBahdanauNormalizedDType(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      num_units = 128
+      encoder_outputs = array_ops.placeholder(dtype, shape=[64, None, 256])
+      encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      decoder_inputs = array_ops.placeholder(dtype, shape=[64, None, 128])
+      decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
+      batch_size = 64
+      attention_mechanism = wrapper.BahdanauAttention(
+          num_units=num_units,
+          memory=encoder_outputs,
+          memory_sequence_length=encoder_sequence_length,
+          normalize=True,
+          dtype=dtype,
+      )
+      cell = rnn_cell.LSTMCell(num_units)
+      cell = wrapper.AttentionWrapper(cell, attention_mechanism)
+
+      helper = helper_py.TrainingHelper(decoder_inputs,
+                                        decoder_sequence_length)
+      my_decoder = basic_decoder.BasicDecoder(
+          cell=cell,
+          helper=helper,
+          initial_state=cell.zero_state(
+              dtype=dtype, batch_size=batch_size))
+
+      final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
+      self.assertTrue(
+          isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
+      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
+      self.assertTrue(
+          isinstance(final_state, wrapper.AttentionWrapperState))
+      self.assertTrue(
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
+
   def testBahdanauNotNormalized(self):
     create_attention_mechanism = wrapper.BahdanauAttention
 
@@ -376,11 +411,11 @@ class AttentionWrapperTest(test.TestCase):
 
   def testLuongScaledDType(self):
     # Test case for GitHub issue 18099
-    for dtype in [np.float16, np.float32, np.float64]:
+    for dt in [np.float16, np.float32, np.float64]:
       num_units = 128
-      encoder_outputs = array_ops.placeholder(dtype, shape=[64, None, 256])
+      encoder_outputs = array_ops.placeholder(dt, shape=[64, None, 256])
       encoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
-      decoder_inputs = array_ops.placeholder(dtype, shape=[64, None, 128])
+      decoder_inputs = array_ops.placeholder(dt, shape=[64, None, 128])
       decoder_sequence_length = array_ops.placeholder(dtypes.int32, shape=[64])
       batch_size = 64
       attention_mechanism = wrapper.LuongAttention(
@@ -388,7 +423,7 @@ class AttentionWrapperTest(test.TestCase):
           memory=encoder_outputs,
           memory_sequence_length=encoder_sequence_length,
           scale=True,
-          dtype=dtype,
+          dtype=dt,
       )
       cell = rnn_cell.LSTMCell(num_units)
       cell = wrapper.AttentionWrapper(cell, attention_mechanism)
@@ -399,12 +434,12 @@ class AttentionWrapperTest(test.TestCase):
           cell=cell,
           helper=helper,
           initial_state=cell.zero_state(
-              dtype=dtype, batch_size=batch_size))
+              dtype=dt, batch_size=batch_size))
 
       final_outputs, final_state, _ = decoder.dynamic_decode(my_decoder)
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
-      self.assertEqual(final_outputs.rnn_output.dtype, dtype)
+      self.assertEqual(final_outputs.rnn_output.dtype, dt)
       self.assertTrue(
           isinstance(final_state, wrapper.AttentionWrapperState))
       self.assertTrue(
@@ -477,7 +512,7 @@ class AttentionWrapperTest(test.TestCase):
 
     for axis in [0, 1]:
       for exclusive in [True, False]:
-        with self.test_session():
+        with self.cached_session():
           # Compute cumprod with regular tf.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
@@ -513,7 +548,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       recursive_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'recursive').eval()
 
@@ -534,7 +569,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       parallel_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'parallel').eval()
 
@@ -559,7 +594,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       hard_output = wrapper.monotonic_attention(
           # TensorFlow is unhappy when these are not wrapped as tf.constant
           constant_op.constant(p_choose_i),
@@ -599,7 +634,7 @@ class AttentionWrapperTest(test.TestCase):
     recursive_output = [np.array([1] + [0]*(p_choose_i.shape[1] - 1),
                                  np.float32)]
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       for j in range(p_choose_i.shape[0]):
         # Compute attention distribution for this output time step
         recursive_output.append(wrapper.monotonic_attention(
@@ -884,31 +919,28 @@ class AttentionWrapperTest(test.TestCase):
         wrapper.BahdanauAttention, wrapper.LuongAttention)
 
     expected_final_output = BasicDecoderOutput(
-        rnn_output=ResultSummary(shape=(5, 3, 20),
-                                 dtype=dtype('float32'),
-                                 mean=0.11723966),
-        sample_id=ResultSummary(shape=(5, 3),
-                                dtype=dtype('int32'),
-                                mean=9.2666666666666675))
+        rnn_output=ResultSummary(
+            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.11723966),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=7.266666666666667))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
-            c=ResultSummary(shape=(5, 9),
-                            dtype=dtype('float32'),
-                            mean=-0.003545674),
-            h=ResultSummary(shape=(5, 9),
-                            dtype=dtype('float32'),
-                            mean=-0.0018327223)),
-        attention=ResultSummary(shape=(5, 20),
-                                dtype=dtype('float32'),
-                                mean=0.11728073),
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.003545674),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0018327223)),
+        attention=ResultSummary(
+            shape=(5, 20), dtype=dtype('float32'), mean=0.11601614207),
         time=3,
-        alignments=(
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        alignments=(ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+                    ResultSummary(
+                        shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
         alignment_history=(),
-        attention_state=(
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
+        attention_state=(ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+                         ResultSummary(
+                             shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
     expected_final_alignment_history = (
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))

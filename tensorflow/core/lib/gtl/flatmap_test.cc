@@ -656,19 +656,33 @@ TEST(FlatMap, UniqueMap) {
   }
   EXPECT_EQ(map.size(), N);
 
+  // move constructor
+  UniqMap map2(std::move(map));
+
   // Lookups
   for (int i = 0; i < N; i++) {
-    EXPECT_EQ(*map.at(MakeUniq(i)), i + 100);
+    EXPECT_EQ(*map2.at(MakeUniq(i)), i + 100);
   }
 
+  // move assignment
+  UniqMap map3;
+  map3 = std::move(map2);
+
   // find+erase
-  EXPECT_EQ(map.count(MakeUniq(2)), 1);
-  map.erase(MakeUniq(2));
-  EXPECT_EQ(map.count(MakeUniq(2)), 0);
+  EXPECT_EQ(map3.count(MakeUniq(2)), 1);
+  map3.erase(MakeUniq(2));
+  EXPECT_EQ(map3.count(MakeUniq(2)), 0);
 
   // clear
-  map.clear();
-  EXPECT_EQ(map.size(), 0);
+  map3.clear();
+  EXPECT_EQ(map3.size(), 0);
+
+  // Check that moved-from maps are in a valid (though unspecified) state.
+  EXPECT_GE(map.size(), 0);
+  EXPECT_GE(map2.size(), 0);
+  // This insert should succeed no matter what state `map` is in, because
+  // MakeUniq(-1) is never called above: This key can't possibly exist.
+  EXPECT_TRUE(map.emplace(MakeUniq(-1), MakeUniq(-1)).second);
 }
 
 TEST(FlatMap, UniqueMapIter) {

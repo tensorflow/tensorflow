@@ -1,4 +1,4 @@
-    # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,39 +19,57 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.opt.python.training.adamax import *
 from tensorflow.contrib.opt.python.training.addsign import *
+from tensorflow.contrib.opt.python.training.agn_optimizer import *
 from tensorflow.contrib.opt.python.training.drop_stale_gradient_optimizer import *
+from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
 from tensorflow.contrib.opt.python.training.external_optimizer import *
+from tensorflow.contrib.opt.python.training.lars_optimizer import *
+from tensorflow.contrib.opt.python.training.ggt import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
+from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
+from tensorflow.contrib.opt.python.training.reg_adagrad_optimizer import *
+from tensorflow.contrib.opt.python.training.shampoo import *
+from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *
 from tensorflow.contrib.opt.python.training.powersign import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
-from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
-from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
+    'AdaMaxOptimizer',
     'PowerSignOptimizer',
     'AddSignOptimizer',
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer',
     'ExternalOptimizerInterface',
+    'LARSOptimizer',
     'LazyAdamOptimizer',
     'NadamOptimizer',
     'MovingAverageOptimizer',
+    'MomentumWOptimizer',
+    'AdamWOptimizer',
+    'DecoupledWeightDecayExtension',
+    'extend_with_decoupled_weight_decay',
     'ScipyOptimizerInterface',
     'VariableClippingOptimizer',
     'MultitaskOptimizerWrapper',
     'clip_gradients_by_global_norm',
+    'AGNOptimizer',
+    'AGNCustomGetter',
     'ElasticAverageOptimizer',
     'ElasticAverageCustomGetter',
     'ModelAverageOptimizer',
-    'ModelAverageCustomGetter'
+    'ModelAverageCustomGetter',
+    'GGTOptimizer',
+    'ShampooOptimizer',
+    'RegAdagradOptimizer',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

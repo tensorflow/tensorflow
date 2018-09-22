@@ -80,7 +80,7 @@ class CudaDeviceArrayOnHost {
     TensorReference tensor_ref(out_of_line_values_on_host_);
     TF_RETURN_IF_ERROR(context_->allocate_temp(
         DT_INT8, TensorShape{total_bytes_}, &out_of_line_values_on_gpu_));
-    perftools::gputools::DeviceMemoryBase output_values_base{
+    se::DeviceMemoryBase output_values_base{
         out_of_line_values_on_gpu_.flat<int8>().data(),
         static_cast<uint64>(total_bytes_)};
     stream->ThenMemcpy(&output_values_base,

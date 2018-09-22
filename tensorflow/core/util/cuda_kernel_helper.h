@@ -21,10 +21,7 @@ limitations under the License.
 #include "tensorflow/core/util/cuda_device_functions.h"
 #include "tensorflow/core/util/cuda_launch_config.h"
 
-#if CUDA_VERSION >= 7050
 #include "cuda/include/cuda_fp16.h"
-#define TF_HAS_CUDA_FP16
-#endif
 
 // Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
 #define CUDA_1D_KERNEL_LOOP(i, n) \
@@ -96,11 +93,11 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleXorSync(
 }
 
 namespace cuda_helper {
-template <typename IntType>
-__device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
-  IntType* orig = first;
-  IntType* it = nullptr;
-  IntType step = 0;
+template <typename T, typename OutType = int32>
+__device__ OutType upper_bound(const T* first, OutType count, T val) {
+  const T* orig = first;
+  const T* it = nullptr;
+  OutType step = 0;
   while (count > 0) {
     it = first;
     step = count / 2;
@@ -115,6 +112,27 @@ __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
 
   return first - orig;
 }
+
+template <typename T, typename OutType = int32>
+__device__ OutType lower_bound(const T* first, OutType count, T val) {
+  const T* orig = first;
+  const T* it = nullptr;
+  OutType step = 0;
+  while (count > 0) {
+    it = first;
+    step = count / 2;
+    it += step;
+    if (*it < val) {
+      first = ++it;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+
+  return first - orig;
+}
+
 }  // namespace cuda_helper
 }  // namespace tensorflow
 

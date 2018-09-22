@@ -209,7 +209,7 @@ class DeviceFunctionsTest(test.TestCase):
           defun_node, 2.0, name="output_node")
 
       with session.Session() as sess:
-        init = variables.initialize_variables([variable_node])
+        init = variables.variables_initializer([variable_node])
         sess.run(init)
         output = sess.run(output_node)
         self.assertNear(4.0, output, 0.00001)

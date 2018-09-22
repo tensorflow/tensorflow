@@ -97,7 +97,7 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   }
   std::unique_ptr<EVP_MD_CTX, std::function<void(EVP_MD_CTX*)>> md_ctx(
       EVP_MD_CTX_create(), [](EVP_MD_CTX* ptr) { EVP_MD_CTX_destroy(ptr); });
-  if (!md_ctx.get()) {
+  if (!md_ctx) {
     return errors::Internal("Could not create MD_CTX.");
   }
 
@@ -137,8 +137,8 @@ Status EncodeJwtClaim(StringPiece client_email, StringPiece scope,
   const auto expiration_timestamp_sec =
       request_timestamp_sec + kRequestedTokenLifetimeSec;
 
-  root["iat"] = request_timestamp_sec;
-  root["exp"] = expiration_timestamp_sec;
+  root["iat"] = Json::Value::UInt64(request_timestamp_sec);
+  root["exp"] = Json::Value::UInt64(expiration_timestamp_sec);
 
   // Step 2: represent the JSON as a string.
   string claim = root.toStyledString();
@@ -196,7 +196,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   std::unique_ptr<RSA, std::function<void(RSA*)>> private_key(
       PEM_read_bio_RSAPrivateKey(bio.get(), nullptr, nullptr, nullptr),
       [](RSA* ptr) { RSA_free(ptr); });
-  if (!private_key.get()) {
+  if (!private_key) {
     return errors::Internal("Could not deserialize the private key.");
   }
 
@@ -216,7 +216,7 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  request->SetUri(oauth_server_uri.ToString());
+  request->SetUri(string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());
@@ -248,7 +248,7 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
   std::vector<char> response_buffer;
-  request->SetUri(oauth_server_uri.ToString());
+  request->SetUri(string(oauth_server_uri));
   request->SetPostFromBuffer(request_body.c_str(), request_body.size());
   request->SetResultBuffer(&response_buffer);
   TF_RETURN_IF_ERROR(request->Send());

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
@@ -94,6 +94,15 @@ TEST(GatherOpTest, Test0DIndexWith0DResult) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({2.0})));
   EXPECT_TRUE(m.GetOutputShape().empty());
+}
+
+TEST(GatherOpTest, Test2DIndexWith2DResult) {
+  GatherOpModel m({3}, TensorType_FLOAT32, {1, 2});
+  m.SetInputFloat({1.0, 2.0, 3.0});
+  m.SetPositions({1, 0});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputFloat(), ElementsAreArray(ArrayFloatNear({2.0, 1.0})));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
 }
 
 TEST(FloatGatherOpTest, Duplicate) {

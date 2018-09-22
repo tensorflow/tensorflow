@@ -17,13 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.eager.python import checkpointable_utils
+import os
+from tensorflow.contrib.checkpoint.python import split_dependency
 from tensorflow.contrib.rnn.python.ops import lstm_ops
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras._impl.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
@@ -32,8 +32,8 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import checkpointable as checkpointable_lib
 from tensorflow.python.training import saver
+from tensorflow.python.training.checkpointable import tracking as checkpointable_lib
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -61,8 +61,8 @@ _WEIGHTS_VARIABLE_NAME = rnn_cell_impl._WEIGHTS_VARIABLE_NAME
 class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
   """Cudnn Compatible LSTMCell.
 
-  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by
+  A simple wrapper around `tf.contrib.rnn.LSTMBlockCell` to use along with
+  `tf.contrib.cudnn_rnn.CudnnLSTM`. The latter's params can be used by
   this cell seamlessly.
   """
 
@@ -76,8 +76,8 @@ class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
 class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   """Cudnn Compatible GRUCell.
 
-  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by
+  A GRU impl akin to `tf.nn.rnn_cell.GRUCell` to use along with
+  `tf.contrib.cudnn_rnn.CudnnGRU`. The latter's params can be used by
   it seamlessly.
 
   It differs from platform-independent GRUs in how the new memory gate is
@@ -97,7 +97,7 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
-  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
+  Other GRU (see `tf.nn.rnn_cell.GRUCell` and `tf.contrib.rnn.GRUBlockCell`):
   ```python
   # new memory gate
   \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
@@ -318,7 +318,7 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         dependencies too (typically the cuDNN `Layer`).
       dtype: The dtype for the canonical parameter Tensors.
     """
-    split_dependencies = checkpointable_utils.split_dependency(
+    split_dependencies = split_dependency.split_dependency(
         component_names=self._param_names,
         component_dtypes=(dtype,) * len(self._param_names),
         fill_save_buffer_fn=self._checkpointable_save,
@@ -891,7 +891,7 @@ def _cudnn_rnn(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -901,19 +901,27 @@ def _cudnn_rnn(inputs,
   check_direction(direction)
   check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
-  outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      input=inputs,
-      input_h=input_h,
-      input_c=input_c,
-      params=params,
-      is_training=is_training,
-      rnn_mode=rnn_mode,
-      input_mode=input_mode,
-      direction=direction,
-      dropout=dropout,
-      seed=seed,
-      seed2=seed2,
-      name=name)
+  # TODO(jamesqin): switch default value to "1" on May 25th 2018, and get rid
+  # of V1 ops.
+  use_cudnn_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
+  args = {
+      "input": inputs,
+      "input_h": input_h,
+      "input_c": input_c,
+      "params": params,
+      "is_training": is_training,
+      "rnn_mode": rnn_mode,
+      "input_mode": input_mode,
+      "direction": direction,
+      "dropout": dropout,
+      "seed": seed,
+      "seed2": seed2,
+      "name": name
+  }
+  if use_cudnn_v2 is not "1":
+    outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(**args)
+  else:
+    outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
   return (outputs, output_h, output_c)
 
 
@@ -949,7 +957,7 @@ def cudnn_lstm(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -990,7 +998,7 @@ def _cudnn_rnn_no_input_c(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1032,7 +1040,7 @@ def cudnn_gru(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1071,7 +1079,7 @@ def cudnn_rnn_relu(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1111,7 +1119,7 @@ def cudnn_rnn_tanh(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1153,7 +1161,7 @@ def cudnn_rnn_opaque_params_to_canonical(rnn_mode,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1216,7 +1224,7 @@ def cudnn_rnn_canonical_to_opaque_params(rnn_mode,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1274,7 +1282,7 @@ def cudnn_rnn_opaque_params_size(rnn_mode,
         'unidirectional' or 'bidirectional'
     dtype: one of tf.float32 or tf.float64.
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1341,7 +1349,7 @@ class _CudnnRNN(object):
           'unidirectional' or 'bidirectional'
       dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
           for behavior.
     Raises:
       ValueError: if direction is invalid.
@@ -1638,35 +1646,3 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # 1 set of weight and bias parameters for the recurrent input, and 1 for the
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = CUDNN_RNN_RELU_PARAMS_PER_LAYER
-
-
-@ops.RegisterGradient("CudnnRNN")
-def _cudnn_rnn_backward(op, *grad):
-  if not op.get_attr("is_training"):
-    raise ValueError(
-        "CudnnRNN must set is_training to True to be used in gradients")
-  return gen_cudnn_rnn_ops.cudnn_rnn_backprop(
-      input=op.inputs[0],
-      input_h=op.inputs[1],
-      input_c=op.inputs[2],
-      params=op.inputs[3],
-      output=op.outputs[0],
-      output_h=op.outputs[1],
-      output_c=op.outputs[2],
-      output_backprop=grad[0],
-      output_h_backprop=grad[1],
-      output_c_backprop=grad[2],
-      reserve_space=op.outputs[3],
-      dropout=op.get_attr("dropout"),
-      seed=op.get_attr("seed"),
-      seed2=op.get_attr("seed2"),
-      rnn_mode=op.get_attr("rnn_mode"),
-      input_mode=op.get_attr("input_mode"),
-      direction=op.get_attr("direction"))
-
-
-ops.RegisterShape("CudnnRNNParamsSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNParamsToCanonical")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNCanonicalToParams")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)

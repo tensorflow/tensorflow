@@ -53,6 +53,12 @@ There are seven artifacts and thus `pom.xml`s involved in this release:
 7.  [`parentpom`](https://maven.apache.org/pom/index.html): Common settings
     shared by all of the above.
 
+8. `hadoop`: The TensorFlow TFRecord InputFormat/OutputFormat for Apache Hadoop.
+    The source code for this package is available in the [TensorFlow Ecosystem](https://github.com/tensorflow/ecosystem/tree/master/hadoop)
+
+9. `spark-connector`: A Scala library for loading and storing TensorFlow TFRecord
+    using Apache Spark DataFrames. The source code for this package is available
+    in the [TensorFlow Ecosystem](https://github.com/tensorflow/ecosystem/tree/master/spark/spark-tensorflow-connector)
 
 ## Updating the release
 
@@ -145,16 +151,6 @@ conducted in a [Docker](https://www.docker.com) container.
 7.  Upon successful release, commit changes to all the `pom.xml` files
     (which should have the updated version number).
 
-### Snapshots
-
-If the `TF_VERSION` provided to the `release.sh` script ends in `-SNAPSHOT`,
-then instead of using official release files, the nightly build artifacts from
-https://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow/,
-https://ci.tensorflow.org/view/Nightly/job/nightly-libtensorflow-windows/ and
-https://ci.tensorflow.org/view/Nightly/job/nightly-android
-will be used to upload to the Maven Central snapshots repository. (Note that
-snapshots are only uploaded to Maven Central, not Bintray.)
-
 ### Skip deploying to a repository
 
 Should you need, setting environment variables `DEPLOY_OSSRH=0` or
@@ -167,12 +163,12 @@ cannot skip deploying to OSSRH for a `-SNAPSHOT` version.
 This section provides some pointers around how artifacts are currently
 assembled.
 
-All native and java code is first built and tested on
-a [Tensorflow Jenkins server](https://ci.tensorflow.org/) which run various
-scripts under the [`tools/ci_build`](../../tools/ci_build/) directory. Of
-particular interest may be `tools/ci_build/builds/libtensorflow.sh` which
-bundles Java-related build sources and outputs into archives, and
-`tools/ci_build/builds/android_full.sh` which produces an Android AAR package.
+All native and java code is first built and tested by the release process
+which run various scripts under the [`tools/ci_build`](../../tools/ci_build/)
+directory. Of particular interest may be
+`tools/ci_build/builds/libtensorflow.sh` which bundles Java-related build
+sources and outputs into archives, and `tools/ci_build/builds/android_full.sh`
+which produces an Android AAR package.
 
 Maven artifacts however are not created in Jenkins. Instead, artifacts are
 created and deployed externally on-demand, when a maintainer runs the

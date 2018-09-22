@@ -23,8 +23,3 @@ from __future__ import print_function
 from tensorflow.python.ops.distributions.bijector_impl import Bijector
 
 # pylint: enable=wildcard-import,unused-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = ["Bijector"]
-
-remove_undocumented(__name__, _allowed_symbols)

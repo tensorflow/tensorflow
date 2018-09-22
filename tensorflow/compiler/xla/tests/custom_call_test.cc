@@ -16,8 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -73,14 +74,14 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"));
 
   module->AddEntryComputation(builder.Build());
 
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, *result, error_spec_);
+  Literal result = ExecuteAndTransfer(std::move(module), {});
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
@@ -94,14 +95,14 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
   array(1, 1) = 4.0f;
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2FromArray2D(array)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R2F32ReduceSum"));
 
   module->AddEntryComputation(builder.Build());
 
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-  LiteralTestUtil::ExpectR0Near<float>(10.0f, *result, error_spec_);
+  Literal result = ExecuteAndTransfer(std::move(module), {});
+  LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest,
@@ -110,7 +111,7 @@ XLA_TEST_F(CustomCallTest,
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2FromArray2D(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
   auto incremented = b.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 2, 2}), {input}, "Add1ToValues"));
@@ -124,9 +125,9 @@ XLA_TEST_F(CustomCallTest,
 
   module->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
+  Literal result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
-      Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, *result);
+      Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
 
 class CustomCallClientAPITest : public ClientLibraryTestBase {};
@@ -135,8 +136,8 @@ class CustomCallClientAPITest : public ClientLibraryTestBase {};
 // are reserved for internal use.
 XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   XlaBuilder builder(TestName());
-  builder.CustomCall("$illegal", /*operands=*/{},
-                     ShapeUtil::MakeShape(F32, {1}));
+  CustomCall(&builder, "$illegal", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {1}));
 
   StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});

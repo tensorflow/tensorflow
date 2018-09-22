@@ -55,7 +55,7 @@ void GenerateFileContent(const std::string& tflite_path,
   std::ofstream fout(filename);
 
   fout << "#include \"" << tflite_path << "/model.h\"\n";
-  fout << "#include \"" << tflite_path << "/tools/mutable_op_resolver.h\"\n";
+  fout << "#include \"" << tflite_path << "/op_resolver.h\"\n";
 
   fout << "namespace tflite {\n";
   fout << "namespace ops {\n";

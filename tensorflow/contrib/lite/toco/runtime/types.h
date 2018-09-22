@@ -24,6 +24,7 @@ namespace toco {
 // TODO(ahentz): These are just stopgaps for now, untils we move all
 // the code over to tflite.
 using tflite::Dims;
+using tflite::FullyConnectedWeightsFormat;
 using tflite::FusedActivationFunctionType;
 using tflite::RequiredBufferSizeForDims;
 

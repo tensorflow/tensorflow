@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Assert" #TODO(karllessard) escape that reserved name
+  visibility: HIDDEN
+}

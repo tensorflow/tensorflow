@@ -185,7 +185,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
   EXPECT_TRUE(str_util::StrContains(
-      s.ToString(), "Invalid indices: [2,0] = [99] does not index into [5,3]"))
+      s.ToString(), "indices[2] = [99] does not index into shape [5,3]"))
       << s;
 }
 

@@ -499,6 +499,7 @@ class NodeProcessor : public GraphProcessor {
       UpdateAttrDataFormat();
       UpdateAttrKSize();
       UpdateAttrStrides();
+      UpdateAttrDilations();
       UpdateAttrShape();
       TF_RETURN_IF_ERROR(AddLayoutTransposeToInputs());
       TF_RETURN_IF_ERROR(AddLayoutTransposeToOutputs());
@@ -742,6 +743,13 @@ class NodeProcessor : public GraphProcessor {
     }
   }
 
+  void UpdateAttrDilations() {
+    if (node_->attr().find("dilations") != node_->attr().end()) {
+      auto list = node_->mutable_attr()->at("dilations").mutable_list();
+      UpdateTuple(list);
+    }
+  }
+
   void UpdateAttrDataFormat() {
     if (node_->attr().find("data_format") != node_->attr().end()) {
       if (node_->attr().at("data_format").s().compare("NHWC") == 0) {
@@ -909,7 +917,7 @@ class NodeProcessor : public GraphProcessor {
     list->set_i(3, w);
   }
 
-  string MaybeGetHostDevice(const string& input_name) const {
+  bool IsInputOnHost(const string& input_name) const {
     string device = node_->device();
     DeviceNameUtils::ParsedName parsed_name;
     if (DeviceNameUtils::ParseFullName(device, &parsed_name)) {
@@ -918,13 +926,11 @@ class NodeProcessor : public GraphProcessor {
         int port;
         ParseNodeName(input_name, &port);
         if (IsHostMemory(*input, port)) {
-          parsed_name.type = "CPU";
-          parsed_name.id = 0;
-          device = DeviceNameUtils::ParsedNameToString(parsed_name);
+          return true;
         }
       }
     }
-    return device;
+    return false;
   }
 
   NodeDef* AddNodeDataFormatOp(const string& name, const string& input_name,
@@ -934,9 +940,14 @@ class NodeProcessor : public GraphProcessor {
     added_node->set_name(name);
     added_node->set_op(op);
     node_map_->AddNode(added_node->name(), added_node);
+    added_node->set_device(node_->device());
     // The inputs of a DataFormat op could be in host memory for ops such as
-    // Reshape.
-    added_node->set_device(MaybeGetHostDevice(input_name));
+    // Reshape. In such cases, run the kernel on the host too.
+    if (IsInputOnHost(input_name)) {
+      AttrValue attr_kernel;
+      attr_kernel.set_s("host");
+      added_node->mutable_attr()->insert({"_kernel", attr_kernel});
+    }
     AttrValue attr_data_type;
     attr_data_type.set_type(dtype);
     added_node->mutable_attr()->insert({"T", attr_data_type});
@@ -2132,14 +2143,7 @@ int GetNumGPUs(const Cluster& cluster) {
   int num_gpus = 0;
   for (const auto& device : devices) {
     if (device.second.type() == "GPU") {
-      if (device.second.environment().find("architecture") !=
-          device.second.environment().end()) {
-        const string arch = device.second.environment().at("architecture");
-        // TODO(yaozhang): Enable for Volta GPUs (compute capability version 7).
-        if (arch < "7") {
-          num_gpus++;
-        }
-      }
+      num_gpus++;
     }
   }
   return num_gpus;
@@ -2187,7 +2191,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   TuningConfig config;
   config.no_gemm = true;
-  // TODO(yaozhang): Enable tuning with various TuningConfig choices wtih
+  // TODO(yaozhang): Enable tuning with various TuningConfig choices with
   // the measurement-based estimator.
   status = Tune(item, graph_properties, config, output);
   if (!status.ok()) {

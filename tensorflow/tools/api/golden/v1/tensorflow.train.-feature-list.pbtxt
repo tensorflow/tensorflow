@@ -1,0 +1,13 @@
+path: "tensorflow.train.FeatureList"
+tf_proto {
+  descriptor {
+    name: "FeatureList"
+    field {
+      name: "feature"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Feature"
+    }
+  }
+}

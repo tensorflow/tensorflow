@@ -73,7 +73,7 @@ def cnn_model(features, labels, mode):
         kernel_size=FILTER_SHAPE2,
         padding='VALID')
     # Max across each filter to get useful features for classification.
-    pool2 = tf.squeeze(tf.reduce_max(conv2, 1), squeeze_dims=[1])
+    pool2 = tf.squeeze(tf.reduce_max(conv2, 1), axis=[1])
 
   # Apply regular WX + B and classification.
   logits = tf.layers.dense(pool2, MAX_LABEL, activation=None)

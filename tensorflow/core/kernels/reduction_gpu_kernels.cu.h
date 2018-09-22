@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_REDUCTION_GPU_KERNELS_CU_H_
+#define TENSORFLOW_CORE_KERNELS_REDUCTION_GPU_KERNELS_CU_H_
+
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "external/cub_archive/cub/device/device_reduce.cuh"
-#include "external/cub_archive/cub/device/device_segmented_reduce.cuh"
-#include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
-#include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
-#include "external/cub_archive/cub/warp/warp_reduce.cuh"
+#include "third_party/cub/device/device_reduce.cuh"
+#include "third_party/cub/device/device_segmented_reduce.cuh"
+#include "third_party/cub/iterator/counting_input_iterator.cuh"
+#include "third_party/cub/iterator/transform_input_iterator.cuh"
+#include "third_party/cub/warp/warp_reduce.cuh"
 #include "cuda/include/cuComplex.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -295,7 +298,11 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
-  __shared__ storage_type<value_type> partial_sums[32 * 33];
+  // This is to mimic the following, but without any constructors:
+  //   __shared__ storage_type<value_type> partial_sums[32 * 33];
+  __shared__ __align__(
+      alignof(value_type)) char partial_sums_raw[32 * 33 * sizeof(value_type)];
+  value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
 
   row += rows_per_warp * gridDim.y * blockDim.y;
   for (; row < num_rows; row += rows_per_warp * gridDim.y * blockDim.y) {
@@ -344,7 +351,11 @@ __global__ void ColumnReduceKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
-  __shared__ storage_type<value_type> partial_sums[32 * 33];
+  // This is to mimic the following, but without constructors:
+  //     __shared__ storage_type<value_type> partial_sums[32 * 33];
+  __shared__ __align__(
+      alignof(value_type)) char partial_sums_raw[32 * 33 * sizeof(value_type)];
+  value_type* partial_sums = reinterpret_cast<value_type*>(partial_sums_raw);
 
   row += gridDim.y * blockDim.y;
 
@@ -1050,4 +1061,6 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::OrReducer> {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif
+#endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_REDUCTION_GPU_KERNELS_CU_H_

@@ -24,7 +24,6 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -49,7 +48,7 @@ class JITTest(test.TestCase):
 
   def compute(self, use_jit, compute_fn):
     random_seed.set_random_seed(1234)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       with jit.experimental_jit_scope(use_jit):
         r = compute_fn()
       sess.run(variables.global_variables_initializer())
@@ -89,7 +88,7 @@ class JITTest(test.TestCase):
     self.assertAllClose(v_false_1, v_true_1)
 
   def testJITXlaScope(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True):
         # XlaScope 0
         a1 = constant_op.constant(1)
@@ -139,7 +138,8 @@ class JITTest(test.TestCase):
     self.assertAllClose(v_false_1, v_true_1)
 
   def testDefunNoJitScope(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
+
       @function.Defun(compiled=True, noinline=True)
       def mulop(x1, x2):
         return x1 * x2
@@ -154,7 +154,7 @@ class JITTest(test.TestCase):
       self.assertEqual(b"function_mulop", func_attrs["_XlaScope"].s)
 
   def testDefunInheritsJitScope(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True):
         @function.Defun(compiled=True, noinline=True)
         def mulop(x1, x2):
@@ -170,12 +170,11 @@ class JITTest(test.TestCase):
       self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
 
-@test_util.with_c_api
 class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
-    with self.test_session():
-      x = constant_op.constant([[3]])
+    with self.cached_session():
+      x = constant_op.constant([[3.]])
       y_nc = math_ops.matmul(x, x, name="not_compiled")
       with jit.experimental_jit_scope():
         y_c = math_ops.matmul(y_nc, y_nc, name="compiled")
@@ -197,14 +196,14 @@ class CompilationEnabledInGradientTest(test.TestCase):
       self.assertAllClose([[108]], x_grads.eval())
 
   def testCompilationGradientScopeNames(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope():
         # XlaScope 0
-        a1 = constant_op.constant([[1]])
+        a1 = constant_op.constant([[1.]])
         a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope():
         # XlaScope 1
-        a2 = constant_op.constant([[1]])
+        a2 = constant_op.constant([[1.]])
         a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
@@ -219,14 +218,14 @@ class CompilationEnabledInGradientTest(test.TestCase):
       self.assertEqual(b"jit_scope_1", grad_a2.op.get_attr("_XlaScope"))
 
   def testCompilationSeparateGradientScopeNames(self):
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 0
-        a1 = constant_op.constant([[1]])
+        a1 = constant_op.constant([[1.]])
         a1t = math_ops.matmul(a1, a1)
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
         # XlaScope 1
-        a2 = constant_op.constant([[1]])
+        a2 = constant_op.constant([[1.]])
         a2t = math_ops.matmul(a2, a2)
 
       self.assertEqual(b"jit_scope_0", a1.op.get_attr("_XlaScope"))
@@ -243,7 +242,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
                        grad_a2.op.get_attr("_XlaScope"))
 
   def testPlaysNicelyWithDefun(self):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       with jit.experimental_jit_scope(True):
         @function.Defun(compiled=True, noinline=True)
         def mulop(x1, x2):
@@ -268,7 +267,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       self.assertAllClose([1.0, 1.0, 2.0], sess.run([x, r, g_r]))
 
   def testPlaysNicelyWithDefunSeparateGradientScope(self):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       with jit.experimental_jit_scope(True):
 
         @function.Defun(

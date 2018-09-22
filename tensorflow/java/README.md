@@ -1,7 +1,7 @@
 # TensorFlow for Java
 
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
-> [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
+> [API stability guarantees](https://www.tensorflow.org/guide/version_semantics).
 >
 > For using TensorFlow on Android refer instead to
 > [contrib/android](https://www.tensorflow.org/code/tensorflow/contrib/android),
@@ -10,7 +10,7 @@
 
 ## Quickstart
 
--   Refer to [Installing TensorFlow for Java](https://www.tensorflow.org/install/install_java)
+-   Refer to [Installing TensorFlow for Java](https://www.tensorflow.org/install/lang_java)
 -   [Javadoc](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary)
 -   [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow)
 
@@ -22,9 +22,7 @@ native libraries will need to be built from source.
 1.  Install [bazel](https://www.bazel.build/versions/master/docs/install.html)
 
 2.  Setup the environment to build TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/install/install_sources#PrepareLinux)
-    or [Mac OS
-    X](https://www.tensorflow.org/install/install_sources#PrepareMac)).
+    ([Linux or macOS](https://www.tensorflow.org/install/source)).
     If you'd like to skip reading those details and do not care about GPU
     support, try the following:
 
@@ -36,7 +34,7 @@ native libraries will need to be built from source.
     brew install swig
     ```
 
-3.  [Configure](https://www.tensorflow.org/install/install_sources#configure_the_installation)
+3.  [Configure](https://www.tensorflow.org/install/source)
     (e.g., enable GPU support) and build:
 
     ```sh

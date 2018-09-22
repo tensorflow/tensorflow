@@ -26,10 +26,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "re2/re2.h"
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
@@ -93,9 +94,18 @@ string ArrayDataTypeName(ArrayDataType data_type) {
   }
 }
 
-bool IsInputArray(const Model& model, const string& name) {
+bool IsInputArray(const Model& model, const string& array_name) {
   for (const auto& input_array : model.flags.input_arrays()) {
-    if (input_array.name() == name) {
+    if (array_name == input_array.name()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsOutputArray(const Model& model, const string& array_name) {
+  for (const auto& output_array : model.flags.output_arrays()) {
+    if (array_name == output_array) {
       return true;
     }
   }
@@ -106,10 +116,8 @@ bool IsArrayConsumed(const Model& model, const string& name) {
   if (GetOpWithInput(model, name)) {
     return true;
   }
-  for (const string& model_output : model.flags.output_arrays()) {
-    if (model_output == name) {
-      return true;
-    }
+  if (IsOutputArray(model, name)) {
+    return true;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (rnn_state.back_edge_source_array() == name) {
@@ -135,6 +143,10 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
     for (auto& input : op->inputs) {
       if (input == array_name) {
         count++;
+        // Breaking here is important: some graphs have ops that use the
+        // same array as more than one of their inputs, and in that case
+        // we want it counted only once.
+        break;
       }
     }
   }
@@ -252,6 +264,23 @@ Operator* GetFirstOpWithInput(const Model& model, const string& array_name) {
   return it == model.operators.end() ? nullptr : it->get();
 }
 
+void ReplaceArrayUsage(Model* model, const string& old_array_name,
+                       const string& new_array_name) {
+  for (auto& op_it : model->operators) {
+    Operator* op = op_it.get();
+    for (size_t i = 0; i < op->inputs.size(); ++i) {
+      if (op->inputs[i] == old_array_name) {
+        op->inputs[i] = new_array_name;
+      }
+    }
+    for (size_t i = 0; i < op->outputs.size(); ++i) {
+      if (op->outputs[i] == old_array_name) {
+        op->outputs[i] = new_array_name;
+      }
+    }
+  }
+}
+
 string FormatArraysList(const Model& model, const std::vector<string>& list) {
   if (list.empty()) {
     return "[]";
@@ -308,45 +337,48 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowAssert)
+    HANDLE_OPERATORTYPENAME_CASE(Sin)
+    HANDLE_OPERATORTYPENAME_CASE(All)
+    HANDLE_OPERATORTYPENAME_CASE(Assert)
     HANDLE_OPERATORTYPENAME_CASE(ExpandDims)
     HANDLE_OPERATORTYPENAME_CASE(Fill)
     HANDLE_OPERATORTYPENAME_CASE(FloorMod)
     HANDLE_OPERATORTYPENAME_CASE(FloorDiv)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowGreater)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowGreaterEqual)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowIdentity)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowLess)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowLessEqual)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMatMul)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMax)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMaximum)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMerge)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMin)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
+    HANDLE_OPERATORTYPENAME_CASE(Greater)
+    HANDLE_OPERATORTYPENAME_CASE(GreaterEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Identity)
+    HANDLE_OPERATORTYPENAME_CASE(Less)
+    HANDLE_OPERATORTYPENAME_CASE(LessEqual)
+    HANDLE_OPERATORTYPENAME_CASE(MatMul)
+    HANDLE_OPERATORTYPENAME_CASE(ReduceMax)  //  Reduction Max
+    HANDLE_OPERATORTYPENAME_CASE(Maximum)    //  Element-wise Maximum
+    HANDLE_OPERATORTYPENAME_CASE(Merge)
+    HANDLE_OPERATORTYPENAME_CASE(ReduceMin)  //  Reduction Min
+    HANDLE_OPERATORTYPENAME_CASE(Minimum)    //  Element-wise Minimum
     HANDLE_OPERATORTYPENAME_CASE(Neg)
+    HANDLE_OPERATORTYPENAME_CASE(OneHot)
+    HANDLE_OPERATORTYPENAME_CASE(Pack)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
+    HANDLE_OPERATORTYPENAME_CASE(PadV2)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
-    HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
     HANDLE_OPERATORTYPENAME_CASE(Rank)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowReshape)
+    HANDLE_OPERATORTYPENAME_CASE(Reshape)
     HANDLE_OPERATORTYPENAME_CASE(Squeeze)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowRsqrt)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowShape)
+    HANDLE_OPERATORTYPENAME_CASE(Rsqrt)
+    HANDLE_OPERATORTYPENAME_CASE(Shape)
     HANDLE_OPERATORTYPENAME_CASE(Slice)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSplit)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSqrt)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSquare)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSwitch)
+    HANDLE_OPERATORTYPENAME_CASE(Split)
+    HANDLE_OPERATORTYPENAME_CASE(Sqrt)
+    HANDLE_OPERATORTYPENAME_CASE(Square)
+    HANDLE_OPERATORTYPENAME_CASE(Switch)
     HANDLE_OPERATORTYPENAME_CASE(Sub)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSum)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowTile)
+    HANDLE_OPERATORTYPENAME_CASE(Sum)
+    HANDLE_OPERATORTYPENAME_CASE(Tile)
     HANDLE_OPERATORTYPENAME_CASE(Transpose)
     HANDLE_OPERATORTYPENAME_CASE(TransposeConv)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowConcat)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowConcatV2)
+    HANDLE_OPERATORTYPENAME_CASE(Concat)
+    HANDLE_OPERATORTYPENAME_CASE(ConcatV2)
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
@@ -354,13 +386,27 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(SpaceToBatchND)
     HANDLE_OPERATORTYPENAME_CASE(BatchToSpaceND)
     HANDLE_OPERATORTYPENAME_CASE(Mean)
+    HANDLE_OPERATORTYPENAME_CASE(ReduceProd)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
     HANDLE_OPERATORTYPENAME_CASE(ArgMax)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMin)
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
+    HANDLE_OPERATORTYPENAME_CASE(Unsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
+    HANDLE_OPERATORTYPENAME_CASE(Select)
+    HANDLE_OPERATORTYPENAME_CASE(SparseToDense)
+    HANDLE_OPERATORTYPENAME_CASE(Equal)
+    HANDLE_OPERATORTYPENAME_CASE(NotEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Pow)
+    HANDLE_OPERATORTYPENAME_CASE(Any)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
+    HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
+    HANDLE_OPERATORTYPENAME_CASE(Unpack)
+    HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -368,7 +414,7 @@ const char* OperatorTypeName(OperatorType type) {
 }
 
 string HelpfulOperatorTypeName(const Operator& op) {
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     return toco::port::StringF(
         "(Unsupported TensorFlow op: %s)",
         static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op);
@@ -378,15 +424,20 @@ string HelpfulOperatorTypeName(const Operator& op) {
 
 bool OperatorSupportsFusedActivation(OperatorType type) {
   switch (type) {
-    case OperatorType::kConcatenation:
-    case OperatorType::kGather:
-    case OperatorType::kSlice:
-    case OperatorType::kSqueeze:
-    case OperatorType::kTensorFlowReshape:
-    case OperatorType::kTensorFlowSplit:
-      return false;
-    default:
+    case OperatorType::kAdd:
+    case OperatorType::kAveragePool:
+    case OperatorType::kBatchNormalization:
+    case OperatorType::kConv:
+    case OperatorType::kDepthwiseConv:
+    case OperatorType::kDiv:
+    case OperatorType::kFullyConnected:
+    case OperatorType::kL2Pool:
+    case OperatorType::kMaxPool:
+    case OperatorType::kMul:
+    case OperatorType::kSub:
       return true;
+    default:
+      return false;
   }
 }
 
@@ -406,8 +457,12 @@ void LogSummary(int log_level, const Model& model) {
 }
 
 void LogArray(int log_level, const Model& model, const string& name) {
-  const auto& array = model.GetArray(name);
   VLOG(log_level) << "Array: " << name;
+  if (!model.HasArray(name)) {
+    VLOG(log_level) << "  DOES NOT EXIST";
+    return;
+  }
+  const auto& array = model.GetArray(name);
   VLOG(log_level) << "  Data type: " << ArrayDataTypeName(array.data_type);
   VLOG(log_level) << "  Final type: "
                   << ArrayDataTypeName(array.final_data_type);
@@ -549,7 +604,33 @@ void UnextendShape(Shape* shape, int new_shape_size) {
   shape_dims.erase(shape_dims.begin(), shape_dims.begin() + size_reduction);
 }
 
-void CheckShapeDimensions(const Shape& shape) {
+// In general, zero-sized dimensions are disallowed, but there are exceptions,
+// e.g., if the tensor data itself represents a scalar (rank 0) shape, its
+// shape will have dimensions [0]. CheckNonEmptyShapeDimensions is more
+// strict, and is appropriate for ops and comparisons where an empty shape
+// doesn't make sense.
+template <typename Dims>
+void CheckValidShapeDimensions(const Dims& dims) {
+  if (dims.size() == 1 && dims[0] == 0) {
+    return;
+  }
+  for (const auto& dim : dims) {
+    CHECK_GE(dim, 1);
+  }
+}
+
+void CheckValidShape(const Shape& shape) {
+  CheckValidShapeDimensions(shape.dims());
+}
+
+bool IsNonEmpty(const Shape& shape) {
+  for (int i = 0; i < shape.dimensions_count(); ++i) {
+    if (shape.dims(i) < 1) return false;
+  }
+  return true;
+}
+
+void CheckNonEmptyShapeDimensions(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     CHECK_GE(shape.dims()[i], 1) << "shape has dimension 0 at index << " << i
                                  << ". shape = " << ShapeToString(shape);
@@ -557,8 +638,8 @@ void CheckShapeDimensions(const Shape& shape) {
 }
 
 bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1) {
-  CheckShapeDimensions(shape0);
-  CheckShapeDimensions(shape1);
+  CheckNonEmptyShapeDimensions(shape0);
+  CheckNonEmptyShapeDimensions(shape1);
 
   const Shape* longer = &shape0;
   const Shape* shorter = &shape1;
@@ -585,8 +666,8 @@ bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1) {
 }
 
 bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1) {
-  CheckShapeDimensions(shape0);
-  CheckShapeDimensions(shape1);
+  CheckNonEmptyShapeDimensions(shape0);
+  CheckNonEmptyShapeDimensions(shape1);
 
   const Shape* longer = &shape0;
   const Shape* shorter = &shape1;
@@ -623,9 +704,9 @@ bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1) {
 }
 
 int RequiredBufferSizeForShape(const Shape& shape) {
+  CheckValidShape(shape);
   int max_offset = 1;
   for (const auto& dim : shape.dims()) {
-    CHECK_GE(dim, 1);
     max_offset *= dim;
   }
   return max_offset;
@@ -637,6 +718,65 @@ bool IsConstantParameterArray(const Model& model, const string& name) {
   }
 
   return !!model.GetArray(name).buffer;
+}
+
+namespace {
+template <ArrayDataType A>
+bool CompareArrayBuffers(const Array& lhs_array, const Array& rhs_array) {
+  CHECK(lhs_array.data_type == rhs_array.data_type) << "Data types must match";
+  CHECK(lhs_array.buffer) << "LHS must be constant";
+  CHECK(rhs_array.buffer) << "RHS must be constant";
+  const auto& lhs_data = lhs_array.GetBuffer<A>().data;
+  const auto& rhs_data = rhs_array.GetBuffer<A>().data;
+  CHECK_EQ(lhs_data.size(), rhs_data.size())
+      << "Buffer sizes must match in element count";
+  for (int i = 0; i < lhs_data.size(); ++i) {
+    if (lhs_data[i] != rhs_data[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array) {
+  bool attrs_equal =
+      lhs_array.shape() == rhs_array.shape() &&
+      lhs_array.data_type == rhs_array.data_type &&
+      lhs_array.final_data_type == rhs_array.final_data_type &&
+      lhs_array.minmax == rhs_array.minmax &&
+      lhs_array.quantization_params == rhs_array.quantization_params;
+  if (!attrs_equal) {
+    return false;
+  }
+  switch (lhs_array.data_type) {
+    case ArrayDataType::kBool:
+      return CompareArrayBuffers<ArrayDataType::kBool>(lhs_array, rhs_array);
+    case ArrayDataType::kFloat:
+      return CompareArrayBuffers<ArrayDataType::kFloat>(lhs_array, rhs_array);
+    case ArrayDataType::kInt8:
+      return CompareArrayBuffers<ArrayDataType::kInt8>(lhs_array, rhs_array);
+    case ArrayDataType::kUint8:
+      return CompareArrayBuffers<ArrayDataType::kUint8>(lhs_array, rhs_array);
+    case ArrayDataType::kInt16:
+      return CompareArrayBuffers<ArrayDataType::kInt16>(lhs_array, rhs_array);
+    case ArrayDataType::kUint16:
+      return CompareArrayBuffers<ArrayDataType::kUint16>(lhs_array, rhs_array);
+    case ArrayDataType::kInt32:
+      return CompareArrayBuffers<ArrayDataType::kInt32>(lhs_array, rhs_array);
+    case ArrayDataType::kUint32:
+      return CompareArrayBuffers<ArrayDataType::kUint32>(lhs_array, rhs_array);
+    case ArrayDataType::kInt64:
+      return CompareArrayBuffers<ArrayDataType::kInt64>(lhs_array, rhs_array);
+    case ArrayDataType::kUint64:
+      return CompareArrayBuffers<ArrayDataType::kUint64>(lhs_array, rhs_array);
+    case ArrayDataType::kString:
+      return CompareArrayBuffers<ArrayDataType::kString>(lhs_array, rhs_array);
+    default:
+      LOG(FATAL) << "Unsupported data type: "
+                 << ArrayDataTypeName(lhs_array.data_type);
+      return false;
+  }
 }
 
 namespace {
@@ -817,11 +957,6 @@ void FixNoOrphanedArray(Model* model) {
 void CheckEachArray(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
-    if (array->has_shape()) {
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
-      }
-    }
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
     CHECK(!array->buffer || !array->alloc);
@@ -831,6 +966,8 @@ void CheckEachArray(const Model& model) {
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
       CHECK(array->has_shape());
+      // Constant buffer should has a valid shape.
+      CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));
@@ -896,7 +1033,7 @@ void FixOperatorOrdering(Model* model) {
     for (auto i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
-      CHECK(op.get());
+      CHECK(op);
       for (const auto& input : op->inputs) {
         if (!IsConstantParameterArray(*model, input) &&
             !arrays_behind_us.count(input)) {
@@ -1064,23 +1201,104 @@ void FixEdgeArrays(Model* model) {
   }
 }
 
+void DedupeConstantArrays(Model* model, size_t min_size) {
+  // Walk all 0..N and compare with the remaining n+1..N.
+  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // iterating.
+  const auto& array_map = model->GetArrayMap();
+  for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();
+       ++lhs_array_it) {
+    const auto& lhs_array_name = lhs_array_it->first;
+    const auto& lhs_array = *lhs_array_it->second;
+    if (!IsConstantParameterArray(*model, lhs_array_name)) {
+      // Not a constant array; skip.
+      continue;
+    }
+    ArrayDataType final_data_type =
+        lhs_array.final_data_type != ArrayDataType::kNone
+            ? lhs_array.final_data_type
+            : lhs_array.data_type;
+    size_t array_byte_size =
+        lhs_array.buffer->Length() * ElementSize(final_data_type);
+    if (array_byte_size < min_size) {
+      // Too small; skip.
+      continue;
+    }
+
+    auto next_lhs_array_it = lhs_array_it;
+    ++next_lhs_array_it;
+    for (auto rhs_array_it = next_lhs_array_it;
+         rhs_array_it != array_map.end();) {
+      const auto& rhs_array_name = rhs_array_it->first;
+      const auto& rhs_array = *rhs_array_it->second;
+      ++rhs_array_it;
+      if (!IsConstantParameterArray(*model, rhs_array_name)) {
+        // Not a constant array; skip.
+        continue;
+      }
+      if (!IsDiscardableArray(*model, rhs_array_name)) {
+        // Can't remove the array as it's not discardable (such as an IO edge).
+        continue;
+      }
+      if (!CompareConstantArrays(lhs_array, rhs_array)) {
+        // Arrays aren't equal; skip.
+        continue;
+      }
+
+      // Arrays can be deduped!
+      VLOG(1) << "Deduplicating arrays; using " << lhs_array_name
+              << " in place of " << rhs_array_name;
+      ReplaceArrayUsage(model, rhs_array_name, lhs_array_name);
+      // Note: rhs_array_it above is already incremented so this is safe.
+      model->EraseArray(rhs_array_name);
+    }
+  }
+}
+
+namespace {
+void CopyArrayAttribs(const Array& source_array, Array* target_array) {
+  target_array->data_type = source_array.data_type;
+  target_array->final_data_type = source_array.final_data_type;
+  target_array->copy_shape(source_array.shape());
+
+  if (source_array.minmax) {
+    target_array->GetOrCreateMinMax() = source_array.GetMinMax();
+  } else {
+    target_array->minmax.reset();
+  }
+
+  if (source_array.quantization_params) {
+    target_array->GetOrCreateQuantizationParams() =
+        source_array.GetQuantizationParams();
+  } else {
+    target_array->quantization_params.reset();
+  }
+}
+}  // namespace
+
 void InsertCopyOperator(Model* model, const string& source_array_name,
                         const string& target_array_name) {
+  // Reshape to the same size. This should be a no-op.
+  const Array& source_array = model->GetArray(source_array_name);
+  std::vector<int> shape = source_array.shape().dims();
+
   // Drop constant data from the target array as the copy will be done at
   // runtime.
   Array& target_array = model->GetOrCreateArray(target_array_name);
   target_array.buffer.reset();
-
-  // Reshape to the same size. This should be a no-op.
-  const Array& source_array = model->GetArray(source_array_name);
-  std::vector<int> shape = source_array.shape().dims();
+  CopyArrayAttribs(source_array, &target_array);
 
   // Insert copy operator.
   auto* copy_op = new TensorFlowReshapeOperator;
   copy_op->inputs = {
       source_array_name,
-      CreateInt32Array(model, target_array_name + "_copy_shape", shape)};
+      CreateInt32Array(
+          model, AvailableArrayName(*model, target_array_name + "_copy_shape"),
+          shape)};
   copy_op->outputs = {target_array_name};
+  if (target_array.has_shape()) {
+    copy_op->shape = target_array.shape().dims();
+  }
   model->operators.emplace_back(copy_op);
 }
 
@@ -1089,6 +1307,7 @@ void CloneArray(Model* model, const string& source_array_name,
   CHECK(!model->HasArray(target_array_name));
   const Array& source_array = model->GetArray(source_array_name);
   Array& target_array = model->GetOrCreateArray(target_array_name);
+  CopyArrayAttribs(source_array, &target_array);
 
   if (source_array.minmax) {
     const auto& smm = source_array.GetMinMax();
@@ -1340,8 +1559,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     if (!input_array.has_shape()) {
       if (input_array_proto.has_shape()) {
         auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
+        CheckValidShapeDimensions(input_array_proto.shape().dims());
         for (auto dim : input_array_proto.shape().dims()) {
-          CHECK_GE(dim, 1);
           input_array_dims.push_back(dim);
         }
       }
@@ -1374,20 +1593,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     }
     input_minmax.min = (qmin - mean_value) / std_value;
     input_minmax.max = (qmax - mean_value) / std_value;
-    if (input_array.minmax) {
-      if (input_array_proto.has_mean_value() ||
-          input_array_proto.has_std_value()) {
-        const double width = input_minmax.max - input_minmax.min;
-        const double kMinMaxAllowedDiff = 1e-6 * width;
-        CHECK(std::abs(input_minmax.min - input_array.minmax->min) <
-                  kMinMaxAllowedDiff &&
-              std::abs(input_minmax.max - input_array.minmax->max) <
-                  kMinMaxAllowedDiff)
-            << input_minmax.min << ", " << input_minmax.max
-            << " != " << input_array.minmax->min << ", "
-            << input_array.minmax->max;
-      }
-    } else {
+    if (!input_array.minmax) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
@@ -1397,11 +1603,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                                model);
   }
 
-  for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.has_shape()) {
-      CHECK(input_array.shape().dims_size());
-    }
-  }
   model->flags.set_change_concat_input_ranges(
       model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
@@ -1434,33 +1635,12 @@ void CheckIsReadyForQuantization(const Model& model) {
           << "Array " << input << ", which is an input to the "
           << HelpfulOperatorTypeName(*op) << " operator producing the output "
           << "array " << op->outputs[0] << ", is lacking min/max data, "
-          << "which is necessary for quantization. Either target a "
-          << "non-quantized output format, or change the input graph to "
-          << "contain min/max information, or pass --default_ranges_min= and "
-          << "--default_ranges_max= if you do not care about the accuracy of "
-          << "results.";
-    }
-  }
-}
-
-void UseDefaultMinMaxRangeValues(Model* model, double default_ranges_min,
-                                 double default_ranges_max) {
-  for (const auto& op : model->operators) {
-    for (const auto& input : op->inputs) {
-      auto& input_array = model->GetArray(input);
-      if (!input_array.minmax && !input_array.buffer) {
-        auto& minmax = input_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
-    }
-    for (const auto& output : op->outputs) {
-      auto& output_array = model->GetArray(output);
-      if (!output_array.minmax && !output_array.buffer) {
-        auto& minmax = output_array.GetOrCreateMinMax();
-        minmax.min = default_ranges_min;
-        minmax.max = default_ranges_max;
-      }
+          << "which is necessary for quantization. If accuracy matters, either "
+          << "target a non-quantized output format, or run quantized training "
+          << "with your model from a floating point checkpoint to change the "
+          << "input graph to contain min/max information. If you don't care "
+          << "about accuracy, you can pass --default_ranges_min= and "
+          << "--default_ranges_max= for easy experimentation.";
     }
   }
 }
@@ -1513,13 +1693,8 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
   if (model.IsOptionalArray(array_name)) return false;
   // The model's input and output arrays are externally allocated.
   // They are not transient arrays.
-  if (IsInputArray(model, array_name)) {
+  if (IsInputArray(model, array_name) || IsOutputArray(model, array_name)) {
     return false;
-  }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return false;
-    }
   }
   const auto& array = &model.GetArray(array_name);
   // An array with a constant buffer isn't a transient array.
@@ -1734,18 +1909,15 @@ void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
              output_axes_order == AxesOrder::kHWIO) {
     // 3210 <- 3210
     // HWIO <- OHWI
-    (*shuffle)[0] = 1;
-    (*shuffle)[1] = 2;
-    (*shuffle)[2] = 3;
-    (*shuffle)[3] = 0;
+    *shuffle = {1, 2, 3, 0};
   } else if (input_axes_order == AxesOrder::kHWIO &&
              output_axes_order == AxesOrder::kOHWI) {
     // 3210 <- 3210
     // OHWI <- HWIO
-    (*shuffle)[0] = 3;
-    (*shuffle)[1] = 0;
-    (*shuffle)[2] = 1;
-    (*shuffle)[3] = 2;
+    *shuffle = {3, 0, 1, 2};
+  } else if (input_axes_order == AxesOrder::kOHWI &&
+             output_axes_order == AxesOrder::kHWOI) {
+    *shuffle = {1, 2, 0, 3};
   } else {
     LOG(FATAL) << "Bad shuffle";
   }
@@ -1891,6 +2063,8 @@ int AxesCount(AxesOrder axes_order) {
       return 4;
     case AxesOrder::kNHWC:
       return 4;
+    case AxesOrder::kHWOI:
+      return 4;
     default:
       LOG(FATAL) << "Bad AxesOrder";
       return 0;
@@ -1898,15 +2072,8 @@ int AxesCount(AxesOrder axes_order) {
 }
 
 bool IsDiscardableArray(const Model& model, const string& array_name) {
-  for (const auto& input_array : model.flags.input_arrays()) {
-    if (array_name == input_array.name()) {
-      return false;
-    }
-  }
-  for (const string& output_array : model.flags.output_arrays()) {
-    if (array_name == output_array) {
-      return false;
-    }
+  if (IsInputArray(model, array_name) || IsOutputArray(model, array_name)) {
+    return false;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
@@ -1953,15 +2120,21 @@ bool ReshapeIsEquivalentToTranspose(const Model& model,
 void CheckFinalDataTypesSatisfied(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
+    if (array.data_type == ArrayDataType::kBool) {
+      // Boolean values are never quantized.
+      continue;
+    }
+
     // If the final data type is int16, the data type may be float, for example
     // after dequantization.
     if (array.final_data_type != ArrayDataType::kNone &&
         array.final_data_type != ArrayDataType::kInt16) {
-      CHECK(array.final_data_type == array.data_type)
+      CHECK(array.data_type == array.final_data_type)
           << "Array \"" << array_entry.first
-          << "\" has mis-matching actual and final data types ("
-          << static_cast<int>(array.data_type) << ","
-          << static_cast<int>(array.final_data_type) << ").";
+          << "\" has mis-matching actual and final data types (data_type="
+          << ArrayDataTypeName(array.data_type)
+          << ", final_data_type=" << ArrayDataTypeName(array.final_data_type)
+          << ").";
     }
   }
 }
@@ -1978,6 +2151,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt32;
     case INT64:
       return ArrayDataType::kInt64;
+    case BOOL:
+      return ArrayDataType::kBool;
     default:
       return ArrayDataType::kNone;
   }
@@ -2000,42 +2175,119 @@ void FinishBuildingRNNStates(Model* model) {
   }
 }
 
-void UseArraysExtraInfo(Model* model, bool quantize_output) {
-  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
-    if (!model->HasArray(entry.name())) {
-      continue;
-    }
-    auto& array = model->GetArray(entry.name());
-    if (entry.has_min() || entry.has_max()) {
-      CHECK_EQ(entry.has_min(), entry.has_max());
-      auto& minmax = array.GetOrCreateMinMax();
-      minmax.min = entry.min();
-      minmax.max = entry.max();
-    }
-    if (entry.has_data_type() && quantize_output) {
-      array.final_data_type =
-          ConvertIODataTypeToArrayDataType(entry.data_type());
-    }
-    if (entry.has_shape()) {
-      array.clear_shape();
-      // Make sure to create the shape even if there are no dims, to
-      // correctly record 0-D shapes.
-      array.mutable_shape();
-      for (int dim : entry.shape().dims()) {
-        array.mutable_shape()->mutable_dims()->push_back(dim);
+// Returns the array names that match the ArraysExtraInfo's name and
+// name_regexp. The regexp match is for a full match.
+std::unordered_set<string> ScanArrayNames(
+    const Model& model, const toco::ArraysExtraInfo_Entry& entry) {
+  std::unordered_set<string> matches;
+  if (model.HasArray(entry.name())) {
+    matches.insert(entry.name());
+  }
+  if (!entry.name_regexp().empty()) {
+    const auto& arrays = model.GetArrayMap();
+    const RE2 name_regexp = {entry.name_regexp()};
+    for (auto it = arrays.begin(); it != arrays.end(); ++it) {
+      if (RE2::FullMatch(it->first, name_regexp)) {
+        matches.insert(it->first);
       }
     }
-    if (entry.has_constant_float_value()) {
-      CHECK(array.has_shape());
-      if (array.data_type == ArrayDataType::kFloat) {
-        auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
-        data.resize(RequiredBufferSizeForShape(array.shape()));
-        for (float& f : data) {
-          f = entry.constant_float_value();
+  }
+  return matches;
+}
+
+void UseArraysExtraInfo(Model* model, bool quantize_output) {
+  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
+    const auto matches = ScanArrayNames(*model, entry);
+    for (const auto& matched_name : matches) {
+      auto& array = model->GetArray(matched_name);
+      if (entry.has_min() || entry.has_max()) {
+        CHECK_EQ(entry.has_min(), entry.has_max());
+        auto& minmax = array.GetOrCreateMinMax();
+        minmax.min = entry.min();
+        minmax.max = entry.max();
+      }
+      if (entry.has_data_type() && quantize_output) {
+        array.final_data_type =
+            ConvertIODataTypeToArrayDataType(entry.data_type());
+      }
+      if (entry.has_shape()) {
+        array.clear_shape();
+        // Make sure to create the shape even if there are no dims, to
+        // correctly record 0-D shapes.
+        array.mutable_shape();
+        for (int dim : entry.shape().dims()) {
+          array.mutable_shape()->mutable_dims()->push_back(dim);
+        }
+      }
+      if (entry.has_constant_float_value()) {
+        CHECK(array.has_shape());
+        if (array.data_type == ArrayDataType::kFloat) {
+          auto& data = array.GetMutableBuffer<ArrayDataType::kFloat>().data;
+          data.resize(RequiredBufferSizeForShape(array.shape()));
+          for (float& f : data) {
+            f = entry.constant_float_value();
+          }
         }
       }
     }
   }
+}
+
+void UndoWeightsShuffling(Model* model) {
+  for (const auto& op : model->operators) {
+    if (op->type != toco::OperatorType::kFullyConnected) {
+      continue;
+    }
+    const auto& fc_op = static_cast<toco::FullyConnectedOperator&>(*op);
+    if (fc_op.weights_format == FullyConnectedWeightsFormat::kDefault) {
+      continue;
+    }
+    const string& weights_name = fc_op.inputs[1];
+    QCHECK_EQ(CountOpsWithInput(*model, weights_name), 1);
+    auto& weights_array = model->GetArray(weights_name);
+    QCHECK(weights_array.data_type == ArrayDataType::kUint8);
+    auto& weights_data =
+        weights_array.GetMutableBuffer<toco::ArrayDataType::kUint8>().data;
+    const auto& weights_shape = weights_array.shape();
+    QCHECK_EQ(weights_shape.dimensions_count(), 2);
+    const int rows = weights_shape.dims(0);
+    const int cols = weights_shape.dims(1);
+    QCHECK_EQ(rows % 4, 0);
+    QCHECK_EQ(cols % 16, 0);
+    CHECK_EQ(rows * cols, weights_data.size());
+    // Compute the de-shuffled weights
+    std::vector<uint8> deshuffled_data(weights_data.size());
+    uint8* shuffled_data_ptr = weights_data.data();
+    for (int r = 0; r < rows; r += 4) {
+      for (int c = 0; c < cols; c += 16) {
+        for (int i = 0; i < 4; i++) {
+          uint8* deshuffled_data_ptr =
+              deshuffled_data.data() + (r + i) * cols + c;
+          for (int j = 0; j < 16; j++) {
+            uint8 shuffled_val = *shuffled_data_ptr++;
+            // Deshuffling isn't only about deshuffling the storage layout,
+            // it's also about undoing the flipping of the sign bit, which is
+            // performed on the shuffled weights.
+            uint8 deshuffled_val = shuffled_val ^ 0x80;
+            *deshuffled_data_ptr++ = deshuffled_val;
+          }
+        }
+      }
+    }
+    CHECK_EQ(shuffled_data_ptr, weights_data.data() + rows * cols);
+    // Switch this FC op to using the deshuffled weights.
+    weights_data = std::move(deshuffled_data);
+  }
+}
+
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst) {
+  if (src.minmax) {
+    dst->GetOrCreateMinMax() = src.GetMinMax();
+  }
+  if (src.quantization_params) {
+    dst->GetOrCreateQuantizationParams() = src.GetQuantizationParams();
+  }
+  dst->narrow_range = src.narrow_range;
 }
 
 }  // namespace toco

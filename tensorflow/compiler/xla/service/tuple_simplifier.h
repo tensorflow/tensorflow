@@ -25,15 +25,22 @@ namespace xla {
 
 // A pass which simplifies patterns of Tuple and GetTupleElement instructions in
 // the module.
-class TupleSimplifier : public HloPassInterface {
+class TupleSimplifier : public HloModulePass {
  public:
-  TupleSimplifier() {}
+  TupleSimplifier() : TupleSimplifier(/*exclude_entry_computation=*/false) {}
+  explicit TupleSimplifier(bool exclude_entry_computation);
   ~TupleSimplifier() override {}
-  tensorflow::StringPiece name() const override { return "tuple-simplifier"; }
+  absl::string_view name() const override { return "tuple-simplifier"; }
 
   // Run tuple simplification on the given computation. Returns whether the
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  // When set, this pipeline stage will perform optimization of all computations
+  // apart from the module's entry computation. This is used by Graphcore's
+  // backend.
+  bool exclude_entry_computation_;
 };
 
 }  // namespace xla

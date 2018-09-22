@@ -498,9 +498,10 @@ class TensorShape(object):
 
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
-  `"Foo"`. See @{$adding_an_op#shape-functions-in-c$`Shape functions in C++`}
+  `"Foo"`. See [Shape
+  functions](https://tensorflow.org/extend/adding_an_op#shape_functions_in_c)
   for details of shape functions and how to register them. Alternatively,
-  the shape may be set explicitly using @{tf.Tensor.set_shape}.
+  the shape may be set explicitly using `tf.Tensor.set_shape`.
   """
 
   def __init__(self, dims):
@@ -605,8 +606,8 @@ class TensorShape(object):
       slice.
 
     Raises:
-      ValueError: If `key` is a slice, and any of its elements are negative, or
-        if `self` is completely unknown and the step is set.
+      ValueError: If `key` is a slice and `self` is completely unknown and
+        the step is set.
     """
     if self._dims is not None:
       if isinstance(key, slice):
@@ -961,9 +962,12 @@ def unknown_shape(ndims=None):
     return TensorShape([Dimension(None)] * ndims)
 
 
+_SCALAR_SHAPE = TensorShape([])
+
+
 def scalar():
   """Returns a shape representing a scalar."""
-  return TensorShape([])
+  return _SCALAR_SHAPE
 
 
 def vector(length):

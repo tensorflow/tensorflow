@@ -49,9 +49,9 @@ Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // The default number of bytes accessed for an instruction is the sum of the
   // sizes of the inputs and outputs. The default ShapeUtil::ByteSizeOf does not
   // handle opaque types.
-  float bytes_accessed = shape_size_(hlo->shape());
+  float bytes_accessed = GetShapeSize(hlo->shape());
   for (const HloInstruction* operand : hlo->operands()) {
-    bytes_accessed += shape_size_(operand->shape());
+    bytes_accessed += GetShapeSize(operand->shape());
   }
   current_properties_[kBytesAccessedKey] = bytes_accessed;
 
@@ -121,6 +121,13 @@ Status HloCostAnalysis::HandleElementwiseOp(
   }
 }
 
+int64 HloCostAnalysis::GetShapeSize(const Shape& shape) const {
+  if (!LayoutUtil::HasLayout(shape)) {
+    return 0;
+  }
+  return shape_size_(shape);
+}
+
 Status HloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
@@ -142,23 +149,37 @@ Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleParameter(const HloInstruction*) {
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleIota(const HloInstruction*) {
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSelect(const HloInstruction*) {
+Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
+}
+
+Status HloCostAnalysis::HandleTupleSelect(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -166,15 +187,22 @@ Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
+  current_properties_[kBytesAccessedKey] = GetShapeSize(slice->shape()) * 2;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleDynamicSlice(
+    const HloInstruction* dynamic_slice) {
+  current_properties_[kBytesAccessedKey] =
+      GetShapeSize(dynamic_slice->shape()) * 2;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicUpdateSlice(const HloInstruction*) {
+Status HloCostAnalysis::HandleDynamicUpdateSlice(
+    const HloInstruction* dynamic_update_slice) {
+  current_properties_[kBytesAccessedKey] =
+      GetShapeSize(dynamic_update_slice->operand(1)->shape()) * 2;
   return Status::OK();
 }
 
@@ -183,7 +211,7 @@ Status HloCostAnalysis::HandleTuple(const HloInstruction* tuple) {
   // through them). The memory touched is then only the size of the output
   // index table of the tuple.
 
-  current_properties_[kBytesAccessedKey] = shape_size_(tuple->shape());
+  current_properties_[kBytesAccessedKey] = GetShapeSize(tuple->shape());
   return Status::OK();
 }
 
@@ -196,6 +224,14 @@ Status HloCostAnalysis::HandleConvert(const HloInstruction* convert) {
 }
 
 Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
+  // Domain does not have any computation or data transfer.
+  current_should_compute_bottleneck_time_ = false;
+  current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
@@ -230,10 +266,6 @@ Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleHostCompute(const HloInstruction*) {
-  return Status::OK();
-}
-
 Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
@@ -250,15 +282,21 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
 }
 
 Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
-  auto arg = reduce->operand(0);
   HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
 
   // Compute the cost of all elements for this Reduce operation.
-  int64 reduction_count = ShapeUtil::ElementsIn(arg->shape()) -
-                          ShapeUtil::ElementsIn(reduce->shape());
+  // This counts the number of times the reduction function is applied, so it
+  // does not need to be multiplied by the number of input tensors - that's
+  // already "priced in" by the sub-computation doing more work.
+  auto arg = reduce->operand(0);
+  auto output_shape = ShapeUtil::IsArray(reduce->shape())
+                          ? reduce->shape()
+                          : reduce->shape().tuple_shapes(0);
+  int64 reduction_count =
+      ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
     if (property.first != kBytesAccessedKey) {
       current_properties_[property.first] = property.second * reduction_count;
@@ -329,15 +367,11 @@ Status HloCostAnalysis::HandleSelectAndScatter(
 Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
   // A bitcast does no computation and touches no memory.
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleBroadcast(const HloInstruction*) {
-  return Status::OK();
-}
-
-Status HloCostAnalysis::HandleBroadcastDimOne(
-    const HloInstruction* broadcastDimOne) {
   return Status::OK();
 }
 
@@ -381,6 +415,10 @@ Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
 }
 
 Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAfterAll(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -477,8 +515,9 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
     valid_position_counts.push_back(valid_position_count);
   }
 
-  const int64 fma_count =
-      input_feature * output_feature * batch * Product(valid_position_counts);
+  const int64 fma_count = (input_feature / convolution->feature_group_count()) *
+                          output_feature * batch *
+                          Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
 }
@@ -505,13 +544,21 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
   double flops = 0.0;
-  ShapeUtil::ForEachSubshape(
-      crs->shape(), [&, this](const Shape& subshape, const ShapeIndex&) {
-        if (ShapeUtil::IsArray(subshape)) {
-          flops += ShapeUtil::ElementsIn(subshape);
-        }
-      });
+  ShapeUtil::ForEachSubshape(crs->shape(),
+                             [&](const Shape& subshape, const ShapeIndex&) {
+                               if (ShapeUtil::IsArray(subshape)) {
+                                 flops += ShapeUtil::ElementsIn(subshape);
+                               }
+                             });
   current_properties_[kFlopsKey] = flops;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
@@ -525,15 +572,9 @@ Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
 }
 
 Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
-  // Compute the properties of the fused expression and attribute them to the
-  // fusion node. Use a dummy shape_size to avoid any errors from trying to
-  // calculate the size of a shape that does not have a layout, since nodes
-  // inside fusion nodes do not necessarily have a layout assigned.
-  ShapeSizeFunction shape_size = [](const Shape& shape) { return 0; };
   TF_ASSIGN_OR_RETURN(
       current_properties_,
-      ProcessSubcomputation(fusion->fused_instructions_computation(),
-                            &shape_size));
+      ProcessSubcomputation(fusion->fused_instructions_computation()));
 
   // Fusion nodes that produce a tuple also produce the entries in the tuple.
   // Ignore the memory accessed inside fused ops, since fusion is supposed to
@@ -542,11 +583,11 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   ShapeUtil::ForEachSubshape(
       fusion->shape(),
       [this](const Shape& subshape, const ShapeIndex& /*shape_index*/) {
-        current_properties_[kBytesAccessedKey] += shape_size_(subshape);
+        current_properties_[kBytesAccessedKey] += GetShapeSize(subshape);
       });
 
   for (const HloInstruction* operand : fusion->operands()) {
-    current_properties_[kBytesAccessedKey] += shape_size_(operand->shape());
+    current_properties_[kBytesAccessedKey] += GetShapeSize(operand->shape());
   }
 
   return Status::OK();
@@ -560,11 +601,13 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction*) {
-  // We can't do anything sane with CustomCalls, since we don't know what they
-  // do, and returning an error status will stop iteration over this
-  // computation, which is probably also not what we want.  So just punt and
-  // return OK.  This will cause all of the properties to be reported as 0,
-  // which is fine.
+  // Mark applicable fields as "unknown", since we don't know what CustomCall
+  // does.  This is better than returning an error, which would stop iteration,
+  // and therefore would prevent us from getting *any* stats for a computation
+  // which contains a CustomCall.
+  current_properties_[kOptimalSecondsKey] = -1;
+  current_properties_[kBytesAccessedKey] = -1;
+  current_properties_[kFlopsKey] = -1;
   current_should_compute_bottleneck_time_ = false;
   return Status::OK();
 }
@@ -625,6 +668,11 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
+  // TODO(b/32945756): Compute the properties of the sub-computation.
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }
@@ -662,11 +710,8 @@ float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(
-    HloComputation* computation, const ShapeSizeFunction* shape_size) {
-  if (shape_size == nullptr) {
-    shape_size = &shape_size_;
-  }
-  HloCostAnalysis visitor(*shape_size, per_second_rates_);
+    HloComputation* computation) {
+  HloCostAnalysis visitor(shape_size_, per_second_rates_);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.properties();
 }

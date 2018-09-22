@@ -35,7 +35,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
   """Tests correctness of the Y = g(X) = exp(X) / sum(exp(X)) transformation."""
 
   def testBijectorVector(self):
-    with self.test_session():
+    with self.cached_session():
       softmax = SoftmaxCentered()
       self.assertEqual("softmax_centered", softmax.name)
       x = np.log([[2., 3, 4], [4., 8, 12]])
@@ -54,7 +54,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
           rtol=1e-7)
 
   def testBijectorUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       softmax = SoftmaxCentered()
       self.assertEqual("softmax_centered", softmax.name)
       x = array_ops.placeholder(shape=[2, None], dtype=dtypes.float32)
@@ -80,7 +80,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
           rtol=1e-7)
 
   def testShapeGetters(self):
-    with self.test_session():
+    with self.cached_session():
       x = tensor_shape.TensorShape([4])
       y = tensor_shape.TensorShape([5])
       bijector = SoftmaxCentered(validate_args=True)
@@ -94,7 +94,7 @@ class SoftmaxCenteredBijectorTest(test.TestCase):
                               y.as_list()).eval())
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       softmax = SoftmaxCentered()
       x = np.linspace(-50, 50, num=10).reshape(5, 2).astype(np.float32)
       # Make y values on the simplex with a wide range.

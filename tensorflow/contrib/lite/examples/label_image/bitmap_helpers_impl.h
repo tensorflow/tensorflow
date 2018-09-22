@@ -16,19 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
 #define TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_IMPL_H_
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/string_util.h"
-#include "tensorflow/contrib/lite/version.h"
-
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/string_util.h"
-#include "tensorflow/contrib/lite/version.h"
-
 #include "tensorflow/contrib/lite/examples/label_image/label_image.h"
+
+#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/kernels/register.h"
+#include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/contrib/lite/version.h"
 
 namespace tflite {
 namespace label_image {
@@ -62,8 +56,8 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
       {1, wanted_height, wanted_width, wanted_channels}, quant);
 
   ops::builtin::BuiltinOpResolver resolver;
-  TfLiteRegistration* resize_op =
-      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR);
+  const TfLiteRegistration* resize_op =
+      resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR, 1);
   auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
       malloc(sizeof(TfLiteResizeBilinearParams)));
   params->align_corners = false;
@@ -86,8 +80,7 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   interpreter->Invoke();
 
   auto output = interpreter->typed_tensor<float>(2);
-  auto output_number_of_pixels =
-      wanted_height * wanted_height * wanted_channels;
+  auto output_number_of_pixels = wanted_height * wanted_width * wanted_channels;
 
   for (int i = 0; i < output_number_of_pixels; i++) {
     if (s->input_floating)

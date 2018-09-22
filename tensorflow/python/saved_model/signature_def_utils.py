@@ -26,6 +26,8 @@ from tensorflow.python.saved_model.signature_def_utils_impl import classificatio
 from tensorflow.python.saved_model.signature_def_utils_impl import is_valid_signature
 from tensorflow.python.saved_model.signature_def_utils_impl import predict_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import regression_signature_def
+from tensorflow.python.saved_model.signature_def_utils_impl import supervised_eval_signature_def
+from tensorflow.python.saved_model.signature_def_utils_impl import supervised_train_signature_def
 # pylint: enable=unused-import
 
 del absolute_import

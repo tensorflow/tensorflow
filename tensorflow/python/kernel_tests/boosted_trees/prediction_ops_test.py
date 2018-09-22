@@ -30,7 +30,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionOnEmptyEnsemble(self):
     """Tests that prediction on a dummy ensemble does not fail."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       # Create a dummy ensemble.
       tree_ensemble = boosted_trees_ops.TreeEnsemble(
           'ensemble', serialized_proto='')
@@ -49,7 +49,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -64,7 +63,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testNoCachedPredictionButTreeExists(self):
     """Tests that predictions are updated once trees are added."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -116,7 +115,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values],
@@ -131,7 +129,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionIsCurrent(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -189,7 +187,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=4,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -204,7 +201,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromTheSameTree(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -299,7 +296,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=4,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -319,7 +315,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromPreviousTree(self):
     """Tests the predictions work when we have cache from previous trees."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -429,7 +425,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=2,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -452,7 +447,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromTheSameTreeWithPostPrunedNodes(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -562,7 +557,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=3,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -583,7 +577,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionFromThePreviousTreeWithPostPrunedNodes(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -705,7 +699,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=3,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -729,7 +722,7 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 
   def testCachedPredictionTheWholeTreeWasPruned(self):
     """Tests that prediction based on previous node in the tree works."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -782,7 +775,6 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
       # Grow tree ensemble.
       predict_op = boosted_trees_ops.training_predict(
           tree_ensemble_handle,
-          max_depth=1,
           cached_tree_ids=cached_tree_ids,
           cached_node_ids=cached_node_ids,
           bucketized_features=[feature_0_values, feature_1_values],
@@ -800,9 +792,31 @@ class TrainingPredictionOpsTest(test_util.TensorFlowTestCase):
 class PredictionOpsTest(test_util.TensorFlowTestCase):
   """Tests prediction ops for inference."""
 
+  def testPredictionOnEmptyEnsemble(self):
+    """Tests that prediction on a empty ensemble does not fail."""
+    with self.cached_session() as session:
+      # Create an empty ensemble.
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto='')
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [36, 32]
+      feature_1_values = [11, 27]
+      expected_logits = [[0.0], [0.0]]
+
+      # Prediction should work fine.
+      predict_op = boosted_trees_ops.predict(
+          tree_ensemble_handle,
+          bucketized_features=[feature_0_values, feature_1_values],
+          logits_dimension=1)
+
+      logits = session.run(predict_op)
+      self.assertAllClose(expected_logits, logits)
+
   def testPredictionMultipleTree(self):
     """Tests the predictions work when we have multiple trees."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge("""
         trees {
@@ -896,30 +910,321 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       feature_1_values = [11, 27]
 
       # Example 1: tree 0: 1.14, tree 1: 5.0, tree 2: 5.0 = >
-      #            logit = 0.1*5.0+0.2*5.0+1*5
+      #            logit = 0.1*1.14+0.2*5.0+1*5
       # Example 2: tree 0: 1.14, tree 1: 7.0, tree 2: -7 = >
       #            logit= 0.1*1.14+0.2*7.0-1*7.0
       expected_logits = [[6.114], [-5.486]]
 
-      # Do with parallelization, e.g. EVAL
+      # Prediction should work fine.
       predict_op = boosted_trees_ops.predict(
           tree_ensemble_handle,
           bucketized_features=[feature_0_values, feature_1_values],
-          logits_dimension=1,
-          max_depth=2)
+          logits_dimension=1)
 
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)
 
-      # Do without parallelization, e.g. INFER - the result is the same
-      predict_op = boosted_trees_ops.predict(
-          tree_ensemble_handle,
-          bucketized_features=[feature_0_values, feature_1_values],
-          logits_dimension=1,
-          max_depth=2)
 
-      logits = session.run(predict_op)
-      self.assertAllClose(expected_logits, logits)
+class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
+  """Tests feature contribs ops for model understanding."""
+
+  def testContribsForOnlyABiasNode(self):
+    """Tests case when, after training, only left with a bias node.
+
+    For example, this could happen if the final ensemble contains one tree that
+    got pruned up to the root.
+    """
+    with self.test_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            leaf {
+              scalar: 1.72
+            }
+          }
+        }
+        tree_weights: 0.1
+        tree_metadata: {
+          num_layers_grown: 0
+        }
+      """, tree_ensemble_config)
+
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      # All features are unused.
+      feature_0_values = [36, 32]
+      feature_1_values = [13, -29]
+      feature_2_values = [11, 27]
+
+      # Expected logits are computed by traversing the logit path and
+      # subtracting child logits from parent logits.
+      bias = 1.72 * 0.1  # Root node of tree_0.
+      expected_feature_ids = ((), ())
+      expected_logits_paths = ((bias,), (bias,))
+
+      bucketized_features = [
+          feature_0_values, feature_1_values, feature_2_values
+      ]
+
+      debug_op = boosted_trees_ops.example_debug_outputs(
+          tree_ensemble_handle,
+          bucketized_features=bucketized_features,
+          logits_dimension=1)
+
+      serialized_examples_debug_outputs = session.run(debug_op)
+      feature_ids = []
+      logits_paths = []
+      for example in serialized_examples_debug_outputs:
+        example_debug_outputs = boosted_trees_pb2.DebugOutput()
+        example_debug_outputs.ParseFromString(example)
+        feature_ids.append(example_debug_outputs.feature_ids)
+        logits_paths.append(example_debug_outputs.logits_path)
+
+      self.assertAllClose(feature_ids, expected_feature_ids)
+      self.assertAllClose(logits_paths, expected_logits_paths)
+
+  def testContribsMultipleTreeWhenFirstTreeIsABiasNode(self):
+    """Tests case when, after training, first tree contains only a bias node."""
+    with self.test_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            leaf {
+              scalar: 1.72
+            }
+          }
+        }
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 2
+              threshold: 26
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 50
+              left_id: 3
+              right_id: 4
+            }
+            metadata {
+              original_leaf: {scalar: 5.5}
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 6.0
+            }
+          }
+        }
+        tree_weights: 1.
+        tree_weights: 0.1
+        tree_metadata: {
+          num_layers_grown: 0
+        }
+        tree_metadata: {
+          num_layers_grown: 1
+        }
+      """, tree_ensemble_config)
+
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [36, 32]
+      feature_1_values = [13, -29]  # Unused feature.
+      feature_2_values = [11, 27]
+
+      # Expected logits are computed by traversing the logit path and
+      # subtracting child logits from parent logits.
+      expected_feature_ids = ((2, 0), (2,))
+      # bias = 1.72 * 1.  # Root node of tree_0.
+      # example_0 :  (bias, 0.1 * 5.5 + bias, 0.1 * 5. + bias)
+      # example_1 :  (bias, 0.1 * 7. + bias )
+      expected_logits_paths = ((1.72, 2.27, 2.22), (1.72, 2.42))
+
+      bucketized_features = [
+          feature_0_values, feature_1_values, feature_2_values
+      ]
+
+      debug_op = boosted_trees_ops.example_debug_outputs(
+          tree_ensemble_handle,
+          bucketized_features=bucketized_features,
+          logits_dimension=1)
+
+      serialized_examples_debug_outputs = session.run(debug_op)
+      feature_ids = []
+      logits_paths = []
+      for example in serialized_examples_debug_outputs:
+        example_debug_outputs = boosted_trees_pb2.DebugOutput()
+        example_debug_outputs.ParseFromString(example)
+        feature_ids.append(example_debug_outputs.feature_ids)
+        logits_paths.append(example_debug_outputs.logits_path)
+
+      self.assertAllClose(feature_ids, expected_feature_ids)
+      self.assertAllClose(logits_paths, expected_logits_paths)
+
+  def testContribsMultipleTree(self):
+    """Tests that the contribs work when we have multiple trees."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 2
+              threshold: 28
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+              original_leaf: {scalar: 2.1}
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 1.14
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 8.79
+            }
+          }
+        }
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 2
+              threshold: 26
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 50
+              left_id: 3
+              right_id: 4
+            }
+            metadata {
+              original_leaf: {scalar: 5.5}
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 7.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 5.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 6.0
+            }
+          }
+        }
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 34
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            leaf {
+              scalar: -7.0
+            }
+          }
+          nodes {
+            leaf {
+              scalar: 5.0
+            }
+          }
+        }
+        tree_weights: 0.1
+        tree_weights: 0.2
+        tree_weights: 1.0
+        tree_metadata: {
+          num_layers_grown: 1
+        }
+        tree_metadata: {
+          num_layers_grown: 2
+        }
+        tree_metadata: {
+          num_layers_grown: 1
+        }
+      """, tree_ensemble_config)
+
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [36, 32]
+      feature_1_values = [13, -29]  # Unused. Feature is not in above ensemble.
+      feature_2_values = [11, 27]
+
+      # Expected logits are computed by traversing the logit path and
+      # subtracting child logits from parent logits.
+      bias = 2.1 * 0.1  # Root node of tree_0.
+      expected_feature_ids = ((2, 2, 0, 0), (2, 2, 0))
+      # example_0 :  (bias, 0.1 * 1.14, 0.2 * 5.5 + .114, 0.2 * 5. + .114,
+      # 1.0 * 5.0 + 0.2 * 5. + .114)
+      # example_1 :  (bias, 0.1 * 1.14, 0.2 * 7 + .114,
+      # 1.0 * -7. + 0.2 * 7 + .114)
+      expected_logits_paths = ((bias, 0.114, 1.214, 1.114, 6.114),
+                               (bias, 0.114, 1.514, -5.486))
+
+      bucketized_features = [
+          feature_0_values, feature_1_values, feature_2_values
+      ]
+
+      debug_op = boosted_trees_ops.example_debug_outputs(
+          tree_ensemble_handle,
+          bucketized_features=bucketized_features,
+          logits_dimension=1)
+
+      serialized_examples_debug_outputs = session.run(debug_op)
+      feature_ids = []
+      logits_paths = []
+      for example in serialized_examples_debug_outputs:
+        example_debug_outputs = boosted_trees_pb2.DebugOutput()
+        example_debug_outputs.ParseFromString(example)
+        feature_ids.append(example_debug_outputs.feature_ids)
+        logits_paths.append(example_debug_outputs.logits_path)
+
+      self.assertAllClose(feature_ids, expected_feature_ids)
+      self.assertAllClose(logits_paths, expected_logits_paths)
 
 
 if __name__ == '__main__':

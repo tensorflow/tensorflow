@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -36,6 +37,31 @@ REGISTER_OP("RegexReplace")
       c->set_output(0, c->input(0));
       return Status::OK();
     });
+
+REGISTER_OP("StaticRegexReplace")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Attr("rewrite: string")
+    .Output("output: string")
+    .Attr("replace_global: bool = true")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("RegexFullMatch")
+    .Input("input: string")
+    .Input("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    });
+
+REGISTER_OP("StaticRegexFullMatch")
+    .Input("input: string")
+    .Attr("pattern: string")
+    .Output("output: bool")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("StringToHashBucketFast")
     .Input("input: string")
@@ -67,13 +93,41 @@ REGISTER_OP("ReduceJoin")
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {int32, int64, complex64, float, double, bool, int8}")
+    .Attr(
+        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
+        "bool}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
     .Attr("width: int = -1")
     .Attr("fill: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringFormat")
+    .Input("inputs: T")
+    .Output("output: string")
+    .Attr("T: list(type) >= 0")
+    .Attr("template: string = '%s'")
+    .Attr("placeholder: string = '%s'")
+    .Attr("summarize: int = 3")
+    .SetShapeFn([](InferenceContext* c) {
+      string template_;
+      string placeholder;
+      TF_RETURN_IF_ERROR(c->GetAttr("template", &template_));
+      TF_RETURN_IF_ERROR(c->GetAttr("placeholder", &placeholder));
+
+      std::vector<std::string> split_template;
+      split_template = absl::StrSplit(template_, placeholder);
+      int64 num_placeholders = split_template.size() - 1;
+      if (c->num_inputs() != num_placeholders) {
+        return errors::InvalidArgument(strings::StrCat(
+            "num placeholders in template and num inputs must match: ",
+            num_placeholders, " vs. ", c->num_inputs()));
+      }
+
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("StringJoin")
     .Input("inputs: N * string")
@@ -122,6 +176,34 @@ REGISTER_OP("StringSplit")
       c->set_output(2, c->Vector(2));
       return Status::OK();
     });
+
+REGISTER_OP("StringSplitV2")
+    .Input("input: string")
+    .Input("sep: string")
+    .Output("indices: int64")
+    .Output("values: string")
+    .Output("shape: int64")
+    .Attr("maxsplit: int = -1")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
+REGISTER_OP("StringStrip")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringLength")
+    .Input("input: string")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")
     .Input("input: string")

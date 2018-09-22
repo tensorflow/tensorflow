@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "IteratorGetNextAsOptional"
+  summary: "Gets the next output from the given iterator as an Optional variant."
+}

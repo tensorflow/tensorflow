@@ -67,7 +67,7 @@ TEST(GrpcProto, Unparse) {
   proto.add_container("hello");
   proto.add_container("world");
   grpc::ByteBuffer buf;
-  GrpcMaybeUnparseProto(proto, &buf);
+  ASSERT_TRUE(GrpcMaybeUnparseProto(proto, &buf).ok());
   CleanupAllRequest parsed;
   ASSERT_TRUE(parsed.ParseFromString(ToString(buf)));
   ASSERT_EQ(proto.DebugString(), parsed.DebugString());
@@ -80,7 +80,7 @@ TEST(GrpcProto, UnparseToString) {
   string str;
   CHECK(proto.SerializeToString(&str));
   grpc::ByteBuffer buf;
-  GrpcMaybeUnparseProto(str, &buf);
+  ASSERT_TRUE(GrpcMaybeUnparseProto(str, &buf).ok());
   CleanupAllRequest parsed;
   ASSERT_TRUE(parsed.ParseFromString(ToString(buf)));
   ASSERT_EQ(proto.DebugString(), parsed.DebugString());
@@ -103,7 +103,7 @@ TEST(GrpcProto, Parse) {
     CleanupAllRequest proto = MakeProto(c.length);
     ::grpc::ByteBuffer src = MakeBuffer(proto.SerializeAsString(), c.slices);
     CleanupAllRequest parsed;
-    ASSERT_TRUE(GrpcMaybeParseProto(src, &parsed))
+    ASSERT_TRUE(GrpcMaybeParseProto(&src, &parsed))
         << c.length << " " << c.slices;
     ASSERT_EQ(proto.DebugString(), parsed.DebugString());
   }
@@ -127,7 +127,7 @@ TEST(GrpcProto, ParseFromString) {
     ::grpc::ByteBuffer src = MakeBuffer(proto.SerializeAsString(), c.slices);
     string parsed_str;
     CleanupAllRequest parsed;
-    ASSERT_TRUE(GrpcMaybeParseProto(src, &parsed_str))
+    ASSERT_TRUE(GrpcMaybeParseProto(&src, &parsed_str))
         << c.length << " " << c.slices;
     ASSERT_TRUE(parsed.ParseFromString(parsed_str));
     ASSERT_EQ(proto.DebugString(), parsed.DebugString());
@@ -140,7 +140,7 @@ static void BM_UnparseGrpc(int iters, int size) {
   testing::StartTiming();
   for (int i = 0; i < iters; i++) {
     grpc::ByteBuffer buf;
-    GrpcMaybeUnparseProto(proto, &buf);
+    CHECK(GrpcMaybeUnparseProto(proto, &buf).ok());
   }
   testing::StopTiming();
 }
@@ -167,7 +167,7 @@ static void BM_ParseGrpc(int iters, int size, int num_slices) {
   testing::StartTiming();
 
   for (int i = 0; i < iters; i++) {
-    CHECK(GrpcMaybeParseProto(buf, &proto));
+    CHECK(GrpcMaybeParseProto(&buf, &proto));
   }
 
   testing::StopTiming();

@@ -1,6 +1,10 @@
 TensorFlow CMake build
 ======================
 
+CMAKE build is deprecated for TensorFlow. Please use `bazel` to build TF for all
+platforms. For details, see the
+[TensorFlow install guide](https://www.tensorflow.org/install/).
+
 This directory contains CMake files for building TensorFlow on Microsoft
 Windows. [CMake](https://cmake.org) is a cross-platform tool that can
 generate build scripts for multiple build systems, including Microsoft
@@ -13,7 +17,7 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/source_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations
@@ -128,6 +132,18 @@ Step-by-step Windows build
      D:\local\cuda\bin
      ```
 
+   * When building with MKL support after installing [MKL](https://software.intel.com/en-us/mkl) from INTEL, append its bin directories to your PATH environment variable.
+
+     In case TensorFlow fails to find the MKL dll's during initialization, check your PATH environment variable.
+     It should contain the directory of the MKL dlls. For example:
+
+     ```
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\mkl
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\compiler
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\tbb\vc_mt
+     ```
+
+
    * We assume that `cmake` and `git` are installed and in your `%PATH%`. If
      for example `cmake` is not in your path and it is installed in
      `C:\Program Files (x86)\CMake\bin\cmake.exe`, you can add this directory
@@ -166,7 +182,15 @@ Step-by-step Windows build
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
+   To build with MKL support add "^" at the end of the last line above following with:
+
+   ```
+   More? -Dtensorflow_ENABLE_MKL_SUPPORT=ON ^
+   More? -DMKL_HOME="D:\...\compilers_and_libraries"
+   ```
+
    To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
+
    ```
    More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
    ```
@@ -226,6 +250,7 @@ Step-by-step Windows build
      ```
      ctest -C RelWithDebInfo
      ```
+
    * `-Dtensorflow_BUILD_MORE_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python tests on
      serveral major packages. This option is only valid if this and tensorflow_BUILD_PYTHON_TESTS are both set as `ON`.
      After building the python wheel, you need to install the new wheel before running the tests.
@@ -233,6 +258,12 @@ Step-by-step Windows build
      ```
      ctest -C RelWithDebInfo
      ```
+
+   * `-Dtensorflow_ENABLE_MKL_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include MKL support. If MKL is enabled you need to install the [Intel Math Kernal Library](https://software.intel.com/en-us/mkl).
+     CMake will expect the location of MKL in -MKL_HOME=path_you_install_mkl.
+
+   * `-Dtensorflow_ENABLE_MKLDNN_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include MKL DNN support. MKL DNN is [Intel(R) Math Kernel Library for Deep Neural Networks (Intel(R) MKL-DNN)](https://github.com/intel/mkl-dnn). You have to add `-Dtensorflow_ENABLE_MKL_SUPPORT=ON` before including MKL DNN support.
+
 
 4. Invoke MSBuild to build TensorFlow.
 
@@ -250,6 +281,7 @@ Step-by-step Windows build
    ```
    D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
    ```
+
 
 Linux Continuous Integration build
 ==================================

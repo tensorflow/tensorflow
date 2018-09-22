@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -232,6 +232,11 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
         "Bad audio format for WAV: Expected 1 (PCM), but got", audio_format);
   }
   TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, channel_count, &offset));
+  if (*channel_count < 1) {
+    return errors::InvalidArgument(
+        "Bad number of channels for WAV: Expected at least 1, but got ",
+        *channel_count);
+  }
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, sample_rate, &offset));
   uint32 bytes_per_second;
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &bytes_per_second, &offset));
@@ -285,6 +290,12 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
       was_data_found = true;
       *sample_count = chunk_size / bytes_per_sample;
       const uint32 data_count = *sample_count * *channel_count;
+      int unused_new_offset = 0;
+      // Validate that the data exists before allocating space for it
+      // (prevent easy OOM errors).
+      TF_RETURN_IF_ERROR(IncrementOffset(offset, sizeof(int16) * data_count,
+                                         wav_string.size(),
+                                         &unused_new_offset));
       float_values->resize(data_count);
       for (int i = 0; i < data_count; ++i) {
         int16 single_channel_value = 0;

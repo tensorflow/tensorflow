@@ -208,9 +208,9 @@ def _reroute_ts(ts0, ts1, mode, can_modify=None, cannot_modify=None):
 def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   """For each tensor's pair, swap the end of (t0,t1).
 
-  B0 B1     B0 B1
-  |  |    =>  X
-  A0 A1     A0 A1
+      B0 B1     B0 B1
+      |  |    =>  X
+      A0 A1     A0 A1
 
   Args:
     ts0: an object convertible to a list of `tf.Tensor`.
@@ -233,9 +233,9 @@ def swap_ts(ts0, ts1, can_modify=None, cannot_modify=None):
 def reroute_ts(ts0, ts1, can_modify=None, cannot_modify=None):
   """For each tensor's pair, replace the end of t1 by the end of t0.
 
-  B0 B1     B0 B1
-  |  |    => |/
-  A0 A1     A0 A1
+      B0 B1     B0 B1
+      |  |    => |/
+      A0 A1     A0 A1
 
   The end of the tensors in ts1 are left dangling.
 

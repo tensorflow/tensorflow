@@ -1,0 +1,144 @@
+path: "tensorflow.summary.Summary"
+tf_proto {
+  descriptor {
+    name: "Summary"
+    field {
+      name: "value"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Summary.Value"
+    }
+    nested_type {
+      name: "Image"
+      field {
+        name: "height"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "width"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "colorspace"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "encoded_image_string"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_BYTES
+      }
+    }
+    nested_type {
+      name: "Audio"
+      field {
+        name: "sample_rate"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_FLOAT
+      }
+      field {
+        name: "num_channels"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_INT64
+      }
+      field {
+        name: "length_frames"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_INT64
+      }
+      field {
+        name: "encoded_audio_string"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_BYTES
+      }
+      field {
+        name: "content_type"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+    }
+    nested_type {
+      name: "Value"
+      field {
+        name: "node_name"
+        number: 7
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "tag"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "metadata"
+        number: 9
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.SummaryMetadata"
+      }
+      field {
+        name: "simple_value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_FLOAT
+        oneof_index: 0
+      }
+      field {
+        name: "obsolete_old_style_histogram"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_BYTES
+        oneof_index: 0
+      }
+      field {
+        name: "image"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.Summary.Image"
+        oneof_index: 0
+      }
+      field {
+        name: "histo"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.HistogramProto"
+        oneof_index: 0
+      }
+      field {
+        name: "audio"
+        number: 6
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.Summary.Audio"
+        oneof_index: 0
+      }
+      field {
+        name: "tensor"
+        number: 8
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.TensorProto"
+        oneof_index: 0
+      }
+      oneof_decl {
+        name: "value"
+      }
+    }
+  }
+}

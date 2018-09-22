@@ -12,10 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
-#define TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
 
+#include <functional>
+#include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -56,7 +60,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // Used to complete/verify CollGroup.
   struct GroupRec {
     CollGroupParams group;
-    mutex mu;
+    mutable mutex mu;
     Status status GUARDED_BY(mu);
     std::set<string> device_set GUARDED_BY(mu);
     std::vector<string> device_list GUARDED_BY(mu);
@@ -71,13 +75,15 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // calling done.  Callback GroupRec* arg is only valid if status is ok.
   // Ownership of GroupRec stays with this object and does not pass to the
   // callback.
-  typedef std::function<void(const Status& s, GroupRec* gr)> GroupRecCallback;
+  typedef std::function<void(const Status& s, const GroupRec* gr)>
+      GroupRecCallback;
   void CompleteGroupLocal(const string& device, CollectiveParams* cp,
                           const GroupRecCallback& done)
       LOCKS_EXCLUDED(group_mu_);
 
   // Used to complete/verify CollInstance.
   struct InstanceRec;
+
   typedef std::function<void(InstanceRec*)> IRConsumer;
   struct InstanceRec {
     // This structure has two mutexes so that a possibly long
@@ -87,7 +93,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     // permit mutex locks to be taken in more than one order.
     //
     // out_mu guards access to most of the fields.
-    // in_mu guards access to a queue of comsumer callbacks wanting to
+    // in_mu guards access to a queue of consumer callbacks wanting to
     // read the fields guarded by out_mu.
     //
     // The in_mu should be locked only while holding instance_mu_; the
@@ -108,8 +114,12 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     bool is_init GUARDED_BY(in_mu);
     std::vector<IRConsumer> init_waiters GUARDED_BY(in_mu);
 
-    // Values to be shared by all instances, constant after initialization.
+    // A thread that wishes to acquire out_mu must ensure that it is available
+    // by invoking WaitForOutMu().
     mutex out_mu;
+    condition_variable out_cv;
+    bool out_mu_available GUARDED_BY(out_mu);
+    // Values to be shared by all instances, constant after initialization.
     CollectiveParams shared GUARDED_BY(out_mu);
     // If an error occurs during initialization this structure stays in
     // the table with a non-OK status.  Purging the table and restarting
@@ -123,7 +133,15 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     std::vector<bool> known GUARDED_BY(out_mu);
     std::vector<IRConsumer> known_waiters GUARDED_BY(out_mu);
 
-    InstanceRec() : is_init(false), source_rank(-1), known_count(0) {}
+    InstanceRec()
+        : is_init(false),
+          out_mu_available(true),
+          source_rank(-1),
+          known_count(0) {}
+
+    // If out_mu is unavailable during distributed device locality
+    // initialization, wait on out_cv until it is available again.
+    void WaitForOutMu(mutex_lock& lock) EXCLUSIVE_LOCKS_REQUIRED(out_mu);
   };
 
   // Find the InstanceRec with the same instance_key as cp.  If it doesn't
@@ -135,7 +153,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // with this object and does not pass to the callback.
   typedef std::function<void(const Status& s, InstanceRec* ir)>
       InstanceRecCallback;
-  void FindInstanceRec(GroupRec* gr, CollectiveParams* cp,
+  void FindInstanceRec(const GroupRec* gr, CollectiveParams* cp,
                        const InstanceRecCallback& done)
       LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
@@ -144,27 +162,33 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   //
   // Preconditions:
   //  cp is populated with all DeviceLocalities
-  Status InitInstanceSharedParams(GroupRec* gr, const CollectiveParams* cp,
-                                  InstanceRec* ir)
-      EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu) LOCKS_EXCLUDED(gr->mu);
+  void InitInstanceSharedParams(const GroupRec* gr, const CollectiveParams* cp,
+                                InstanceRec* ir, const StatusCallback& done)
+      UNLOCK_FUNCTION(ir->out_mu) LOCKS_EXCLUDED(gr->mu);
+
+  void CallInitInstanceSharedParams(const GroupRec* gr,
+                                    const CollectiveParams* cp, InstanceRec* ir,
+                                    const InstanceRecCallback& done)
+      LOCKS_EXCLUDED(ir->out_mu, gr->mu);
 
   // Establishes the final order of ir->shared.instance.device_names and
   // ir->shared.instance.task_names by considering localities of all devices.
-  void CompleteDefaultRanking(GroupRec* gr, const CollectiveParams* cp,
+  void CompleteDefaultRanking(const GroupRec* gr, const CollectiveParams* cp,
                               InstanceRec* ir,
                               const std::vector<DeviceLocality>& localities)
       EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu);
 
   // Finish populating *cp.
   // Precondition: *gr has been fully populated by CompleteGroupLocal.
-  void CompleteInstanceLocal(const string& device, GroupRec* gr,
+  void CompleteInstanceLocal(const string& device, const GroupRec* gr,
                              CollectiveParams* cp, bool is_source,
                              const StatusCallback& done)
       LOCKS_EXCLUDED(instance_mu_, gr->mu, group_mu_);
 
   // Finish populating *cp from fully initialized *ir.
   // Precondition: *gr and *ir are fully populated.
-  void CompleteInstanceFromInitializedIRec(const string& device, GroupRec* gr,
+  void CompleteInstanceFromInitializedIRec(const string& device,
+                                           const GroupRec* gr,
                                            CollectiveParams* cp,
                                            InstanceRec* ir, bool is_source,
                                            const StatusCallback& done)
@@ -194,7 +218,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
       LOCKS_EXCLUDED(irec->out_mu);
 
   const DeviceMgr* dev_mgr_;
-  DeviceResolverInterface* dev_resolver_;
+  DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
   mutex group_mu_;
   gtl::FlatMap<int32, std::unique_ptr<GroupRec>> group_table_
@@ -206,4 +230,4 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_

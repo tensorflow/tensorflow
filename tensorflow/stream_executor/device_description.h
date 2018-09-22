@@ -22,13 +22,11 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
-
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
@@ -360,9 +358,8 @@ class DeviceDescriptionBuilder {
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim);
 
-// [deprecated] Use MathUtil::CeilOfRatio directly instead.
-//
 // Equivalent to ceil(double(element_count) / threads_per_block).
+ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
 uint64 DivideCeil(uint64 x, uint64 y);
 
 // Calculate the number of threads/blocks required to process element_count
@@ -388,7 +385,6 @@ uint64 CalculateRegisterLimitForTargetOccupancy(
     const DeviceDescription &device_description, uint64 shared_memory_per_block,
     const ThreadDim &thread_dims, uint64 target_blocks_per_core);
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_

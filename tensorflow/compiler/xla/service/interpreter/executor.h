@@ -22,9 +22,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_description.h"
@@ -44,11 +44,10 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/timer.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace interpreter {
 
-using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
+using Args = absl::Span<const DeviceMemoryBase>;
 
 class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  public:
@@ -105,7 +104,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
-  bool SynchronizeAllActivity() override { return false; }
+  bool SynchronizeAllActivity() override { return true; }
   bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override {
     return false;
   }
@@ -213,7 +212,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace interpreter
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_

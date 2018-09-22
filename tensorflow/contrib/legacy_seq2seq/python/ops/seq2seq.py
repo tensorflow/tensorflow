@@ -625,11 +625,13 @@ def attention_decoder(decoder_inputs,
     v = []
     attention_vec_size = attn_size  # Size of query vectors for attention.
     for a in xrange(num_heads):
-      k = variable_scope.get_variable("AttnW_%d" % a,
-                                      [1, 1, attn_size, attention_vec_size])
+      k = variable_scope.get_variable(
+          "AttnW_%d" % a, [1, 1, attn_size, attention_vec_size],
+          dtype=dtype)
       hidden_features.append(nn_ops.conv2d(hidden, k, [1, 1, 1, 1], "SAME"))
       v.append(
-          variable_scope.get_variable("AttnV_%d" % a, [attention_vec_size]))
+          variable_scope.get_variable(
+              "AttnV_%d" % a, [attention_vec_size], dtype=dtype))
 
     state = initial_state
 
@@ -647,11 +649,13 @@ def attention_decoder(decoder_inputs,
         with variable_scope.variable_scope("Attention_%d" % a):
           y = Linear(query, attention_vec_size, True)(query)
           y = array_ops.reshape(y, [-1, 1, 1, attention_vec_size])
+          y = math_ops.cast(y, dtype)
           # Attention mask is a softmax of v^T * tanh(...).
           s = math_ops.reduce_sum(v[a] * math_ops.tanh(hidden_features[a] + y),
                                   [2, 3])
-          a = nn_ops.softmax(s)
+          a = nn_ops.softmax(math_ops.cast(s, dtype=dtypes.float32))
           # Now calculate the attention-weighted vector d.
+          a = math_ops.cast(a, dtype)
           d = math_ops.reduce_sum(
               array_ops.reshape(a, [-1, attn_length, 1, 1]) * hidden, [1, 2])
           ds.append(array_ops.reshape(d, [-1, attn_size]))
@@ -681,6 +685,7 @@ def attention_decoder(decoder_inputs,
         raise ValueError("Could not infer input size from input: %s" % inp.name)
 
       inputs = [inp] + attns
+      inputs = [math_ops.cast(e, dtype) for e in inputs]
       x = Linear(inputs, input_size, True)(inputs)
       # Run the RNN.
       cell_output, state = cell(x, state)
@@ -693,6 +698,7 @@ def attention_decoder(decoder_inputs,
         attns = attention(state)
 
       with variable_scope.variable_scope("AttnOutputProjection"):
+        cell_output = math_ops.cast(cell_output, dtype)
         inputs = [cell_output] + attns
         output = Linear(inputs, output_size, True)(inputs)
       if loop_function is not None:

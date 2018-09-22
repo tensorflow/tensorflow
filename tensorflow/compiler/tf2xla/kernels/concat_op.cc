@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,6 +36,16 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+// Used to determine the number of Tensors allowed in a Concat op to prevent
+// going over the max gpu parameter memory size. This is an issue because concat
+// is variadic and can have an unlimited number of arguments when called.
+// Concat ops with more Tensors than this will be split into multiple concat
+// ops.
+//
+// TODO(b/112613927): Remove the logic here and put it properly in an HLO pass
+// along with boxing large numbers of parameters.
+constexpr int64 kMaxConcatArgsPerOp = 500;
 
 // --------------------------------------------------------------------------
 class ConcatBaseOp : public XlaOpKernel {
@@ -54,7 +65,7 @@ class ConcatBaseOp : public XlaOpKernel {
     // TODO(annarev): add a helper to support int64 input.
     const int32 concat_dim = literal.Get<int>({});
 
-    std::vector<xla::ComputationDataHandle> values;
+    std::vector<xla::XlaOp> values;
     std::vector<TensorShape> shapes;
     OP_REQUIRES_OK(ctx, ctx->InputList("values", &values, &shapes));
     const int N = values.size();
@@ -70,13 +81,14 @@ class ConcatBaseOp : public XlaOpKernel {
                     "[",
                     -input_dims, ", ", input_dims, "), but got ", concat_dim));
 
-    // Make a vector holding the ComputationDataHandles for each of
-    // the inputs that has non-zero elements.
-    std::vector<xla::ComputationDataHandle> input_data;
+    // Make a vector holding the XlaOp for each of the inputs that has non-zero
+    // elements.
+    std::vector<xla::XlaOp> input_data;
+    std::vector<xla::XlaOp> partial_concats;
     int output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      xla::ComputationDataHandle handle = values[i];
+      xla::XlaOp handle = values[i];
       const TensorShape& in_shape = shapes[i];
       const bool in_is_scalar = IsLegacyScalar(in_shape);
       OP_REQUIRES(
@@ -88,15 +100,35 @@ class ConcatBaseOp : public XlaOpKernel {
               "] = ", in_shape.DebugString()));
       if (in_shape.dims() == 0) {
         // Inputs that come in as scalars must be reshaped to 1-vectors.
-        input_data.push_back(ctx->builder()->Reshape(handle, {1}));
+        input_data.push_back(xla::Reshape(handle, {1}));
       } else {
         input_data.push_back(handle);
       }
       output_concat_dim += in_shape.dims() > 0 ? in_shape.dim_size(axis) : 1;
+
+      // Concat is associative, so it can be split into many operations when too
+      // many arguments are in a single op. This is a temporary workaround for
+      // b/112613927 where too many parameters in an XlaLaunchOp later result in
+      // too many parameters to a single GPU kernel.
+      if (i && i % kMaxConcatArgsPerOp == 0) {
+        partial_concats.push_back(
+            xla::ConcatInDim(ctx->builder(), input_data, axis));
+        input_data.clear();
+      }
     }
+    // Add any inputs that have not been put into another concat yet.
+    partial_concats.insert(partial_concats.end(), input_data.begin(),
+                           input_data.end());
 
     VLOG(1) << "Concat dim " << concat_dim << " equivalent to " << axis;
-    ctx->SetOutput(0, ctx->builder()->ConcatInDim(input_data, axis));
+    // Don't add an additional "identity" concatenate for better readibility of
+    // IR.
+    if (partial_concats.size() == 1) {
+      ctx->SetOutput(0, partial_concats.front());
+    } else {
+      ctx->SetOutput(0,
+                     xla::ConcatInDim(ctx->builder(), partial_concats, axis));
+    }
   }
 
  private:

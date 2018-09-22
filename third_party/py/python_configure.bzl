@@ -6,6 +6,7 @@
   * `PYTHON_LIB_PATH`: Location of python libraries.
 """
 
+_BAZEL_SH = "BAZEL_SH"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
 _TF_PYTHON_CONFIG_REPO = "TF_PYTHON_CONFIG_REPO"
@@ -152,6 +153,22 @@ def _get_python_bin(repository_ctx):
             _PYTHON_BIN_PATH, repository_ctx.os.environ.get("PATH", "")))
 
 
+def _get_bash_bin(repository_ctx):
+  """Gets the bash bin path."""
+  bash_bin = repository_ctx.os.environ.get(_BAZEL_SH)
+  if bash_bin != None:
+    return bash_bin
+  else:
+    bash_bin_path = repository_ctx.which("bash")
+    if bash_bin_path != None:
+      return str(bash_bin_path)
+    else:
+      _fail("Cannot find bash in PATH, please make sure " +
+            "bash is installed and add its directory in PATH, or --define " +
+            "%s='/path/to/bash'.\nPATH=%s" % (
+                _BAZEL_SH, repository_ctx.os.environ.get("PATH", "")))
+
+
 def _get_python_lib(repository_ctx, python_bin):
   """Gets the python lib path."""
   python_lib = repository_ctx.os.environ.get(_PYTHON_LIB_PATH)
@@ -184,14 +201,14 @@ def _get_python_lib(repository_ctx, python_bin):
       "  print(paths[0])\n" +
       "END")
   cmd = '%s - %s' % (python_bin, print_lib)
-  result = repository_ctx.execute(["bash", "-c", cmd])
+  result = repository_ctx.execute([_get_bash_bin(repository_ctx), "-c", cmd])
   return result.stdout.strip('\n')
 
 
 def _check_python_lib(repository_ctx, python_lib):
   """Checks the python lib path."""
   cmd = 'test -d "%s" -a -x "%s"' % (python_lib, python_lib)
-  result = repository_ctx.execute(["bash", "-c", cmd])
+  result = repository_ctx.execute([_get_bash_bin(repository_ctx), "-c", cmd])
   if result.return_code == 1:
     _fail("Invalid python library path: %s" % python_lib)
 
@@ -199,7 +216,7 @@ def _check_python_lib(repository_ctx, python_lib):
 def _check_python_bin(repository_ctx, python_bin):
   """Checks the python bin path."""
   cmd =  '[[ -x "%s" ]] && [[ ! -d "%s" ]]' % (python_bin, python_bin)
-  result = repository_ctx.execute(["bash", "-c", cmd])
+  result = repository_ctx.execute([_get_bash_bin(repository_ctx), "-c", cmd])
   if result.return_code == 1:
     _fail("--define %s='%s' is not executable. Is it the python binary?" % (
         _PYTHON_BIN_PATH, python_bin))
@@ -294,6 +311,7 @@ def _python_autoconf_impl(repository_ctx):
 python_configure = repository_rule(
     implementation = _python_autoconf_impl,
     environ = [
+        _BAZEL_SH,
         _PYTHON_BIN_PATH,
         _PYTHON_LIB_PATH,
         _TF_PYTHON_CONFIG_REPO,

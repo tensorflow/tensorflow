@@ -31,14 +31,14 @@ class AffineScalarBijectorTest(test.TestCase):
   """Tests correctness of the Y = scale @ x + shift transformation."""
 
   def testProperties(self):
-    with self.test_session():
+    with self.cached_session():
       mu = -1.
       # scale corresponds to 1.
       bijector = AffineScalar(shift=mu)
       self.assertEqual("affine_scalar", bijector.name)
 
   def testNoBatchScalar(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def static_run(fun, x, **kwargs):
         return fun(x, **kwargs).eval()
@@ -60,7 +60,7 @@ class AffineScalarBijectorTest(test.TestCase):
             run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testOneBatchScalarViaIdentityIn64BitUserProvidesShiftOnly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def static_run(fun, x, **kwargs):
         return fun(x, **kwargs).eval()
@@ -83,7 +83,7 @@ class AffineScalarBijectorTest(test.TestCase):
             run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testOneBatchScalarViaIdentityIn64BitUserProvidesScaleOnly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def static_run(fun, x, **kwargs):
         return fun(x, **kwargs).eval()
@@ -106,7 +106,7 @@ class AffineScalarBijectorTest(test.TestCase):
             run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testTwoBatchScalarIdentityViaIdentity(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def static_run(fun, x, **kwargs):
         return fun(x, **kwargs).eval()
@@ -129,7 +129,7 @@ class AffineScalarBijectorTest(test.TestCase):
             run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testTwoBatchScalarIdentityViaScale(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def static_run(fun, x, **kwargs):
         return fun(x, **kwargs).eval()
@@ -152,7 +152,7 @@ class AffineScalarBijectorTest(test.TestCase):
             run(bijector.inverse_log_det_jacobian, x, event_ndims=0))
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = AffineScalar(shift=3.6, scale=0.42)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.)
 

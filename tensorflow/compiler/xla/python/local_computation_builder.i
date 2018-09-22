@@ -22,16 +22,15 @@ limitations under the License.
 //
 //    C++                                  Python
 // -------------------------------------+---------------------------------------
-//  ComputationDataHandle              <-> int
-//  ArraySlice<int64>                  <-  sequence of int
-//  ArraySlice<ComputationDataHandle>  <-  sequence of int
+//  Span<int64>                        <-  sequence of int
+//  Span<LocalOp>                      <-  sequence of LocalOp
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
 //  Shape                               -> pair holding (dtype, dimensions)
 //                                     <-  object duck-typed as xla_client.Shape
 //  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
-//  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
+//  Span<pair<int64, in64>>            <-  sequence of int pairs
 //  PaddingConfig proto                <-  corresponding Python proto
 //  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
 //  DotDimensionNumbers proto          <-  corresponding Python proto
@@ -91,12 +90,9 @@ limitations under the License.
 // One central reason for the Python-side indirection is that the
 // Python-side objects produced by the typemaps in this file are
 // further packaged up by xla_client before being passed on. For
-// instance, xla_client wraps the long produced for a C++
-// ComputationDataHandle in a Python ComputationDataHandle proto,
-// rather than exposing a raw long outside of the client. Similarly,
-// the Python pair produced for a C++ Shape is further wrapped in a
-// Python class (xla_client.Shape) so as not to expose the raw pair
-// externally.
+// instance, the Python pair produced for a C++ Shape is further
+// wrapped in a Python class (xla_client.Shape) so as not to expose
+// the raw pair externally.
 //
 // Other SWIG object wrappers (e.g. of LocalComputation) are further
 // wrapped by xla_client in order to set up a custom destructor that
@@ -113,10 +109,12 @@ limitations under the License.
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 
@@ -124,6 +122,7 @@ using namespace xla;
 using namespace xla::swig;
 
 namespace xla {
+
 namespace swig {
 
 bool GetIntAttr(PyObject* o, const char* field, int64* result) {
@@ -157,8 +156,8 @@ bool HandleStringAttribute(PyObject* o,
     return true;  // The attribute is None, which we consider ok.
   }
   if (!PyString_Check(attr)) {
-    string message = tensorflow::strings::Printf("%s must be a string or none; got %s",
-        attr_name, numpy::PyObjectCppRepr(attr).c_str());
+    string message = absl::StrFormat("%s must be a string or none; got %s",
+        attr_name, numpy::PyObjectCppRepr(attr));
     PyErr_SetString(PyExc_TypeError, message.c_str());
     Py_DECREF(attr);
     return false;  // Type error, not ok.
@@ -177,21 +176,6 @@ bool HandleStringAttribute(PyObject* o,
 tensorflow::ImportNumpy();
 %}
 
-// ComputationDataHandle
-
-%typemap(in) const ComputationDataHandle& (ComputationDataHandle temp) {
-  const int64 handle = numpy::PyIntOrPyLongToLong($input);
-  if (handle == -1 && PyErr_Occurred()) {
-    SWIG_fail;
-  }
-  temp.set_handle(handle);
-  $1 = &temp;
-}
-
-%typemap(out) ComputationDataHandle {
-  $result = numpy::LongToPyIntOrPyLong($1.handle());
-}
-
 %typemap(out) StatusOr<xla::swig::CompiledLocalComputation*> {
   if ($1.ok()) {
     auto* value = $1.ValueOrDie();
@@ -205,9 +189,36 @@ tensorflow::ImportNumpy();
   }
 }
 
-%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+%typemap(out) StatusOr<xla::swig::LocalShapedBuffer*> {
   if ($1.ok()) {
-    std::unique_ptr<Literal> value = $1.ConsumeValueOrDie();
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::LocalShapedBuffer*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
+%typemap(out) StatusOr<xla::swig::LocalShapedBufferTuple*> {
+  if ($1.ok()) {
+    auto* value = $1.ValueOrDie();
+    {
+      auto* $1 = value;
+      $typemap(out, xla::swig::LocalShapedBufferTuple*)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
+
+%typemap(out) StatusOr<Literal> {
+  if ($1.ok()) {
+    Literal value = $1.ConsumeValueOrDie();
     $result = numpy::PyObjectFromXlaLiteral(*value);
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -256,9 +267,9 @@ tensorflow::ImportNumpy();
   $result = Py_None;
 }
 
-// ArraySlice<int64>
+// Span<int64>
 
-%typemap(in) tensorflow::gtl::ArraySlice<int64>
+%typemap(in) absl::Span<const int64>
     (std::vector<int64> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -288,33 +299,23 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
-// ComputationDataHandle
+// Span<LocalOp>
 
-%typemap(in) tensorflow::gtl::ArraySlice<ComputationDataHandle>
-    (std::vector<ComputationDataHandle> temps) {
+%typemap(in) absl::Span<const xla::swig::LocalOp>(
+      std::vector<LocalOp> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
     SWIG_fail;
   }
   const int size = PySequence_Size($input);
-  temps.resize(size);
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
-    PyObject* py_int = numpy::PyNumberToPyInt(o);
-    if (!py_int) {
-      PyErr_SetString(
-          PyExc_TypeError,
-          "Argument sequence element cannot be converted to int");
+    LocalOp* op;
+    if ((SWIG_ConvertPtr(o, (void**)&op, $descriptor(xla::swig::LocalOp*),
+                         SWIG_POINTER_EXCEPTION)) == -1) {
       SWIG_fail;
     }
-    const int64 handle = numpy::PyIntOrPyLongToLong(py_int);
-    if (handle == -1 && PyErr_Occurred()) {
-      Py_DECREF(py_int);
-      Py_DECREF(o);
-      SWIG_fail;
-    }
-    temps[i].set_handle(handle);
-    Py_DECREF(py_int);
+    temps.push_back(*op);
     Py_DECREF(o);
   }
   $1 = temps;
@@ -322,7 +323,7 @@ tensorflow::ImportNumpy();
 
 // LocalShapedBuffer*
 
-%typemap(in) tensorflow::gtl::ArraySlice<xla::swig::LocalShapedBuffer*>
+%typemap(in) absl::Span<xla::swig::LocalShapedBuffer* const>
     (std::vector<LocalShapedBuffer*> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -345,25 +346,25 @@ tensorflow::ImportNumpy();
 
 // Literal
 
-%typemap(in) const Literal& (StatusOr< std::unique_ptr<Literal> > literal_status) {
+%typemap(in) const Literal& (StatusOr<Literal> literal_status) {
   literal_status = numpy::XlaLiteralFromPyObject($input);
   if (!literal_status.ok()) {
     PyErr_SetString(PyExc_RuntimeError, literal_status.status().ToString().c_str());
     SWIG_fail;
   }
-  $1 = literal_status.ValueOrDie().get();
+  $1 = &literal_status.ValueOrDie();
 }
 
-%typemap(out) std::unique_ptr<Literal> {
+%typemap(out) Literal {
   $result = numpy::PyObjectFromXlaLiteral(*$1);
 }
 
-%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+%typemap(out) StatusOr<Literal> {
   if (!$1.ok()) {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
     SWIG_fail;
   }
-  $result = numpy::PyObjectFromXlaLiteral(*$1.ValueOrDie());
+  $result = numpy::PyObjectFromXlaLiteral($1.ValueOrDie());
 }
 
 %typemap(in) const std::vector<Literal>& (std::vector<Literal> temps) {
@@ -374,13 +375,13 @@ tensorflow::ImportNumpy();
   const int size = PySequence_Size($input);
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
-    StatusOr< std::unique_ptr<Literal> > literal_status = numpy::XlaLiteralFromPyObject(o);
+    StatusOr<Literal> literal_status = numpy::XlaLiteralFromPyObject(o);
     if (!literal_status.ok()) {
       PyErr_SetString(PyExc_RuntimeError, literal_status.status().ToString().c_str());
       Py_DECREF(o);
       SWIG_fail;
     }
-    temps.push_back(std::move(*literal_status.ConsumeValueOrDie()));
+    temps.push_back(literal_status.ConsumeValueOrDie());
     Py_DECREF(o);
   }
   $1 = &temps;
@@ -410,10 +411,10 @@ tensorflow::ImportNumpy();
   $1 = &temp;
 }
 
-%typemap(in) const tensorflow::gtl::optional<Shape>& (
-    tensorflow::gtl::optional<Shape> temp) {
+%typemap(in) const absl::optional<Shape>& (
+    absl::optional<Shape> temp) {
   if ($input == Py_None) {
-    temp = tensorflow::gtl::nullopt;
+    temp = absl::nullopt;
     $1 = &temp;
   } else {
     StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
@@ -449,8 +450,8 @@ tensorflow::ImportNumpy();
   $1 = &temps;
 }
 
-%typemap(in) const std::vector<tensorflow::gtl::optional<Shape> >& (
-    std::vector<tensorflow::gtl::optional<Shape> > temps) {
+%typemap(in) const std::vector<absl::optional<Shape> >& (
+    std::vector<absl::optional<Shape> > temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
     SWIG_fail;
@@ -459,7 +460,7 @@ tensorflow::ImportNumpy();
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
     if (o == Py_None) {
-      temps.push_back(tensorflow::gtl::nullopt);
+      temps.push_back(absl::nullopt);
     } else {
       StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
       Py_DECREF(o);
@@ -495,9 +496,9 @@ tensorflow::ImportNumpy();
   $1 = static_cast<PrimitiveType>(value);
 }
 
-// ArraySlice<pair<int64, in64>>
+// Span<pair<int64, in64>>
 
-%typemap(in) tensorflow::gtl::ArraySlice<std::pair<int64, int64> >
+%typemap(in) absl::Span<const std::pair<int64, int64> >
     (std::vector<std::pair<int64, int64> > temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -866,6 +867,11 @@ tensorflow::ImportNumpy();
     })) {
       return nullptr;
     }
+    if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
+      build_options.set_dump_unoptimized_hlo_proto_to(std::move(s));
+    })) {
+      return nullptr;
+    }
     if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
       build_options.set_dump_per_pass_hlo_proto_to(std::move(s));
     })) {
@@ -892,7 +898,7 @@ tensorflow::ImportNumpy();
     if (o != Py_None) {
       StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
       if (!statusor.ok()) {
-        PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
+        PyErr_SetString(PyExc_TypeError, absl::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
         Py_DECREF(o);
         SWIG_fail;
       }
@@ -915,12 +921,17 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
+%unignore xla::swig::LocalShapedBufferTuple;
+%unignore xla::swig::LocalShapedBufferTuple::Release;
+%unignore xla::swig::LocalShapedBufferTuple::size;
 %unignore xla::swig::CompiledLocalComputation;
 %unignore xla::swig::CompiledLocalComputation::Execute;
 %unignore xla::swig::CompiledLocalComputation::ExecuteWithShapedBuffers;
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
 %unignore xla::swig::LocalComputation::GetReturnValueShape;
+%unignore xla::swig::LocalComputation::GetSerializedProto;
+%unignore xla::swig::LocalOp;
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::Build;
@@ -948,6 +959,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Tuple;
 %unignore xla::swig::LocalComputationBuilder::GetTupleElement;
 %unignore xla::swig::LocalComputationBuilder::ConvertElementType;
+%unignore xla::swig::LocalComputationBuilder::BitcastConvertType;
 %unignore xla::swig::LocalComputationBuilder::Call;
 %unignore xla::swig::LocalComputationBuilder::Transpose;
 %unignore xla::swig::LocalComputationBuilder::Rev;
@@ -979,24 +991,52 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Min;
 %unignore xla::swig::LocalComputationBuilder::And;
 %unignore xla::swig::LocalComputationBuilder::Or;
+%unignore xla::swig::LocalComputationBuilder::Xor;
+%unignore xla::swig::LocalComputationBuilder::ShiftLeft;
+%unignore xla::swig::LocalComputationBuilder::ShiftRightArithmetic;
+%unignore xla::swig::LocalComputationBuilder::ShiftRightLogical;
 %unignore xla::swig::LocalComputationBuilder::Not;
 %unignore xla::swig::LocalComputationBuilder::Abs;
 %unignore xla::swig::LocalComputationBuilder::Exp;
+%unignore xla::swig::LocalComputationBuilder::Expm1;
 %unignore xla::swig::LocalComputationBuilder::Floor;
 %unignore xla::swig::LocalComputationBuilder::Ceil;
 %unignore xla::swig::LocalComputationBuilder::Round;
 %unignore xla::swig::LocalComputationBuilder::Log;
+%unignore xla::swig::LocalComputationBuilder::Log1p;
 %unignore xla::swig::LocalComputationBuilder::Sign;
 %unignore xla::swig::LocalComputationBuilder::Cos;
 %unignore xla::swig::LocalComputationBuilder::Sin;
 %unignore xla::swig::LocalComputationBuilder::Tanh;
-%unignore xla::swig::LocalComputationBuilder::SqrtF32;
-%unignore xla::swig::LocalComputationBuilder::SquareF32;
-%unignore xla::swig::LocalComputationBuilder::Pow;
+%unignore xla::swig::LocalComputationBuilder::Atan2;
 %unignore xla::swig::LocalComputationBuilder::IsFinite;
-%unignore xla::swig::LocalComputationBuilder::ReciprocalF32;
+%unignore xla::swig::LocalComputationBuilder::Pow;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
+%unignore xla::swig::LocalComputationBuilder::SortKeyVal;
+%unignore xla::swig::LocalComputationBuilder::Sqrt;
+%unignore xla::swig::LocalComputationBuilder::Rsqrt;
+%unignore xla::swig::LocalComputationBuilder::Square;
+%unignore xla::swig::LocalComputationBuilder::Reciprocal;
+%unignore xla::swig::LocalComputationBuilder::Erfc;
+%unignore xla::swig::LocalComputationBuilder::Erf;
+%unignore xla::swig::LocalComputationBuilder::ErfInv;
+%unignore xla::swig::LocalComputationBuilder::Lgamma;
+%unignore xla::swig::LocalComputationBuilder::Digamma;
+%unignore xla::swig::LocalComputationBuilder::Acos;
+%unignore xla::swig::LocalComputationBuilder::Asin;
+%unignore xla::swig::LocalComputationBuilder::Atan;
+%unignore xla::swig::LocalComputationBuilder::Tan;
+%unignore xla::swig::LocalComputationBuilder::Acosh;
+%unignore xla::swig::LocalComputationBuilder::Asinh;
+%unignore xla::swig::LocalComputationBuilder::Atanh;
+%unignore xla::swig::LocalComputationBuilder::Cosh;
+%unignore xla::swig::LocalComputationBuilder::Sinh;
+%unignore xla::swig::LocalComputationBuilder::Real;
+%unignore xla::swig::LocalComputationBuilder::Imag;
+%unignore xla::swig::LocalComputationBuilder::Conj;
+%unignore xla::swig::LocalComputationBuilder::Complex;
+%unignore xla::swig::DestructureLocalShapedBufferTuple;
 %unignore xla::swig::DeleteLocalShapedBuffer;
 %unignore xla::swig::DeleteLocalComputation;
 %unignore xla::swig::DeleteCompiledLocalComputation;

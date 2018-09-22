@@ -171,15 +171,12 @@ class NcclManagerTest : public ::testing::Test {
 
  private:
   static Allocator* GpuAllocator(BaseGPUDevice* device) {
-    return device->GetStepAllocator(AllocatorAttributes(),
-                                    nullptr /* step_resource_manager */);
+    return device->GetAllocator(AllocatorAttributes());
   }
 
-  static perftools::gputools::DeviceMemory<Scalar> AsDeviceMemory(
-      const Scalar* cuda_memory) {
-    perftools::gputools::DeviceMemoryBase wrapped(
-        const_cast<Scalar*>(cuda_memory));
-    perftools::gputools::DeviceMemory<Scalar> typed(wrapped);
+  static se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* cuda_memory) {
+    se::DeviceMemoryBase wrapped(const_cast<Scalar*>(cuda_memory));
+    se::DeviceMemory<Scalar> typed(wrapped);
     return typed;
   }
 

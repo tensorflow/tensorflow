@@ -382,8 +382,8 @@ class LuongAttention(_BaseAttentionMechanism):
         for values past the respective sequence lengths.
       scale: Python boolean.  Whether to scale the energy term.
       probability_fn: (optional) A `callable`.  Converts the score to
-        probabilities.  The default is @{tf.nn.softmax}. Other options include
-        @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
+        probabilities.  The default is `tf.nn.softmax`. Other options include
+        `tf.contrib.seq2seq.hardmax` and `tf.contrib.sparsemax.sparsemax`.
         Its signature should be: `probabilities = probability_fn(score)`.
       score_mask_value: (optional) The mask value for score before passing into
         `probability_fn`. The default is -inf. Only used if
@@ -472,7 +472,8 @@ def _bahdanau_score(processed_query, keys, normalize):
     # Scalar used in weight normalization
     g = variable_scope.get_variable(
         "attention_g", dtype=dtype,
-        initializer=math.sqrt((1. / num_units)))
+        initializer=init_ops.constant_initializer(math.sqrt((1. / num_units))),
+        shape=())
     # Bias added prior to the nonlinearity
     b = variable_scope.get_variable(
         "attention_b", [num_units], dtype=dtype,
@@ -528,8 +529,8 @@ class BahdanauAttention(_BaseAttentionMechanism):
         for values past the respective sequence lengths.
       normalize: Python boolean.  Whether to normalize the energy term.
       probability_fn: (optional) A `callable`.  Converts the score to
-        probabilities.  The default is @{tf.nn.softmax}. Other options include
-        @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
+        probabilities.  The default is `tf.nn.softmax`. Other options include
+        `tf.contrib.seq2seq.hardmax` and `tf.contrib.sparsemax.sparsemax`.
         Its signature should be: `probabilities = probability_fn(score)`.
       score_mask_value: (optional): The mask value for score before passing into
         `probability_fn`. The default is -inf. Only used if
@@ -654,7 +655,7 @@ def monotonic_attention(p_choose_i, previous_attention, mode):
     shifted_1mp_choose_i = array_ops.concat(
         [array_ops.ones((batch_size, 1)), 1 - p_choose_i[:, :-1]], 1)
     # Compute attention distribution recursively as
-    # q[i] = (1 - p_choose_i[i])*q[i - 1] + previous_attention[i]
+    # q[i] = (1 - p_choose_i[i - 1])*q[i - 1] + previous_attention[i]
     # attention[i] = p_choose_i[i]*q[i]
     attention = p_choose_i*array_ops.transpose(functional_ops.scan(
         # Need to use reshape to remind TF of the shape between loop iterations
@@ -1090,7 +1091,7 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
     `AttentionWrapper`, then you must ensure that:
 
     - The encoder output has been tiled to `beam_width` via
-      @{tf.contrib.seq2seq.tile_batch} (NOT `tf.tile`).
+      `tf.contrib.seq2seq.tile_batch` (NOT `tf.tile`).
     - The `batch_size` argument passed to the `zero_state` method of this
       wrapper is equal to `true_batch_size * beam_width`.
     - The initial state created with `zero_state` above contains a

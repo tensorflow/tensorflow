@@ -47,6 +47,8 @@ import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.v13.app.FragmentCompat;
 import android.support.v4.content.ContextCompat;
+import android.text.SpannableString;
+import android.text.SpannableStringBuilder;
 import android.util.Log;
 import android.util.Size;
 import android.view.LayoutInflater;
@@ -207,14 +209,21 @@ public class Camera2BasicFragment extends Fragment
    *
    * @param text The message to show
    */
-  private void showToast(final String text) {
+  private void showToast(String s) {
+    SpannableStringBuilder builder = new SpannableStringBuilder();
+    SpannableString str1 = new SpannableString(s);
+    builder.append(str1);
+    showToast(builder);
+  }
+
+  private void showToast(SpannableStringBuilder builder) {
     final Activity activity = getActivity();
     if (activity != null) {
       activity.runOnUiThread(
           new Runnable() {
             @Override
             public void run() {
-              textView.setText(text);
+              textView.setText(builder, TextView.BufferType.SPANNABLE);
             }
           });
     }
@@ -682,8 +691,9 @@ public class Camera2BasicFragment extends Fragment
       showToast("Uninitialized Classifier or invalid context.");
       return;
     }
+    SpannableStringBuilder textToShow = new SpannableStringBuilder();
     Bitmap bitmap = textureView.getBitmap(classifier.getImageSizeX(), classifier.getImageSizeY());
-    String textToShow = classifier.classifyFrame(bitmap);
+    classifier.classifyFrame(bitmap, textToShow);
     bitmap.recycle();
     showToast(textToShow);
   }

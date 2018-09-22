@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -34,13 +34,13 @@ namespace {
 class BadRngShapeValidationTest : public ClientLibraryTestBase {};
 
 TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
-  ComputationBuilder builder(client_, TestName());
-  auto zero = builder.ConstantR0<float>(0.0);
-  auto one = builder.ConstantR0<float>(1.0);
+  XlaBuilder builder(TestName());
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  auto one = ConstantR0<float>(&builder, 1.0);
   Shape default_constructed;
-  builder.RngUniform(zero, one, default_constructed);
+  RngUniform(zero, one, default_constructed);
 
-  StatusOr<Computation> computation = builder.Build();
+  StatusOr<XlaComputation> computation = builder.Build();
   EXPECT_FALSE(computation.ok());
   LOG(INFO) << "status received: " << computation.status();
   EXPECT_THAT(computation.status().error_message(),
@@ -48,16 +48,16 @@ TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
 }
 
 TEST_F(BadRngShapeValidationTest, ShapeWithoutLayoutIsOk) {
-  ComputationBuilder builder(client_, TestName());
-  auto zero = builder.ConstantR0<float>(0.0);
-  auto one = builder.ConstantR0<float>(1.0);
+  XlaBuilder builder(TestName());
+  auto zero = ConstantR0<float>(&builder, 0.0);
+  auto one = ConstantR0<float>(&builder, 1.0);
   Shape sans_layout;
   sans_layout.set_element_type(F32);
   sans_layout.add_dimensions(1);
 
-  builder.RngUniform(zero, one, sans_layout);
+  RngUniform(zero, one, sans_layout);
 
-  StatusOr<Computation> computation = builder.Build();
+  StatusOr<XlaComputation> computation = builder.Build();
   ASSERT_TRUE(computation.ok());
   LOG(INFO) << computation.status();
 }

@@ -69,7 +69,7 @@ class GradientsDebugger(object):
   """Gradients Debugger.
 
   Allows retrieval of gradient tensors created by TensorFlow's automatic
-  differentiation algorithm, i.e., @{tf.gradients} and optimizer classes that
+  differentiation algorithm, i.e., `tf.gradients` and optimizer classes that
   use it.
   """
   # TODO(cais): Add examples code in the doc string?
@@ -142,8 +142,8 @@ class GradientsDebugger(object):
     Args:
       input_tensor: the input `tf.Tensor` object whose related gradient tensors
         are to be reigstered with this `GradientsDebugger` instance when they
-        are created, e.g., during @{tf.gradients} calls or the construction
-        of optimization (training) op that uses @{tf.gradients}.
+        are created, e.g., during `tf.gradients` calls or the construction
+        of optimization (training) op that uses `tf.gradients`.
 
     Returns:
       A forwarded identity of `input_tensor`, as a `tf.Tensor`.

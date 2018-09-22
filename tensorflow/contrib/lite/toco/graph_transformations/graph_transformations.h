@@ -116,13 +116,15 @@ DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
 DECLARE_GRAPH_TRANSFORMATION(ConvertSqueezeToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialAddNToAdd)
-DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialStackToReshape)
+DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialPackToReshape)
+DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTileToConcat)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTransposeToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(EnsureBiasVectors)
 DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoFollowingAffine)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoPrecedingAffine)
+DECLARE_GRAPH_TRANSFORMATION(FuseBroadcastIntoFollowingBinary)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Normalization)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Pool)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyLstmCell)
@@ -131,10 +133,11 @@ DECLARE_GRAPH_TRANSFORMATION(MergeLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeReshapeIntoPrecedingTranspose)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyRelu1)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyPRelu)
-DECLARE_GRAPH_TRANSFORMATION(IdentifyDilatedConv)
 DECLARE_GRAPH_TRANSFORMATION(MakeInitialDequantizeOperator)
+DECLARE_GRAPH_TRANSFORMATION(MoveBinaryOperatorBeforeReshape)
 DECLARE_GRAPH_TRANSFORMATION(PropagateActivationFunctionIntoConstants)
 DECLARE_GRAPH_TRANSFORMATION(PropagateArrayDataTypes)
+DECLARE_GRAPH_TRANSFORMATION(PropagateFakeQuantNumBits);
 DECLARE_GRAPH_TRANSFORMATION(PropagateFixedSizes)
 DECLARE_GRAPH_TRANSFORMATION(HardcodeMinMax)
 DECLARE_GRAPH_TRANSFORMATION(Quantize)
@@ -144,6 +147,7 @@ DECLARE_GRAPH_TRANSFORMATION(RemoveTensorFlowIdentity)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialBinaryOperator)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialConcatenation)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialConcatenationInput)
+DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialSlice)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialQuantizedActivationFunc)
 DECLARE_GRAPH_TRANSFORMATION(RemoveTrivialQuantizedMinMax)
@@ -153,7 +157,7 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveConstantBinaryOperator)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantUnaryOperator)
 DECLARE_GRAPH_TRANSFORMATION(CreateIm2colArrays)
 DECLARE_GRAPH_TRANSFORMATION(DropIm2colArrays)
-DECLARE_GRAPH_TRANSFORMATION(ReadFakeQuantMinMax)
+DECLARE_GRAPH_TRANSFORMATION(ReadArrayMinmaxAndNarrowRangeFromFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(ReorderElementwiseUnary)
 DECLARE_GRAPH_TRANSFORMATION(ReorderReshapeTranspose)
 DECLARE_GRAPH_TRANSFORMATION(ResolveReorderAxes)
@@ -162,8 +166,6 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMatMul)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMerge)
 DECLARE_GRAPH_TRANSFORMATION(ResolveSqueezeAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowSwitch)
-DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowTile)
-DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFakeQuant)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantConcatenation)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantReshape)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantTranspose)
@@ -173,26 +175,45 @@ DECLARE_GRAPH_TRANSFORMATION(UnrollBatchMatMul)
 DECLARE_GRAPH_TRANSFORMATION(ResolveSpaceToBatchNDAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveBatchToSpaceNDAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolvePadAttributes)
-DECLARE_GRAPH_TRANSFORMATION(ResolveStridedSliceAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolvePadV2Attributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveReduceAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveReshapeAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveSliceAttributes)
-DECLARE_GRAPH_TRANSFORMATION(ResolveMeanAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveStridedSliceAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTransposeAttributes)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantPack)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantRandomUniform)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantRange)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantShapeOrRank)
-DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStack)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantSlice)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStridedSlice)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFill)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantGather)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantSelect)
+DECLARE_GRAPH_TRANSFORMATION(ResolveConstantTile)
 DECLARE_GRAPH_TRANSFORMATION(ResolveMultiplyByZero)
 DECLARE_GRAPH_TRANSFORMATION(Dequantize)
 DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
-DECLARE_GRAPH_TRANSFORMATION(ExperimentalShuffleFCWeights)
+DECLARE_GRAPH_TRANSFORMATION(ShuffleFCWeights)
+DECLARE_GRAPH_TRANSFORMATION(ResolveFakeQuantArgsFromVars)
+DECLARE_GRAPH_TRANSFORMATION(ResolveGatherAttributes)
 
-class ResolveReshapeAttributes : public GraphTransformation {
+class PropagateDefaultMinMax : public GraphTransformation {
  public:
   bool Run(Model* model, std::size_t op_index) override;
-  const char* Name() const override { return "ResolveReshapeAttributes"; }
+  const char* Name() const override { return "PropagateDefaultMinMax"; }
+
+  bool has_any_ranges_defined() const { return !type_ranges_.empty(); }
+  void DefineTypeRange(ArrayDataType data_type, double min, double max) {
+    MinMax minmax;
+    minmax.min = min;
+    minmax.max = max;
+    type_ranges_.emplace_back(data_type, minmax);
+  }
+
+ private:
+  bool SetArrayMinMax(const string& array_name, Array* array);
+  std::vector<std::pair<ArrayDataType, MinMax>> type_ranges_;
 };
 
 class RemoveTrivialReshape : public GraphTransformation {
@@ -208,6 +229,51 @@ class RemoveTrivialReshape : public GraphTransformation {
 
  private:
   bool treat_expand_dims_as_trivial_ = false;
+};
+
+class ResolveConstantFakeQuant : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override { return "ResolveConstantFakeQuant"; }
+
+  // True if the num_bits should adjust the final data type.
+  bool propagate_fake_quant_num_bits() const {
+    return propagate_fake_quant_num_bits_;
+  }
+  void set_propagate_fake_quant_num_bits(bool val) {
+    propagate_fake_quant_num_bits_ = val;
+  }
+
+ private:
+  bool propagate_fake_quant_num_bits_ = false;
+};
+
+class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override {
+    return "EnsureUint8WeightsSafeForFastInt8Kernels";
+  }
+  bool allow_nudging_weights() const { return allow_nudging_weights_; }
+  void set_allow_nudging_weights(bool val) { allow_nudging_weights_ = val; }
+
+  bool has_default_ranges_flag() const { return has_default_ranges_flag_; }
+  void set_has_default_ranges_flag(bool val) { has_default_ranges_flag_ = val; }
+
+ private:
+  bool allow_nudging_weights_ = false;
+  bool has_default_ranges_flag_ = false;
+};
+
+class IdentifyDilatedConv : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override { return "IdentifyDilatedConv"; }
+  bool identify_depthwise_conv() const { return identify_depthwise_conv_; }
+  void set_identify_depthwise_conv(bool val) { identify_depthwise_conv_ = val; }
+
+ private:
+  bool identify_depthwise_conv_ = true;
 };
 
 #undef DECLARE_GRAPH_TRANSFORMATION

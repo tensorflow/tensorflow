@@ -20,10 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -38,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -49,7 +50,12 @@ class CpuLayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
-    cpu::CpuLayoutAssignment layout_assignment(entry_computation_layout);
+    cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
+        [](int64 shape_size) {
+          return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+        });
+    cpu::CpuLayoutAssignment layout_assignment(entry_computation_layout,
+                                               &target_machine_features);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 };
@@ -64,7 +70,7 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensor) {
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(rhs_shape)));
   auto result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
+      CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
   auto module = CreateNewModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -101,9 +107,9 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor0) {
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(rhs_shape)));
   auto dot_a_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_shape, dot_a_lhs, dot_rhs));
+      CreateCanonicalDot(result_shape, dot_a_lhs, dot_rhs));
   auto dot_b_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_shape, dot_b_lhs, dot_rhs));
+      CreateCanonicalDot(result_shape, dot_b_lhs, dot_rhs));
   builder.AddInstruction(HloInstruction::CreateBinary(
       result_shape, HloOpcode::kAdd, dot_a_result, dot_b_result));
 
@@ -145,9 +151,9 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor1) {
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(rhs_shape)));
   auto dot_a_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_a_shape, dot_a_lhs, dot_rhs));
+      CreateCanonicalDot(result_a_shape, dot_a_lhs, dot_rhs));
   auto dot_b_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_b_shape, dot_b_lhs, dot_rhs));
+      CreateCanonicalDot(result_b_shape, dot_b_lhs, dot_rhs));
   auto tuple_result = builder.AddInstruction(
       HloInstruction::CreateTuple({dot_a_result, dot_b_result}));
 
@@ -183,7 +189,7 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantLhsTensor) {
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, rhs_shape, "param0"));
   auto dot_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
+      CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
   auto module = CreateNewModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -223,7 +229,7 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensorThroughGTE) {
   auto dot_rhs = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(rhs_shape, constant, 1));
   auto dot_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
+      CreateCanonicalDot(result_shape, dot_lhs, dot_rhs));
 
   auto module = CreateNewModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
@@ -270,8 +276,8 @@ static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
       HloInstruction::CreateParameter(1, dot_shape, "param1"));
   HloInstruction* dot_rhs = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(dot_rhs_shape)));
-  HloInstruction* dot_result = builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(dot_shape, dot_lhs, dot_rhs));
+  HloInstruction* dot_result =
+      builder.AddInstruction(CreateCanonicalDot(dot_shape, dot_lhs, dot_rhs));
   HloInstruction* add_result;
   if (dot_operand_idx_in_add == 0) {
     add_result = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -311,7 +317,12 @@ static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
   result.addend_fusion_param = fusion_instruction->operand(
       fused_add->operand(1 - dot_operand_idx_in_add)->parameter_number());
 
-  cpu::CpuLayoutAssignment layout_assignment(&computation_layout);
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
+      [](int64 shape_size) {
+        return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+      });
+  cpu::CpuLayoutAssignment layout_assignment(&computation_layout,
+                                             &target_machine_features);
   TF_ASSIGN_OR_RETURN(result.layout_assignment_changed_something,
                       layout_assignment.Run(module));
 

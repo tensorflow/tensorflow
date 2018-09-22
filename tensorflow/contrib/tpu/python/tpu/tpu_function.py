@@ -63,10 +63,9 @@ def check_function_argument_count(func, input_arity, infeed_queue):
   """Validate the number of input arguments to a tpu function.
 
   Args:
-    func: the Python function that will be called to generate the body
-      of a TPUFunction.
-    input_arity: the number of explicit arguments supplied by the
-      caller.
+    func: the Python function that will be called to generate the body of an XLA
+      computation graph.
+    input_arity: the number of explicit arguments supplied by the caller.
     infeed_queue: if not None, the infeed queue that will supply
       additional arguments to the function.
 
@@ -103,4 +102,3 @@ def check_function_argument_count(func, input_arity, infeed_queue):
   # Since there are varargs, func can accept any number of arguments
   # greater than the minimum.
   return None
-

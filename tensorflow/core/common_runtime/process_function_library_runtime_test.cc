@@ -39,7 +39,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   Status Instantiate(const string& function_name,
                      const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                      const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) {
+                     FunctionLibraryRuntime::LocalHandle* handle) override {
     mutex_lock l(mu_);
     *handle = next_handle_;
     next_handle_++;
@@ -49,7 +49,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
            gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-           FunctionLibraryRuntime::DoneCallback done) {}
+           FunctionLibraryRuntime::DoneCallback done) override {}
 
  private:
   mutex mu_;

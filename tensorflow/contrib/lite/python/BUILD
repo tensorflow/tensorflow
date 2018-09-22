@@ -19,6 +19,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -30,25 +32,75 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":interpreter",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "tflite_convert",
+    srcs = ["tflite_convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lite",
     ],
 )
 
 py_library(
     name = "lite",
     srcs = ["lite.py"],
-    # data = [
-    #     "//tensorflow/contrib/lite/toco/python:toco_from_protos",
-    # ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":convert",
+        ":convert_saved_model",
+        ":interpreter",
+        ":lite_constants",
         ":op_hint",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/tools:freeze_graph_lib",
+    ],
+)
+
+py_test(
+    name = "lite_test",
+    srcs = ["lite_test.py"],
+    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+    ],
+)
+
+py_library(
+    name = "lite_constants",
+    srcs = ["lite_constants.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/lite/toco:toco_flags_proto_py",
+    ],
+)
+
+py_library(
+    name = "convert",
+    srcs = ["convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lite_constants",
         "//tensorflow/contrib/lite/toco:model_flags_proto_py",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_py",
         "//tensorflow/contrib/lite/toco/python:tensorflow_wrap_toco",
+        "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         "//tensorflow/python:platform",
     ],
 )
@@ -60,21 +112,25 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 
 py_test(
-    name = "lite_test",
-    srcs = ["lite_test.py"],
+    name = "convert_test",
+    srcs = ["convert_test.py"],
     srcs_version = "PY2AND3",
     tags = [
         "no-internal-py3",
         "no_oss",
     ],
     deps = [
-        ":lite",
+        ":convert",
+        ":interpreter",
         ":op_hint",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -84,15 +140,16 @@ py_test(
     ],
 )
 
-py_binary(
+py_library(
     name = "convert_saved_model",
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":lite",
+        ":convert",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python:platform",
         "//tensorflow/python/tools:freeze_graph_lib",
     ],
 )
@@ -114,7 +171,10 @@ py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",
@@ -127,13 +187,5 @@ py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model",
-    ],
-)
-
-# Transitive dependencies of this target will be included in the pip package.
-py_library(
-    name = "tf_lite_py_pip",
-    deps = [
-        ":convert_saved_model",
     ],
 )

@@ -24,9 +24,9 @@ namespace gpu {
 
 // Rewrites plain convolutions, backwards-filter convolutions, and
 // backwards-input convolutions into CustomCall HLOs that call into cuDNN.
-class CudnnConvolutionRewriter : public HloPassInterface {
+class CudnnConvolutionRewriter : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "cudnn-convolution-rewriter";
   }
 

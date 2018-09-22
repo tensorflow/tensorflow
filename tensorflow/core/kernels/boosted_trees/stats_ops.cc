@@ -17,22 +17,15 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/boosted_trees/tree_helper.h"
 
 namespace tensorflow {
-
-namespace {
-const float kEps = 1e-15;
-}  // namespace
 
 class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
  public:
   explicit BoostedTreesCalculateBestGainsPerFeatureOp(
       OpKernelConstruction* const context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("l1", &l1_));
-    OP_REQUIRES_OK(context, context->GetAttr("l2", &l2_));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("tree_complexity", &tree_complexity_));
     OP_REQUIRES_OK(context, context->GetAttr("max_splits", &max_splits_));
     OP_REQUIRES_OK(context, context->GetAttr("num_features", &num_features_));
   }
@@ -54,6 +47,20 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
     for (const auto& tensor : stats_summary_list) {
       stats_summary.emplace_back(tensor.tensor<float, 3>());
     }
+    const Tensor* l1_t;
+    OP_REQUIRES_OK(context, context->input("l1", &l1_t));
+    const auto l1 = l1_t->scalar<float>()();
+    const Tensor* l2_t;
+    OP_REQUIRES_OK(context, context->input("l2", &l2_t));
+    const auto l2 = l2_t->scalar<float>()();
+    const Tensor* tree_complexity_t;
+    OP_REQUIRES_OK(context,
+                   context->input("tree_complexity", &tree_complexity_t));
+    const auto tree_complexity = tree_complexity_t->scalar<float>()();
+    const Tensor* min_node_weight_t;
+    OP_REQUIRES_OK(context,
+                   context->input("min_node_weight", &min_node_weight_t));
+    const auto min_node_weight = min_node_weight_t->scalar<float>()();
 
     // Allocate output lists of tensors:
     OpOutputList output_node_ids_list;
@@ -99,6 +106,11 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
           cum_grad.push_back(total_grad);
           cum_hess.push_back(total_hess);
         }
+        // Check if node has enough of average hessian.
+        if (total_hess < min_node_weight) {
+          // Do not split the node because not enough avg hessian.
+          continue;
+        }
         float best_gain = std::numeric_limits<float>::lowest();
         float best_bucket = 0;
         float best_contrib_for_left = 0.0;
@@ -106,7 +118,8 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
         // Parent gain.
         float parent_gain;
         float unused;
-        CalculateWeightsAndGains(total_grad, total_hess, &unused, &parent_gain);
+        CalculateWeightsAndGains(total_grad, total_hess, l1, l2, &unused,
+                                 &parent_gain);
 
         for (int bucket = 0; bucket < num_buckets; ++bucket) {
           const float cum_grad_bucket = cum_grad[bucket];
@@ -114,16 +127,16 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
           // Left child.
           float contrib_for_left;
           float gain_for_left;
-          CalculateWeightsAndGains(cum_grad_bucket, cum_hess_bucket,
+          CalculateWeightsAndGains(cum_grad_bucket, cum_hess_bucket, l1, l2,
                                    &contrib_for_left, &gain_for_left);
           // Right child.
           float contrib_for_right;
           float gain_for_right;
           CalculateWeightsAndGains(total_grad - cum_grad_bucket,
-                                   total_hess - cum_hess_bucket,
+                                   total_hess - cum_hess_bucket, l1, l2,
                                    &contrib_for_right, &gain_for_right);
 
-          if (gain_for_left + gain_for_right > best_gain) {
+          if (GainIsLarger(gain_for_left + gain_for_right, best_gain)) {
             best_gain = gain_for_left + gain_for_right;
             best_bucket = bucket;
             best_contrib_for_left = contrib_for_left;
@@ -173,7 +186,7 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
       for (int i = 0; i < num_nodes; ++i) {
         output_node_ids_vec(i) = output_node_ids[i];
         // Adjust the gains to penalize by tree complexity.
-        output_gains_vec(i) = output_gains[i] - tree_complexity_;
+        output_gains_vec(i) = output_gains[i] - tree_complexity;
         output_thresholds_vec(i) = output_thresholds[i];
         // Logits are 1-dimensional for now.
         // TODO(nponomareva): Consider multi-dimensional logits.
@@ -184,43 +197,6 @@ class BoostedTreesCalculateBestGainsPerFeatureOp : public OpKernel {
   }
 
  private:
-  void CalculateWeightsAndGains(const float g, const float h, float* weight,
-                                float* gain) {
-    //
-    // The formula for weight is -(g+l1*sgn(w))/(H+l2), for gain it is
-    // (g+l1*sgn(w))^2/(h+l2).
-    // This is because for each leaf we optimize
-    // 1/2(h+l2)*w^2+g*w+l1*abs(w)
-    float g_with_l1 = g;
-    // Apply L1 regularization.
-    // 1) Assume w>0 => w=-(g+l1)/(h+l2)=> g+l1 < 0 => g < -l1
-    // 2) Assume w<0 => w=-(g-l1)/(h+l2)=> g-l1 > 0 => g > l1
-    // For g from (-l1, l1), thus there is no solution => set to 0.
-    if (l1_ > 0) {
-      if (g > l1_) {
-        g_with_l1 -= l1_;
-      } else if (g < -l1_) {
-        g_with_l1 += l1_;
-      } else {
-        *weight = 0.0;
-        *gain = 0.0;
-        return;
-      }
-    }
-    // Apply L2 regularization.
-    if (h + l2_ <= kEps) {
-      // Avoid division by 0 or infinitesimal.
-      *weight = 0;
-      *gain = 0;
-    } else {
-      *weight = -g_with_l1 / (h + l2_);
-      *gain = -g_with_l1 * (*weight);
-    }
-  }
-
-  float l1_;
-  float l2_;
-  float tree_complexity_;
   int max_splits_;
   int num_features_;
 };
@@ -255,33 +231,36 @@ class BoostedTreesMakeStatsSummaryOp : public OpKernel {
     OpInputList bucketized_features_list;
     OP_REQUIRES_OK(context, context->input_list("bucketized_features_list",
                                                 &bucketized_features_list));
-    std::vector<tensorflow::TTypes<int32>::ConstVec> bucketized_features;
-    bucketized_features.reserve(num_features_);
-    for (const Tensor& tensor : bucketized_features_list) {
-      bucketized_features.emplace_back(tensor.vec<int32>());
-    }
-
     // Infer batch size.
     const int64 batch_size = node_ids_t->dim_size(0);
-    // Allocate output stats tensor (Rank 4).
-    Tensor* output_stats_summary_t = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                "stats_summary",
+
+    // Allocate temporary stats tensor (Rank 4).
+    Tensor temp_stats_double_t;
+    OP_REQUIRES_OK(context, context->allocate_temp(
+                                DT_DOUBLE,
                                 {num_features_, max_splits_, num_buckets_, 2},
-                                &output_stats_summary_t));
-    auto output_stats_summary = output_stats_summary_t->tensor<float, 4>();
-    output_stats_summary.setZero();
+                                &temp_stats_double_t));
+    auto temp_stats_double = temp_stats_double_t.tensor<double, 4>();
+    temp_stats_double.setZero();
 
     // Partition by node, and then bucketize.
     for (int feature_idx = 0; feature_idx < num_features_; ++feature_idx) {
-      const auto& features = bucketized_features[feature_idx];
+      const auto& features = bucketized_features_list[feature_idx].vec<int32>();
       for (int i = 0; i < batch_size; ++i) {
         const int32 node = node_ids(i);
         const int32 bucket = features(i);
-        output_stats_summary(feature_idx, node, bucket, 0) += gradients(i, 0);
-        output_stats_summary(feature_idx, node, bucket, 1) += hessians(i, 0);
+        temp_stats_double(feature_idx, node, bucket, 0) += gradients(i, 0);
+        temp_stats_double(feature_idx, node, bucket, 1) += hessians(i, 0);
       }
     }
+
+    // Copy temp tensor over to output tensor.
+    Tensor* output_stats_summary_t = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                "stats_summary", temp_stats_double_t.shape(),
+                                &output_stats_summary_t));
+    output_stats_summary_t->tensor<float, 4>() =
+        temp_stats_double.template cast<float>();
   }
 
  private:

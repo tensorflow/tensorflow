@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_COLORS_H_
-#define TENSORFLOW_GRAPH_COLORS_H_
+#ifndef TENSORFLOW_CORE_GRAPH_COLORS_H_
+#define TENSORFLOW_CORE_GRAPH_COLORS_H_
 
 namespace tensorflow {
 
@@ -26,4 +26,4 @@ const char* ColorFor(int dindex);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_COLORS_H_
+#endif  // TENSORFLOW_CORE_GRAPH_COLORS_H_

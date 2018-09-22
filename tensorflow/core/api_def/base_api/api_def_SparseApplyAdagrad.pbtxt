@@ -47,7 +47,7 @@ END
   summary: "Update relevant entries in \'*var\' and \'*accum\' according to the adagrad scheme."
   description: <<END
 That is for rows we have grad for, we update var and accum as follows:
-accum += grad * grad
-var -= lr * grad * (1 / sqrt(accum))
+$$accum += grad * grad$$
+$$var -= lr * grad * (1 / sqrt(accum))$$
 END
 }

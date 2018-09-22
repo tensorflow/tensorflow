@@ -60,7 +60,7 @@ class DecodeBmpOpTest(test.TestCase):
     img_in = constant_op.constant(byte_string, dtype=dtypes.string)
     decode = array_ops.squeeze(image_ops.decode_bmp(img_in))
 
-    with self.test_session():
+    with self.cached_session():
       decoded = decode.eval()
       self.assertAllEqual(decoded, img_bytes)
 
@@ -135,7 +135,7 @@ class DecodeBmpOpTest(test.TestCase):
     img_in = constant_op.constant(byte_string, dtype=dtypes.string)
     decode = image_ops.decode_bmp(img_in)
 
-    with self.test_session():
+    with self.cached_session():
       decoded = decode.eval()
       self.assertAllEqual(decoded, img_bytes)
 

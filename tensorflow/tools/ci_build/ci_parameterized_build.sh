@@ -59,6 +59,9 @@
 #   TF_BUILD_BAZEL_CLEAN:
 #                      Will perform "bazel clean", if and only if this variable
 #                      is set to any non-empty and non-0 value
+#   TF_BAZEL_BUILD_ONLY:
+#                      If it is set to any non-empty value that is not "0", Bazel 
+#                      will only build specified targets
 #   TF_GPU_COUNT:
 #                      Run this many parallel tests for serial builds.
 #                      For now, only can be edited for PIP builds.
@@ -83,7 +86,7 @@
 #                     When set, overrides TF_BUILD_IS_OPT and TF_BUILD_MAVX
 #                     options, as this will replace the two.
 #   TF_SKIP_CONTRIB_TESTS:
-#                     If set to any non-empty or non-0 value, will skipp running
+#                     If set to any non-empty or non-0 value, will skip running
 #                     contrib tests.
 #   TF_NIGHTLY:
 #                     If this run is being used to build the tf_nightly pip
@@ -93,10 +96,6 @@
 #                     Only available inside GPU containers.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
-
-# TODO(jhseu): Temporary for the gRPC pull request due to the
-# protobuf -> protobuf_archive rename. Remove later.
-TF_BUILD_BAZEL_CLEAN=1
 
 # Helper function: Convert to lower case
 to_lower () {
@@ -128,11 +127,19 @@ NO_DOCKER_OPT_FLAG="--genrule_strategy=standalone"
 
 DO_DOCKER=1
 
-BAZEL_CMD="bazel test"
-BAZEL_BUILD_ONLY_CMD="bazel build"
-BAZEL_CLEAN_CMD="bazel clean"
 
-DEFAULT_BAZEL_CONFIGS="--config=gcp --config=hdfs"
+# Helpful flags:
+# --test_summary=detailed: Tell us more about which targets are being built
+# --keep_going: Don't stop at the first failure; tell us all the failures
+# --build_tests_only: Don't build targets depended on by tests if the test is
+#                     disabled. Also saves some compilation time. Otherwise,
+#                     tries to build everything.
+BAZEL_TEST_FLAGS="--test_summary=detailed --build_tests_only --keep_going"
+BAZEL_BUILD_FLAGS="--keep_going"
+
+BAZEL_CMD="bazel test ${BAZEL_TEST_FLAGS}"
+BAZEL_BUILD_ONLY_CMD="bazel build ${BAZEL_BUILD_FLAGS}"
+BAZEL_CLEAN_CMD="bazel clean"
 
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
@@ -140,7 +147,7 @@ PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
 ANDROID_CMD="${CI_BUILD_DIR}/builds/android.sh"
 ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
@@ -149,39 +156,7 @@ EXTRA_PARAMS=""
 BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
 
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
-  BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
-else
-  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/lite/..."
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:context_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:framework"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:interpreter_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:model_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/toco:toco"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:simple_memory_arena_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:string_util_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:activations_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:add_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:basic_rnn_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:concatenation_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:conv_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:depthwise_conv_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:fully_connected_test"
-  # BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/testing:generated_examples_zip_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:hashtable_lookup_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:local_response_norm_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lsh_projection_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lstm_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:l2norm_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:mul_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:pooling_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:reshape_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:resize_bilinear_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:skip_gram_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:softmax_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:space_to_depth_test"
-  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:svdf_test"
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/..."
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -237,7 +212,7 @@ function get_cuda_capability_version() {
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 
 # Determine if the machine is a Mac
-OPT_FLAG=""
+OPT_FLAG="--test_output=errors"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   DO_DOCKER=0
 
@@ -263,9 +238,9 @@ function set_script_variable() {
 
 
 # Process container type
-if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
+if [[ ${CTYPE} == cpu* ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]]; then
+elif [[ ${CTYPE} == gpu* ]]; then
   set_script_variable TF_NEED_CUDA 1
 
   if [[ $TF_CUDA_CLANG == "1" ]]; then
@@ -408,12 +383,21 @@ else
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi
+  EXTRA_ARGS="${EXTRA_ARGS} --build_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  if [[ ${IS_MAC} == "1" ]]; then
+    EXTRA_ARGS="${EXTRA_ARGS},-nomac"
+  fi
 fi
 
 # For any "tool" dependencies in genrules, Bazel will build them for host
 # instead of the target configuration. We can save some build time by setting
 # this flag, and it only affects a few tests.
 EXTRA_ARGS="${EXTRA_ARGS} --distinct_host_configuration=false"
+
+if [[ ! -z "${TF_BAZEL_BUILD_ONLY}" ]] &&
+   [[ "${TF_BAZEL_BUILD_ONLY}" != "0" ]];then
+  BAZEL_CMD=${BAZEL_BUILD_ONLY_CMD}
+fi
 
 # Process PIP install-test option
 if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
@@ -423,12 +407,12 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     BAZEL_TARGET=${TF_BUILD_BAZEL_TARGET}
   fi
 
-  if [[ ${CTYPE} == "cpu" ]] || \
+  if [[ ${CTYPE} == cpu* ]] || \
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
-  elif [[ ${CTYPE} == "gpu" ]]; then
+  elif [[ ${CTYPE} == gpu* ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
@@ -567,33 +551,35 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
-  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
-  # Modify Dockerfile for Python3.5 | Python3.6 build
-  TMP_DIR=$(mktemp -d)
-  echo "Docker build will occur in temporary directory: ${TMP_DIR}"
+if [[ "${DO_DOCKER}" == "1" ]]; then
+  if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+    [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+    # Modify Dockerfile for Python3.5 | Python3.6 build
+    TMP_DIR=$(mktemp -d)
+    echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
-  # Copy the files required for the docker build
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
-      die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
+    # Copy the files required for the docker build
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    cp -r "${SCRIPT_DIR}/install" "${TMP_DIR}/install" || \
+        die "ERROR: Failed to copy directory ${SCRIPT_DIR}/install"
 
-  DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
-  cp "${DOCKERFILE}" "${TMP_DIR}/" || \
-      die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
-  DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    DOCKERFILE="${SCRIPT_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
+    cp "${DOCKERFILE}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy Dockerfile at ${DOCKERFILE}"
+    DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
-  # Replace a line in the Dockerfile
-  if sed -i \
-      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
-      "${DOCKERFILE}"
-  then
-    echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
-  else
-    die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    # Replace a line in the Dockerfile
+    if sed -i \
+        "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
+        "${DOCKERFILE}"
+    then
+      echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
+    else
+      die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
+    fi
+
+    DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
   fi
-
-  DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
 fi
 
 chmod +x ${TMP_SCRIPT}

@@ -37,7 +37,7 @@ SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
 README_MD = "./README.md"
 DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel" % TF_SRC_DIR
 GPU_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-gpu" % TF_SRC_DIR
-CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-cpu-mkl" % TF_SRC_DIR
+CPU_MKL_DEVEL_DOCKERFILE = "%s/tools/docker/Dockerfile.devel-mkl" % TF_SRC_DIR
 RELEVANT_FILES = [TF_SRC_DIR,
                   VERSION_H,
                   SETUP_PY,
@@ -211,44 +211,6 @@ def update_readme(old_version, new_version):
                          "%s-" % pep_440_str, README_MD)
 
 
-def update_md_files(old_version, new_version):
-  """Update the md doc files.
-
-  Args:
-    old_version: Version object of current version
-    new_version: Version object of new version
-  """
-
-  old_pep_version = old_version.pep_440_str
-  new_pep_version = new_version.pep_440_str
-  for filename in ["linux", "mac", "windows", "sources"]:
-    filepath = "%s/docs_src/install/install_%s.md" % (TF_SRC_DIR,
-                                                      filename)
-
-    if filename == "sources" and "rc0" in new_pep_version:
-      replace_string_in_line("(?<!<td>)tensorflow-%s" % old_pep_version,
-                             "tensorflow-%s" % new_pep_version, filepath)
-      replace_string_in_line("(?<!<td>)tensorflow_gpu-%s" % old_pep_version,
-                             "tensorflow_gpu-%s" % new_pep_version, filepath)
-    else:
-      replace_string_in_line("tensorflow-%s" % old_pep_version,
-                             "tensorflow-%s" % new_pep_version, filepath)
-      replace_string_in_line("tensorflow_gpu-%s" % old_pep_version,
-                             "tensorflow_gpu-%s" % new_pep_version, filepath)
-    replace_string_in_line("TensorFlow %s" % old_pep_version,
-                           "TensorFlow %s" % new_pep_version, filepath)
-
-  for filename in ["java", "go", "c"]:
-    filepath = "%s/docs_src/install/install_%s.md" % (TF_SRC_DIR,
-                                                      filename)
-    replace_string_in_line(r"x86_64-%s" % old_version,
-                           "x86_64-%s" % new_version, filepath)
-    replace_string_in_line(r"libtensorflow-%s.jar" % old_version,
-                           "libtensorflow-%s.jar" % new_version, filepath)
-    replace_string_in_line(r"<version>%s<\/version>" % old_version,
-                           "<version>%s</version>" % new_version, filepath)
-
-
 def major_minor_change(old_version, new_version):
   """Check if a major or minor change occurred."""
   major_mismatch = old_version.major != new_version.major
@@ -350,7 +312,6 @@ def main():
   update_version_h(old_version, new_version)
   update_setup_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
-  update_md_files(old_version, new_version)
   update_dockerfiles(old_version, new_version)
 
   # Print transition details.
@@ -359,12 +320,6 @@ def main():
   print("Patch: %s -> %s\n" % (old_version.patch, new_version.patch))
 
   check_for_old_version(old_version, new_version)
-  if "rc0" in str(new_version):
-    print("\n\n\033[93mNOTE: Please update the tensorflow/docs_src/install/"
-          "install_sources.md and add a line for tensorflow-%s and "
-          "tensorflow_gpu-%s in the tested source configurations "
-          "table.\033[0m\n" % (new_version.pep_440_str,
-                               new_version.pep_440_str))
 
 
 if __name__ == "__main__":

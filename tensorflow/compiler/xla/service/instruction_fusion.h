@@ -24,19 +24,46 @@ limitations under the License.
 
 namespace xla {
 
+// A queue interface that allows implementations to choose fusion candidates in
+// custom order.
+class FusionQueue {
+ public:
+  FusionQueue() = default;
+  virtual ~FusionQueue() = default;
+
+  // Dequeues the next fusion candidates: a consumer and the list of producers
+  // as operand indices.
+  virtual std::pair<HloInstruction*, std::vector<int64>>
+  DequeueNextInstructionAndOperandsToFuseInOrder() = 0;
+
+  // A callback passed to the queue implementation right before the producer is
+  // fused into the consumer.
+  virtual void PreFusion(HloInstruction* producer, HloInstruction* consumer) {}
+
+  // A callback passed to the queue implementation right after the fusion is
+  // created. Note that original_producer could have been destroyed.
+  virtual void OnFusingInstruction(HloInstruction* fusion,
+                                   HloInstruction* original_producer,
+                                   HloInstruction* original_consumer) {}
+
+  // A callback passed to the queue implementation to notify the removal of an
+  // instruction.
+  virtual void RemoveInstruction(HloInstruction* instruction) = 0;
+};
+
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers
 // with the intent that the loops which compute their values will be fused in
 // code generation. Derived classes define ShouldFuse method to select which
 // instructions to fuse.
-class InstructionFusion : public HloPassInterface {
+class InstructionFusion : public HloModulePass {
  public:
   explicit InstructionFusion(
       std::function<bool(const HloInstruction& instruction)> is_expensive,
       bool may_duplicate = true)
       : is_expensive_(is_expensive), may_duplicate_(may_duplicate) {}
   ~InstructionFusion() override = default;
-  tensorflow::StringPiece name() const override { return "fusion"; }
+  absl::string_view name() const override { return "fusion"; }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
@@ -48,6 +75,13 @@ class InstructionFusion : public HloPassInterface {
   static bool IsExpensive(const HloInstruction& instruction);
 
  protected:
+  // Returns a FusionQueue that implements custom order of instructions being
+  // fused. The default implementation processes consumers in reverse post
+  // order.
+  virtual std::unique_ptr<FusionQueue> GetFusionQueue(
+      HloComputation* computation,
+      const std::function<bool(HloInstruction*)>& skip_producer);
+
   // Returns whether the given producer instruction should be fused into the
   // given consumer instruction. producer is necessarily an operand of consumer.
   // Derived classes should define this method to specify which instructions
@@ -61,6 +95,14 @@ class InstructionFusion : public HloPassInterface {
   // Subtypes can override this with target-specific heuristics.
   virtual bool ShouldFuse(HloInstruction* consumer, int64 operand_index);
 
+  // Returns whether multi-output fusion can be applied to fuse `producer` into
+  // `consumer`. In contrast to "regular" fusion, the `producer` is not
+  // duplicated by multi-output fusion.
+  virtual bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
+                                         int64 operand_index) {
+    return false;
+  }
+
   // Chooses a fusion kind for `producer` and `consumer`.
   // Default method chooses `kLoop`.
   virtual HloInstruction::FusionKind ChooseKind(const HloInstruction* producer,
@@ -70,11 +112,18 @@ class InstructionFusion : public HloPassInterface {
   virtual HloInstruction* Fuse(HloInstruction* producer,
                                HloInstruction* consumer);
 
-  // An "effectively unary" operation is one that has one "large"
+  // Creates a new fusion instruction containing `producer` and `consumer`. A
+  // tuple is added as the fusion instruction's root, which consumes from both,
+  // `producer` and `consumer`. This style of fusion is referred to as
+  // multi-output fusion.
+  virtual HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
+                                              HloInstruction* consumer);
+
+  // An "effectively unary" operation is one that has at most one "large"
   // input with the others being negligible in terms of memory usage.
   // We use "has a smaller true rank than the output" as a heuristic
   // for "negligible" memory usage.
-  bool EffectivelyUnary(HloInstruction* hlo);
+  bool EffectivelyAtMostUnary(HloInstruction* hlo);
 
   // Returns true if fusing producer into consumer would cause producer to be
   // duplicated. This is the case if producer has uses other than consumer.
@@ -90,20 +139,33 @@ class InstructionFusion : public HloPassInterface {
   // Current HloComputation instance the loop fuser is traversing.
   HloComputation* computation_;
   HloModule* module_;
+  // Reachability information for the current computation.
+  std::unique_ptr<HloReachabilityMap> reachability_;
 
  private:
   // The set of producers whose consumers we cannot fuse into.
-  using DoNotFuseSet = std::unordered_set<HloInstruction*>;
+  using HloInstructionSet = std::unordered_set<HloInstruction*>;
 
-  // Whether or not we can fuse consumer into original_producer on all paths
+  HloInstruction* AddFusionInstruction(HloInstruction* producer,
+                                       HloInstruction* consumer);
+
+  // Whether or not we can fuse producer into consumer on all paths
   // from the producer to the consumer where nodes are HLOs and edges are uses.
-  bool CanFuseOnAllPaths(const HloReachabilityMap& reachability_map,
-                         HloInstruction* producer, HloInstruction* consumer,
-                         DoNotFuseSet* do_not_fuse);
+  bool CanFuseOnAllPaths(HloInstruction* producer, HloInstruction* consumer,
+                         const HloInstructionSet& do_not_fuse);
+
+  // Computes the set of nodes that we do not want to fuse into any of their
+  // consumers based on a global analysis of the HLO graph.
+  HloInstructionSet ComputeGloballyUnfusible(
+      absl::Span<HloInstruction* const> post_order);
 
   // Used to determine if an HLO is expensive. Expensive operations will not be
   // duplicated.
   std::function<bool(const HloInstruction& instruction)> is_expensive_;
+
+  // Whether multi-output fusion would introduce a cycle into the HLO graph.
+  bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
+                                     HloInstruction* consumer);
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;

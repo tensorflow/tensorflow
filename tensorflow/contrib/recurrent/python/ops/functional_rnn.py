@@ -22,7 +22,6 @@ from __future__ import print_function
 import copy
 
 from tensorflow.contrib.recurrent.python.ops import recurrent
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -62,7 +61,7 @@ class _FunctionalRnnCell(object):
     assert initial_state is not None
 
     # TODO(drpng): Dtype needs to be configurable.
-    input_dtypes = [dtypes.float32] + _GetDTypesFromStructure(initial_state)
+    input_dtypes = [seq_inputs.dtype] + _GetDTypesFromStructure(initial_state)
     # See _index.
     like_inputs_t = nest.map_structure(
         lambda x: array_ops.stop_gradient(array_ops.gather(x, 0)), seq_inputs)
@@ -144,7 +143,10 @@ class _FunctionalRnnCell(object):
   @property
   def extended_initial_state(self):
     if self._prepend_output:
-      return [array_ops.zeros(self._output_shape), self._state_template]
+      return [array_ops.zeros(
+          self._output_shape,
+          dtype=_GetDTypesFromStructure(self._state_template)[0]),
+              self._state_template]
     else:
       # The base case, where the output is just the hidden state.
       return self._state_template
@@ -178,13 +180,14 @@ def _ApplyLengthsToBatch(sequence_lengths, tf_output):
   # TODO(drpng): just use Update so that we don't carry over the gradients?
   """Sets the output to be zero at the end of the sequence."""
   # output is batch major.
-  batch_size, max_time, vector_size = tf_output.shape
+  shape = array_ops.shape(tf_output)
+  batch_size, max_time, vector_size = shape[0], shape[1], shape[2]
   output_time = array_ops.tile(math_ops.range(0, max_time), [batch_size])
   output_time = array_ops.reshape(output_time, [batch_size, max_time])
   lengths = array_ops.tile(
       array_ops.reshape(sequence_lengths, [-1, 1]), [1, max_time])
   is_less = math_ops.cast(
-      math_ops.less(output_time, lengths), dtype=dtypes.float32)
+      math_ops.less(output_time, lengths), dtype=tf_output.dtype)
   keep_mask = array_ops.tile(
       array_ops.expand_dims(is_less, -1),
       [1, 1, vector_size])
@@ -206,7 +209,7 @@ def _PickFinalStateFromHistory(acc_state, sequence_length):
     lengths = array_ops.tile(array_ops.reshape(sequence_length,
                                                [-1, 1]), [1, max_time])
     last_idx = math_ops.cast(math_ops.equal(output_time, lengths - 1),
-                             dtype=dtypes.float32)
+                             dtype=state_var.dtype)
     last_idx = array_ops.transpose(last_idx)
     last_idx_for_bcast = array_ops.expand_dims(last_idx, -1)
     sliced = math_ops.multiply(last_idx_for_bcast, state_var)
@@ -278,14 +281,24 @@ def functional_rnn(cell, inputs, sequence_length=None,
     if initial_state is None:
       initial_state = cell.zero_state(batch_size, dtype)
     func_cell = _FunctionalRnnCell(cell, inputs, initial_state)
+  if sequence_length is not None:
+    max_length = math_ops.reduce_max(sequence_length)
+  else:
+    max_length = None
   extended_acc_state, extended_final_state = recurrent.Recurrent(
       theta=func_cell.theta,
       state0=func_cell.extended_initial_state,
       inputs=inputs,
       cell_fn=func_cell.cell_step,
+      max_input_length=max_length,
       use_tpu=use_tpu)
-  return _PostProcessOutput(extended_acc_state, extended_final_state,
-                            func_cell, inputs_flat[0].shape[0], sequence_length)
+  tf_output, tf_state = _PostProcessOutput(
+      extended_acc_state, extended_final_state, func_cell,
+      inputs_flat[0].shape[0], sequence_length)
+
+  if time_major:
+    tf_output = array_ops.transpose(tf_output, [1, 0, 2])
+  return tf_output, tf_state
 
 
 def bidirectional_functional_rnn(

@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_CORE_ERRORS_H_
-#define TENSORFLOW_LIB_CORE_ERRORS_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_ERRORS_H_
+#define TENSORFLOW_CORE_LIB_CORE_ERRORS_H_
 
 #include <sstream>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -42,7 +43,7 @@ namespace internal {
 // Eventually absl::strings will have native support for this and we will be
 // able to completely remove PrepareForStrCat().
 template <typename T>
-typename std::enable_if<!std::is_convertible<T, strings::AlphaNum>::value,
+typename std::enable_if<!std::is_constructible<strings::AlphaNum, T>::value,
                         string>::type
 PrepareForStrCat(const T& t) {
   std::stringstream ss;
@@ -118,10 +119,41 @@ DECLARE_ERROR(Unauthenticated, UNAUTHENTICATED)
 
 #undef DECLARE_ERROR
 
+// Produces a formatted string pattern from the name which can uniquely identify
+// this node upstream to produce an informative error message. The pattern
+// followed is: {{node <name>}}
+// Note: The pattern below determines the regex _NODEDEF_NAME_RE in the file
+// tensorflow/python/client/session.py
+// LINT.IfChange
+inline string FormatNodeNameForError(const string& name) {
+  return strings::StrCat("{{node ", name, "}}");
+}
+// LINT.ThenChange(//tensorflow/python/client/session.py)
+template <typename T>
+string FormatNodeNamesForError(const T& names) {
+  return ::tensorflow::str_util::Join(
+      names, ", ", [](string* output, const string& s) {
+        ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
+      });
+}
+// LINT.IfChange
+inline string FormatColocationNodeForError(const string& name) {
+  return strings::StrCat("{{colocation_node ", name, "}}");
+}
+// LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
+template <typename T>
+string FormatColocationNodeForError(const T& names) {
+  return ::tensorflow::str_util::Join(
+      names, ", ", [](string* output, const string& s) {
+        ::tensorflow::strings::StrAppend(output,
+                                         FormatColocationNodeForError(s));
+      });
+}
+
 // The CanonicalCode() for non-errors.
 using ::tensorflow::error::OK;
 
 }  // namespace errors
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_ERRORS_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_ERRORS_H_
