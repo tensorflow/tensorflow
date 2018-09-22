@@ -76,54 +76,23 @@ StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
   return se::DeviceMemory<uint8>(buffer_addr);
 }
 
-// Determines whether we can safely perform a winograd non-fused convolution for
-// the given input and output shapes.  This works around b/68264959, an integer
-// overflow in cuDNNv5 and cuDNNv6.
-bool ShouldIncludeWinogradNonfusedAlgo(const Shape& input_shape,
-                                       const Shape& output_shape,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       se::StreamExecutor* stream_exec) {
-  // Skip this check for cudnn7 and newer.
-  auto version = stream_exec->AsDnn()->GetVersion();
-  if (version.ok() && version.ValueOrDie().major_version() >= 7) {
-    return true;
-  }
-
-  int64 batch = input_shape.dimensions(dnums.input_batch_dimension());
-  int64 in_depths = input_shape.dimensions(dnums.input_feature_dimension());
-  int64 in_rows = input_shape.dimensions(dnums.input_spatial_dimensions(0));
-  int64 in_cols =
-      dnums.input_spatial_dimensions_size() == 1
-          ? 1
-          : input_shape.dimensions(dnums.input_spatial_dimensions(1));
-  int64 out_depths = output_shape.dimensions(dnums.output_feature_dimension());
-
-  int64 total_size = CeilOfRatio(batch, int64{16}) *
-                     std::max(in_depths, out_depths) * in_cols * in_rows *
-                     sizeof(float);
-
-  const int64 threshold = 1L << 31;
-  return total_size < threshold;
-}
-
 std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
-                                         bool with_winograd_nonfused,
                                          se::StreamExecutor* stream_exec) {
   std::vector<AlgorithmDesc> algorithms;
+  bool succ = false;
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
-      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(
-          with_winograd_nonfused, &algorithms));
+      succ =
+          stream_exec->GetConvolveBackwardFilterAlgorithms(true, &algorithms);
       break;
     case CudnnConvKind::kBackwardInput:
-      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(
-          with_winograd_nonfused, &algorithms));
+      succ = stream_exec->GetConvolveBackwardDataAlgorithms(true, &algorithms);
       break;
     case CudnnConvKind::kForward:
-      CHECK(stream_exec->GetConvolveAlgorithms(with_winograd_nonfused,
-                                               &algorithms));
+      succ = stream_exec->GetConvolveAlgorithms(true, &algorithms);
       break;
   }
+  DCHECK(succ);
 
   return algorithms;
 }
@@ -282,8 +251,6 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     }
   }();
 
-  const bool use_winograd_nonfused = ShouldIncludeWinogradNonfusedAlgo(
-      input_shape, output_shape, *params.dnums, stream_exec_);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
 
@@ -292,8 +259,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // particular reason to use it, as any algorithm sufficies. It doesn't make
   // this algorithm considered correct, though.
   optional<AlgorithmDesc> first_algorithm;
-  for (const AlgorithmDesc& alg :
-       GetAlgorithms(params.kind, use_winograd_nonfused, stream_exec_)) {
+  for (const AlgorithmDesc& alg : GetAlgorithms(params.kind, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
