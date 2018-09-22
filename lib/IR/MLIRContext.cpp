@@ -32,6 +32,7 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 using namespace llvm;
 
@@ -286,7 +287,9 @@ public:
 };
 } // end namespace mlir
 
-MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {}
+MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
+  initializeAllRegisteredOps(this);
+}
 
 MLIRContext::~MLIRContext() {}
 

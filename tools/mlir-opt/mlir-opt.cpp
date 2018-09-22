@@ -106,11 +106,6 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
   return result;
 }
 
-// The function to initialize the MLIRContext for different ops is defined in
-// another compilation unit to allow different tests to link in different
-// context initializations (e.g., op registrations).
-extern void initializeMLIRContext(MLIRContext *ctx);
-
 /// Given a MemoryBuffer along with a line and column within it, return the
 /// location being referenced.
 static SMLoc getLocFromLineAndCol(MemoryBuffer &membuf, unsigned lineNo,
@@ -218,7 +213,6 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
 
   // Parse the input file.
   MLIRContext context;
-  initializeMLIRContext(&context);
 
   // If we are in verify mode then we have a lot of work to do, otherwise just
   // perform the actions without worrying about it.

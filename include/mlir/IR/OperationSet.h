@@ -150,6 +150,22 @@ private:
   void *pImpl;
 };
 
+using InitializeOpsFunction = std::function<void(MLIRContext *context)>;
+
+// Use OpInitializeRegistration as a global initialiser that registers Op
+// initializers.
+//
+// Usage:
+//
+//   // At namespace scope.
+//   static OpInitializeRegistration Unused([] { ... });
+struct OpInitializeRegistration {
+  OpInitializeRegistration(const InitializeOpsFunction &function);
+};
+
+/// Initializes all registers ops in the given MLIRContext.
+void initializeAllRegisteredOps(MLIRContext *context);
+
 } // namespace mlir
 
 #endif

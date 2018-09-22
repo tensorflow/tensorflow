@@ -19,9 +19,25 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 using llvm::StringMap;
+
+// Registry for all Op initialization functions.
+static llvm::ManagedStatic<std::vector<InitializeOpsFunction>> opRegistry;
+
+OpInitializeRegistration::OpInitializeRegistration(
+    const InitializeOpsFunction &function) {
+  assert(function && "Attempting to register an empty op initialize function");
+  opRegistry->push_back(function);
+}
+
+void mlir::initializeAllRegisteredOps(MLIRContext *context) {
+  for (const auto &fn : *opRegistry)
+    fn(context);
+}
 
 OpAsmParser::~OpAsmParser() {}
 
@@ -39,13 +55,9 @@ static StringMap<AbstractOperation> &getImpl(void *pImpl) {
   return *static_cast<StringMap<AbstractOperation> *>(pImpl);
 }
 
-OperationSet::OperationSet() {
-  pImpl = new StringMap<AbstractOperation>();
-}
+OperationSet::OperationSet() { pImpl = new StringMap<AbstractOperation>(); }
 
-OperationSet::~OperationSet() {
-  delete &getImpl(pImpl);
-}
+OperationSet::~OperationSet() { delete &getImpl(pImpl); }
 
 void OperationSet::addOperation(StringRef prefix, AbstractOperation opInfo) {
   assert(opInfo.name.startswith(prefix) && "op name doesn't start with prefix");

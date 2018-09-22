@@ -43,8 +43,6 @@ static llvm::cl::opt<std::string>
     outputFilename("o", llvm::cl::desc("Output filename"),
                    llvm::cl::value_desc("filename"), llvm::cl::init("-"));
 
-extern void initializeMLIRContext(MLIRContext *ctx);
-
 Module *mlir::parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   // Set up the input file.
   auto fileOrErr = llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
@@ -134,6 +132,5 @@ int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR translation driver\n");
 
   MLIRContext context;
-  initializeMLIRContext(&context);
   return (*translationRequested)(inputFilename, outputFilename, &context);
 }
