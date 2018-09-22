@@ -118,6 +118,18 @@ flatten = _pywrap_tensorflow.Flatten
 _same_namedtuples = _pywrap_tensorflow.SameNamedtuples
 
 
+class _DotString(object):
+
+  def __str__(self):
+    return "."
+
+  def __repr__(self):
+    return "."
+
+
+_DOT = _DotString()
+
+
 def assert_same_structure(nest1, nest2, check_types=True):
   """Asserts that two structures are nested in the same way.
 
@@ -149,7 +161,15 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+  try:
+    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+  except (ValueError, TypeError) as e:
+    str1 = str(map_structure(lambda _: _DOT, nest1))
+    str2 = str(map_structure(lambda _: _DOT, nest2))
+    raise type(e)("%s\n"
+                  "Entire first structure:\n%s\n"
+                  "Entire second structure:\n%s"
+                  % (str(e), str1, str2))
 
 
 def flatten_dict_items(dictionary):
