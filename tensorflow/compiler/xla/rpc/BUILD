@@ -34,8 +34,8 @@ cc_library(
     ],
 )
 
-tf_cc_binary(
-    name = "grpc_service_main_cpu",
+cc_library(
+    name = "grpc_service_main_library",
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
@@ -44,6 +44,14 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_binary(
+    name = "grpc_service_main_cpu",
+    deps = [
+        ":grpc_service_main_library",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
 )
 
