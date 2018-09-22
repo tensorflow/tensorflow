@@ -454,3 +454,15 @@ mlfunc @mlfuncattrempty() -> ()
   attributes {} {
   return
 }
+
+// CHECK-label mlfunc @mlfuncsimplemap
+#mapsimple0 = ()[s0, s1, s2] -> (s0)
+#mapsimple1 = (d0)[s0, s1, s2] -> (s1)
+mlfunc @mlfuncsimplemap(%arg0 : affineint, %arg1 : affineint, %arg2 : affineint) -> () {
+  for %i0 = 0 to #mapsimple0()[%arg0, %arg1, %arg2] { // CHECK: for %i0 = 0 to %arg0 {
+    for %i1 = 0 to #mapsimple1(%i0)[%arg0, %arg1, %arg2] { // CHECK: for %i1 = 0 to %arg1 {
+      %c42_i32 = constant 42 : i32
+    }
+  }
+  return
+}

@@ -1431,9 +1431,14 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
       return;
     }
 
-    // Print bound that consists of a single SSA id.
-    if (isa<AffineDimExpr>(expr) || isa<AffineSymbolExpr>(expr)) {
-      printOperand(bound.getOperand(0));
+    // Print bound that consists of a single SSA id, we need an indirection
+    // to achieve this.
+    if (auto *dimExpr = dyn_cast<AffineDimExpr>(expr)) {
+      printOperand(bound.getOperand(dimExpr->getPosition()));
+      return;
+    } else if (auto *symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
+      printOperand(
+          bound.getOperand(map->getNumDims() + symExpr->getPosition()));
       return;
     }
   } else {
