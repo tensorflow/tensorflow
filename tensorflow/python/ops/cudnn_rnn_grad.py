@@ -78,7 +78,7 @@ def _cudnn_rnn_var_len_backward(op, *grads):
   if not op.get_attr("is_training"):
     raise ValueError(
         "To use CudnnRNN in gradients, is_training must be set to True.")
-  return gen_cudnn_rnn_ops.cudnn_rnn_var_len_backprop(
+  return list(gen_cudnn_rnn_ops.cudnn_rnn_var_len_backprop(
       input=op.inputs[0],
       input_h=op.inputs[1],
       input_c=op.inputs[2],
@@ -96,7 +96,7 @@ def _cudnn_rnn_var_len_backward(op, *grads):
       seed2=op.get_attr("seed2"),
       rnn_mode=op.get_attr("rnn_mode"),
       input_mode=op.get_attr("input_mode"),
-      direction=op.get_attr("direction"))
+      direction=op.get_attr("direction")))+[None]
 	  
 @ops.RegisterGradient("CudnnRNNVarLenV2")
 def _cudnn_rnn_var_len_backward_v2(op, *grads):
@@ -104,7 +104,7 @@ def _cudnn_rnn_var_len_backward_v2(op, *grads):
   if not op.get_attr("is_training"):
     raise ValueError(
         "To use CudnnRNN in gradients, is_training must be set to True.")
-  return gen_cudnn_rnn_ops.cudnn_rnn_var_len_backprop_v2(
+  return list(gen_cudnn_rnn_ops.cudnn_rnn_var_len_backprop_v2(
       input=op.inputs[0],
       input_h=op.inputs[1],
       input_c=op.inputs[2],
@@ -122,4 +122,4 @@ def _cudnn_rnn_var_len_backward_v2(op, *grads):
       seed2=op.get_attr("seed2"),
       rnn_mode=op.get_attr("rnn_mode"),
       input_mode=op.get_attr("input_mode"),
-      direction=op.get_attr("direction"))
+      direction=op.get_attr("direction")))+[None]
