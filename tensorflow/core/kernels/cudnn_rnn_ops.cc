@@ -1867,7 +1867,6 @@ class CudnnRNNVarLenBackwardOp<GPUDevice, T> : public CudnnRNNBackwardOp<GPUDevi
 #define REGISTER_GPU(T)                                    \
   REGISTER_KERNEL_BUILDER(Name("CudnnRNNVarLenBackprop")       \
                               .Device(DEVICE_GPU)          \
-                              .HostMemory("host_reserved") \
                               .HostMemory("sequence_lengths") \
                               .TypeConstraint<T>("T"),     \
                           CudnnRNNVarLenBackwardOp<GPUDevice, T>);
