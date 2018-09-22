@@ -89,6 +89,8 @@ HOST_INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(HOST_GENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
 	HOST_INCLUDES += -I$(MAKEFILE_DIR)/gen/protobuf-host/include
@@ -115,6 +117,25 @@ ifeq ($(HOST_OS),PI)
 	HOST_LIBS += -ldl -lpthread
 endif
 
+# Abseil sources.
+ABSL_CC_ALL_SRCS := \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*.cc)
+
+ABSL_CC_EXCLUDE_SRCS := \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*test*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*benchmark*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/absl/absl/*/*/*/*/*benchmark*.cc) \
+tensorflow/contrib/makefile/downloads/absl/absl/synchronization/internal/mutex_nonprod.cc
+
+ABSL_CC_SRCS := $(filter-out $(ABSL_CC_EXCLUDE_SRCS), $(ABSL_CC_ALL_SRCS))
 
 # proto_text is a tool that converts protobufs into a form we can use more
 # compactly within TensorFlow. It's a bit like protoc, but is designed to
@@ -124,8 +145,12 @@ endif
 PROTO_TEXT := $(HOST_BINDIR)proto_text
 # The list of dependencies is derived from the Bazel build file by running
 # the gen_file_lists.sh script on a system with a working Bazel setup.
-PROTO_TEXT_CC_FILES := $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
-PROTO_TEXT_PB_CC_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt)
+PROTO_TEXT_CC_FILES := \
+  $(ABSL_CC_SRCS) \
+  $(shell cat $(MAKEFILE_DIR)/proto_text_cc_files.txt)
+PROTO_TEXT_PB_CC_LIST := \
+	$(shell cat $(MAKEFILE_DIR)/proto_text_pb_cc_files.txt) \
+	$(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc)
 PROTO_TEXT_PB_H_LIST := $(shell cat $(MAKEFILE_DIR)/proto_text_pb_h_files.txt)
 
 # Locations of the intermediate files proto_text generates.
@@ -171,6 +196,8 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
 ifeq ($(HAS_GEN_HOST_PROTOC),true)
@@ -232,7 +259,6 @@ ifeq ($(TARGET),PI)
 endif
 
 # Set up Android building
-# LINT.IfChange
 ifeq ($(TARGET),ANDROID)
 # Override NDK_ROOT on the command line with your own NDK location, e.g.
 # make -f tensorflow/contrib/makefile/Makefile TARGET=ANDROID \
@@ -326,6 +352,8 @@ $(MARCH_OPTION) \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/nsync/public \
 -I$(MAKEFILE_DIR)/downloads/fft2d \
+-I$(MAKEFILE_DIR)/downloads/double_conversion \
+-I$(MAKEFILE_DIR)/downloads/absl \
 -I$(MAKEFILE_DIR)/gen/protobuf_android/$(ANDROID_ARCH)/include \
 -I$(PROTOGENDIR) \
 -I$(PBTGENDIR)
@@ -441,7 +469,6 @@ $(MARCH_OPTION) \
 		DEPDIR := $(DEPDIR)android_$(ANDROID_ARCH)/
 	endif # ifeq ($(BUILD_FOR_TEGRA),1)
 endif  # ANDROID
-# LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
 # Settings for iOS.
 ifeq ($(TARGET),IOS)
@@ -591,6 +618,7 @@ BENCHMARK_NAME := $(BINDIR)benchmark
 # gen_file_lists.sh script.
 
 CORE_CC_ALL_SRCS := \
+$(ABSL_CC_SRCS) \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
@@ -603,6 +631,7 @@ $(wildcard tensorflow/core/platform/*/*.cc) \
 $(wildcard tensorflow/core/platform/*/*/*.cc) \
 $(wildcard tensorflow/core/util/*.cc) \
 $(wildcard tensorflow/core/util/*/*.cc) \
+$(wildcard tensorflow/contrib/makefile/downloads/double_conversion/double-conversion/*.cc) \
 tensorflow/core/util/version_info.cc
 # Remove duplicates (for version_info.cc)
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))

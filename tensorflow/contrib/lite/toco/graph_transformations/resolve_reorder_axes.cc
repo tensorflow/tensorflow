@@ -25,39 +25,71 @@ limitations under the License.
 
 namespace toco {
 
+namespace {
+
+void RenameArray(Model* model, const string& oldname,
+                 const string& desired_newname) {
+  const string& newname = AvailableArrayName(*model, desired_newname);
+  auto& arrays = model->GetMutableArrayMap();
+  arrays[newname] = std::move(arrays[oldname]);
+  arrays.erase(oldname);
+  for (const auto& op : model->operators) {
+    for (string& input : op->inputs) {
+      if (input == oldname) {
+        input = newname;
+      }
+    }
+    for (string& output : op->outputs) {
+      if (output == oldname) {
+        output = newname;
+      }
+    }
+  }
+}
+
+}  // namespace
+
 // Reorder the elements of an input_array according to the input_axes_order and
 // output_axes_order. Then adjust the shapes of the input and output arrays
 // accordingly. Note that input_array must have a buffer (that is, it is a
 // constant array).
 template <typename T, ArrayDataType DataType>
 void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
-                 Array* input_array, Array* output_array) {
-  CHECK(input_array->buffer->type == DataType);
-  CHECK(!output_array->buffer);
-  auto& input_data = input_array->GetMutableBuffer<DataType>().data;
-  std::vector<T> reordered_data;
-  reordered_data.resize(RequiredBufferSizeForShape(output_array->shape()));
+                 const Array& input_array, Array* output_array) {
+  DCHECK(input_array.buffer->type == DataType);
+  DCHECK(!output_array->buffer);
+  const auto& input_data = input_array.GetBuffer<DataType>().data;
+  auto& output_data = output_array->GetMutableBuffer<DataType>().data;
+  output_data.resize(RequiredBufferSizeForShape(output_array->shape()));
   // TODO(b/62904716) Shapes should be used directly.
-  Shape input_shape = input_array->shape();
+  Shape input_shape = input_array.shape();
   Shape output_shape = output_array->shape();
   if (AxesCount(input_axes_order) == 2) {
     UnextendShape(&input_shape, 2);
     UnextendShape(&output_shape, 2);
   }
   ShuffleArray(input_shape, input_axes_order, output_axes_order, output_shape,
-               input_data.data(), reordered_data.data());
-  input_data = reordered_data;
-  input_array->copy_shape(output_array->shape());
+               input_data.data(), output_data.data());
+  if (input_array.minmax) {
+    output_array->GetOrCreateMinMax() = input_array.GetMinMax();
+  }
+  if (input_array.narrow_range) {
+    output_array->narrow_range = true;
+  }
 }
 
 bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
-  auto reorder_it = model->operators.begin() + op_index;
-  auto* reorder_op = static_cast<ReorderAxesOperator*>(reorder_it->get());
-  if (reorder_op->type != OperatorType::kReorderAxes) {
+  auto it = model->operators.begin() + op_index;
+  auto* op = it->get();
+  if (op->type != OperatorType::kReorderAxes) {
     return false;
   }
-  const auto& input_array_name = reorder_op->inputs[0];
-  const auto& output_array_name = reorder_op->outputs[0];
+  auto* reorder_op = static_cast<ReorderAxesOperator*>(op);
+
+  // Intentionally copies, not references.
+  const string input_array_name = reorder_op->inputs[0];
+  const string output_array_name = reorder_op->outputs[0];
+
   auto& input_array = model->GetArray(input_array_name);
   auto& output_array = model->GetArray(output_array_name);
   if (!input_array.buffer) {
@@ -71,31 +103,23 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
   if (input_array.buffer->type == ArrayDataType::kFloat) {
     ReorderAxes<float, ArrayDataType::kFloat>(reorder_op->input_axes_order,
                                               reorder_op->output_axes_order,
-                                              &input_array, &output_array);
-  } else if (input_array.buffer->type == ArrayDataType::kInt32) {
+                                              input_array, &output_array);
+  } else if (input_array.buffer->type == ArrayDataType::kUint8) {
+    // TODO(benoitjacob): This path seems unused.
+    // ReorderAxes is only used when importing from
+    // TensorFlow GraphDef, which does not support quantized nodes.
     ReorderAxes<uint8, ArrayDataType::kUint8>(reorder_op->input_axes_order,
                                               reorder_op->output_axes_order,
-                                              &input_array, &output_array);
+                                              input_array, &output_array);
   } else {
     LOG(FATAL) << "Cannot ReorderAxes unless input buffer is float or uint8.";
   }
 
-  input_array.copy_shape(output_array.shape());
-
-  // Update the edges of the graph to point to the input array
-  for (const auto& other_op : model->operators) {
-    for (auto& input : other_op->inputs) {
-      if (input == output_array_name) {
-        input = input_array_name;
-      }
-    }
-  }
-
   AddMessageF("Reordered axes for array %s", input_array_name);
 
-  // Remove the op and output array.
-  model->EraseArray(output_array_name);
-  model->operators.erase(reorder_it);
+  DeleteOpAndArraysIfUnused(model, op);
+  RenameArray(model, output_array_name, input_array_name);
+
   return true;
 }
 

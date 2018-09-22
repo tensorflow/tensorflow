@@ -6,7 +6,8 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow/contrib/lite:build_def.bzl",
-    "gen_zipped_test_files",
+    "gen_zip_test",
+    "generated_test_models_all",
 )
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load(
@@ -14,50 +15,57 @@ load(
     "tf_cc_test",
 )
 
-gen_zipped_test_files(
-    name = "optest",
-    files = [
-        "add.zip",
-        "arg_max.zip",
-        "avg_pool.zip",
-        "batch_to_space_nd.zip",
-        "concat.zip",
-        "constant.zip",
-        "control_dep.zip",
-        "conv.zip",
-        "depthwiseconv.zip",
-        "div.zip",
-        "exp.zip",
-        "fully_connected.zip",
-        "fused_batch_norm.zip",
-        "gather.zip",
-        "global_batch_norm.zip",
-        "l2_pool.zip",
-        "l2norm.zip",
-        "less.zip",
-        "local_response_norm.zip",
-        "log_softmax.zip",
-        "max_pool.zip",
-        "maximum.zip",
-        "mean.zip",
-        "minimum.zip",
-        "mul.zip",
-        "pad.zip",
-        "relu.zip",
-        "relu1.zip",
-        "relu6.zip",
-        "reshape.zip",
-        "resize_bilinear.zip",
-        "sigmoid.zip",
-        "softmax.zip",
-        "space_to_batch_nd.zip",
-        "space_to_depth.zip",
-        "split.zip",
-        "squeeze.zip",
-        "strided_slice.zip",
-        "sub.zip",
-        "topk.zip",
-        "transpose.zip",
+[gen_zip_test(
+    name = "zip_test_%s" % test_name,
+    size = "large",
+    srcs = ["generated_examples_zip_test.cc"],
+    args = [
+    ] + select({
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            "--zip_file_path=$(location :zip_%s)" % test_name,
+            # TODO(angerson) We may be able to add an external unzip binary instead
+            # of relying on an existing one for OSS builds.
+            "--unzip_binary_path=/usr/bin/unzip",
+        ],
+    }),
+    conversion_mode = conversion_mode,
+    data = [
+        ":zip_%s" % test_name,
+    ],
+    shard_count = 20,
+    tags = [
+        "gen_zip_test",
+        "no_oss",
+        "tflite_not_portable_intentional",
+    ],
+    test_name = test_name,
+    deps = [
+        ":parse_testdata_lib",
+        ":tflite_driver",
+        ":util",
+        "@com_google_googletest//:gtest",
+        "@com_googlesource_code_re2//:re2",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+    }),
+) for conversion_mode, test_name in generated_test_models_all()]
+
+test_suite(
+    name = "generated_zip_tests",
+    tags = [
+        "gen_zip_test",
     ],
 )
 
@@ -133,6 +141,7 @@ cc_test(
 cc_library(
     name = "join",
     hdrs = ["join.h"],
+    deps = ["//tensorflow/contrib/lite:string"],
 )
 
 cc_test(
@@ -152,18 +161,21 @@ cc_library(
     deps = [
         ":split",
         ":test_runner",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/delegates/eager:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "tflite_driver_test",
     size = "small",
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":tflite_driver",
@@ -200,6 +212,11 @@ cc_library(
 cc_library(
     name = "util",
     hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
+        "//tensorflow/contrib/lite/core/api",
+    ],
 )
 
 cc_test(
@@ -243,6 +260,7 @@ cc_test(
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -259,6 +277,7 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/core:framework",
     ],
 )
@@ -268,6 +287,7 @@ cc_test(
     size = "small",
     srcs = ["generate_testspec_test.cc"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -283,13 +303,9 @@ cc_library(
     deps = [
         ":generate_testspec",
         ":parse_testdata_lib",
-        ":split",
         ":tflite_driver",
-        ":util",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 
@@ -328,7 +344,7 @@ tf_cc_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",
+        "no_oss",  # needs test data
         "tflite_not_portable",
     ],
     deps = [
@@ -344,44 +360,6 @@ cc_binary(
         ":tflite_diff_flags",
         ":tflite_diff_util",
     ],
-)
-
-tf_cc_test(
-    name = "generated_examples_zip_test",
-    size = "large",
-    srcs = ["generated_examples_zip_test.cc"],
-    args = [
-        "--zip_files_dir=tensorflow/contrib/lite/testing/optest",
-        # TODO(angerson) We may be able to add an external unzip binary instead
-        # of relying on an existing one for OSS builds.
-        "--unzip_binary_path=/usr/bin/unzip",
-    ],
-    data = [":optest"],
-    shard_count = 20,
-    tags = [
-        "no_oss",
-        "tflite_not_portable",
-    ],
-    deps = [
-        ":parse_testdata_lib",
-        ":tflite_driver",
-        ":util",
-        "@com_google_googletest//:gtest",
-        "@com_googlesource_code_re2//:re2",
-        "//tensorflow/contrib/lite:builtin_op_data",
-        "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
-    ] + select({
-        "//conditions:default": [
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:test",
-        ],
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-            "//tensorflow/core:android_tensorflow_test_lib",
-        ],
-    }),
 )
 
 tflite_portable_test_suite()

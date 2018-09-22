@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -69,10 +70,10 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     argument_dereferenceable_bytes.push_back(root_size);
   }
   // The base pointer of the memory block for all pre-allocated temp buffers.
-  argument_types.push_back(ir_builder_.getInt8PtrTy());
+  argument_types.push_back(b_.getInt8PtrTy());
 
   llvm::FunctionType* function_type =
-      llvm::FunctionType::get(ir_builder_.getVoidTy(), argument_types, false);
+      llvm::FunctionType::get(b_.getVoidTy(), argument_types, false);
   llvm::Function* function = llvm::Function::Create(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
@@ -95,8 +96,7 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       llvm::BasicBlock::Create(function->getContext(), "entry", function);
   // Emit a "return void" at entry_bb's end, and sets the insert point before
   // that return instruction.
-  ir_builder_.SetInsertPoint(
-      llvm::ReturnInst::Create(function->getContext(), entry_bb));
+  b_.SetInsertPoint(llvm::ReturnInst::Create(function->getContext(), entry_bb));
 
   std::vector<const HloInstruction*> non_io_hlos;
   for (const auto* hlo : nested_computation.instructions()) {
@@ -116,8 +116,17 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
-                              &ir_builder_)
+  // For MOF we give the loop emitter an array for every output it should
+  // generate.
+  if (hlo.IsMultiOutputFusion()) {
+    std::vector<llvm_ir::IrArray> target_arrays =
+        ConstructIrArrayForOutputs(hlo);
+    TF_RETURN_IF_ERROR(
+        llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_, module_);
+    return Status::OK();
+  }
+  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
 }
 

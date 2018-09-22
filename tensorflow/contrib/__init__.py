@@ -21,13 +21,25 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.tools import component_api_helper
+component_api_helper.package_hook(
+    parent_package_str=(
+        "tensorflow.contrib"),
+    child_package_str=(
+        "tensorflow_estimator.contrib.estimator"))
+del component_api_helper
+
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import autograph
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
-from tensorflow.contrib import cloud
+from tensorflow.contrib import checkpoint
+if os.name != "nt":
+  from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
+from tensorflow.contrib import constrained_optimization
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
@@ -47,29 +59,29 @@ from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
 from tensorflow.contrib import keras
 from tensorflow.contrib import kernel_methods
-from tensorflow.contrib import kfac
 from tensorflow.contrib import labeled_tensor
 from tensorflow.contrib import layers
 from tensorflow.contrib import learn
 from tensorflow.contrib import legacy_seq2seq
-from tensorflow.contrib import linalg
 from tensorflow.contrib import linear_optimizer
 from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import mixed_precision
 from tensorflow.contrib import model_pruning
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import periodic_resample
 from tensorflow.contrib import predictor
+from tensorflow.contrib import proto
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize
-from tensorflow.contrib import recurrent
 from tensorflow.contrib import reduce_slice_ops
 from tensorflow.contrib import resampler
 from tensorflow.contrib import rnn
+from tensorflow.contrib import rpc
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
 from tensorflow.contrib import signal
@@ -88,10 +100,10 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-if os.name != "nt":
-  from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
+from tensorflow.contrib.recurrent.python import recurrent_api as recurrent
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
 from tensorflow.contrib.summary import summary

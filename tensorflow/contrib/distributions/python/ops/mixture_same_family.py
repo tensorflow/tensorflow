@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class MixtureSameFamily(distribution.Distribution):
@@ -43,7 +44,8 @@ class MixtureSameFamily(distribution.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   ### Create a mixture of two scalar Gaussians:
 
@@ -95,6 +97,14 @@ class MixtureSameFamily(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                mixture_distribution,
                components_distribution,
@@ -104,12 +114,12 @@ class MixtureSameFamily(distribution.Distribution):
     """Construct a `MixtureSameFamily` distribution.
 
     Args:
-      mixture_distribution: `tf.distributions.Categorical`-like instance.
+      mixture_distribution: `tfp.distributions.Categorical`-like instance.
         Manages the probability of selecting components. The number of
         categories must match the rightmost batch dimension of the
         `components_distribution`. Must have either scalar `batch_shape` or
         `batch_shape` matching `components_distribution.batch_shape[:-1]`.
-      components_distribution: `tf.distributions.Distribution`-like instance.
+      components_distribution: `tfp.distributions.Distribution`-like instance.
         Right-most batch dimension indexes components.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime
@@ -130,8 +140,8 @@ class MixtureSameFamily(distribution.Distribution):
       ValueError: if `mixture_distribution` categories does not equal
         `components_distribution` rightmost batch shape.
     """
-    parameters = locals()
-    with ops.name_scope(name):
+    parameters = dict(locals())
+    with ops.name_scope(name) as name:
       self._mixture_distribution = mixture_distribution
       self._components_distribution = components_distribution
       self._runtime_assertions = []
@@ -321,6 +331,14 @@ class MixtureSameFamily(distribution.Distribution):
       return x
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _outer_squared_difference(x, y):
   """Convenience function analogous to tf.squared_difference."""
   z = x - y

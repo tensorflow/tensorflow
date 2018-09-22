@@ -22,6 +22,20 @@ limitations under the License.
 
 namespace toco {
 
+bool InferQuantizedDataTypeFromFakeQuant(
+    const FakeQuantOperator& op, ArrayDataType* out_quantized_data_type) {
+  if (op.num_bits <= 8) {
+    *out_quantized_data_type = ArrayDataType::kUint8;
+    return true;
+  } else if (op.num_bits <= 16) {
+    *out_quantized_data_type = ArrayDataType::kInt16;
+    return true;
+  } else {
+    *out_quantized_data_type = ArrayDataType::kNone;
+    return false;
+  }
+}
+
 bool GetQuantizedDataTypeNumericalRange(ArrayDataType data_type,
                                         double* out_min_value,
                                         double* out_max_value) {
@@ -60,46 +74,135 @@ ArrayDataType GetQuantizedDataType(const Array& array,
   }
 }
 
-void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
-                           QuantizationParams* quantization_params) {
-  switch (data_type) {
+template <ArrayDataType A>
+void ChooseQuantizationParamsForArrayAndQuantizedDataType(
+    const Array& array, QuantizationParams* quantization_params) {
+  *quantization_params = ::tflite::ChooseQuantizationParams<DataType<A>>(
+      array.minmax->min, array.minmax->max, array.narrow_range);
+}
+
+void ChooseQuantizationParamsForArrayAndQuantizedDataType(
+    const Array& array, ArrayDataType quantized_data_type,
+    QuantizationParams* quantization_params) {
+  switch (quantized_data_type) {
     case ArrayDataType::kInt8:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt8>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kInt8>(array, quantization_params);
       break;
     case ArrayDataType::kUint8:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kUint8>(array, quantization_params);
       break;
     case ArrayDataType::kInt16:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kInt16>(array, quantization_params);
       break;
     case ArrayDataType::kUint16:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint16>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kUint16>(array, quantization_params);
       break;
     case ArrayDataType::kInt32:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt32>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kInt32>(array, quantization_params);
       break;
     case ArrayDataType::kUint32:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint32>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kUint32>(array, quantization_params);
       break;
     case ArrayDataType::kInt64:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kInt64>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kInt64>(array, quantization_params);
       break;
     case ArrayDataType::kUint64:
-      GetQuantizationParamsFromMinMax<ArrayDataType::kUint64>(
-          minmax, quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType<
+          ArrayDataType::kUint64>(array, quantization_params);
       break;
     case ArrayDataType::kFloat:
     case ArrayDataType::kNone:
     default:
       LOG(FATAL) << "Unhandled final quantization type "
-                 << static_cast<int>(data_type);
+                 << static_cast<int>(quantized_data_type);
+  }
+}
+
+namespace {
+
+template <ArrayDataType A>
+std::unique_ptr<GenericBuffer> QuantizeBuffer(
+    const Array& array, const QuantizationParams& quantization_params) {
+  const GenericBuffer& buffer = *array.buffer;
+  const auto inverse_scale = 1. / quantization_params.scale;
+  CHECK(buffer.type == ArrayDataType::kFloat);
+  const auto& float_buffer =
+      static_cast<const Buffer<ArrayDataType::kFloat>&>(buffer);
+  auto* quantized_buffer = new Buffer<A>;
+  quantized_buffer->data.resize(float_buffer.data.size());
+  for (std::size_t i = 0; i < float_buffer.data.size(); i++) {
+    const float src_val = float_buffer.data[i];
+    double scaled_val;  // Astonishingly, using 'float' degrades accuracy just
+                        // enough to make a few tests fail!
+    if (quantization_params.scale == 0) {
+      CHECK_EQ(src_val, 0) << "The quantization scale for this array is 0, "
+                           << "so all its values should be 0.";
+      scaled_val = quantization_params.zero_point;
+    } else {
+      scaled_val = quantization_params.zero_point + inverse_scale * src_val;
+    }
+    auto integer_val = tflite::SafeCast<DataType<A>>(std::round(scaled_val));
+    // In addition to its effect on the choice of quantization params upstream
+    // of here, narrow_range also means nudge the min quantized value by +1,
+    // so e.g. uint8 values get constrained to [1, 255].
+    if (integer_val == std::numeric_limits<DataType<A>>::min() &&
+        array.narrow_range) {
+      integer_val++;
+    }
+    quantized_buffer->data[i] = integer_val;
+  }
+  return std::unique_ptr<GenericBuffer>(quantized_buffer);
+}
+
+template <ArrayDataType A>
+void QuantizeArray(GraphTransformation* transformation, Model* model,
+                   const string& name,
+                   const QuantizationParams& quantization_params) {
+  auto& array = model->GetArray(name);
+  CHECK(array.data_type == ArrayDataType::kFloat);
+  CHECK(!array.quantization_params);
+  array.GetOrCreateQuantizationParams() = quantization_params;
+  if (array.buffer) {
+    array.buffer = QuantizeBuffer<A>(array, quantization_params);
+  }
+  array.data_type = A;
+  array.final_data_type = A;
+  transformation->AddMessageF(
+      "Quantized array %s to %s zero_point=%g, scale=%g", name,
+      ArrayDataTypeName(array.data_type), quantization_params.zero_point,
+      quantization_params.scale);
+}
+
+}  // namespace
+
+void QuantizeArray(GraphTransformation* transformation, Model* model,
+                   const string& name, ArrayDataType quantized_data_type,
+                   const QuantizationParams& quantization_params) {
+  ArrayDataType adjusted_data_type = quantized_data_type;
+  auto& array = model->GetArray(name);
+  if (array.final_data_type == ArrayDataType::kInt16) {
+    adjusted_data_type = array.final_data_type;
+  }
+
+  switch (adjusted_data_type) {
+    case ArrayDataType::kUint8:
+      return QuantizeArray<ArrayDataType::kUint8>(transformation, model, name,
+                                                  quantization_params);
+    case ArrayDataType::kInt16:
+      return QuantizeArray<ArrayDataType::kInt16>(transformation, model, name,
+                                                  quantization_params);
+    case ArrayDataType::kInt32:
+      return QuantizeArray<ArrayDataType::kInt32>(transformation, model, name,
+                                                  quantization_params);
+    default:
+      LOG(FATAL) << "Unhandled case.";
   }
 }
 
@@ -122,8 +225,8 @@ bool IsArrayQuantizedRangeSubset(GraphTransformation* transformation,
     } else {
       // Work around cases where we are asking for this prior to the Quantize
       // transformation having added the quantization_params.
-      GetQuantizationParams(quantized_data_type, *array.minmax,
-                            &quantization_params);
+      ChooseQuantizationParamsForArrayAndQuantizedDataType(
+          array, quantized_data_type, &quantization_params);
       transformation->AddMessageF(
           "No quantization params - infering from data type %s with minmax "
           "%g,%g as zero_point=%g, scale=%g",

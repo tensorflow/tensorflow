@@ -29,6 +29,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.util import deprecation
 
 
 class Independent(distribution_lib.Distribution):
@@ -69,7 +70,8 @@ class Independent(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Make independent distribution from a 2-batch Normal.
   ind = tfd.Independent(
@@ -94,6 +96,14 @@ class Independent(distribution_lib.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(
       self, distribution, reinterpreted_batch_ndims=None,
       validate_args=False, name=None):
@@ -116,10 +126,10 @@ class Independent(distribution_lib.Distribution):
       ValueError: if `reinterpreted_batch_ndims` exceeds
         `distribution.batch_ndims`
     """
-    parameters = locals()
+    parameters = dict(locals())
     name = name or "Independent" + distribution.name
     self._distribution = distribution
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       if reinterpreted_batch_ndims is None:
         reinterpreted_batch_ndims = self._get_default_reinterpreted_batch_ndims(
             distribution)
@@ -258,6 +268,14 @@ class Independent(distribution_lib.Distribution):
 
 
 @kullback_leibler.RegisterKL(Independent, Independent)
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _kl_independent(a, b, name="kl_independent"):
   """Batched KL divergence `KL(a || b)` for Independent distributions.
 

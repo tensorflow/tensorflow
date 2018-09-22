@@ -17,11 +17,35 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import boosted_trees as canned_boosted_trees
+from tensorflow.python.estimator.canned import head as head_lib
 
 
-class _BoostedTreesEstimator(estimator.Estimator):
+def _validate_input_fn_and_repeat_dataset(train_input_fn):
+  """Validates whether the input_fn is valid, and repeat() if tf.Dataset."""
+  def _input_fn():
+    result_input_fn = train_input_fn()
+    if isinstance(result_input_fn, dataset_ops.Dataset):
+      return result_input_fn.repeat()
+    return result_input_fn
+
+  return _input_fn
+
+
+# pylint: disable=protected-access
+def _is_classification_head(head):
+  """Infers if the head is a classification head."""
+  # Check using all classification heads defined in canned/head.py. However, it
+  # is not a complete list - it does not check for other classification heads
+  # not defined in the head library.
+  return isinstance(head,
+                    (head_lib._BinaryLogisticHeadWithSigmoidCrossEntropyLoss,
+                     head_lib._MultiClassHeadWithSoftmaxCrossEntropyLoss))
+
+
+class _BoostedTreesEstimator(canned_boosted_trees._BoostedTreesBase):
   """An Estimator for Tensorflow Boosted Trees models."""
 
   def __init__(self,
@@ -36,7 +60,10 @@ class _BoostedTreesEstimator(estimator.Estimator):
                l1_regularization=0.,
                l2_regularization=0.,
                tree_complexity=0.,
-               config=None):
+               min_node_weight=0.,
+               config=None,
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesEstimator` instance.
 
     Args:
@@ -65,22 +92,51 @@ class _BoostedTreesEstimator(estimator.Estimator):
       l2_regularization: regularization multiplier applied to the square weights
         of the tree leafs.
       tree_complexity: regularization factor to penalize trees with more leaves.
+      min_node_weight: minimum hessian a node must have for a split to be
+        considered. The value will be compared with sum(leaf_hessian)/
+        (batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
+      center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
+
+    Raises:
+      ValueError: when wrong arguments are given or unsupported functionalities
+         are requested.
     """
-    # pylint:disable=protected-access
     # HParams for the model.
     tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity)
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return canned_boosted_trees._bt_model_fn(
-          features, labels, mode, head, feature_columns, tree_hparams,
-          n_batches_per_layer, config)
+          features,
+          labels,
+          mode,
+          head,
+          feature_columns,
+          tree_hparams,
+          n_batches_per_layer,
+          config=config)
 
     super(_BoostedTreesEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
-    # pylint:enable=protected-access
+        model_fn=_model_fn,
+        model_dir=model_dir,
+        config=config,
+        feature_columns=feature_columns,
+        head=head,
+        center_bias=center_bias,
+        is_classification=_is_classification_head(head))
+    # pylint: enable=protected-access
 
 
 def boosted_trees_classifier_train_in_memory(
@@ -96,8 +152,11 @@ def boosted_trees_classifier_train_in_memory(
     l1_regularization=0.,
     l2_regularization=0.,
     tree_complexity=0.,
+    min_node_weight=0.,
     config=None,
-    train_hooks=None):
+    train_hooks=None,
+    center_bias=False,
+    pruning_mode='none'):
   """Trains a boosted tree classifier with in memory dataset.
 
   Example:
@@ -108,10 +167,13 @@ def boosted_trees_classifier_train_in_memory(
   bucketized_feature_2 = bucketized_column(
     numeric_column('feature_2'), BUCKET_BOUNDARIES_2)
 
-  def input_fn_train():
+  def train_input_fn():
     dataset = create-dataset-from-training-data
-    # Don't use repeat or cache, since it is assumed to be one epoch
-    # This is either tf.data.Dataset, or a tuple of feature dict and label.
+    # This is tf.data.Dataset of a tuple of feature dict and label.
+    #   e.g. Dataset.zip((Dataset.from_tensors({'f1': f1_array, ...}),
+    #                     Dataset.from_tensors(label_array)))
+    # The returned Dataset shouldn't be batched.
+    # If Dataset repeats, only the first repetition would be used for training.
     return dataset
 
   classifier = boosted_trees_classifier_train_in_memory(
@@ -162,8 +224,22 @@ def boosted_trees_classifier_train_in_memory(
     l2_regularization: regularization multiplier applied to the square weights
       of the tree leafs.
     tree_complexity: regularization factor to penalize trees with more leaves.
+    min_node_weight: minimum hessian a node must have for a split to be
+        considered. The value will be compared with sum(leaf_hessian)/
+        (batch_size * n_batches_per_layer).
     config: `RunConfig` object to configure the runtime settings.
-    train_hooks: a list of Hook instances to be passed to estimator.train().
+    train_hooks: a list of Hook instances to be passed to estimator.train()
+    center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
+    pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
   Returns:
     a `BoostedTreesClassifier` instance created with the given arguments and
@@ -184,7 +260,7 @@ def boosted_trees_classifier_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity)
+      tree_complexity, min_node_weight, center_bias, pruning_mode)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(
@@ -202,7 +278,9 @@ def boosted_trees_classifier_train_in_memory(
   in_memory_classifier = estimator.Estimator(
       model_fn=_model_fn, model_dir=model_dir, config=config)
 
-  in_memory_classifier.train(input_fn=train_input_fn, hooks=train_hooks)
+  in_memory_classifier.train(
+      input_fn=_validate_input_fn_and_repeat_dataset(train_input_fn),
+      hooks=train_hooks)
 
   return in_memory_classifier
   # pylint: enable=protected-access
@@ -220,8 +298,11 @@ def boosted_trees_regressor_train_in_memory(
     l1_regularization=0.,
     l2_regularization=0.,
     tree_complexity=0.,
+    min_node_weight=0.,
     config=None,
-    train_hooks=None):
+    train_hooks=None,
+    center_bias=False,
+    pruning_mode='none'):
   """Trains a boosted tree regressor with in memory dataset.
 
   Example:
@@ -232,10 +313,13 @@ def boosted_trees_regressor_train_in_memory(
   bucketized_feature_2 = bucketized_column(
     numeric_column('feature_2'), BUCKET_BOUNDARIES_2)
 
-  def input_fn_train():
+  def train_input_fn():
     dataset = create-dataset-from-training-data
-    # Don't use repeat or cache, since it is assumed to be one epoch
-    # This is either tf.data.Dataset, or a tuple of feature dict and label.
+    # This is tf.data.Dataset of a tuple of feature dict and label.
+    #   e.g. Dataset.zip((Dataset.from_tensors({'f1': f1_array, ...}),
+    #                     Dataset.from_tensors(label_array)))
+    # The returned Dataset shouldn't be batched.
+    # If Dataset repeats, only the first repetition would be used for training.
     return dataset
 
   regressor = boosted_trees_regressor_train_in_memory(
@@ -279,8 +363,22 @@ def boosted_trees_regressor_train_in_memory(
     l2_regularization: regularization multiplier applied to the square weights
       of the tree leafs.
     tree_complexity: regularization factor to penalize trees with more leaves.
+    min_node_weight: minimum hessian a node must have for a split to be
+        considered. The value will be compared with sum(leaf_hessian)/
+        (batch_size * n_batches_per_layer).
     config: `RunConfig` object to configure the runtime settings.
     train_hooks: a list of Hook instances to be passed to estimator.train().
+    center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
+    pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
   Returns:
     a `BoostedTreesClassifier` instance created with the given arguments and
@@ -300,7 +398,7 @@ def boosted_trees_regressor_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity)
+      tree_complexity, min_node_weight, center_bias, pruning_mode)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(
@@ -317,7 +415,9 @@ def boosted_trees_regressor_train_in_memory(
   in_memory_regressor = estimator.Estimator(
       model_fn=_model_fn, model_dir=model_dir, config=config)
 
-  in_memory_regressor.train(input_fn=train_input_fn, hooks=train_hooks)
+  in_memory_regressor.train(
+      input_fn=_validate_input_fn_and_repeat_dataset(train_input_fn),
+      hooks=train_hooks)
 
   return in_memory_regressor
   # pylint: enable=protected-access

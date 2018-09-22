@@ -25,8 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Indicates a set of options for a device's usage, which generally must be
 // provided at StreamExecutor device-initialization time.
@@ -84,7 +83,6 @@ struct DeviceOptions {
   unsigned flags_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_

@@ -12,6 +12,7 @@ py_library(
     deps = [
         ":pywrap_xla",
         "//tensorflow/compiler/xla:xla_data_proto_py",
+        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 
@@ -20,6 +21,7 @@ py_test(
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":xla_client",
         "//tensorflow/python:platform_test",
@@ -31,11 +33,15 @@ cc_library(
     srcs = ["numpy_bridge.cc"],
     hdrs = ["numpy_bridge.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/python:numpy_lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -48,12 +54,16 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -66,7 +76,7 @@ tf_py_wrap_cc(
     deps = [
         ":local_computation_builder",
         ":numpy_bridge",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",

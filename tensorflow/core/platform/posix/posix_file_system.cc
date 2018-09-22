@@ -91,7 +91,7 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     size_t r = fwrite(data.data(), 1, data.size(), file_);
     if (r != data.size()) {
       return IOError(filename_, errno);

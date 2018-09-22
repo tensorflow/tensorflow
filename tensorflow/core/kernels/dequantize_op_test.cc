@@ -127,8 +127,8 @@ TEST_F(DequantizeOpTest, DequantizeMinCombinedQuint16) {
 TEST_F(DequantizeOpTest, DequantizeScaledQuint8Zero) {
   RunDequantizeScaledTest<quint8>(-255.0f, 127.0f, 0, 0.0);
 }
-TEST_F(DequantizeOpTest, DequantizeScaledQuint8ScaleIdentity) {
-  RunDequantizeScaledTest<quint8>(-255.0f, 127.0f, 127, 127.0);
+TEST_F(DequantizeOpTest, DequantizeScaledQuint8CheckIgnoresNegative) {
+  RunDequantizeScaledTest<quint8>(-512.0f, 255.0f, 255, 255.0);
 }
 TEST_F(DequantizeOpTest, DequantizeScaledQuint8ScaleDown) {
   RunDequantizeScaledTest<quint8>(-1.0f, 2.0f, 255, 2.0);
@@ -144,7 +144,7 @@ TEST_F(DequantizeOpTest, DequantizeScaledQint8ScaleIdentity) {
   RunDequantizeScaledTest<qint8>(-10.0f, 127.0f, -127, -127.0);
 }
 TEST_F(DequantizeOpTest, DequantizeScaledQint8ScaleDown) {
-  RunDequantizeScaledTest<qint8>(-2.0f, 1.0f, -127, -2.0);
+  RunDequantizeScaledTest<qint8>(-2.0f, 1.0f, -128, -2.0);
 }
 TEST_F(DequantizeOpTest, DequantizeScaledQint8ScaleUp) {
   RunDequantizeScaledTest<qint8>(-1.0f, 300.0f, 42, 99.212601);

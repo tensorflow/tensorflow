@@ -42,12 +42,12 @@ class ConstantValueTest(test.TestCase):
       c = constant_op.constant(v)
       value = utils.constant_value(c)
       self.assertEqual(value, v)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(c.eval(), v)
 
   def test_variable(self):
     for v in [True, False, 1, 0, 1.0]:
-      with ops.Graph().as_default() as g, self.test_session(g) as sess:
+      with ops.Graph().as_default() as g, self.session(g) as sess:
         x = variables.Variable(v)
         value = utils.constant_value(x)
         self.assertEqual(value, None)
@@ -60,7 +60,7 @@ class ConstantValueTest(test.TestCase):
       x = array_ops.identity(p)
       value = utils.constant_value(p)
       self.assertEqual(value, None)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(x.eval(feed_dict={p: v}), v)
 
 
@@ -80,7 +80,7 @@ class StaticCondTest(test.TestCase):
     expected = lambda v: b'fn1' if v else b'fn2'
     for v in [True, False, 1, 0]:
       o = utils.static_cond(v, fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(), expected(v))
 
   def test_variable(self):
@@ -89,7 +89,7 @@ class StaticCondTest(test.TestCase):
     expected = lambda v: b'fn1' if v else b'fn2'
     for v in [True, False, 1, 0]:
       o = utils.static_cond(v, fn1, fn2)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
         self.assertEqual(o.eval(), expected(v))
 
@@ -99,7 +99,7 @@ class StaticCondTest(test.TestCase):
     expected = lambda v: -1 if v else -2
     for v in [True, False, 1, 0]:
       o = utils.static_cond(v, fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(), expected(v))
 
 
@@ -119,7 +119,7 @@ class SmartCondStaticTest(test.TestCase):
     expected = lambda v: b'fn1' if v else b'fn2'
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(constant_op.constant(v), fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(), expected(v))
 
   def test_variable(self):
@@ -128,7 +128,7 @@ class SmartCondStaticTest(test.TestCase):
     expected = lambda v: b'fn1' if v else b'fn2'
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(constant_op.constant(v), fn1, fn2)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
         self.assertEqual(o.eval(), expected(v))
 
@@ -138,7 +138,7 @@ class SmartCondStaticTest(test.TestCase):
     expected = lambda v: -1 if v else -2
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(constant_op.constant(v), fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(), expected(v))
 
 
@@ -151,7 +151,7 @@ class SmartCondDynamicTest(test.TestCase):
     p = array_ops.placeholder(dtypes.bool, [])
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(p, fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(feed_dict={p: v}), expected(v))
 
   def test_constant(self):
@@ -161,7 +161,7 @@ class SmartCondDynamicTest(test.TestCase):
     p = array_ops.placeholder(dtypes.bool, [])
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(p, fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(feed_dict={p: v}), expected(v))
 
   def test_variable(self):
@@ -171,7 +171,7 @@ class SmartCondDynamicTest(test.TestCase):
     p = array_ops.placeholder(dtypes.bool, [])
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(p, fn1, fn2)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
         self.assertEqual(o.eval(feed_dict={p: v}), expected(v))
 
@@ -182,7 +182,7 @@ class SmartCondDynamicTest(test.TestCase):
     p = array_ops.placeholder(dtypes.bool, [])
     for v in [True, False, 1, 0]:
       o = utils.smart_cond(p, fn1, fn2)
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(o.eval(feed_dict={p: v}), expected(v))
 
 
@@ -293,7 +293,6 @@ class NPositiveIntegersTest(test.TestCase):
     self.assertEqual(utils.n_positive_integers(1, 2), (2,))
     self.assertEqual(utils.n_positive_integers(2, 2), (2, 2))
     self.assertEqual(utils.n_positive_integers(2, (2, 3)), (2, 3))
-    self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
     self.assertEqual(utils.n_positive_integers(3, (2, 3, 1)), (2, 3, 1))
     self.assertEqual(
         utils.n_positive_integers(3, tensor_shape.TensorShape([2, 3, 1])),

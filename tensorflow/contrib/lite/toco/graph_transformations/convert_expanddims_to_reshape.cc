@@ -40,11 +40,6 @@ bool ConvertExpandDimsToReshape::Run(Model* model, std::size_t op_index) {
     // Yield until input dims have been resolved.
     return false;
   }
-  if (input_array.shape().dimensions_count() == 0) {
-    // Input array cannot be 0-D.
-    // (Unsure if this is TF behavior, but was required to get a test to pass.)
-    return false;
-  }
 
   const auto& axis_array = model->GetArray(expand_op->inputs[1]);
   if (!axis_array.has_shape()) {

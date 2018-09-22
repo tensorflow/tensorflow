@@ -82,7 +82,7 @@ class PmfToQuantizedCdfOpTest : public OpsTestBase {
         EXPECT_GT(diff, 0);
       }
 
-      EXPECT_LE(cdf_slice(cdf_slice.size() - 1), normalizer);
+      EXPECT_EQ(cdf_slice(cdf_slice.size() - 1), normalizer);
     }
   }
 };
@@ -97,6 +97,8 @@ TEST_F(PmfToQuantizedCdfOpTest, UnderSum) {
   for (int64 i = 0; i < matrix.dimension(0); ++i) {
     GenerateData(&rand, {&matrix(i, 0), n});
   }
+
+  pmf.flat<float>() = pmf.flat<float>() * 0.85f;
 
   constexpr int kPrecision = 10;
   SetupOp(kPrecision, &pmf);
@@ -115,7 +117,7 @@ TEST_F(PmfToQuantizedCdfOpTest, OverSum) {
   matrix.setZero();
   const std::size_t n = matrix.dimension(1) / 2;
 
-  random::PhiloxRandom gen;
+  random::PhiloxRandom gen(random::New64(), random::New64());
   random::SimplePhilox rand(&gen);
   for (int64 i = 0; i < matrix.dimension(0); ++i) {
     GenerateData(&rand, {&matrix(i, 0), n});

@@ -37,7 +37,7 @@ class PrefetchingOpsV2Test(test.TestCase):
     iterator = device_dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
@@ -55,14 +55,36 @@ class PrefetchingOpsV2Test(test.TestCase):
     next_element = iterator.get_next()
 
     output = []
-    with self.test_session() as sess:
-      for _ in range(5):
+    # TODO(rohanj): Modify test to go till the end of the dataset when we
+    # switch to MultiDeviceIterator.
+    with self.cached_session() as sess:
+      for _ in range(4):
         result = sess.run(next_element)
         self.assertEqual(2, len(result))
         output.extend(result)
-      self.assertEquals(set(range(10)), set(output))
-      with self.assertRaises(errors.OutOfRangeError):
+      self.assertEquals(set(range(8)), set(output))
+
+  def testPrefetchToTwoDevicesWithReinit(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops_v2.prefetch_to_devices(["/cpu:0", "/gpu:0"]))
+
+    iterator = device_dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    # TODO(rohanj): Modify test to go till the end of the dataset when we
+    # switch to MultiDeviceIterator.
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer)
+      for _ in range(4):
         sess.run(next_element)
+      sess.run(iterator.initializer)
+      for _ in range(4):
+        sess.run(next_element)
+
 
 if __name__ == "__main__":
   test.main()

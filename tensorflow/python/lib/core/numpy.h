@@ -29,6 +29,9 @@ limitations under the License.
 #define NO_IMPORT_ARRAY
 #endif
 
+// Place `<locale>` before <Python.h> to avoid build failure in macOS.
+#include <locale>
+
 #include <Python.h>
 
 #include "numpy/arrayobject.h"

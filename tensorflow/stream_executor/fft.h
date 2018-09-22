@@ -48,8 +48,7 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 template <typename ElemT>
@@ -210,7 +209,7 @@ class FftSupport {
 
 // Macro used to quickly declare overrides for abstract virtuals in the
 // fft::FftSupport base class. Assumes that it's emitted somewhere inside the
-// ::perftools::gputools namespace.
+// ::stream_executor namespace.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES                   \
   std::unique_ptr<fft::Plan> Create1dPlan(Stream *stream, uint64 num_x,        \
                                           fft::Type type, bool in_place_fft)   \
@@ -265,7 +264,6 @@ class FftSupport {
              DeviceMemory<double> *output) override;
 
 }  // namespace fft
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_FFT_H_

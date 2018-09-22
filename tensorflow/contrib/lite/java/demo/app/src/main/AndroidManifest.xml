@@ -31,6 +31,7 @@
         android:theme="@style/MaterialTheme">
 
         <activity android:name="com.example.android.tflitecamerademo.CameraActivity"
+                  android:screenOrientation="portrait"
                   android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

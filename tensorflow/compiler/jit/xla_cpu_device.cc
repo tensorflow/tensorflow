@@ -16,7 +16,7 @@ limitations under the License.
 // Registers the XLA_CPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "Host" (CPU) backend.
 
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/legacy_flags/xla_device_flags.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -53,7 +53,10 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& options,
   TF_RETURN_IF_ERROR(XlaDevice::Create("Host", DEVICE_XLA_CPU, 0,
                                        DEVICE_CPU_XLA_JIT, options, name_prefix,
                                        registration,
-                                       /*transfer_as_literal=*/false, &device));
+                                       /*transfer_as_literal=*/false,
+                                       /*use_multiple_streams=*/false,
+                                       /*shape_representation_fn=*/{},
+                                       /*padded_shape_fn=*/{}, &device));
   devices->push_back(device.release());
   return Status::OK();
 }
@@ -62,10 +65,14 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 7> kAllXlaCpuTypes = {
-    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
+constexpr std::array<DataType, 12> kAllXlaCpuTypes = {
+    {DT_UINT8, DT_QUINT8, DT_INT8, DT_QINT8, DT_INT32, DT_QINT32, DT_INT64,
+     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_CPU, XlaLocalLaunchOp, kAllXlaCpuTypes);
+REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_CPU, XlaCompileOp, kAllXlaCpuTypes);
+REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_CPU, XlaRunOp, kAllXlaCpuTypes);
+
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_CPU, kAllXlaCpuTypes);
 
 }  // namespace tensorflow

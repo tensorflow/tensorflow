@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -28,32 +29,26 @@ class TensorDatasetOp : public DatasetOpKernel {
   explicit TensorDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
-    // Create a new TensorDatasetOp::Dataset, insert it in the step
-    // container, and return it as the output.
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
     // TODO(mrry): Validate that the shapes of the "components" tensors match
     // the "shapes" attr.;
-    std::vector<Tensor> components;
-    components.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      components.push_back(t);
-    }
+    std::vector<Tensor> components(inputs.begin(), inputs.end());
     *output = new Dataset(ctx, std::move(components));
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
-        : GraphDatasetBase(ctx), tensors_(std::move(tensors)) {
+        : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
       for (const Tensor& t : tensors_) {
         dtypes_.push_back(t.dtype());
         shapes_.emplace_back(t.shape().dim_sizes());
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::FromTensor")}));
@@ -64,16 +59,23 @@ class TensorDatasetOp : public DatasetOpKernel {
       return shapes_;
     }
 
-    string DebugString() override { return "TensorDatasetOp::Dataset"; }
+    string DebugString() const override { return "TensorDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> components;
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        std::vector<std::pair<string, Tensor>>* input_list = ctx->input_list();
+        if (input_list) {
+          TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
+          input_list->emplace_back(node->name(), t);
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         components.emplace_back(node);
       }
       AttrValue dtypes;
@@ -134,5 +136,5 @@ REGISTER_KERNEL_BUILDER(Name("TensorDataset").Device(DEVICE_CPU),
                         TensorDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

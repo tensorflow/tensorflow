@@ -60,7 +60,7 @@ def clip_covariance(
   # TODO(allenl): Smarter scaling here so that correlations are preserved when
   # fiddling with diagonal elements.
   diagonal = array_ops.matrix_diag_part(covariance_matrix)
-  maximum = math_ops.reduce_max(diagonal, axis=-1, keep_dims=True)
+  maximum = math_ops.reduce_max(diagonal, axis=-1, keepdims=True)
   new_diagonal = gen_math_ops.maximum(
       diagonal, maximum / maximum_variance_ratio)
   return array_ops.matrix_set_diag(
@@ -896,8 +896,8 @@ class InputStatisticsFromMiniBatch(object):
           statistics.total_observation_count,
           math_ops.cast(
               gen_math_ops.round(
-                  math_ops.cast(auxiliary_variables.max_time_seen -
-                                statistics.start_time + 1, self._dtype) /
+                  math_ops.cast(max_time_seen_assign -
+                                start_time_update + 1, self._dtype) /
                   inter_observation_duration_estimate), dtypes.int64))
       per_chunk_stat_updates = control_flow_ops.group(
           overall_feature_mean_update, overall_feature_var_update,

@@ -19,10 +19,11 @@ import android.app.Activity;
 import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.os.SystemClock;
+import android.text.SpannableString;
+import android.text.SpannableStringBuilder;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
 import android.util.Log;
-
-import org.tensorflow.lite.Interpreter;
-
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -37,11 +38,15 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import org.tensorflow.lite.Interpreter;
 
 /**
  * Classifies images with Tensorflow Lite.
  */
 public abstract class ImageClassifier {
+  // Display preferences
+  private static final float GOOD_PROB_THRESHOLD = 0.3f;
+  private static final int SMALL_COLOR = 0xffddaa88;
 
   /** Tag for the {@link Log}. */
   private static final String TAG = "TfLiteCameraDemo";
@@ -99,10 +104,12 @@ public abstract class ImageClassifier {
   }
 
   /** Classifies a frame from the preview stream. */
-  String classifyFrame(Bitmap bitmap) {
+  void classifyFrame(Bitmap bitmap, SpannableStringBuilder builder) {
+    printTopKLabels(builder);
+
     if (tflite == null) {
       Log.e(TAG, "Image classifier has not been initialized; Skipped.");
-      return "Uninitialized Classifier.";
+      builder.append(new SpannableString("Uninitialized Classifier."));
     }
     convertBitmapToByteBuffer(bitmap);
     // Here's where the magic happens!!!
@@ -115,9 +122,10 @@ public abstract class ImageClassifier {
     applyFilter();
 
     // Print the results.
-    String textToShow = printTopKLabels();
-    textToShow = Long.toString(endTime - startTime) + "ms" + textToShow;
-    return textToShow;
+    long duration = endTime - startTime;
+    SpannableString span = new SpannableString(duration + " ms");
+    span.setSpan(new ForegroundColorSpan(android.graphics.Color.LTGRAY), 0, span.length(), 0);
+    builder.append(span);
   }
 
   void applyFilter() {
@@ -202,7 +210,7 @@ public abstract class ImageClassifier {
   }
 
   /** Prints top-K labels, to be shown in UI as the results. */
-  private String printTopKLabels() {
+  private void printTopKLabels(SpannableStringBuilder builder) {
     for (int i = 0; i < getNumLabels(); ++i) {
       sortedLabels.add(
           new AbstractMap.SimpleEntry<>(labelList.get(i), getNormalizedProbability(i)));
@@ -210,13 +218,27 @@ public abstract class ImageClassifier {
         sortedLabels.poll();
       }
     }
-    String textToShow = "";
+
     final int size = sortedLabels.size();
-    for (int i = 0; i < size; ++i) {
+    for (int i = 0; i < size; i++) {
       Map.Entry<String, Float> label = sortedLabels.poll();
-      textToShow = String.format("\n%s: %4.2f", label.getKey(), label.getValue()) + textToShow;
+      SpannableString span =
+          new SpannableString(String.format("%s: %4.2f\n", label.getKey(), label.getValue()));
+      int color;
+      // Make it white when probability larger than threshold.
+      if (label.getValue() > GOOD_PROB_THRESHOLD) {
+        color = android.graphics.Color.WHITE;
+      } else {
+        color = SMALL_COLOR;
+      }
+      // Make first item bigger.
+      if (i == size - 1) {
+        float sizeScale = (i == size - 1) ? 1.25f : 0.8f;
+        span.setSpan(new RelativeSizeSpan(sizeScale), 0, span.length(), 0);
+      }
+      span.setSpan(new ForegroundColorSpan(color), 0, span.length(), 0);
+      builder.insert(0, span);
     }
-    return textToShow;
   }
 
   /**

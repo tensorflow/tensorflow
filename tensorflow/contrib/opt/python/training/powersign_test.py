@@ -216,7 +216,7 @@ class PowerSignTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
 
-        # Run 3 steps of powersign
+        # Run 7 steps of powersign
         # first 4 steps with positive gradient
         # last 3 steps with negative gradient (sign(gm) should be -1)
         for t in range(1, 8):

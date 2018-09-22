@@ -16,40 +16,45 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace test {
+namespace {
+
+PlatformGpuId TfToPlatformGpuId(TfGpuId tf) {
+  PlatformGpuId platform_gpu_id;
+  TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf, &platform_gpu_id));
+  return platform_gpu_id;
+}
 
 TEST(GpuIdManagerTest, Basics) {
   TfGpuId key_0(0);
-  CudaGpuId value_0(0);
-  GpuIdManager::InsertTfCudaGpuIdPair(key_0, value_0);
-  EXPECT_EQ(value_0, GpuIdManager::TfToCudaGpuId(key_0));
+  PlatformGpuId value_0(0);
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_0, value_0));
+  EXPECT_EQ(value_0, TfToPlatformGpuId(key_0));
 
   // Multiple calls to map the same value is ok.
-  GpuIdManager::InsertTfCudaGpuIdPair(key_0, value_0);
-  EXPECT_EQ(value_0, GpuIdManager::TfToCudaGpuId(key_0));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_0, value_0));
+  EXPECT_EQ(value_0, TfToPlatformGpuId(key_0));
 
   // Map a different TfGpuId to a different value.
   TfGpuId key_1(3);
-  CudaGpuId value_1(2);
-  GpuIdManager::InsertTfCudaGpuIdPair(key_1, value_1);
-  EXPECT_EQ(value_1, GpuIdManager::TfToCudaGpuId(key_1));
+  PlatformGpuId value_1(2);
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_1, value_1));
+  EXPECT_EQ(value_1, TfToPlatformGpuId(key_1));
 
   // Mapping a different TfGpuId to the same value is ok.
   TfGpuId key_2(10);
-  GpuIdManager::InsertTfCudaGpuIdPair(key_2, value_1);
-  EXPECT_EQ(value_1, GpuIdManager::TfToCudaGpuId(key_2));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_2, value_1));
+  EXPECT_EQ(value_1, TfToPlatformGpuId(key_2));
 
-  // Mapping the same TfGpuId to a different value will crash the program.
-  ASSERT_DEATH(GpuIdManager::InsertTfCudaGpuIdPair(key_2, value_0),
-               "Mapping the same TfGpuId to a different CUDA GPU id");
+  // Mapping the same TfGpuId to a different value.
+  ASSERT_FALSE(GpuIdManager::InsertTfPlatformGpuIdPair(key_2, value_0).ok());
 
-  // Getting an nonexistent mapping will crash the program.
-  ASSERT_DEATH(GpuIdManager::TfToCudaGpuId(TfGpuId(100)),
-               "Could not find the mapping for TfGpuId");
+  // Getting a nonexistent mapping.
+  ASSERT_FALSE(GpuIdManager::TfToPlatformGpuId(TfGpuId(100), &value_0).ok());
 }
 
-}  // namespace test
+}  // namespace
 }  // namespace tensorflow

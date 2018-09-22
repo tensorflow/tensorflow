@@ -60,3 +60,13 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "proto_utils",
+    srcs = ["proto_utils.cc"],
+    hdrs = ["proto_utils.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)

@@ -27,12 +27,6 @@ scalar, dimension of the logits, to be used for partial logits
 shape.
 END
   }
-  attr {
-    name: "max_depth"
-    description: <<END
-scalar, max depth of trees. To be used for parallelization costs.
-END
-  }
   summary: "Runs multiple additive regression ensemble predictors on input instances and"
   description: <<END
 computes the logits. It is designed to be used during prediction.

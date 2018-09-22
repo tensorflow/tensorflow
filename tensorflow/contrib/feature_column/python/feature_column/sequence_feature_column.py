@@ -95,7 +95,7 @@ def sequence_input_layer(
   Raises:
     ValueError: If any of the `feature_columns` is the wrong type.
   """
-  feature_columns = fc._clean_feature_columns(feature_columns)
+  feature_columns = fc._normalize_feature_columns(feature_columns)
   for c in feature_columns:
     if not isinstance(c, fc._SequenceDenseColumn):
       raise ValueError(
@@ -346,7 +346,8 @@ def sequence_numeric_column(
     key,
     shape=(1,),
     default_value=0.,
-    dtype=dtypes.float32):
+    dtype=dtypes.float32,
+    normalizer_fn=None):
   """Returns a feature column that represents sequences of numeric data.
 
   Example:
@@ -370,6 +371,12 @@ def sequence_numeric_column(
     default_value: A single value compatible with `dtype` that is used for
       padding the sparse data into a dense `Tensor`.
     dtype: The type of values.
+    normalizer_fn: If not `None`, a function that can be used to normalize the
+      value of the tensor after `default_value` is applied for parsing.
+      Normalizer function takes the input `Tensor` as its argument, and returns
+      the output `Tensor`. (e.g. lambda x: (x - 3.0) / 4.2). Please note that
+      even though the most common use case of this function is normalization, it
+      can be used for any kind of Tensorflow transformations.
 
   Returns:
     A `_SequenceNumericColumn`.
@@ -383,12 +390,16 @@ def sequence_numeric_column(
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError('dtype must be convertible to float. '
                      'dtype: {}, key: {}'.format(dtype, key))
+  if normalizer_fn is not None and not callable(normalizer_fn):
+    raise TypeError(
+        'normalizer_fn must be a callable. Given: {}'.format(normalizer_fn))
 
   return _SequenceNumericColumn(
       key,
       shape=shape,
       default_value=default_value,
-      dtype=dtype)
+      dtype=dtype,
+      normalizer_fn=normalizer_fn)
 
 
 def _assert_all_equal_and_return(tensors, name=None):
@@ -407,7 +418,7 @@ class _SequenceNumericColumn(
     fc._SequenceDenseColumn,
     collections.namedtuple(
         '_SequenceNumericColumn',
-        ['key', 'shape', 'default_value', 'dtype'])):
+        ['key', 'shape', 'default_value', 'dtype', 'normalizer_fn'])):
   """Represents sequences of numeric data."""
 
   @property
@@ -419,7 +430,10 @@ class _SequenceNumericColumn(
     return {self.key: parsing_ops.VarLenFeature(self.dtype)}
 
   def _transform_feature(self, inputs):
-    return inputs.get(self.key)
+    input_tensor = inputs.get(self.key)
+    if self.normalizer_fn is not None:
+      input_tensor = self.normalizer_fn(input_tensor)
+    return input_tensor
 
   @property
   def _variable_shape(self):

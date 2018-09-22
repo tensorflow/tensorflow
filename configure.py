@@ -35,8 +35,8 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_NCCL_VERSION = '1.3'
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
+_DEFAULT_NCCL_VERSION = '2.2'
+_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
@@ -45,7 +45,7 @@ _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/%s-linux-gnu' % platform.machine()
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
-_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15]
+_SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
@@ -226,8 +226,6 @@ def setup_python(environ_cp):
   # Set-up env variables used by python_configure.bzl
   write_action_env_to_bazelrc('PYTHON_BIN_PATH', python_bin_path)
   write_action_env_to_bazelrc('PYTHON_LIB_PATH', python_lib_path)
-  write_to_bazelrc('build --force_python=py%s' % python_major_version)
-  write_to_bazelrc('build --host_force_python=py%s' % python_major_version)
   write_to_bazelrc('build --python_path=\"%s"' % python_bin_path)
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
@@ -500,10 +498,6 @@ def set_cc_opt_flags(environ_cp):
   if not is_ppc64le() and not is_windows():
     write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
-  # TODO(mikecase): Remove these default defines once we are able to get
-  # TF Lite targets building without them.
-  write_to_bazelrc('build --copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
-  write_to_bazelrc('build --host_copt=-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK')
 
 def set_tf_cuda_clang(environ_cp):
   """set TF_CUDA_CLANG action_env.
@@ -676,8 +670,9 @@ def create_android_ndk_rule(environ_cp):
       error_msg=('The path %s or its child file "source.properties" '
                  'does not exist.')
   )
-
-  write_android_ndk_workspace_rule(android_ndk_home_path)
+  write_action_env_to_bazelrc('ANDROID_NDK_HOME', android_ndk_home_path)
+  write_action_env_to_bazelrc('ANDROID_NDK_API_LEVEL',
+                              check_ndk_level(android_ndk_home_path))
 
 
 def create_android_sdk_rule(environ_cp):
@@ -685,7 +680,7 @@ def create_android_sdk_rule(environ_cp):
   if is_windows() or is_cygwin():
     default_sdk_path = cygpath('%s/Android/Sdk' % environ_cp['APPDATA'])
   elif is_macos():
-    default_sdk_path = '%s/library/Android/Sdk/ndk-bundle' % environ_cp['HOME']
+    default_sdk_path = '%s/library/Android/Sdk' % environ_cp['HOME']
   else:
     default_sdk_path = '%s/Android/Sdk' % environ_cp['HOME']
 
@@ -739,41 +734,12 @@ def create_android_sdk_rule(environ_cp):
       error_msg=('The selected SDK does not have build-tools version %s '
                  'available.'))
 
-  write_android_sdk_workspace_rule(android_sdk_home_path,
-                                   android_build_tools_version,
-                                   android_api_level)
-
-
-def write_android_sdk_workspace_rule(android_sdk_home_path,
-                                     android_build_tools_version,
-                                     android_api_level):
-  print('Writing android_sdk_workspace rule.\n')
-  with open(_TF_WORKSPACE, 'a') as f:
-    f.write("""
-android_sdk_repository(
-  name="androidsdk",
-  api_level=%s,
-  path="%s",
-  build_tools_version="%s")\n
-""" % (android_api_level, android_sdk_home_path, android_build_tools_version))
-
-
-def write_android_ndk_workspace_rule(android_ndk_home_path):
-  print('Writing android_ndk_workspace rule.')
-  ndk_api_level = check_ndk_level(android_ndk_home_path)
-  if int(ndk_api_level) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
-    print('WARNING: The API level of the NDK in %s is %s, which is not '
-          'supported by Bazel (officially supported versions: %s). Please use '
-          'another version. Compiling Android targets may result in confusing '
-          'errors.\n' % (android_ndk_home_path, ndk_api_level,
-                         _SUPPORTED_ANDROID_NDK_VERSIONS))
-  with open(_TF_WORKSPACE, 'a') as f:
-    f.write("""
-android_ndk_repository(
-  name="androidndk",
-  path="%s",
-  api_level=%s)\n
-""" % (android_ndk_home_path, ndk_api_level))
+  write_action_env_to_bazelrc('ANDROID_BUILD_TOOLS_VERSION',
+                              android_build_tools_version)
+  write_action_env_to_bazelrc('ANDROID_SDK_API_LEVEL',
+                              android_api_level)
+  write_action_env_to_bazelrc('ANDROID_SDK_HOME',
+                              android_sdk_home_path)
 
 
 def check_ndk_level(android_ndk_home_path):
@@ -786,18 +752,16 @@ def check_ndk_level(android_ndk_home_path):
 
   revision = re.search(r'Pkg.Revision = (\d+)', filedata)
   if revision:
-    return revision.group(1)
-  return None
-
-
-def workspace_has_any_android_rule():
-  """Check the WORKSPACE for existing android_*_repository rules."""
-  with open(_TF_WORKSPACE, 'r') as f:
-    workspace = f.read()
-  has_any_rule = re.search(r'^android_[ns]dk_repository',
-                           workspace,
-                           re.MULTILINE)
-  return has_any_rule
+    ndk_api_level = revision.group(1)
+  else:
+    raise Exception('Unable to parse NDK revision.')
+  if int(ndk_api_level) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
+    print('WARNING: The API level of the NDK in %s is %s, which is not '
+          'supported by Bazel (officially supported versions: %s). Please use '
+          'another version. Compiling Android targets may result in confusing '
+          'errors.\n' % (android_ndk_home_path, ndk_api_level,
+                         _SUPPORTED_ANDROID_NDK_VERSIONS))
+  return ndk_api_level
 
 
 def set_gcc_host_compiler_path(environ_cp):
@@ -847,8 +811,8 @@ def reformat_version_sequence(version_str, sequence_count):
 def set_tf_cuda_version(environ_cp):
   """Set CUDA_TOOLKIT_PATH and TF_CUDA_VERSION."""
   ask_cuda_version = (
-      'Please specify the CUDA SDK version you want to use, '
-      'e.g. 7.0. [Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
+      'Please specify the CUDA SDK version you want to use. '
+      '[Leave empty to default to CUDA %s]: ') % _DEFAULT_CUDA_VERSION
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     # Configure the Cuda SDK version to use.
@@ -871,21 +835,24 @@ def set_tf_cuda_version(environ_cp):
                      '[Default is %s]: ') % (tf_cuda_version, default_cuda_path)
     cuda_toolkit_path = get_from_env_or_user_or_default(
         environ_cp, 'CUDA_TOOLKIT_PATH', ask_cuda_path, default_cuda_path)
+    if is_windows() or is_cygwin():
+      cuda_toolkit_path = cygpath(cuda_toolkit_path)
 
     if is_windows():
-      cuda_rt_lib_path = 'lib/x64/cudart.lib'
+      cuda_rt_lib_paths = ['lib/x64/cudart.lib']
     elif is_linux():
-      cuda_rt_lib_path = 'lib64/libcudart.so.%s' % tf_cuda_version
+      cuda_rt_lib_paths = ['%s/libcudart.so.%s' % (x, tf_cuda_version)
+                           for x in ['lib64', 'lib/x86_64-linux-gnu']]
     elif is_macos():
-      cuda_rt_lib_path = 'lib/libcudart.%s.dylib' % tf_cuda_version
+      cuda_rt_lib_paths = ['lib/libcudart.%s.dylib' % tf_cuda_version]
 
-    cuda_toolkit_path_full = os.path.join(cuda_toolkit_path, cuda_rt_lib_path)
-    if os.path.exists(cuda_toolkit_path_full):
+    cuda_toolkit_paths_full = [os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths]
+    if any([os.path.exists(x) for x in cuda_toolkit_paths_full]):
       break
 
     # Reset and retry
     print('Invalid path to CUDA %s toolkit. %s cannot be found' %
-          (tf_cuda_version, cuda_toolkit_path_full))
+          (tf_cuda_version, cuda_toolkit_paths_full))
     environ_cp['TF_CUDA_VERSION'] = ''
     environ_cp['CUDA_TOOLKIT_PATH'] = ''
 
@@ -916,7 +883,7 @@ def set_tf_cudnn_version(environ_cp):
     default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
     ask_cudnn_path = (r'Please specify the location where cuDNN %s library is '
                       'installed. Refer to README.md for more details. [Default'
-                      ' is %s]:') % (tf_cudnn_version, default_cudnn_path)
+                      ' is %s]: ') % (tf_cudnn_version, default_cudnn_path)
     cudnn_install_path = get_from_env_or_user_or_default(
         environ_cp, 'CUDNN_INSTALL_PATH', ask_cudnn_path, default_cudnn_path)
 
@@ -979,6 +946,35 @@ def set_tf_cudnn_version(environ_cp):
   write_action_env_to_bazelrc('TF_CUDNN_VERSION', tf_cudnn_version)
 
 
+def is_cuda_compatible(lib, cuda_ver, cudnn_ver):
+  """Check compatibility between given library and cudnn/cudart libraries."""
+  ldd_bin = which('ldd') or '/usr/bin/ldd'
+  ldd_out = run_shell([ldd_bin, lib], True)
+  ldd_out = ldd_out.split(os.linesep)
+  cudnn_pattern = re.compile('.*libcudnn.so\\.?(.*) =>.*$')
+  cuda_pattern = re.compile('.*libcudart.so\\.?(.*) =>.*$')
+  cudnn = None
+  cudart = None
+  cudnn_ok = True  # assume no cudnn dependency by default
+  cuda_ok = True  # assume no cuda dependency by default
+  for line in ldd_out:
+    if 'libcudnn.so' in line:
+      cudnn = cudnn_pattern.search(line)
+      cudnn_ok = False
+    elif 'libcudart.so' in line:
+      cudart = cuda_pattern.search(line)
+      cuda_ok = False
+  if cudnn and len(cudnn.group(1)):
+    cudnn = convert_version_to_int(cudnn.group(1))
+  if cudart and len(cudart.group(1)):
+    cudart = convert_version_to_int(cudart.group(1))
+  if cudnn is not None:
+    cudnn_ok = (cudnn == cudnn_ver)
+  if cudart is not None:
+    cuda_ok = (cudart == cuda_ver)
+  return cudnn_ok and cuda_ok
+
+
 def set_tf_tensorrt_install_path(environ_cp):
   """Set TENSORRT_INSTALL_PATH and TF_TENSORRT_VERSION.
 
@@ -995,8 +991,8 @@ def set_tf_tensorrt_install_path(environ_cp):
     raise ValueError('Currently TensorRT is only supported on Linux platform.')
 
   # Ask user whether to add TensorRT support.
-  if str(int(get_var(
-      environ_cp, 'TF_NEED_TENSORRT', 'TensorRT', False))) != '1':
+  if str(int(get_var(environ_cp, 'TF_NEED_TENSORRT', 'TensorRT',
+                     False))) != '1':
     return
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
@@ -1009,47 +1005,29 @@ def set_tf_tensorrt_install_path(environ_cp):
 
     # Result returned from "read" will be used unexpanded. That make "~"
     # unusable. Going through one more level of expansion to handle that.
-    trt_install_path = os.path.realpath(
-        os.path.expanduser(trt_install_path))
+    trt_install_path = os.path.realpath(os.path.expanduser(trt_install_path))
 
     def find_libs(search_path):
       """Search for libnvinfer.so in "search_path"."""
       fl = set()
       if os.path.exists(search_path) and os.path.isdir(search_path):
-        fl.update([os.path.realpath(os.path.join(search_path, x))
-                   for x in os.listdir(search_path) if 'libnvinfer.so' in x])
+        fl.update([
+            os.path.realpath(os.path.join(search_path, x))
+            for x in os.listdir(search_path)
+            if 'libnvinfer.so' in x
+        ])
       return fl
 
     possible_files = find_libs(trt_install_path)
     possible_files.update(find_libs(os.path.join(trt_install_path, 'lib')))
     possible_files.update(find_libs(os.path.join(trt_install_path, 'lib64')))
-
-    def is_compatible(tensorrt_lib, cuda_ver, cudnn_ver):
-      """Check the compatibility between tensorrt and cudnn/cudart libraries."""
-      ldd_bin = which('ldd') or '/usr/bin/ldd'
-      ldd_out = run_shell([ldd_bin, tensorrt_lib]).split(os.linesep)
-      cudnn_pattern = re.compile('.*libcudnn.so\\.?(.*) =>.*$')
-      cuda_pattern = re.compile('.*libcudart.so\\.?(.*) =>.*$')
-      cudnn = None
-      cudart = None
-      for line in ldd_out:
-        if 'libcudnn.so' in line:
-          cudnn = cudnn_pattern.search(line)
-        elif 'libcudart.so' in line:
-          cudart = cuda_pattern.search(line)
-      if cudnn and len(cudnn.group(1)):
-        cudnn = convert_version_to_int(cudnn.group(1))
-      if cudart and len(cudart.group(1)):
-        cudart = convert_version_to_int(cudart.group(1))
-      return (cudnn == cudnn_ver) and (cudart == cuda_ver)
-
     cuda_ver = convert_version_to_int(environ_cp['TF_CUDA_VERSION'])
     cudnn_ver = convert_version_to_int(environ_cp['TF_CUDNN_VERSION'])
     nvinfer_pattern = re.compile('.*libnvinfer.so.?(.*)$')
     highest_ver = [0, None, None]
 
     for lib_file in possible_files:
-      if is_compatible(lib_file, cuda_ver, cudnn_ver):
+      if is_cuda_compatible(lib_file, cuda_ver, cudnn_ver):
         matches = nvinfer_pattern.search(lib_file)
         if len(matches.groups()) == 0:
           continue
@@ -1065,12 +1043,13 @@ def set_tf_tensorrt_install_path(environ_cp):
     # Try another alternative from ldconfig.
     ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
     ldconfig_output = run_shell([ldconfig_bin, '-p'])
-    search_result = re.search(
-        '.*libnvinfer.so\\.?([0-9.]*).* => (.*)', ldconfig_output)
+    search_result = re.search('.*libnvinfer.so\\.?([0-9.]*).* => (.*)',
+                              ldconfig_output)
     if search_result:
       libnvinfer_path_from_ldconfig = search_result.group(2)
       if os.path.exists(libnvinfer_path_from_ldconfig):
-        if is_compatible(libnvinfer_path_from_ldconfig, cuda_ver, cudnn_ver):
+        if is_cuda_compatible(libnvinfer_path_from_ldconfig, cuda_ver,
+                              cudnn_ver):
           trt_install_path = os.path.dirname(libnvinfer_path_from_ldconfig)
           tf_tensorrt_version = search_result.group(1)
           break
@@ -1119,8 +1098,10 @@ def set_tf_nccl_install_path(environ_cp):
     raise ValueError('Currently NCCL is only supported on Linux platforms.')
 
   ask_nccl_version = (
-      'Please specify the NCCL version you want to use. '
-      '[Leave empty to default to NCCL %s]: ') % _DEFAULT_NCCL_VERSION
+      'Please specify the NCCL version you want to use. If NCCL %s is not '
+      'installed, then you can use version 1.3 that can be fetched '
+      'automatically but it may have worse performance with multiple GPUs. '
+      '[Default is %s]: ') % (_DEFAULT_NCCL_VERSION, _DEFAULT_NCCL_VERSION)
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_nccl_version = get_from_env_or_user_or_default(
@@ -1221,13 +1202,16 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]' %
+        'build time and binary size. [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
     # Check whether all capabilities from the input is valid
     all_valid = True
+    # Remove all whitespace characters before splitting the string
+    # that users may insert by accident, as this will result in error
+    tf_cuda_compute_capabilities = ''.join(tf_cuda_compute_capabilities.split())
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
@@ -1253,28 +1237,13 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
 def set_other_cuda_vars(environ_cp):
   """Set other CUDA related variables."""
-  if is_windows():
-    # The following three variables are needed for MSVC toolchain configuration
-    # in Bazel
-    environ_cp['CUDA_PATH'] = environ_cp.get('CUDA_TOOLKIT_PATH')
-    environ_cp['CUDA_COMPUTE_CAPABILITIES'] = environ_cp.get(
-        'TF_CUDA_COMPUTE_CAPABILITIES')
-    environ_cp['NO_WHOLE_ARCHIVE_OPTION'] = 1
-    write_action_env_to_bazelrc('CUDA_PATH', environ_cp.get('CUDA_PATH'))
-    write_action_env_to_bazelrc('CUDA_COMPUTE_CAPABILITIE',
-                                environ_cp.get('CUDA_COMPUTE_CAPABILITIE'))
-    write_action_env_to_bazelrc('NO_WHOLE_ARCHIVE_OPTION',
-                                environ_cp.get('NO_WHOLE_ARCHIVE_OPTION'))
-    write_to_bazelrc('build --config=win-cuda')
-    write_to_bazelrc('test --config=win-cuda')
+  # If CUDA is enabled, always use GPU during build and test.
+  if environ_cp.get('TF_CUDA_CLANG') == '1':
+    write_to_bazelrc('build --config=cuda_clang')
+    write_to_bazelrc('test --config=cuda_clang')
   else:
-    # If CUDA is enabled, always use GPU during build and test.
-    if environ_cp.get('TF_CUDA_CLANG') == '1':
-      write_to_bazelrc('build --config=cuda_clang')
-      write_to_bazelrc('test --config=cuda_clang')
-    else:
-      write_to_bazelrc('build --config=cuda')
-      write_to_bazelrc('test --config=cuda')
+    write_to_bazelrc('build --config=cuda')
+    write_to_bazelrc('test --config=cuda')
 
 
 def set_host_cxx_compiler(environ_cp):
@@ -1430,14 +1399,43 @@ def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
 
 
-def set_windows_build_flags():
-  if is_windows():
-    # The non-monolithic build is not supported yet
-    write_to_bazelrc('build --config monolithic')
-    # Suppress warning messages
-    write_to_bazelrc('build --copt=-w --host_copt=-w')
-    # Output more verbose information when something goes wrong
-    write_to_bazelrc('build --verbose_failures')
+def set_system_libs_flag(environ_cp):
+  syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
+  syslibs = ','.join(sorted(syslibs.split(',')))
+  if syslibs and syslibs != '':
+    write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
+
+
+def set_windows_build_flags(environ_cp):
+  """Set Windows specific build options."""
+  # The non-monolithic build is not supported yet
+  write_to_bazelrc('build --config monolithic')
+  # Suppress warning messages
+  write_to_bazelrc('build --copt=-w --host_copt=-w')
+  # Output more verbose information when something goes wrong
+  write_to_bazelrc('build --verbose_failures')
+  # The host and target platforms are the same in Windows build. So we don't
+  # have to distinct them. This avoids building the same targets twice.
+  write_to_bazelrc('build --distinct_host_configuration=false')
+  # Enable short object file path to avoid long path issue on Windows.
+  # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
+  # Short object file path will be enabled by default.
+  write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
+
+  if get_var(
+      environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
+      True,
+      ('Would you like to override eigen strong inline for some C++ '
+       'compilation to reduce the compilation time?'),
+      'Eigen strong inline overridden.',
+      'Not overriding eigen strong inline, '
+      'some compilations could take more than 20 mins.'):
+    # Due to a known MSVC compiler issue
+    # https://github.com/tensorflow/tensorflow/issues/10521
+    # Overriding eigen strong inline speeds up the compiling of
+    # conv_grad_ops_3d.cc and conv_ops_3d.cc by 20 minutes,
+    # but this also hurts the performance. Let users decide what they want.
+    write_to_bazelrc('build --define=override_eigen_strong_inline=true')
 
 
 def config_info_line(name, help_text):
@@ -1457,14 +1455,14 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.10.0')
+  check_bazel_version('0.15.0')
 
   reset_tf_configure_bazelrc(args.workspace)
   cleanup_makefile()
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_S3'] = '0'
+    environ_cp['TF_NEED_AWS'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -1477,10 +1475,22 @@ def main():
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
+    environ_cp['TF_ENABLE_XLA'] = '0'
+    environ_cp['TF_NEED_GDR'] = '0'
+    environ_cp['TF_NEED_VERBS'] = '0'
+    environ_cp['TF_NEED_MPI'] = '0'
+    environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+
+  # The numpy package on ppc64le uses OpenBLAS which has multi-threading
+  # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
+  # runtime to allow the Tensorflow testcases which compare numpy
+  # results to Tensorflow results to succeed.
+  if is_ppc64le():
+    write_action_env_to_bazelrc("OMP_NUM_THREADS", 1)
 
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
@@ -1488,8 +1498,8 @@ def main():
                 'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
                 'with_hdfs_support', True, 'hdfs')
-  set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
-                'with_s3_support', True, 's3')
+  set_build_var(environ_cp, 'TF_NEED_AWS', 'Amazon AWS Platform',
+                'with_aws_support', True, 'aws')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
@@ -1498,6 +1508,8 @@ def main():
                 False, 'gdr')
   set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
                 False, 'verbs')
+  set_build_var(environ_cp, 'TF_NEED_NGRAPH', 'nGraph',
+                'with_ngraph_support', False, 'ngraph')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
@@ -1531,6 +1543,10 @@ def main():
       if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
         # Set up which clang we should use as the cuda / host compiler.
         set_clang_cuda_compiler_path(environ_cp)
+      else:
+        # Use downloaded LLD for linking.
+        write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
+        write_to_bazelrc('test:cuda_clang --config=download_clang_use_lld')
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1552,29 +1568,32 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
-  set_windows_build_flags()
+  set_system_libs_flag(environ_cp)
+  if is_windows():
+    set_windows_build_flags(environ_cp)
 
-  if workspace_has_any_android_rule():
-    print('The WORKSPACE file has at least one of ["android_sdk_repository", '
-          '"android_ndk_repository"] already set. Will not ask to help '
-          'configure the WORKSPACE. Please delete the existing rules to '
-          'activate the helper.\n')
-  else:
-    if get_var(
-        environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',
-        False,
-        ('Would you like to interactively configure ./WORKSPACE for '
-         'Android builds?'),
-        'Searching for NDK and SDK installations.',
-        'Not configuring the WORKSPACE for Android builds.'):
-      create_android_ndk_rule(environ_cp)
-      create_android_sdk_rule(environ_cp)
+  # Add a config option to build TensorFlow 2.0 API.
+  write_to_bazelrc('build:v2 --define=tf_api_version=2')
 
-  print('Preconfigured Bazel build configs. You can use any of the below by '
-        'adding "--config=<>" to your build command. See tools/bazel.rc for '
-        'more details.')
-  config_info_line('mkl', 'Build with MKL support.')
-  config_info_line('monolithic', 'Config for mostly static monolithic build.')
+  if get_var(
+      environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',
+      False,
+      ('Would you like to interactively configure ./WORKSPACE for '
+       'Android builds?'),
+      'Searching for NDK and SDK installations.',
+      'Not configuring the WORKSPACE for Android builds.'):
+    create_android_ndk_rule(environ_cp)
+    create_android_sdk_rule(environ_cp)
+
+  # On Windows, we don't have MKL support and the build is always monolithic.
+  # So no need to print the following message.
+  # TODO(pcloudy): remove the following if check when they make sense on Windows
+  if not is_windows():
+    print('Preconfigured Bazel build configs. You can use any of the below by '
+          'adding "--config=<>" to your build command. See tools/bazel.rc for '
+          'more details.')
+    config_info_line('mkl', 'Build with MKL support.')
+    config_info_line('monolithic', 'Config for mostly static monolithic build.')
 
 if __name__ == '__main__':
   main()

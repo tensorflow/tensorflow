@@ -33,10 +33,11 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import checkpointable
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training import slot_creator
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 
 
@@ -125,19 +126,6 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
       return update_op
 
 
-class _StreamingModelPortProcessor(_OptimizableVariable):
-  """Processor for streaming ModelPorts."""
-
-  def __init__(self, v):
-    self._v = v
-
-  def target(self):
-    return self._v
-
-  def update_op(self, optimizer, g, *args):
-    return g
-
-
 class _TensorProcessor(_OptimizableVariable):
   """Processor for ordinary Tensors.
 
@@ -167,8 +155,6 @@ def _get_processor(v):
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if v.op.type == "SubmodelPort":
-    return _StreamingModelPortProcessor(v)
   if isinstance(v, ops.Tensor):
     return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
@@ -177,12 +163,12 @@ def _get_processor(v):
 def _var_key_v2(var):
   """Key for representing a primary variable, for looking up slots."""
   # pylint: disable=protected-access
-  if hasattr(var, "_mirrored_container"):
-    mirrored_container = var._mirrored_container()
-    assert mirrored_container is not None
+  if hasattr(var, "_distributed_container"):
+    distributed_container = var._distributed_container()
+    assert distributed_container is not None
     if context.executing_eagerly():
-      return mirrored_container._unique_id
-    return mirrored_container._shared_name
+      return distributed_container._unique_id
+    return distributed_container._shared_name
   if context.executing_eagerly():
     return var._unique_id
   return var.op.name
@@ -226,8 +212,10 @@ class _OptimizerV2State(object):
     # This dict starts with a single item with key "None" with the hyper
     # parameter value converted to a Tensor. Other items have dtype keys
     # with that Tensor cast to that dtype.
-    self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
-                   for name, (dynamic, value) in hyper.items() if not dynamic}
+    with ops.init_scope():
+      self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
+                     for name, (dynamic, value) in sorted(hyper.items())
+                     if not dynamic}
     self._slots = {}
     self._non_slot_dict = {}
     # Extra state to help Optimizers implement Checkpointable. Holds information
@@ -244,7 +232,8 @@ class _OptimizerV2State(object):
     ret._deferred_dependencies = self._deferred_dependencies
     ret._deferred_slot_restorations = self._deferred_slot_restorations
     ret._hyper = {name: {None: _resolve(value, name)}
-                  for name, (dynamic, value) in hyper.items() if dynamic}
+                  for name, (dynamic, value) in sorted(hyper.items())
+                  if dynamic}
     ret._hyper.update(self._hyper)
     ret._non_slot_devices = non_slot_devices
     ret._distribution = distribution
@@ -375,7 +364,16 @@ class _OptimizerV2State(object):
     """
     slot_variable = self.get_slot(var=variable, name=slot_name)
     if (slot_variable is None and context.executing_eagerly() and
-        slot_variable_position.is_simple_variable()):
+        slot_variable_position.is_simple_variable()
+        # Defer slot variable creation if there is an active variable creator
+        # scope. Generally we'd like to eagerly create/restore slot variables
+        # when possible, but this may mean that scopes intended to catch
+        # `variable` also catch its eagerly created slot variable
+        # unintentionally (specifically make_template would add a dependency on
+        # a slot variable if not for this case). Deferring is mostly harmless
+        # (aside from double initialization), and makes variable creator scopes
+        # behave the same way they do when graph building.
+        and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
       initializer = checkpointable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self.create_slot(
@@ -625,7 +623,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # Map from graph_key to state for that graph. We use the graph_key
     # since it works in both eager and graph mode, and gives the outer
     # graph inside functions.
-    tower_context = distribute_lib.get_tower_context()
+    tower_context = distribution_strategy_context.get_tower_context()
     if tower_context is None:
       # In a cross-tower context for a DistributionStrategy, which means
       # only one Optimizer will be created, not one per tower.
@@ -771,9 +769,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         if scale_loss_by_num_towers is None:
           scale_loss_by_num_towers = (
-              distribute_lib.get_loss_reduction() == "mean")
+              distribute_lib.get_loss_reduction() ==
+              variable_scope.VariableAggregation.MEAN)
         if scale_loss_by_num_towers:
-          num_towers = distribute_lib.get_distribution_strategy().num_towers
+          num_towers = distribution_strategy_context.get_distribution_strategy(
+          ).num_towers
           if num_towers > 1:
             loss_value *= 1. / num_towers
 
@@ -789,9 +789,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # Scale loss for number of towers (non-callable-loss case).
     if scale_loss_by_num_towers is None:
       scale_loss_by_num_towers = (
-          distribute_lib.get_loss_reduction() == "mean")
+          distribute_lib.get_loss_reduction() ==
+          variable_scope.VariableAggregation.MEAN)
     if scale_loss_by_num_towers:
-      num_towers = distribute_lib.get_distribution_strategy().num_towers
+      num_towers = distribution_strategy_context.get_distribution_strategy(
+      ).num_towers
       if num_towers > 1:
         loss *= 1. / num_towers
 
@@ -865,7 +867,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if not filtered:
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, v in grads_and_vars],))
-    return distribute_lib.get_tower_context().merge_call(
+    return distribution_strategy_context.get_tower_context().merge_call(
         self._distributed_apply, filtered, global_step=global_step, name=name)
 
   def _get_or_create_state(self, var_list=None):
@@ -901,7 +903,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
-    reduced_grads = distribution.batch_reduce("sum", grads_and_vars)
+    reduced_grads = distribution.batch_reduce(
+        variable_scope.VariableAggregation.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 

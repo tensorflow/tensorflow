@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -1147,29 +1148,29 @@ TEST(Tensor, FailureToAllocate) {
 
 // On the alignment.
 //
-// As of 2015/8, tensorflow::Tensor allocates its buffer with 32-byte
+// As of 2018/5, tensorflow::Tensor allocates its buffer with 64-byte
 // alignment. Tensor::tensor/flat/vec/matrix methods requires the
 // buffer satisfies Eigen::Aligned (e.g., 16-bytes aligned usually,
-// and 32-bytes for AVX). Tensor::Slice requires the caller to ensure
-// its result is aligned if the caller intends to use those methods.
-// In this test case, we simply make sure each slice is 32-byte
-// aligned: sizeof(float) * 4 * 2 = 32.
+// 32-bytes for AVX, and 64-bytes for AVX512). Tensor::Slice requires
+// the caller to ensure its result is aligned if the caller intends
+// to use those methods. In this test case, we simply make sure each
+// slice is 64-byte aligned: sizeof(float) * 4 * 36 = 576.  576 % 64 = 0.
 TEST(Tensor, Slice_Basic) {
   Tensor saved;
   {  // General
-    Tensor x(DT_FLOAT, TensorShape({10, 4, 34}));
+    Tensor x(DT_FLOAT, TensorShape({10, 4, 36}));
     // Fills in known values.
     for (int i = 0; i < 10; ++i) {
       x.Slice(i, i + 1).flat<float>().setConstant(i * 1.f);
     }
     // A simple slice along dim0.
     Tensor y = x.Slice(4, 8);
-    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 4, 34})));
+    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 4, 36})));
     auto tx = x.tensor<float, 3>();
     auto ty = y.tensor<float, 3>();
     for (int i = 0; i < 4; ++i) {
       for (int j = 0; j < 4; ++j) {
-        for (int k = 0; k < 34; ++k) {
+        for (int k = 0; k < 36; ++k) {
           EXPECT_EQ(ty(i, j, k), 4.0 + i);
           EXPECT_EQ(&tx(4 + i, j, k), &ty(i, j, k));
         }
@@ -1186,7 +1187,7 @@ TEST(Tensor, Slice_Basic) {
     auto tz = z.tensor<float, 3>();
     EXPECT_EQ(1, z.dim_size(0));
     for (int j = 0; j < 4; ++j) {
-      for (int k = 0; k < 34; ++k) {
+      for (int k = 0; k < 36; ++k) {
         EXPECT_EQ(tz(0, j, k), 6.0);
       }
     }
@@ -1198,16 +1199,16 @@ TEST(Tensor, Slice_Basic) {
     EXPECT_EQ(1, saved.dim_size(0));
     auto tsaved = saved.tensor<float, 3>();
     for (int j = 0; j < 4; ++j) {
-      for (int k = 0; k < 34; ++k) {
+      for (int k = 0; k < 36; ++k) {
         EXPECT_EQ(tsaved(0, j, k), 6.0);
       }
     }
   }
   {  // Empty
-    Tensor x(DT_FLOAT, TensorShape({10, 0, 34}));
+    Tensor x(DT_FLOAT, TensorShape({10, 0, 36}));
     x.flat<float>().setRandom();
     Tensor y = x.Slice(4, 8);
-    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 0, 34})));
+    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 0, 36})));
   }
 
   {
@@ -1260,6 +1261,13 @@ TEST(SummarizeValue, INT32) {
   EXPECT_EQ("", x.SummarizeValue(16));
 }
 
+TEST(SummarizeValue, INT32Dims) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({3, 4}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  EXPECT_EQ("[1 2 3...]...", x.SummarizeValue(3));
+  EXPECT_EQ("[1 2 3 4][5 6 7 8][9 10...]...", x.SummarizeValue(10));
+}
+
 TEST(SummarizeValue, FLOAT) {
   Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
   EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
@@ -1285,6 +1293,63 @@ TEST(SummarizeValue, STRING) {
   x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
                        {"one", "two", "three", "four", "five"});
   EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
+}
+
+TEST(SummarizeValue, INT32_PRINT_V2) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(-1, true));
+  EXPECT_EQ("[1 2 ... 4 0]", x.SummarizeValue(2, true));
+  EXPECT_EQ("[1 ... 0]", x.SummarizeValue(1, true));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[1 2]\n [3 4]]", x.SummarizeValue(16, true));
+  x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[[1]]\n\n  [[2]]]\n\n\n [[[3]]\n\n  [[4]]]]",
+            x.SummarizeValue(16, true));
+  x = MkTensor<int>(DT_INT32, TensorShape({0}), {});
+  EXPECT_EQ("[]", x.SummarizeValue(16, true));
+}
+
+TEST(SummarizeValue, INT32Dims_PRINT_V2) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({3, 4}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  EXPECT_EQ("[[1 ... 4]\n ...\n [9 ... 12]]", x.SummarizeValue(1, true));
+  EXPECT_EQ("[[1 2 3 4]\n [5 6 7 8]\n [9 10 11 12]]",
+            x.SummarizeValue(10, true));
+  EXPECT_EQ("[[1 2 3 4]\n [5 6 7 8]\n [9 10 11 12]]",
+            x.SummarizeValue(-1, true));
+}
+
+TEST(SummarizeValue, FLOAT_PRINT_V2) {
+  Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[1 2 3 4 0]", x.SummarizeValue(-1, true));
+  EXPECT_EQ("[1 2 ... 4 0]", x.SummarizeValue(2, true));
+  EXPECT_EQ("[1 ... 0]", x.SummarizeValue(1, true));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[1 2]\n [3 4]]", x.SummarizeValue(16, true));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
+  EXPECT_EQ("[[[[1]]\n\n  [[2]]]\n\n\n [[[3]]\n\n  [[4]]]]",
+            x.SummarizeValue(16, true));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({0}), {});
+  EXPECT_EQ("[]", x.SummarizeValue(16, true));
+}
+
+TEST(SummarizeValue, BOOL_PRINT_V2) {
+  Tensor x = MkTensor<bool>(DT_BOOL, TensorShape({5}), {false, true, true});
+  EXPECT_EQ("[0 1 1 0 1]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[0 1 1 0 1]", x.SummarizeValue(-1, true));
+  EXPECT_EQ("[0 1 ... 0 1]", x.SummarizeValue(2, true));
+}
+
+TEST(SummarizeValue, STRING_PRINT_V2) {
+  Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
+                              {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("[one two three four five]", x.SummarizeValue(16, true));
+  EXPECT_EQ("[one two three four five]", x.SummarizeValue(-1, true));
+  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+                       {"one", "two", "three", "four", "five"});
+  EXPECT_EQ("[one two three four five one...]", x.SummarizeValue(6, true));
 }
 
 void BM_CreateAndDestroy(int iters) {

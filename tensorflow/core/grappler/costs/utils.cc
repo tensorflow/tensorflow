@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -99,7 +99,7 @@ static void ExtractExtraProperties(
       continue;
     }
     TensorId input_tensor_id = ParseTensorName(input_name);
-    const string input_node_name = input_tensor_id.first.ToString();
+    const string input_node_name(input_tensor_id.first);
 
     auto iter = name_to_node.find(input_node_name);
     if (iter == name_to_node.end()) continue;
@@ -127,7 +127,7 @@ static void ExtractExtraProperties(
 
       // For filename input, the file size can also be useful.
       if (op_def && i < op_def->input_arg_size() &&
-          op_def->input_arg(i).name().find("filename") != std::string::npos) {
+          op_def->input_arg(i).name().find("filename") != string::npos) {
         Tensor tensor;
         if (!tensor.FromProto(t)) {
           continue;
@@ -153,7 +153,7 @@ static void ExtractExtraProperties(
     // When the input is a handle (e.g. look up table handle), the information
     // in the op itself is not sufficient to predict the op memory.
     if (op_def && i < op_def->input_arg_size() &&
-        op_def->input_arg(i).name().find("handle") != std::string::npos) {
+        op_def->input_arg(i).name().find("handle") != string::npos) {
       string new_key = strings::StrCat("parent_", i, "_op");
       AttrValue attr;
       attr.set_s(input_node->op());
@@ -172,7 +172,7 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   for (const auto& input_name : node.input()) {
     CHECK(!input_name.empty());
     TensorId input_tensor_id = ParseTensorName(input_name);
-    const string input_node_name = input_tensor_id.first.ToString();
+    const string input_node_name(input_tensor_id.first);
     const int output_index = input_tensor_id.second;
 
     // Skip control inputs.
@@ -209,13 +209,13 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
       TfGpuId tf_gpu_id(parsed.id);
-      CudaGpuId cuda_gpu_id;
-      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (!s.ok()) {
         // We are probably running simulation without linking cuda libraries.
-        cuda_gpu_id = CudaGpuId(parsed.id);
+        platform_gpu_id = PlatformGpuId(parsed.id);
       }
-      return GetLocalGPUInfo(cuda_gpu_id);
+      return GetLocalGPUInfo(platform_gpu_id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }
@@ -320,8 +320,8 @@ void TensorSizeHistogram::Merge(const TensorSizeHistogram& src) {
                  buckets_.begin(), std::plus<uint64>());
 }
 
-std::string TensorSizeHistogram::ToString() const {
-  std::string r;
+string TensorSizeHistogram::ToString() const {
+  string r;
   char buf[200];
   snprintf(buf, sizeof(buf), "Count: %lld, Average: ", num_elem_);
   r.append(buf);

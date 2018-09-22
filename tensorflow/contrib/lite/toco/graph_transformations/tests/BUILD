@@ -8,8 +8,9 @@ load(
 )
 
 tf_cc_test(
-    name = "resolve_constant_concatenation_test",
-    srcs = ["resolve_constant_concatenation_test.cc"],
+    name = "lstm_utils_test",
+    srcs = ["lstm_utils_test.cc"],
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",
@@ -19,8 +20,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "lstm_utils_test",
-    srcs = ["lstm_utils_test.cc"],
+    name = "resolve_constant_concatenation_test",
+    srcs = ["resolve_constant_concatenation_test.cc"],
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/contrib/lite/toco:graph_transformations",
         "//tensorflow/contrib/lite/toco:model",

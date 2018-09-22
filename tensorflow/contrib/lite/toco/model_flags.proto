@@ -96,8 +96,9 @@ message RnnState {
 // model that does not already contain such MinMax information.
 message ArraysExtraInfo {
   message Entry {
-    // Next ID to use: 7.
+    // Next ID to use: 8.
     optional string name = 1;
+    optional string name_regexp = 7;
     optional double min = 2;
     optional double max = 3;
     optional IODataType data_type = 4;

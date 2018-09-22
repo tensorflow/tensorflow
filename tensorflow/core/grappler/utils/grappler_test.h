@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_TEST_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_TEST_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_
 
 #include <vector>
 
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -62,7 +63,8 @@ class GrapplerTest : public ::testing::Test {
   Tensor GenerateRandomTensor(const TensorShape& shape) const {
     typedef typename EnumToDataType<DTYPE>::Type T;
     Tensor tensor(DTYPE, shape);
-    tensor.flat<T>() = tensor.flat<T>().random();
+    for (auto i = 0; i < tensor.NumElements(); i++)
+      tensor.flat<T>()(i) = i + random::New64() % 10;
     return tensor;
   }
 
@@ -73,4 +75,4 @@ class GrapplerTest : public ::testing::Test {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_TEST_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_

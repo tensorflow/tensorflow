@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -40,8 +41,8 @@ class ReshapeOp : public XlaOpKernel {
                                         sizes_shape.DebugString()));
     const int64 num_dims = sizes_shape.num_elements();
 
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &literal));
+    std::vector<int64> shape_input;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &shape_input));
 
     // Compute the output shape.  Determine product of specified
     // dimensions, and find the index of the unspecified one if there
@@ -50,7 +51,7 @@ class ReshapeOp : public XlaOpKernel {
     int64 product = 1;
     int unknown_index = -1;
     for (int d = 0; d < num_dims; ++d) {
-      const int32 size = literal.Get<int>({d});
+      const int32 size = shape_input[d];
       if (size == -1) {
         OP_REQUIRES(
             ctx, unknown_index == -1,
@@ -90,8 +91,7 @@ class ReshapeOp : public XlaOpKernel {
     VLOG(1) << "Reshape " << input_shape.DebugString() << " "
             << shape.DebugString();
 
-    ctx->SetOutput(0,
-                   ctx->builder()->Reshape(ctx->Input(0), shape.dim_sizes()));
+    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), shape.dim_sizes()));
   }
 };
 

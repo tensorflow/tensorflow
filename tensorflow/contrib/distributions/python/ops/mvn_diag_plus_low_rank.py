@@ -18,10 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import mvn_linear_operator as mvn_linop
 from tensorflow.python.framework import ops
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -86,7 +87,8 @@ class MultivariateNormalDiagPlusLowRank(
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 3-variate Gaussian with covariance `cov = S @ S.T`,
   # `S = diag(d) + U @ diag(m) @ U.T`. The perturbation, `U @ diag(m) @ U.T`, is
@@ -141,6 +143,14 @@ class MultivariateNormalDiagPlusLowRank(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_diag=None,
@@ -215,10 +225,10 @@ class MultivariateNormalDiagPlusLowRank(
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier, scale_perturb_factor,
           scale_perturb_diag]):

@@ -22,13 +22,3 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.python.training.queue_runner_impl import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
-
-
-_allowed_symbols = [
-    # Documented in training.py:
-    "QueueRunner",
-    "add_queue_runner",
-    "start_queue_runners",
-]
-remove_undocumented(__name__, _allowed_symbols)

@@ -18,14 +18,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -34,10 +34,16 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-class TupleSimplifierTest : public HloTestBase {
+class TupleSimplifierTest : public HloVerifiedTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
     TupleSimplifier simplifier;
+    auto changed_status = simplifier.Run(module);
+    TF_ASSERT_OK(changed_status.status());
+    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+  }
+  void Run(HloModule* module, bool change_expected, bool exclude_entry) {
+    TupleSimplifier simplifier(exclude_entry);
     auto changed_status = simplifier.Run(module);
     TF_ASSERT_OK(changed_status.status());
     EXPECT_EQ(change_expected, changed_status.ValueOrDie());
@@ -62,7 +68,7 @@ TEST_F(TupleSimplifierTest, TupleOfParameters) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  Run(module.get(), /*change_expected=*/false);
+  Run(module, /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, GteOfTupleOfParameter) {
@@ -75,7 +81,7 @@ TEST_F(TupleSimplifierTest, GteOfTupleOfParameter) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  Run(module.get(), /*change_expected=*/false);
+  Run(module, /*change_expected=*/false);
 }
 
 TEST_F(TupleSimplifierTest, GteOfTuple) {
@@ -97,7 +103,7 @@ TEST_F(TupleSimplifierTest, GteOfTuple) {
 
   EXPECT_THAT(computation->root_instruction(), gte);
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), param1);
 }
@@ -125,7 +131,7 @@ TEST_F(TupleSimplifierTest, GteOfTupleChain) {
   EXPECT_THAT(computation->root_instruction(),
               op::Negate(op::GetTupleElement(op::Tuple())));
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), op::Negate(op::Parameter()));
 }
@@ -156,7 +162,7 @@ TEST_F(TupleSimplifierTest, NestedGteOfTuples) {
 
   EXPECT_THAT(computation->root_instruction(), element);
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), param);
 }
@@ -181,7 +187,7 @@ TEST_F(TupleSimplifierTest, TupleOfGteInstructions) {
 
   EXPECT_THAT(computation->root_instruction(), tuple);
 
-  Run(module.get(), /*change_expected=*/true);
+  Run(module, /*change_expected=*/true);
 
   EXPECT_THAT(computation->root_instruction(), tuple_param);
 }
@@ -206,9 +212,80 @@ TEST_F(TupleSimplifierTest, IncompatibleTuples) {
 
   EXPECT_THAT(computation->root_instruction(), tuple);
 
-  Run(module.get(), /*change_expected=*/false);
+  Run(module, /*change_expected=*/false);
 
   EXPECT_THAT(computation->root_instruction(), tuple);
+}
+
+TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
+  //  Verify that the root computation can be excluded
+  auto module = CreateNewModule();
+
+  HloInstruction* p0;
+  HloInstruction* p1;
+  HloComputation* c0;
+  HloComputation* c1;
+  HloComputation* entry;
+
+  {
+    HloComputation::Builder builder(TestName() + "_1");
+    p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
+    HloInstruction* gte0 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 0));
+    HloInstruction* gte1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 1));
+    HloInstruction* gte2 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, p0, 2));
+
+    builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
+
+    c0 = module->AddEmbeddedComputation(builder.Build());
+  }
+  {
+    HloComputation::Builder builder(TestName() + "_2");
+    p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
+    HloInstruction* gte0 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, p1, 0));
+    HloInstruction* gte1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, p1, 1));
+    HloInstruction* gte2 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, p1, 2));
+
+    builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1, gte2}));
+
+    c1 = module->AddEmbeddedComputation(builder.Build());
+  }
+  {
+    HloComputation::Builder builder(TestName() + "_Entry");
+    HloInstruction* tuple_param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape_, "param"));
+    HloInstruction* call0 = builder.AddInstruction(
+        HloInstruction::CreateCall(tuple_shape_, {tuple_param}, c0));
+    HloInstruction* call1 = builder.AddInstruction(
+        HloInstruction::CreateCall(tuple_shape_, {tuple_param}, c1));
+    HloInstruction* gte0 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, call0, 0));
+    HloInstruction* gte1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, call1, 1));
+    HloInstruction* tuple0 =
+        builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+    HloInstruction* gte2 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, tuple0, 0));
+    HloInstruction* gte3 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(scalar_shape_, tuple0, 1));
+
+    builder.AddInstruction(HloInstruction::CreateTuple({gte2, gte3}));
+
+    entry = module->AddEntryComputation(builder.Build());
+  }
+
+  Run(module, /*change_expected=*/true, /*exclude_entry=*/true);
+
+  EXPECT_THAT(c0->root_instruction(), p0);
+  EXPECT_THAT(c1->root_instruction(), p1);
+  EXPECT_THAT(entry->instruction_count(), 9);
 }
 
 }  // namespace

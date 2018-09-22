@@ -227,7 +227,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   Device* dst_device;
   if (s.ok()) {
-    s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+    s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
   }
   if (!s.ok()) {
     if (rwi != nullptr) {

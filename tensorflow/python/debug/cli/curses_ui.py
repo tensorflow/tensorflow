@@ -190,8 +190,6 @@ class ScrollBar(object):
     return layout
 
   def get_click_command(self, mouse_y):
-    # TODO(cais): Support continuous scrolling when the mouse button is held
-    # down.
     if self._output_num_rows <= 1:
       return None
     elif mouse_y == self._min_y:
@@ -270,6 +268,10 @@ class CursesUI(base_ui.BaseUI):
       cli_shared.COLOR_RED + "_on_" + cli_shared.COLOR_WHITE)
 
   _UI_WAIT_MESSAGE = "Processing..."
+
+  # The delay (in ms) between each update of the scroll bar when the mouse
+  # button is held down on the scroll bar. Controls how fast the screen scrolls.
+  _MOUSE_SCROLL_DELAY_MS = 100
 
   _single_instance_lock = threading.Lock()
 
@@ -855,7 +857,30 @@ class CursesUI(base_ui.BaseUI):
       except curses.error:
         mouse_event_type = None
 
-      if mouse_event_type == curses.BUTTON1_RELEASED:
+      if mouse_event_type == curses.BUTTON1_PRESSED:
+        # Logic for held mouse-triggered scrolling.
+        if mouse_x >= self._max_x - 2:
+          # Disable blocking on checking for user input.
+          self._command_window.nodelay(True)
+
+          # Loop while mouse button is pressed.
+          while mouse_event_type == curses.BUTTON1_PRESSED:
+            # Sleep for a bit.
+            curses.napms(self._MOUSE_SCROLL_DELAY_MS)
+            scroll_command = self._scroll_bar.get_click_command(mouse_y)
+            if scroll_command in (_SCROLL_UP_A_LINE, _SCROLL_DOWN_A_LINE):
+              self._scroll_output(scroll_command)
+
+            # Check to see if different mouse event is in queue.
+            self._command_window.getch()
+            try:
+              _, _, _, _, mouse_event_type = self._screen_getmouse()
+            except curses.error:
+              pass
+
+          self._command_window.nodelay(False)
+          return x
+      elif mouse_event_type == curses.BUTTON1_RELEASED:
         # Logic for mouse-triggered scrolling.
         if mouse_x >= self._max_x - 2:
           scroll_command = self._scroll_bar.get_click_command(mouse_y)
@@ -1677,4 +1702,7 @@ class CursesUI(base_ui.BaseUI):
       self._redraw_output()
 
   def _screen_set_mousemask(self):
-    curses.mousemask(self._mouse_enabled)
+    if self._mouse_enabled:
+      curses.mousemask(curses.BUTTON1_RELEASED | curses.BUTTON1_PRESSED)
+    else:
+      curses.mousemask(0)

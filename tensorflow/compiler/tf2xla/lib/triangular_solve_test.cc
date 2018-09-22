@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -80,16 +80,15 @@ xla::Array2D<float> AValsFull() {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/false, /*lower=*/true,
-                                /*transpose_a=*/true, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/false, /*lower=*/true,
+                  /*transpose_a=*/true, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {0.5, 0.08333334, 0.04629629, 0.03367003},
@@ -102,16 +101,15 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/false, /*lower=*/true,
-                                /*transpose_a=*/false, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/false, /*lower=*/true,
+                  /*transpose_a=*/false, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {-0.16414141, -0.06902357, -0.07070707, 0.36363636},
@@ -124,16 +122,15 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/false, /*lower=*/false,
-                                /*transpose_a=*/true, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/false, /*lower=*/false,
+                  /*transpose_a=*/true, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {-0.16414141, -0.06902357, -0.07070707, 0.36363636},
@@ -146,16 +143,15 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsRight(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/false, /*lower=*/false,
-                                /*transpose_a=*/false, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/false, /*lower=*/false,
+                  /*transpose_a=*/false, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {0.5, 0.08333334, 0.04629629, 0.03367003},
@@ -168,16 +164,15 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightUpperNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/true, /*lower=*/true,
-                                /*transpose_a=*/true, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/true, /*lower=*/true,
+                  /*transpose_a=*/true, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {-0.89646465, -0.69444444, -0.49242424},
@@ -191,16 +186,37 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/true, /*lower=*/true,
-                                /*transpose_a=*/false, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/true, /*lower=*/true,
+                  /*transpose_a=*/false, /*conjugate_a=*/false,
+                  /*block_size=*/2);
+
+  xla::Array2D<float> expected({
+      {0.5, 1.0, 1.5},
+      {0.41666667, 0.33333333, 0.25},
+      {0.23148148, 0.18518519, 0.13888889},
+      {0.16835017, 0.13468013, 0.1010101},
+  });
+
+  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
+                             xla::ErrorSpec(1e-2, 1e-2));
+}
+
+XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotransposeIrregularblock) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::XlaOp a, b;
+  auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
+  auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
+  TriangularSolve(a, b,
+                  /*left_side=*/true, /*lower=*/true,
+                  /*transpose_a=*/false, /*conjugate_a=*/false,
+                  /*block_size=*/3);
 
   xla::Array2D<float> expected({
       {0.5, 1.0, 1.5},
@@ -214,16 +230,15 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftLowerNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/true, /*lower=*/false,
-                                /*transpose_a=*/true, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/true, /*lower=*/false,
+                  /*transpose_a=*/true, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {0.5, 1.0, 1.5},
@@ -237,16 +252,15 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data = CreateR2Parameter<float>(AValsUpper(), 0, "a", &builder, &a);
   auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/true, /*lower=*/false,
-                                /*transpose_a=*/false, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/true, /*lower=*/false,
+                  /*transpose_a=*/false, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<float> expected({
       {-0.89646465, -0.69444444, -0.49242424},
@@ -260,18 +274,17 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperNotranspose) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data =
       CreateR2Parameter<complex64>(AValsLowerComplex(), 0, "a", &builder, &a);
   auto b_data =
       CreateR2Parameter<complex64>(BValsRightComplex(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/false, /*lower=*/true,
-                                /*transpose_a=*/true, /*conjugate_a=*/true,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/false, /*lower=*/true,
+                  /*transpose_a=*/true, /*conjugate_a=*/true,
+                  /*block_size=*/2);
 
   xla::Array2D<complex64> expected({
       {0.5, complex64(0.08333333, 0.08333333),
@@ -288,18 +301,17 @@ XLA_TEST_F(TriangularSolveTest, SimpleRightLowerTransposeConjugate) {
 }
 
 XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
-  xla::ComputationBuilder builder(client_, TestName());
+  xla::XlaBuilder builder(TestName());
 
-  xla::ComputationDataHandle a, b;
+  xla::XlaOp a, b;
   auto a_data =
       CreateR2Parameter<complex64>(AValsUpperComplex(), 0, "a", &builder, &a);
   auto b_data =
       CreateR2Parameter<complex64>(BValsLeftComplex(), 1, "b", &builder, &b);
-  auto result = TriangularSolve(&builder, a, b,
-                                /*left_side=*/true, /*lower=*/false,
-                                /*transpose_a=*/true, /*conjugate_a=*/false,
-                                /*block_size=*/2);
-  TF_ASSERT_OK(result.status());
+  TriangularSolve(a, b,
+                  /*left_side=*/true, /*lower=*/false,
+                  /*transpose_a=*/true, /*conjugate_a=*/false,
+                  /*block_size=*/2);
 
   xla::Array2D<complex64> expected({
       {0.5, 1., 1.5},
@@ -315,50 +327,6 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
   ComputeAndCompareR2<complex64>(&builder, expected,
                                  {a_data.get(), b_data.get()},
                                  xla::ErrorSpec(1e-2, 1e-2));
-}
-
-XLA_TEST_F(TriangularSolveLeftLookingTest, Simple) {
-  xla::ComputationBuilder builder(client_, TestName());
-
-  xla::ComputationDataHandle a, b;
-  auto a_data = CreateR2Parameter<float>(AValsLower(), 0, "a", &builder, &a);
-  auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
-  auto result = TriangularSolveLeftLooking(&builder, a, b,
-                                           /*transpose_a=*/false,
-                                           /*conjugate_a=*/false);
-  TF_ASSERT_OK(result.status());
-
-  xla::Array2D<float> expected({
-      {0.5, 1.0, 1.5},
-      {0.41666667, 0.33333333, 0.25},
-      {0.23148148, 0.18518519, 0.13888889},
-      {0.16835017, 0.13468013, 0.1010101},
-  });
-
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
-                             xla::ErrorSpec(1e-2, 1e-2));
-}
-
-XLA_TEST_F(TriangularSolveLeftLookingTest, NonzeroUpperTriangle) {
-  xla::ComputationBuilder builder(client_, TestName());
-
-  xla::ComputationDataHandle a, b;
-  auto a_data = CreateR2Parameter<float>(AValsFull(), 0, "a", &builder, &a);
-  auto b_data = CreateR2Parameter<float>(BValsLeft(), 1, "b", &builder, &b);
-  auto result = TriangularSolveLeftLooking(&builder, a, b,
-                                           /*transpose_a=*/false,
-                                           /*conjugate_a=*/false);
-  TF_ASSERT_OK(result.status());
-
-  xla::Array2D<float> expected({
-      {0.5, 1.0, 1.5},
-      {0.41666667, 0.33333333, 0.25},
-      {0.23148148, 0.18518519, 0.13888889},
-      {0.16835017, 0.13468013, 0.1010101},
-  });
-
-  ComputeAndCompareR2<float>(&builder, expected, {a_data.get(), b_data.get()},
-                             xla::ErrorSpec(1e-2, 1e-2));
 }
 
 }  // namespace

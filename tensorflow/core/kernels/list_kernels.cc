@@ -77,9 +77,9 @@ static Status TensorListDeviceCopy(
   return Status::OK();
 }
 
-#define REGISTER_LIST_COPY(DIRECTION)                   \
-  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
-      TensorList, DIRECTION, TensorList::kTypeName, TensorListDeviceCopy)
+#define REGISTER_LIST_COPY(DIRECTION)                                         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(TensorList, DIRECTION, \
+                                                       TensorListDeviceCopy)
 
 REGISTER_LIST_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
 REGISTER_LIST_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
@@ -92,8 +92,7 @@ Status TensorListShape(const TensorList& t, TensorShape* s) {
   return Status::OK();
 }
 
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorList::kTypeName,
-                                      TensorListShape);
+REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(TensorList, TensorListShape);
 
 bool TensorList::Decode(const VariantTensorData& data) {
   tensors = data.tensors();
@@ -475,6 +474,99 @@ REGISTER_KERNEL_BUILDER(
 
 #endif  // GOOGLE_CUDA
 
+class TensorListConcatLists : public OpKernel {
+ public:
+  explicit TensorListConcatLists(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    const TensorShape& tl_a_shape = c->input(0).shape();
+    const TensorShape& tl_b_shape = c->input(1).shape();
+    OP_REQUIRES(
+        c, tl_a_shape == tl_b_shape,
+        errors::InvalidArgument("Incompatible input TensorList tensor shapes: ",
+                                tl_a_shape.DebugString(), " vs. ",
+                                tl_b_shape.DebugString()));
+    AllocatorAttributes attr;
+    std::unique_ptr<Tensor> tl_alias = c->forward_input(
+        0 /*input_index*/, 0 /*output_index*/, DT_VARIANT, tl_a_shape,
+        DEVICE_MEMORY /* input is always on DEVICE_MEMORY */, attr);
+
+    // tl_a may be aliased by tl_alias.
+    const Tensor& tl_a = c->input(0);
+    const Tensor& tl_b = c->input(1);
+
+    Tensor* output;
+    if (tl_alias) {
+      c->set_output(0, *tl_alias);
+      output = tl_alias.get();
+    } else {
+      attr.set_on_host(true);
+      OP_REQUIRES_OK(c, c->allocate_output(0, tl_a_shape, &output, attr));
+    }
+
+    auto output_t = output->flat<Variant>();
+    auto tl_a_t = tl_a.flat<Variant>();
+    auto tl_b_t = tl_b.flat<Variant>();
+
+    for (int64 b = 0; b < tl_a.NumElements(); ++b) {
+      const TensorList* l_a = tl_a_t(b).get<TensorList>();
+      const TensorList* l_b = tl_b_t(b).get<TensorList>();
+      OP_REQUIRES(
+          c, l_a != nullptr,
+          errors::InvalidArgument("input_a is not a TensorList at index ", b,
+                                  ".  Saw: '", tl_a_t(b).DebugString(), "'"));
+      OP_REQUIRES(
+          c, l_b != nullptr,
+          errors::InvalidArgument("input_b is not a TensorList at index ", b,
+                                  ".  Saw: '", tl_b_t(b).DebugString(), "'"));
+      OP_REQUIRES(c, l_a->element_dtype == element_dtype_,
+                  errors::InvalidArgument(
+                      "input_a[", b, "].dtype != element_dtype.  Saw: ",
+                      DataTypeString(l_a->element_dtype), " vs. ",
+                      DataTypeString(element_dtype_)));
+      OP_REQUIRES(c, l_b->element_dtype == element_dtype_,
+                  errors::InvalidArgument(
+                      "input_b[", b, "].dtype != element_dtype.  Saw: ",
+                      DataTypeString(l_b->element_dtype), " vs. ",
+                      DataTypeString(element_dtype_)));
+      OP_REQUIRES(c, l_a->element_shape.IsIdenticalTo(l_b->element_shape),
+                  errors::InvalidArgument(
+                      "input_a and input_b TensorList element shapes are not "
+                      "identical at index ",
+                      b, ".  Saw ", l_a->element_shape.DebugString(), " vs. ",
+                      l_b->element_shape.DebugString()));
+      if (tl_alias) {
+        TensorList* out = output_t(b).get<TensorList>();
+        DCHECK(out != nullptr) << "Expected output to alias input_a, but it "
+                                  "doesn't contain a TensorList at index "
+                               << b;
+        std::copy(l_b->tensors.begin(), l_b->tensors.end(),
+                  std::back_inserter(out->tensors));
+      } else {
+        TensorList out = *l_a;
+        std::copy(l_b->tensors.begin(), l_b->tensors.end(),
+                  std::back_inserter(out.tensors));
+        output_t(b) = std::move(out);
+      }
+    }
+  }
+
+ private:
+  DataType element_dtype_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_CPU),
+                        TensorListConcatLists);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(Name("TensorListConcatLists").Device(DEVICE_GPU),
+                        TensorListConcatLists);
+
+#endif  // GOOGLE_CUDA
+
 #define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(T)               \
   REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
                               .TypeConstraint<T>("element_dtype") \
@@ -495,7 +587,11 @@ REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
-                          TensorListStack<CPUDevice, T>)
+                          TensorListStack<CPUDevice, T>)          \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGather")                \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListGather<CPUDevice, T>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_STACK_CPU);
 REGISTER_TENSOR_LIST_STACK_CPU(quint8);
@@ -511,7 +607,11 @@ REGISTER_TENSOR_LIST_STACK_CPU(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")            \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
-                          TensorListFromTensor<CPUDevice, T>)
+                          TensorListFromTensor<CPUDevice, T>)     \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatter")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListScatter<CPUDevice, T>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_CPU);
 REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(quint8);
@@ -524,12 +624,11 @@ REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(bfloat16);
 #undef REGISTER_TENSOR_LIST_FROM_TENSOR_CPU
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
-                                          TensorList, TensorList::kTypeName,
+                                          TensorList,
                                           TensorListBinaryAdd<CPUDevice>);
 
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorList,
-                                         TensorList::kTypeName,
                                          TensorListZerosLike<CPUDevice>);
 
 }  // namespace tensorflow

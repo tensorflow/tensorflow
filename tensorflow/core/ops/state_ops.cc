@@ -222,6 +222,15 @@ REGISTER_OP("ResourceScatterNdUpdate")
     .Attr("use_locking: bool = true")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 
+REGISTER_OP("ResourceScatterNdAdd")
+    .Input("ref: resource")
+    .Input("indices: Tindices")
+    .Input("updates: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = true")
+    .SetShapeFn(shape_inference::ScatterNdUpdateShape);
+
 REGISTER_OP("ScatterNdAdd")
     .Input("ref: Ref(T)")
     .Input("indices: Tindices")

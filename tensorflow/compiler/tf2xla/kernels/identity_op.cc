@@ -25,7 +25,10 @@ class IdentityOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      ctx->SetOutput(i, ctx->Input(i));
+      // Forwards using the underlying op_kernel_context so both tensor and
+      // resource values are forwarded correctly.
+      ctx->op_kernel_context()->set_output(i,
+                                           ctx->op_kernel_context()->input(i));
     }
   }
 
@@ -35,9 +38,11 @@ class IdentityOp : public XlaOpKernel {
 
 // XLA_* devices also register a "real" Identity operator so we suppress the
 // dummy operator using CompilationOnly().
-REGISTER_XLA_OP(Name("Identity").CompilationOnly(), IdentityOp);
-
-REGISTER_XLA_OP(Name("IdentityN").CompilationOnly(), IdentityOp);
+REGISTER_XLA_OP(Name("Identity").AllowResourceTypes().CompilationOnly(),
+                IdentityOp);
+REGISTER_XLA_OP(Name("IdentityN").AllowResourceTypes().CompilationOnly(),
+                IdentityOp);
+REGISTER_XLA_OP(Name("PlaceholderWithDefault"), IdentityOp);
 REGISTER_XLA_OP(Name("PreventGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("StopGradient"), IdentityOp);
 REGISTER_XLA_OP(Name("Snapshot"), IdentityOp);

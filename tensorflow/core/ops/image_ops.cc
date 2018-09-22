@@ -108,6 +108,29 @@ Status ColorspaceShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+Status NMSShapeFn(InferenceContext* c) {
+  // Get inputs and validate ranks.
+  ShapeHandle boxes;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &boxes));
+  ShapeHandle scores;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+  ShapeHandle max_output_size;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+  ShapeHandle iou_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
+  ShapeHandle score_threshold;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+  // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+  DimensionHandle unused;
+  // The boxes[0] and scores[0] are both num_boxes.
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+  // The boxes[1] is 4.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+  c->set_output(0, c->Vector(c->UnknownDim()));
+  return Status::OK();
+}
+
 }  // namespace
 
 // --------------------------------------------------------------------------
@@ -348,6 +371,11 @@ REGISTER_OP("AdjustContrast")
     .Attr("T: {uint8, int8, int16, int32, int64, float, double}")
     .Deprecated(2, "Use AdjustContrastv2 instead")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor, min_value, max_value should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
@@ -357,6 +385,9 @@ REGISTER_OP("AdjustContrastv2")
     .Input("contrast_factor: float")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) {
+      // The contrast_factor should be scalar only.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
@@ -435,7 +466,29 @@ REGISTER_OP("DrawBoundingBoxes")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+      // The rank of images should be 4.
+      ShapeHandle images;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &images));
+      // Channel depth should be either 1 (GRY), 3 (RGB), or 4 (RGBA).
+      if (c->ValueKnown(c->Dim(images, 3))) {
+        int64 depth = c->Value(c->Dim(images, 3));
+        if (!(depth == 1 || depth == 3 || depth == 4)) {
+          return errors::InvalidArgument(
+              "Channel depth should be either 1 (GRY), "
+              "3 (RGB), or 4 (RGBA)");
+        }
+      }
+
+      // The rank of boxes is 3: [batch, num_bounding_boxes, 4].
+      ShapeHandle boxes;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &boxes));
+      // The last value of boxes shape is 4.
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 2), 4, &unused));
+
+      // The rank of the input image (rank = 4) has already been restricted
+      // above, and the output is of the same shape as the input.
+      return shape_inference::UnchangedShape(c);
     });
 
 // --------------------------------------------------------------------------
@@ -548,7 +601,7 @@ REGISTER_OP("CropAndResize")
     .Input("crop_size: int32")
     .Output("crops: float")
     .Attr("T: {uint8, uint16, int8, int16, int32, int64, half, float, double}")
-    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .Attr("extrapolation_value: float = 0")
     .SetShapeFn([](InferenceContext* c) {
       // Get inputs and validate ranks.
@@ -579,7 +632,7 @@ REGISTER_OP("CropAndResizeGradImage")
     .Input("image_size: int32")
     .Output("output: T")
     .Attr("T: {float, half, double}")
-    .Attr("method: {'bilinear'} = 'bilinear'")
+    .Attr("method: {'bilinear', 'nearest'} = 'bilinear'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(3, &out));
@@ -630,11 +683,12 @@ REGISTER_OP("NonMaxSuppression")
     });
 
 REGISTER_OP("NonMaxSuppressionV2")
-    .Input("boxes: float")
-    .Input("scores: float")
+    .Input("boxes: T")
+    .Input("scores: T")
     .Input("max_output_size: int32")
     .Input("iou_threshold: float")
     .Output("selected_indices: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
     .SetShapeFn([](InferenceContext* c) {
       // Get inputs and validate ranks.
       ShapeHandle boxes;
@@ -652,6 +706,73 @@ REGISTER_OP("NonMaxSuppressionV2")
           c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
       // The boxes[1] is 4.
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
+
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionV3")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .SetShapeFn(NMSShapeFn);
+
+REGISTER_OP("NonMaxSuppressionV4")
+    .Input("boxes: T")
+    .Input("scores: T")
+    .Input("max_output_size: int32")
+    .Input("iou_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .Output("valid_outputs: int32")
+    .Attr("T: {half, float} = DT_FLOAT")
+    .Attr("pad_to_max_output_size: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(NMSShapeFn(c));
+
+      bool pad_to_max;
+      TF_RETURN_IF_ERROR(c->GetAttr("pad_to_max_output_size", &pad_to_max));
+      if (pad_to_max) {
+        // If padded, overwrite the shape of the output to be static.
+        DimensionHandle output_dim;
+        TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &output_dim));
+        c->set_output(0, c->MakeShape({output_dim}));
+      }
+      c->set_output(1, c->MakeShape({}));
+      return Status::OK();
+    });
+
+REGISTER_OP("NonMaxSuppressionWithOverlaps")
+    .Input("overlaps: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Input("overlap_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle overlaps;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &overlaps));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      ShapeHandle overlap_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &overlap_threshold));
+      ShapeHandle score_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(overlaps, 1), &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();

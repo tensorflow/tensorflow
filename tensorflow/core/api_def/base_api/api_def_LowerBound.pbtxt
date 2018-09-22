@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "LowerBound"
+  visibility: HIDDEN
+  in_arg {
+    name: "sorted_inputs"
+    description: <<END
+2-D Tensor where each row is ordered.
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+2-D Tensor with the same numbers of rows as `sorted_search_values`. Contains
+the values that will be searched for in `sorted_search_values`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A `Tensor` with the same shape as `values`.  It contains the first scalar index
+into the last dimension where values can be inserted without changing the
+ordered property.
+END
+  }
+  summary: "Applies lower_bound(sorted_search_values, values) along each row."
+  description: <<END
+Each set of rows with the same index in (sorted_inputs, values) is treated
+independently.  The resulting row is the equivalent of calling
+`np.searchsorted(sorted_inputs, values, side='left')`.
+
+The result is not a global index to the entire 
+`Tensor`, but rather just the index in the last dimension.
+
+A 2-D example:
+  sorted_sequence = [[0, 3, 9, 9, 10],
+                     [1, 2, 3, 4, 5]]
+  values = [[2, 4, 9],
+            [0, 2, 6]]
+
+  result = LowerBound(sorted_sequence, values)
+
+  result == [[1, 2, 2],
+             [0, 1, 5]]
+END
+}

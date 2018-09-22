@@ -21,7 +21,6 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-using ::int32;
 using ::testing::ElementsAreArray;
 
 template <typename input_type = float,
@@ -50,14 +49,14 @@ class StridedSliceOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
   }
-  void SetBegin(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(begin_, data);
+  void SetBegin(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(begin_, data);
   }
-  void SetEnd(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(end_, data);
+  void SetEnd(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(end_, data);
   }
-  void SetStrides(std::initializer_list<int32> data) {
-    PopulateTensor<int32>(strides_, data);
+  void SetStrides(std::initializer_list<int32_t> data) {
+    PopulateTensor<int32_t>(strides_, data);
   }
 
   std::vector<input_type> GetOutput() {
@@ -377,51 +376,68 @@ TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4});
   m.SetBegin({1});
-  m.SetEnd({3});
+  m.SetEnd({2});
   m.SetStrides({1});
   m.Invoke();
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
 }
 
-TEST(StridedSliceOpTest, In1D_EmptyOutputShrinkAxisMask1) {
+TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1_NegativeSlice) {
+  // This is equivalent to tf.range(4)[-1].
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
-  m.SetInput({1, 2, 3, 4});
-  m.SetBegin({2});
-  m.SetEnd({1});
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({-1});
+  m.SetEnd({0});
   m.SetStrides({1});
+
   m.Invoke();
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
+}
+
+TEST(StridedSliceOpTest, In2D_ShrinkAxis3_NegativeSlice) {
+  // This is equivalent to tf.range(4)[:, tf.newaxis][-2, -1].
+  StridedSliceOpModel<> m({4, 1}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({-2, -1});
+  m.SetEnd({-1, 0});
+  m.SetStrides({1, 1});
+
+  m.Invoke();
+  EXPECT_TRUE(m.GetOutputShape().empty());
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
+}
+
+TEST(StridedSliceOpTest, In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
+  // This is equivalent to tf.range(4)[:, tf.newaxis][:, -1].
+  StridedSliceOpModel<> m({4, 1}, {2}, {2}, {2}, 1, 1, 0, 0, 2);
+  m.SetInput({0, 1, 2, 3});
+  m.SetBegin({0, -1});
+  m.SetEnd({0, 0});
+  m.SetStrides({1, 1});
+
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 1, 2, 3}));
 }
 
 TEST(StridedSliceOpTest, In1D_BeginMaskShrinkAxisMask1) {
   StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 1, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4});
   m.SetBegin({1});
-  m.SetEnd({3});
+  m.SetEnd({1});
   m.SetStrides({1});
   m.Invoke();
   EXPECT_TRUE(m.GetOutputShape().empty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
 }
 
-TEST(StridedSliceOpTest, In1D_NegativeBeginNegativeStrideShrinkAxisMask1) {
-  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
-  m.SetInput({1, 2, 3, 4});
-  m.SetBegin({-2});
-  m.SetEnd({-3});
-  m.SetStrides({-1});
-  m.Invoke();
-  EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
-}
-
 TEST(StridedSliceOpTest, In2D_ShrinkAxisMask1) {
   StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetBegin({0, 0});
-  m.SetEnd({2, 3});
+  m.SetEnd({1, 3});
   m.SetStrides({1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
@@ -432,7 +448,7 @@ TEST(StridedSliceOpTest, In2D_ShrinkAxisMask2) {
   StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 2);
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetBegin({0, 0});
-  m.SetEnd({2, 3});
+  m.SetEnd({2, 1});
   m.SetStrides({1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
@@ -443,7 +459,7 @@ TEST(StridedSliceOpTest, In2D_ShrinkAxisMask3) {
   StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetBegin({0, 0});
-  m.SetEnd({2, 3});
+  m.SetEnd({1, 1});
   m.SetStrides({1, 1});
   m.Invoke();
   EXPECT_TRUE(m.GetOutputShape().empty());
@@ -454,7 +470,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({1, 3, 2});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
@@ -465,7 +481,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis2) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 2);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({2, 1, 2});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
@@ -476,7 +492,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis3) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 3);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({1, 1, 2});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
@@ -487,7 +503,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis4) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 4);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({2, 3, 1});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
@@ -498,7 +514,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis5) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 5);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({1, 3, 1});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
@@ -509,7 +525,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis6) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 6);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({2, 1, 1});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
@@ -520,7 +536,7 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis7) {
   StridedSliceOpModel<> m({2, 3, 2}, {3}, {3}, {3}, 0, 0, 0, 0, 7);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({1, 1, 1});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_TRUE(m.GetOutputShape().empty());
@@ -549,11 +565,11 @@ TEST(StridedSliceOpTest, RunTwice) {
 }
 
 TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
-  StridedSliceOpModel<uint8, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
+  StridedSliceOpModel<uint8_t, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
                                                  0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
-  m.SetEnd({2, 3, 2});
+  m.SetEnd({1, 3, 2});
   m.SetStrides({1, 1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));

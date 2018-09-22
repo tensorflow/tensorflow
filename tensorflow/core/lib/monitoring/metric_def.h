@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace monitoring {
@@ -98,8 +99,8 @@ class AbstractMetricDef {
                     const std::vector<string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
-        name_(name.ToString()),
-        description_(description.ToString()),
+        name_(name),
+        description_(description),
         label_descriptions_(std::vector<string>(label_descriptions.begin(),
                                                 label_descriptions.end())) {}
 

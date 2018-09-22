@@ -41,20 +41,29 @@ from __future__ import print_function
 
 from collections import OrderedDict
 import sys
+import types
+import unittest
 from absl.testing import parameterized
+import six
 
-from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import one_device_strategy
+from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
+from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
+from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
+from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.util import tf_inspect
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
+TPU_TEST = "test_tpu" in sys.argv[0]
 
 
 def generate(combinations):
@@ -64,29 +73,35 @@ def generate(combinations):
     combinations: a list of dictionaries created using combine() and times().
 
   Restrictions:
-   -- there should always be a "mode" argument.  Accepted values are "eager"
-      and "graph".
+   -- the "mode" argument can be either "eager" or "graph".  It's "graph" by
+      default.
    -- arguments of the test method must match by name to get the corresponding
-      value of the combination.  Tests must accept all arguments (except "mode",
-      which is optional).
-   -- distribution argument is special.  It is meant for passing instances of
-      DistributionStrategy.  Each instance is to be passed as `(<int>,
-      <DistributionStrategy>)` tuple, where <int> is the number of required
-      GPUs.  If the required number of GPUs for the DistributionStrategy isn't
-      available then the test case is going to be skipped.
+      value of the combination.  Tests must accept all arguments except the
+      "mode", "required_tpu" and "required_gpus".
+   -- "distribution" argument is special and optional.  It is meant for passing
+      instances of DistributionStrategy.  Each instance is to be passed as via
+      `NamedDistribution`.  If using "distribution", "required_gpus" and
+      "required_tpu" should be specified via the NamedDistribution instance,
+      rather than as separate arguments.
+   -- "required_tpu" argument is special and optional.  If not `None`, then the
+      test will be skipped if TPUs aren't available.
+   -- "required_gpus" argument is special and optional.  If not `None`, then the
+      test will be skipped if the specified number of GPUs aren't available.
 
   Returns:
-    a decorator that will cause the test method to be run under the specified
-    conditions.
+    a decorator that will cause the test method or the test class to be run
+    under the specified conditions.
 
   Raises:
-    ValueError - if "mode" argument wasn't either "eager" or "graph.
+    ValueError - if "mode" argument wasn't either "eager" or "graph" or if other
+      arguments were not accepted by the test method.
   """
 
-  def decorator(test_function):
+  def decorator(test_method_or_class):
     """The decorator to be returned."""
 
     # Generate good test names that can be used with --test_filter.
+    named_combinations = []
     for combination in combinations:
       # We use OrderedDicts in `combine()` and `times()` to ensure stable
       # order of keys in each dictionary.
@@ -97,52 +112,97 @@ def generate(combinations):
               "".join(filter(str.isalnum, str(value))))
           for key, value in combination.items()
       ])
-      combination.update({"testcase_name": "_test{}".format(name)})
+      named_combinations.append(
+          OrderedDict(
+              list(combination.items()) + [("testcase_name",
+                                            "_test{}".format(name))]))
 
-    @parameterized.named_parameters(*combinations)
-    def decorated(self, **kwargs):
-      """A wrapped test method that sets up `test_function`."""
-      assert "mode" in kwargs
-      mode = kwargs["mode"]
+    if isinstance(test_method_or_class, type):
+      class_object = test_method_or_class
+      class_object._test_method_ids = test_method_ids = {}
+      for name, test_method in six.iteritems(class_object.__dict__.copy()):
+        if (name.startswith(unittest.TestLoader.testMethodPrefix) and
+            isinstance(test_method, types.FunctionType)):
+          delattr(class_object, name)
+          methods = {}
+          parameterized._update_class_dict_for_param_test_case(
+              class_object.__name__, methods, test_method_ids, name,
+              parameterized._ParameterizedTestIter(
+                  _augment_with_special_arguments(test_method),
+                  named_combinations, parameterized._NAMED, name))
+          for method_name, method in six.iteritems(methods):
+            setattr(class_object, method_name, method)
 
-      if "distribution" in kwargs:
-        distribution = kwargs["distribution"]
-        kwargs["distribution"] = distribution.strategy
-        if not distribution.required_gpus:
-          if GPU_TEST:
-            self.skipTest("Test that doesn't require GPUs.")
-        elif context.num_gpus() < distribution.required_gpus:
-          self.skipTest(
-              "{} GPUs are not available for this test. {} GPUs are available".
-              format(distribution.required_gpus, context.num_gpus()))
+      return class_object
+    else:
+      test_method = _augment_with_special_arguments(test_method_or_class)
+      return parameterized.named_parameters(*named_combinations)(test_method)
 
-      requested_arguments = tf_inspect.getfullargspec(test_function).args
-      missing_arguments = set(list(kwargs.keys()) + ["self"]).difference(
-          set(requested_arguments + ["mode"]))
-      if missing_arguments:
-        raise ValueError("The test is missing arguments {} .".format(
-            missing_arguments))
-
-      kwargs_to_pass = {}
-      for arg in requested_arguments:
-        if arg == "self":
-          kwargs_to_pass[arg] = self
-        else:
-          kwargs_to_pass[arg] = kwargs[arg]
-
-      if mode == "eager":
-        with context.eager_mode(), ops.Graph().as_default():
-          test_function(**kwargs_to_pass)
-      elif mode == "graph":
-        with context.graph_mode(), ops.Graph().as_default():
-          test_function(**kwargs_to_pass)
-      else:
-        raise ValueError(
-            "'mode' has to be either 'eager' or 'graph' and not {}".format(
-                mode))
-
-    return decorated
   return decorator
+
+
+def _augment_with_special_arguments(test_method):
+  def decorated(self, **kwargs):
+    """A wrapped test method that treats some arguments in a special way."""
+    mode = kwargs.pop("mode", "graph")
+
+    distribution = kwargs.get("distribution", None)
+    required_tpu = kwargs.pop("required_tpu", False)
+    required_gpus = kwargs.pop("required_gpus", None)
+
+    if distribution:
+      assert required_gpus is None, (
+          "Do not use `required_gpus` and `distribution` together.")
+      assert required_tpu is False, (
+          "Do not use `required_tpu` and `distribution` together.")
+      required_gpus = distribution.required_gpus
+      required_tpu = distribution.required_tpu
+
+    if required_tpu and not TPU_TEST:
+      self.skipTest("Test requires a TPU, but it's not available.")
+    if not required_tpu and TPU_TEST:
+      self.skipTest("Test that doesn't require a TPU.")
+
+    if not required_gpus:
+      if GPU_TEST:
+        self.skipTest("Test that doesn't require GPUs.")
+    elif context.num_gpus() < required_gpus:
+      self.skipTest(
+          "{} GPUs are not available for this test. {} GPUs are available".
+          format(required_gpus, context.num_gpus()))
+
+    # At this point, `kwargs` doesn't have `required_gpus` or `required_tpu`
+    # that the user might have specified.  `kwargs` still has `mode`, which
+    # the test is allowed to accept or ignore.
+    requested_arguments = tf_inspect.getfullargspec(test_method).args
+    missing_arguments = set(list(kwargs.keys()) + ["self"]).difference(
+        set(requested_arguments + ["mode"]))
+    if missing_arguments:
+      raise ValueError("The test is missing arguments {} .".format(
+          missing_arguments))
+
+    kwargs_to_pass = {}
+    for arg in requested_arguments:
+      if arg == "self":
+        kwargs_to_pass[arg] = self
+      else:
+        kwargs_to_pass[arg] = kwargs[arg]
+
+    if mode == "eager":
+      with ops.Graph().as_default(), context.eager_mode():
+        if distribution:
+          kwargs_to_pass["distribution"] = distribution.strategy
+        test_method(**kwargs_to_pass)
+    elif mode == "graph":
+      with ops.Graph().as_default(), context.graph_mode():
+        if distribution:
+          kwargs_to_pass["distribution"] = distribution.strategy
+        test_method(**kwargs_to_pass)
+    else:
+      raise ValueError(
+          "'mode' has to be either 'eager' or 'graph' and not {}".format(
+              mode))
+  return decorated
 
 
 def combine(**kwargs):
@@ -152,7 +212,8 @@ def combine(**kwargs):
   can be computed using `times()`.
 
   Args:
-    **kwargs: keyword arguments of form `option=[possibilities, ...]`.
+    **kwargs: keyword arguments of form `option=[possibilities, ...]`
+         or `option=the_only_possibility`.
 
   Returns:
     a list of dictionaries for each combination. Keys in the dictionaries are
@@ -171,6 +232,8 @@ def combine(**kwargs):
 
   key = first[0]
   values = first[1]
+  if not isinstance(values, list):
+    values = [values]
 
   return [
       OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
@@ -232,47 +295,77 @@ class NamedObject(object):
 class NamedDistribution(object):
   """Translates DistributionStrategy and its data into a good name."""
 
-  def __init__(self, name, distribution, required_gpus):
-    self._distribution = distribution
+  def __init__(self, name, distribution_fn, required_gpus=None,
+               required_tpu=False):
+    self._distribution_fn = distribution_fn
     self._name = name
     self._required_gpus = required_gpus
+    self._required_tpu = required_tpu
 
   def __repr__(self):
     return self._name
 
   @property
   def strategy(self):
-    return self._distribution
+    return self._distribution_fn()
 
   @property
   def required_gpus(self):
     return self._required_gpus
 
+  @property
+  def required_tpu(self):
+    return self._required_tpu
 
+
+# pylint: disable=g-long-lambda
+default_strategy = NamedDistribution(
+    "Default",
+    distribution_strategy_context._get_default_distribution_strategy,  # pylint: disable=protected-access
+    required_gpus=None)
 one_device_strategy = NamedDistribution(
-    "OneDeviceCPU", one_device_strategy.OneDeviceStrategy("/cpu:0"),
-    None)
+    "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
+    required_gpus=None)
+tpu_strategy = NamedDistribution(
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=5),
+    required_tpu=True)
+tpu_strategy_one_step = NamedDistribution(
+    "TPU", lambda: tpu_lib.TPUStrategy(
+        TPUClusterResolver(""), steps_per_run=1),
+    required_tpu=True)
+# Note that we disable prefetching for testing since prefetching makes
+# the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
-    mirrored_strategy.MirroredStrategy(["/gpu:0", "/cpu:0"]), 1)
-mirrored_strategy_without_prefetch = NamedDistribution(
-    "MirroredCPUAndGPUNoPrefetch",
-    mirrored_strategy.MirroredStrategy(
-        ["/gpu:0", "/cpu:0"], prefetch_on_device=False), 1)
+    lambda: mirrored_lib.MirroredStrategy(
+        ["/gpu:0", "/cpu:0"], prefetch_on_device=False),
+    required_gpus=1)
 mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
-    mirrored_strategy.MirroredStrategy(["/gpu:0", "/gpu:1"]), 2)
+    lambda: mirrored_lib.MirroredStrategy(
+        ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
+    required_gpus=2)
+
 
 adam_optimizer_v1_fn = NamedObject(
-    "AdamV1", lambda: adam.AdamOptimizer(0.2, epsilon=1))
+    "AdamV1", lambda: adam.AdamOptimizer(0.001, epsilon=1))
 gradient_descent_optimizer_v1_fn = NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
+adagrad_optimizer_v1_fn = NamedObject(
+    "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
+optimizers_v1 = [adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn,
+                 adagrad_optimizer_v1_fn]
 
 adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.2, epsilon=1))
+    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
 gradient_descent_optimizer_v2_fn = NamedObject(
     "GradientDescentV2",
     lambda: gradient_descent_v2.GradientDescentOptimizer(0.2))
+adagrad_optimizer_v2_fn = NamedObject(
+    "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
+optimizers_v2 = [adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn,
+                 adagrad_optimizer_v2_fn]
 
 graph_and_eager_modes = ["graph", "eager"]
 
@@ -284,7 +377,7 @@ def distributions_and_v1_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn])
+      optimizer_fn=optimizers_v1)
 
 
 def distributions_and_v2_optimizers():
@@ -294,4 +387,4 @@ def distributions_and_v2_optimizers():
           one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
           mirrored_strategy_with_two_gpus
       ],
-      optimizer_fn=[adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn])
+      optimizer_fn=optimizers_v2)

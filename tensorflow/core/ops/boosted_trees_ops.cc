@@ -22,6 +22,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
+
 REGISTER_RESOURCE_HANDLE_OP(BoostedTreesEnsembleResource);
 
 REGISTER_OP("IsBoostedTreesEnsembleInitialized")
@@ -37,9 +41,10 @@ REGISTER_OP("IsBoostedTreesEnsembleInitialized")
 REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
     .Input("node_id_range: int32")
     .Input("stats_summary_list: num_features * float32")
-    .Attr("l1: float")
-    .Attr("l2: float")
-    .Attr("tree_complexity: float")
+    .Input("l1: float")
+    .Input("l2: float")
+    .Input("tree_complexity: float")
+    .Input("min_node_weight: float")
     .Attr("max_splits: int >= 1")
     .Attr("num_features: int >= 1")  // not passed but populated automatically.
     .Output("node_ids_list: num_features * int32")
@@ -51,19 +56,6 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
       // Confirms the rank of the inputs and sets the shape of the outputs.
       int max_splits;
       int num_features;
-      float l1, l2, tree_complexity;
-      TF_RETURN_IF_ERROR(c->GetAttr("l1", &l1));
-      if (l1 < 0) {
-        return errors::InvalidArgument("l1 must be non-negative.");
-      }
-      TF_RETURN_IF_ERROR(c->GetAttr("l2", &l2));
-      if (l2 < 0) {
-        return errors::InvalidArgument("l2 must be non-negative.");
-      }
-      TF_RETURN_IF_ERROR(c->GetAttr("tree_complexity", &tree_complexity));
-      if (tree_complexity < 0) {
-        return errors::InvalidArgument("Tree complexity must be non-negative.");
-      }
       TF_RETURN_IF_ERROR(c->GetAttr("max_splits", &max_splits));
       TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
       shape_inference::ShapeHandle node_id_range_shape;
@@ -83,6 +75,12 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
         TF_RETURN_IF_ERROR(
             c->Merge(summary_shape_base, summary_shape, &unused_shape));
       }
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 1), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 2), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 3), 0, &unused_shape));
       // Sets the output lists.
       std::vector<shape_inference::ShapeHandle> output_shapes_vec(
           num_features, c->MakeShape({-1}));
@@ -185,9 +183,8 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
 REGISTER_OP("BoostedTreesPredict")
     .Input("tree_ensemble_handle: resource")
     .Input("bucketized_features: num_bucketized_features * int32")
-    .Attr("num_bucketized_features: int >= 1")
+    .Attr("num_bucketized_features: int >= 1")  // Inferred.
     .Attr("logits_dimension: int")
-    .Attr("max_depth: int >= 1")
     .Output("logits: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle feature_shape;
@@ -210,6 +207,30 @@ REGISTER_OP("BoostedTreesPredict")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesExampleDebugOutputs")
+    .Input("tree_ensemble_handle: resource")
+    .Input("bucketized_features: num_bucketized_features * int32")
+    .Attr("num_bucketized_features: int >= 1")  // Inferred.
+    .Attr("logits_dimension: int")
+    .Output("examples_debug_outputs_serialized: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle feature_shape;
+      int num_bucketized_features;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("num_bucketized_features", &num_bucketized_features));
+      shape_inference::ShapeHandle unused_input;
+      for (int i = 0; i < num_bucketized_features; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 1), 1, &feature_shape));
+        // Check that the shapes of all bucketized features are the same.
+        TF_RETURN_IF_ERROR(c->Merge(c->input(1), feature_shape, &unused_input));
+      }
+
+      // Multi-class will be supported by modifying the proto.
+      auto batch_size = c->MakeShape({c->Dim(feature_shape, 0)});
+      c->set_output(0, batch_size);
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesSerializeEnsemble")
     .Input("tree_ensemble_handle: resource")
     .Output("stamp_token: int64")
@@ -229,7 +250,6 @@ REGISTER_OP("BoostedTreesTrainingPredict")
     .Input("bucketized_features: num_bucketized_features * int32")
     .Attr("num_bucketized_features: int >= 1")
     .Attr("logits_dimension: int")
-    .Attr("max_depth: int >= 1")
     .Output("partial_logits: float")
     .Output("tree_ids: int32")
     .Output("node_ids: int32")
@@ -238,9 +258,6 @@ REGISTER_OP("BoostedTreesTrainingPredict")
       int num_bucketized_features;
       TF_RETURN_IF_ERROR(
           c->GetAttr("num_bucketized_features", &num_bucketized_features));
-
-      int max_depth;
-      TF_RETURN_IF_ERROR(c->GetAttr("max_depth", &max_depth));
 
       shape_inference::ShapeHandle unused_input;
       for (int i = 0; i < num_bucketized_features; ++i) {
@@ -273,8 +290,8 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
     .Input("thresholds: num_features * int32")
     .Input("left_node_contribs: num_features * float")
     .Input("right_node_contribs: num_features * float")
-    .Attr("max_depth: int >= 1")
-    .Attr("learning_rate: float")
+    .Input("max_depth: int32")
+    .Input("learning_rate: float")
     .Attr("pruning_mode: int >=0")
     .Attr("num_features: int >= 0")  // Inferred.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -314,6 +331,150 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
             c->WithRank(c->input(i + num_features * 4 + 2), 2, &shape_handle));
         TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
                                     shape_rank_2, &shape_handle));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesCenterBias")
+    .Input("tree_ensemble_handle: resource")
+    .Input("mean_gradients: float")
+    .Input("mean_hessians: float")
+    // Regularization-related.
+    .Input("l1: float")
+    .Input("l2: float")
+    .Output("continue_centering: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle gradients_shape;
+      shape_inference::ShapeHandle hessians_shape;
+      shape_inference::ShapeHandle unused_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &gradients_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &hessians_shape));
+      TF_RETURN_IF_ERROR(
+          c->Merge(gradients_shape, hessians_shape, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_shape));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_RESOURCE_HANDLE_OP(BoostedTreesQuantileStreamResource);
+
+REGISTER_OP("IsBoostedTreesQuantileStreamResourceInitialized")
+    .Input("quantile_stream_resource_handle: resource")
+    .Output("is_initialized: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesCreateQuantileStreamResource")
+    .Attr("max_elements: int = 1099511627776")  // 1 << 40
+    .Input("quantile_stream_resource_handle: resource")
+    .Input("epsilon: float")
+    .Input("num_streams: int64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_input));
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesMakeQuantileSummaries")
+    .Attr("num_features: int >= 0")
+    .Input("float_values: num_features * float")
+    .Input("example_weights: float")
+    .Input("epsilon: float")
+    .Output("summaries: num_features * float")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      ShapeHandle example_weights_shape;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features), 1, &example_weights_shape));
+      for (int i = 0; i < num_features; ++i) {
+        ShapeHandle feature_shape;
+        DimensionHandle unused_dim;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &feature_shape));
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_shape, 0),
+                                    c->Dim(example_weights_shape, 0),
+                                    &unused_dim));
+        // the columns are value, weight, min_rank, max_rank.
+        c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
+      }
+      // epsilon must be a scalar.
+      ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(
+          c->WithRank(c->input(num_features + 1), 0, &unused_input));
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesQuantileStreamResourceAddSummaries")
+    .Attr("num_features: int >= 0")
+    .Input("quantile_stream_resource_handle: resource")
+    .Input("summaries: num_features * float")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      // resource handle must be a scalar.
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      // each summary must be rank 2.
+      for (int i = 1; i < num_features + 1; i++) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &unused_input));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesQuantileStreamResourceFlush")
+    .Attr("generate_quantiles: bool = False")
+    .Input("quantile_stream_resource_handle: resource")
+    .Input("num_buckets: int64")
+    .SetShapeFn([](InferenceContext* c) {
+      // All the inputs are scalars.
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesQuantileStreamResourceGetBucketBoundaries")
+    .Attr("num_features: int >= 0")
+    .Input("quantile_stream_resource_handle: resource")
+    .Output("bucket_boundaries: num_features * float")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      shape_inference::ShapeHandle unused_input;
+      // resource handle must be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      for (int i = 0; i < num_features; i++) {
+        c->set_output(i, c->Vector(c->UnknownDim()));
+      }
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesBucketize")
+    .Attr("num_features: int >= 0")
+    .Input("float_values: num_features * float")
+    .Input("bucket_boundaries: num_features * float")
+    .Output("buckets: num_features * int32")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_features", &num_features));
+      ShapeHandle feature_shape;
+      DimensionHandle unused_dim;
+      for (int i = 0; i < num_features; i++) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &feature_shape));
+        TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_shape, 0),
+                                    c->Dim(c->input(0), 0), &unused_dim));
+      }
+      // Bucketized result should have same dimension as input.
+      for (int i = 0; i < num_features; i++) {
+        c->set_output(i, c->MakeShape({c->Dim(c->input(i), 0), 1}));
       }
       return Status::OK();
     });

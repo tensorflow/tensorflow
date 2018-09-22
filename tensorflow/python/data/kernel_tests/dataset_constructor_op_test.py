@@ -50,7 +50,7 @@ class DatasetConstructorTest(test.TestCase):
     self.assertEqual([c.shape for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       results = sess.run(get_next)
       for component, result_component in zip(components, results):
@@ -84,7 +84,7 @@ class DatasetConstructorTest(test.TestCase):
         [tensor_shape.TensorShape(c.dense_shape) for c in components],
         [shape for shape in iterator.output_shapes])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       results = sess.run(get_next)
       for component, result_component in zip(components, results):
@@ -115,7 +115,7 @@ class DatasetConstructorTest(test.TestCase):
         if sparse_tensor.is_sparse(c) else c.shape for c in components
     ], [shape for shape in iterator.output_shapes])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       results = sess.run(get_next)
       for component, result_component in zip(components, results):
@@ -142,7 +142,7 @@ class DatasetConstructorTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(4):
         results = sess.run(get_next)
@@ -172,7 +172,7 @@ class DatasetConstructorTest(test.TestCase):
         [tensor_shape.TensorShape(c.dense_shape[1:]) for c in components],
         [shape for shape in iterator.output_shapes])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       expected = [
           (sparse_tensor.SparseTensorValue(
@@ -232,7 +232,7 @@ class DatasetConstructorTest(test.TestCase):
         if sparse_tensor.is_sparse(c) else c.shape[1:] for c in components
     ], [shape for shape in iterator.output_shapes])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       expected = [
           (sparse_tensor.SparseTensorValue(
@@ -283,7 +283,7 @@ class DatasetConstructorTest(test.TestCase):
     self.assertEqual((), iterator.output_shapes["foo"])
     self.assertEqual((1,), iterator.output_shapes["bar"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(3):
         results = sess.run(get_next)
@@ -300,7 +300,7 @@ class DatasetConstructorTest(test.TestCase):
     init_op = iterator.initializer
     get_next = sparse_tensor.SparseTensor(*iterator.get_next())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       slices = [[1., 2., 3.], [1.], [1.], [1., 2.], [], [1., 2.], [], [], []]
 
       # Test with sparse tensor in the appropriate order.

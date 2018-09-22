@@ -28,7 +28,8 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -36,13 +37,14 @@ __all__ = [
 ]
 
 
-class Permute(bijector_lib.Bijector):
+class Permute(bijector.Bijector):
   """Permutes the rightmost dimension of a `Tensor`.
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfb = tfp.bijectors
 
-  reverse = tfd.bijectors.Permute(permutation=[2, 1, 0])
+  reverse = tfb.Permute(permutation=[2, 1, 0])
 
   reverse.forward([-1., 0., 1.])
   # ==> [1., 0., -1]
@@ -74,6 +76,14 @@ class Permute(bijector_lib.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, permutation, validate_args=False, name=None):
     """Creates the `Permute` bijector.
 

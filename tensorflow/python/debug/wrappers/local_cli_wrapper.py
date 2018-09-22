@@ -124,6 +124,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     self._ui_type = ui_type
 
+  def _is_disk_usage_reset_each_run(self):
+    # The dumped tensors are all cleaned up after every Session.run
+    # in a command-line wrapper.
+    return True
+
   def _initialize_argparsers(self):
     self._argparsers = {}
     ap = argparse.ArgumentParser(
@@ -290,6 +295,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if self._run_call_count == 1:
       # Show logo at the onset of the first run.
       help_intro.extend(cli_shared.get_tfdbg_logo())
+      help_intro.extend(debugger_cli_common.get_tensorflow_version_lines())
     help_intro.extend(debugger_cli_common.RichTextLines("Upcoming run:"))
     help_intro.extend(self._run_info)
 
@@ -466,6 +472,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     if self._run_call_count == 1:
       output.extend(cli_shared.get_tfdbg_logo())
+      output.extend(debugger_cli_common.get_tensorflow_version_lines())
     output.extend(self._run_info)
 
     if (not self._is_run_start and
@@ -594,7 +601,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       # Register tab completion for the filter names.
       curses_cli.register_tab_comp_context(["run", "r"],
                                            list(self._tensor_filters.keys()))
-    if self._feed_dict:
+    if self._feed_dict and hasattr(self._feed_dict, "keys"):
       # Register tab completion for feed_dict keys.
       feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]

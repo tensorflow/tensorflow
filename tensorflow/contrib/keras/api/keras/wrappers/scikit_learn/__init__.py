@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras._impl.keras.wrappers.scikit_learn import KerasClassifier
-from tensorflow.python.keras._impl.keras.wrappers.scikit_learn import KerasRegressor
+from tensorflow.python.keras.wrappers.scikit_learn import KerasClassifier
+from tensorflow.python.keras.wrappers.scikit_learn import KerasRegressor
 
 del absolute_import
 del division

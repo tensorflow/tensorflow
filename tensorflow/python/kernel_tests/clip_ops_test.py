@@ -18,30 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 
 
 class ClipTest(test.TestCase):
 
-  def testClipByValueGradient(self):
+  def DISABLED_testClipByValueGradient(self):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     outputs_1 = clip_ops.clip_by_value(inputs, 0.5, 3.5)
     min_val = constant_op.constant([0.5, 0.5, 0.5, 0.5], dtype=dtypes.float32)
     max_val = constant_op.constant([3.5, 3.5, 3.5, 3.5], dtype=dtypes.float32)
     outputs_2 = clip_ops.clip_by_value(inputs, min_val, max_val)
-    with self.test_session():
-      error_1 = gradient_checker.compute_gradient_error(inputs, [4],
-                                                        outputs_1, [4])
+    with self.cached_session():
+      error_1 = gradient_checker.compute_gradient_error(inputs, [4], outputs_1,
+                                                        [4])
       self.assertLess(error_1, 1e-4)
 
-      error_2 = gradient_checker.compute_gradient_error(inputs, [4],
-                                                        outputs_2, [4])
+      error_2 = gradient_checker.compute_gradient_error(inputs, [4], outputs_2,
+                                                        [4])
       self.assertLess(error_2, 1e-4)
 
   # ClipByValue test
@@ -56,10 +60,11 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Scalar, Scalar]
-  def testClipByValue0Type(self):
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
-                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-                  dtypes.uint8, dtypes.uint16]:
+  def DISABLED_testClipByValue0Type(self):
+    for dtype in [
+        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
+        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+    ]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
         np_ans = [[2, 2, 3], [4, 4, 4]]
@@ -71,15 +76,16 @@ class ClipTest(test.TestCase):
       self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Tensor, Scalar]
-  def testClipByValue1Type(self):
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
-                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-                  dtypes.uint8, dtypes.uint16]:
+  def DISABLED_testClipByValue1Type(self):
+    for dtype in [
+        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
+        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+    ]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
         np_ans = [[2, 2, 3], [4, 4, 4]]
-        clip_value_min = constant_op.constant([2, 2, 2, 3, 3, 3], shape=[2, 3],
-                                              dtype=dtype)
+        clip_value_min = constant_op.constant(
+            [2, 2, 2, 3, 3, 3], shape=[2, 3], dtype=dtype)
         clip_value_max = 4
         ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
         tf_ans = ans.eval()
@@ -87,33 +93,35 @@ class ClipTest(test.TestCase):
       self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Scalar, Tensor]
-  def testClipByValue2Type(self):
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
-                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-                  dtypes.uint8, dtypes.uint16]:
+  def DISABLED_testClipByValue2Type(self):
+    for dtype in [
+        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
+        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+    ]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
         np_ans = [[4, 4, 4], [4, 5, 6]]
         clip_value_min = 4
-        clip_value_max = constant_op.constant([6, 6, 6, 6, 6, 6], shape=[2, 3],
-                                              dtype=dtype)
+        clip_value_max = constant_op.constant(
+            [6, 6, 6, 6, 6, 6], shape=[2, 3], dtype=dtype)
         ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
         tf_ans = ans.eval()
 
       self.assertAllClose(np_ans, tf_ans)
 
   # [Tensor, Tensor, Tensor]
-  def testClipByValue3Type(self):
-    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64,
-                  dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-                  dtypes.uint8, dtypes.uint16]:
+  def DISABLED_testClipByValue3Type(self):
+    for dtype in [
+        dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int8,
+        dtypes.int16, dtypes.int32, dtypes.int64, dtypes.uint8, dtypes.uint16
+    ]:
       with self.test_session(use_gpu=True):
         x = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
         np_ans = [[2, 2, 3], [5, 5, 6]]
-        clip_value_min = constant_op.constant([2, 2, 2, 5, 5, 5], shape=[2, 3],
-                                              dtype=dtype)
-        clip_value_max = constant_op.constant([5, 5, 5, 7, 7, 7], shape=[2, 3],
-                                              dtype=dtype)
+        clip_value_min = constant_op.constant(
+            [2, 2, 2, 5, 5, 5], shape=[2, 3], dtype=dtype)
+        clip_value_max = constant_op.constant(
+            [5, 5, 5, 7, 7, 7], shape=[2, 3], dtype=dtype)
         ans = clip_ops.clip_by_value(x, clip_value_min, clip_value_max)
         tf_ans = ans.eval()
 
@@ -124,15 +132,14 @@ class ClipTest(test.TestCase):
       x = constant_op.constant([-5.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3, 1])
       # Use a nonsensical shape.
       clip = constant_op.constant([1.0, 2.0])
-      with self.assertRaises(errors_impl.InvalidArgumentError):
-        ans = clip_ops.clip_by_value(x, -clip, clip)
-        tf_ans = ans.eval()
-      with self.assertRaises(errors_impl.InvalidArgumentError):
-        ans = clip_ops.clip_by_value(x, 1.0, clip)
-        tf_ans = ans.eval()
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_value(x, -clip, clip)
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_value(x, 1.0, clip)
 
   def testClipByValueNonFinite(self):
-    with self.test_session(use_gpu=True):
+    # TODO(b/78016351): Enable test on GPU once the bug is fixed.
+    with self.cached_session():
       x = constant_op.constant([float('NaN'), float('Inf'), -float('Inf')])
       np_ans = [float('NaN'), 4.0, -4.0]
       clip_value = 4.0
@@ -152,12 +159,18 @@ class ClipTest(test.TestCase):
       ans = clip_ops.clip_by_norm(x, clip_norm)
       tf_ans = ans.eval()
 
-      clip_tensor = constant_op.constant(4.0)
       ans = clip_ops.clip_by_norm(x, clip_norm)
       tf_ans_tensor = ans.eval()
 
     self.assertAllClose(np_ans, tf_ans)
     self.assertAllClose(np_ans, tf_ans_tensor)
+
+  def testClipByNormGradientZeros(self):
+    with self.test_session(use_gpu=True):
+      x = array_ops.zeros([3])
+      b = clip_ops.clip_by_norm(x, 1.)
+      grad, = gradients_impl.gradients(b, x)
+      self.assertAllEqual(grad.eval(), [1., 1., 1.])
 
   def testClipByNormBadShape(self):
     with self.test_session(use_gpu=True):
@@ -364,6 +377,21 @@ class ClipTest(test.TestCase):
     self.assertAllClose(np_ans_0, tf_ans_1)
     self.assertAllClose(np_ans_1, tf_ans_2)
 
+  def testClipByGlobalNormInf(self):
+    with self.test_session(use_gpu=True):
+      x0 = constant_op.constant([-2.0, 0.0, np.inf, 4.0, 0.0, 0.0],
+                                shape=[2, 3])
+      x1 = constant_op.constant([1.0, -2.0])
+      clip_norm = 6.0
+
+      ans, norm = clip_ops.clip_by_global_norm([x0, x1], clip_norm)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        norm.eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        ans[0].eval()
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "global norm"):
+        ans[1].eval()
+
   def testClipByAverageNormClipped(self):
     # Norm clipping when average clip_norm < 0.83333333
     with self.test_session(use_gpu=True):
@@ -411,6 +439,16 @@ class ClipTest(test.TestCase):
       tf_ans = ans.eval()
 
     self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByValueEmptyTensor(self):
+    # Test case for GitHub issue 19337
+    zero = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+    x = clip_ops.clip_by_value(zero, zero, zero)
+    y = clip_ops.clip_by_value(zero, 1.0, 1.0)
+    z = clip_ops.clip_by_value(zero, zero, 1.0)
+    w = clip_ops.clip_by_value(zero, 1.0, zero)
+    with self.test_session(use_gpu=True) as sess:
+      sess.run([x, y, z, w], feed_dict={zero: np.zeros((7, 0))})
 
 
 if __name__ == '__main__':

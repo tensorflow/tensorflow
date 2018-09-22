@@ -32,6 +32,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -88,13 +89,23 @@ class InverseGamma(distribution.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   dist = tfd.InverseGamma(concentration=3.0, rate=2.0)
   dist2 = tfd.InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
@@ -125,8 +136,8 @@ class InverseGamma(distribution.Distribution):
     Raises:
       TypeError: if `concentration` and `rate` are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       with ops.control_dependencies([
           check_ops.assert_positive(concentration),
           check_ops.assert_positive(rate),
@@ -274,14 +285,22 @@ class InverseGamma(distribution.Distribution):
 class InverseGammaWithSoftplusConcentrationRate(InverseGamma):
   """`InverseGamma` with softplus of `concentration` and `rate`."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                rate,
                validate_args=False,
                allow_nan_stats=True,
                name="InverseGammaWithSoftplusConcentrationRate"):
-    parameters = locals()
-    with ops.name_scope(name, values=[concentration, rate]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[concentration, rate]) as name:
       super(InverseGammaWithSoftplusConcentrationRate, self).__init__(
           concentration=nn.softplus(concentration,
                                     name="softplus_concentration"),

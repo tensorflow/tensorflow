@@ -115,7 +115,6 @@ cuda_py_test(
     additional_deps = [
         ":training",
         "@six_archive//:six",
-        "//tensorflow/contrib/eager/python:checkpointable_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -194,6 +193,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":training",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
@@ -203,4 +203,5 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
     ],
+    tags = ["optonly"],
 )

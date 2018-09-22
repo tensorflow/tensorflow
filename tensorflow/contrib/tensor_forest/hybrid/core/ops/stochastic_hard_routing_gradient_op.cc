@@ -81,7 +81,7 @@ REGISTER_OP("StochasticHardRoutingGradient")
   tree_biases: `tree_biases[i]` gives the bias of the logistic
    regression model that translates from node features to
    probabilities.
-  path_probility: `path_probability[i]` gives the probability of reaching each
+  path_probability: `path_probability[i]` gives the probability of reaching each
    node in `path[i]`.
   path: `path[i][j]` gives the jth node in the path taken by the ith data
    instance.

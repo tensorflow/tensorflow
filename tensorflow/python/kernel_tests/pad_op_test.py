@@ -188,7 +188,7 @@ class PadOpTest(test.TestCase):
                       mode="SYMMETRIC").eval()
 
   def testInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       x = [[1, 2, 3], [4, 5, 6]]
       with self.assertRaisesRegexp(ValueError, "Unknown padding mode"):
         array_ops.pad(x, [[1, 0], [2, 1]], mode="weird").eval()
@@ -316,6 +316,11 @@ class PadOpTest(test.TestCase):
     padded = array_ops.pad(inp,
                            [constant_op.constant(1, shape=[2]), [0, unknown]])
     self.assertEqual([6, None], padded.get_shape().as_list())
+
+    # Zero padding on a known dimension.
+    inp = array_ops.placeholder(dtypes.int32, [None, None, 20])
+    padded = array_ops.pad(inp, [[0, 0], [0, unknown], [0, 0]])
+    self.assertEqual([None, None, 20], padded.get_shape().as_list())
 
   def testScalars(self):
     paddings = np.zeros((0, 2), dtype=np.int32)

@@ -24,13 +24,14 @@ namespace gpu {
 // An HLO pass that canonicalizes convolution instructions for GPU codegen. It
 // inserts Pad instructions before Convolution instructions with uncanonicalized
 // padding, so that they can be lowered to cuDNN convolution.
-class PadInsertion : public HloPassInterface {
+class PadInsertion : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "pad insertion"; }
+  absl::string_view name() const override { return "pad insertion"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  StatusOr<bool> RunOnComputation(HloComputation* computation);
   // Returns if any changes are made to the parent computation.
   bool CanonicalizeForwardConvolution(HloInstruction* conv);
   bool CanonicalizeBackwardFilterConvolution(HloInstruction* backward_conv);

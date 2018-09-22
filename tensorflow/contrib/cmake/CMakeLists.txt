@@ -18,7 +18,16 @@ cmake_policy(SET CMP0022 NEW)
 
 # Options
 option(tensorflow_VERBOSE "Enable for verbose output" OFF)
+
+if(WIN32)
+# BoringSSL is disabled for windows as it currently doesn't build with
+# MSBuild. (Ninja is required.)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
+else()
+# BoringSSL is enabled for gRPC.
+option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" ON)
+endif()
+
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
@@ -31,9 +40,13 @@ option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 option(tensorflow_BUILD_MORE_PYTHON_TESTS "Build more python unit tests for contrib packages" OFF)
 option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
-option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
+
+# SIMD, MKL and MKLDNN options
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
+option(tensorflow_ENABLE_MKL_SUPPORT "Enable Intel MKL support" OFF)
+option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support, requires MKL enabled" OFF)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -80,7 +93,7 @@ if (NOT WIN32)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
-    set (systmelib_ZLIB ON)
+    set (systemlib_ZLIB ON)
   endif (systemlib_ALL)
 endif()
 
@@ -124,25 +137,48 @@ endif()
 
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
-  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11)
-  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
+  if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+      # 64 bits
+      add_definitions(-DWIN64)
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+      # 32 bits
+      # temporary fix for #18241
+      add_definitions(-DEIGEN_DEFAULT_DENSE_INDEX_TYPE=std::int64_t)
+  endif()
+  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00)
+  add_definitions(-DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
+  add_compile_options(/bigobj /GF /MP /Gm-)
   # Suppress warnings to reduce build log size.
-  add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
-  add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
-  add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
-  add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  add_compile_options(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
+  add_compile_options(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
+  add_compile_options(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
+  add_compile_options(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
   # Suppress linker warnings.
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
   set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob2")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
+
+  set(compiler_flags
+    CMAKE_CXX_FLAGS
+    CMAKE_CXX_FLAGS_DEBUG
+    CMAKE_CXX_FLAGS_RELEASE
+    CMAKE_C_FLAGS
+    CMAKE_C_FLAGS_DEBUG
+    CMAKE_C_FLAGS_RELEASE
+  )
+  # No exception
+  foreach(flag ${compiler_flags})
+    string(REPLACE "/EHsc" "/EHs-c-" ${flag} "${${flag}}")
+  endforeach()
+  add_definitions(/D_HAS_EXCEPTIONS=0)
+  # Suppress 'noexcept used with no exception handling mode specified' warning
+  add_compile_options(/wd4577)
 
   # Try to avoid flaky failures due to failed generation of generate.stamp files.
   set(CMAKE_SUPPRESS_REGENERATION ON)
@@ -160,14 +196,24 @@ if (tensorflow_OPTIMIZE_FOR_NATIVE_ARCH)
   endif()
 endif()
 
+include(CheckCXXCompilerFlag)
+
+# OpenMP Support
+CHECK_CXX_COMPILER_FLAG("-fopenmp" GCC_OPENMP_SUPPORT)
+if (GCC_OPENMP_SUPPORT)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+endif()
+CHECK_CXX_COMPILER_FLAG("/openmp" MSVC_OPENMP_SUPPORT)
+if (MSVC_OPENMP_SUPPORT)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /openmp")
+endif()
+
 # MSVC SIMD instructions
 if (tensorflow_WIN_CPU_SIMD_OPTIONS)
   if (WIN32)
-    CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    CHECK_CXX_COMPILER_FLAG(${tensorflow_WIN_CPU_SIMD_OPTIONS} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
     if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
-    else()
-      message(FATAL_ERROR "${tensorflow_WIN_CPU_SIMD_OPTIONS} not supported")
     endif()
   endif()
 endif()
@@ -193,6 +239,7 @@ include(protobuf)
 include(re2)
 include(cub)
 include(sqlite)
+include(double_conversion)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -213,6 +260,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
+    ${double_conversion_STATIC_LIBRARIES}
 )
 
 if (systemlib_ZLIB)
@@ -240,6 +288,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     fft2d
     re2
     sqlite_copy_headers_to_destination
+    double_conversion
 )
 
 include_directories(
@@ -262,19 +311,23 @@ include_directories(
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
     ${sqlite_INCLUDE_DIR}
+    ${double_conversion_INCLUDE_DIR}
 )
 
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  include(boringssl)
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
-  include_directories(${boringssl_INCLUDE_DIR})
-endif()
 if(tensorflow_ENABLE_GRPC_SUPPORT)
+  if(tensorflow_ENABLE_SSL_SUPPORT)
+    include(boringssl)
+    include_directories(${boringssl_INCLUDE_DIR})
+  endif()
   include(grpc)
+  include_directories(${GRPC_INCLUDE_DIRS})
+  # Place boringssl after grpc as grpc depends on boringssl.
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
-  include_directories(${GRPC_INCLUDE_DIRS})
+  if(tensorflow_ENABLE_SSL_SUPPORT)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
+  endif()
 endif()
 if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
   include(jemalloc)
@@ -297,6 +350,23 @@ endif()
 if(HAIKU)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
+
+# MKL Support
+if (tensorflow_ENABLE_MKL_SUPPORT)
+  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
+  include(mkl)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkl_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkl_copy_shared_to_destination)
+  include_directories(${mkl_INCLUDE_DIRS})
+  if (tensorflow_ENABLE_MKLDNN_SUPPORT)
+    include(mkldnn)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn_copy_shared_to_destination)
+    include_directories(${mkldnn_INCLUDE_DIRS})
+  else (tensorflow_ENABLE_MKLDNN_SUPPORT)
+    add_definitions(-DINTEL_MKL_ML_ONLY)
+  endif()
+endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 if (tensorflow_ENABLE_GPU)
   if (NOT WIN32)
@@ -324,16 +394,20 @@ if (tensorflow_ENABLE_GPU)
 
   # by default we assume compute cabability 3.5 and 5.2. If you change this change it in
   # CUDA_NVCC_FLAGS and cuda_config.h below
-  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_30,code=\"sm_30,compute_30\";-gencode arch=compute_35,code=\"sm_35,compute_35\";-gencode arch=compute_52,code=\"sm_52,compute_52\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_37,code=\"sm_37,compute_37\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_52,code=\"sm_52,compute_52\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_60,code=\"sm_60,compute_60\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_61,code=\"sm_61,compute_61\")
+  set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-gencode arch=compute_70,code=\"sm_70,compute_70\")
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
   set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
   include_directories(${CUDA_INCLUDE})
   if (WIN32)
-    add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
+    add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.7,5.2,6.0,6.1,7.0)
   else (WIN32)
-    # Without these double quotes, cmake in Linux makes it "-DTF_EXTRA_CUDA_CAPABILITIES=3.0, -D3.5, -D5.2" for cc, which incurs build breaks
-    add_definitions(-DGOOGLE_CUDA=1 -D"TF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2")
+    # Without these double quotes, cmake in Linux makes it "-DTF_EXTRA_CUDA_CAPABILITIES=3.7, -D5.2, ..." for cc, which incurs build breaks
+    add_definitions(-DGOOGLE_CUDA=1 -D"TF_EXTRA_CUDA_CAPABILITIES=3.7,5.2,6.0,6.1,7.0")
   endif (WIN32)
 
   if (WIN32)
@@ -382,7 +456,7 @@ if (tensorflow_ENABLE_GPU)
   FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
     "#ifndef CUDA_CUDA_CONFIG_H_\n"
     "#define CUDA_CUDA_CONFIG_H_\n"
-    "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
+    "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.7\"),CudaVersion(\"5.2\"),CudaVersion(\"6.0\"),CudaVersion(\"6.1\"),CudaVersion(\"7.0\")\n"
     "#define TF_CUDA_VERSION \"64_${short_CUDA_VER}\"\n"
     "#define TF_CUDNN_VERSION \"64_${tensorflow_CUDNN_VERSION}\"\n"
     "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
@@ -397,7 +471,6 @@ if (tensorflow_ENABLE_GPU)
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
-    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
@@ -409,6 +482,10 @@ if (tensorflow_ENABLE_GPU)
   include_directories(${tensorflow_source_dir}/third_party/gpus)
   # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CUDA_LIBRARIES})
+  if(NOT WIN32)
+    # add gomp to tensorflow_EXTERNAL_LIBRARIES, needed by libcusolver.so
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES gomp)
+  endif()
 
   # NOTE(mrry): Update these flags when the version of CUDA or cuDNN used
   # in the default build is upgraded.

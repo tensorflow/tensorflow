@@ -15,8 +15,10 @@ limitations under the License.
 
 // The utility to check Cudnn dependency and set Cudnn-related flags.
 
-#ifndef TENSORFLOW_UTIL_USE_CUDNN_H_
-#define TENSORFLOW_UTIL_USE_CUDNN_H_
+#ifndef TENSORFLOW_CORE_UTIL_USE_CUDNN_H_
+#define TENSORFLOW_CORE_UTIL_USE_CUDNN_H_
+
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -31,9 +33,12 @@ enum class FP16ConvMode {
 
 bool CanUseCudnn();
 bool CudnnUseAutotune();
+bool CudnnRnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();
 FP16ConvMode CudnnConvComputeMode();
-
+bool DebugCudnnRnn();
+bool DebugCudnnRnnUseTensorOps();
+int64 DebugCudnnRnnAlgo();
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_USE_CUDNN_H_
+#endif  // TENSORFLOW_CORE_UTIL_USE_CUDNN_H_

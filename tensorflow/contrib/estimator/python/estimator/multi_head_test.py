@@ -132,7 +132,7 @@ class MultiHeadTest(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -202,7 +202,7 @@ class MultiHeadTest(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -259,7 +259,7 @@ class MultiHeadTest(test.TestCase):
         spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       predictions = sess.run(spec.predictions)
@@ -336,7 +336,7 @@ class MultiHeadTest(test.TestCase):
 
     # Assert predictions, loss, and metrics.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
@@ -362,7 +362,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)[0]
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # Unreduced loss of the head is [[(10 + 10) / 2], (15 + 0) / 2]
       # (averaged over classes, averaged over examples).
       self.assertAllClose(8.75, loss.eval(), rtol=tol, atol=tol)
@@ -397,7 +397,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
       # training_loss = (1 * 10 + 2 * 7.5) / 2 = 12.5
@@ -445,7 +445,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
       # training_loss = (1 * 10 + 2 * 7.5) / 2 = 12.5
@@ -498,7 +498,7 @@ class MultiHeadTest(test.TestCase):
         logits=logits,
         labels=labels)[0]
     tol = 1e-3
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), rtol=tol, atol=tol)
 
@@ -535,7 +535,7 @@ class MultiHeadTest(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
@@ -579,7 +579,7 @@ class MultiHeadTest(test.TestCase):
         optimizer=_Optimizer())
 
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       loss, train_result = sess.run((spec.loss, spec.train_op))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
@@ -634,7 +634,7 @@ class MultiHeadTest(test.TestCase):
 
     # Assert predictions, loss, train_op, and summaries.
     tol = 1e-3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
       loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,

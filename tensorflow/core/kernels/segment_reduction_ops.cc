@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/platform/cuda.h"
 
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+using stream_executor::cuda::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -242,7 +242,7 @@ class SegmentSumGPUOp : public AsyncOpKernel {
       return;
     }
 
-    perftools::gputools::DeviceMemoryBase output_rows_device(
+    se::DeviceMemoryBase output_rows_device(
         const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
         (num_indices - 1));
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
@@ -320,7 +320,9 @@ class SegmentSumGPUOp : public AsyncOpKernel {
   REGISTER_CPU_KERNEL_SEGMENT("SegmentSum", Eigen::internal::SumReducer<type>, \
                               type, index_type, 0);                            \
   REGISTER_CPU_KERNEL_SEGMENT(                                                 \
-      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1)
+      "SegmentMean", Eigen::internal::MeanReducer<type>, type, index_type, 0); \
+  REGISTER_CPU_KERNEL_SEGMENT(                                                 \
+      "SegmentProd", Eigen::internal::ProdReducer<type>, type, index_type, 1);
 
 #define REGISTER_REAL_CPU_KERNELS_ALL(type) \
   REGISTER_REAL_CPU_KERNELS(type, int32);   \

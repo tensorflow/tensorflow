@@ -253,6 +253,7 @@ REGISTER_OP("ApplyAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, false /* sparse */);
     });
@@ -264,6 +265,7 @@ REGISTER_OP("ResourceApplyAdagrad")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, false /* sparse */);
     });
@@ -320,6 +322,7 @@ REGISTER_OP("SparseApplyAdagrad")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, true /* sparse */);
     });
@@ -333,6 +336,7 @@ REGISTER_OP("ResourceSparseApplyAdagrad")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdagradShapeFn(c, true /* sparse */);
     });
@@ -735,6 +739,57 @@ REGISTER_OP("ResourceApplyAdam")
     .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
+    });
+
+static Status ApplyAdaMaxShapeFn(InferenceContext* c, bool sparse) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // v
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));       // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));       // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));       // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));       // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));       // epsilon
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs(c, sparse, 8 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyAdaMax")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("v: Ref(T)")
+    .Input("beta1_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdaMaxShapeFn(c, false /* sparse */);
+    });
+
+REGISTER_OP("ResourceApplyAdaMax")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("v: resource")
+    .Input("beta1_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdaMaxShapeFn(c, false /* sparse */);
     });
 
 static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {

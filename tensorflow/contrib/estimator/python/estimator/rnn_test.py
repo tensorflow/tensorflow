@@ -25,12 +25,15 @@ import tempfile
 import numpy as np
 import six
 
+from tensorflow.contrib.data.python.ops import readers
+from tensorflow.contrib.estimator.python.estimator import head as head_lib
 from tensorflow.contrib.estimator.python.estimator import rnn
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as seq_fc
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import metric_keys
+from tensorflow.python.estimator.canned import parsing_utils
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
@@ -38,9 +41,9 @@ from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import state_ops
@@ -50,7 +53,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_util
@@ -711,7 +713,7 @@ class RNNClassifierTrainingTest(test.TestCase):
 
     # Uses same checkpoint and examples as testBinaryClassEvaluationMetrics.
     # See that test for loss calculation.
-    mock_optimizer = self._mock_optimizer(expected_loss=1.119661)
+    mock_optimizer = self._mock_optimizer(expected_loss=0.559831)
 
     sequence_feature_columns = [
         seq_fc.sequence_numeric_column('price', shape=(1,))]
@@ -746,7 +748,7 @@ class RNNClassifierTrainingTest(test.TestCase):
 
     # Uses same checkpoint and examples as testMultiClassEvaluationMetrics.
     # See that test for loss calculation.
-    mock_optimizer = self._mock_optimizer(expected_loss=2.662932)
+    mock_optimizer = self._mock_optimizer(expected_loss=1.331465)
 
     sequence_feature_columns = [
         seq_fc.sequence_numeric_column('price', shape=(1,))]
@@ -810,20 +812,32 @@ class RNNClassifierEvaluationTest(test.TestCase):
     # probability = exp(logits) / (1 + exp(logits)) = [[0.353593], [0.504930]]
     # loss = -label * ln(p) - (1 - label) * ln(1 - p)
     #      = [[0.436326], [0.683335]]
+    # sum_over_batch_size = (0.436326 + 0.683335)/2
     expected_metrics = {
-        ops.GraphKeys.GLOBAL_STEP: global_step,
-        metric_keys.MetricKeys.LOSS: 1.119661,
-        metric_keys.MetricKeys.LOSS_MEAN: 0.559831,
-        metric_keys.MetricKeys.ACCURACY: 1.0,
-        metric_keys.MetricKeys.PREDICTION_MEAN: 0.429262,
-        metric_keys.MetricKeys.LABEL_MEAN: 0.5,
-        metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
+        ops.GraphKeys.GLOBAL_STEP:
+            global_step,
+        metric_keys.MetricKeys.LOSS:
+            0.559831,
+        metric_keys.MetricKeys.LOSS_MEAN:
+            0.559831,
+        metric_keys.MetricKeys.ACCURACY:
+            1.0,
+        metric_keys.MetricKeys.PREDICTION_MEAN:
+            0.429262,
+        metric_keys.MetricKeys.LABEL_MEAN:
+            0.5,
+        metric_keys.MetricKeys.ACCURACY_BASELINE:
+            0.5,
         # With default threshold of 0.5, the model is a perfect classifier.
-        metric_keys.MetricKeys.RECALL: 1.0,
-        metric_keys.MetricKeys.PRECISION: 1.0,
+        metric_keys.MetricKeys.RECALL:
+            1.0,
+        metric_keys.MetricKeys.PRECISION:
+            1.0,
         # Positive example is scored above negative, so AUC = 1.0.
-        metric_keys.MetricKeys.AUC: 1.0,
-        metric_keys.MetricKeys.AUC_PR: 1.0,
+        metric_keys.MetricKeys.AUC:
+            1.0,
+        metric_keys.MetricKeys.AUC_PR:
+            1.0,
     }
     self.assertAllClose(
         sorted_key_dict(expected_metrics), sorted_key_dict(eval_metrics))
@@ -869,9 +883,10 @@ class RNNClassifierEvaluationTest(test.TestCase):
     #                          [0.059494, 0.572639, 0.367866]]
     # loss = -1. * log(softmax[label])
     #      = [[2.105432], [0.557500]]
+    # sum_over_batch_size = (2.105432 + 0.557500)/2
     expected_metrics = {
         ops.GraphKeys.GLOBAL_STEP: global_step,
-        metric_keys.MetricKeys.LOSS: 2.662932,
+        metric_keys.MetricKeys.LOSS: 1.331465,
         metric_keys.MetricKeys.LOSS_MEAN: 1.331466,
         metric_keys.MetricKeys.ACCURACY: 0.5,
     }
@@ -984,7 +999,10 @@ class RNNClassifierPredictionTest(test.TestCase):
                      predictions[prediction_keys.PredictionKeys.CLASSES])
 
 
-class RNNClassifierIntegrationTest(test.TestCase):
+class BaseRNNClassificationIntegrationTest(object):
+
+  def __init__(self, _create_estimator_fn):
+    self._create_estimator_fn = _create_estimator_fn
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -994,20 +1012,11 @@ class RNNClassifierIntegrationTest(test.TestCase):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
-  def _test_complete_flow(
-      self, train_input_fn, eval_input_fn, predict_input_fn, n_classes,
-      batch_size):
-    col = seq_fc.sequence_categorical_column_with_hash_bucket(
-        'tokens', hash_bucket_size=10)
-    embed = fc.embedding_column(col, dimension=2)
-    feature_columns = [embed]
-
+  def _test_complete_flow(self, feature_columns, train_input_fn, eval_input_fn,
+                          predict_input_fn, n_classes, batch_size):
     cell_units = [4, 2]
-    est = rnn.RNNClassifier(
-        num_units=cell_units,
-        sequence_feature_columns=feature_columns,
-        n_classes=n_classes,
-        model_dir=self._model_dir)
+    est = self._create_estimator_fn(feature_columns, n_classes, cell_units,
+                                    self._model_dir)
 
     # TRAIN
     num_steps = 10
@@ -1026,10 +1035,10 @@ class RNNClassifierIntegrationTest(test.TestCase):
     self.assertAllEqual((batch_size, n_classes), predicted_proba.shape)
 
     # EXPORT
-    feature_spec = {
-        'tokens': parsing_ops.VarLenFeature(dtypes.string),
-        'label': parsing_ops.FixedLenFeature([1], dtypes.int64),
-    }
+    feature_spec = parsing_utils.classifier_parse_example_spec(
+        feature_columns,
+        label_key='label',
+        label_dtype=dtypes.int64)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
     export_dir = est.export_savedmodel(tempfile.mkdtemp(),
@@ -1069,7 +1078,13 @@ class RNNClassifierIntegrationTest(test.TestCase):
         batch_size=batch_size,
         shuffle=False)
 
+    col = seq_fc.sequence_categorical_column_with_hash_bucket(
+        'tokens', hash_bucket_size=10)
+    embed = fc.embedding_column(col, dimension=2)
+    feature_columns = [embed]
+
     self._test_complete_flow(
+        feature_columns=feature_columns,
         train_input_fn=train_input_fn,
         eval_input_fn=eval_input_fn,
         predict_input_fn=predict_input_fn,
@@ -1082,7 +1097,8 @@ class RNNClassifierIntegrationTest(test.TestCase):
     batch_size = 10
     words = [b'dog', b'cat', b'bird', b'the', b'a', b'sat', b'flew', b'slept']
 
-    serialized_examples = []
+    _, examples_file = tempfile.mkstemp()
+    writer = python_io.TFRecordWriter(examples_file)
     for _ in range(batch_size):
       sequence_length = random.randint(1, len(words))
       sentence = random.sample(words, sequence_length)
@@ -1096,35 +1112,73 @@ class RNNClassifierIntegrationTest(test.TestCase):
                   feature_pb2.Feature(int64_list=feature_pb2.Int64List(
                       value=[label])),
           }))
-      serialized_examples.append(example.SerializeToString())
+      writer.write(example.SerializeToString())
+    writer.close()
 
-    feature_spec = {
-        'tokens': parsing_ops.VarLenFeature(dtypes.string),
-        'label': parsing_ops.FixedLenFeature([1], dtypes.int64),
-    }
+    col = seq_fc.sequence_categorical_column_with_hash_bucket(
+        'tokens', hash_bucket_size=10)
+    embed = fc.embedding_column(col, dimension=2)
+    feature_columns = [embed]
+    feature_spec = parsing_utils.classifier_parse_example_spec(
+        feature_columns,
+        label_key='label',
+        label_dtype=dtypes.int64)
+
     def _train_input_fn():
-      features = parsing_ops.parse_example(serialized_examples, feature_spec)
-      labels = features.pop('label')
-      return features, labels
+      dataset = readers.make_batched_features_dataset(
+          examples_file, batch_size, feature_spec)
+      return dataset.map(lambda features: (features, features.pop('label')))
     def _eval_input_fn():
-      features = parsing_ops.parse_example(
-          input_lib.limit_epochs(serialized_examples, num_epochs=1),
-          feature_spec)
-      labels = features.pop('label')
-      return features, labels
+      dataset = readers.make_batched_features_dataset(
+          examples_file, batch_size, feature_spec, num_epochs=1)
+      return dataset.map(lambda features: (features, features.pop('label')))
     def _predict_input_fn():
-      features = parsing_ops.parse_example(
-          input_lib.limit_epochs(serialized_examples, num_epochs=1),
-          feature_spec)
-      features.pop('label')
-      return features, None
+      dataset = readers.make_batched_features_dataset(
+          examples_file, batch_size, feature_spec, num_epochs=1)
+      def features_fn(features):
+        features.pop('label')
+        return features
+      return dataset.map(features_fn)
 
     self._test_complete_flow(
+        feature_columns=feature_columns,
         train_input_fn=_train_input_fn,
         eval_input_fn=_eval_input_fn,
         predict_input_fn=_predict_input_fn,
         n_classes=n_classes,
         batch_size=batch_size)
+
+
+def _rnn_classifier_fn(feature_columns, n_classes, cell_units, model_dir):
+  return rnn.RNNClassifier(
+      num_units=cell_units,
+      sequence_feature_columns=feature_columns,
+      n_classes=n_classes,
+      model_dir=model_dir)
+
+
+class RNNClassifierIntegrationTest(BaseRNNClassificationIntegrationTest,
+                                   test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    BaseRNNClassificationIntegrationTest.__init__(self, _rnn_classifier_fn)
+
+
+def _rnn_estimator_fn(feature_columns, n_classes, cell_units, model_dir):
+  return rnn.RNNEstimator(
+      head=head_lib.multi_class_head(n_classes=n_classes),
+      num_units=cell_units,
+      sequence_feature_columns=feature_columns,
+      model_dir=model_dir)
+
+
+class RNNEstimatorIntegrationTest(BaseRNNClassificationIntegrationTest,
+                                  test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    BaseRNNClassificationIntegrationTest.__init__(self, _rnn_estimator_fn)
 
 
 if __name__ == '__main__':

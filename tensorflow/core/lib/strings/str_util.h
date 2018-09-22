@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
-#define TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
 
 #include <functional>
 #include <string>
@@ -205,7 +205,7 @@ std::vector<string> Split(StringPiece text, StringPiece delims, Predicate p) {
       if ((i == text.size()) || (delims.find(text[i]) != StringPiece::npos)) {
         StringPiece token(text.data() + token_start, i - token_start);
         if (p(token)) {
-          result.push_back(token.ToString());
+          result.emplace_back(token);
         }
         token_start = i + 1;
       }
@@ -223,7 +223,12 @@ std::vector<string> Split(StringPiece text, char delims, Predicate p) {
   return Split(text, StringPiece(&delims, 1), p);
 }
 
+// Returns the length of the given null-terminated byte string 'str'.
+// Returns 'string_max_len' if the null character was not found in the first
+// 'string_max_len' bytes of 'str'.
+size_t Strnlen(const char* str, const size_t string_max_len);
+
 }  // namespace str_util
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_STR_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_

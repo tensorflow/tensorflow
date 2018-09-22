@@ -15,9 +15,9 @@
 """Implementation of k-means clustering on top of `Estimator` API (deprecated).
 
 This module is deprecated. Please use
-@{tf.contrib.factorization.KMeansClustering} instead of
-@{tf.contrib.learn.KMeansClustering}. It has a similar interface, but uses the
-@{tf.estimator.Estimator} API instead of @{tf.contrib.learn.Estimator}.
+`tf.contrib.factorization.KMeansClustering` instead of
+`tf.contrib.learn.KMeansClustering`. It has a similar interface, but uses the
+`tf.estimator.Estimator` API instead of `tf.contrib.learn.Estimator`.
 """
 
 from __future__ import absolute_import
