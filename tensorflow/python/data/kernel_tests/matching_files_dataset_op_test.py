@@ -233,6 +233,33 @@ class MatchingFilesDatasetTest(test.TestCase):
       result.extend(filename)
 
     matched_filenames = [compat.as_bytes(x) for x in result]
+    self.assertEqual(matched_filenames, test_filenames)
+
+  def testShuffle(self):
+    self.maxDiff = None
+    base, test_filenames = self._load_data()
+    test_filenames.sort(reverse=True)
+    patterns = array_ops.placeholder(dtypes.string, shape=[None])
+    dataset = MatchingFilesDataset(patterns)
+    dataset = dataset.shuffle(buffer_size=10, reshuffle_each_iteration=False)
+    iterator = iterator_ops.Iterator.from_structure(dataset.output_types)
+    init_op = iterator.make_initializer(dataset)
+    get_next = iterator.get_next()
+    result = []
+    with self.cached_session() as sess:
+      pattern = '{}/{}/*.txt' \
+        .format(base, os.path.join(*['**' for _ in range(depth)]))
+      search_patterns = [pattern]
+      sess.run(init_op, feed_dict={patterns: search_patterns})
+      result.extend(timeit(partial(self._read_data_with_result, get_next, sess),
+        "read first filename"))
+      result.extend(timeit(partial(self._read_data_with_result, get_next, sess),
+        "read second filename"))
+      N = width * len(search_patterns) - 2
+      filename = timeit(partial(self._read_data_with_result, get_next, sess, N),
+        'read {} more filenames'.format(N), N)
+      result.extend(filename)
+    matched_filenames = [compat.as_bytes(x) for x in result]
     self.assertItemsEqual(matched_filenames, test_filenames)
 
 
