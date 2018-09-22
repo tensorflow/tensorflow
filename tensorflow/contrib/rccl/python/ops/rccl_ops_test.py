@@ -58,7 +58,7 @@ def _RcclBroadcast(tensors, devices):
 class RcclTestCase(test.TestCase):
 
   def assertNotEmpty(self, obj):
-    self.assertTrue(obj is not None and len(obj) > 0)
+    self.assertTrue(obj)
 
   def _Test(self,
             rccl_reduce,

@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.contrib.rccl.ops import gen_rccl_ops
+from tensorflow.contrib.rccl.python.ops import gen_rccl_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device
