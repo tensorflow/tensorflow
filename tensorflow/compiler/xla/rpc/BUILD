@@ -41,6 +41,7 @@ cc_library(
         ":grpc_service",
         "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings:str_format",
