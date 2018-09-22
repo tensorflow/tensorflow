@@ -2504,7 +2504,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_internal_headers_lib",
-    includes = ["../../external/com_google_absl"],
+    # Fully depend on external repositories, because identifying the headers
+    # is fragile.
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
@@ -2590,11 +2595,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    # Fully depend on external repositories, because identifying the headers
+    # is fragile.
     extra_deps = [
-        # ABSL headers get dropped, so we add them back here.
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
-    includes = ["../../external/com_google_absl"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -2604,7 +2610,12 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "stream_executor_headers_lib",
-    includes = ["../../external/com_google_absl"],
+    # Fully depend on external repositories, because identifying the headers
+    # is fragile.
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
