@@ -29,8 +29,12 @@ namespace {
 
 int RealMain(int argc, char** argv) {
   int32 port = 1685;
+  bool any_address = false;
   std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("port", &port, "port to listen on"),
+      tensorflow::Flag("port", &port, "The TCP port to listen on"),
+      tensorflow::Flag(
+          "any", &any_address,
+          "Whether to listen to any host address or simply localhost"),
   };
   string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_values_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
@@ -44,15 +48,16 @@ int RealMain(int argc, char** argv) {
       xla::GRPCService::NewService().ConsumeValueOrDie();
 
   ::grpc::ServerBuilder builder;
-  string server_address(absl::StrFormat("localhost:%d", port));
+  string server_address(
+      absl::StrFormat("%s:%d", any_address ? "[::]" : "localhost", port));
 
+  builder.SetMaxReceiveMessageSize(INT_MAX);
   builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
   builder.RegisterService(service.get());
   std::unique_ptr<::grpc::Server> server(builder.BuildAndStart());
 
   LOG(INFO) << "Server listening on " << server_address;
   server->Wait();
-
   return 0;
 }
 
