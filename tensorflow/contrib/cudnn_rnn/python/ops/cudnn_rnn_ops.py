@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 from tensorflow.contrib.checkpoint.python import split_dependency
+from tensorflow.contrib.framework.python.ops import sort_ops
 from tensorflow.contrib.rnn.python.ops import lstm_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1718,10 +1719,19 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   _NUM_PARAMS_PER_LAYER = CUDNN_RNN_RELU_PARAMS_PER_LAYER
 
   
-def sequence_gather_scatter_indices(sorted_sequence_lengths, batch_order):
+def sequence_gather_scatter_indices_presorted(sorted_sequence_lengths, batch_order):
   maxlen = sorted_sequence_lengths[0]
   mg = tf.meshgrid(tf.range(maxlen), batch_order, indexing='ij')
   mg = tf.stack(mg, axis=-1)
-  mask = tf.transpose(tf.sequence_mask(lengths=sorted_sequence_lengths, maxlen=maxlen), (1, 0))
+  mask = tf.transpose(
+    tf.sequence_mask(
+	  lengths=sorted_sequence_lengths, 
+	  maxlen=maxlen),
+    (1, 0))
   idx = tf.boolean_mask(mg, mask)
   return idx
+  
+def sequence_gather_scatter_indices(sequence_lengths):
+  return sequence_gather_scatter_indices_presorted(
+    sort_ops.sort(sequence_lengths, direction="DESCENDING"),
+    sort_ops.argsort(sequence_lengths, direction="DESCENDING"))
