@@ -126,7 +126,7 @@ from tensorflow.python.ops.init_ops import convolutional_orthogonal_2d
 from tensorflow.python.ops.init_ops import convolutional_orthogonal_3d
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['nest']
+_allowed_symbols = ['nest', 'broadcast_to', 'where']
 _nest_allowed_symbols = [
     'assert_same_structure',
     'is_sequence',
