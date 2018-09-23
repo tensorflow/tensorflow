@@ -29,7 +29,6 @@ from tensorflow.python.ops import cudnn_rnn_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
-from tensorflow.python.ops import packing_grad
 from tensorflow.python.ops import random_grad
 from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import spectral_grad

@@ -1718,19 +1718,20 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = CUDNN_RNN_RELU_PARAMS_PER_LAYER
 
-  
+
 def sequence_gather_scatter_indices_presorted(sorted_sequence_lengths, batch_order):
   maxlen = sorted_sequence_lengths[0]
-  mg = tf.meshgrid(tf.range(maxlen), batch_order, indexing='ij')
-  mg = tf.stack(mg, axis=-1)
-  mask = tf.transpose(
-    tf.sequence_mask(
+  mg = array_ops.meshgrid(math_ops.range(maxlen), batch_order, indexing='ij')
+  mg = array_ops.stack(mg, axis=-1)
+  mask = array_ops.transpose(
+    array_ops.sequence_mask(
 	  lengths=sorted_sequence_lengths, 
 	  maxlen=maxlen),
     (1, 0))
-  idx = tf.boolean_mask(mg, mask)
+  idx = array_ops.boolean_mask(mg, mask)
   return idx
-  
+
+
 def sequence_gather_scatter_indices(sequence_lengths):
   return sequence_gather_scatter_indices_presorted(
     sort_ops.sort(sequence_lengths, direction="DESCENDING"),
