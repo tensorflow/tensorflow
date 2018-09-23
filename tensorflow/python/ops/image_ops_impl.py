@@ -1176,7 +1176,7 @@ def resize_image_with_pad(image,
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit norm.
+  """Linearly scales `image` to have zero mean and unit variance.
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
   of all values in image, and
