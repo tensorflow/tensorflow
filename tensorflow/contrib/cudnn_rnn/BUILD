@@ -29,7 +29,7 @@ tf_custom_op_py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:cudnn_rnn_ops_gen"
+        "//tensorflow/python:cudnn_rnn_ops_gen",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
