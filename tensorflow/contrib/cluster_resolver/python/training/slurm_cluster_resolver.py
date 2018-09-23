@@ -174,7 +174,7 @@ class SlurmClusterResolver(ClusterResolver):
 
     return ClusterSpec(self._cluster_allocation)
 
-  def own_task(self):
+  def get_task_info(self):
     """Returns job name and task_index for the process which calls this function
 
     This returns the job name and task index for the process which calls this
