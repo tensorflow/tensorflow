@@ -408,6 +408,26 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "multi_device_iterator_test",
+    size = "small",
+    srcs = ["multi_device_iterator_test.py"],
+    additional_deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_windows_gpu",
+    ],
+)
+
 tf_py_test(
     name = "window_dataset_op_test",
     size = "small",
