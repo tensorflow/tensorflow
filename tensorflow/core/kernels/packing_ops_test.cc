@@ -77,11 +77,12 @@ REGISTER_TEST_T(int64)
 class SequenceGatherScatterIndicesOpTest : public OpsTestBase {
  protected:
   template <typename T>
-  void MakeOp() {
+  void MakeOp(bool time_major) {
     TF_EXPECT_OK(NodeDefBuilder("sequence_gather_scatter_indices_op", "SequenceGatherScatterIndices")
                      .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DataTypeToEnum<T>::value))
+					 .Attr("time_major", time_major)
 					 .Device(DEVICE_GPU)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
@@ -93,7 +94,7 @@ class SequenceGatherScatterIndicesOpTest : public OpsTestBase {
       SetDevice(DEVICE_GPU, \
                 std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(\
                     "GPU", {}, "/job:a/replica:0/task:0")));\
-    MakeOp<T>();                                          \
+    MakeOp<T>(true);                                          \
     AddInputFromArray<T>(TensorShape({}), {14});     \
     AddInputFromArray<T>(TensorShape({3}), {6,5,3});     \
     AddInputFromArray<T>(TensorShape({3}), {1,2,0});     \

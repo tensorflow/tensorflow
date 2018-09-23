@@ -41,6 +41,7 @@ def sequence_gather_scatter_indices(
     total_length,
     sequence_lengths,
     batch_order,
+	time_major=True,
     name=None):
   """Docstring goes here
 
@@ -56,6 +57,7 @@ def sequence_gather_scatter_indices(
       total_length=total_length,
       sequence_lengths=sequence_lengths,
       batch_order=batch_order,
+	  time_major=time_major,
       name=name)
   return ret
 

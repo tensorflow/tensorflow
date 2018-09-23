@@ -53,7 +53,8 @@ struct SequenceGatherScatterIndicesFunctor {
 	const Device& d, 
    typename TTypes<T>::ConstFlat Tsequence_lengths,
    typename TTypes<T>::ConstFlat Tbatch_order,
-   typename TTypes<T>::Flat Tgather_scatter_indices);
+   typename TTypes<T>::Flat Tgather_scatter_indices,
+   bool time_major);
 };
 
 template <typename Device, typename T, typename Index>

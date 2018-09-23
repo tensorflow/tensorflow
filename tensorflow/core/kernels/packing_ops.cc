@@ -89,7 +89,9 @@ template <typename T>
 class SequenceGatherScatterIndicesOp<GPUDevice, T> : public OpKernel {
  public:
   explicit SequenceGatherScatterIndicesOp(OpKernelConstruction* context)
-      : OpKernel(context) {}
+      : OpKernel(context) {
+      OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+	}
 
   void Compute(OpKernelContext* context) override {
 	const Tensor* total_length;
@@ -107,8 +109,11 @@ class SequenceGatherScatterIndicesOp<GPUDevice, T> : public OpKernel {
 		context->eigen_device<GPUDevice>(),
 		sequence_lengths->flat<T>(),
 		batch_order->flat<T>(),
-		gather_scatter_indices->flat<T>()));
+		gather_scatter_indices->flat<T>(),
+		time_major_));
 	}
+  private:
+    bool time_major_;
 };
 
 #define REGISTER_GPU(T)                                    \

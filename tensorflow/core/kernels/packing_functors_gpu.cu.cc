@@ -54,7 +54,8 @@ __global__ void SequenceGatherScatterIndicesKernel(
 	const int64 batch_size, 
 	T const * const sequence_lengths, 
 	T const * const batch_order, 
-	T* const gather_scatter_indices) {		
+	T* const gather_scatter_indices,
+	bool time_major) {		
 		extern __shared__ int s[];
 		if(blockIdx.x== 0 && threadIdx.x ==0){
 			T* batch_order_sm = reinterpret_cast<T*>(s);
@@ -71,10 +72,17 @@ __global__ void SequenceGatherScatterIndicesKernel(
 					current_len = sequence_lengths[current_batch_size-1];
 				}
 				for(T j=0; j<current_batch_size; j++){
-					gather_scatter_indices[indices_pos]=i;
-					indices_pos++;
-					gather_scatter_indices[indices_pos]=batch_order_sm[j];
-					indices_pos++;					
+					if(time_major){
+						gather_scatter_indices[indices_pos]=i;
+						indices_pos++;
+						gather_scatter_indices[indices_pos]=batch_order_sm[j];
+						indices_pos++;					
+					}else{
+						gather_scatter_indices[indices_pos]=batch_order_sm[j];
+						indices_pos++;
+						gather_scatter_indices[indices_pos]=i;
+						indices_pos++;	
+					}
 				}
 			}
 		}
@@ -154,13 +162,15 @@ struct SequenceGatherScatterIndicesFunctor<GPUDevice, T> {
 	const GPUDevice& d, 
    typename TTypes<T>::ConstFlat Tsequence_lengths,
    typename TTypes<T>::ConstFlat Tbatch_order,
-   typename TTypes<T>::Flat Tgather_scatter_indices){     
+   typename TTypes<T>::Flat Tgather_scatter_indices,
+   bool time_major){     
 	SequenceGatherScatterIndicesKernel<T>
         <<<1, 1, sizeof(T)*Tsequence_lengths.dimension(0), d.stream()>>>(
             Tsequence_lengths.dimension(0),
 			Tsequence_lengths.data(), 
 			Tbatch_order.data(), 
-			Tgather_scatter_indices.data());
+			Tgather_scatter_indices.data(),
+			time_major);
     return Status::OK();
   }
 };

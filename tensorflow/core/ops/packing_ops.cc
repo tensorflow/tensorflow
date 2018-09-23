@@ -47,6 +47,7 @@ REGISTER_OP("SequenceGatherScatterIndices")
     .Input("batch_order: T")
     .Output("gather_scatter_indices: T")
     .Attr("T: {int8, int16, int32, int64}")
+    .Attr("time_major: bool = true")
     .SetShapeFn([](InferenceContext* c) {
 	  auto gather_scatter_indices_shape = c->MakeShape({
 		  c->UnknownDim(), 2
