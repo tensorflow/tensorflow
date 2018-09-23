@@ -29,8 +29,8 @@ mock = test.mock
 
 class SlurmClusterResolverTest(test.TestCase):
 
-  def mock_check_subprocess_output(self):
-    return b't02n13\nt02n41\nt02n43\nt02n44\n'
+  def mock_resolve_hostnames_output(self):
+    return ['t02n13','t02n41','t02n43','t02n44']
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
@@ -44,11 +44,11 @@ class SlurmClusterResolverTest(test.TestCase):
         server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
 
   @mock.patch.dict(os.environ, {'SLURM_PROCID': '0', 'SLURM_NTASKS': '3'})
-  @mock.patch.object(subprocess, 'check_output',
-                     mock_check_subprocess_output)
+  @mock.patch.object(SlurmClusterResolver, '_resolve_hostnames',
+                     mock_resolve_hostnames_output)
   def testSimpleSuccessfulRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
-        jobs={"ps": 1, "worker": 2},
+        jobs={'ps': 1, 'worker': 2},
         port_base=8888,
         tasks_per_node=1,
         gpus_per_node=1,
@@ -79,11 +79,11 @@ class SlurmClusterResolverTest(test.TestCase):
   @mock.patch.dict(os.environ, {'SLURM_PROCID': '0',
                                 'SLURM_NTASKS': '3',
                                 'SLURM_NTASKS_PER_NODE': '1'})
-  @mock.patch.object(subprocess, 'check_output',
-                     mock_check_subprocess_output)
+  @mock.patch.object(SlurmClusterResolver, '_resolve_hostnames',
+                     mock_resolve_hostnames_output)
   def testTaskPerNodeNotSetRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
-        jobs={"ps": 1, "worker": 2},
+        jobs={'ps': 1, 'worker': 2},
         port_base=8888,
         gpus_per_node=1,
         gpus_per_task=1,
@@ -114,11 +114,11 @@ class SlurmClusterResolverTest(test.TestCase):
                                 'SLURM_NTASKS': '5',
                                 'SLURM_NTASKS_PER_NODE': '2',
                                 'CUDA_VISIBLE_DEVICE': ''})
-  @mock.patch.object(subprocess, 'check_output',
-                     mock_check_subprocess_output)
+  @mock.patch.object(SlurmClusterResolver, '_resolve_hostnames',
+                     mock_resolve_hostnames_output)
   def testMultiTaskPerNodeRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
-        jobs={"ps": 1, "worker": 4},
+        jobs={'ps': 1, 'worker': 4},
         port_base=8888,
         gpus_per_node=2,
         gpus_per_task=1,
@@ -158,10 +158,11 @@ class SlurmClusterResolverTest(test.TestCase):
                                 'SLURM_NTASKS': '5',
                                 'SLURM_NTASKS_PER_NODE': '2',
                                 'CUDA_VISIBLE_DEVICE': ''})
-  @mock.patch.object(subprocess, 'check_output', mock_check_subprocess_output)
+  @mock.patch.object(SlurmClusterResolver, '_resolve_hostnames',
+                     mock_resolve_hostnames_output)
   def testMultipleGpusPerTaskRetrieval(self):
     slurm_cluster_resolver = SlurmClusterResolver(
-        jobs={"ps": 1, "worker": 4},
+        jobs={'ps': 1, 'worker': 4},
         port_base=8888,
         gpus_per_node=4,
         gpus_per_task=2,

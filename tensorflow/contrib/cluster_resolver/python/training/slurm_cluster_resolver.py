@@ -30,10 +30,20 @@ class SlurmClusterResolver(ClusterResolver):
   This is an implementation of cluster resolvers for Slurm clusters. This allows
   the specification of jobs and task counts, number of tasks per node, number of
   GPUs on each node and number of GPUs for each task, It retrieves system
-  attributes by Slurm environment variables, resolve allocated computing node
+  attributes by Slurm environment variables, resolves allocated computing node
   names, construct a cluster and return a Cluster Resolver object which an be
   use for distributed TensorFlow.
   """
+
+  def _resolve_hostnames(self):
+    """Resolve host names of nodes allocated in current jobs.
+
+    Returns:
+      A list of node names as strings.
+    """
+    hostlist = subprocess.check_output(['scontrol', 'show', 'hostname']).\
+               decode('utf-8').strip().split('\n')
+    return hostlist
 
   def __init__(self,
                jobs,
@@ -45,7 +55,7 @@ class SlurmClusterResolver(ClusterResolver):
     """Creates a new SlurmClusterResolver object.
 
     This takes in parameters and creates a SlurmClusterResolver object. It uses
-    those parameters to determine which nodes will processes reside and resolve
+    those parameters to check which nodes will processes reside and resolves
     their hostnames. With the number of the GPUs on each node and number of GPUs
     for each task it offsets the port number for each processes and allocate
     GPUs to tasks by setting environment variables. The resolver currently
@@ -62,6 +72,9 @@ class SlurmClusterResolver(ClusterResolver):
       auto_set_gpu: Set the visible CUDA devices automatically while resolving
         the cluster by setting CUDA_VISIBLE_DEVICE environment variable.
         Defaults to True.
+
+    Returns:
+      A ClusterResolver object which can be used with distributed TensorFlow.
 
     Raises:
       RuntimeError: If requested more GPUs per node then avaliable or requested
@@ -119,8 +132,7 @@ class SlurmClusterResolver(ClusterResolver):
       A ClusterSpec containing host information retrieved from Slurm's
         environment variables.
     """
-    hostlist = subprocess.check_output(['scontrol', 'show', 'hostname']).\
-               decode("utf-8").strip().split('\n')
+    hostlist = self._resolve_hostnames()
 
     task_list = []
     self._gpu_allocation = []
@@ -131,14 +143,14 @@ class SlurmClusterResolver(ClusterResolver):
                                          range(0, self._gpus_per_node,
                                                self._gpus_per_task)):
 
-        host_addr = "%s:%d" % (host, self._port_base+port_offset)
+        host_addr = '%s:%d' % (host, self._port_base+port_offset)
         task_list.append(host_addr)
         gpu_id_list = []
 
         for gpu_id in range(gpu_offset, gpu_offset+self._gpus_per_task):
           gpu_id_list.append(str(gpu_id))
 
-        self._gpu_allocation.append(",".join(gpu_id_list))
+        self._gpu_allocation.append(','.join(gpu_id_list))
 
     cluster_rank_offset_start = 0
     cluster_rank_offset_end = 0
