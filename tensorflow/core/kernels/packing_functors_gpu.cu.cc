@@ -49,6 +49,37 @@ __global__ void PackedSequenceAlignmentKernel(
 		}
 	}
 	
+template <typename T>
+__global__ void SequenceGatherScatterIndicesKernel(
+	const int64 batch_size, 
+	T const * const sequence_lengths, 
+	T const * const batch_order, 
+	T* const gather_scatter_indices) {		
+		extern __shared__ int s[];
+		if(blockIdx.x== 0 && threadIdx.x ==0){
+			T* batch_order_sm = reinterpret_cast<T*>(s);
+			for(int i=0; i< batch_size; i++){
+				batch_order_sm[i] = batch_order[i];
+			}
+			T current_batch_size = batch_size;
+			T current_len = sequence_lengths[current_batch_size-1];
+			int indices_pos=0;
+			const T maxlen = sequence_lengths[0];
+			for(T i=0; i<maxlen; i++){
+				while(i+1 > current_len && current_batch_size>1){
+					current_batch_size--;
+					current_len = sequence_lengths[current_batch_size-1];
+				}
+				for(T j=0; j<current_batch_size; j++){
+					gather_scatter_indices[indices_pos]=i;
+					indices_pos++;
+					gather_scatter_indices[indices_pos]=batch_order_sm[j];
+					indices_pos++;					
+				}
+			}
+		}
+	}
+	
 template <typename T, typename Index>
 __global__ void PackSequenceKernel(
 	const int64 total_count,
@@ -117,6 +148,23 @@ struct PackedSequenceAlignmentFunctor<GPUDevice, T> {
   }
 };
 
+template <typename T>
+struct SequenceGatherScatterIndicesFunctor<GPUDevice, T> {
+  Status operator()(
+	const GPUDevice& d, 
+   typename TTypes<T>::ConstFlat Tsequence_lengths,
+   typename TTypes<T>::ConstFlat Tbatch_order,
+   typename TTypes<T>::Flat Tgather_scatter_indices){     
+	SequenceGatherScatterIndicesKernel<T>
+        <<<1, 1, sizeof(T)*Tsequence_lengths.dimension(0), d.stream()>>>(
+            Tsequence_lengths.dimension(0),
+			Tsequence_lengths.data(), 
+			Tbatch_order.data(), 
+			Tgather_scatter_indices.data());
+    return Status::OK();
+  }
+};
+
 template <typename T, typename Index>
 struct PackSequenceFunctor<GPUDevice, T, Index> {
   Status operator()(
@@ -174,6 +222,17 @@ struct UnpackSequenceFunctor<GPUDevice, T, Index> {
 
 #define DEFINE_GPU_SPECS_T(T) \
   template struct functor::PackedSequenceAlignmentFunctor<GPUDevice, T>;
+
+DEFINE_GPU_SPECS_T(int8)
+DEFINE_GPU_SPECS_T(int16)
+DEFINE_GPU_SPECS_T(int32)
+DEFINE_GPU_SPECS_T(int64)
+
+#undef DEFINE_GPU_SPECS_T
+
+
+#define DEFINE_GPU_SPECS_T(T) \
+  template struct functor::SequenceGatherScatterIndicesFunctor<GPUDevice, T>;
 
 DEFINE_GPU_SPECS_T(int8)
 DEFINE_GPU_SPECS_T(int16)

@@ -27,6 +27,9 @@ namespace tensorflow {
 template <typename Device, typename T>
 class PackedSequenceAlignmentOp;
 
+template <typename Device, typename T>
+class SequenceGatherScatterIndicesOp;
+
 template <typename Device, typename T, typename Index>
 class PackSequenceOp;
 
@@ -42,6 +45,15 @@ struct PackedSequenceAlignmentFunctor {
    typename TTypes<T>::ConstFlat Tsequence_lengths,
    typename TTypes<T>::Flat Talignments,
    typename TTypes<T>::Flat Tbatch_sizes);
+};
+
+template <typename Device, typename T>
+struct SequenceGatherScatterIndicesFunctor {
+  Status operator()(
+	const Device& d, 
+   typename TTypes<T>::ConstFlat Tsequence_lengths,
+   typename TTypes<T>::ConstFlat Tbatch_order,
+   typename TTypes<T>::Flat Tgather_scatter_indices);
 };
 
 template <typename Device, typename T, typename Index>

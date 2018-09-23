@@ -76,6 +76,53 @@ REGISTER_GPU(int32)
 REGISTER_GPU(int64)					  
 #undef REGISTER_GPU
 
+
+Status ExtractSequenceGatherScatterIndicesInfo(OpKernelContext* context,
+							    const Tensor** total_length, const Tensor** sequence_lengths, const Tensor** batch_order) {
+	TF_RETURN_IF_ERROR(context->input("total_length", total_length));
+	TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
+	TF_RETURN_IF_ERROR(context->input("batch_order", batch_order));
+	return Status::OK();
+}
+
+template <typename T>
+class SequenceGatherScatterIndicesOp<GPUDevice, T> : public OpKernel {
+ public:
+  explicit SequenceGatherScatterIndicesOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+	const Tensor* total_length;
+	const Tensor* sequence_lengths;
+	const Tensor* batch_order;
+    OP_REQUIRES_OK(context, ExtractSequenceGatherScatterIndicesInfo(context, &total_length, &sequence_lengths, &batch_order));
+	
+	const T actual_total_length = total_length->scalar<T>()(0);
+    Tensor* gather_scatter_indices = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, {actual_total_length, 2}, &gather_scatter_indices));
+	
+	auto func = functor::SequenceGatherScatterIndicesFunctor<GPUDevice, T>();
+
+	OP_REQUIRES_OK(context, func(
+		context->eigen_device<GPUDevice>(),
+		sequence_lengths->flat<T>(),
+		batch_order->flat<T>(),
+		gather_scatter_indices->flat<T>()));
+	}
+};
+
+#define REGISTER_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("SequenceGatherScatterIndices")       \
+                              .Device(DEVICE_GPU) \
+							  .HostMemory("total_length")          \
+                              .TypeConstraint<T>("T"),      \
+                          SequenceGatherScatterIndicesOp<GPUDevice, T>);
+REGISTER_GPU(int8)					  
+REGISTER_GPU(int16)					  
+REGISTER_GPU(int32)					  
+REGISTER_GPU(int64)					  
+#undef REGISTER_GPU
+
 Status ExtractPackSequenceInfo(OpKernelContext* context,
 							   const Tensor** sequence,
 							   const Tensor** alignments,

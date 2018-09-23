@@ -72,6 +72,51 @@ REGISTER_TEST_T(int32)
 REGISTER_TEST_T(int64)
 #undef REGISTER_TEST_T
 
+
+//SequenceGatherScaterIndices Tests
+class SequenceGatherScatterIndicesOpTest : public OpsTestBase {
+ protected:
+  template <typename T>
+  void MakeOp() {
+    TF_EXPECT_OK(NodeDefBuilder("sequence_gather_scatter_indices_op", "SequenceGatherScatterIndices")
+                     .Input(FakeInput(DataTypeToEnum<T>::value))
+                     .Input(FakeInput(DataTypeToEnum<T>::value))
+                     .Input(FakeInput(DataTypeToEnum<T>::value))
+					 .Device(DEVICE_GPU)
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+  }
+};
+
+#define REGISTER_TEST_T(T)                                               \
+  TEST_F(SequenceGatherScatterIndicesOpTest, TestSequenceGatherScatterIndicesOp_##T) {                  \
+      SetDevice(DEVICE_GPU, \
+                std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(\
+                    "GPU", {}, "/job:a/replica:0/task:0")));\
+    MakeOp<T>();                                          \
+    AddInputFromArray<T>(TensorShape({}), {14});     \
+    AddInputFromArray<T>(TensorShape({3}), {6,5,3});     \
+    AddInputFromArray<T>(TensorShape({3}), {1,2,0});     \
+    TF_ASSERT_OK(RunOpKernel());                                       \
+	const Tensor& indices = *GetOutput(0); \
+    TF_EXPECT_OK(device_->Sync()); \
+                                                                       \
+    Tensor expected_indices(allocator(), DataTypeToEnum<T>::value, TensorShape({14,2})); \
+    test::FillValues<T>(&expected_indices, { \
+		0,1,0,2,0,0,\
+		1,1,1,2,1,0,\
+		2,1,2,2,2,0,\
+		3,1,3,2,\
+		4,1,4,2,\
+		5,1});                         \
+    test::ExpectTensorEqual<T>(expected_indices, indices);           \
+  }
+REGISTER_TEST_T(int8)
+REGISTER_TEST_T(int16)
+REGISTER_TEST_T(int32)
+REGISTER_TEST_T(int64)
+#undef REGISTER_TEST_T
+
 //PackSequence Tests
 class PackSequenceOpTest : public OpsTestBase {
  protected:

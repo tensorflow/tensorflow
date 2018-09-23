@@ -41,6 +41,20 @@ REGISTER_OP("PackedSequenceAlignment")
       return Status::OK();
     });
 	
+REGISTER_OP("SequenceGatherScatterIndices")
+    .Input("total_length: T")
+    .Input("sequence_lengths: T")
+    .Input("batch_order: T")
+    .Output("gather_scatter_indices: T")
+    .Attr("T: {int8, int16, int32, int64}")
+    .SetShapeFn([](InferenceContext* c) {
+	  auto gather_scatter_indices_shape = c->MakeShape({
+		  c->UnknownDim(), 2
+	  });
+      c->set_output(0, gather_scatter_indices_shape);
+      return Status::OK();
+    });
+	
 REGISTER_OP("PackSequence")
     .Input("sequence: T")
     .Input("alignments: Index")

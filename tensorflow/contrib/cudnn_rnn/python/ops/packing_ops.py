@@ -37,6 +37,28 @@ def packed_sequence_alignment(
       name=name)
   return ret[0], ret[1]
   
+def sequence_gather_scatter_indices(
+    total_length,
+    sequence_lengths,
+    batch_order,
+    name=None):
+  """Docstring goes here
+
+  Args:
+    sequence_lengths: the sequence lengths.
+    name: name of the operation.
+  Returns:
+    tuple of alignments and batch sizes
+  Raises:
+    ValueError: if rnn_mode or direction is invalid.
+  """
+  ret = gen_packing_ops.sequence_gather_scatter_indices(
+      total_length=total_length,
+      sequence_lengths=sequence_lengths,
+      batch_order=batch_order,
+      name=name)
+  return ret
+
 def pack_sequence(
     sequence,
     alignments,
