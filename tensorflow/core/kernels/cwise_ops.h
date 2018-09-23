@@ -1078,6 +1078,18 @@ struct BatchSelectFunctor {
                   typename TTypes<T>::ConstMatrix else_flat_outer_dims);
 };
 
+template <typename Device, typename T, int NDIMS>
+struct BCastSelectFunctor {
+  void operator()(const Device& d,
+                  typename TTypes<T, NDIMS>::Tensor output_tensor,
+                  typename TTypes<bool, NDIMS>::ConstTensor cond_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor then_tensor,
+                  typename TTypes<T, NDIMS>::ConstTensor else_tensor,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> cond_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> then_bcast,
+                  typename Eigen::array<Eigen::DenseIndex, NDIMS> else_bcast);
+};
+
 }  // end namespace functor
 }  // end namespace tensorflow
 
