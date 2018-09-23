@@ -1584,13 +1584,6 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
-    name = "packing_ops_gen",
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
@@ -2064,16 +2057,6 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         "//tensorflow/python:cudnn_rnn_ops_gen",
-    ],
-)
-
-py_library(
-    name = "packing_grad",
-    srcs = ["ops/packing_grad.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_for_generated_wrappers",
-        "//tensorflow/python:packing_ops_gen",
     ],
 )
 
@@ -2831,7 +2814,6 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":numerics",
-		":packing_grad",
         ":parsing_ops",
         ":partitioned_variables",
         ":random_ops",

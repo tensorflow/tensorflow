@@ -549,14 +549,6 @@ tf_gen_op_wrappers_cc(
     pkg = "//tensorflow/core",
 )
 
-tf_gen_op_wrappers_cc(
-    name = "packing_ops",
-    op_lib_names = [
-        "packing_ops",
-    ],
-    pkg = "//tensorflow/core",
-)
-
 cc_library_with_android_deps(
     name = "cc_op_gen_main",
     srcs = [

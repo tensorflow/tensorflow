@@ -1716,3 +1716,12 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # 1 set of weight and bias parameters for the recurrent input, and 1 for the
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = CUDNN_RNN_RELU_PARAMS_PER_LAYER
+
+  
+def sequence_gather_scatter_indices(sorted_sequence_lengths, batch_order):
+  maxlen = sorted_sequence_lengths[0]
+  mg = tf.meshgrid(tf.range(maxlen), batch_order, indexing='ij')
+  mg = tf.stack(mg, axis=-1)
+  mask = tf.transpose(tf.sequence_mask(lengths=sorted_sequence_lengths, maxlen=maxlen), (1, 0))
+  idx = tf.boolean_mask(mg, mask)
+  return idx
