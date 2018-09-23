@@ -33,8 +33,9 @@ struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
                   typename Eigen::array<Eigen::DenseIndex, NDIMS> cond_bcast,
                   typename Eigen::array<Eigen::DenseIndex, NDIMS> then_bcast,
                   typename Eigen::array<Eigen::DenseIndex, NDIMS> else_bcast) {
-    output_tensor.device(d) = cond_tensor.broadcast(cond_bcast).select(
-        then_tensor.broadcast(then_bcast), else_tensor.broadcast(else_bcast));
+    output_tensor.device(d) = cond_tensor.broadcast(cond_bcast)
+                                  .select(then_tensor.broadcast(then_bcast),
+                                          else_tensor.broadcast(else_bcast));
   }
 };
 

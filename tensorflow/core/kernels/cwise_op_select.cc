@@ -255,26 +255,26 @@ class SelectV2Op : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SelectV2Op);
 };
 
-#define REGISTER_SELECT(type)                                         \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("Select").Device(DEVICE_CPU).TypeConstraint<type>("T"),    \
-      SelectOp<CPUDevice, type>);                                     \
-  REGISTER_KERNEL_BUILDER(                                            \
-       Name("SelectV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-       SelectV2Op<CPUDevice, type>);
+#define REGISTER_SELECT(type)                                        \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Select").Device(DEVICE_CPU).TypeConstraint<type>("T"),   \
+      SelectOp<CPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("SelectV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      SelectV2Op<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER_SELECT);
 
 #if GOOGLE_CUDA
 
 // Registration of the GPU implementations.
-#define REGISTER_SELECT_GPU(type)                                     \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"),    \
-      SelectOp<GPUDevice, type>);                                     \
-  REGISTER_KERNEL_BUILDER(                                            \
-       Name("SelectV2").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-       SelectV2Op<GPUDevice, type>);
+#define REGISTER_SELECT_GPU(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"),   \
+      SelectOp<GPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("SelectV2").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SelectV2Op<GPUDevice, type>);
 
 REGISTER_SELECT_GPU(bool);
 REGISTER_SELECT_GPU(Eigen::half);
