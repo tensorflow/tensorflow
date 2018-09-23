@@ -1,0 +1,47 @@
+path: "tensorflow.keras.optimizers.TFOptimizer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.optimizers.TFOptimizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.optimizers.Optimizer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "weights"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'optimizer\', \'iterations\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'grads\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'self\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_gradients"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_grads"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_updates"
+    argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_weights"
+    argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
+  }
+}
