@@ -147,6 +147,13 @@ TEST(RecordReaderWriterTest, TestBasics) {
       EXPECT_EQ("abc", record);
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("defg", record);
+
+      io::RecordReader::Metadata md;
+      TF_ASSERT_OK(reader.GetMetadata(&md));
+      EXPECT_EQ(2, md.stats.entries);
+      EXPECT_EQ(7, md.stats.data_size);
+      // Two entries have 16 bytes of header/footer each.
+      EXPECT_EQ(39, md.stats.file_size);
     }
   }
 }

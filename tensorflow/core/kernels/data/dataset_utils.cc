@@ -44,5 +44,42 @@ Status MakeIteratorFromInputElement(
       ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
 }
 
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const DataTypeVector& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " types but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (expected[i] != received[i]) {
+      return errors::InvalidArgument("Data type mismatch at component ", i,
+                                     ": expected ", DataTypeString(expected[i]),
+                                     " but got ", DataTypeString(received[i]),
+                                     ".");
+    }
+  }
+  return Status::OK();
+}
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<PartialTensorShape>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " shapes but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    if (!expected[i].IsCompatibleWith(received[i])) {
+      return errors::InvalidArgument("Incompatible shapes at component ", i,
+                                     ": expected ", expected[i].DebugString(),
+                                     " but got ", received[i].DebugString(),
+                                     ".");
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace data
 }  // namespace tensorflow
