@@ -70,7 +70,7 @@ class SlurmClusterResolver(ClusterResolver):
       tasks_per_node: Number of tasks to run on each node, if not set defaults
         to Slurm's output environment variable SLURM_NTASKS_PER_NODE.
       auto_set_gpu: Set the visible CUDA devices automatically while resolving
-        the cluster by setting CUDA_VISIBLE_DEVICE environment variable.
+        the cluster by setting CUDA_VISIBLE_DEVICES environment variable.
         Defaults to True.
 
     Returns:
@@ -126,7 +126,7 @@ class SlurmClusterResolver(ClusterResolver):
     resolver extract hostnames of nodes by scontrol and pack tasks in that
     order until a node a has number of tasks that is equal to specification.
     GPUs on nodes are allocated to tasks by specification through setting
-    CUDA_VISIBLE_DEVICE environment variable.
+    CUDA_VISIBLE_DEVICES environment variable.
 
     Returns:
       A ClusterSpec containing host information retrieved from Slurm's
@@ -170,7 +170,7 @@ class SlurmClusterResolver(ClusterResolver):
       cluster_rank_offset_start = cluster_rank_offset_end
 
     if self._auto_set_gpu is True:
-      os.environ['CUDA_VISIBLE_DEVICE'] = self._gpu_allocation[self._rank]
+      os.environ['CUDA_VISIBLE_DEVICES'] = self._gpu_allocation[self._rank]
 
     return ClusterSpec(self._cluster_allocation)
 
