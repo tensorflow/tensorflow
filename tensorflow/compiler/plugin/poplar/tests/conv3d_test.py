@@ -178,7 +178,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Copy_XLA_Args/arg*_to_bwdWeights',
-            'Copy_{<const>,bwdWeights}_to_Conv3DBackpropInputV2/convolution.*/Conv_2x2x2weightsRearranged',
+            'Copy_{<const>,bwdWeights}_to_Conv3DBackpropInputV2/convolution.*/Conv_2x2x2/weightsRearranged',
             'Copy_partialReduceOut_to_partialReduceOut[[]cloned[]]/OnTileCopy',
             'Conv3DBackpropInputV2/convolution.*/Conv_2x2x2']
 
