@@ -33,7 +33,7 @@ namespace xla {
 // CSE will undo the effects of this optimization and should not be run after
 // this pass. In general, this pass should be run very late, immediately before
 // code generation.
-class HloRematerialization : public HloPassInterface {
+class HloRematerialization : public HloModulePass {
  public:
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
 

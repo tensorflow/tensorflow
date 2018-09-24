@@ -14,12 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 #include "tensorflow/contrib/lite/model.h"
 
 namespace tflite {
+
+namespace ops {
+namespace builtin {
+
+TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_REF();
+TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT();
+TfLiteRegistration* Register_DEPTHWISE_CONVOLUTION_NEON_OPT();
+
+}  // namespace builtin
+}  // namespace ops
+
 namespace {
 
 using ::testing::ElementsAreArray;
@@ -28,9 +40,11 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
  public:
   // TODO(ahentz): Also test different activation types, bias, padding types,
   // stride values.
-  BaseDepthwiseConvolutionOpModel(const TensorData& input,
+  BaseDepthwiseConvolutionOpModel(TfLiteRegistration* registration,
+                                  const TensorData& input,
                                   const TensorData& filter,
                                   const TensorData& output,
+                                  Padding padding_type,
                                   int dilation_factor = 1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
@@ -56,10 +70,13 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
     SetBuiltinOp(
         BuiltinOperator_DEPTHWISE_CONV_2D,
         BuiltinOptions_DepthwiseConv2DOptions,
-        CreateDepthwiseConv2DOptions(builder_, Padding_VALID, 1, 1, depth_mul,
+        CreateDepthwiseConv2DOptions(builder_, padding_type, 1, 1, depth_mul,
                                      ActivationFunctionType_NONE,
                                      dilation_factor, dilation_factor)
             .Union());
+
+    resolver_ = absl::make_unique<SingleOpResolver>(
+        BuiltinOperator_DEPTHWISE_CONV_2D, registration);
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
   }
@@ -86,10 +103,25 @@ class DepthwiseConvolutionOpModel : public BaseDepthwiseConvolutionOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
-TEST(DepthwiseConvolutionOpTest, SimpleTest) {
-  DepthwiseConvolutionOpModel m({TensorType_FLOAT32, {1, 3, 2, 2}},
+const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
+    {"Reference", ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF()},
+    {"GenericOptimized",
+     ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT()},
+    {"NeonOptimized", ops::builtin::Register_DEPTHWISE_CONVOLUTION_NEON_OPT()},
+});
+
+class DepthwiseConvolutionOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kKernelMap;
+  }
+};
+
+TEST_P(DepthwiseConvolutionOpTest, SimpleTest) {
+  DepthwiseConvolutionOpModel m(GetRegistration(),
+                                {TensorType_FLOAT32, {1, 3, 2, 2}},
                                 {TensorType_FLOAT32, {1, 2, 2, 4}},
-                                {TensorType_FLOAT32, {}});
+                                {TensorType_FLOAT32, {}}, Padding_VALID);
 
   m.SetInput({
       1, 2, 7, 8,    // column 1
@@ -112,7 +144,7 @@ TEST(DepthwiseConvolutionOpTest, SimpleTest) {
                              }));
 }
 
-TEST(DepthwiseConvolutionOpTest, SimpleDilatedTest) {
+TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
   const int depth = 1;
   const int image_width = 9;
   const int image_height = 9;
@@ -121,10 +153,11 @@ TEST(DepthwiseConvolutionOpTest, SimpleDilatedTest) {
   const int filter_count = 1;
   const int dilation_factor = 3;
   DepthwiseConvolutionOpModel m(
+      GetRegistration(),
       {TensorType_FLOAT32,
        {image_batch_count, image_height, image_width, depth}},
       {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
-      {TensorType_FLOAT32, {}}, dilation_factor);
+      {TensorType_FLOAT32, {}}, Padding_VALID, dilation_factor);
 
   // The image matrix is:
   // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -164,6 +197,41 @@ TEST(DepthwiseConvolutionOpTest, SimpleDilatedTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
+TEST_P(DepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
+  const int depth = 1;
+  const int image_width = 3;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+  const int filter_size = 2;
+  const int filter_count = 1;
+  const int dilation_factor = 2;
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_FLOAT32,
+       {image_batch_count, image_height, image_width, depth}},
+      {TensorType_FLOAT32, {depth, filter_size, filter_size, filter_count}},
+      {TensorType_FLOAT32, {}}, Padding_SAME, dilation_factor);
+
+  // The image matrix is:
+  // | 1 | 1 | 1 |
+  // | 1 | 1 | 1 |
+  // | 1 | 1 | 1 |
+  m.SetInput({1, 1, 1, 1, 1, 1, 1, 1, 1});
+  // The filter matrix is:
+  // | 1 | 2 |
+  // | 3 | 4 |
+  m.SetFilter({1, 2, 3, 4});
+  // No bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Output:
+  // | 4 | 7 | 3 |
+  // | 6 |10 | 4 |
+  // | 2 | 3 | 1 |
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 7, 3, 6, 10, 4, 2, 3, 1}));
+}
+
 class QuantizedDepthwiseConvolutionOpModel
     : public BaseDepthwiseConvolutionOpModel {
  public:
@@ -188,13 +256,20 @@ class QuantizedDepthwiseConvolutionOpModel
   }
 };
 
+class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
+ protected:
+  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
+    return *kKernelMap;
+  }
+};
+
 // In this test we set the input and output scales so that the results match
 // exactly the 'non-quantized' version.
-TEST(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
+TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
   QuantizedDepthwiseConvolutionOpModel m(
-      {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
+      GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
       {TensorType_UINT8, {1, 2, 2, 4}, -63.5, 64},
-      {TensorType_UINT8, {}, -127, 128});
+      {TensorType_UINT8, {}, -127, 128}, Padding_VALID);
 
   m.SetInput({
       1, 2, 7, 8,    // column 1
@@ -224,15 +299,16 @@ TEST(QuantizedDepthwiseConvolutionOpTest, SimpleTestQuantized) {
                              }));
 }
 
-TEST(QuantizedDepthwiseConvolutionOpTest,
-     SimpleTestQuantizedFilterMultiplierGreaterThan1) {
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       SimpleTestQuantizedFilterMultiplierGreaterThan1) {
   QuantizedDepthwiseConvolutionOpModel quant_op(
-      {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
+      GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -63.5, 64},
       {TensorType_UINT8, {1, 2, 2, 4}, -128.5, 128},
-      {TensorType_UINT8, {}, -127, 128});
-  DepthwiseConvolutionOpModel float_op({TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_UINT8, {}, -127, 128}, Padding_VALID);
+  DepthwiseConvolutionOpModel float_op(GetRegistration(),
+                                       {TensorType_FLOAT32, {1, 3, 2, 2}},
                                        {TensorType_FLOAT32, {1, 2, 2, 4}},
-                                       {TensorType_FLOAT32, {}});
+                                       {TensorType_FLOAT32, {}}, Padding_VALID);
 
   std::initializer_list<float> input = {
       1, 2, 7,  8,   // column 1
@@ -261,7 +337,7 @@ TEST(QuantizedDepthwiseConvolutionOpTest,
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
-TEST(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTest) {
+TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
   const int depth = 1;
   const int image_width = 9;
   const int image_height = 9;
@@ -270,6 +346,7 @@ TEST(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTest) {
   const int filter_count = 1;
   const int dilation_factor = 3;
   QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
       {TensorType_UINT8,
        {image_batch_count, image_height, image_width, depth},
        0,
@@ -278,7 +355,7 @@ TEST(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTest) {
        {depth, filter_size, filter_size, filter_count},
        0,
        255},
-      {TensorType_UINT8, {}, 0, 255}, dilation_factor);
+      {TensorType_UINT8, {}, 0, 255}, Padding_VALID, dilation_factor);
 
   // The image matrix is:
   // | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -318,6 +395,55 @@ TEST(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTest) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
+
+TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingSame) {
+  const int depth = 1;
+  const int image_width = 3;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+  const int filter_size = 2;
+  const int filter_count = 1;
+  const int dilation_factor = 2;
+  QuantizedDepthwiseConvolutionOpModel m(
+      GetRegistration(),
+      {TensorType_UINT8,
+       {image_batch_count, image_height, image_width, depth},
+       0,
+       255},
+      {TensorType_UINT8,
+       {depth, filter_size, filter_size, filter_count},
+       0,
+       255},
+      {TensorType_UINT8, {}, 0, 255}, Padding_SAME, dilation_factor);
+
+  // The image matrix is:
+  // | 1 | 1 | 1 |
+  // | 1 | 1 | 1 |
+  // | 1 | 1 | 1 |
+  m.SetInput({1, 1, 1, 1, 1, 1, 1, 1, 1});
+  // The filter matrix is:
+  // | 1 | 2 |
+  // | 3 | 4 |
+  m.SetFilter({1, 2, 3, 4});
+  // No bias for this test.
+  m.SetBias({0});
+  m.Invoke();
+
+  // Output:
+  // | 4 | 7 | 3 |
+  // | 6 |10 | 4 |
+  // | 2 | 3 | 1 |
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray({4, 7, 3, 6, 10, 4, 2, 3, 1}));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    DepthwiseConvolutionOpTest, DepthwiseConvolutionOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
+
+INSTANTIATE_TEST_CASE_P(
+    QuantizedDepthwiseConvolutionOpTest, QuantizedDepthwiseConvolutionOpTest,
+    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 }  // namespace
 }  // namespace tflite

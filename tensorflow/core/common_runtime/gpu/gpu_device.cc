@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -321,6 +320,38 @@ BaseGPUDevice::~BaseGPUDevice() {
   for (auto ctx : device_contexts_) ctx->Unref();
 }
 
+// This should be idempotent if already initialized.
+Status BaseGPUDevice::InitScratchBuffers() {
+  mutex_lock l(scratch_init_mutex_);
+  if (scratch_.size() < max_streams_) {
+    for (int i = 0; i < max_streams_; i++) {
+      DCHECK(streams_[i]);
+      if (scratch_.size() > i && scratch_[i]) continue;
+      size_t scratch_buffer_size =
+          Eigen::kGpuScratchSize + sizeof(unsigned int);
+      void* scratch_buffer = gpu_allocator_->AllocateRaw(
+          Allocator::kAllocatorAlignment, scratch_buffer_size);
+      if (scratch_buffer == nullptr) {
+        return errors::FailedPrecondition(
+            "Failed to allocate scratch buffer for device ",
+            tf_gpu_id_.value());
+      }
+      se::DeviceMemory<char> mem(
+          se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
+
+      bool ok = executor_->SynchronousMemZero(
+          &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
+      if (!ok) {
+        return errors::FailedPrecondition(
+            "Failed to memcopy into scratch buffer for device ",
+            tf_gpu_id_.value());
+      }
+      scratch_.push_back(static_cast<char*>(scratch_buffer));
+    }
+  }
+  return Status::OK();
+}
+
 Status BaseGPUDevice::Init(const SessionOptions& options) {
   auto executor_status = GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id_);
   if (!executor_status.status().ok()) {
@@ -339,27 +370,6 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   for (int i = 0; i < max_streams_; i++) {
     streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
         tf_gpu_id_, i, executor_, options.config.gpu_options()));
-
-    size_t scratch_buffer_size = EIGEN_GPU_SCRATCH_SIZE + sizeof(unsigned int);
-    void* scratch_buffer = gpu_allocator_->AllocateRaw(
-        Allocator::kAllocatorAlignment, scratch_buffer_size);
-    if (scratch_buffer == nullptr) {
-      return errors::FailedPrecondition(
-          "Failed to allocate scratch buffer for device ", tf_gpu_id_.value());
-    }
-    scratch_.push_back(static_cast<char*>(scratch_buffer));
-
-    se::DeviceMemory<char> mem(
-        se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
-
-    bool ok = executor_->SynchronousMemZero(
-        &mem, EIGEN_GPU_SCRATCH_SIZE + sizeof(unsigned int));
-    if (!ok) {
-      return errors::FailedPrecondition(
-          "Failed to memcopy into scratch buffer for device ",
-          tf_gpu_id_.value());
-    }
-
     device_contexts_.push_back(new GPUDeviceContext(
         i, streams_.back()->compute, streams_.back()->host_to_device,
         streams_.back()->device_to_host, streams_.back()->device_to_device));
@@ -749,8 +759,8 @@ Status ParseVisibleDeviceList(const string& visible_device_list,
       if (!strings::safe_strto32(platform_gpu_id_str, &platform_gpu_id)) {
         return errors::InvalidArgument(
             "Could not parse entry in 'visible_device_list': '",
-            platform_gpu_id_str,
-            "'. visible_device_list = ", visible_device_list);
+            platform_gpu_id_str, "'. visible_device_list = ",
+            visible_device_list);
       }
       if (platform_gpu_id < 0 ||
           platform_gpu_id >= gpu_manager->VisibleDeviceCount()) {
@@ -906,10 +916,11 @@ PerOpGpuDevice* BaseGPUDevice::MakeGpuDevice() {
   return new ConcretePerOpGpuDevice();
 }
 
-void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
-                                          PerOpGpuDevice* device,
-                                          DeviceContext* dc,
-                                          Allocator* allocator) {
+Status BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
+                                            PerOpGpuDevice* device,
+                                            DeviceContext* dc,
+                                            Allocator* allocator) {
+  TF_RETURN_IF_ERROR(InitScratchBuffers());
   if (dc) {
     const GPUDeviceContext* gpu_dc = static_cast<GPUDeviceContext*>(dc);
     const int stream_id = gpu_dc->stream_id();
@@ -920,6 +931,7 @@ void BaseGPUDevice::ReinitializeGpuDevice(OpKernelContext* context,
   } else {
     ReinitializeDevice(context, device, 0, allocator);
   }
+  return Status::OK();
 }
 
 Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
@@ -993,15 +1005,15 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
 #if GOOGLE_CUDA
       err = cudaSetDevice(platform_gpu_id.value());
       if (err != cudaSuccess) {
-        return errors::Internal(
-            "cudaSetDevice() on GPU:", platform_gpu_id.value(),
-            " failed. Status: ", cudaGetErrorString(err));
+        return errors::Internal("cudaSetDevice() on GPU:",
+                                platform_gpu_id.value(), " failed. Status: ",
+                                cudaGetErrorString(err));
       }
       err = cudaFree(nullptr);
       if (err != cudaSuccess) {
         return errors::Internal("CUDA runtime implicit initialization on GPU:",
-                                platform_gpu_id.value(),
-                                " failed. Status: ", cudaGetErrorString(err));
+                                platform_gpu_id.value(), " failed. Status: ",
+                                cudaGetErrorString(err));
       }
 #elif TENSORFLOW_USE_ROCM
       err = hipSetDevice(platform_gpu_id.value());
@@ -1130,14 +1142,13 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
     cc_minor = 0;
   }
   // LINT.IfChange
-  return strings::StrCat("device: ", platform_gpu_id.value(),
-                         ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id(),
+  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ",
+                         desc.name(), ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
   // LINT.ThenChange(//tensorflow/python/platform/test.py)
 #elif TENSORFLOW_USE_ROCM
-  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id());
+  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ",
+                         desc.name(), ", pci bus id: ", desc.pci_bus_id());
 #endif
 }
 

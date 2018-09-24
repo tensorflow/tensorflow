@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 
@@ -35,7 +35,10 @@ namespace {
 
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   const PlatformGpuId platform_gpu_id(0);
-  GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
+  GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                       platform_gpu_id);
   auto stream_exec =
       GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
@@ -60,7 +63,10 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
     EXPECT_DEATH(
         {
           const PlatformGpuId platform_gpu_id(0);
-          GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+          GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+              platform_gpu_id, false /*use_unified_memory*/, {}, {});
+          GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                               platform_gpu_id);
           auto stream_exec =
               GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
@@ -93,7 +99,10 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
     EXPECT_DEATH(
         {
           const PlatformGpuId platform_gpu_id(0);
-          GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+          GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+              platform_gpu_id, false /*use_unified_memory*/, {}, {});
+          GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                               platform_gpu_id);
           auto stream_exec =
               GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
@@ -123,7 +132,10 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 
 TEST(GPUDebugAllocatorTest, ResetToNan) {
   const PlatformGpuId platform_gpu_id(0);
-  GPUNanResetAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
+  GPUNanResetAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                          platform_gpu_id);
   auto stream_exec =
       GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
@@ -165,8 +177,11 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
 TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
   const PlatformGpuId platform_gpu_id(0);
   // NaN reset must be the outer-most allocator.
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+      new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                             platform_gpu_id),
       platform_gpu_id);
   auto stream_exec =
@@ -208,15 +223,21 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 
 TEST(GPUDebugAllocatorTest, TracksSizes) {
   const PlatformGpuId platform_gpu_id(0);
-  GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
+  GPUDebugAllocator a(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                       platform_gpu_id);
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   const PlatformGpuId platform_gpu_id(0);
+  GPUMemAllocator* sub_allocator = new GPUMemAllocator(
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+      platform_gpu_id, false /*use_unified_memory*/, {}, {});
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+      new GPUDebugAllocator(new GPUBFCAllocator(sub_allocator, 1 << 30, ""),
                             platform_gpu_id),
       platform_gpu_id);
   float* t1 = a.Allocate<float>(1);
@@ -228,4 +249,4 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
 }  // namespace
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

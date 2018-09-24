@@ -63,9 +63,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 from enum import Enum
-
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import naming
@@ -129,9 +127,8 @@ class ProgramContext(object):
     self.autograph_module = autograph_module
     self.uncompiled_modules = uncompiled_modules
 
-    # Required to output dependencies in discovery order, which should match
-    # the reverse dependency order.
-    self.dependency_cache = collections.OrderedDict()
+    self.conversion_order = []
+    self.dependency_cache = {}
     self.additional_imports = set()
     self.name_map = {}
 
@@ -177,6 +174,7 @@ class ProgramContext(object):
         self.name_map[o] = name
 
   def add_to_cache(self, original_entity, converted_ast):
+    self.conversion_order.append(original_entity)
     self.dependency_cache[original_entity] = converted_ast
 
 

@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "external/cub_archive/cub/device/device_reduce.cuh"
-#include "external/cub_archive/cub/device/device_segmented_reduce.cuh"
-#include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
-#include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
-#include "external/cub_archive/cub/warp/warp_reduce.cuh"
+#include "third_party/cub/device/device_reduce.cuh"
+#include "third_party/cub/device/device_segmented_reduce.cuh"
+#include "third_party/cub/iterator/counting_input_iterator.cuh"
+#include "third_party/cub/iterator/transform_input_iterator.cuh"
+#include "third_party/cub/warp/warp_reduce.cuh"
 #include "cuda/include/cuComplex.h"
 #elif TENSORFLOW_USE_ROCM
 #include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
@@ -153,10 +153,9 @@ struct DividesBy<std::complex<double>> {
     return std::complex<double>(result.x, result.y);
   }
 };
-
 #endif
 
- template <>
+template <>
 struct DividesBy<float, Eigen::half> {
   float divisor;
 
@@ -315,7 +314,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
-  // This is the mimic the following, but without any constructors:
+  // This is to mimic the following, but without any constructors:
   //   __shared__ storage_type<value_type> partial_sums[TF_RED_WARPSIZE * (TF_RED_WARPSIZE+1)];
 #ifdef GOOGLE_CUDA
   __shared__ __align__(

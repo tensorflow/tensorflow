@@ -109,6 +109,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     if not node.ctx:
       raise ValueError('node %s is missing ctx value' % node)
 
+  # TODO(mdan): Rewrite _check and _set using a separate transformer.
   def _check_inner_children_have_context(self, node):
     if isinstance(node, gast.Attribute):
       self._check_inner_children_have_context(node.value)
@@ -131,6 +132,11 @@ class ReplaceTransformer(gast.NodeTransformer):
         self._check_inner_children_have_context(node.upper)
       if node.step:
         self._check_inner_children_have_context(node.step)
+    elif isinstance(node, gast.BinOp):
+      self._check_inner_children_have_context(node.left)
+      self._check_inner_children_have_context(node.right)
+    elif isinstance(node, gast.UnaryOp):
+      self._check_inner_children_have_context(node.operand)
     elif isinstance(node, gast.Name):
       self._check_has_context(node)
     elif isinstance(node, (gast.Str, gast.Num)):
@@ -166,6 +172,11 @@ class ReplaceTransformer(gast.NodeTransformer):
     elif isinstance(node, gast.Subscript):
       self._set_inner_child_context(node.value, ctx)
       self._check_inner_children_have_context(node.slice)
+    elif isinstance(node, gast.BinOp):
+      self._check_inner_children_have_context(node.left)
+      self._check_inner_children_have_context(node.right)
+    elif isinstance(node, gast.UnaryOp):
+      self._check_inner_children_have_context(node.operand)
     elif isinstance(node, (gast.Str, gast.Num)):
       pass
     else:

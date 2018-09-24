@@ -285,7 +285,8 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
   ComputeConvSizes(input_shape, output_depth, kwidth, kheight, op->stride_width,
-                   op->stride_height, 1, 1, op->padding.type,
+                   op->stride_height, op->dilation_width_factor,
+                   op->dilation_height_factor, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
 }
@@ -1655,6 +1656,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
     case OperatorType::kLogicalOr:
+    case OperatorType::kZerosLike:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:

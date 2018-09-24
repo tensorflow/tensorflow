@@ -365,8 +365,11 @@ cc_library(
     hdrs = ["pattern_matcher.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/utility",
     ],
 )
 
@@ -590,6 +593,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/strings",
@@ -1167,6 +1171,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_matchers",
         ":hlo_module_group",
+        ":hlo_module_group_metadata",
         ":hlo_parser",
         ":hlo_proto",
         "//tensorflow/compiler/xla:test",
@@ -2558,6 +2563,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":hlo_module_group",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -2586,6 +2592,26 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_pass_pipeline_test",
+    srcs = ["hlo_pass_pipeline_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_parser",
+        ":hlo_pass_pipeline",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 

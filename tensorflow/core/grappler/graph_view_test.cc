@@ -25,6 +25,60 @@ namespace {
 
 class GraphViewTest : public ::testing::Test {};
 
+TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  ops::ShapeN b(s.WithOpName("b"), {a, a, a});
+
+  GraphDef graph_def;
+  TF_CHECK_OK(s.ToGraphDef(&graph_def));
+  GraphView graph_view(&graph_def);
+
+  const NodeDef& a_node_def = *graph_view.GetNode("a");
+  const NodeDef& b_node_def = *graph_view.GetNode("b");
+
+  const OpDef* a_op_def = nullptr;
+  const OpDef* b_op_def = nullptr;
+  EXPECT_TRUE(
+      OpRegistry::Global()->LookUpOpDef(a_node_def.op(), &a_op_def).ok());
+  EXPECT_TRUE(
+      OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *a_op_def, 0));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *a_op_def, 1));
+
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 1));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 2));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 3));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 4));
+}
+
+TEST_F(GraphViewTest, OpOutputPortIdToArgIdSparseSplit) {
+  for (int num_splits : {1, 2}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const<int64>(s.WithOpName("a"), 1, {10, 10});
+    ops::SparseSplit b(s.WithOpName("b"), a, a, a, a, num_splits);
+
+    GraphDef graph_def;
+    TF_CHECK_OK(s.ToGraphDef(&graph_def));
+    GraphView graph_view(&graph_def);
+
+    const NodeDef& b_node_def = *graph_view.GetNode("b");
+    const OpDef* b_op_def = nullptr;
+    EXPECT_TRUE(
+        OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+
+    for (int port_id = 0; port_id <= num_splits * 3; ++port_id) {
+      int arg_id = -1;
+      if (port_id < num_splits * 3) {
+        arg_id = port_id / num_splits;
+      }
+      EXPECT_EQ(arg_id, OpOutputPortIdToArgId(b_node_def, *b_op_def, port_id));
+    }
+  }
+}
+
 TEST_F(GraphViewTest, BasicGraph) {
   TrivialTestGraphInputYielder fake_input(4, 2, 2, false, {"/CPU:0", "/GPU:0"});
   GrapplerItem item;

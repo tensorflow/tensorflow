@@ -766,7 +766,6 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
   }
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
-  
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_outputs, device, kernel, 0, 0);

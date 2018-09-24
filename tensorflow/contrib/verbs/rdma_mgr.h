@@ -39,6 +39,7 @@ class RdmaMgr {
   void SetupChannels();
   bool ConnectivityCheck();
   void InitAllocators();
+  void RegMemVisitors();
   const string& local_worker() { return local_worker_; }
 
  private:

@@ -62,6 +62,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph:autograph",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+    "//tensorflow/contrib/compiler:xla",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
     "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
@@ -114,6 +115,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
+    "//tensorflow/python:while_v2",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
@@ -210,6 +212,7 @@ filegroup(
         "@ngraph//:LICENSE",
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
+        "@tbb//:LICENSE",
     ]) + tf_additional_license_deps(),
 )
 

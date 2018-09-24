@@ -1401,9 +1401,19 @@ def set_grpc_build_flags():
 
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
-  syslibs = ','.join(sorted(syslibs.split(',')))
   if syslibs and syslibs != '':
+    if ',' in syslibs:
+      syslibs = ','.join(sorted(syslibs.split(',')))
+    else:
+      syslibs = ','.join(sorted(syslibs.split()))
     write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
+
+  if 'PREFIX' in environ_cp:
+    write_to_bazelrc('build --define=PREFIX=%s' % environ_cp['PREFIX'])
+  if 'LIBDIR' in environ_cp:
+    write_to_bazelrc('build --define=LIBDIR=%s' % environ_cp['LIBDIR'])
+  if 'INCLUDEDIR' in environ_cp:
+    write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
 
 
 def set_windows_build_flags(environ_cp):

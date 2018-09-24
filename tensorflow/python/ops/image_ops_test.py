@@ -2687,6 +2687,12 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
 
+  def testPreserveAspectRatioSquare(self):
+    x_shape = [299, 299, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
+
 
 class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
