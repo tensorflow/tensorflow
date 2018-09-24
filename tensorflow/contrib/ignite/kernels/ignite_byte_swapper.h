@@ -24,9 +24,7 @@ constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
 
 class ByteSwapper {
  public:
-  ByteSwapper(bool big_endian) {
-    swap_ = big_endian == kLittleEndian;
-  }
+  ByteSwapper(bool big_endian) { swap_ = big_endian == kLittleEndian; }
 
   inline void SwapIfRequiredInt16(int16_t *x) const {
     if (swap_) {
