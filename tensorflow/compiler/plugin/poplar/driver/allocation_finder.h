@@ -47,7 +47,7 @@ using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
  * tensor, and if any of those instructions require a specific tensor allocation
  * method (e.g. convolution), then it notes the downstream instruction
  */
-class AllocationFinder : public HloPassInterface {
+class AllocationFinder : public HloModulePass {
  public:
   AllocationFinder(CompilerAnnotations& annotations);
 

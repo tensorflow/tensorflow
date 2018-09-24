@@ -24,7 +24,7 @@ class HloModule;
 
 namespace poplarplugin {
 
-class CommutativeInstructionReorderOperands : public HloPassInterface {
+class CommutativeInstructionReorderOperands : public HloModulePass {
  public:
   CommutativeInstructionReorderOperands();
 

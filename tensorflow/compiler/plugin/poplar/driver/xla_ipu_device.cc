@@ -18,13 +18,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -141,7 +142,11 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory);
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaLocalLaunchOp, kIpuAllTypes);
+REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_IPU, XlaCompileOp, kIpuAllTypes);
+REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_IPU, XlaRunOp, kIpuAllTypes);
+
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
+
 
 // Additional ops not explicitly defined by standard JIT
 REGISTER_XLA_OP(Name("ArgMax")

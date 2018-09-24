@@ -39,7 +39,7 @@ using InplaceRoute = std::vector<HloInstruction*>;
  * Operations which lower to poplibs vertices that contains InOut edges should
  * be processed by this finder
  */
-class InplaceFinder : public HloPassInterface {
+class InplaceFinder : public HloModulePass {
  public:
   InplaceFinder(CompilerAnnotations& annotations);
 

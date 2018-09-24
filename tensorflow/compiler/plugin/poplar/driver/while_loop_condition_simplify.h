@@ -30,7 +30,7 @@ namespace poplarplugin {
     This pass attempts to simplify this conditional to simplify to
     "cond < max(cond1,cond2)".
  */
-class WhileLoopConditionSimplify : public HloPassInterface {
+class WhileLoopConditionSimplify : public HloModulePass {
  public:
   WhileLoopConditionSimplify();
 

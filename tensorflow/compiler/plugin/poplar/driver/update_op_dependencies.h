@@ -29,7 +29,7 @@ struct CompilerAnnotations;
 // Add control dependencies between in-place updates and readers of the updates
 // (must come after any outliners, eg ExpressionOutliner, FuseOps, Outliner)
 
-class UpdateOpDependenctOrdering : public HloPassInterface {
+class UpdateOpDependenctOrdering : public HloModulePass {
  public:
   UpdateOpDependenctOrdering(CompilerAnnotations& annotations) :
       annotations_(annotations) {}

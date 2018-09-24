@@ -30,7 +30,7 @@ class InplaceInstructions;
 // Extract elementwise ops into a called sub-graph
 // (must come after InplaceFinder)
 
-class ExpressionOutliner : public HloPassInterface {
+class ExpressionOutliner : public HloModulePass {
  public:
   ExpressionOutliner(struct CompilerAnnotations& annotations);
 

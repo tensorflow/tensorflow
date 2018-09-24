@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 

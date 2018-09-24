@@ -90,7 +90,7 @@ struct OutlinedInfo {
   ReplacedInstructions removed_or_modified_instructions;
 };
 
-class HloMatcher : public HloPassInterface {
+class HloMatcher : public HloModulePass {
  public:
   // By default never look through associative ops
   HloMatcher(const std::vector<HloMatcherPattern>& patterns,

@@ -23,7 +23,7 @@ namespace poplarplugin {
 
 // If this computation has only one caller, and the callsite is a kCall
 // operation, then merge with the calling computation.
-class ComputationFlattener : public HloPassInterface {
+class ComputationFlattener : public HloModulePass {
  public:
   absl::string_view name() const override { return "ipu-flattener"; }
 

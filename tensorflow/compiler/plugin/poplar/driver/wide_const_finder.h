@@ -27,7 +27,7 @@ namespace poplarplugin {
 /** Pipeline stage which finds non-scalar constants with zero in every value
  * and replaces with a broadcast scalar zero
  */
-class WideConstFinder : public HloPassInterface {
+class WideConstFinder : public HloModulePass {
  public:
   WideConstFinder();
 

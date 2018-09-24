@@ -52,7 +52,7 @@ using ConvClassification =
  * (gradient), a backprop filter (weight update), or a standalone inference only
  * convolution.
  */
-class ConvolutionClassifier : public HloPassInterface {
+class ConvolutionClassifier : public HloModulePass {
  public:
   ConvolutionClassifier(CompilerAnnotations& annotations);
 
