@@ -748,7 +748,7 @@ struct UnqueryableDeviceParams {
 static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
   {
     803,        // AMDGPU ISA version (803)
-    16,         // blocks_per_core_limit
+    40,         // blocks_per_core_limit
     64 * 1024,  // registers_per_core_limit
     255,        // registers_per_thread_limit
     4,          // warp_alloc_granularity
@@ -757,7 +757,7 @@ static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
   },
   {
     900,        // AMDGPU ISA version (900)
-    16,         // blocks_per_core_limit
+    40,         // blocks_per_core_limit
     64 * 1024,  // registers_per_core_limit
     255,        // registers_per_thread_limit
     4,          // warp_alloc_granularity
@@ -766,7 +766,7 @@ static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
   },
   {
     906,        // AMDGPU ISA version (900)
-    16,         // blocks_per_core_limit
+    40,         // blocks_per_core_limit
     64 * 1024,  // registers_per_core_limit
     255,        // registers_per_thread_limit
     4,          // warp_alloc_granularity
