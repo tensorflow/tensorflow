@@ -1029,10 +1029,10 @@ def resize_images(images,
       scale_factor_width = (math_ops.to_float(new_width_const) /
                             math_ops.to_float(current_width))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(scale_factor *
-                                              math_ops.to_float(current_height))
-      scaled_width_const = math_ops.to_int32(scale_factor *
-                                             math_ops.to_float(current_width))
+      scaled_height_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_height)))
+      scaled_width_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_width)))
 
       # NOTE: Reset the size and other constants used later.
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
