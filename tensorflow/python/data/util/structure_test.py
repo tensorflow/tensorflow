@@ -25,7 +25,9 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -106,13 +108,17 @@ class StructureTest(test.TestCase, parameterized.TestCase):
                   indices=[[0], [1], [2]], values=[4, 5, 6], dense_shape=[3])
       }, (constant_op.constant(15.0), constant_op.constant([4, 5, 6]))]),
   )
-  def testIsCompatibleWith(self, original_value, compatible_values,
-                           incompatible_values):
+  def testIsCompatibleWithStructure(self, original_value, compatible_values,
+                                    incompatible_values):
     s = structure.Structure.from_value(original_value)
     for compatible_value in compatible_values:
-      self.assertTrue(s.is_compatible_with(compatible_value))
+      self.assertTrue(
+          s.is_compatible_with(
+              structure.Structure.from_value(compatible_value)))
     for incompatible_value in incompatible_values:
-      self.assertFalse(s.is_compatible_with(incompatible_value))
+      self.assertFalse(
+          s.is_compatible_with(
+              structure.Structure.from_value(incompatible_value)))
 
   # NOTE(mrry): The arguments must be lifted into lambdas because otherwise they
   # will be executed before the (eager- or graph-mode) test environment has been
@@ -322,6 +328,28 @@ class StructureTest(test.TestCase, parameterized.TestCase):
         ValueError, "Expected 3 flat values in NestedStructure but got 2."):
       s_2._from_tensor_list(flat_s_1)
 
+  @parameterized.named_parameters(
+      ("Tensor", dtypes.float32, tensor_shape.scalar(), ops.Tensor,
+       structure.TensorStructure(dtypes.float32, [])),
+      ("SparseTensor", dtypes.int32, tensor_shape.matrix(2, 2),
+       sparse_tensor.SparseTensor,
+       structure.SparseTensorStructure(dtypes.int32, [2, 2])),
+      ("Nest",
+       {"a": dtypes.float32, "b": (dtypes.int32, dtypes.string)},
+       {"a": tensor_shape.scalar(),
+        "b": (tensor_shape.matrix(2, 2), tensor_shape.scalar())},
+       {"a": ops.Tensor, "b": (sparse_tensor.SparseTensor, ops.Tensor)},
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
+                 structure.TensorStructure(dtypes.string, []))})),
+  )
+  def testFromLegacyStructure(self, output_types, output_shapes, output_classes,
+                              expected_structure):
+    actual_structure = structure.Structure._from_legacy_structure(
+        output_types, output_shapes, output_classes)
+    self.assertTrue(expected_structure.is_compatible_with(actual_structure))
+    self.assertTrue(actual_structure.is_compatible_with(expected_structure))
 
 if __name__ == "__main__":
   test.main()

@@ -64,6 +64,7 @@ py_library(
         "//tensorflow/python/compat",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
     ],
@@ -78,10 +79,8 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
