@@ -253,8 +253,6 @@ GatherClientLibraryTest POPLAR
 TrivialCrossReplicaSumTest POPLAR // Don't support cross-replica-sum
 
 TestUtilsTest.UnusedParam POPLAR // Decide what to do with strange reductions
-HloTestBase.ReduceWindowIdentity POPLAR
-HloTestBase.ReduceWindowS32 POPLAR
 ReduceWindowTest.NonstandardReduceFunction POPLAR
 R4ReduceWindowTest POPLAR // Very slow engine creation for the bigger reductions
 
@@ -278,5 +276,3 @@ TupleHloTest.NonAmbiguousTopLevelAllocation POPLAR
 ScatterTest POPLAR // Don't support scatter
 
 IntegerDivideOpTest.SignedOverflow POPLAR // Crashes - find out why
-
-HloTestBase.ReduceWindowF16 POPLAR // using a reduce-window as a padding op

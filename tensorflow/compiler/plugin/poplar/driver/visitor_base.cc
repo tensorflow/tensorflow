@@ -78,6 +78,7 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"max_pool", CreatePoplibsWindowReduction},
     {"max_pool_grad", CreateBwdMaxPool},
     {"scaled_inplace", CreateScaledInplace},
+    {"padding_reduce_window", CreatePaddingReduceWindow},
 };
 
 BaseVisitor::BaseVisitor(poplar::Graph& graph, CompilerResources& res)
@@ -458,9 +459,8 @@ Status BaseVisitor::HandleIota(HloInstruction* inst) {
   auto* iota = Cast<HloIotaInstruction>(inst);
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, AddIotaTensor(graph_, std::make_pair(inst, 0),
-                       GetOutputShape(inst), iota->iota_dimension(),
-                       resources_));
+      t, AddIotaTensor(graph_, std::make_pair(inst, 0), GetOutputShape(inst),
+                       iota->iota_dimension(), resources_));
   TF_CHECK_OK(
       AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, 0, t)
           .status());

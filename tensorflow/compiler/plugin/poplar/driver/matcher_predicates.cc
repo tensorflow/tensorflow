@@ -119,9 +119,12 @@ bool Is2DReductionWindow(const HloInstruction *inst) {
   }
   return reduction_count == 2;
 }
+bool IsScalar(const HloInstruction *inst) {
+  return ShapeUtil::IsScalar(inst->shape());
+}
 
 bool IsScalarConstant(const HloInstruction *inst) {
-  return ShapeUtil::IsScalar(inst->shape());
+  return IsScalar(inst) && inst->IsConstant();
 }
 
 bool IsConvFilterTranspose(const HloInstruction *inst) {
@@ -238,12 +241,27 @@ bool IsOpWithWindowNoStride(const HloInstruction *inst) {
       return false;
   }
 }
+
 bool IsScalarConstantNegativeInfinity(const HloInstruction *inst) {
   return IsScalarConstant(inst) &&
          IsAllFloatValue(inst, -std::numeric_limits<double>::infinity());
 }
+
 bool IsScalarConstantOne(const HloInstruction *inst) {
   return IsScalarConstant(inst) && IsAllFloatValue(inst, 0);
+}
+
+bool IsPaddingReduceWindow(const HloInstruction *inst) {
+  if (inst->opcode() != HloOpcode::kReduceWindow) return false;
+  // it's an identity, which means the window is of dim 1x...x1 and root of
+  // to_apply computation is a parameter num 1
+  const auto window = inst->window();
+  for (const auto dim : window.dimensions()) {
+    if (dim.size() != 1) return false;
+  }
+  const auto *root = inst->to_apply()->root_instruction();
+  if (root->opcode() != HloOpcode::kParameter) return false;
+  return root->parameter_number() == 1;
 }
 
 }  // namespace poplarplugin

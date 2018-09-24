@@ -23,6 +23,7 @@
 #include <popnn/Pooling.hpp>
 #include <popnn/PoolingDef.hpp>
 #include <popops/ElementWise.hpp>
+#include <popops/Pad.hpp>
 #include <popops/Reduce.hpp>
 
 namespace se = ::stream_executor;
@@ -744,6 +745,33 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   const auto shuffle_out =
       GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
   out = out.dimShuffle(shuffle_out);
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
+  return seq;
+}
+
+StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const Window& window(root->window());
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+
+  std::vector<std::ptrdiff_t> paddingLower;
+  std::vector<std::ptrdiff_t> paddingUpper;
+  for (auto& d : window.dimensions()) {
+    paddingLower.push_back(d.padding_low());
+    paddingUpper.push_back(d.padding_high());
+  }
+
+  poplar::Tensor init_val;
+  TF_ASSIGN_OR_RETURN(init_val, FindInstructionInput(tensor_map, inst, 1));
+
+  out = popops::pad(graph, out, paddingLower, paddingUpper, init_val);
+
   TF_CHECK_OK(
       AddOutputTensor(graph, res, seq, tensor_map, inst, 0, out).status());
   return seq;

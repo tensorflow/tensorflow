@@ -20,6 +20,7 @@ bool IsAveragePool(const HloInstruction*);
 bool Is2DMaxPool(const HloInstruction*);
 bool Is2DMaxPoolGrad(const HloInstruction*);
 bool Is2DReductionWindow(const HloInstruction*);
+bool IsScalar(const HloInstruction*);
 bool IsScalarConstant(const HloInstruction*);
 bool IsConvFilterTranspose(const HloInstruction*);
 bool IsBiasReduce(const HloInstruction*);
@@ -39,6 +40,7 @@ bool IsOpWithWindowNoBaseDilation(const HloInstruction*);
 bool IsOpWithWindowNoStride(const HloInstruction*);
 bool IsScalarConstantNegativeInfinity(const HloInstruction*);
 bool IsScalarConstantOne(const HloInstruction*);
+bool IsPaddingReduceWindow(const HloInstruction*);
 
 }  // namespace poplarplugin
 }  // namespace xla

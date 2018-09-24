@@ -14,8 +14,8 @@
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#include <poplin/Convolution.hpp>
 #include <poplar/Program.hpp>
+#include <poplin/Convolution.hpp>
 #include <popops/Expr.hpp>
 
 namespace poplar {
@@ -314,6 +314,10 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(poplar::Graph& graph,
                                                    const HloInstruction* inst,
                                                    const xla::Shape& output,
                                                    TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
 
 /* Optimization tests */
 

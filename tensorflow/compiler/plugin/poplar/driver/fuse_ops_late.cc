@@ -47,6 +47,7 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"bias_apply", 0, true},
     {"scaled_inplace", 0, true},
     {"scaled_inplace", 0, true},
+    {"padding_reduce_window", 0},
 };
 
 /*
@@ -235,6 +236,12 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kMultiply, true, 0, nullptr, {5, 2}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+
+    // Reduce window with a window size of 1x1, stride 1 and identity reduction
+    // function (param 1 is returned)
+    {{HloOpcode::kReduceWindow, true, 0, IsPaddingReduceWindow, {1, 2}},
      {HloOpcode::kParameter, false, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
 };
