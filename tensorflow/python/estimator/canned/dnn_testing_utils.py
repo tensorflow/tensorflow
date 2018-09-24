@@ -698,7 +698,7 @@ class BaseDNNLogitFnTest(object):
         logits_dimension=1,
         inputs=[[10.], [-20.]],
         expected_logits=[[1.29998839], [0.3]],
-        batch_norm=True)
+        batch_norm=experimental_batch_norm_options(apply_before_activation=True))
     for mode in [model_fn.ModeKeys.EVAL, model_fn.ModeKeys.PREDICT]:
       self._test_logits(
           mode,
