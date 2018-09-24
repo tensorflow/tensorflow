@@ -2461,6 +2461,64 @@ func Gather(scope *Scope, params tf.Output, indices tf.Output, optional ...Gathe
 	return op.Output(0)
 }
 
+// LowerBoundAttr is an optional argument to LowerBound.
+type LowerBoundAttr func(optionalAttr)
+
+// LowerBoundOutType sets the optional out_type attribute to value.
+// If not specified, defaults to DT_INT32
+func LowerBoundOutType(value tf.DataType) LowerBoundAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Applies lower_bound(sorted_search_values, values) along each row.
+//
+// Each set of rows with the same index in (sorted_inputs, values) is treated
+// independently.  The resulting row is the equivalent of calling
+// `np.searchsorted(sorted_inputs, values, side='left')`.
+//
+// The result is not a global index to the entire
+// `Tensor`, but rather just the index in the last dimension.
+//
+// A 2-D example:
+//   sorted_sequence = [[0, 3, 9, 9, 10],
+//                      [1, 2, 3, 4, 5]]
+//   values = [[2, 4, 9],
+//             [0, 2, 6]]
+//
+//   result = LowerBound(sorted_sequence, values)
+//
+//   result == [[1, 2, 2],
+//              [0, 1, 5]]
+//
+// Arguments:
+//	sorted_inputs: 2-D Tensor where each row is ordered.
+//	values: 2-D Tensor with the same numbers of rows as `sorted_search_values`. Contains
+// the values that will be searched for in `sorted_search_values`.
+//
+// Returns A `Tensor` with the same shape as `values`.  It contains the first scalar index
+// into the last dimension where values can be inserted without changing the
+// ordered property.
+func LowerBound(scope *Scope, sorted_inputs tf.Output, values tf.Output, optional ...LowerBoundAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LowerBound",
+		Input: []tf.Input{
+			sorted_inputs, values,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a tensor filled with a scalar value.
 //
 // This operation creates a tensor of shape `dims` and fills it with `value`.
@@ -6000,6 +6058,44 @@ func QuantizedAvgPool(scope *Scope, input tf.Output, min_input tf.Output, max_in
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Extract `patches` from `input` and put them in the "depth" output
+// dimension. 3D extension of `extract_image_patches`.
+//
+// Arguments:
+//	input: 5-D Tensor with shape `[batch, in_planes, in_rows, in_cols, depth]`.
+//	ksizes: The size of the sliding window for each dimension of `input`.
+//	strides: 1-D of length 5. How far the centers of two consecutive patches are in
+// `input`. Must be: `[1, stride_planes, stride_rows, stride_cols, 1]`.
+//	padding: The type of padding algorithm to use.
+//
+// We specify the size-related attributes as:
+//
+// ```python
+//       ksizes = [1, ksize_planes, ksize_rows, ksize_cols, 1]
+//       strides = [1, stride_planes, strides_rows, strides_cols, 1]
+// ```
+//
+// Returns 5-D Tensor with shape `[batch, out_planes, out_rows, out_cols,
+// ksize_planes * ksize_rows * ksize_cols * depth]` containing patches
+// with size `ksize_planes x ksize_rows x ksize_cols x depth` vectorized
+// in the "depth" dimension. Note `out_planes`, `out_rows` and `out_cols`
+// are the dimensions of the output patches.
+func ExtractVolumePatches(scope *Scope, input tf.Output, ksizes []int64, strides []int64, padding string) (patches tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksizes": ksizes, "strides": strides, "padding": padding}
+	opspec := tf.OpSpec{
+		Type: "ExtractVolumePatches",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FractionalAvgPoolAttr is an optional argument to FractionalAvgPool.
 type FractionalAvgPoolAttr func(optionalAttr)
 
@@ -6568,6 +6664,41 @@ func ResourceSparseApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, 
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Gets next element for the provided shard number.
+//
+// Arguments:
+//	multi_device_iterator: A MultiDeviceIterator resource.
+//	shard_num: Integer representing which shard to fetch data for.
+//	incarnation_id: Which incarnation of the MultiDeviceIterator is running.
+//	output_types: The type list for the return values.
+//	output_shapes: The list of shapes being produced.
+//
+// Returns Result of the get_next on the dataset.
+func MultiDeviceIteratorGetNextFromShard(scope *Scope, multi_device_iterator tf.Output, shard_num tf.Output, incarnation_id tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "MultiDeviceIteratorGetNextFromShard",
+		Input: []tf.Input{
+			multi_device_iterator, shard_num, incarnation_id,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("MultiDeviceIteratorGetNextFromShard", err)
+		return
+	}
+	return components
 }
 
 // Computes rectified linear gradients for a Relu operation.
@@ -9792,6 +9923,29 @@ func DataFormatVecPermute(scope *Scope, x tf.Output, optional ...DataFormatVecPe
 	return op.Output(0)
 }
 
+// Initializes the multi device iterator with the given dataset.
+//
+// Arguments:
+//	dataset: Dataset to be iterated upon.
+//	multi_device_iterator: A MultiDeviceIteratorResource.
+//	max_buffer_size: The maximum size of the host side per device buffer to keep.
+//
+// Returns An int64 indicating which incarnation of the MultiDeviceIterator
+// is running.
+func MultiDeviceIteratorInit(scope *Scope, dataset tf.Output, multi_device_iterator tf.Output, max_buffer_size tf.Output) (incarnation_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MultiDeviceIteratorInit",
+		Input: []tf.Input{
+			dataset, multi_device_iterator, max_buffer_size,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the gradient of `igamma(a, x)` wrt `a`.
 func IgammaGradA(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -12459,6 +12613,26 @@ func ResourceScatterNdUpdate(scope *Scope, ref tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
+// Produces a string handle for the given MultiDeviceIterator.
+//
+// Arguments:
+//	multi_device_iterator: A MultiDeviceIterator resource.
+//
+// Returns A string representing the resource.
+func MultiDeviceIteratorToStringHandle(scope *Scope, multi_device_iterator tf.Output) (string_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MultiDeviceIteratorToStringHandle",
+		Input: []tf.Input{
+			multi_device_iterator,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Applies softmax to a batched N-D `SparseTensor`.
 //
 // The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
@@ -12908,6 +13082,66 @@ func MutexLock(scope *Scope, mutex tf.Output) (mutex_lock tf.Output) {
 		Input: []tf.Input{
 			mutex,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StringFormatAttr is an optional argument to StringFormat.
+type StringFormatAttr func(optionalAttr)
+
+// StringFormatTemplate sets the optional template attribute to value.
+//
+// value: A string, the template to format tensor summaries into.
+// If not specified, defaults to "%s"
+func StringFormatTemplate(value string) StringFormatAttr {
+	return func(m optionalAttr) {
+		m["template"] = value
+	}
+}
+
+// StringFormatPlaceholder sets the optional placeholder attribute to value.
+//
+// value: A string, at each placeholder in the template a subsequent tensor summary will be inserted.
+// If not specified, defaults to "%s"
+func StringFormatPlaceholder(value string) StringFormatAttr {
+	return func(m optionalAttr) {
+		m["placeholder"] = value
+	}
+}
+
+// StringFormatSummarize sets the optional summarize attribute to value.
+//
+// value: When formatting the tensor summaries print the first and last summarize entries of each tensor dimension.
+// If not specified, defaults to 3
+func StringFormatSummarize(value int64) StringFormatAttr {
+	return func(m optionalAttr) {
+		m["summarize"] = value
+	}
+}
+
+// Formats a string template using a list of tensors.
+//
+// Formats a string template using a list of tensors, pretty-printing tensor summaries.
+//
+// Arguments:
+//	inputs: The list of tensors to format into the placeholder string.
+//
+// Returns = The resulting string scalar.
+func StringFormat(scope *Scope, inputs []tf.Output, optional ...StringFormatAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringFormat",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -16770,6 +17004,64 @@ func CudnnRNNBackprop(scope *Scope, input tf.Output, input_h tf.Output, input_c 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// UpperBoundAttr is an optional argument to UpperBound.
+type UpperBoundAttr func(optionalAttr)
+
+// UpperBoundOutType sets the optional out_type attribute to value.
+// If not specified, defaults to DT_INT32
+func UpperBoundOutType(value tf.DataType) UpperBoundAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Applies upper_bound(sorted_search_values, values) along each row.
+//
+// Each set of rows with the same index in (sorted_inputs, values) is treated
+// independently.  The resulting row is the equivalent of calling
+// `np.searchsorted(sorted_inputs, values, side='right')`.
+//
+// The result is not a global index to the entire
+// `Tensor`, but rather just the index in the last dimension.
+//
+// A 2-D example:
+//   sorted_sequence = [[0, 3, 9, 9, 10],
+//                      [1, 2, 3, 4, 5]]
+//   values = [[2, 4, 9],
+//             [0, 2, 6]]
+//
+//   result = UpperBound(sorted_sequence, values)
+//
+//   result == [[1, 2, 4],
+//              [0, 2, 5]]
+//
+// Arguments:
+//	sorted_inputs: 2-D Tensor where each row is ordered.
+//	values: 2-D Tensor with the same numbers of rows as `sorted_search_values`. Contains
+// the values that will be searched for in `sorted_search_values`.
+//
+// Returns A `Tensor` with the same shape as `values`.  It contains the last scalar index
+// into the last dimension where values can be inserted without changing the
+// ordered property.
+func UpperBound(scope *Scope, sorted_inputs tf.Output, values tf.Output, optional ...UpperBoundAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UpperBound",
+		Input: []tf.Input{
+			sorted_inputs, values,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // FractionalMaxPoolGradAttr is an optional argument to FractionalMaxPoolGrad.
@@ -23220,6 +23512,58 @@ func HashTableV2(scope *Scope, key_dtype tf.DataType, value_dtype tf.DataType, o
 	return op.Output(0)
 }
 
+// MultiDeviceIteratorFromStringHandleAttr is an optional argument to MultiDeviceIteratorFromStringHandle.
+type MultiDeviceIteratorFromStringHandleAttr func(optionalAttr)
+
+// MultiDeviceIteratorFromStringHandleOutputTypes sets the optional output_types attribute to value.
+//
+// value: The type list for the return values.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func MultiDeviceIteratorFromStringHandleOutputTypes(value []tf.DataType) MultiDeviceIteratorFromStringHandleAttr {
+	return func(m optionalAttr) {
+		m["output_types"] = value
+	}
+}
+
+// MultiDeviceIteratorFromStringHandleOutputShapes sets the optional output_shapes attribute to value.
+//
+// value: The list of shapes being produced.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func MultiDeviceIteratorFromStringHandleOutputShapes(value []tf.Shape) MultiDeviceIteratorFromStringHandleAttr {
+	return func(m optionalAttr) {
+		m["output_shapes"] = value
+	}
+}
+
+// Generates a MultiDeviceIterator resource from its provided string handle.
+//
+// Arguments:
+//	string_handle: String representing the resource.
+//
+// Returns A MultiDeviceIterator resource.
+func MultiDeviceIteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ...MultiDeviceIteratorFromStringHandleAttr) (multi_device_iterator tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MultiDeviceIteratorFromStringHandle",
+		Input: []tf.Input{
+			string_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MutableHashTableV2Attr is an optional argument to MutableHashTableV2.
 type MutableHashTableV2Attr func(optionalAttr)
 
@@ -24786,6 +25130,45 @@ func Svd(scope *Scope, input tf.Output, optional ...SvdAttr) (s tf.Output, u tf.
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// PrintV2Attr is an optional argument to PrintV2.
+type PrintV2Attr func(optionalAttr)
+
+// PrintV2OutputStream sets the optional output_stream attribute to value.
+//
+// value: A string specifying the output stream or logging level to print to.
+// If not specified, defaults to "stderr"
+func PrintV2OutputStream(value string) PrintV2Attr {
+	return func(m optionalAttr) {
+		m["output_stream"] = value
+	}
+}
+
+// Prints a string scalar.
+//
+// Prints a string scalar to the desired output_stream.
+//
+// Arguments:
+//	input: The string scalar to print.
+//
+// Returns the created operation.
+func PrintV2(scope *Scope, input tf.Output, optional ...PrintV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "PrintV2",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // QueueEnqueueManyV2Attr is an optional argument to QueueEnqueueManyV2.
@@ -31081,6 +31464,32 @@ func FractionalMaxPool(scope *Scope, value tf.Output, pooling_ratio []float32, o
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Creates a MultiDeviceIterator resource.
+//
+// Arguments:
+//	devices: A list of devices the iterator works across.
+//	shared_name: If non-empty, this resource will be shared under the given name
+// across multiple sessions.
+//	container: If non-empty, this resource is placed in the given container.
+// Otherwise, a default container is used.
+//	output_types: The type list for the return values.
+//	output_shapes: The list of shapes being produced.
+//
+// Returns Handle to the resource created.
+func MultiDeviceIterator(scope *Scope, devices []string, shared_name string, container string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"devices": devices, "shared_name": shared_name, "container": container, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "MultiDeviceIterator",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Deprecated. Use TensorArraySizeV3
