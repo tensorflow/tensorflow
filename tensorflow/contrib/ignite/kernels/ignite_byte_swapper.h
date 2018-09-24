@@ -17,14 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_BYTE_SWAPPER_H_
 
 #include <stdint.h>
+#include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
 
-constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
-
 class ByteSwapper {
  public:
-  ByteSwapper(bool big_endian) { swap_ = big_endian == kLittleEndian; }
+  ByteSwapper(bool big_endian) { swap_ = big_endian == port::kLittleEndian; }
 
   inline void SwapIfRequiredInt16(int16_t *x) const {
     if (swap_) {
