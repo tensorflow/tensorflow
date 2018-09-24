@@ -189,6 +189,13 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   return ret;
 }
 
+// Used to determine how the op data parsing function creates its working space.
+class MallocDataAllocator : public BuiltinDataAllocator {
+ public:
+  void* Allocate(size_t size) override { return malloc(size); }
+  void Deallocate(void* data) override { free(data); }
+};
+
 }  // namespace
 
 TfLiteStatus InterpreterBuilder::ParseNodes(
@@ -234,8 +241,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           op->custom_options()->size(), nullptr, registration);
     } else {
       void* builtin_data = nullptr;
-      TF_LITE_ENSURE_STATUS(
-          ParseOpData(op, op_type, error_reporter_, &builtin_data));
+      MallocDataAllocator malloc_allocator;
+      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
+                                        &malloc_allocator, &builtin_data));
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
