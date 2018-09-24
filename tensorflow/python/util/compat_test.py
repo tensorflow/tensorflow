@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ class CompatPathToStrTest(test.TestCase):
 
   def test_transforms_pathlib_path(self):
     if Path is None:
-      return # Skip test if pathlib not available.
+      self.skipTest("Test requires Python 3.6 or greater.")
 
     path_input = Path('/tmp/folder')
     transformed = compat.path_to_str(path_input)
@@ -51,7 +51,7 @@ class CompatPathToStrTest(test.TestCase):
 
   def test_transforms_iterable_pathlib_path(self):
     if Path is None:
-      return # Skip test if pathlib not available.
+      self.skipTest("Test requires Python 3.6 or greater.")
 
     path_input = [Path('/tmp/folder'), Path('/tmp/folder2')]
     transformed = compat.path_to_str(path_input)
