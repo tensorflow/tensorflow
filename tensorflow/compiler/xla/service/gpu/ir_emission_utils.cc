@@ -145,59 +145,6 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
          IsCustomCallToDnnConvolution(hlo);
 }
 
-static HloInstruction* CreateCudnnConv(const char* call_target,
-                                       const Shape& shape, HloInstruction* lhs,
-                                       HloInstruction* rhs,
-                                       const Window& window,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       int64 feature_group_count) {
-  HloComputation* computation = lhs->parent();
-
-  // This call returns a tuple of (conv_result, scratch_memory), where
-  // conv_result is the actual result of the convolution, and scratch_memory is
-  // temporary memory used by cudnn.
-  //
-  // At the moment, we don't know how much scratch memory this conv is going to
-  // use, so we put u8[0] in this place.  Later on another pass will choose
-  // which conv algorithm to use, and at that point we'll modify the shape of
-  // this second tuple element.
-  Shape call_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
-
-  HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
-  custom_call->set_window(window);
-  custom_call->set_convolution_dimension_numbers(dnums);
-  custom_call->set_feature_group_count(feature_group_count);
-  return custom_call;
-}
-
-HloInstruction* CreateCudnnConvForward(const Shape& shape,
-                                       HloInstruction* input,
-                                       HloInstruction* kernel,
-                                       const Window& window,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       int64 feature_group_count) {
-  return CreateCudnnConv(kCudnnConvForwardCallTarget, shape, input, kernel,
-                         window, dnums, feature_group_count);
-}
-
-HloInstruction* CreateCudnnConvBackwardInput(
-    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count) {
-  return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, shape, output,
-                         reverse_filter, window, dnums, feature_group_count);
-}
-
-HloInstruction* CreateCudnnConvBackwardFilter(
-    const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count) {
-  return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, shape, input,
-                         output, window, dnums, feature_group_count);
-}
-
 bool IsReductionToVector(const HloInstruction& reduce) {
   if (HloOpcode::kReduce != reduce.opcode()) {
     return false;
