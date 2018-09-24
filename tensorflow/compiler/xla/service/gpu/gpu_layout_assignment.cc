@@ -21,8 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_options.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -90,27 +92,32 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 // operands and the output shape. Depending on the underlying algorithm, one of
 // { NCHW, NHWC } ^ 3 = 8 different layout combinations may be chosen.
 Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
-    HloInstruction* instr, LayoutConstraints* constraints) {
-  CHECK(IsCustomCallToDnnConvolution(*instr)) << instr->ToString();
-  Shape input_shape;
-  Shape filter_shape;
-  Shape output_shape;
-  const auto& target = instr->custom_call_target();
-  if (target == kCudnnConvForwardCallTarget) {
-    input_shape = instr->operand(0)->shape();
-    filter_shape = instr->operand(1)->shape();
-    output_shape = instr->shape().tuple_shapes(0);
-  } else if (target == kCudnnConvBackwardInputCallTarget) {
-    input_shape = instr->shape().tuple_shapes(0);
-    filter_shape = instr->operand(1)->shape();
-    output_shape = instr->operand(0)->shape();
-  } else if (target == kCudnnConvBackwardFilterCallTarget) {
-    input_shape = instr->operand(0)->shape();
-    filter_shape = instr->shape().tuple_shapes(0);
-    output_shape = instr->operand(1)->shape();
-  } else {
-    LOG(FATAL) << "Unexpected custom call target: "
-               << instr->custom_call_target();
+    HloCustomCallInstruction* instr, LayoutConstraints* constraints) {
+  Shape lhs_shape = instr->operand(0)->shape();
+  Shape rhs_shape = instr->operand(1)->shape();
+  Shape result_shape = instr->shape().tuple_shapes(0);
+
+  Shape* input_shape;
+  Shape* filter_shape;
+  Shape* output_shape;
+
+  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instr));
+  switch (kind) {
+    case CudnnConvKind::kForward:
+      input_shape = &lhs_shape;
+      filter_shape = &rhs_shape;
+      output_shape = &result_shape;
+      break;
+    case CudnnConvKind::kBackwardInput:
+      input_shape = &result_shape;
+      filter_shape = &rhs_shape;
+      output_shape = &lhs_shape;
+      break;
+    case CudnnConvKind::kBackwardFilter:
+      input_shape = &lhs_shape;
+      filter_shape = &result_shape;
+      output_shape = &rhs_shape;
+      break;
   }
 
   {
@@ -127,8 +134,9 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     }
 
     TF_ASSIGN_OR_RETURN(
-        std::tie(*input_shape.mutable_layout(), *filter_shape.mutable_layout(),
-                 *output_shape.mutable_layout()),
+        std::tie(*input_shape->mutable_layout(),
+                 *filter_shape->mutable_layout(),
+                 *output_shape->mutable_layout()),
         StreamExecutorConvLayoutsToXlaLayouts(
             instr->convolution_dimension_numbers(), input, filter, output));
   }
@@ -141,25 +149,10 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
                           instr, /*index=*/{0}));
 
   // Set layouts of the instructions' shapes.
-  if (target == kCudnnConvForwardCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(input_shape, instr, 0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(filter_shape, instr, 1));
-    TF_RETURN_IF_ERROR(
-        constraints->SetBufferLayout(output_shape.layout(), *call_result_buf));
-  } else if (target == kCudnnConvBackwardInputCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(output_shape, instr, 0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(filter_shape, instr, 1));
-    TF_RETURN_IF_ERROR(
-        constraints->SetBufferLayout(input_shape.layout(), *call_result_buf));
-  } else if (target == kCudnnConvBackwardFilterCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(input_shape, instr, 0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(output_shape, instr, 1));
-    TF_RETURN_IF_ERROR(
-        constraints->SetBufferLayout(filter_shape.layout(), *call_result_buf));
-  } else {
-    LOG(FATAL) << "Unexpected custom call target: "
-               << instr->custom_call_target();
-  }
+  TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, instr, 0));
+  TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, instr, 1));
+  TF_RETURN_IF_ERROR(
+      constraints->SetBufferLayout(result_shape.layout(), *call_result_buf));
   return Status::OK();
 }
 
@@ -173,8 +166,8 @@ Status GpuLayoutAssignment::AddBackendConstraints(
        ++iterator) {
     HloInstruction* instruction = *iterator;
     if (IsCustomCallToDnnConvolution(*instruction)) {
-      TF_RETURN_IF_ERROR(
-          AddBackendConstraintsToDnnConvCustomCall(instruction, constraints));
+      TF_RETURN_IF_ERROR(AddBackendConstraintsToDnnConvCustomCall(
+          Cast<HloCustomCallInstruction>(instruction), constraints));
     }
 
     // For batched dot we require the default layout.

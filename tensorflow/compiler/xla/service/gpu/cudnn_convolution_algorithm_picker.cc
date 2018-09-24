@@ -146,19 +146,11 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
 // caching would speed up compilation a lot.
 StatusOr<std::tuple<int64, bool, int64>>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
-    const HloCustomCallInstruction* instr) {
-  CudnnConvParams params;
-  TF_RETURN_IF_ERROR(PopulateCudnnConvParams(instr, &params));
-
-  const Shape& input_shape = *params.input_shape;
-  const Shape& filter_shape = *params.filter_shape;
-  const Shape& output_shape = *params.output_shape;
-
-  CHECK_EQ(input_shape.element_type(), filter_shape.element_type());
-  CHECK_EQ(input_shape.element_type(), output_shape.element_type());
+    HloCustomCallInstruction* instr) {
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
   // with some work on the HLO routines.
-  const bool cross_check_enabled = input_shape.element_type() == xla::F16;
+  const bool cross_check_enabled =
+      instr->shape().tuple_shapes(0).element_type() == xla::F16;
 
   // Don't run this function concurrently on the same GPU.
   //
@@ -226,48 +218,43 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   // use a ScratchAllocator for this instead of calling allocator_ directly so
   // that our allocations don't leak.
   ScratchAllocator input_output_allocator(device_ordinal, allocator);
-  TF_ASSIGN_OR_RETURN(params.input_buf,
-                      input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(input_shape)));
-  TF_ASSIGN_OR_RETURN(params.filter_buf,
-                      input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(filter_shape)));
-  TF_ASSIGN_OR_RETURN(params.output_buf,
-                      input_output_allocator.AllocateBytes(
-                          &stream, ShapeUtil::ByteSizeOf(output_shape)));
-
-  initialize_buffer(params.input_buf);
-  initialize_buffer(params.filter_buf);
-  initialize_buffer(params.output_buf);
-
-  DeviceMemoryBase* result_buf = [&] {
-    switch (params.kind) {
-      case CudnnConvKind::kBackwardFilter:
-        return &params.filter_buf;
-      case CudnnConvKind::kBackwardInput:
-        return &params.input_buf;
-      case CudnnConvKind::kForward:
-        return &params.output_buf;
-    }
-  }();
+  std::vector<se::DeviceMemoryBase> operand_buffers;
+  for (const auto* operand : instr->operands()) {
+    TF_ASSIGN_OR_RETURN(auto buffer,
+                        input_output_allocator.AllocateBytes(
+                            &stream, ShapeUtil::ByteSizeOf(operand->shape())));
+    initialize_buffer(buffer);
+    operand_buffers.push_back(buffer);
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto result_buffer,
+      input_output_allocator.AllocateBytes(
+          &stream, ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
+  initialize_buffer(result_buffer);
 
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      instr->backend_config<CudnnConvBackendConfig>());
 
   optional<F16BufferComparator> comparator;
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm sufficies. It doesn't make
   // this algorithm considered correct, though.
   optional<AlgorithmDesc> first_algorithm;
-  for (const AlgorithmDesc& alg : GetAlgorithms(params.kind, stream_exec_)) {
+  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
+  for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    params.algorithm = AlgorithmConfig(alg);
-    bool launch_ok = RunCudnnConvolution(params, &scratch_allocator, &stream,
-                                         &profile_result)
+    backend_config.set_algorithm(alg.algo_id());
+    backend_config.set_tensor_ops_enabled(alg.tensor_ops_enabled());
+    TF_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
+    bool launch_ok = RunCudnnConvolution(instr, absl::MakeSpan(operand_buffers),
+                                         result_buffer, &scratch_allocator,
+                                         &stream, &profile_result)
                          .ok();
 
     if (launch_ok && profile_result.is_valid()) {
@@ -278,7 +265,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
               .xla_gpu_crash_on_verification_failures();
       if (comparator.has_value()) {
         StatusOr<bool> result = comparator->CompareEqual(
-            se::DeviceMemory<Eigen::half>(*result_buf));
+            se::DeviceMemory<Eigen::half>(result_buffer));
         if (!result.ok()) {
           LOG(ERROR) << "Unable to compare "
                      << AlgorithmToString(*first_algorithm) << " against "
@@ -296,7 +283,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
         }
       } else if (cross_check_enabled) {
         auto comp = F16BufferComparator::Create(
-            se::DeviceMemory<Eigen::half>(*result_buf), compiler_, allocator,
+            se::DeviceMemory<Eigen::half>(result_buffer), compiler_, allocator,
             &stream);
         if (comp.ok()) {
           comparator.emplace(comp.ConsumeValueOrDie());
@@ -370,7 +357,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
       ShapeUtil::MakeTupleShape({instr->shape().tuple_shapes(0),
                                  ShapeUtil::MakeShape(U8, {scratch_bytes})});
 
-  CudnnConvBackendConfig backend_config;
+  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
+                      instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(algorithm);
   backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
 
