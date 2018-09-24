@@ -688,6 +688,7 @@ class Nadam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.TFOptimizer')
 class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
   """Wrapper class for native TensorFlow optimizers.
   """
