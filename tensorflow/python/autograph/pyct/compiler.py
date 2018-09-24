@@ -108,7 +108,7 @@ def ast_to_object(nodes,
       indices = (-1,)
 
     if include_source_map:
-      source_map = origin_info.source_map(nodes, source, f.name, indices)
+      source_map = origin_info.create_source_map(nodes, source, f.name, indices)
 
   # TODO(mdan): Try flush() and delete=False instead.
   if delete_on_exit:
