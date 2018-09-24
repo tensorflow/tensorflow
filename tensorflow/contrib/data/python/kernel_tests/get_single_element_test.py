@@ -121,9 +121,9 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       value = sess.run(element, feed_dict={stop_t: stop})
       if stop == 0:
-          self.assertEqual(0.0, value)
+        self.assertEqual(0.0, value)
       else:
-          self.assertEqual(stop * (stop - 1) / (2 * stop), value)
+        self.assertEqual(stop * (stop - 1) / (2 * stop), value)
 
 
 if __name__ == "__main__":

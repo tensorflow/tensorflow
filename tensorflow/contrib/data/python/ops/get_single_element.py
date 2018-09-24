@@ -93,7 +93,7 @@ def reduce_dataset(dataset, reducer):
   # The sentinel dataset is used in case the reduced dataset is empty.
   initial_state = reducer.init_func(np.int64(0))
   if not isinstance(initial_state, tuple):
-      initial_state = (initial_state,)
+    initial_state = (initial_state,)
   sentinel_dataset = dataset_ops.Dataset.from_tensors(
       reducer.finalize_func(*initial_state))
   reduced_dataset = dataset.apply(
