@@ -67,3 +67,8 @@ build -c opt
 
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
+
+# Default paths for TF_SYSTEM_LIBS
+build --define=PREFIX=/usr
+build --define=LIBDIR=$(PREFIX)/lib
+build --define=INCLUDEDIR=$(PREFIX)/include
