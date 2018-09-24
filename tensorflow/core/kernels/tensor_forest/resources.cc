@@ -78,115 +78,117 @@ void TensorForestTreeResource::SplitNode(const int32 node,
         best->left_leaf_stats().counts_or_sums().value(i));
   }
   new_children->push_back(decision_tree_->nodes_size());
-}
+};
 
 bool TensorForestFertileStatsResource::InitFromSerialized(
     const string& serialized) {
   return ParseProtoUnlimited(fertile_stats_, serialized);
-}
+};
+
 void TensorForestFertileStatsResource::Reset() {
   arena_.Reset();
   CHECK_EQ(0, arena_.SpaceAllocated());
   fertile_stats_ =
       protobuf::Arena::CreateMessage<tensor_forest::FertileStats>(&arena_);
-}
+};
 
 const bool TensorForestFertileStatsResource::IsSlotInitialized(
     const int32 node_id, const int32 splits_to_consider) const {
   if (fertile_stats_->node_to_slot().count(node_id) > 0) {
     auto slot = fertile_stats_->node_to_slot().at(node_id);
-    return slot.post_init_leaf_stats().weight_sum() > splits_to_consider;
+    return slot.leaf_stats().weight_sum() > 0 &&
+           slot.candidate_size() > splits_to_consider;
   } else {
     return false;
   }
-}
+};
 
 const bool TensorForestFertileStatsResource::IsSlotFinished(
     const int32 node_id, const int32 split_nodes_after_samples,
     const int32 splits_to_consider) const {
   if (IsSlotInitialized(node_id, splits_to_consider)) {
     auto slot = fertile_stats_->node_to_slot().at(node_id);
-    return slot.post_init_leaf_stats().weight_sum() > split_nodes_after_samples;
+    return slot.leaf_stats().weight_sum() > split_nodes_after_samples;
   }
   return false;
-}
+};
 
 void TensorForestFertileStatsResource::UpdateSlotStats(
     const bool is_regression, const int32 node_id, const int32 example_id,
     const int32 num_targets, const TTypes<float>::ConstMatrix* dense_feature,
     const TTypes<float>::ConstMatrix* labels) {
+  float incoming_weight = 1.0;
   auto slot = fertile_stats_->node_to_slot().at(node_id);
-  slot.mutable_leaf_stats()->set_weight_sum(slot.leaf_stats().weight_sum() + 1);
-  slot.mutable_post_init_leaf_stats()->set_weight_sum(
-      slot.post_init_leaf_stats().weight_sum() + 1);
 
-  for (int i = 0; i < num_targets; i++) {
-    auto label = (*labels)(example_id, i);
-    /*if (is_regression) {
-    slot.mutable_leaf_stats()->mutable_couts_or_sums().set_value(
-        i, slot.leaf_stats()->counts_or_sums().value(i) + label);
-    }else{}
-    */
-    slot.mutable_leaf_stats()->mutable_counts_or_sums()->set_value(
-        label, slot.leaf_stats().counts_or_sums().value(label) + 1);
+  auto label = (*labels)(example_id, 0);
+  float old_total_weight = slot.leaf_stats().counts_or_sums().value(label);
 
-    for (auto candidate : slot.candidates()) {
-      /* if (is_regression) {
-        if (candidate.split().threshold() >=
-            (*dense_feature)(example_id, candidate.split().feature_id())) {
-          candidate.mutable_left_split_stats()->mutable_sum()->set_value(
-              i, candidate.left_split_stats().sum().value(i) + label);
-        };
-        slot.mutable_post_init_leaf_stats()->set_weight_sum(
-            slot.post_init_leaf_stats().weight_sum() + 1);
-      } else {
+  slot.mutable_leaf_stats()->set_weight_sum(incoming_weight +
+                                            slot->leaf_stats()->weight_sum());
+  slot.mutable_leaf_stats()->mutable_counts_or_sums()->set_value(
+      label, old_total_weight + incoming_weight);
 
-      }
-      */
-      if (candidate.split().threshold() >=
-          (*dense_feature)(example_id, candidate.split().feature_id())) {
-        candidate.mutable_left_split_stats()->mutable_sum()->set_value(
-            label, candidate.left_split_stats().sum().value(label) + 1);
+  for (auto candidate : slot.candidates()) {
+    float old_left_weight =
+        candidate.left_leaf_stats().counts_or_sums().value(label);
 
-        float incoming_weight = 1.0;
-        float weight =
-            candidate.left_leaf_stats().counts_or_sums().value(label);
+    if ((*dense_feature)(example_id, candidate.split().feature_id()) >=
+        candidate.split().threshold()) {
+      candidate.mutable_left_split_stats()->mutable_sum()->set_value(
+          label,
+          candidate.left_split_stats().sum().value(label) + incoming_weight);
 
-        float new_weight = weight + incoming_weight;
+      float new_weight = old_left_weight + incoming_weight;
 
-        candidate.mutable_left_leaf_stats()
-            ->mutable_counts_or_sums()
-            ->set_value(label, new_weight);
+      candidate.mutable_left_split_stats()->mutable_sum_of_square()->set_value(
+          0, candidate.left_split_stats().sum_of_square().value(0) -
+                 old_left_weight * old_left_weight + new_weight * new_weight);
 
-        candidate.mutable_left_split_stats()
-            ->mutable_sum_of_square()
-            ->set_value(0,
-                        candidate.left_split_stats().sum_of_square().value(0) -
-                            weight * weight + new_weight * new_weight);
-      } else {
-        float weight =
-            slot.post_init_leaf_stats().counts_or_sums().value(label) -
-            candidate.left_leaf_stats().counts_or_sums().value(label);
-        float new_weight = weight + 1;
-        candidate.mutable_right_split_stats()
-            ->mutable_sum_of_square()
-            ->set_value(0,
-                        candidate.left_split_stats().sum_of_square().value(0) -
-                            weight * weight + new_weight * new_weight);
-      };
+      candidate.mutable_left_leaf_stats()->set_weight_sum(
+          incoming_weight + candidate.left_leaf_stats().weight_sum());
+
+      candidate.mutable_left_leaf_stats()->mutable_counts_or_sums()->set_value(
+          label, new_weight);
+
+    } else {
+      float old_right_weight = old_total_weight - old_left_weight;
+
+      candidate.mutable_right_split_stats()->mutable_sum()->set_value(
+          label,
+          candidate.right_split_stats().sum().value(label) + incoming_weight);
+
+      float new_weight = old_right_weight + incoming_weight;
+
+      candidate.mutable_right_split_stats()->mutable_sum_of_square()->set_value(
+          0, candidate.right_split_stats().sum_of_square().value(0) -
+                 old_right_weight * old_right_weight + new_weight * new_weight);
     }
   }
 };
 
-void TensorForestFertileStatsResource::GiniOfSlot(const int32 node_id,
-                                                  const int32 split_id,
-                                                  float* left_gini,
-                                                  float* right_gini) {
+const bool TensorForestFertileStatsResource::BestSplitFromSlot(
+    const int32 node_id, tensor_forest::FertileSlot* slot,
+    tensor_forest::SplitCandidate* best) {
   auto slot = fertile_stats_->node_to_slot().at(node_id);
-  auto candidate = slot.candidates[split_id];
-  left_gini = 1 - candidate.left_split_stats();
-  right_gini = 1 - candidate.right_split_stats();
+  float min_score = FLT_MAX;
+  for (auto candidate : slot.candidates()) {
+    float left_gini =
+        1 - candidate.left_split_stats().sum_of_square().value(0) /
+                (candidate.left_split_stats().sum() *
+                 candidate.left_split_stats().sum());
+    float right_gini =
+        1 - candidate.right_split_stats().sum_of_square().value(0) /
+                (candidate.right_split_stats().sum() *
+                 candidate.right_split_stats().sum());
+
+    if (left_sum > 0 && right_sum > 0 && left_gini + right_gini < min_score) {
+      min_score = left_gini + right_gini;
+      best = &candidate;
+    }
+  }
+  return min_score != FLT_MAX;
 }
+
 const bool TensorForestFertileStatsResource::AddSplitToSlot(
     const int32 node_id, const int32 feature_id, const float threshold,
     const int32 example_id, const int32 num_targets,
@@ -215,41 +217,4 @@ const bool TensorForestFertileStatsResource::AddSplitToSlot(
   }
 };
 
-const bool BestSplitFromSlot(const int32 node_id,
-                             tensor_forest::FertileSlot* slot,
-                             tensor_forest::SplitCandidate* best) {
-  slot = fertile_stats_->node_to_slot().at(node_id);
-  float min_score = FLT_MAX;
-  int best_index = -1;
-  float best_left_sum, best_right_sum;
-
-  // Calculate sums.
-  for (int i = 0; i < num_splits(); ++i) {
-    float left_sum, right_sum;
-    GiniOfSlot(slot, i, &left_sum, &right_sum);
-    // Find the lowest gini.
-    if (left_sum > 0 && right_sum > 0 &&
-        split_score < min_score) {  // useless check
-      min_score = split_score;
-      best_index = i;
-      best_left_sum = left_sum;
-      best_right_sum = right_sum;
-    }
-  }
-
-  // This could happen if all the splits are useless.
-  if (best_index < 0) {
-    return false;
-  }
-
-  // Fill in stats to be used for leaf model.
-  *best->mutable_split() = splits_[best_index];
-  auto* left = best->mutable_left_stats();
-  left->set_weight_sum(best_left_sum);
-  auto* right = best->mutable_right_stats();
-  right->set_weight_sum(best_right_sum);
-  InitLeafClassStats(best_index, left, right);
-
-  return true;
-}
 }  // namespace tensorflow

@@ -29,8 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Op for traversing the tree with each example, accumulating statistics, and
-// outputting node ids that are ready to split.
 class TensorForestTraverseTreeOp : public OpKernel {
  public:
   explicit TensorForestTraverseTreeOp(OpKernelConstruction* context)
@@ -54,7 +52,7 @@ class TensorForestTraverseTreeOp : public OpKernel {
                                                      &output_predictions));
     auto out = output_predictions->matrix<int32>();
 
-    if (decision_tree_resource->GetSize() <= 0) {
+    if (decision_tree_resource->GetSize() <= 1) {
       out.setZero();
       return;
     }
@@ -82,10 +80,10 @@ class TensorForestProcessInputOp : public OpKernel {
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("random_seed", &random_seed_));
     OP_REQUIRES_OK(context, context->GetAttr("is_regression", &is_regression_));
-    OP_REQUIRES_OK(context, context->GetAttr("split_node_after_sample",
-                                             &split_node_after_sample_));
-    OP_REQUIRES_OK(
-        context, context->GetAttr("splits_to_consider", &splits_to_consider_));
+    OP_REQUIRES_OK(context, context->GetAttr("split_node_after_samples",
+                                             &split_node_after_samples_));
+    OP_REQUIRES_OK(context, context->GetAttr("num_splits_to_consider",
+                                             &num_splits_to_consider_));
     // Set up the random number generator.
     if (random_seed_ == 0) {
       single_rand_ = std::unique_ptr<random::PhiloxRandom>(
@@ -100,12 +98,13 @@ class TensorForestProcessInputOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const Tensor* dense_features_ = nullptr;
-    OP_REQUIRES_OK(context, context->input("dense_features", &dense_features_));
-    const Tensor* labels_ = nullptr;
-    OP_REQUIRES_OK(context, context->input("labels", &labels_));
-    const Tensor* leaf_ids_ = nullptr;
-    OP_REQUIRES_OK(context, context->input("leaf_ids", &leaf_ids_));
+    const Tensor* dense_features_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->input("dense_features", &dense_features_t));
+    const Tensor* labels_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("labels", &labels_t));
+    const Tensor* leaf_ids_t = nullptr;
+    OP_REQUIRES_OK(context, context->input("leaf_ids", &leaf_ids_t));
 
     TensorForestFertileStatsResource* fertile_stats_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
@@ -114,11 +113,11 @@ class TensorForestProcessInputOp : public OpKernel {
     mutex_lock l(*fertile_stats_resource->get_mutex());
     core::ScopedUnref unref_me(fertile_stats_resource);
 
-    const auto data_set = dense_features_->matrix<float>();
-    const auto labels = labels_->matrix<float>();
-    const auto leaf_ids = leaf_ids_->matrix<float>();
-    const int32 batch_size = dense_features_->dim_size(0);
-    number_of_total_feature_ = dense_features_->dim_size(1);
+    const auto dense_features = dense_features_t->matrix<float>();
+    const auto labels = labels_t->matrix<float>();
+    const auto leaf_ids = leaf_ids_t->matrix<float>();
+    const int32 batch_size = dense_features_t->dim_size(0);
+    number_of_total_feature_ = dense_features_t->dim_size(1);
 
     // Create one mutex per leaf. We need to protect access to leaf pointers,
     // so instead of grouping examples by leaf, we spread examples out among
@@ -134,9 +133,9 @@ class TensorForestProcessInputOp : public OpKernel {
     }
 
     const int32 label_dim =
-        labels_->shape().dims() <= 1
+        labels_t->shape().dims() <= 1
             ? 0
-            : static_cast<int>(labels_->shape().dim_size(1));
+            : static_cast<int>(labels_t->shape().dim_size(1));
     const int32 num_targets = is_regression_ ? (std::max(1, label_dim)) : 1;
 
     // Ids of leaves that can split.
@@ -150,30 +149,31 @@ class TensorForestProcessInputOp : public OpKernel {
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.
     const int64 costPerUpdate = 1000;
-    auto update = [this, &labels, &leaf_ids, &num_targets, &data_set,
+    auto update = [this, &labels, &leaf_ids, &num_targets, &dense_features,
                    fertile_stats_resource, &locks, &set_lock,
                    &ready_to_split](int64 start, int64 end) {
       // Stores leaf_id, example_id for examples that are waiting
       // on another to finish.
       std::queue<std::tuple<int32, int32>> waiting;
+
       for (int example_id = start; example_id < end; example_id++) {
         const int32 leaf_id = leaf_ids(example_id);
-        AddExample(is_regression_, num_targets, &locks, leaf_id, example_id,
-                   &data_set, &labels, waiting, fertile_stats_resource);
+        AddExample(num_targets, leaf_id, example_id, &dense_features, &labels,
+                   &locks, &waiting, fertile_stats_resource);
       }
 
       while (!waiting.empty()) {
         int32 leaf_id, example_id;
         std::tie(leaf_id, example_id) = waiting.front();
         waiting.pop();
-        AddExample(is_regression_, num_targets, &locks, leaf_id, example_id,
-                   &data_set, &labels, waiting, fertile_stats_resource);
+        AddExample(num_targets, leaf_id, example_id, &dense_features, &labels,
+                   &locks, &waiting, fertile_stats_resource);
       }
 
       for (int example_id = start; example_id < end; example_id++) {
         const int32 leaf_id = leaf_ids(example_id);
         if (fertile_stats_resource->IsSlotFinished(
-                leaf_id, split_node_after_sample_, splits_to_consider_)) {
+                leaf_id, split_node_after_samples_, num_splits_to_consider_)) {
           set_lock.lock();
           ready_to_split.insert(leaf_id);
           set_lock.unlock();
@@ -193,12 +193,12 @@ class TensorForestProcessInputOp : public OpKernel {
     std::copy(ready_to_split.begin(), ready_to_split.end(), output.data());
   };
 
-  void AddExample(const bool is_regression, const int32 num_targets,
-                  std::unordered_map<int, std::unique_ptr<mutex>>* locks,
-                  const int32 leaf_id, const int32 example_id,
-                  const TTypes<float>::ConstMatrix* dense_data,
+  void AddExample(const int32 num_targets, const int32 leaf_id,
+                  const int32 example_id,
+                  const TTypes<float>::ConstMatrix* dense_features,
                   const TTypes<float>::ConstMatrix* labels,
-                  std::queue<std::tuple<int32, int32>> waiting,
+                  std::unordered_map<int, std::unique_ptr<mutex>>* locks,
+                  std::queue<std::tuple<int32, int32>>* waiting,
                   TensorForestFertileStatsResource* fertile_stats_resource) {
     // Try to update a leaf's stats by acquiring its lock.  If it can't be
     // acquired, put it in a waiting queue to come back to later and try the
@@ -207,33 +207,33 @@ class TensorForestProcessInputOp : public OpKernel {
     const std::unique_ptr<mutex>& leaf_lock = (*locks)[leaf_id];
     if (leaf_lock->try_lock()) {
       if (fertile_stats_resource->IsSlotInitialized(leaf_id,
-                                                    splits_to_consider_)) {
-        fertile_stats_resource->UpdateSlotStats(is_regression, leaf_id,
+                                                    num_splits_to_consider_)) {
+        fertile_stats_resource->UpdateSlotStats(is_regression_, leaf_id,
                                                 num_targets, example_id,
-                                                dense_data, labels);
+                                                dense_features, labels);
       } else {
         int32 feature_id;
         {
           mutex_lock lock(mu_);
           feature_id = rng_->Uniform(number_of_total_feature_);
         }
-        auto bias = (*dense_data)(example_id, feature_id);
+        auto bias = (*dense_features)(example_id, feature_id);
 
         fertile_stats_resource->AddSplitToSlot(leaf_id, feature_id, bias,
                                                example_id, num_targets,
-                                               dense_data, labels);
+                                               dense_features, labels);
       }
       leaf_lock->unlock();
     } else {
-      waiting.emplace(leaf_id, example_id);
+      waiting->emplace(leaf_id, example_id);
     }
   };
 
  private:
   int32 random_seed_;
   int32 number_of_total_feature_;
-  int32 splits_to_consider_;
-  int32 split_node_after_sample_;
+  int32 num_splits_to_consider_;
+  int32 split_node_after_samples_;
   bool is_regression_;
   // Mutex for using random number generator.
   mutable mutex mu_;
@@ -262,31 +262,31 @@ class TensorForestGrowTreeOp : public OpKernel {
     core::ScopedUnref unref_stats(fertile_stats_resource);
     core::ScopedUnref unref_tree(tree_resource);
 
-    const Tensor* finished_nodes_ = nullptr;
-    OP_REQUIRES_OK(context, context->input("finished_nodes", &finished_nodes_));
+    const Tensor* finished_nodes_t = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->input("finished_nodes", &finished_nodes_t));
 
-    auto finished = finished_nodes_->unaligned_flat<int32>();
+    auto finished = finished_nodes_t->unaligned_flat<int32>();
 
-    const int32 batch_size = finished_nodes_->dim_size(0);
+    const int32 batch_size = finished_nodes_t->dim_size(0);
 
     for (int32 i = 0; i < batch_size; i++) {
       auto node = finished(i);
+      auto slot = fertile_stats_resource->GetSlot(node);
       std::unique_ptr<tensor_forest::SplitCandidate> best_candidate(
           new tensor_forest::SplitCandidate);
-      std::unique_ptr<tensor_forest::FertileSlot> best_slot(
-          new tensor_forest::FertileSlot);
-      bool found = fertile_stats_resource->BestSplitFromSlot(
-          node, best_slot.get(), best_candidate.get());
+      bool found =
+          fertile_stats_resource->BestSplitFromSlot(slot, best_candidate.get());
       if (found) {
         std::vector<int32> new_children;
-        tree_resource->SplitNode(node, best_slot.get(), best_candidate.get(),
+        tree_resource->SplitNode(node, slot, best_candidate.get(),
                                  &new_children);
         for (auto new_node : new_children)
           fertile_stats_resource->Allocate(new_node);
         //
         // We are done with best, so it is now safe to clear node.
         fertile_stats_resource->Clear(node);
-        CHECK(tree_resource->NodeHasLeaf(node) == false)
+        DCHECK(tree_resource->NodeHasLeaf(node) == false)
             << "Node:" << node << " should have being splitted";
       } else {  // reset
         fertile_stats_resource->ResetSplitStats(node);
