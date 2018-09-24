@@ -41,7 +41,7 @@ class CondV2Test(test.TestCase):
   def _testCond(self, true_fn, false_fn, train_vals, feed_dict=None):
     if not feed_dict:
       feed_dict = {}
-    with self.test_session(graph=ops.get_default_graph()) as sess:
+    with self.session(graph=ops.get_default_graph()) as sess:
       pred = array_ops.placeholder(dtypes.bool, name="pred")
 
       expected = control_flow_ops.cond(pred, true_fn, false_fn, name="expected")
@@ -382,7 +382,7 @@ class CondV2Test(test.TestCase):
 
     with ops.Graph().as_default():
       grads, pred_outer, pred_inner = build_graph()
-      with self.test_session(graph=ops.get_default_graph()) as sess:
+      with self.session(graph=ops.get_default_graph()) as sess:
         self.assertSequenceEqual(
             sess.run(grads, {
                 pred_outer: True,
@@ -445,7 +445,7 @@ class CondV2Test(test.TestCase):
 
     with ops.Graph().as_default():
       grads, pred_outer, pred_inner = build_graph()
-      with self.test_session(graph=ops.get_default_graph()) as sess:
+      with self.session(graph=ops.get_default_graph()) as sess:
         self.assertSequenceEqual(
             sess.run(grads, {
                 pred_outer: True,
@@ -504,7 +504,7 @@ class CondV2Test(test.TestCase):
 
     with ops.Graph().as_default():
       grads, pred_outer, pred_inner = build_graph()
-      with self.test_session(graph=ops.get_default_graph()) as sess:
+      with self.session(graph=ops.get_default_graph()) as sess:
         self.assertSequenceEqual(
             sess.run(grads, {
                 pred_outer: True,
@@ -574,7 +574,7 @@ class CondV2Test(test.TestCase):
       meta_graph = saver.export_meta_graph()
 
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         saver.import_meta_graph(meta_graph)
         x = ops.get_collection("x")[0]
         pred = ops.get_collection("pred")[0]
@@ -598,7 +598,7 @@ class CondV2Test(test.TestCase):
 
   def testLowering(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         out_cond = self._createCond("cond")
 
         run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -624,7 +624,7 @@ class CondV2Test(test.TestCase):
                          "An `If` op was found, but it should be lowered.")
 
   def testLoweringDisabledInXLA(self):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       # Build the cond_v2 in an XLA context
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
@@ -661,7 +661,7 @@ class CondV2CollectionTest(test.TestCase):
   def testCollectionIntValueAccessInCond(self):
     """Read values from graph collections inside of cond_v2."""
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = 2
         y = 5
         ops.add_to_collection("x", x)
@@ -677,7 +677,7 @@ class CondV2CollectionTest(test.TestCase):
   def testCollectionTensorValueAccessInCond(self):
     """Read tensors from collections inside of cond_v2 & use them."""
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = constant_op.constant(2)
         y = constant_op.constant(5)
         ops.add_to_collection("x", x)
@@ -694,7 +694,7 @@ class CondV2CollectionTest(test.TestCase):
   def testCollectionIntValueWriteInCond(self):
     """Make sure Int writes to collections work inside of cond_v2."""
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         x = constant_op.constant(2)
         y = constant_op.constant(5)
         def true_fn():
@@ -725,7 +725,7 @@ class CondV2ContainerTest(test.TestCase):
     """
     self.skipTest("b/113048653")
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
 
         v0 = variables.Variable([0])
         q0 = data_flow_ops.FIFOQueue(1, dtypes.float32)
@@ -802,7 +802,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testColocateWithBeforeCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
 
         a = constant_op.constant([2.0], name="a")
         b = constant_op.constant([2.0], name="b")
@@ -826,7 +826,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testColocateWithInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
 
         a = constant_op.constant([2.0], name="a")
         b = constant_op.constant([2.0], name="b")
@@ -873,7 +873,8 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceBeforeCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g):
+      with self.session(graph=g):
+
         def fn():
           c = constant_op.constant(3.0)
           self.assertEqual("/device:CPU:0", c.op.device)

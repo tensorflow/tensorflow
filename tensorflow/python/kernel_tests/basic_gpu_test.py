@@ -260,7 +260,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
     threads = []
     results = []
     for _ in xrange(n_threads):
-      session = self.test_session(graph=ops.Graph(), use_gpu=True)
+      session = self.session(graph=ops.Graph(), use_gpu=True)
       results.append(set())
       args = (session, results[-1])
       threads.append(threading.Thread(target=self._run_session, args=args))

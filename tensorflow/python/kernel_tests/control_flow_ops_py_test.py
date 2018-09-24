@@ -1783,7 +1783,7 @@ class ControlFlowTest(test.TestCase):
       else:
         self.assertFalse(gpu_dev_name in dev)
 
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       self.assertAllClose(1024.0, sess.run(r))
 
   def testWhileGrad_ColocateGradients(self):
