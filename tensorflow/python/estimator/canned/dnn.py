@@ -42,7 +42,7 @@ _LEARNING_RATE = 0.05
 
 
 _BatchNormOptions = collections.namedtuple(
-    'BatchNormOptions', ['apply_before_activation', 'momentum']))
+    'BatchNormOptions', ['apply_before_activation', 'momentum'])
 
 
 def experimental_batch_norm_options(
