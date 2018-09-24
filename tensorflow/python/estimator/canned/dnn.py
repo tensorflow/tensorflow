@@ -123,14 +123,14 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
               units=num_hidden_units,
               activation=None,
               kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=hidden_layer_scope + "_input")
+              name=hidden_layer_scope)
           net = normalization.batch_normalization(
               net,
               momentum=batch_norm.momentum,
               training=is_training,
               name='batchnorm_%d' % layer_id)
           if activation_fn is not None:
-            net = activation_fn(net, name=hidden_layer_scope)
+            net = activation_fn(net, name='hiddenlayer_%d_output' % layer_id)
         else:
           net = core_layers.dense(
               net,
