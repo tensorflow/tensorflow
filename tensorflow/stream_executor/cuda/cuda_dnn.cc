@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
+#include "tensorflow/stream_executor/lib/mathutil.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
@@ -2406,6 +2407,33 @@ cudnnDataType_t GetRnnComputeType(dnn::DataType data_type) {
   }
 }
 
+// Determines whether we can safely perform a winograd non-fused convolution for
+// the given input and output shapes.  This works around b/68264959, an integer
+// overflow in cuDNNv5 and cuDNNv6.
+#if CUDNN_VERSION >= 7000
+bool ShouldIncludeWinogradNonfusedAlgo(const dnn::BatchDescriptor&,
+                                       const dnn::BatchDescriptor&) {
+  return true;
+}
+#else
+bool ShouldIncludeWinogradNonfusedAlgo(
+    const dnn::BatchDescriptor& input_desc,
+    const dnn::BatchDescriptor& output_desc) {
+  int64 batch = input_desc.count();
+  int64 in_depths = input_desc.feature_map_count();
+  int64 in_rows = input_desc.height();
+  int64 in_cols = input_desc.ndims() == 1 ? 1 : input_desc.width();
+  int64 out_depths = output_desc.feature_map_count();
+
+  int64 total_size = port::MathUtil::CeilOfRatio(batch, int64{16}) *
+                     std::max(in_depths, out_depths) * in_cols * in_rows *
+                     sizeof(float);
+
+  const int64 threshold = 1L << 31;
+  return total_size < threshold;
+}
+#endif
+
 }  // namespace
 
 template <class T>
@@ -2483,6 +2511,13 @@ port::Status CudnnSupport::DoConvolveImpl(
                                    output_descriptor.feature_map_count()));
     return port::Status::OK();
   }());
+
+  if (algo_desc.algo_id() == CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+      !ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor)) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "This configuration has potential integer overflow in "
+                        "cuDNNv5 and cuDNNv6. See b/68264959.");
+  }
 
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionForward(
       cudnn.handle(),
@@ -2587,6 +2622,14 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
           << "\nactivation_desc.handle() = " << activation_desc.handle()
           << "\noutput_nd.handle() = " << output_nd.handle()
           << "\noutput_data->opaque() = " << output_data->opaque();
+
+  if (algo_desc.algo_id() == CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+      !ShouldIncludeWinogradNonfusedAlgo(conv_input_descriptor,
+                                         output_descriptor)) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "This configuration has potential integer overflow in "
+                        "cuDNNv5 and cuDNNv6. See around b/68264959.");
+  }
 
   RETURN_IF_CUDNN_ERROR(cudnnConvolutionBiasActivationForward(
       cudnn.handle(),
@@ -3114,6 +3157,13 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
     }
   }
 
+  if (algo_desc.algo_id() == CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+      !ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor)) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "This configuration has potential integer overflow in "
+                        "cuDNNv5 and cuDNNv6. See b/68264959.");
+  }
+
   // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
   // zero-initialized, nvbugs/2254619.
   if (CUDNN_VERSION >= 7000 &&
@@ -3292,6 +3342,13 @@ port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
         port::error::FAILED_PRECONDITION,
         "This configuration potentially produces incorrect results.");
   }());
+
+  if (algo_desc.algo_id() == CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED &&
+      !ShouldIncludeWinogradNonfusedAlgo(input_descriptor, output_descriptor)) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "This configuration has potential integer overflow in "
+                        "cuDNNv5 and cuDNNv6. See b/68264959.");
+  }
 
   // Zero out the result buffer for strided conv backward filter for NHWC
   // layouts. cuDNN 7.1.4 and 7.2 has non-determinisic bug if the buffer is not

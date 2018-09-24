@@ -29388,6 +29388,38 @@ op {
   }
 }
 op {
+  name: "LowerBound"
+  input_arg {
+    name: "sorted_inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
@@ -38875,6 +38907,30 @@ op {
     type: "int"
     default_value {
       i: 3
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "PrintV2"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  attr {
+    name: "output_stream"
+    type: "string"
+    default_value {
+      s: "stderr"
+    }
+    allowed_values {
+      list {
+        s: "stdout"
+        s: "stderr"
+        s: "log(info)"
+        s: "log(warning)"
+        s: "log(error)"
+      }
     }
   }
   is_stateful: true
@@ -70188,6 +70244,43 @@ op {
   }
 }
 op {
+  name: "StringFormat"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "template"
+    type: "string"
+    default_value {
+      s: "%s"
+    }
+  }
+  attr {
+    name: "placeholder"
+    type: "string"
+    default_value {
+      s: "%s"
+    }
+  }
+  attr {
+    name: "summarize"
+    type: "int"
+    default_value {
+      i: 3
+    }
+  }
+}
+op {
   name: "StringJoin"
   input_arg {
     name: "inputs"
@@ -75265,6 +75358,38 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "UpperBound"
+  input_arg {
+    name: "sorted_inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "VarHandleOp"

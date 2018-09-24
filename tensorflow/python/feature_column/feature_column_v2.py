@@ -2045,14 +2045,6 @@ class DenseColumn(FeatureColumn):
     pass
 
 
-def is_feature_column_v2(feature_columns):
-  """Returns True if all feature columns are V2."""
-  for feature_column in feature_columns:
-    if not isinstance(feature_column, FeatureColumn):
-      return False
-  return True
-
-
 def _create_weighted_sum(column,
                          transformation_cache,
                          state_manager,
@@ -2790,12 +2782,6 @@ class SharedEmbeddingStateManager(Layer):
     return self._var_dict[name]
 
 
-def maybe_create_shared_state_manager(feature_columns):
-  if is_feature_column_v2(feature_columns):
-    return SharedEmbeddingStateManager()
-  return None
-
-
 class SharedEmbeddingColumn(
     DenseColumn, SequenceDenseColumn,
     collections.namedtuple(
@@ -3447,9 +3433,11 @@ def _safe_embedding_lookup_sparse(embedding_weights,
     raise ValueError('Missing embedding_weights %s.' % embedding_weights)
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
-  embedding_weights = [
-      ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
-  ]
+  if not isinstance(embedding_weights[0],
+                    resource_variable_ops.ResourceVariable):
+    embedding_weights = [
+        ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
+    ]
 
   with ops.name_scope(name, 'embedding_lookup',
                       embedding_weights + [sparse_ids,

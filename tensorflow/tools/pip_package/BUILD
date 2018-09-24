@@ -62,6 +62,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph:autograph",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+    "//tensorflow/contrib/compiler:xla",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
     "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",

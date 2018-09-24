@@ -163,6 +163,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
 
+  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
+  BufferAllocation::Slice GetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
+    return assignment_.GetUniqueSlice(&hlo, index).ConsumeValueOrDie();
+  }
+
  private:
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);

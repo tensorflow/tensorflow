@@ -51,6 +51,10 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
     "if_mkl_ml",
@@ -637,6 +641,7 @@ cc_library(
         ":reshape_op",
         ":reverse_op",
         ":reverse_sequence_op",
+        ":searchsorted_op",
         ":shape_ops",
         ":slice_op",
         ":snapshot_op",
@@ -867,6 +872,12 @@ tf_kernel_library(
     gpu_srcs = ["cuda_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "searchsorted_op",
+    prefix = "searchsorted_op",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -1106,7 +1117,7 @@ tf_cuda_cc_test(
     name = "depthwise_conv_ops_test",
     size = "small",
     srcs = ["depthwise_conv_ops_test.cc"],
-    tags = ["requires-gpu-sm35"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":conv_ops",
         ":image",
@@ -2703,6 +2714,7 @@ cc_library(
 )
 
 LOGGING_DEPS = [
+    "@com_google_absl//absl/strings",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -2760,6 +2772,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -4397,6 +4410,7 @@ cc_library(
         ":reduce_join_op",
         ":regex_full_match_op",
         ":regex_replace_op",
+        ":string_format_op",
         ":string_join_op",
         ":string_length_op",
         ":string_split_op",
@@ -4425,6 +4439,30 @@ tf_kernel_library(
     name = "reduce_join_op",
     prefix = "reduce_join_op",
     deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "string_format_op",
+    prefix = "string_format_op",
+    deps = STRING_DEPS + ["@com_google_absl//absl/strings"],
+)
+
+tf_cc_test(
+    name = "string_format_op_test",
+    size = "small",
+    srcs = ["string_format_op_test.cc"],
+    deps = [
+        ":string_format_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+    ],
 )
 
 tf_kernel_library(

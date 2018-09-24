@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -54,6 +55,24 @@ XLA_MAKE_BINARY(Div, xla::Div(lhs, rhs, extend_dimensions));
 
 XLA_MAKE_BINARY(Atan2, xla::Atan2(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
+
+// Implementation of DivNoNan. Pseudo-code:
+// if (y == 0) {
+//   return 0
+// } else {
+//   return x / y;
+// }
+static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto y_equals_0 = xla::Eq(y, zero);
+  auto zeros = xla::ZerosLike(x);
+  auto result = xla::Select(y_equals_0, zeros, xla::Div(x, y));
+  return result;
+}
+XLA_MAKE_BINARY(DivNoNan,
+                DivNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
 // Implementation of FloorDiv. Pseudo-code:
 // if ((x < 0) != (y < 0)) {

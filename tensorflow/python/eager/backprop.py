@@ -608,8 +608,9 @@ def _ones(shape, dtype):
 _default_vspace = imperative_grad.VSpace(
     num_elements_fn=_num_elements,
     aggregate_fn=_aggregate_grads,
-    zeros=_zeros,
-    ones=_ones)
+    zeros_fn=_zeros,
+    ones_fn=_ones,
+    graph_shape_fn=gen_array_ops.shape)
 pywrap_tensorflow.TFE_Py_RegisterVSpace(_default_vspace)
 
 

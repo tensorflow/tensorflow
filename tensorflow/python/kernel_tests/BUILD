@@ -538,6 +538,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "logging_ops_logging_level_test",
+    size = "small",
+    srcs = ["logging_ops_logging_level_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:logging_ops",
+    ],
+    tags = [
+        "no_windows",
+    ],
+)
+
+tf_py_test(
     name = "logging_ops_test",
     size = "small",
     srcs = ["logging_ops_test.py"],
@@ -957,6 +972,19 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_py_test(
+    name = "string_format_op_test",
+    size = "small",
+    srcs = ["string_format_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:math_ops",
     ],
 )
 
@@ -3222,7 +3250,6 @@ tf_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:list_ops",
-        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:while_v2",
     ],

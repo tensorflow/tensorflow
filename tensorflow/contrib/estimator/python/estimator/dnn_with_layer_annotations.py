@@ -24,7 +24,6 @@ import pickle
 from google.protobuf.any_pb2 import Any
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import ops
@@ -68,7 +67,7 @@ def _to_any_wrapped_tensor_info(tensor):
   return any_buf
 
 
-def make_input_layer_with_layer_annotations(original_input_layer, mode):
+def make_input_layer_with_layer_annotations(original_input_layer):
   """Make an input_layer replacement function that adds layer annotations."""
 
   def input_layer_with_layer_annotations(features,
@@ -76,7 +75,6 @@ def make_input_layer_with_layer_annotations(original_input_layer, mode):
                                          weight_collections=None,
                                          trainable=True,
                                          cols_to_vars=None,
-                                         scope=None,
                                          cols_to_output_tensors=None):
     """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
@@ -113,7 +111,6 @@ def make_input_layer_with_layer_annotations(original_input_layer, mode):
         'some_variable:0' shape=(5, 10), <tf.Variable 'some_variable:1'
           shape=(5, 10)]} If a column creates no variables, its value will be an
           empty list.
-      scope: A name or variable scope to use
       cols_to_output_tensors: If not `None`, must be a dictionary that will be
         filled with a mapping from '_FeatureColumn' to the associated output
         `Tensor`s.
@@ -134,48 +131,43 @@ def make_input_layer_with_layer_annotations(original_input_layer, mode):
         weight_collections=weight_collections,
         trainable=trainable,
         cols_to_vars=cols_to_vars,
-        scope=scope,
         cols_to_output_tensors=local_cols_to_output_tensors)
 
     if cols_to_output_tensors is not None:
       cols_to_output_tensors = local_cols_to_output_tensors
 
-    if mode and mode == model_fn.ModeKeys.PREDICT:
-      # Only annotate in PREDICT mode.
+    # Annotate features.
+    # These are the parsed Tensors, before embedding.
 
-      # Annotate features.
-      # These are the parsed Tensors, before embedding.
+    # Only annotate features used by FeatureColumns.
+    # We figure which ones are used by FeatureColumns by creating a parsing
+    # spec and looking at the keys.
+    spec = feature_column_lib.make_parse_example_spec(feature_columns)
+    for key in spec.keys():
+      tensor = ops.convert_to_tensor(features[key])
+      ops.add_to_collection(
+          LayerAnnotationsCollectionNames.keys(
+              LayerAnnotationsCollectionNames.UNPROCESSED_FEATURES), key)
+      ops.add_to_collection(
+          LayerAnnotationsCollectionNames.values(
+              LayerAnnotationsCollectionNames.UNPROCESSED_FEATURES),
+          _to_any_wrapped_tensor_info(tensor))
 
-      # Only annotate features used by FeatureColumns.
-      # We figure which ones are used by FeatureColumns by creating a parsing
-      # spec and looking at the keys.
-      spec = feature_column_lib.make_parse_example_spec(feature_columns)
-      for key in spec.keys():
-        tensor = features[key]
-        ops.add_to_collection(
-            LayerAnnotationsCollectionNames.keys(
-                LayerAnnotationsCollectionNames.UNPROCESSED_FEATURES), key)
-        ops.add_to_collection(
-            LayerAnnotationsCollectionNames.values(
-                LayerAnnotationsCollectionNames.UNPROCESSED_FEATURES),
-            _to_any_wrapped_tensor_info(tensor))
+    # Annotate feature columns.
+    for column in feature_columns:
+      # TODO(cyfoo): Find a better way to serialize and deserialize
+      # _FeatureColumn.
+      ops.add_to_collection(LayerAnnotationsCollectionNames.FEATURE_COLUMNS,
+                            serialize_feature_column(column))
 
-      # Annotate feature columns.
-      for column in feature_columns:
-        # TODO(cyfoo): Find a better way to serialize and deserialize
-        # _FeatureColumn.
-        ops.add_to_collection(LayerAnnotationsCollectionNames.FEATURE_COLUMNS,
-                              serialize_feature_column(column))
-
-      for column, tensor in local_cols_to_output_tensors.items():
-        ops.add_to_collection(
-            LayerAnnotationsCollectionNames.keys(
-                LayerAnnotationsCollectionNames.PROCESSED_FEATURES),
-            column.name)
-        ops.add_to_collection(
-            LayerAnnotationsCollectionNames.values(
-                LayerAnnotationsCollectionNames.PROCESSED_FEATURES),
-            _to_any_wrapped_tensor_info(tensor))
+    for column, tensor in local_cols_to_output_tensors.items():
+      ops.add_to_collection(
+          LayerAnnotationsCollectionNames.keys(
+              LayerAnnotationsCollectionNames.PROCESSED_FEATURES), column.name)
+      ops.add_to_collection(
+          LayerAnnotationsCollectionNames.values(
+              LayerAnnotationsCollectionNames.PROCESSED_FEATURES),
+          _to_any_wrapped_tensor_info(tensor))
 
     return input_layer
 
@@ -304,9 +296,9 @@ def DNNClassifierWithLayerAnnotations(  # pylint: disable=invalid-name
 
   def _model_fn(features, labels, mode, config):
     with _monkey_patch(
-        feature_column_lib, '_internal_input_layer',
+        feature_column_lib, 'input_layer',
         make_input_layer_with_layer_annotations(
-            feature_column_lib._internal_input_layer, mode)):  # pylint: disable=protected-access
+            feature_column_lib.input_layer)):
       return original.model_fn(features, labels, mode, config)
 
   return estimator.Estimator(
@@ -425,9 +417,9 @@ def DNNRegressorWithLayerAnnotations(  # pylint: disable=invalid-name
 
   def _model_fn(features, labels, mode, config):
     with _monkey_patch(
-        feature_column_lib, '_internal_input_layer',
+        feature_column_lib, 'input_layer',
         make_input_layer_with_layer_annotations(
-            feature_column_lib._internal_input_layer, mode)):  # pylint: disable=protected-access
+            feature_column_lib.input_layer)):
       return original.model_fn(features, labels, mode, config)
 
   return estimator.Estimator(

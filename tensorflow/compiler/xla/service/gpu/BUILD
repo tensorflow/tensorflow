@@ -68,9 +68,7 @@ cc_library(
 #    srcs = [
 #        "partition_assignment_test.cc",
 #    ],
-#    tags = [
-#        "requires-gpu-sm35",
-#    ],
+#    tags = tf_cuda_tests_tags(),
 #    deps = [
 #        ":partition_assignment",
 #        "//tensorflow/core:stream_executor_no_cuda",

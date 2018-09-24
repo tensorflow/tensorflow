@@ -1064,6 +1064,19 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   // that seems to give the best results is lazy-best-fit, with all runs of
   // alloc / free calls sorted in decreasing size order.
   const HloOrdering& hlo_ordering = assignment->liveness().hlo_ordering();
+
+  // Returns a heap algorithm that chooses the best result from several
+  // algorithms.
+  auto get_heap_algorithm = [&](int64 alignment) {
+    auto algorithms =
+        absl::make_unique<std::vector<std::unique_ptr<HeapAlgorithm>>>();
+    algorithms->push_back(absl::make_unique<DecreasingSizeRunsHeap>(
+        absl::make_unique<LazyBestFitHeap>(alignment)));
+    algorithms->push_back(
+        absl::make_unique<GlobalDecreasingSizeBestFitHeap>(alignment));
+    return absl::make_unique<ChooseBestHeapAlgorithm>(std::move(algorithms));
+  };
+
   if (run_whole_module_heap_simulation) {
     // Run the heap simulation over the whole module. This reduces memory usage,
     // since buffers for kCall, kWhile, and kConditional sub-computations are
@@ -1093,8 +1106,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       options.buffers_to_assign = &buffer_value_set;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
-          HeapSimulator::Run(absl::make_unique<DecreasingSizeRunsHeap>(
-                                 absl::make_unique<LazyBestFitHeap>(alignment)),
+          HeapSimulator::Run(get_heap_algorithm(alignment),
                              assignment->module(), schedule,
                              assignment->points_to_analysis(),
                              assignment->buffer_size_, options));
@@ -1123,12 +1135,10 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         options.buffers_to_assign = &buffer_value_set;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
-            HeapSimulator::Run(
-                absl::make_unique<DecreasingSizeRunsHeap>(
-                    absl::make_unique<LazyBestFitHeap>(alignment)),
-                *computation, HloInstructionSequence(*instruction_sequence),
-                assignment->points_to_analysis(), assignment->buffer_size_,
-                options));
+            HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
+                               HloInstructionSequence(*instruction_sequence),
+                               assignment->points_to_analysis(),
+                               assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
