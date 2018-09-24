@@ -55,7 +55,7 @@ class L1L2(Regularizer):
     self.l2 = K.cast_to_floatx(l2)
 
   def __call__(self, x):
-    regularization = ops.convert_to_tensor(0.)
+    regularization = ops.convert_to_tensor(0., dtype=K.floatx())
     if self.l1:
       regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
     if self.l2:
