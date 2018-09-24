@@ -66,6 +66,20 @@ class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
         .ConsumeValueOrDie();
   }
 
+  // Evaluate function that takes in a local module instead of using module_
+  // that is in HloVerifiedTestBase. Once module_ in HloVerifiedTestBase is
+  // removed, this should be the default Evaluate function.
+  Literal EvaluateWithModule(
+      HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
+    if (use_bfloat16_) {
+      // In BF16 mode, we convert all F32 type to BF16 and evaluate the module.
+      auto type_converter = HloElementTypeConverter(F32, BF16);
+      type_converter.Run(module).ValueOrDie();
+    }
+    return evaluator_->Evaluate(*module->entry_computation(), arg_literals)
+        .ConsumeValueOrDie();
+  }
+
   std::unique_ptr<HloEvaluator> evaluator_;
 
   void TestUnaryOp(HloOpcode opcode, Literal expected, Literal input,
@@ -2528,6 +2542,114 @@ ENTRY main {
   Literal expected = LiteralUtil::CreateR1<int32>({10, 61, 32});
   EXPECT_TRUE(LiteralTestUtil::Equal(
       expected, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_NegativeIndices) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter_NegativeIndices
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  // No updates should happen for the negative indices.
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({-1, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {77, 88, 99}}),
+      EvaluateWithModule(module.get(),
+                         {&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_OobIndices) {
+  const string hlo_text = R"(
+HloModule BatchDynamicUpdateSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = s32[6,2]{1,0} parameter(1)
+  updates = s32[6,1,1]{2,1,0} parameter(2)
+  ROOT scatter = s32[3,3]{1,0} scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  // No updates should happen for the OOB indices.
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32>(
+      {{{10}}, {{20}}, {{30}}, {{40}}, {{50}}, {{60}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 30, 60}, {7, 20, 9}}),
+      EvaluateWithModule(module.get(),
+                         {&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_OobUpdateWindow) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNd_OobUpdateWindow
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[1,2] parameter(1)
+  updates = s32[1,2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32>({{{-10, 10}, {-40, 40}}});
+  // Given the update window size of 2,2 and the index of 0,2, the update window
+  // will be OOB. So, nothing should be updated.
+  Literal expected = operand.Clone();
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, EvaluateWithModule(module.get(),
+                                   {&operand, &scatter_indices, &updates})));
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs

@@ -2284,19 +2284,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         // be 1.
         int64 update_dim_size =
             update_dim == -1 ? 1 : updates_shape.dimensions(update_dim);
-        // Clamp the scatter index so that the scatter region fits in the
-        // operand. input_scatter_index_clamped[i] =
-        // clamp(input_scatter_index[i], 0,
-        //                                       operand_shape.dimensions(i) -
-        //                                       update_dim_size);
-        input_scatter_index_clamped[i] =
-            std::min(operand_shape.dimensions(i) - update_dim_size,
-                     std::max(0LL, input_scatter_index[i]));
+        // If any part of the update region is out-of-bounds, then do not
+        // perform any update on the input.
+        if ((input_scatter_index[i] < 0) ||
+            (input_scatter_index[i] >
+             operand_shape.dimensions(i) - update_dim_size)) {
+          return true;
+        }
       }
       for (int i = 0, e = input_index.size(); i < e; i++) {
-        input_index[i] = input_scatter_index_clamped[i] + input_window_index[i];
-        DCHECK_GE(input_index[i], 0);
-        DCHECK_LT(input_index[i], operand_shape.dimensions(i));
+        input_index[i] = input_scatter_index[i] + input_window_index[i];
       }
 
       auto result_value_literal =
