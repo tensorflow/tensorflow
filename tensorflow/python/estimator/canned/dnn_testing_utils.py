@@ -32,6 +32,7 @@ from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
+from tensorflow.python.estimator.canned.dnn import experimental_batch_norm_options
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import constant_op
@@ -525,7 +526,7 @@ class BaseDNNLogitFnTest(object):
                    logits_dimension,
                    inputs,
                    expected_logits,
-                   batch_norm=False):
+                   batch_norm=None):
     """Tests that the expected logits are calculated."""
     with ops.Graph().as_default():
       # Global step needed for MonitoredSession, which is in turn used to
@@ -631,7 +632,7 @@ class BaseDNNLogitFnTest(object):
         logits_dimension=1,
         inputs=[[10.], [20.]],
         expected_logits=[[-0.699895571], [1.299895571]],
-        batch_norm=True)
+        batch_norm=experimental_batch_norm_options())
     for mode in [model_fn.ModeKeys.EVAL, model_fn.ModeKeys.PREDICT]:
       self._test_logits(
           mode,
@@ -639,7 +640,7 @@ class BaseDNNLogitFnTest(object):
           logits_dimension=1,
           inputs=[[10.], [20.]],
           expected_logits=[[1.299500375], [5.297501873]],
-          batch_norm=True)
+          batch_norm=experimental_batch_norm_options())
 
   def test_multi_dim_logits(self):
     """Tests multi-dimensional logits.
@@ -792,7 +793,7 @@ class BaseDNNLogitFnTest(object):
               activation_fn=nn.relu,
               dropout=None,
               input_layer_partitioner=input_layer_partitioner,
-              batch_norm=False)
+              batch_norm=None)
           logits = logit_fn(
               features={
                   'age': constant_op.constant(inputs[0]),
