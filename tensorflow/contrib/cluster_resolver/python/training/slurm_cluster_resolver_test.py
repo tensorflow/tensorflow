@@ -113,7 +113,7 @@ class SlurmClusterResolverTest(test.TestCase):
   @mock.patch.dict(os.environ, {'SLURM_PROCID': '1',
                                 'SLURM_NTASKS': '5',
                                 'SLURM_NTASKS_PER_NODE': '2',
-                                'CUDA_VISIBLE_DEVICE': ''})
+                                'CUDA_VISIBLE_DEVICES': ''})
   @mock.patch.object(SlurmClusterResolver, '_resolve_hostnames',
                      mock_resolve_hostnames_output)
   def testMultiTaskPerNodeRetrieval(self):
@@ -152,12 +152,12 @@ class SlurmClusterResolverTest(test.TestCase):
       }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
-    assert os.environ['CUDA_VISIBLE_DEVICE'] == '1'
+    assert os.environ['CUDA_VISIBLE_DEVICES'] == '1'
 
   @mock.patch.dict(os.environ, {'SLURM_PROCID': '1',
                                 'SLURM_NTASKS': '5',
                                 'SLURM_NTASKS_PER_NODE': '2',
-                                'CUDA_VISIBLE_DEVICE': ''})
+                                'CUDA_VISIBLE_DEVICES': ''})
   @mock.patch.object(SlurmClusterResolver, '_resolve_hostnames',
                      mock_resolve_hostnames_output)
   def testMultipleGpusPerTaskRetrieval(self):
@@ -196,7 +196,7 @@ class SlurmClusterResolverTest(test.TestCase):
       }
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
-    assert os.environ['CUDA_VISIBLE_DEVICE'] == '2,3'
+    assert os.environ['CUDA_VISIBLE_DEVICES'] == '2,3'
 
 if __name__ == '__main__':
   test.main()
