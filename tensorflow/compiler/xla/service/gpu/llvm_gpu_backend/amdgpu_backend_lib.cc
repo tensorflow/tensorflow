@@ -208,7 +208,7 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
+std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine, int amdgpu_version) {
   char tempdir_template[] = "/tmp/amdgpu_xla-XXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
 
@@ -264,7 +264,7 @@ std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target
     llvm_ir::AsStringRef("llc"),
     llvm_ir::AsStringRef("-mtriple"),
     llvm_ir::AsStringRef("amdgcn--amdhsa-amdgiz"),
-    llvm_ir::AsStringRef("-mcpu=gfx900"),
+    llvm_ir::AsStringRef(absl::StrCat("-mcpu=gfx", amdgpu_version)),
     llvm_ir::AsStringRef("-filetype=obj"),
     llvm_ir::AsStringRef("ir_path"),
   };
@@ -465,7 +465,7 @@ StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
   module_passes.run(*module);
 
   // Finally, produce HSA Code Object.
-  return std::move(EmitModuleToHsaco(module, target_machine.get()));
+  return std::move(EmitModuleToHsaco(module, target_machine.get(), amdgpu_version));
 }
 
 // One-time module initializer.
