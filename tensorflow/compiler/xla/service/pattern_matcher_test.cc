@@ -239,6 +239,15 @@ TEST(PatternMatcherTest, ConstantScalar) {
   EXPECT_FALSE(Match(root, match::ConstantScalar(0)));
 }
 
+TEST(PatternMatcherTest, NoMatchConstantScalar) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT v = f16[] parameter(0) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_FALSE(Match(root, match::ConstantScalar(42)));
+}
+
 TEST(PatternMatcherTest, MultiplyAnyOrder) {
   using match::ConstantScalar;
   using match::MultiplyAnyOrder;

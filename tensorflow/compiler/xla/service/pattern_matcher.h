@@ -149,27 +149,31 @@ class AllOfPattern {
   explicit AllOfPattern(const Patterns&... patterns) : patterns_(patterns...) {}
 
   bool Match(const Item* item, MatchOption option) const {
-    bool matched = MatchImpl(item, option,
-                             absl::make_index_sequence<sizeof...(Patterns)>());
+    bool matched = MatchImpl(item, option, std::integral_constant<size_t, 0>());
     // This invariant is guaranteed by the top-level Match and AnyOf.
     DCHECK(matched || !option.capture);
     return matched;
   }
 
   bool Match(Item* item, MatchOption option) const {
-    bool matched = MatchImpl(item, option,
-                             absl::make_index_sequence<sizeof...(Patterns)>());
+    bool matched = MatchImpl(item, option, std::integral_constant<size_t, 0>());
     // This invariant is guaranteed by the top-level Match and AnyOf.
     DCHECK(matched || !option.capture);
     return matched;
   }
 
  private:
-  template <typename ItemType, size_t... indices>
+  template <typename ItemType, size_t index>
   bool MatchImpl(ItemType* item, MatchOption option,
-                 absl::index_sequence<indices...>) const {
-    return std::min<bool>(
-        {std::get<indices>(patterns_).Match(item, option)...});
+                 std::integral_constant<size_t, index>) const {
+    return std::get<index>(patterns_).Match(item, option) &&
+           MatchImpl(item, option, std::integral_constant<size_t, index + 1>());
+  }
+
+  template <typename ItemType>
+  bool MatchImpl(ItemType* item, MatchOption option,
+                 std::integral_constant<size_t, sizeof...(Patterns)>) const {
+    return true;
   }
 
   std::tuple<Patterns...> patterns_;
