@@ -30,7 +30,7 @@ mock = test.mock
 class SlurmClusterResolverTest(test.TestCase):
 
   def mock_resolve_hostnames_output(self):
-    return ['t02n13','t02n41','t02n43','t02n44']
+    return ['t02n13', 't02n41', 't02n43', 't02n44']
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
