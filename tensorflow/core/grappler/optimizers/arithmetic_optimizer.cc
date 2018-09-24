@@ -3042,6 +3042,12 @@ void ArithmeticOptimizer::DedupComputations() {
     return;
   }
   std::set<int> duplicates;
+  // Populate feed_inplace_op;
+  std::unordered_map<string, bool> feeds_inplace_op;
+  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
+    feeds_inplace_op[optimized_graph_->node(i).name()] =
+        FeedsInPlaceOp(graph_view, optimized_graph_->node(i));
+  }
   do {
     stop = true;
     UniqueNodes nodes;
@@ -3050,19 +3056,20 @@ void ArithmeticOptimizer::DedupComputations() {
         continue;
       }
       NodeDef* node = optimized_graph_->mutable_node(i);
-      if (!CanDedup(*node)) {
+      const string& node_name = node->name();
+      if (node_name.empty()) continue;
+      if (feeds_inplace_op[node_name] || !CanDedup(*node)) {
         continue;
       }
       NodeDef* rep = nodes.FindOrAddRepresentative(node);
       if (rep == node) {
         continue;
       }
-      // If either node feeds an inplace op, deduping them may cause data races.
-      // For example: If we dedup nodes initializing two independent inplace
-      // accumulations, they will write to the same buffer, clobbering each
-      // other's results.
-      if (FeedsInPlaceOp(graph_view, *rep) ||
-          FeedsInPlaceOp(graph_view, *node)) {
+      // If either node or rep feeds an inplace op, deduping them may cause data
+      // races. For example: If we dedup nodes initializing two independent
+      // inplace accumulations, they will write to the same buffer, clobbering
+      // each other's results.
+      if (feeds_inplace_op[rep->name()]) {
         continue;
       }
       VLOG(3) << "Remove duplicated node: node=" << node->name()
@@ -3070,20 +3077,19 @@ void ArithmeticOptimizer::DedupComputations() {
       const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
-          string* name = fanout->mutable_input(i);
-          int position;
-          const string nodename = ParseNodeName(*name, &position);
-          if (nodename == node->name()) {
-            // Update name in-place.
-            if (position > 0) {
-              *name = StrCat(rep->name(), ":", position);
-            } else if (position == 0) {
-              *name = rep->name();
-            } else {
-              *name = StrCat("^", rep->name());
-            }
-            node_map_->AddOutput(rep->name(), fanout->name());
+          string* fanout_input = fanout->mutable_input(i);
+          const int position = NodePositionIfSameNode(*fanout_input, node_name);
+          // Update name in-place.
+          if (position < -1) {
+            continue;
+          } else if (position > 0) {
+            *fanout_input = StrCat(rep->name(), ":", position);
+          } else if (position == 0) {
+            *fanout_input = rep->name();
+          } else {
+            *fanout_input = StrCat("^", rep->name());
           }
+          node_map_->AddOutput(rep->name(), fanout->name());
         }
       }
       duplicates.insert(i);
