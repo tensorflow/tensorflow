@@ -155,23 +155,6 @@ def weakmethod(method):
   return inner
 
 
-def safe_div(numerator, denominator):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
-
-  Args:
-    numerator: A `Tensor`.
-    denominator: A `Tensor`, with dtype matching `numerator`.
-
-  Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
-  """
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero)
-
-
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
   """Squeeze or expand last dimension if needed.
 
@@ -503,7 +486,7 @@ class Mean(Metric):
     return control_flow_ops.group(update_total_op, update_count_op)
 
   def result(self):
-    return safe_div(self.total, self.count)
+    return math_ops.div_no_nan(self.total, self.count)
 
 
 class MeanMetricWrapper(Mean):
