@@ -128,28 +128,6 @@ extern const char* const kCudnnConvBackwardFilterCallTarget;
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 
-// Creates a CustomCall for a cudnn forward/backward-input/backward-filter conv.
-// Note that these CustomCalls return a tuple (conv_result, scratch_memory).  If
-// you want just the conv result, you'll need to get-tuple-element the value
-// returned by this function.
-//
-// The created cudnn call will use the default cudnn algorithm and no scratch
-// space.
-HloInstruction* CreateCudnnConvForward(const Shape& shape,
-                                       HloInstruction* input,
-                                       HloInstruction* kernel,
-                                       const Window& window,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       int64 feature_group_count);
-HloInstruction* CreateCudnnConvBackwardInput(
-    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count);
-HloInstruction* CreateCudnnConvBackwardFilter(
-    const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count);
-
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
