@@ -288,41 +288,30 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       value->getType());
 }
 
-Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
-                               CudnnConvParams* params) {
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                      custom_call->backend_config<CudnnConvBackendConfig>());
-  const auto& target = custom_call->custom_call_target();
-  const auto& lhs_shape = custom_call->operand(0)->shape();
-  const auto& rhs_shape = custom_call->operand(1)->shape();
-  const auto& conv_result_shape = custom_call->shape().tuple_shapes(0);
-
-  params->window = &custom_call->window();
-  params->dnums = &custom_call->convolution_dimension_numbers();
-  params->feature_group_count = custom_call->feature_group_count();
-  params->algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
-      backend_config.algorithm(), backend_config.tensor_ops_enabled()));
-
+StatusOr<CudnnConvKind> GetCudnnConvKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
   if (target == kCudnnConvForwardCallTarget) {
-    params->kind = CudnnConvKind::kForward;
-    params->input_shape = &lhs_shape;
-    params->filter_shape = &rhs_shape;
-    params->output_shape = &conv_result_shape;
-  } else if (target == kCudnnConvBackwardInputCallTarget) {
-    params->kind = CudnnConvKind::kBackwardInput;
-    params->input_shape = &conv_result_shape;
-    params->filter_shape = &rhs_shape;
-    params->output_shape = &lhs_shape;
-  } else if (target == kCudnnConvBackwardFilterCallTarget) {
-    params->kind = CudnnConvKind::kBackwardFilter;
-    params->input_shape = &lhs_shape;
-    params->filter_shape = &conv_result_shape;
-    params->output_shape = &rhs_shape;
-  } else {
-    LOG(FATAL) << "Unexpected custom call target: "
-               << custom_call->custom_call_target();
+    return CudnnConvKind::kForward;
   }
-  return Status::OK();
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return CudnnConvKind::kBackwardInput;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return CudnnConvKind::kBackwardFilter;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+string CudnnConvKindToString(CudnnConvKind kind) {
+  switch (kind) {
+    case CudnnConvKind::kForward:
+      return "forward";
+    case CudnnConvKind::kBackwardFilter:
+      return "backward_filter";
+    case CudnnConvKind::kBackwardInput:
+      return "backward_input";
+  }
 }
 
 }  // namespace gpu

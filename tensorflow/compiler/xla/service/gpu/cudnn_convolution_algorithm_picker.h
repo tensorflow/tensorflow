@@ -50,7 +50,7 @@ class CudnnConvolutionAlgorithmPicker : public HloModulePass {
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
   StatusOr<std::tuple<int64, bool, int64>> PickBestAlgorithm(
-      const HloCustomCallInstruction* instr);
+      HloCustomCallInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null
