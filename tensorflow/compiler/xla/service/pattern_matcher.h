@@ -149,13 +149,19 @@ class AllOfPattern {
   explicit AllOfPattern(const Patterns&... patterns) : patterns_(patterns...) {}
 
   bool Match(const Item* item, MatchOption option) const {
-    return MatchImpl(item, option,
-                     absl::make_index_sequence<sizeof...(Patterns)>());
+    bool matched = MatchImpl(item, option,
+                             absl::make_index_sequence<sizeof...(Patterns)>());
+    // This invariant is guaranteed by the top-level Match and AnyOf.
+    DCHECK(matched || !option.capture);
+    return matched;
   }
 
   bool Match(Item* item, MatchOption option) const {
-    return MatchImpl(item, option,
-                     absl::make_index_sequence<sizeof...(Patterns)>());
+    bool matched = MatchImpl(item, option,
+                             absl::make_index_sequence<sizeof...(Patterns)>());
+    // This invariant is guaranteed by the top-level Match and AnyOf.
+    DCHECK(matched || !option.capture);
+    return matched;
   }
 
  private:
@@ -307,8 +313,32 @@ class AnyOfPattern {
   template <typename ItemType, size_t index>
   bool MatchImpl(ItemType* item, MatchOption option,
                  std::integral_constant<size_t, index>) const {
-    return std::get<index>(patterns_).Match(item, option) ||
-           MatchImpl(item, option, std::integral_constant<size_t, index + 1>());
+    auto new_option = option;
+    new_option.capture = false;
+    // Try to match the sub-pattern without capturing behavior.
+    if (std::get<index>(patterns_).Match(item, new_option)) {
+      // Capture the branch.
+      if (option.capture) {
+        // TODO(timshen): Currently the behavior can be exponential. Optimize it
+        // with memoization or recording the matched sub-pattern index, if it
+        // takes too long to run.
+        //
+        // Specifically, the "memoization" approach is to create an empty
+        // container with the key (pattern, instruction), and value as whether
+        // matched or not.
+        //
+        // Alternatively, we may run the pattern matching with captures off, but
+        // instead record a "trace" somewhere, indicating how exactly the
+        // pattern matches the input. For example, the trace information for
+        // AnyOf will be a runtime number indicate which sub-pattern is matched.
+        // Then we run another pass to do captures only with the help of the
+        // trace.
+        bool ret = std::get<index>(patterns_).Match(item, option);
+        DCHECK(ret);
+      }
+      return true;
+    }
+    return MatchImpl(item, option, std::integral_constant<size_t, index + 1>());
   }
 
   template <typename ItemType>
