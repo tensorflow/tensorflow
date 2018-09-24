@@ -934,7 +934,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
     For example, this could happen if the final ensemble contains one tree that
     got pruned up to the root.
     """
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """
@@ -990,7 +990,7 @@ class FeatureContribsOpsTest(test_util.TensorFlowTestCase):
 
   def testContribsMultipleTreeWhenFirstTreeIsABiasNode(self):
     """Tests case when, after training, first tree contains only a bias node."""
-    with self.test_session() as session:
+    with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
       text_format.Merge(
           """

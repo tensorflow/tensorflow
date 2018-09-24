@@ -3673,7 +3673,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     # Note: There are multiple versions of non_max_suppression v2, v3, v4.
     # gen_image_ops.non_max_suppression_v2:
     for dtype in [np.float16, np.float32]:
-      with self.test_session():
+      with self.cached_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
         scores = constant_op.constant(scores_np, dtype=dtype)
         max_output_size = constant_op.constant(max_output_size_np)
@@ -3683,7 +3683,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
         self.assertAllClose(selected_indices, [3, 0, 5])
     # image_ops.non_max_suppression = gen_image_ops.non_max_suppression_v3.
     for dtype in [np.float16, np.float32]:
-      with self.test_session():
+      with self.cached_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
         scores = constant_op.constant(scores_np, dtype=dtype)
         max_output_size = constant_op.constant(max_output_size_np)
@@ -3694,7 +3694,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     # gen_image_ops.non_max_suppression_v4.
     score_threshold = float('-inf')
     for dtype in [np.float16, np.float32]:
-      with self.test_session():
+      with self.cached_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
         scores = constant_op.constant(scores_np, dtype=dtype)
         max_output_size = constant_op.constant(max_output_size_np)
