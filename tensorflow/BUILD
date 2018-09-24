@@ -564,6 +564,7 @@ tf_cc_shared_object(
             "$(location //tensorflow/c:version_script.lds)",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -588,6 +589,7 @@ tf_cc_shared_object(
             "$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",

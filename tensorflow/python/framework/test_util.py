@@ -1934,6 +1934,8 @@ class TensorFlowTestCase(googletest.TestCase):
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.pin_to_host_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
     return ErrorLoggingSession(graph=graph, config=prepare_config(config))
