@@ -630,6 +630,14 @@ genrule(
         continue
       fi
 
+      if [[ $${d} == external* ]]; then
+        extname="$${d#*external/}"
+        extname="$${extname%%/*}"
+        if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
+          continue
+        fi
+      fi
+
       mkdir -p "$@/$${d}"
       cp "$${f}" "$@/$${d}/"
     done

@@ -1663,6 +1663,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "extract_volume_patches_op_test",
+    size = "small",
+    srcs = ["extract_volume_patches_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+cuda_py_test(
     name = "functional_ops_test",
     size = "small",
     srcs = ["functional_ops_test.py"],

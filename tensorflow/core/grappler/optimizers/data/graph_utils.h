@@ -37,6 +37,9 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
 
+// Adds Placeholder node for given type.
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph);
+
 // Adds a Const node with the given value to the graph.
 template <typename T>
 NodeDef* AddScalarConstNode(T v, MutableGraphView* graph) {

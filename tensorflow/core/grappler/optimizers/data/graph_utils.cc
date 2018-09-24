@@ -88,6 +88,16 @@ NodeDef* AddScalarConstNodeHelper(
 
 }  // namespace
 
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph) {
+  NodeDef node;
+  node.set_op("Placeholder");
+  SetUniqueGraphNodeName(node.op(), graph->GetGraph(), &node);
+  (*node.mutable_attr())["dtype"].set_type(dtype);
+  TensorShapeProto* shape = (*node.mutable_attr())["shape"].mutable_shape();
+  shape->set_unknown_rank(false);
+  return graph->AddNode(std::move(node));
+}
+
 NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
