@@ -89,14 +89,24 @@ class XlaComputationLaunchContext {
 
   // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
   // `variables` is a map from TensorFlow argument number to resource variable.
+  //
+  // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
+  // missing and adjusts input indices accordingly.  All elements in kernel's
+  // input_mapping must be greater than or equal to `missing_ctx_input_prefix`
+  // (in other words, no inputs actually required by the kernel can be missing).
   void PopulateInputs(OpKernelContext* ctx,
                       const XlaCompiler::CompilationResult* kernel,
-                      const std::map<int, OptionalTensor>& variables);
+                      const std::map<int, OptionalTensor>& variables,
+                      int missing_ctx_input_prefix);
 
   // Given the XLA output in `output`, populate all outputs of `ctx`.
+  //
+  // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
+  // missing and adjusts input indices accordingly.
   Status PopulateOutputs(OpKernelContext* ctx,
                          const XlaCompiler::CompilationResult* kernel,
-                         xla::ScopedShapedBuffer output);
+                         xla::ScopedShapedBuffer output,
+                         int missing_ctx_input_prefix);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
