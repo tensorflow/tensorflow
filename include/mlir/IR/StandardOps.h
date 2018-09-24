@@ -94,6 +94,9 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
+  bool constantFold(ArrayRef<Attribute *> operands,
+                    SmallVectorImpl<Attribute *> &results,
+                    MLIRContext *context) const;
 
 private:
   friend class Operation;

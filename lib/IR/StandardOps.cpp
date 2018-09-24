@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/StandardOps.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
@@ -195,6 +196,90 @@ bool AffineApplyOp::isValidSymbol() const {
         return false;
   }
   return true;
+}
+
+namespace {
+
+// AffineExprConstantFolder evaluates an affine expression using constant
+// operands passed in 'operandConsts'. Returns a pointer to an IntegerAttr
+// attribute representing the constant value of the affine expression
+// evaluated on constant 'operandConsts'.
+class AffineExprConstantFolder {
+public:
+  AffineExprConstantFolder(unsigned numDims,
+                           ArrayRef<Attribute *> operandConsts,
+                           MLIRContext *context)
+      : numDims(numDims), operandConsts(operandConsts), context(context) {}
+
+  IntegerAttr *constantFold(AffineExpr *expr) {
+    switch (expr->getKind()) {
+    case AffineExpr::Kind::Add:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, int64_t rhs) { return lhs + rhs; });
+    case AffineExpr::Kind::Mul:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, int64_t rhs) { return lhs * rhs; });
+    case AffineExpr::Kind::Mod:
+      return constantFoldBinExpr(expr, [](int64_t lhs, uint64_t rhs) {
+        return lhs % rhs < 0 ? lhs % rhs + rhs : lhs % rhs;
+      });
+    case AffineExpr::Kind::FloorDiv:
+      return constantFoldBinExpr(expr, [](int64_t lhs, uint64_t rhs) {
+        return lhs % rhs < 0 ? lhs / rhs - 1 : lhs / rhs;
+      });
+    case AffineExpr::Kind::CeilDiv:
+      return constantFoldBinExpr(expr, [](int64_t lhs, uint64_t rhs) {
+        return lhs % rhs == 0 ? lhs / rhs : lhs / rhs + 1;
+      });
+    case AffineExpr::Kind::Constant:
+      return IntegerAttr::get(cast<AffineConstantExpr>(expr)->getValue(),
+                              context);
+    case AffineExpr::Kind::DimId:
+      return cast<IntegerAttr>(
+          operandConsts[cast<AffineDimExpr>(expr)->getPosition()]);
+    case AffineExpr::Kind::SymbolId:
+      return cast<IntegerAttr>(
+          operandConsts[numDims + cast<AffineSymbolExpr>(expr)->getPosition()]);
+    }
+  }
+
+private:
+  IntegerAttr *
+  constantFoldBinExpr(AffineExpr *expr,
+                      std::function<uint64_t(int64_t, uint64_t)> op) {
+    auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+    auto *lhs = constantFold(binOpExpr->getLHS());
+    auto *rhs = constantFold(binOpExpr->getRHS());
+    return IntegerAttr::get(op(lhs->getValue(), rhs->getValue()), context);
+  }
+
+  // The number of dimension operands in AffineMap containing this expression.
+  unsigned numDims;
+  // The constant valued operands used to evaluate this AffineExpr.
+  ArrayRef<Attribute *> operandConsts;
+  MLIRContext *context;
+};
+
+} // end anonymous namespace
+
+bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operands,
+                                 SmallVectorImpl<Attribute *> &results,
+                                 MLIRContext *context) const {
+  // Check that all attributes in 'operands' are IntegerAttr.
+  for (auto *attr : operands) {
+    if (!isa<IntegerAttr>(attr))
+      return true;
+  }
+
+  AffineMap *map = getAffineMap();
+  AffineExprConstantFolder exprFolder(map->getNumDims(), operands, context);
+
+  // Constant fold each AffineExpr in AffineMap and add to 'results'.
+  for (auto *expr : map->getResults()) {
+    results.push_back(exprFolder.constantFold(expr));
+  }
+  // Return false on success.
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
