@@ -27,49 +27,41 @@ from tensorflow.python.platform import test
 
 class OriginInfoTest(test.TestCase):
 
-  def test_source_map(self):
+  def test_create_source_map(self):
 
     def test_fn(x):
-      if x > 0:
-        x += 1
-      return x
+      return x + 1
 
-    node, source = parser.parse_entity(test_fn)
+    node, _ = parser.parse_entity(test_fn)
+    fake_origin = origin_info.OriginInfo(
+        loc=origin_info.Location('fake_filename', 3, 7),
+        function_name='fake_function_name',
+        source_code_line='fake source line',
+        comment=None)
     fn_node = node.body[0]
-    origin_info.resolve(fn_node, source)
+    anno.setanno(fn_node.body[0], anno.Basic.ORIGIN, fake_origin)
+    converted_code = compiler.ast_to_source(fn_node)
 
-    # Insert a traced line.
-    new_node = parser.parse_str('x = abs(x)').body[0]
-    anno.copyanno(fn_node.body[0], new_node, anno.Basic.ORIGIN)
-    fn_node.body.insert(0, new_node)
+    source_map = origin_info.create_source_map(
+        fn_node, converted_code, 'test_filename', [0])
 
-    # Insert an untraced line.
-    fn_node.body.insert(0, parser.parse_str('x = 0').body[0])
-
-    modified_source = compiler.ast_to_source(fn_node)
-
-    source_map = origin_info.source_map(fn_node, modified_source,
-                                        'test_filename', [0])
-
-    loc = origin_info.LineLocation('test_filename', 1)
-    origin = source_map[loc]
-    self.assertEqual(origin.source_code_line, 'def test_fn(x):')
-    self.assertEqual(origin.loc.lineno, 1)
-
-    # The untraced line, inserted second.
     loc = origin_info.LineLocation('test_filename', 2)
-    self.assertFalse(loc in source_map)
+    self.assertIn(loc, source_map)
+    self.assertIs(source_map[loc], fake_origin)
 
-    # The traced line, inserted first.
-    loc = origin_info.LineLocation('test_filename', 3)
-    origin = source_map[loc]
-    self.assertEqual(origin.source_code_line, '  if x > 0:')
-    self.assertEqual(origin.loc.lineno, 2)
+  def test_source_map_no_origin(self):
 
-    loc = origin_info.LineLocation('test_filename', 4)
-    origin = source_map[loc]
-    self.assertEqual(origin.source_code_line, '  if x > 0:')
-    self.assertEqual(origin.loc.lineno, 2)
+    def test_fn(x):
+      return x + 1
+
+    node, _ = parser.parse_entity(test_fn)
+    fn_node = node.body[0]
+    converted_code = compiler.ast_to_source(fn_node)
+
+    source_map = origin_info.create_source_map(
+        fn_node, converted_code, 'test_filename', [0])
+
+    self.assertEqual(len(source_map), 0)
 
   def test_resolve(self):
 
@@ -79,6 +71,7 @@ class OriginInfoTest(test.TestCase):
 
     node, source = parser.parse_entity(test_fn)
     fn_node = node.body[0]
+
     origin_info.resolve(fn_node, source)
 
     origin = anno.getanno(fn_node, anno.Basic.ORIGIN)
