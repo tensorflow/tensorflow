@@ -1157,7 +1157,7 @@ class PolymorphicFunction(object):
     # then `instance` will be `foo` (and `owner` will be `Foo`).
     return functools.partial(self.__call__, instance)
 
-  def _cache_key(self, args, kwargs, ctx, graph):
+  def _cache_key(self, args, kwargs):
     """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwargs) if kwargs else args
@@ -1166,19 +1166,23 @@ class PolymorphicFunction(object):
       del args, kwargs
       cache_key = self._flat_input_signature
 
-    # The graph, or whether we're executing eagerly, should be a part of the
-    # cache key so we don't improperly capture tensors such as variables.
-    executing_eagerly = ctx.executing_eagerly()
-    execution_context = executing_eagerly or graph
+    with ops.init_scope():
+      init_graph = ops.get_default_graph()
 
+      # The graph, or whether we're executing eagerly, should be a part of the
+      # cache key so we don't improperly capture tensors such as variables.
+      executing_eagerly = context.executing_eagerly()
+      execution_context = executing_eagerly or init_graph
+
+    default_graph = ops.get_default_graph()
     # Putting the device in the cache key ensures that call-site device
     # annotations are respected.
-    device_functions = _get_device_functions(ctx, graph)
+    device_functions = _get_device_functions(context.context(), default_graph)
 
     # `ops.colocate_with` directives translate into `ops.device` directives when
     # eager execution is enabled.
-    colocation_stack = (None if executing_eagerly else
-                        tuple(graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
+    colocation_stack = (() if executing_eagerly else
+                        tuple(default_graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
 
     return cache_key + (execution_context, device_functions, colocation_stack)
 
@@ -1281,8 +1285,7 @@ class PolymorphicFunction(object):
     """
     if self._input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._canonicalize_function_inputs(*args, **kwargs)
-    cache_key = self._cache_key(args, kwargs, context.context(),
-                                ops.get_default_graph())
+    cache_key = self._cache_key(args, kwargs)
     with self._lock:
       try:
         graph_function = self._function_cache.get(cache_key, None)

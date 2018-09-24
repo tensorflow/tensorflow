@@ -1812,6 +1812,36 @@ class FunctionTest(test.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEquals(y_value, 3.0)
 
+  def testDefunFunctionSeparateGraphs(self):
+    with context.graph_mode():
+
+      @function.defun
+      def add(x):
+        return x + 5
+
+      @function.defun
+      def maybe_add(x, should_add):
+        if should_add:
+          return add(x)
+        else:
+          return x
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 1)
+        self.assertEqual(len(add._function_cache), 1)
+
+        maybe_add(x, False)
+        self.assertEqual(len(maybe_add._function_cache), 2)
+        self.assertEqual(len(add._function_cache), 1)
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 3)
+        self.assertEqual(len(add._function_cache), 2)
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):
