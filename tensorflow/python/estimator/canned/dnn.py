@@ -25,7 +25,6 @@ from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
-from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import init_ops
@@ -34,7 +33,6 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import training
 from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rate of 0.05 is a historical artifact of the initial
@@ -97,35 +95,26 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     for layer_id, num_hidden_units in enumerate(hidden_units):
       with variable_scope.variable_scope(
           'hiddenlayer_%d' % layer_id, values=(net,)) as hidden_layer_scope:
+        net = core_layers.dense(
+            net,
+            units=num_hidden_units,
+            activation=activation_fn,
+            kernel_initializer=init_ops.glorot_uniform_initializer(),
+            name=hidden_layer_scope)
+        if dropout is not None and is_training:
+          net = core_layers.dropout(net, rate=dropout, training=True)
         if batch_norm:
           # TODO(hjm): In future, if this becomes popular, we can enable
           # customization of the batch normalization params by accepting a
           # list of `BatchNormalization` instances as `batch_norm`.
-          net = core_layers.dense(
-              net,
-              units=num_hidden_units,
-              activation=None,
-              kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=hidden_layer_scope)
           net = normalization.batch_normalization(
               net,
               # The default momentum 0.99 actually crashes on certain
-              # problems, so here we use 0.999, which is the default of
+              # problem, so here we use 0.999, which is the default of
               # tf.contrib.layers.batch_norm.
               momentum=0.999,
               training=is_training,
               name='batchnorm_%d' % layer_id)
-          if activation_fn is not None:
-            net = activation_fn(net, name='hiddenlayer_%d_output' % layer_id)
-        else:
-          net = core_layers.dense(
-              net,
-              units=num_hidden_units,
-              activation=activation_fn,
-              kernel_initializer=init_ops.glorot_uniform_initializer(),
-              name=hidden_layer_scope)
-        if dropout is not None and is_training:
-          net = core_layers.dropout(net, rate=dropout, training=True)
       _add_hidden_layer_summary(net, hidden_layer_scope.name)
 
     with variable_scope.variable_scope('logits', values=(net,)) as logits_scope:
@@ -214,21 +203,7 @@ def _dnn_model_fn(features,
         batch_norm=batch_norm)
     logits = logit_fn(features=features, mode=mode)
 
-    def batch_norm_train_op(loss):
-      update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
-      with ops.control_dependencies(update_ops):
-        train_op = optimizer.minimize(loss=loss,
-                                      global_step=training.get_global_step())
-      return train_op
-
-    if batch_norm:
-      return head.create_estimator_spec(
-          features=features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=batch_norm_train_op,
-          logits=logits)
-    elif tpu_estimator_spec:
+    if tpu_estimator_spec:
       return head._create_tpu_estimator_spec(  # pylint: disable=protected-access
           features=features,
           mode=mode,
