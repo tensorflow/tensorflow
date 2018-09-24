@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import six
 
 from tensorflow.python.estimator import estimator
@@ -40,6 +41,26 @@ from tensorflow.python.util.tf_export import estimator_export
 _LEARNING_RATE = 0.05
 
 
+_BatchNormOptions = collections.namedtuple(
+    'BatchNormOptions', ['apply_before_activation', 'momentum']))
+
+
+def experimental_batch_norm_options(
+    apply_before_activation=False,
+    momentum=0.999):
+  """Configuration options for batch normalization in dnn estimators.
+
+  Args:
+    apply_before_activation: Apply the batch normalization layer before
+      the activation function.  The default is to apply after activation.
+    momentum: Momentum for the moving average. The default from
+      normalization.batch_normalization of 0.99 actually crashes on certain
+      problems, so here we use 0.999, which is the default of
+      tf.contrib.layers.batch_norm.
+  """
+  return _BatchNormOptions(apply_before_activation=apply_before_activation, momentum=momentum)
+
+
 def _add_hidden_layer_summary(value, tag):
   summary.scalar('%s/fraction_of_zero_values' % tag, nn.zero_fraction(value))
   summary.histogram('%s/activation' % tag, value)
@@ -59,7 +80,8 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     dropout: When not `None`, the probability we will drop out a given
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
-    batch_norm: Whether to use batch normalization after each hidden layer.
+    batch_norm: When not `None`, a `_BatchNormOptions` object that
+      configures batch normalization after each hidden layer.
 
   Returns:
     A logit_fn (see below).
@@ -95,24 +117,33 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     for layer_id, num_hidden_units in enumerate(hidden_units):
       with variable_scope.variable_scope(
           'hiddenlayer_%d' % layer_id, values=(net,)) as hidden_layer_scope:
-        net = core_layers.dense(
-            net,
-            units=num_hidden_units,
-            activation=activation_fn,
-            kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=hidden_layer_scope)
-        if dropout is not None and is_training:
-          net = core_layers.dropout(net, rate=dropout, training=True)
-        if batch_norm:
-          # TODO(hjm): In future, if this becomes popular, we can enable
-          # customization of the batch normalization params by accepting a
-          # list of `BatchNormalization` instances as `batch_norm`.
+        if batch_norm is not None and batch_norm.apply_before_activation:
+          net = core_layers.dense(
+              net,
+              units=num_hidden_units,
+              activation=None,
+              kernel_initializer=init_ops.glorot_uniform_initializer(),
+              name=hidden_layer_scope + "_input")
           net = normalization.batch_normalization(
               net,
-              # The default momentum 0.99 actually crashes on certain
-              # problem, so here we use 0.999, which is the default of
-              # tf.contrib.layers.batch_norm.
-              momentum=0.999,
+              momentum=batch_norm.momentum,
+              training=is_training,
+              name='batchnorm_%d' % layer_id)
+          if activation_fn is not None:
+            net = activation_fn(net, name=hidden_layer_scope)
+        else:
+          net = core_layers.dense(
+              net,
+              units=num_hidden_units,
+              activation=activation_fn,
+              kernel_initializer=init_ops.glorot_uniform_initializer(),
+              name=hidden_layer_scope)
+        if dropout is not None and is_training:
+          net = core_layers.dropout(net, rate=dropout, training=True)
+        if batch_norm is not None and not batch_norm.apply_before_activation:
+          net = normalization.batch_normalization(
+              net,
+              momentum=batch_norm.momentum,
               training=is_training,
               name='batchnorm_%d' % layer_id)
       _add_hidden_layer_summary(net, hidden_layer_scope.name)
@@ -143,7 +174,7 @@ def _dnn_model_fn(features,
                   input_layer_partitioner=None,
                   config=None,
                   tpu_estimator_spec=False,
-                  batch_norm=False):
+                  batch_norm=None):
   """Deep Neural Net model_fn.
 
   Args:
@@ -166,7 +197,8 @@ def _dnn_model_fn(features,
     config: `RunConfig` object to configure the runtime settings.
     tpu_estimator_spec: Whether to return a `_TPUEstimatorSpec` or
       or `model_fn.EstimatorSpec` instance.
-    batch_norm: Whether to use batch normalization after each hidden layer.
+    batch_norm: When not `None`, a `_BatchNormOptions` object that
+      configures batch normalization after each hidden layer.
 
   Returns:
     An `EstimatorSpec` instance.
@@ -317,7 +349,7 @@ class DNNClassifier(estimator.Estimator):
       config=None,
       warm_start_from=None,
       loss_reduction=losses.Reduction.SUM,
-      batch_norm=False,
+      batch_norm=None,
   ):
     """Initializes a `DNNClassifier` instance.
 
@@ -364,7 +396,8 @@ class DNNClassifier(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
-      batch_norm: Whether to use batch normalization after each hidden layer.
+      batch_norm: When not `None`, a `_BatchNormOptions` object that
+        configures batch normalization after each hidden layer.
     """
     head = head_lib._binary_logistic_or_multi_class_head(  # pylint: disable=protected-access
         n_classes, weight_column, label_vocabulary, loss_reduction)
@@ -486,7 +519,7 @@ class DNNRegressor(estimator.Estimator):
       config=None,
       warm_start_from=None,
       loss_reduction=losses.Reduction.SUM,
-      batch_norm=False,
+      batch_norm=None,
   ):
     """Initializes a `DNNRegressor` instance.
 
@@ -527,7 +560,8 @@ class DNNRegressor(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
-      batch_norm: Whether to use batch normalization after each hidden layer.
+      batch_norm: When not `None`, a `_BatchNormOptions` object that
+        configures batch normalization after each hidden layer.
     """
 
     def _model_fn(features, labels, mode, config):
