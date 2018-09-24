@@ -318,6 +318,12 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   llvm::Type* atomic_address_type =
       atomic_type->getPointerTo(output_address_type->getPointerAddressSpace());
 
+  auto old_insert_ip = b_.GetInsertPoint();
+  auto old_insert_bb = b_.GetInsertBlock();
+  llvm::BasicBlock& entry_bb = b_.GetInsertBlock()->getParent()->getEntryBlock();
+  auto entry_ip = entry_bb.begin();
+  b_.SetInsertPoint(&entry_bb, entry_ip);
+
   // cas_old_output_address and cas_new_output_address point to the scratch
   // memory where we store the old and new values for the repeated atomicCAS
   // operations.
@@ -325,6 +331,8 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
       Alloca(atomic_type, /*ArraySize=*/nullptr, "cas_old_output_address");
   llvm::Value* cas_new_output_address =
       Alloca(atomic_type, /*ArraySize=*/nullptr, "cas_new_output_address");
+
+  b_.SetInsertPoint(old_insert_bb, old_insert_ip);
 
   // Emit preparation code to the preheader.
   llvm::BasicBlock* loop_preheader_bb = b_.GetInsertBlock();
@@ -416,8 +424,10 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
     return Status::OK();
   }
 
-  return EmitAtomicOperationUsingCAS(computation, output_address,
-                                     source_address);
+  // XXX
+  //return EmitAtomicOperationUsingCAS(computation, output_address,
+  //                                   source_address);
+  return Status::OK();
 }
 
 Status IrEmitter::HandleSelect(HloInstruction* select) {
