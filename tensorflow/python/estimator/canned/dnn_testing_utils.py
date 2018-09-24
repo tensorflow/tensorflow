@@ -579,8 +579,8 @@ class BaseDNNLogitFnTest(object):
           inputs=[[10.]],
           expected_logits=[[-2.08]])
 
-  def test_one_dim_logits_with_batch_norm(self):
-    """Tests one-dimensional logits.
+  def test_one_dim_logits_with_batch_norm_after_activation(self):
+    """Tests one-dimensional logits with batch norm after activation.
 
     input_layer = [[10]]
     hidden_layer_0 = [[relu(0.6*10 +1), relu(0.5*10 -1)]] = [[7, 4]]
@@ -641,6 +641,72 @@ class BaseDNNLogitFnTest(object):
           inputs=[[10.], [20.]],
           expected_logits=[[1.299500375], [5.297501873]],
           batch_norm=experimental_batch_norm_options())
+
+  def test_one_dim_logits_with_batch_norm_before_activation(self):
+    """Tests one-dimensional logits with batch norm before activation.
+
+    input_layer = [[10], [-20]]
+    hidden_layer_0_input = [[0.6*10 +1, 0.5*10 -1]] = [[7, 4]]
+    hidden_layer_0_input = [[0.6*(-20) +1, 0.5*(-20) -1]] = [[-11, -11]]
+
+    batch_norm_0, training (epsilon = 0.001):
+      mean1 = 1/2*(7+(-11)) = -2,
+      variance1 = 1/2*(9^2+9^2) = 81
+      x11 = (7-(-2))/sqrt(81+0.001) = 0.99999383
+      x21 = (-11-(-2))/sqrt(81+0.001) = -0.99999383
+
+      mean2 = 1/2*(4+(-11)) = -3.5,
+      variance2 = 1/2*(7.5^2+7.5^2) = 56.25
+      x12 = (4-(-3.5))/sqrt(56.25+0.001) = 0.99999111,
+      x22 = (-11-(-3.5))/sqrt(56.25+0.001) = -0.99999111,
+
+    hidden_layer_0 = [[relu(0.99999383), relu(-0.99999383)]] = [[0.99999383, 0]]
+    hidden_layer_0 = [[relu(0.99999111), relu(-0.99999111)]] = [[0.99999111, 0]]
+
+    logits = [[-1*0.99999383 + 2*0.99999111 + 0.3],
+              [-1*(0) + 2*(0) + 0.3]]
+           = [[1.29998839],[0.3]]
+
+    batch_norm_0, not training (epsilon = 0.001):
+      moving_mean1 = 0, moving_variance1 = 1
+      x11 = (0.99999383-0)/sqrt(1+0.001) = 0.999494208,
+      x21 = (0.99999111-0)/sqrt(1+0.001) = 0.999491489,
+      moving_mean2 = 0, moving_variance2 = 1
+      x12 = (0-0)/sqrt(1+0.001) = 0,
+      x22 = (0-0)/sqrt(1+0.001) = 0,
+
+    logits = [[-1*0.999494208 + 2*0.999491489 + 0.3],
+              [-1*(0) + 2*(0) + 0.3]]
+           = [[1.2995],[0.3]]
+    """
+    base_global_step = 100
+    create_checkpoint(
+        (
+            ([[.6, .5]], [1., -1.]),
+            ([[-1.], [2.]], [.3]),
+        ),
+        base_global_step,
+        self._model_dir,
+        batch_norm_vars=([[0, 0],  # beta.
+                          [1, 1],  # gamma.
+                          [0, 0],  # moving mean.
+                          [1, 1],  # moving variance.
+                         ],))
+    self._test_logits(
+        model_fn.ModeKeys.TRAIN,
+        hidden_units=[2],
+        logits_dimension=1,
+        inputs=[[10.], [-20.]],
+        expected_logits=[[1.29998839], [0.3]],
+        batch_norm=True)
+    for mode in [model_fn.ModeKeys.EVAL, model_fn.ModeKeys.PREDICT]:
+      self._test_logits(
+          mode,
+          hidden_units=[2],
+          logits_dimension=1,
+          inputs=[[10.], [-20.]],
+          expected_logits=[[1.2995], [0.3]],
+          batch_norm=experimental_batch_norm_options(apply_before_activation=True))
 
   def test_multi_dim_logits(self):
     """Tests multi-dimensional logits.
