@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils.h"
 
+#include <iterator>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -170,7 +171,8 @@ int NodePositionIfSameNode(const string& input_name, const string& node_name) {
   const bool is_ctrl = input_name[0] == '^';
   auto input_it = is_ctrl ? input_name.begin() + 1 : input_name.begin();
   auto node_it = node_name.begin();
-  if (std::distance(input_it, input_name.end()) < node_name.size()) {
+  if (node_name.empty() ||
+      std::distance(input_it, input_name.end()) < node_name.size()) {
     return -2;
   }
   while (node_it != node_name.end()) {
