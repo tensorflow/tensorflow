@@ -46,7 +46,6 @@ cc_library(
         "logging/tf_graph_writer.h",
         "logging/tf_graph_writer.cc",
     ],
-    hdrs = [],
     deps = [
         "@org_tensorflow//tensorflow/core:protos_all_proto_text",
         "@org_tensorflow//tensorflow/core:framework_headers_lib",
