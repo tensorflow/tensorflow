@@ -122,6 +122,52 @@ Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
 }
 
 //===----------------------------------------------------------------------===//
+// MulFOp
+//===----------------------------------------------------------------------===//
+
+void MulFOp::build(Builder *builder, OperationState *result, SSAValue *lhs,
+                   SSAValue *rhs) {
+  assert(lhs->getType() == rhs->getType());
+  result->addOperands({lhs, rhs});
+  result->types.push_back(lhs->getType());
+}
+
+bool MulFOp::parse(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type *type;
+  return parser->parseOperandList(ops, 2) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->resolveOperands(ops, type, result->operands) ||
+         parser->addTypeToList(type, result->types);
+}
+
+void MulFOp::print(OpAsmPrinter *p) const {
+  *p << "mulf " << *getOperand(0) << ", " << *getOperand(1);
+  p->printOptionalAttrDict(getAttrs());
+  *p << " : " << *getType();
+}
+
+bool MulFOp::verify() const {
+  if (!isa<FloatType>(getTensorOrVectorElementType(getType())))
+    return emitOpError("requires a floating point type");
+
+  return false;
+}
+
+Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "mulf takes two operands");
+
+  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+      return FloatAttr::get(lhs->getValue() * rhs->getValue(), context);
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // AffineApplyOp
 //===----------------------------------------------------------------------===//
 
@@ -989,6 +1035,6 @@ bool StoreOp::verify() const {
 void mlir::registerStandardOperations(OperationSet &opSet) {
   opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, CallOp, CallIndirectOp,
                       ConstantOp, DeallocOp, DimOp, ExtractElementOp, LoadOp,
-                      ReturnOp, ShapeCastOp, StoreOp>(
+                      MulFOp, ReturnOp, ShapeCastOp, StoreOp>(
       /*prefix=*/"");
 }

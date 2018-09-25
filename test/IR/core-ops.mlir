@@ -39,6 +39,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
 
   // CHECK: %3 = addf %2, %2 : f32
   %f3 = addf %f2, %f2 : f32
+  
+  // CHECK: %4 = mulf %2, %2 : f32
+  %f4 = mulf %f2, %f2 : f32
 
   // CHECK: %c42_i32 = constant 42 : i32
   %x = "constant"(){value: 42} : () -> i32
