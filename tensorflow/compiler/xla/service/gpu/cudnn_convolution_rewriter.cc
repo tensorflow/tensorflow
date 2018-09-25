@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -476,6 +477,12 @@ MatchBackwardInput(HloInstruction* conv) {
   return std::make_tuple(true, new_window, dnums, rhs);
 }
 
+CudnnConvBackendConfig GetDefaultBackendConfig() {
+  CudnnConvBackendConfig config;
+  config.set_conv_result_scale(1);
+  return config;
+}
+
 // Tries to rewrite a single convolution into a call to cudnn.
 StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
@@ -514,6 +521,9 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   if (custom_call == nullptr) {
     return false;
   }
+
+  TF_RETURN_IF_ERROR(
+      custom_call->set_backend_config(GetDefaultBackendConfig()));
 
   // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract out
   // the conv result and replace `conv` with it.
