@@ -77,8 +77,8 @@ static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
   GetMklShape(context, kInputSizeIndex, &size_mkl_shape);
 
   // Begin and size tensors cannot be in MklDnn layout.
-  CHECK_EQ(begin_mkl_shape.IsMklTensor(), false);
-  CHECK_EQ(size_mkl_shape.IsMklTensor(), false);
+  DCHECK_EQ(begin_mkl_shape.IsMklTensor(), false);
+  DCHECK_EQ(size_mkl_shape.IsMklTensor(), false);
 
   TensorShape input_tf_shape = input_mkl_shape.IsMklTensor()
                                    ? input_mkl_shape.GetTfShape()
@@ -92,9 +92,8 @@ static void ValidateMklInputs(OpKernelContext* context, bool* is_identity,
                    size_tensor.NumElements() == input_dims,
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
-          input_dims, ", but got shapes ",
-          begin_tensor.shape().DebugString(), " and ",
-          size_tensor.shape().DebugString(), " instead."));
+          input_dims, ", but got shapes ", begin_tensor.shape().DebugString(),
+          " and ", size_tensor.shape().DebugString(), " instead."));
 
   *begin = IntTensorToInt64Vec(begin_tensor);
   *size = IntTensorToInt64Vec(size_tensor);
@@ -173,7 +172,8 @@ class MklDnnSliceOp : public OpKernel {
     CheckCommonCasesForMklInputs<T>(context, &begin, &size, &done);
     if (!context->status().ok() || done == true) return;
 
-    // Though MKL-DNN supports more than 8 dimension and less than 12 dimension tensor.
+    // Though MKL-DNN supports more than 8 dimension and
+    // less than 12 dimension tensor.
     // But we are mimicking functionality of Eigen Slice op for CPU.
     if (begin.size() >= 8) {
       OP_REQUIRES(
@@ -256,13 +256,14 @@ class MklDnnSliceOp : public OpKernel {
         auto input_md = input_mkl_shape.GetMklLayout();
         src.SetUsrMem(input_md, &input_tensor);
       } else {
-        // Initialize input dimensions and strides to be used when input is not in
-        // MklDnn layout.
+        // Initialize input dimensions and strides to be used when input is not
+        // in MklDnn layout.
         memory::dims input_dims, input_strides;
         input_dims = TFShapeToMklDnnDims(input_tensor.shape());
         input_strides = CalculateTFStrides(input_dims);
         // Create input memory descriptor.
-        auto input_md = MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
+        auto input_md =
+            MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
         src.SetUsrMem(input_md, &input_tensor);
       }
 
@@ -281,7 +282,7 @@ class MklDnnSliceOp : public OpKernel {
       AllocateOutputTensor(context, input_mkl_shape, &output_pd, size_dims,
                            &output_tensor, &output_mkl_shape);
       CHECK_NOTNULL(output_tensor);
-      CHECK_EQ(input_mkl_shape.IsMklTensor(), output_mkl_shape.IsMklTensor());
+      DCHECK_EQ(input_mkl_shape.IsMklTensor(), output_mkl_shape.IsMklTensor());
       output.SetUsrMem(output_md, output_tensor);
 
       std::vector<primitive> net;
