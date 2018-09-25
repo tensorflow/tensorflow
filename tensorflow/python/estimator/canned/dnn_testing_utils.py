@@ -526,7 +526,7 @@ class BaseDNNLogitFnTest(object):
                    logits_dimension,
                    inputs,
                    expected_logits,
-                   batch_norm=None):
+                   batch_norm=False):
     """Tests that the expected logits are calculated."""
     with ops.Graph().as_default():
       # Global step needed for MonitoredSession, which is in turn used to
@@ -859,7 +859,7 @@ class BaseDNNLogitFnTest(object):
               activation_fn=nn.relu,
               dropout=None,
               input_layer_partitioner=input_layer_partitioner,
-              batch_norm=None)
+              batch_norm=False)
           logits = logit_fn(
               features={
                   'age': constant_op.constant(inputs[0]),

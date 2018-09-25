@@ -89,7 +89,7 @@ def _dnn_linear_combined_model_fn(features,
                                   dnn_dropout=None,
                                   input_layer_partitioner=None,
                                   config=None,
-                                  batch_norm=None,
+                                  batch_norm=False,
                                   linear_sparse_combiner='sum'):
   """Deep Neural Net and Linear combined model_fn.
 
@@ -117,8 +117,9 @@ def _dnn_linear_combined_model_fn(features,
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
     config: `RunConfig` object to configure the runtime settings.
-    batch_norm: When not `None`, a `_BatchNormOptions` object that
-      configures batch normalization after each hidden layer.
+    batch_norm: A boolean indicating whether to to use batch normalization
+      after each hidden layer with default options, or a `_BatchNormOptions`
+      object that configures batch normalization after each hidden layer.
     linear_sparse_combiner: A string specifying how to reduce the linear model
       if a categorical column is multivalent.  One of "mean", "sqrtn", and
       "sum".
@@ -330,7 +331,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                config=None,
                warm_start_from=None,
                loss_reduction=losses.Reduction.SUM,
-               batch_norm=None,
+               batch_norm=False,
                linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedClassifier instance.
 
@@ -384,8 +385,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
-      batch_norm: When not `None`, a `_BatchNormOptions` object that
-        configures batch normalization after each hidden layer.
+      batch_norm: A boolean indicating whether to to use batch normalization
+        after each hidden layer with default options, or a `_BatchNormOptions`
+        object that configures batch normalization after each hidden layer.
       linear_sparse_combiner: A string specifying how to reduce the linear model
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
@@ -535,7 +537,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                config=None,
                warm_start_from=None,
                loss_reduction=losses.Reduction.SUM,
-               batch_norm=None,
+               batch_norm=False,
                linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedRegressor instance.
 
@@ -583,8 +585,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
-      batch_norm: When not `None`, a `_BatchNormOptions` object that
-        configures batch normalization after each hidden layer.
+      batch_norm: A boolean indicating whether to to use batch normalization
+        after each hidden layer with default options, or a `_BatchNormOptions`
+        object that configures batch normalization after each hidden layer.
       linear_sparse_combiner: A string specifying how to reduce the linear model
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
