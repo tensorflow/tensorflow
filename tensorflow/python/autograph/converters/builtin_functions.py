@@ -48,8 +48,13 @@ class BuiltinFunctionTransformer(converter.Base):
     node = self.generic_visit(node)
     if anno.hasanno(node.func, 'live_val'):
       live_val = anno.getanno(node.func, 'live_val')
-      if live_val in py_builtins.SUPPORTED_BUILTINS:
-        node = self._convert_builtin(live_val, node.args, as_expression=True)
+      try:
+        if live_val in py_builtins.SUPPORTED_BUILTINS:
+          node = self._convert_builtin(live_val, node.args, as_expression=True)
+      except TypeError:
+        # Not everything in Python is hashable. If it isn't then it's definitely
+        # not a supported built-in.
+        return node
     return node
 
   def visit_Print(self, node):
