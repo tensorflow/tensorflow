@@ -55,18 +55,6 @@ public final class InterpreterTest {
   }
 
   @Test
-  public void testInterpreterWithOptions() throws Exception {
-    Interpreter interpreter =
-        new Interpreter(MODEL_FILE, new Interpreter.Options().setNumThreads(2).setUseNNAPI(true));
-    assertThat(interpreter).isNotNull();
-    assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
-    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
-    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-    interpreter.close();
-  }
-
-  @Test
   public void testRunWithMappedByteBufferModel() throws Exception {
     Path path = MODEL_FILE.toPath();
     FileChannel fileChannel =

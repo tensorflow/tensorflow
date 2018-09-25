@@ -17,6 +17,7 @@ package org.tensorflow.lite;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -55,36 +56,16 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  */
 public final class Interpreter implements AutoCloseable {
 
-  /** An options class for controlling runtime interpreter behavior. */
-  public static class Options {
-    public Options() {}
-
-    /**
-     * Sets the number of threads to be used for ops that support multi-threading. Defaults to a
-     * platform-dependent value.
-     */
-    public Options setNumThreads(int numThreads) {
-      this.numThreads = numThreads;
-      return this;
-    }
-
-    /** Sets whether to use NN API (if available) for op execution. Defaults to false (disabled). */
-    public Options setUseNNAPI(boolean useNNAPI) {
-      this.useNNAPI = useNNAPI;
-      return this;
-    }
-
-    int numThreads = -1;
-    boolean useNNAPI = false;
-  }
-
   /**
    * Initializes a {@code Interpreter}
    *
    * @param modelFile: a File of a pre-trained TF Lite model.
    */
   public Interpreter(@NonNull File modelFile) {
-    this(modelFile, /*options = */ null);
+    if (modelFile == null) {
+      return;
+    }
+    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath());
   }
 
   /**
@@ -92,22 +73,12 @@ public final class Interpreter implements AutoCloseable {
    *
    * @param modelFile: a file of a pre-trained TF Lite model
    * @param numThreads: number of threads to use for inference
-   * @deprecated Prefer using the {@link #Interpreter(File,Options)} constructor. This method will
-   *     be removed in a future release.
    */
-  @Deprecated
   public Interpreter(@NonNull File modelFile, int numThreads) {
-    this(modelFile, new Options().setNumThreads(numThreads));
-  }
-
-  /**
-   * Initializes a {@code Interpreter} and specifies the number of threads used for inference.
-   *
-   * @param modelFile: a file of a pre-trained TF Lite model
-   * @param options: a set of options for customizing interpreter behavior
-   */
-  public Interpreter(@NonNull File modelFile, Options options) {
-    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), options);
+    if (modelFile == null) {
+      return;
+    }
+    wrapper = new NativeInterpreterWrapper(modelFile.getAbsolutePath(), numThreads);
   }
 
   /**
@@ -118,7 +89,7 @@ public final class Interpreter implements AutoCloseable {
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    */
   public Interpreter(@NonNull ByteBuffer byteBuffer) {
-    this(byteBuffer, /* options= */ null);
+    wrapper = new NativeInterpreterWrapper(byteBuffer);
   }
 
   /**
@@ -128,25 +99,30 @@ public final class Interpreter implements AutoCloseable {
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
    * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
    * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
-   *
-   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
-   *     will be removed in a future release.
    */
-  @Deprecated
   public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
-    this(byteBuffer, new Options().setNumThreads(numThreads));
+    wrapper = new NativeInterpreterWrapper(byteBuffer, numThreads);
   }
 
   /**
-   * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and a set of custom
-   * {@link #Options}.
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
    *
-   * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
-   * {@code ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a
-   * direct {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
    */
-  public Interpreter(@NonNull ByteBuffer byteBuffer, Options options) {
-    wrapper = new NativeInterpreterWrapper(byteBuffer, options);
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer);
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file and
+   * specifies the number of threads used for inference.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   */
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer, int numThreads) {
+    wrapper = new NativeInterpreterWrapper(mappedByteBuffer, numThreads);
   }
 
   /**
@@ -264,25 +240,12 @@ public final class Interpreter implements AutoCloseable {
     return wrapper.getLastNativeInferenceDurationNanoseconds();
   }
 
-  /**
-   * Turns on/off Android NNAPI for hardware acceleration when it is available.
-   *
-   * @deprecated Prefer using {@link Options#setUseNNAPI(boolean)} directly for enabling NN API.
-   *     This method will be removed in a future release.
-   */
-  @Deprecated
+  /** Turns on/off Android NNAPI for hardware acceleration when it is available. */
   public void setUseNNAPI(boolean useNNAPI) {
     checkNotClosed();
     wrapper.setUseNNAPI(useNNAPI);
   }
 
-  /**
-   * Sets the number of threads to be used for ops that support multi-threading.
-   *
-   * @deprecated Prefer using {@link Options#setNumThreads(int)} directly for controlling thread
-   *     multi-threading. This method will be removed in a future release.
-   */
-  @Deprecated
   public void setNumThreads(int numThreads) {
     checkNotClosed();
     wrapper.setNumThreads(numThreads);
