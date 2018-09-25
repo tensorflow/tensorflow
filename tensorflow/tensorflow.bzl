@@ -1695,7 +1695,7 @@ register_extension_info(
 # See https://github.com/tensorflow/tensorflow/issues/22390
 def py_binary(name, deps = [], **kwargs):
     # Add an extra target for dependencies to avoid nested select statement.
-    native.py_library (
+    native.py_library(
         name = name + "_deps",
         deps = deps,
     )
