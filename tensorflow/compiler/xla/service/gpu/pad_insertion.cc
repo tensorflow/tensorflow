@@ -162,8 +162,12 @@ bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
   // The conv CustomCall returns a tuple (conv_result, scratch_buffer).  Extract
   // out the shape of conv_result.
   VLOG(1) << "Canonicalizing forward conv";
+  std::vector<HloInstruction*> operands(conv->operands().begin(),
+                                        conv->operands().end());
+  operands[0] = new_input;
+  operands[1] = new_kernel;
   auto new_conv = conv->parent()->AddInstruction(
-      conv->CloneWithNewOperands(conv->shape(), {new_input, new_kernel}));
+      conv->CloneWithNewOperands(conv->shape(), operands));
   new_conv->set_window(new_conv_window);
   VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
           << new_conv->ToString();

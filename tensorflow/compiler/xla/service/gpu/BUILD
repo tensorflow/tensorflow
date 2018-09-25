@@ -433,6 +433,7 @@ cc_library(
     srcs = ["cudnn_convolution_rewriter.cc"],
     hdrs = ["cudnn_convolution_rewriter.h"],
     deps = [
+        ":backend_configs",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:util",
@@ -597,14 +598,11 @@ cc_library(
     hdrs = ["pad_for_tensor_cores.h"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:shape_inference",
     ],
 )
 

@@ -129,6 +129,8 @@ const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";
 const char* const kCudnnConvBackwardFilterCallTarget =
     "__cudnn$convBackwardFilter";
+const char* const kCudnnConvBiasActivationForwardCallTarget =
+    "__cudnn$convBiasActivationForward";
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -137,7 +139,8 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   const auto& target = hlo.custom_call_target();
   return target == kCudnnConvForwardCallTarget ||
          target == kCudnnConvBackwardInputCallTarget ||
-         target == kCudnnConvBackwardFilterCallTarget;
+         target == kCudnnConvBackwardFilterCallTarget ||
+         target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
@@ -247,6 +250,9 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   if (target == kCudnnConvBackwardFilterCallTarget) {
     return CudnnConvKind::kBackwardFilter;
   }
+  if (target == kCudnnConvBiasActivationForwardCallTarget) {
+    return CudnnConvKind::kForwardActivation;
+  }
   return InternalError("Unexpected call target: %s", target);
 }
 
@@ -258,6 +264,8 @@ string CudnnConvKindToString(CudnnConvKind kind) {
       return "backward_filter";
     case CudnnConvKind::kBackwardInput:
       return "backward_input";
+    case CudnnConvKind::kForwardActivation:
+      return "forward with activation";
   }
 }
 

@@ -89,6 +89,7 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
       succ = stream_exec->GetConvolveBackwardDataAlgorithms(true, &algorithms);
       break;
     case CudnnConvKind::kForward:
+    case CudnnConvKind::kForwardActivation:
       succ = stream_exec->GetConvolveAlgorithms(true, &algorithms);
       break;
   }
@@ -363,8 +364,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
 
   HloInstruction* new_call = computation->AddInstruction(
-      instr->CloneWithNewOperands(new_call_shape, {instr->mutable_operand(0),
-                                                   instr->mutable_operand(1)}));
+      instr->CloneWithNewOperands(new_call_shape, instr->operands()));
+
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   // Repackage new_call so it has the same shape as the original call, namely

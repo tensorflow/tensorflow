@@ -104,6 +104,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instr));
   switch (kind) {
     case CudnnConvKind::kForward:
+    case CudnnConvKind::kForwardActivation:
       input_shape = &lhs_shape;
       filter_shape = &rhs_shape;
       output_shape = &result_shape;
@@ -153,6 +154,20 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, instr, 1));
   TF_RETURN_IF_ERROR(
       constraints->SetBufferLayout(result_shape.layout(), *call_result_buf));
+  // instr->operand(2), if exists, is the bias buffer. There is no need to
+  // assign layout to it, as it has only one dimension.
+
+  // instr->opernad(3), if exists, is the side input buffer.
+  if (instr->operand_count() == 4) {
+    if (kind != CudnnConvKind::kForwardActivation) {
+      return InternalError(
+          "Invalid convolution. Conv has a side input, but kind is not fused "
+          "conv forward: %s",
+          instr->ToString());
+    }
+    // The side input layout must match the output layout.
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(*output_shape, instr, 3));
+  }
   return Status::OK();
 }
 
