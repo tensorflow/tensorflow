@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
+import weakref
+
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -155,6 +159,19 @@ class KerasOptimizersTest(test.TestCase):
       optimizer.get_config()
     with self.assertRaises(NotImplementedError):
       optimizer.from_config(None)
+
+  def test_optimizer_garbage_collection(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      keras.backend.track_tf_optimizer(optimizer)
+      optimizer_weak = weakref.ref(optimizer)
+    graph_weak = weakref.ref(graph)
+    del graph, optimizer
+    gc.collect()
+    # Check that the weak references are dead now.
+    self.assertIs(graph_weak(), None)
+    self.assertIs(optimizer_weak(), None)
 
   @test_util.run_in_graph_and_eager_modes
   def test_tfoptimizer_iterations(self):
