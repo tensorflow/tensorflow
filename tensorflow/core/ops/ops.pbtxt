@@ -33043,6 +33043,19 @@ op {
     name: "output"
     type: DT_INT32
   }
+  attr {
+    name: "unit"
+    type: "string"
+    default_value {
+      s: "BYTE"
+    }
+    allowed_values {
+      list {
+        s: "BYTE"
+        s: "UTF8_CHAR"
+      }
+    }
+  }
 }
 op {
   name: "StringSplit"
