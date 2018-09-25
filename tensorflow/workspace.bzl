@@ -106,11 +106,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/8ff1374008259719b54a8cb128ef951c02da164c.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/8ff1374008259719b54a8cb128ef951c02da164c.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/e01d95528ea2137a4a27a88d1f57c6cb260aafed.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/e01d95528ea2137a4a27a88d1f57c6cb260aafed.tar.gz",
         ],
-        sha256 = "006931f9705484041eed65189038f87931a87cff200bb296f94b3d42339c4cd9",
-        strip_prefix = "abseil-cpp-8ff1374008259719b54a8cb128ef951c02da164c",
+        sha256 = "84043ed402d2a2a6ba4cdddb7e85118b1158fd81fe4ac3a14adc343d054c1e2e",
+        strip_prefix = "abseil-cpp-e01d95528ea2137a4a27a88d1f57c6cb260aafed",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
     )
 
@@ -179,6 +179,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
         sha256 = "fdd3b3aecce60987e5525e55bf3a21d68a8695320bd5b980775af6507eec3944",
         strip_prefix = "google-cloud-cpp-14760a86c4ffab9943b476305c4fe927ad95db1c",
+        system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
+        },
     )
 
     tf_http_archive(
@@ -190,6 +194,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "824870d87a176f26bcef663e92051f532fac756d1a06b404055dc078425f4378",
         strip_prefix = "googleapis-f81082ea1e2f85c43649bee26e0d9871d4b41cdb",
         build_file = clean_dep("//third_party:googleapis.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:googleapis.BUILD"),
     )
 
     tf_http_archive(
@@ -319,6 +324,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         sha256 = "7068908321ecd2774f145193c4b34a11305bd104b4551b09273dfd1d6a374930",
         strip_prefix = "gast-0.2.0",
         build_file = clean_dep("//third_party:gast.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
     )
 
     tf_http_archive(
@@ -341,6 +347,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
         sha256 = "95160f778a62c7a60ddeadc7bf2d83f85a23a27359814aca12cf949e896fa82c",
         strip_prefix = "abseil-py-pypi-v0.2.2",
+        system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
+            "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
+        },
     )
 
     tf_http_archive(
@@ -531,6 +542,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
         sha256 = "1188e29000013ed6517168600fc35a010d58c5d321846d6a6dfee74e4c788b45",
         strip_prefix = "boringssl-7f634429a04abc48e2eb041c81c5235816c96514",
+        system_build_file = clean_dep("//third_party/systemlibs:boringssl.BUILD"),
     )
 
     tf_http_archive(
@@ -738,14 +750,16 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         build_file = clean_dep("//third_party:arm_neon_2_x86_sse.BUILD"),
     )
 
-    native.new_http_archive(
+    tf_http_archive(
         name = "double_conversion",
         urls = [
+            "https://mirror.bazel.build/github.com/google/double-conversion/archive/3992066a95b823efc8ccc1baf82a1cfc73f6e9b8.zip",
             "https://github.com/google/double-conversion/archive/3992066a95b823efc8ccc1baf82a1cfc73f6e9b8.zip",
         ],
         sha256 = "2f7fbffac0d98d201ad0586f686034371a6d152ca67508ab611adc2386ad30de",
         strip_prefix = "double-conversion-3992066a95b823efc8ccc1baf82a1cfc73f6e9b8",
         build_file = clean_dep("//third_party:double_conversion.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:double_conversion.BUILD"),
     )
 
     tf_http_archive(

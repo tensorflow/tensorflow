@@ -110,6 +110,22 @@ py_test(
 )
 
 py_test(
+    name = "noop_elimination_test",
+    size = "small",
+    srcs = ["noop_elimination_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "optimize_dataset_op_test",
     size = "small",
     srcs = ["optimize_dataset_op_test.py"],

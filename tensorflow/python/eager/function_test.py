@@ -1602,7 +1602,7 @@ class FunctionTest(test.TestCase):
     defun_add = function.defun_with_attributes(
         add, attributes={'experimental_3': True, 'experimental_4': 1.0})
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
         sq = matmul(t, t)
@@ -1636,7 +1636,7 @@ class FunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError,
                                  '.*Attribute name is not whitelisted.*'):
-      with context.graph_mode(), self.test_session():
+      with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           matmul(t, t)
@@ -1647,7 +1647,7 @@ class FunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError,
                                  '.*Unsupported attribute type.*'):
-      with context.graph_mode(), self.test_session():
+      with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
@@ -1811,6 +1811,36 @@ class FunctionTest(test.TestCase):
       else:
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEquals(y_value, 3.0)
+
+  def testDefunFunctionSeparateGraphs(self):
+    with context.graph_mode():
+
+      @function.defun
+      def add(x):
+        return x + 5
+
+      @function.defun
+      def maybe_add(x, should_add):
+        if should_add:
+          return add(x)
+        else:
+          return x
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 1)
+        self.assertEqual(len(add._function_cache), 1)
+
+        maybe_add(x, False)
+        self.assertEqual(len(maybe_add._function_cache), 2)
+        self.assertEqual(len(add._function_cache), 1)
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 3)
+        self.assertEqual(len(add._function_cache), 2)
 
 
 @test_util.with_c_shapes

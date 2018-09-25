@@ -1521,7 +1521,8 @@ class Model(Network):
     if self._distribution_strategy:
       distributed_training_utils.validate_callbacks(callbacks)
 
-      distributed_training_utils.validate_inputs(x, y)
+      distributed_training_utils.validate_inputs(
+          x, y, self._distribution_strategy)
 
       first_x_value = nest.flatten(x)[0]
       if not steps_per_epoch and isinstance(first_x_value, np.ndarray):
@@ -1563,7 +1564,8 @@ class Model(Network):
 
       # Validate and standardize validation data.
       if self._distribution_strategy:
-        distributed_training_utils.validate_inputs(val_x, val_y)
+        distributed_training_utils.validate_inputs(
+            val_x, val_y, self._distribution_strategy)
         first_valx_value = nest.flatten(val_x)[0]
         if not validation_steps and isinstance(first_valx_value, np.ndarray):
           validation_steps = distributed_training_utils.get_input_batch_params(
@@ -1737,7 +1739,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_inputs(x, y)
+      distributed_training_utils.validate_inputs(
+          x, y, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
@@ -1852,7 +1855,8 @@ class Model(Network):
       # `MirroredStrategy`.
       if hasattr(self._distribution_strategy, '_prefetch_on_device'):
         self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
-      distributed_training_utils.validate_inputs(x, None)
+      distributed_training_utils.validate_inputs(
+          x, None, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(

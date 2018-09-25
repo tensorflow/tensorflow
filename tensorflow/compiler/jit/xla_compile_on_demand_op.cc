@@ -58,7 +58,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
       /*allocate_xla_tensors=*/true,
       /*use_multiple_streams=*/metadata.UseMultipleStreams());
 
-  launch_context.PopulateInputs(ctx, result, variables);
+  launch_context.PopulateInputs(ctx, result, variables,
+                                /*missing_ctx_input_prefix=*/0);
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
@@ -79,7 +80,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(run_result.status());
 
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
-      ctx, result, run_result.ConsumeValueOrDie()));
+      ctx, result, run_result.ConsumeValueOrDie(),
+      /*missing_ctx_input_prefix=*/0));
   return Status::OK();
 }
 

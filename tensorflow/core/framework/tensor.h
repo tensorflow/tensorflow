@@ -200,9 +200,28 @@ class Tensor {
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
+  /// NOTE: When fed with an N-dimensional tensor, this method returns a tensor
+  /// also with N dimensions. If you want to select a sub tensor, see SubSlice.
+  ///
   /// REQUIRES: `dims()` >= 1
   /// REQUIRES: `0 <= dim0_start <= dim0_limit <= dim_size(0)`
   Tensor Slice(int64 dim0_start, int64 dim0_limit) const;
+
+  /// \brief Select a subslice from this tensor along the 1st dimension.
+  ///
+  /// When fed with an N-dimensional tensor, this method returns a tensor with
+  /// N-1 dimensions, where the returned tensor is a subslice of the input
+  /// tensor along the first dimension. The N-1 dimensions of the returned
+  /// tensor are the last N-1 dimensions of the input tensor.
+  ///
+  /// NOTE: The returned tensor may not satisfy the same alignment
+  /// requirement as this tensor depending on the shape. The caller
+  /// must check the returned tensor's alignment before calling certain
+  /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
+  ///
+  /// REQUIRES: `dims()` >= 2
+  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
 
