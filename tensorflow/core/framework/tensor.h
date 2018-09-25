@@ -154,7 +154,7 @@ class Tensor {
   /// Returns the estimated memory usage of this tensor.
   size_t TotalBytes() const;
 
-  // Returns the size of sallocated memory for this tensor.
+  // Returns the size of allocated memory for this tensor.
   size_t AllocatedBytes() const;
 
   /// Returns true iff this tensor is aligned.
@@ -200,9 +200,28 @@ class Tensor {
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
+  /// NOTE: When fed with an N-dimensional tensor, this method returns a tensor
+  /// also with N dimensions. If you want to select a sub tensor, see SubSlice.
+  ///
   /// REQUIRES: `dims()` >= 1
   /// REQUIRES: `0 <= dim0_start <= dim0_limit <= dim_size(0)`
   Tensor Slice(int64 dim0_start, int64 dim0_limit) const;
+
+  /// \brief Select a subslice from this tensor along the 1st dimension.
+  ///
+  /// When fed with an N-dimensional tensor, this method returns a tensor with
+  /// N-1 dimensions, where the returned tensor is a subslice of the input
+  /// tensor along the first dimension. The N-1 dimensions of the returned
+  /// tensor are the last N-1 dimensions of the input tensor.
+  ///
+  /// NOTE: The returned tensor may not satisfy the same alignment
+  /// requirement as this tensor depending on the shape. The caller
+  /// must check the returned tensor's alignment before calling certain
+  /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
+  ///
+  /// REQUIRES: `dims()` >= 2
+  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
 
@@ -430,7 +449,7 @@ class Tensor {
       int64 begin) const;
 
   /// Render the first `max_entries` values in `*this` into a string.
-  string SummarizeValue(int64 max_entries) const;
+  string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
   string DebugString() const;

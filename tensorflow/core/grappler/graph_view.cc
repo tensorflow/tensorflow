@@ -14,10 +14,40 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
 namespace grappler {
+
+int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  for (int output_arg_id = 0; output_arg_id < op.output_arg_size();
+       ++output_arg_id) {
+    if (port_id < 0) {
+      return -1;
+    } else if (port_id == 0) {
+      return output_arg_id;
+    }
+
+    const auto& output_arg = op.output_arg(output_arg_id);
+    if (!output_arg.number_attr().empty()) {
+      const int n = node.attr().at(output_arg.number_attr()).i();
+      if (n < 0) {
+        // This should never happen.
+        DCHECK_GE(n, 0);
+        return -1;
+      }
+      if (port_id < n) {
+        return output_arg_id;
+      }
+      port_id -= n;
+    } else {
+      --port_id;
+    }
+  }
+
+  return -1;
+}
 
 GraphView::GraphView(GraphDef* graph) : graph_(graph) {
   for (int i = 0; i < graph_->node_size(); i++) {

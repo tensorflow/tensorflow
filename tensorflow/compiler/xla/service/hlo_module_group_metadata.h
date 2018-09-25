@@ -169,14 +169,14 @@ class HloModuleGroupMetadata {
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
-  const std::unordered_set<HloInstruction*>& Companions(
+  const std::vector<HloInstruction*>& Companions(
       const HloInstruction* instruction) const {
     CHECK_EQ(companion_set_index_.count(instruction), 1);
     return companion_set(companion_set_index_.at(instruction));
   }
 
   // Returns the companion set at the given index.
-  const std::unordered_set<HloInstruction*>& companion_set(int64 index) const {
+  const std::vector<HloInstruction*>& companion_set(int64 index) const {
     CHECK_LT(index, companion_sets_.size());
     return *companion_sets_[index];
   }
@@ -187,7 +187,7 @@ class HloModuleGroupMetadata {
   }
 
   // Returns the list of all companion sets in the HLO module group.
-  const std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>&
+  const std::vector<std::unique_ptr<std::vector<HloInstruction*>>>&
   companion_sets() const {
     return companion_sets_;
   }
@@ -247,8 +247,7 @@ class HloModuleGroupMetadata {
   void DumpCollectedStats() const;
 
   // List of all companion instructions sets in the module.
-  std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>
-      companion_sets_;
+  std::vector<std::unique_ptr<std::vector<HloInstruction*>>> companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> companion_set_index_;

@@ -428,7 +428,7 @@ class BasicRNNCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % str(input_shape))
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     self._kernel = self.add_variable(
@@ -525,7 +525,7 @@ class GRUCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % str(input_shape))
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     self._gate_kernel = self.add_variable(
@@ -705,7 +705,7 @@ class BasicLSTMCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % str(input_shape))
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     h_depth = self._num_units
@@ -908,7 +908,7 @@ class LSTMCell(LayerRNNCell):
   def build(self, inputs_shape):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % str(input_shape))
+                       % str(inputs_shape))
 
     input_depth = inputs_shape[-1]
     h_depth = self._num_units if self._num_proj is None else self._num_proj

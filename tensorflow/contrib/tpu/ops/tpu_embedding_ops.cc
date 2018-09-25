@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tpu/proto/tpu_embedding_config.pb.h"
+#include "tensorflow/contrib/tpu/proto/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -88,12 +88,12 @@ Status GradientDescentShapes(shape_inference::InferenceContext *c) {
 
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
-  int64 num_tables = config.table_config_size();
+  int64 num_tables = config.table_descriptor_size();
   if (table_id >= num_tables) {
     return errors::InvalidArgument("Table id >= num_tables");
   }
-  int64 width = config.table_config(table_id).width();
-  int64 num_rows = config.table_config(table_id).num_rows();
+  int64 width = config.table_descriptor(table_id).dimension();
+  int64 num_rows = config.table_descriptor(table_id).vocabulary_size();
 
   TF_RETURN_IF_ERROR(c->set_output("parameters", {c->Matrix(num_rows, width)}));
   return Status::OK();
@@ -160,12 +160,12 @@ Status AdagradShapes(shape_inference::InferenceContext *c) {
 
   int table_id;
   TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
-  int64 num_tables = config.table_config_size();
+  int64 num_tables = config.table_descriptor_size();
   if (table_id >= num_tables) {
     return errors::InvalidArgument("Table id >= num_tables");
   }
-  int64 width = config.table_config(table_id).width();
-  int64 num_rows = config.table_config(table_id).num_rows();
+  int64 width = config.table_descriptor(table_id).dimension();
+  int64 num_rows = config.table_descriptor(table_id).vocabulary_size();
 
   TF_RETURN_IF_ERROR(c->set_output("parameters", {c->Matrix(num_rows, width)}));
   TF_RETURN_IF_ERROR(
@@ -244,11 +244,11 @@ Status ActivationShapes(shape_inference::InferenceContext *c) {
   if (!config.ParseFromString(config_string)) {
     return errors::InvalidArgument("Malformed tpu_embedding_config.");
   }
-  int64 batch_size = config.batch_size();
-  int64 num_tables = config.table_config_size();
+  int64 batch_size = config.batch_size_per_tensor_core();
+  int64 num_tables = config.table_descriptor_size();
   for (int table_id = 0; table_id < num_tables; ++table_id) {
-    int64 width = config.table_config(table_id).width();
-    int64 num_features = config.table_config(table_id).num_features();
+    int64 width = config.table_descriptor(table_id).dimension();
+    int64 num_features = config.table_descriptor(table_id).vocabulary_size();
     c->set_output(table_id, c->Matrix(batch_size * num_features, width));
   }
   return Status::OK();

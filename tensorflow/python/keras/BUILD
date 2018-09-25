@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
+load("@pip_deps//:requirements.bzl", "requirement")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -62,6 +63,7 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
+        requirement("keras_applications"),
         "//tensorflow/python/saved_model",
         "//tensorflow/python:training",
     ],
@@ -381,12 +383,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "embeddings_test",
     size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],

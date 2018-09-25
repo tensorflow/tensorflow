@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -101,6 +102,32 @@ REGISTER_OP("AsString")
     .Attr("width: int = -1")
     .Attr("fill: string = ''")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("StringFormat")
+    .Input("inputs: T")
+    .Output("output: string")
+    .Attr("T: list(type) >= 0")
+    .Attr("template: string = '%s'")
+    .Attr("placeholder: string = '%s'")
+    .Attr("summarize: int = 3")
+    .SetShapeFn([](InferenceContext* c) {
+      string template_;
+      string placeholder;
+      TF_RETURN_IF_ERROR(c->GetAttr("template", &template_));
+      TF_RETURN_IF_ERROR(c->GetAttr("placeholder", &placeholder));
+
+      std::vector<std::string> split_template;
+      split_template = absl::StrSplit(template_, placeholder);
+      int64 num_placeholders = split_template.size() - 1;
+      if (c->num_inputs() != num_placeholders) {
+        return errors::InvalidArgument(strings::StrCat(
+            "num placeholders in template and num inputs must match: ",
+            num_placeholders, " vs. ", c->num_inputs()));
+      }
+
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("StringJoin")
     .Input("inputs: N * string")

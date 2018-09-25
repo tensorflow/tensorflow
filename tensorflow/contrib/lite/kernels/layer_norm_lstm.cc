@@ -16,7 +16,7 @@ limitations under the License.
 // Layer Normalization LSTM op that applies normalization by mean and standard
 // deviation to the activation of the LSTM layers. Please see
 // https://arxiv.org/abs/1607.06450 for details.
-#include "flatbuffers/flexbuffers.h"  // flatbuffers
+#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"

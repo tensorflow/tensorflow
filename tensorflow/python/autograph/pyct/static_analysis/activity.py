@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import weakref
 
 import gast
 
@@ -126,7 +127,10 @@ class Scope(object):
       self.parent.mark_read(name)
 
   def mark_param(self, name, owner):
-    self.params[name] = owner
+    # Assumption: all AST nodes have the same life span. This lets us use
+    # a weak reference to mark the connection between a symbol node and the
+    # function node whose argument that symbol is.
+    self.params[name] = weakref.ref(owner)
 
   def mark_creation(self, name, writes_create_symbol=False):
     """Mark a qualified name as created."""

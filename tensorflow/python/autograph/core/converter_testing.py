@@ -93,11 +93,21 @@ class TestCase(test.TestCase):
       self.dynamic_calls.append(args)
       return 7
 
+    class ConversionOptions(object):
+      """Mock version of api.ConversionOptions."""
+
+      def __init__(self, recursive):
+        self.recursive = recursive
+
+      @classmethod
+      def new(cls, recursive):
+        cls(recursive)
+
     try:
       result, source = compiler.ast_to_object(node, include_source_map=True)
 
       result.tf = self.make_fake_mod('fake_tf', *symbols)
-      fake_ag = self.make_fake_mod('fake_ag', converted_call)
+      fake_ag = self.make_fake_mod('fake_ag', converted_call, ConversionOptions)
       fake_ag.__dict__.update(operators.__dict__)
       fake_ag.__dict__['utils'] = utils
       fake_ag.__dict__['rewrite_graph_construction_error'] = (

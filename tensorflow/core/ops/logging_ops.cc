@@ -20,6 +20,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+using shape_inference::InferenceContext;
+
 REGISTER_OP("Assert")
     .Input("condition: bool")
     .Input("data: T")
@@ -43,6 +45,23 @@ REGISTER_OP("Print")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Print");
+
+REGISTER_OP("PrintV2")
+    .Input("input: string")
+    .SetIsStateful()
+    .Attr(
+        "output_stream: {'stdout', 'stderr', 'log(info)', "
+        "'log(warning)', 'log(error)'} = 'stderr'")
+    .SetShapeFn([](InferenceContext* c) {
+      // Make sure that the input is a scalar.
+      if (c->Rank(c->input(0)) != 0) {
+        return errors::InvalidArgument("input must be a scalar, but has rank: ",
+                                       c->Rank(c->input(0)));
+      }
+      return Status::OK();
+    });
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("PrintV2");
 
 // ----------------------------------------------------------------------------
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as

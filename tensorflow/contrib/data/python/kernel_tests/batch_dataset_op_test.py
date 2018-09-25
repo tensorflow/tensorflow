@@ -742,7 +742,7 @@ class RestructuredDatasetTest(test.TestCase):
     iterator = result.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(5):
         sess.run(get_next)
@@ -813,7 +813,7 @@ class RestructuredDatasetTest(test.TestCase):
         .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
@@ -837,7 +837,7 @@ class RestructuredDatasetTest(test.TestCase):
     iterator = result.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(5):
         sess.run(get_next)
@@ -879,7 +879,7 @@ class RestructuredDatasetTest(test.TestCase):
     iterator = result.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(5):
         sess.run(get_next)

@@ -48,7 +48,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(hidden_dim,
                                    input_shape=(input_dim,)))
@@ -78,7 +78,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       input_a = keras.Input((input_dim_a,))
       input_b = keras.Input((input_dim_b,))
       a = keras.layers.Dense(hidden_dim)(input_a)
@@ -105,7 +105,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=2):
       return
 
-    with self.test_session():
+    with self.cached_session():
       input_shape = (1000, 10)
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(10,
@@ -144,7 +144,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       input_shape = (num_samples,) + shape
       x_train = np.random.randint(0, 255, input_shape)
       y_train = np.random.randint(0, num_classes, (input_shape[0],))
@@ -186,7 +186,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.Input((4, 3))
       init_state = keras.Input((3,))
       outputs = keras.layers.SimpleRNN(

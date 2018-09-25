@@ -680,9 +680,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                           TensorShape({filter.dim_size(3), filter.dim_size(2),
                                        filter.dim_size(0), filter.dim_size(1)}),
                           &transformed_filter));
-
   functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 4>()),
+      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+      To32Bit(filter.tensor<T, 4>()),
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_output;
@@ -731,9 +731,15 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmDesc> algorithms;
-    CHECK(stream->parent()->GetConvolveAlgorithms(
-        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-        &algorithms));
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetConvolveAlgorithms(
+            conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+                stream->parent()),
+            &algorithms),
+        errors::Unknown("Failed to get convolution algorithm. This is probably "
+                        "because cuDNN failed to initialize, so try looking to "
+                        "see if a warning log message was printed above."));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -823,7 +829,8 @@ namespace functor {
   extern template struct MatMulConvFunctor<GPUDevice, T>;                    \
   template <>                                                                \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                    \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,        \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,              \
+      typename TTypes<T, 4, int>::ConstTensor in,                            \
       typename TTypes<T, 4, int>::Tensor out);                               \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;              \
   template <>                                                                \

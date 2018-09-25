@@ -121,8 +121,8 @@ Wraps the XLA DynamicSlice operator, documented at
 DynamicSlice extracts a sub-array from the input array at dynamic
 start_indices. The size of the slice in each dimension is passed in
 size_indices, which specify the end point of exclusive slice intervals in each
-dimension -- [start, start + size). The shape of start_indices must be rank ==
-1, with dimension size equal to the rank of operand.
+dimension -- [start, start + size). The shape of start_indices must have rank 1,
+with dimension size equal to the rank of operand.
 
 input: A `Tensor` of type T.
 
@@ -131,7 +131,8 @@ start_indices: Rank 1 tensor of N integers containing the starting indices of
 
 start_indices: List of N integers containing the slice size for each
   dimension. Each value must be strictly greater than zero, and start + size
-  must be less
+  must be less than or equal to the size of the dimension to avoid
+  implementation defined behavior.
 )doc");
 
 REGISTER_OP("XlaDynamicUpdateSlice")
