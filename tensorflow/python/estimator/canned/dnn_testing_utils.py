@@ -632,7 +632,7 @@ class BaseDNNLogitFnTest(object):
         logits_dimension=1,
         inputs=[[10.], [20.]],
         expected_logits=[[-0.699895571], [1.299895571]],
-        batch_norm=experimental_batch_norm_options())
+        batch_norm=True)
     for mode in [model_fn.ModeKeys.EVAL, model_fn.ModeKeys.PREDICT]:
       self._test_logits(
           mode,
@@ -640,7 +640,7 @@ class BaseDNNLogitFnTest(object):
           logits_dimension=1,
           inputs=[[10.], [20.]],
           expected_logits=[[1.299500375], [5.297501873]],
-          batch_norm=experimental_batch_norm_options())
+          batch_norm=True)
 
   def test_one_dim_logits_with_batch_norm_before_activation(self):
     """Tests one-dimensional logits with batch norm before activation.
