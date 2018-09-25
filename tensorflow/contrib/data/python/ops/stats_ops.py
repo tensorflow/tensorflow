@@ -84,11 +84,11 @@ class StatsAggregator(object):
     return gen_dataset_ops.stats_aggregator_summary(self._resource)
 
 
-class _SetStatsAggregatorDataset(dataset_ops.Dataset):
+class _SetStatsAggregatorDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and sets given stats_aggregator."""
 
   def __init__(self, input_dataset, stats_aggregator):
-    super(_SetStatsAggregatorDataset, self).__init__()
+    super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._stats_aggregator = stats_aggregator
 
@@ -173,11 +173,11 @@ def latency_stats(tag):
   return _apply_fn
 
 
-class _StatsDataset(dataset_ops.Dataset):
+class _StatsDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 
   def __init__(self, input_dataset, op_function, tag):
-    super(_StatsDataset, self).__init__()
+    super(_StatsDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._op_function = op_function
     self._tag = ops.convert_to_tensor(tag, dtype=dtypes.string)

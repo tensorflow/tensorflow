@@ -445,3 +445,16 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
+
+tf_py_test(
+    name = "inputs_test",
+    size = "small",
+    srcs = ["inputs_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)

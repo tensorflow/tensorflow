@@ -116,6 +116,10 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
+  def _inputs(self):
+    # TODO(b/116506223): Determine which datasets should be used as inputs here.
+    return []
+
   @property
   def output_types(self):
     return self._output_types
