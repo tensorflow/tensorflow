@@ -695,10 +695,8 @@ def track_tf_optimizer(tf_optimizer):
   if context.executing_eagerly():
     return
   graph = ops.get_default_graph()
-  if graph not in _GRAPH_TF_OPTIMIZERS:
-    _GRAPH_TF_OPTIMIZERS[graph] = set()
-  _GRAPH_TF_OPTIMIZERS[graph].add(tf_optimizer)
-
+  optimizers = _GRAPH_TF_OPTIMIZERS.setdefault(graph, weakref.WeakSet())
+  optimizers.add(tf_optimizer)
 
 def track_variable(v):
   """Tracks the given variable for initialization."""
