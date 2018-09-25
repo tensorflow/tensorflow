@@ -673,7 +673,7 @@ class PartitionedVariableTest(test.TestCase):
         v0._set_save_slice_info(
             variables.Variable.SaveSliceInfo(v0.name, [2], [0], [1]))
         v1._set_save_slice_info(
-            variables.Variable.SaveSliceInfo(v1.name, [2], [1], [1]))
+            variables.Variable.SaveSliceInfo(v0.name, [2], [1], [1]))
         partitions = [2]
 
         variables.PartitionedVariable(
