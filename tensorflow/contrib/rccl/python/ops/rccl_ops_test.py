@@ -168,13 +168,13 @@ class BroadcastTest(RcclTestCase):
   def testBroadcastSingleDevice(self):
     # Broadcasts on a single device are removed completely during rewrite.
     self._Test(_RcclBroadcast, lambda x, y: x,
-               (['/device:GPU:0', '/device:GPU:0'],))
+               device_sets=(['/device:GPU:0', '/device:GPU:0'],))
 
   def testBroadcastToCpuError(self):
     try:
       # Broadcasts to CPU is not supported.
       self._Test(_RcclBroadcast, lambda x, y: x,
-                 (['/device:GPU:0', '/device:CPU:0'],))
+                 device_sets=(['/device:GPU:0', '/device:CPU:0'],))
     except errors.NotFoundError as e:
       self.assertRegexpMatches(
           str(e), "No registered '_RcclBroadcastRecv' OpKernel for CPU devices")
