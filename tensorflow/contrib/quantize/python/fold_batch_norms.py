@@ -628,7 +628,7 @@ def _GetBatchNormParams(graph, context, has_scaling):
   bn_decay_var_tensor = _FindMatchingTensor(graph, op_suffix_bn_decay_var,
                                             context)
   if batch_mean_tensor is None and moving_mean_tensor is None:
-    raise ValueError('Error folding unfused batch norms')
+    ValueError('Error folding unfused batch norms')
   if has_scaling:
     gamma_tensor = _FindMatchingTensor(graph, op_suffix_gamma, context)
 
