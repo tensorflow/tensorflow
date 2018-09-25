@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
 #ifdef _OPENMP
@@ -49,6 +50,9 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #ifdef INTEL_MKL
+  // Eearly return when MKL is disabled
+  if (DisableMKL())
+    return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   if (user_omp_threads == nullptr) {

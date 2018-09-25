@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
@@ -56,6 +57,10 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op != 0) return inter_op;
 #ifdef INTEL_MKL
+  // Early return if MKL is disabled
+  if (DisableMKL())
+    return port::NumSchedulableCPUs();
+
   // MKL library executes ops in parallel using OMP threads
   // Set inter_op conservatively to avoid thread oversubscription that could
   // lead to severe perf degradations and OMP resource exhaustion
