@@ -74,7 +74,7 @@ public class OvicClassifier {
     }
     labelList = loadLabelList(labelInputStream);
     // OVIC uses one thread for CPU inference.
-    tflite = new Interpreter(model, new Interpreter.Options().setNumThreads(1));
+    tflite = new Interpreter(model, 1);
     inputDims = TestHelper.getInputDims(tflite, 0);
     if (inputDims.length != 4) {
       throw new RuntimeException("The model's input dimensions must be 4 (BWHC).");
