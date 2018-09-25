@@ -158,7 +158,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       raise ValueError(
           'TPU currently requires fully defined shapes. Either use '
           'set_shape() on the input tensors or use '
-          'dataset.apply(map_and_batch(..., drop_remainder=True)).')
+          'dataset.batch(..., drop_remainder=True).')
     types = nest.flatten(iterator.output_types)
 
     enqueue_ops = [

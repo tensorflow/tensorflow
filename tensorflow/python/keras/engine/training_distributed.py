@@ -233,8 +233,6 @@ def _experimental_fit_loop(
   """
   current_strategy = model._distribution_strategy
 
-  # TODO(priyag): Add validation that shapes are fully defined for TPU case.
-
   K.get_session().run(current_strategy.initialize())
 
   def _per_device_train_function(model):
