@@ -25,10 +25,9 @@ flattened = tf.keras.layers.Flatten()(c1)
 logits = tf.keras.layers.Dense(10, activation='softmax')(flattened)
 model = tf.keras.Model(inputs=[image], outputs=[logits])
 
-strategy = keras_support.TPUDistributionStrategy(num_cores_per_host=8)
-model = keras_support.tpu_model(model,
-                                strategy=strategy,
-                                tpu_name_or_address=tpu_name)
+resolver = tf.contrib.cluster_resolver.TPUClusterResolver(tpu=tpu_name)
+strategy = keras_support.TPUDistributionStrategy(resolver)
+model = keras_support.tpu_model(model, strategy=strategy)
 
 # Only TF optimizers are currently supported.
 model.compile(optimizer=tf.train.AdamOptimizer(), ...)
