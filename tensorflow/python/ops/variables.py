@@ -2401,7 +2401,6 @@ class PartitionedVariable(object):
     partition_axes = self._partition_axes()
     if len(partition_axes) > 1:
       raise NotImplementedError(
-          "Cannot concatenate along more than one dimension: %s.  "
           "Multi-axis partition assign_fn is not supported "
           % str(partition_axes))
     partition_ix = partition_axes[0]
