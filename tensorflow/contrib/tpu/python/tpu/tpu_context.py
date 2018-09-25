@@ -118,6 +118,11 @@ class TPUContext(object):
     return self._internal_ctx.num_hosts
 
   @property
+  def current_host(self):
+    """The current host index for the TPU system."""
+    return self._invocation_index
+
+  @property
   def num_of_replicas_per_host(self):
     """The number of replicas for each host."""
     if self._internal_ctx.model_parallelism_enabled:
