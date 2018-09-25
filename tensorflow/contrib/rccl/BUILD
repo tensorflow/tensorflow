@@ -92,6 +92,7 @@ gpu_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/contrib/util:util_py",
     ],
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
