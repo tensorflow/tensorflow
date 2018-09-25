@@ -29,21 +29,24 @@ int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
       return output_arg_id;
     }
 
+    // Default is 1 port per output arg.
+    int n = 1;
+
     const auto& output_arg = op.output_arg(output_arg_id);
     if (!output_arg.number_attr().empty()) {
-      const int n = node.attr().at(output_arg.number_attr()).i();
-      if (n < 0) {
-        // This should never happen.
-        DCHECK_GE(n, 0);
-        return -1;
-      }
-      if (port_id < n) {
-        return output_arg_id;
-      }
-      port_id -= n;
-    } else {
-      --port_id;
+      n = node.attr().at(output_arg.number_attr()).i();
+    } else if (!output_arg.type_list_attr().empty()) {
+      n = node.attr().at(output_arg.type_list_attr()).list().type_size();
     }
+
+    if (n < 0) {
+      // This should never happen.
+      DCHECK_GE(n, 0);
+      return -1;
+    } else if (port_id < n) {
+      return output_arg_id;
+    }
+    port_id -= n;
   }
 
   return -1;
