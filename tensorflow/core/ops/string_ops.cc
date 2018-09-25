@@ -203,6 +203,7 @@ REGISTER_OP("StringStrip")
 REGISTER_OP("StringLength")
     .Input("input: string")
     .Output("output: int32")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")

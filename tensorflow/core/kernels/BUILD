@@ -4434,8 +4434,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "string_util",
+    srcs = ["string_util.cc"],
+    hdrs = ["string_util.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
 STRING_DEPS = [
     ":bounds_check",
+    ":string_util",
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -5166,6 +5174,7 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "spectrogram.h",
+        "string_util.h",
         "tensor_array.h",
         "tile_functor.h",
         "tile_ops_cpu_impl.h",
@@ -5334,6 +5343,7 @@ filegroup(
         "spectrogram_op.cc",
         "stack_ops.cc",
         "string_join_op.cc",
+        "string_util.cc",
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
