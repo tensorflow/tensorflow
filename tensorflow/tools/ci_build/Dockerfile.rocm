@@ -76,6 +76,17 @@ ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
+# Install RCCL
+RUN cd ~ && \
+git clone https://github.com/ROCmSoftwarePlatform/rccl.git && \
+mkdir rccl_build && \
+cd rccl_build && \
+CXX=/opt/rocm/bin/hcc cmake ../rccl && \
+make package && \
+dpkg -i *.deb && \
+cd ~ && \
+rm -rf rccl
+
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
