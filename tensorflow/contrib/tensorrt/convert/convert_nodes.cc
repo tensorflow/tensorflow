@@ -2882,7 +2882,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Identity");
-      auto status = builder.Input(connection.inside_node_name, 0, dtype)
+      auto status = builder.Input(connection.inside_node_name, connection.inside_port, dtype)
                         .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port

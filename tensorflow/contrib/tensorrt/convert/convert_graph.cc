@@ -633,7 +633,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     LOG(ERROR) << "Adding node failed " << status;
     return status;
   }
-  // Add control input and input edges to the engine node.
+  // Add input edges to the engine node.
   VLOG(1) << "input_nodes size = " << input_nodes.size();
   for (int i = 0; i < input_nodes.size(); ++i) {
     Node* n = CHECK_NOTNULL(input_nodes[i]);
