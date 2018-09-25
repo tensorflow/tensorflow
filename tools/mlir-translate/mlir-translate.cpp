@@ -80,9 +80,6 @@ static TranslateRegistration MLIRToMLIRTranslate(
       if (!module)
         return true;
 
-      std::error_code error;
-      auto result = llvm::make_unique<llvm::ToolOutputFile>(
-          outputFilename, error, llvm::sys::fs::F_None);
       return printMLIROutput(*module, outputFilename);
     });
 

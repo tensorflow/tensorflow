@@ -33,6 +33,7 @@
 #include "mlir/Transforms/CFGFunctionViewGraph.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/XLA/Passes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
@@ -72,6 +73,7 @@ enum Passes {
   PrintCFGGraph,
   SimplifyAffineExpr,
   TFRaiseControlFlow,
+  XLALower,
 };
 
 static cl::list<Passes> passList(
@@ -88,7 +90,8 @@ static cl::list<Passes> passList(
                clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
                           "Simplify affine expressions"),
                clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
-                          "Dynamic TensorFlow Switch/Match nodes to a CFG")));
+                          "Dynamic TensorFlow Switch/Match nodes to a CFG"),
+               clEnumValN(XLALower, "xla-lower", "Lower to XLA dialect")));
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -184,6 +187,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case TFRaiseControlFlow:
       pass = createRaiseTFControlFlowPass();
+      break;
+    case XLALower:
+      pass = createXLALowerPass();
       break;
     }
 
