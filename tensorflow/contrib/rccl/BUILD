@@ -15,8 +15,10 @@ load(
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
+    "tf_gpu_cc_test",
     "tf_kernel_library",
 )
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 tf_custom_op_py_library(
@@ -100,3 +102,32 @@ gpu_py_test(
         "notap",
     ],
 )
+
+tf_gpu_cc_test(
+    name = "rccl_manager_test",
+    size = "medium",
+    srcs = if_rocm(
+        [
+            "kernels/rccl_manager.cc",
+            "kernels/rccl_manager.h",
+            "kernels/rccl_manager_test.cc",
+        ],
+        [],
+    ),
+    # Disabled on jenkins until errors finding nvmlShutdown are found.
+    tags = [
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        "noguitar",
+        "notap",
+    ],
+    deps =
+        [
+            "//tensorflow/core:test",
+            "//tensorflow/core:test_main",
+            "//tensorflow/core:testlib",
+            "@local_config_rocm//rocm:rccl",
+        ],
+)
+
