@@ -48,7 +48,8 @@ gtl::InlinedVector<int64, 4> IntTensorToInt64Vec(const Tensor& tensor) {
       out.push_back(tensor.flat<int64>()(i));
     }
   } else {
-    LOG(FATAL) << "tensor must be either int32 or int64";
+    // tensor must be either int32 or int64
+    DCHECK(false);
   }
   return out;
 }
@@ -281,7 +282,7 @@ class MklDnnSliceOp : public OpKernel {
       // layout.
       AllocateOutputTensor(context, input_mkl_shape, &output_pd, size_dims,
                            &output_tensor, &output_mkl_shape);
-      CHECK_NOTNULL(output_tensor);
+      DCHECK(output_tensor);
       DCHECK_EQ(input_mkl_shape.IsMklTensor(), output_mkl_shape.IsMklTensor());
       output.SetUsrMem(output_md, output_tensor);
 
@@ -310,8 +311,8 @@ class MklDnnSliceOp : public OpKernel {
                             const memory::dims& output_dims,
                             Tensor** output_tensor,
                             MklDnnShape* output_mkl_shape) {
-    CHECK_NOTNULL(output_tensor);
-    CHECK_NOTNULL(output_mkl_shape);
+    DCHECK(output_tensor);
+    DCHECK(output_mkl_shape);
 
     TensorShape output_tf_shape;
 
