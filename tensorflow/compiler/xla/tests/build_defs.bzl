@@ -229,8 +229,10 @@ def generate_backend_suites(backends=[]):
   if not backends:
     backends = all_backends
   for backend in filter_backends(backends):
-    native.test_suite(name="%s_tests" % backend,
-                      tags = ["xla_%s" % backend])
+    native.test_suite(
+      name = "%s_tests" % backend,
+      tags = ["xla_%s" % backend, "-broken", "manual"],
+    )
 
 
 def generate_backend_test_macros(backends=[]):
