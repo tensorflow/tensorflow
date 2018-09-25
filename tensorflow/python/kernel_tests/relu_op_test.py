@@ -351,7 +351,7 @@ class LeakyReluTest(test.TestCase):
     self.assertLess(err, 1e-10)
 
   def testGradGradFloat32(self):
-    with compat.forward_compatibility_horizon(2018, 10, 2):
+    with compat.forward_compatibility_horizon(2018, 11, 2):
       with self.test_session():
         x = constant_op.constant(
             [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
@@ -369,7 +369,7 @@ class LeakyReluTest(test.TestCase):
       self.assertLess(err, 1e-4)
 
   def testGradGradFloat64(self):
-    with compat.forward_compatibility_horizon(2018, 10, 2):
+    with compat.forward_compatibility_horizon(2018, 11, 2):
       with self.test_session():
         x = constant_op.constant(
             [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
