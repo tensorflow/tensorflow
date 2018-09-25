@@ -12211,6 +12211,17 @@ func FixedLengthRecordReaderV2(scope *Scope, record_bytes int64, optional ...Fix
 	return op.Output(0)
 }
 
+// StringLengthAttr is an optional argument to StringLength.
+type StringLengthAttr func(optionalAttr)
+
+// StringLengthUnit sets the optional unit attribute to value.
+// If not specified, defaults to "BYTE"
+func StringLengthUnit(value string) StringLengthAttr {
+	return func(m optionalAttr) {
+		m["unit"] = value
+	}
+}
+
 // String lengths of `input`.
 //
 // Computes the length of each string given in the input tensor.
@@ -12220,15 +12231,20 @@ func FixedLengthRecordReaderV2(scope *Scope, record_bytes int64, optional ...Fix
 //
 // Returns Integer tensor that has the same shape as `input`. The output contains the
 // element-wise string lengths of `input`.
-func StringLength(scope *Scope, input tf.Output) (output tf.Output) {
+func StringLength(scope *Scope, input tf.Output, optional ...StringLengthAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "StringLength",
 		Input: []tf.Input{
 			input,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
