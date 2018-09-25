@@ -3043,10 +3043,11 @@ void ArithmeticOptimizer::DedupComputations() {
   }
   std::set<int> duplicates;
   // Populate feed_inplace_op;
-  std::unordered_map<string, bool> feeds_inplace_op;
+  std::unordered_set<NodeDef*> feeds_inplace_op;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    feeds_inplace_op[optimized_graph_->node(i).name()] =
-        FeedsInPlaceOp(graph_view, optimized_graph_->node(i));
+    if (FeedsInPlaceOp(graph_view, optimized_graph_->node(i))) {
+      feeds_inplace_op.insert(optimized_graph_->mutable_node(i));
+    }
   }
   do {
     stop = true;
@@ -3056,9 +3057,8 @@ void ArithmeticOptimizer::DedupComputations() {
         continue;
       }
       NodeDef* node = optimized_graph_->mutable_node(i);
-      const string& node_name = node->name();
-      if (node_name.empty()) continue;
-      if (feeds_inplace_op[node_name] || !CanDedup(*node)) {
+      if (!CanDedup(*node) ||
+          feeds_inplace_op.find(node) != feeds_inplace_op.end()) {
         continue;
       }
       NodeDef* rep = nodes.FindOrAddRepresentative(node);
@@ -3069,7 +3069,7 @@ void ArithmeticOptimizer::DedupComputations() {
       // races. For example: If we dedup nodes initializing two independent
       // inplace accumulations, they will write to the same buffer, clobbering
       // each other's results.
-      if (feeds_inplace_op[rep->name()]) {
+      if (feeds_inplace_op.find(rep) != feeds_inplace_op.end()) {
         continue;
       }
       VLOG(3) << "Remove duplicated node: node=" << node->name()
@@ -3078,7 +3078,8 @@ void ArithmeticOptimizer::DedupComputations() {
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
           string* fanout_input = fanout->mutable_input(i);
-          const int position = NodePositionIfSameNode(*fanout_input, node_name);
+          const int position =
+              NodePositionIfSameNode(*fanout_input, node->name());
           // Update name in-place.
           if (position < -1) {
             continue;

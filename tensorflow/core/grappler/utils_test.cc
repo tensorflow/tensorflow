@@ -149,7 +149,9 @@ TEST_F(UtilsTest, NodePosition) {
 }
 
 TEST_F(UtilsTest, NodePositionIfSameNode) {
-  EXPECT_EQ(0, NodePositionIfSameNode("abc", "abc"));
+  EXPECT_EQ(-2, NodePositionIfSameNode(":123", ""));
+  EXPECT_EQ(-2, NodePositionIfSameNode(":", ""));
+  EXPECT_EQ(-2, NodePositionIfSameNode("", ""));
   EXPECT_EQ(123, NodePositionIfSameNode("abc:123", "abc"));
   EXPECT_EQ(-1, NodePositionIfSameNode("^abc", "abc"));
   EXPECT_EQ(-1, NodePositionIfSameNode("^abc:123", "abc"));
