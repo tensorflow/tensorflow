@@ -13,6 +13,7 @@ load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite"
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "py_test",
 )
 
 [gen_zip_test(
@@ -359,6 +360,32 @@ cc_binary(
     deps = [
         ":tflite_diff_flags",
         ":tflite_diff_util",
+    ],
+)
+
+py_binary(
+    name = "model_coverage_lib",
+    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow/contrib/lite:__subpackages__"],
+    deps = [
+        "//tensorflow/contrib/lite/python:lite",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "model_coverage_lib_test",
+    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_windows",
+        "notap",
+    ],
+    deps = [
+        ":model_coverage_lib",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
