@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <numeric>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -23,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
@@ -445,6 +445,22 @@ TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(221, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {13, 17})));
 }
 
+TEST(ShapeUtilTest, HasPrimitiveType) {
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S16));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {0}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeTupleShape({}), S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})}),
+      S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}),
+           ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S16, {})})}),
+      S16));
+}
+
 TEST(ShapeUtilTest, IsZeroElementArray) {
   EXPECT_FALSE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {})));
   EXPECT_TRUE(ShapeUtil::IsZeroElementArray(ShapeUtil::MakeShape(S32, {0})));
@@ -705,11 +721,10 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func =
-        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
-          invocations++;
-          return true;
-        };
+    auto increment_func = [&invocations](absl::Span<const int64> indexes) {
+      invocations++;
+      return true;
+    };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -726,8 +741,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](
-          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+      [&invocations](absl::Span<const int64> indexes) -> StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
@@ -748,7 +762,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64 output[10][10];
   int init = 5;
-  auto set_func = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+  auto set_func = [&](absl::Span<const int64> indexes) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 
@@ -849,13 +863,13 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   std::iota(layout.begin(), layout.end(), 0);
   do {
     Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
-    SCOPED_TRACE(tensorflow::strings::StrCat("s=", ShapeUtil::HumanString(s)));
+    SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
 
     std::vector<int64> permutation(3);
     std::iota(permutation.begin(), permutation.end(), 0);
     do {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
-          "permutation=", tensorflow::str_util::Join(permutation, ",")));
+      SCOPED_TRACE(
+          absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
       // TransposeIsBitcast takes the inverse of the permutation that
       // PermuteDimensions takes.

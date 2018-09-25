@@ -22,9 +22,19 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_UTIL_H_
 
 #include <vector>
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
+
+// The prefix of Eager op custom code.
+// This will be matched agains the `custom_code` field in `OperatorCode`
+// Flatbuffer Table.
+// WARNING: This is an experimental API and subject to change.
+constexpr char kEagerCustomCodePrefix[] = "Eager";
+
+// Checks whether the prefix of the custom name indicates the operation is an
+// Eager operation.
+bool IsEagerOp(const char* custom_name);
 
 // Converts a `std::vector` to a `TfLiteIntArray`. The caller takes ownership
 // of the returned pointer.

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
-#define TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_
 
 #include <string>
 #if defined(__GXX_RTTI) || defined(_CPPRTTI)
@@ -84,4 +84,4 @@ inline TypeIndex MakeTypeIndex() {
 #endif  // __GXX_RTTI
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TYPE_INDEX_H_

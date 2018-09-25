@@ -399,7 +399,7 @@ class StarGANModelTest(test.TestCase):
     target_tensor = train._generate_stargan_random_domain_target(
         batch_size, domain_numbers)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       targets = sess.run(target_tensor)
       self.assertTupleEqual((batch_size, domain_numbers), targets.shape)
       for target in targets:
@@ -664,6 +664,27 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(np.isscalar(loss_x2y_dis_np))
     self.assertTrue(np.isscalar(loss_y2x_gen_np))
     self.assertTrue(np.isscalar(loss_y2x_dis_np))
+
+  @parameterized.named_parameters(
+      ('notcallable', create_stargan_model),
+      ('callable', create_callable_stargan_model),
+  )
+  def test_stargan(self, create_gan_model_fn):
+
+    model = create_gan_model_fn()
+    model_loss = train.stargan_loss(model)
+
+    self.assertIsInstance(model_loss, namedtuples.GANLoss)
+
+    with self.cached_session() as sess:
+
+      sess.run(variables.global_variables_initializer())
+
+      gen_loss, disc_loss = sess.run(
+          [model_loss.generator_loss, model_loss.discriminator_loss])
+
+      self.assertTrue(np.isscalar(gen_loss))
+      self.assertTrue(np.isscalar(disc_loss))
 
   @parameterized.named_parameters(
       ('gan', create_gan_model),

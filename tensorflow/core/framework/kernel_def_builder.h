@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -84,4 +84,4 @@ KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* attr_name) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_

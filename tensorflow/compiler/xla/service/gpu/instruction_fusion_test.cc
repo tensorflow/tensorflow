@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -111,8 +112,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
-      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
+  auto dot1 = builder.AddInstruction(
+      CreateCanonicalDot(ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto reshape2 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 1, 1}), dot1));
 
@@ -128,8 +129,8 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {1, 1}), "0"));
-  auto dot1 = builder.AddInstruction(HloInstruction::CreateCanonicalDot(
-      ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
+  auto dot1 = builder.AddInstruction(
+      CreateCanonicalDot(ShapeUtil::MakeShape(S32, {1, 1}), param0, param0));
   auto transpose2 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {1, 1}), dot1, {0, 1}));
 
@@ -169,6 +170,78 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
   EXPECT_THAT(root, op::Fusion());
   EXPECT_THAT(root->fused_expression_root(),
               op::Reduce(op::Broadcast(op::Constant()), op::Constant()));
+}
+
+TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduce) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
+      copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
+      constant.1 = f32[] constant(0)
+      ROOT reduce = f32[16] reduce(copy, constant.1), dimensions={0,1,2}, to_apply=add
+    })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, DoNotFuseLayoutChangingOpWithReduceFusion) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    fused_reduce {
+      p0.1 = f32[16,16,16,16]{0,1,2,3} parameter(0)
+      mul = f32[16,16,16,16]{0,1,2,3} multiply(p0.1, p0.1)
+      c0.1 = f32[] constant(0)
+      ROOT root = f32[] reduce(mul, c0.1), dimensions={0,1,2,3}, to_apply=add
+    }
+
+    ENTRY entry {
+      p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
+      copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
+      fusion = f32[] fusion(copy), kind=kInput, calls=fused_reduce
+      ROOT root = (f32[]) tuple(fusion)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module.get())
+                   .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, FuseLayoutChangingOpWithElementwise) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+    ENTRY entry {
+      p0 = f32[16,16,16,16]{3,2,1,0} parameter(0)
+      copy = f32[16,16,16,16]{0,1,2,3} copy(p0)
+      ROOT add = f32[16,16,16,16]{0,1,2,3} add(copy, copy)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(), op::Add(op::Copy(), op::Copy()));
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
@@ -365,7 +438,7 @@ static StatusOr<const HloInstruction*> FindHloInstruction(
   }
   return NotFound(
       "Computation '%s' does not contain an instruction with op code '%s'.",
-      computation.name().c_str(), HloOpcodeString(op).c_str());
+      computation.name(), HloOpcodeString(op));
 }
 
 TEST_F(InstructionFusionTest, MultiOutputFusion) {

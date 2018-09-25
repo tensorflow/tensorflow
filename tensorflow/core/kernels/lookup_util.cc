@@ -242,7 +242,8 @@ class TextFileLineIterator
         break;
       default:
         valid_ = false;
-        return errors::InvalidArgument("Data type ", dtype, " not supported.");
+        return errors::InvalidArgument("Data type ", DataTypeString(dtype),
+                                       " not supported.");
     }
     return Status::OK();
   }
@@ -326,8 +327,10 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
                            DataType value_dtype, const string& table_name) {
   if (table.key_dtype() != key_dtype || table.value_dtype() != value_dtype) {
     return errors::InvalidArgument(
-        "Conflicting key/value dtypes ", key_dtype, "->", value_dtype, " with ",
-        table.key_dtype(), "-", table.value_dtype(), " for table ", table_name);
+        "Conflicting key/value dtypes ", DataTypeString(key_dtype), "->",
+        DataTypeString(value_dtype), " with ",
+        DataTypeString(table.key_dtype()), "-",
+        DataTypeString(table.value_dtype()), " for table ", table_name);
   }
   return Status::OK();
 }
@@ -340,7 +343,7 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   if (key_index == kLineNumber && table->key_dtype() != DT_INT64) {
     return errors::InvalidArgument(
         "Key index for line number requires table key dtype of int64, got ",
-        table->key_dtype());
+        DataTypeString(table->key_dtype()));
   }
   const DataType& key_dtype = table->key_dtype();
   const DataType& value_dtype = table->value_dtype();
@@ -348,17 +351,17 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
       key_dtype != DT_STRING) {
     return errors::InvalidArgument(
         "Key index for whole line requires string or integer table key, got ",
-        table->key_dtype());
+        DataTypeString(table->key_dtype()));
   }
   if (value_index == kLineNumber && value_dtype != DT_INT64) {
     return errors::InvalidArgument(
         "Value index for line number requires table value dtype of int64, got ",
-        table->value_dtype());
+        DataTypeString(table->value_dtype()));
   }
   if (value_index == kWholeLine && value_dtype != DT_STRING) {
     return errors::InvalidArgument(
         "Value index for whole line requires table value dtype of string, got ",
-        table->value_dtype());
+        DataTypeString(table->value_dtype()));
   }
 
   TextFileLineIterator iter;

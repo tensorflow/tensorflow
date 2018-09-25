@@ -226,13 +226,13 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given) {
   AddInputFromArray<float>(TensorShape({}), {1.0});   // Max
 
   // Note that the range is given as [-1, 1].
-  // With int8, the tensor is quantized to {-102, -63, 0, 38, 102, 70, -128,
+  // With int8, the tensor is quantized to {-102, -64, 0, 38, 102, 70, -128,
   // 127}.
   // Scale is: 1/127
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 4}));
   test::FillValues<float>(
-      &expected, {-102.0 / 127, -63.0 / 127, 0, 38.0 / 127, 102.0 / 127,
+      &expected, {-102.0 / 127, -64.0 / 127, 0, 38.0 / 127, 102.0 / 127,
                   70.0 / 127, -128.0 / 127, 1});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 }
@@ -257,13 +257,13 @@ TEST_F(QuantizeAndDequantizeTest, Convert_2D_tensor_with_int8_range_given_V3) {
   AddInputFromArray<int32>(TensorShape({}), {8});     // num_bits
 
   // Note that the range is given as [-1, 1].
-  // With int8, the tensor is quantized to {-102, -63, 0, 38, 102, 70, -128,
+  // With int8, the tensor is quantized to {-102, -64, 0, 38, 102, 70, -128,
   // 127}.
   // Scale is: 1/127
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 4}));
   test::FillValues<float>(
-      &expected, {-102.0 / 127, -63.0 / 127, 0, 38.0 / 127, 102.0 / 127,
+      &expected, {-102.0 / 127, -64.0 / 127, 0, 38.0 / 127, 102.0 / 127,
                   70.0 / 127, -128.0 / 127, 1});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 }
@@ -285,11 +285,11 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given) {
   AddInputFromArray<float>(TensorShape({}), {1.0});  // Max
 
   // Note that the range is given as [0, 1].
-  // With int8, the tensor is quantized to {0, 0, 77, 204}
+  // With int8, the tensor is quantized to {0, 0, 76, 204}
   // Scale is: 1/255
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
-  test::FillValues<float>(&expected, {0, 0, 77.0 / 255, 204.0 / 255});
+  test::FillValues<float>(&expected, {0, 0, 76.0 / 255, 204.0 / 255});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 }
 
@@ -311,11 +311,11 @@ TEST_F(QuantizeAndDequantizeTest, Convert_4D_tensor_with_uint8_range_given_V3) {
   AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
 
   // Note that the range is given as [0, 1].
-  // With int8, the tensor is quantized to {0, 0, 77, 204}
+  // With int8, the tensor is quantized to {0, 0, 76, 204}
   // Scale is: 1/255
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 1, 1}));
-  test::FillValues<float>(&expected, {0, 0, 77.0 / 255, 204.0 / 255});
+  test::FillValues<float>(&expected, {0, 0, 76.0 / 255, 204.0 / 255});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
 }
 

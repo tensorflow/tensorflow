@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
@@ -125,7 +126,7 @@ class LLVMCompilerTest : public ::testing::Test {
   static std::unique_ptr<HloModule> CreateNewModule() {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    return MakeUnique<HloModule>(TestName(), config);
+    return absl::make_unique<HloModule>(TestName(), config);
   }
 };
 

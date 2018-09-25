@@ -173,6 +173,26 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     eval_res = est.evaluate(input_fn=input_fn, steps=1)
     self.assertAllClose(eval_res['accuracy'], 1.0)
 
+  def testTrainTwiceAndEvaluateBinaryClassifier(self):
+    input_fn = _make_train_input_fn(is_classification=True)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=5,
+        max_depth=10)
+
+    num_steps = 2
+    # Train for a few steps, and validate final checkpoint.
+    est.train(input_fn, steps=num_steps)
+    est.train(input_fn, steps=num_steps)
+
+    self._assert_checkpoint(
+        est.model_dir, global_step=num_steps * 2,
+        finalized_trees=0, attempted_layers=4)
+    eval_res = est.evaluate(input_fn=input_fn, steps=1)
+    self.assertAllClose(eval_res['accuracy'], 1.0)
+
   def testInferBinaryClassifier(self):
     train_input_fn = _make_train_input_fn(is_classification=True)
     predict_input_fn = numpy_io.numpy_input_fn(
@@ -543,6 +563,175 @@ class BoostedTreesEstimatorTest(test_util.TensorFlowTestCase):
     # feature with index 1 (0 - 'bad', 2 - 'ok')
     self.assertEqual(1, ensemble.trees[0].nodes[0].bucketized_split.feature_id)
     self.assertEqual(0, ensemble.trees[0].nodes[0].bucketized_split.threshold)
+
+  def testTreeComplexityIsSetCorrectly(self):
+    input_fn = _make_train_input_fn(is_classification=True)
+
+    num_steps = 10
+    # Tree complexity is set but no pruning.
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        tree_complexity=1e-3)
+    with self.assertRaisesRegexp(ValueError, 'Tree complexity have no effect'):
+      est.train(input_fn, steps=num_steps)
+
+    # Pruning but no tree complexity.
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        pruning_mode='pre')
+    with self.assertRaisesRegexp(ValueError,
+                                 'tree_complexity must be positive'):
+      est.train(input_fn, steps=num_steps)
+
+    # All is good.
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        pruning_mode='pre',
+        tree_complexity=1e-3)
+    est.train(input_fn, steps=num_steps)
+
+
+class BoostedTreesDebugOutputsTest(test_util.TensorFlowTestCase):
+  """Test debug/model explainability outputs for individual predictions.
+
+  Includes directional feature contributions (DFC).
+  """
+
+  def setUp(self):
+    self._feature_columns = {
+        feature_column.bucketized_column(
+            feature_column.numeric_column('f_%d' % i, dtype=dtypes.float32),
+            BUCKET_BOUNDARIES) for i in range(NUM_FEATURES)
+    }
+
+  def testBinaryClassifierThatDFCIsInPredictions(self):
+    train_input_fn = _make_train_input_fn(is_classification=True)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=3, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesClassifier(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        center_bias=True)
+
+    num_steps = 100
+    # Train for a few steps. Validate debug outputs in prediction dicts.
+    est.train(train_input_fn, steps=num_steps)
+    debug_predictions = est.experimental_predict_with_explanations(
+        predict_input_fn)
+    biases, dfcs = zip(*[(pred['bias'], pred['dfc'])
+                         for pred in debug_predictions])
+    self.assertAllClose([0.4] * 5, biases)
+    self.assertAllClose(({
+        0: -0.12108613453574479,
+        1: 0.0,
+        2: -0.039254929814481143
+    }, {
+        0: 0.19650601422250574,
+        1: 0.0,
+        2: 0.02693827052766018
+    }, {
+        0: 0.16057487356133376,
+        1: 0.0,
+        2: 0.02693827052766018
+    }, {
+        0: -0.12108613453574479,
+        1: 0.0,
+        2: -0.039254929814481143
+    }, {
+        0: -0.10832468554550384,
+        1: 0.0,
+        2: 0.02693827052766018
+    }), dfcs)
+
+    # Assert sum(dfcs) + bias == probabilities.
+    expected_probabilities = [
+        0.23965894, 0.62344426, 0.58751315, 0.23965894, 0.31861359
+    ]
+    probabilities = [
+        sum(dfc.values()) + bias for (dfc, bias) in zip(dfcs, biases)
+    ]
+    self.assertAllClose(expected_probabilities, probabilities)
+
+    # When user doesn't include bias or dfc in predict_keys, make sure to still
+    # include dfc and bias.
+    debug_predictions = est.experimental_predict_with_explanations(
+        predict_input_fn, predict_keys=['probabilities'])
+    for prediction_dict in debug_predictions:
+      self.assertTrue('bias' in prediction_dict)
+      self.assertTrue('dfc' in prediction_dict)
+      self.assertTrue('probabilities' in prediction_dict)
+      self.assertEqual(len(prediction_dict), 3)
+
+  def testRegressorThatDFCIsInPredictions(self):
+    train_input_fn = _make_train_input_fn(is_classification=False)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x=FEATURES_DICT, y=None, batch_size=1, num_epochs=1, shuffle=False)
+
+    est = boosted_trees.BoostedTreesRegressor(
+        feature_columns=self._feature_columns,
+        n_batches_per_layer=1,
+        n_trees=1,
+        max_depth=5,
+        center_bias=True)
+
+    num_steps = 100
+    # Train for a few steps. Validate debug outputs in prediction dicts.
+    est.train(train_input_fn, steps=num_steps)
+    debug_predictions = est.experimental_predict_with_explanations(
+        predict_input_fn)
+    biases, dfcs = zip(*[(pred['bias'], pred['dfc'])
+                         for pred in debug_predictions])
+    self.assertAllClose([1.8] * 5, biases)
+    self.assertAllClose(({
+        0: -0.070499420166015625,
+        1: -0.095000028610229492,
+        2: 0.0
+    }, {
+        0: -0.53763031959533691,
+        1: 0.063333392143249512,
+        2: 0.0
+    }, {
+        0: -0.51756942272186279,
+        1: -0.095000028610229492,
+        2: 0.0
+    }, {
+        0: 0.1563495397567749,
+        1: 0.063333392143249512,
+        2: 0.0
+    }, {
+        0: 0.96934974193572998,
+        1: 0.063333392143249512,
+        2: 0.0
+    }), dfcs)
+
+    # Assert sum(dfcs) + bias == predictions.
+    expected_predictions = [[1.6345005], [1.32570302], [1.1874305],
+                            [2.01968288], [2.83268309]]
+    predictions = [
+        [sum(dfc.values()) + bias] for (dfc, bias) in zip(dfcs, biases)
+    ]
+    self.assertAllClose(expected_predictions, predictions)
+
+    # Test when user doesn't include bias or dfc in predict_keys.
+    debug_predictions = est.experimental_predict_with_explanations(
+        predict_input_fn, predict_keys=['predictions'])
+    for prediction_dict in debug_predictions:
+      self.assertTrue('bias' in prediction_dict)
+      self.assertTrue('dfc' in prediction_dict)
+      self.assertTrue('predictions' in prediction_dict)
+      self.assertEqual(len(prediction_dict), 3)
 
 
 class ModelFnTests(test_util.TensorFlowTestCase):
@@ -1540,7 +1729,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_classification())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1573,7 +1762,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_classification_with_bias())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
             boosted_trees._create_classification_head(n_classes=2),
@@ -1613,7 +1802,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_classification())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train without train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1646,7 +1835,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_classification_with_bias())
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
             boosted_trees._create_classification_head(n_classes=2),
@@ -1684,7 +1873,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_regression())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1714,7 +1903,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_regression_with_bias())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1754,7 +1943,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third = (
         self._get_expected_ensembles_for_regression())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train without train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(
@@ -1784,7 +1973,7 @@ class ModelFnTests(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
     expected_first, expected_second, expected_third, expected_forth = (
         self._get_expected_ensembles_for_regression_with_bias())
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Train with train_in_memory mode.
       with sess.graph.as_default():
         train_op, ensemble_serialized = self._get_train_op_and_ensemble(

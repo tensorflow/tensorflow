@@ -265,10 +265,10 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     tensors = []
     for (data_format, use_gpu) in GetTestConfigs():
       tensors.append(_SetupVal(data_format, use_gpu))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values = sess.run(tensors)
       for i in range(1, len(values)):
-        self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
+        self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, bias, strides,
                     padding):
@@ -282,7 +282,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
               data_format, filter_format, dtype)
         tensors.append(result)
         ref_tensors.append(expected)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         values = sess.run(tensors)
         ref_values = sess.run(ref_tensors)
         for i in range(len(tensors)):
@@ -493,7 +493,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     if gpu_only and not test.is_gpu_available():
       tf_logging.info("Skipping OpEdgeCases tests.")
       return
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Illegal strides.
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Convolutional strides are not supported in "
@@ -873,9 +873,7 @@ class FusedConvInt8Tests(test.TestCase):
 
     with self.test_session(use_gpu=True) as sess:
       actual_y, expected_y = sess.run([actual, expected])
-      tf_logging.info("actual_y = ", actual_y)
-      tf_logging.info("expected_y = ", expected_y)
-      self.assertTrue(np.array_equal(actual_y, expected_y))
+      self.assertAllClose(actual_y, expected_y, rtol=0, atol=1)
 
   def testFusedConvInt8(self):
     if not test.is_gpu_available(

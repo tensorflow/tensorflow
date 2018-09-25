@@ -23,7 +23,7 @@ import re
 
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training import distribute
+from tensorflow.python.training import distribution_strategy_context
 
 
 def collect(val, collections, default_collections):
@@ -49,7 +49,7 @@ def skip_summary():
   # TODO(priyag): Add a new optional argument that will provide multiple
   # alternatives to override default behavior. (e.g. run on last tower,
   # compute sum or mean across towers).
-  tower_context = distribute.get_tower_context()
+  tower_context = distribution_strategy_context.get_tower_context()
   return tower_context and tower_context.tower_id > 0
 
 

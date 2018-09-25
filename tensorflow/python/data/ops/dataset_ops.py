@@ -39,10 +39,12 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -220,10 +222,10 @@ class Dataset(object):
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
-    @{tf.constant} operations. For large datasets (> 1 GB), this can waste
+    `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$guide/datasets#consuming_numpy_arrays$this guide}.
+    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -239,10 +241,10 @@ class Dataset(object):
 
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
-    @{tf.constant} operations. For large datasets (> 1 GB), this can waste
+    `tf.constant` operations. For large datasets (> 1 GB), this can waste
     memory and run into byte limits of graph serialization.  If tensors contains
     one or more large NumPy arrays, consider the alternative described in
-    @{$guide/datasets#consuming_numpy_arrays$this guide}.
+    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -329,7 +331,7 @@ class Dataset(object):
     ```
 
     NOTE: The current implementation of `Dataset.from_generator()` uses
-    @{tf.py_func} and inherits the same constraints. In particular, it
+    `tf.py_func` and inherits the same constraints. In particular, it
     requires the `Dataset`- and `Iterator`-related operations to be placed
     on a device in the same process as the Python program that called
     `Dataset.from_generator()`. The body of `generator` will not be
@@ -639,22 +641,39 @@ class Dataset(object):
         Defaults to `True`.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
-        @{tf.set_random_seed} for behavior.
+        `tf.set_random_seed` for behavior.
 
     Returns:
      Dataset: A `Dataset` of strings corresponding to file names.
     """
-    if shuffle is None:
-      shuffle = True
-    matching_files = gen_io_ops.matching_files(file_pattern)
-    dataset = Dataset.from_tensor_slices(matching_files)
-    if shuffle:
-      # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
-      # list of files might be empty.
-      buffer_size = math_ops.maximum(
-          array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
-      dataset = dataset.shuffle(buffer_size, seed=seed)
-    return dataset
+    with ops.name_scope("list_files"):
+      if shuffle is None:
+        shuffle = True
+      file_pattern = ops.convert_to_tensor(
+          file_pattern, dtype=dtypes.string, name="file_pattern")
+      matching_files = gen_io_ops.matching_files(file_pattern)
+
+      # Raise an exception if `file_pattern` does not match any files.
+      condition = math_ops.greater(array_ops.shape(matching_files)[0], 0,
+                                   name="match_not_empty")
+
+      message = math_ops.add(
+          "No files matched pattern: ",
+          string_ops.reduce_join(file_pattern, separator=", "), name="message")
+
+      assert_not_empty = control_flow_ops.Assert(
+          condition, [message], summarize=1, name="assert_not_empty")
+      with ops.control_dependencies([assert_not_empty]):
+        matching_files = array_ops.identity(matching_files)
+
+      dataset = Dataset.from_tensor_slices(matching_files)
+      if shuffle:
+        # NOTE(mrry): The shuffle buffer size must be greater than zero, but the
+        # list of files might be empty.
+        buffer_size = math_ops.maximum(
+            array_ops.shape(matching_files, out_type=dtypes.int64)[0], 1)
+        dataset = dataset.shuffle(buffer_size, seed=seed)
+      return dataset
 
   def repeat(self, count=None):
     """Repeats this dataset `count` times.
@@ -687,7 +706,7 @@ class Dataset(object):
         dataset will sample.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
-        @{tf.set_random_seed} for behavior.
+        `tf.set_random_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
@@ -844,7 +863,7 @@ class Dataset(object):
     This transformation combines multiple consecutive elements of the input
     dataset into a single element.
 
-    Like @{tf.data.Dataset.batch}, the tensors in the resulting element will
+    Like `tf.data.Dataset.batch`, the tensors in the resulting element will
     have an additional outer dimension, which will be `batch_size` (or
     `N % batch_size` for the last element if `batch_size` does not divide the
     number of input elements `N` evenly and `drop_remainder` is `False`). If
@@ -852,7 +871,7 @@ class Dataset(object):
     should set the `drop_remainder` argument to `True` to prevent the smaller
     batch from being produced.
 
-    Unlike @{tf.data.Dataset.batch}, the input elements to be batched may have
+    Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
     different shapes, and this transformation will pad each component to the
     respective shape in `padding_shapes`. The `padding_shapes` argument
     determines the resulting shape for each dimension of each component in an
@@ -864,8 +883,8 @@ class Dataset(object):
       will be padded out to the maximum length of all elements in that
       dimension.
 
-    See also @{tf.contrib.data.dense_to_sparse_batch}, which combines elements
-    that may have different shapes into a @{tf.SparseTensor}.
+    See also `tf.contrib.data.dense_to_sparse_batch`, which combines elements
+    that may have different shapes into a `tf.SparseTensor`.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -988,8 +1007,25 @@ class Dataset(object):
       return ParallelMapDataset(self, map_func, num_parallel_calls)
 
   def flat_map(self, map_func):
-    """Maps `map_func` across this dataset and flattens the result.
+    """Maps `map_func` across this dataset and flattens the result. 
+    
+    Use `flat_map` if you want to make sure that the order of your dataset
+    stays the same. For example, to flatten a dataset of batches into a
+    dataset of their elements:
 
+    ```python
+    # NOTE: The following examples use `{ ... }` to represent the
+    # contents of a dataset. '[...]' represents a tensor.
+    a = {[1,2,3,4,5], [6,7,8,9], [10]}
+    
+    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) == 
+      {[1,2,3,4,5,6,7,8,9,10]}
+    ```
+    
+    `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since 
+    `flat_map` produces the same output as 
+    `tf.data.Dataset.interleave(cycle_length=1)`
+    
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to a
@@ -1000,7 +1036,11 @@ class Dataset(object):
     """
     return FlatMapDataset(self, map_func)
 
-  def interleave(self, map_func, cycle_length, block_length=1):
+  def interleave(self,
+                 map_func,
+                 cycle_length,
+                 block_length=1,
+                 num_parallel_calls=None):
     """Maps `map_func` across this dataset, and interleaves the results.
 
     For example, you can use `Dataset.interleave()` to process many input files
@@ -1020,7 +1060,7 @@ class Dataset(object):
     elements are produced. `cycle_length` controls the number of input elements
     that are processed concurrently. If you set `cycle_length` to 1, this
     transformation will handle one input element at a time, and will produce
-    identical results = to @{tf.data.Dataset.flat_map}. In general,
+    identical results to `tf.data.Dataset.flat_map`. In general,
     this transformation will apply `map_func` to `cycle_length` input elements,
     open iterators on the returned `Dataset` objects, and cycle through them
     producing `block_length` consecutive elements from each iterator, and
@@ -1063,11 +1103,19 @@ class Dataset(object):
         processed concurrently.
       block_length: The number of consecutive elements to produce from each
         input element before cycling to another input element.
+      num_parallel_calls: (Optional.) If specified, the implementation creates
+        a threadpool, which is used to fetch inputs from cycle elements
+        asynchronously and in parallel. The default behavior is to fetch inputs
+        from cycle elements synchronously with no parallelism.
 
     Returns:
       Dataset: A `Dataset`.
     """
-    return InterleaveDataset(self, map_func, cycle_length, block_length)
+    if num_parallel_calls is None:
+      return InterleaveDataset(self, map_func, cycle_length, block_length)
+    else:
+      return ParallelInterleaveDataset(self, map_func, cycle_length,
+                                       block_length, num_parallel_calls)
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -1084,7 +1132,7 @@ class Dataset(object):
     return FilterDataset(self, predicate)
 
   def apply(self, transformation_func):
-    """Apply a transformation function to this dataset.
+    """Applies a transformation function to this dataset.
 
     `apply` enables chaining of custom `Dataset` transformations, which are
     represented as functions that take one `Dataset` argument and return a
@@ -1100,7 +1148,7 @@ class Dataset(object):
 
     Args:
       transformation_func: A function that takes one `Dataset` argument and
-          returns a `Dataset`.
+        returns a `Dataset`.
 
     Returns:
       Dataset: The `Dataset` returned by applying `transformation_func` to this
@@ -1110,6 +1158,45 @@ class Dataset(object):
     if not isinstance(dataset, Dataset):
       raise TypeError("`transformation_func` must return a Dataset.")
     return dataset
+
+  def window(self, size, shift=None, stride=1, drop_remainder=False):
+    """Combines input elements into a dataset of windows.
+
+    Each window is a dataset itself and contains `size` elements (or
+    possibly fewer if there are not enough input elements to fill the window
+    and `drop_remainder` evaluates to false).
+
+    The `stride` argument determines the stride of the input elements,
+    and the `shift` argument determines the shift of the window.
+
+    For example:
+    - `tf.data.Dataset.range(7).window(2)` produces
+      `{{0, 1}, {2, 3}, {4, 5}, {6}}`
+    - `tf.data.Dataset.range(7).window(3, 2, 1, True)` produces
+      `{{0, 1, 2}, {2, 3, 4}, {4, 5, 6}}`
+    - `tf.data.Dataset.range(7).window(3, 1, 2, True)` produces
+      `{{0, 2, 4}, {1, 3, 5}, {2, 4, 6}}`
+
+    Args:
+      size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
+        of the input dataset to combine into a window.
+      shift: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        forward shift of the sliding window in each iteration. Defaults to
+        `size`.
+      stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        stride of the input elements in the sliding window.
+      drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+        whether a window should be dropped in case its size is smaller than
+        `window_size`.
+
+    Returns:
+      Dataset: A `Dataset` of windows, each of which is a nested `Dataset` with
+        the same structure as this dataset, but a finite subsequence of its
+        elements.
+    """
+    if shift is None:
+      shift = size
+    return WindowDataset(self, size, shift, stride, drop_remainder)
 
 
 class TensorDataset(Dataset):
@@ -1287,7 +1374,7 @@ class _NestedDatasetComponent(object):
 
 
 class _VariantDataset(Dataset):
-  """A Dataset wrapper around a @{tf.variant}-typed function argument."""
+  """A Dataset wrapper around a `tf.variant`-typed function argument."""
 
   def __init__(self, dataset_variant, structure):
     super(_VariantDataset, self).__init__()
@@ -1323,20 +1410,20 @@ class StructuredFunctionWrapper(object):
       func: A function from a nested structure to another nested structure.
       transformation_name: Human-readable name of the transformation in which
         this function is being instantiated, for error messages.
-      dataset: (Optional.) A @{tf.data.Dataset}. If given, the structure of this
+      dataset: (Optional.) A `tf.data.Dataset`. If given, the structure of this
         dataset will be assumed as the structure for `func` arguments; otherwise
         `input_classes`, `input_shapes`, and `input_types` must be defined.
       input_classes: (Optional.) A nested structure of `type`. If given, this
         argument defines the Python types for `func` arguments.
-      input_shapes: (Optional.) A nested structure of @{tf.TensorShape}. If
+      input_shapes: (Optional.) A nested structure of `tf.TensorShape`. If
         given, this argument defines the shapes and structure for `func`
         arguments.
-      input_types: (Optional.) A nested structure of @{tf.DType}. If given, this
+      input_types: (Optional.) A nested structure of `tf.DType`. If given, this
         argument defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
       experimental_nested_dataset_support: (Optional.) If `True`, the function
-        will support @{tf.data.Dataset} objects as arguments and return values.
+        will support `tf.data.Dataset` objects as arguments and return values.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -1459,7 +1546,7 @@ class StructuredFunctionWrapper(object):
       self._function._create_definition_if_needed()  # pylint: disable=protected-access
 
   def _defun_args(self):
-    """Returns a flat list of @{tf.DType} for the input element structure."""
+    """Returns a flat list of `tf.DType` for the input element structure."""
     ret = []
     for input_type, input_class in zip(nest.flatten(self._input_types),
                                        nest.flatten(self._input_classes)):
@@ -1504,7 +1591,7 @@ def flat_structure(dataset):
   `**flat_structure(self)` to the op constructor.
 
   Args:
-    dataset: A @{tf.data.Dataset}.
+    dataset: A `tf.data.Dataset`.
 
   Returns:
     A dictionary of keyword arguments that can be passed to many Dataset op
@@ -1665,15 +1752,14 @@ class ConcatenateDataset(Dataset):
     super(ConcatenateDataset, self).__init__()
     self._input_dataset = input_dataset
     self._dataset_to_concatenate = dataset_to_concatenate
-    nest.assert_same_structure(input_dataset.output_types,
-                               dataset_to_concatenate.output_types)
-    for a, b in zip(
-        nest.flatten(input_dataset.output_types),
-        nest.flatten(dataset_to_concatenate.output_types)):
-      if a != b:
-        raise TypeError(
-            "Two datasets to concatenate have different types %s and %s" %
-            (input_dataset.output_types, dataset_to_concatenate.output_types))
+    if input_dataset.output_types != dataset_to_concatenate.output_types:
+      raise TypeError(
+          "Two datasets to concatenate have different types %s and %s" %
+          (input_dataset.output_types, dataset_to_concatenate.output_types))
+    if input_dataset.output_classes != dataset_to_concatenate.output_classes:
+      raise TypeError(
+          "Two datasets to concatenate have different classes %s and %s" %
+          (input_dataset.output_classes, dataset_to_concatenate.output_classes))
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
@@ -1827,7 +1913,7 @@ class ShuffleDataset(Dataset):
         dataset will sample.
       seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
         random seed that will be used to create the distribution. See
-        @{tf.set_random_seed} for behavior.
+        `tf.set_random_seed` for behavior.
       reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
         that the dataset should be pseudorandomly reshuffled each time it is
         iterated over. (Defaults to `True`.)
@@ -2189,10 +2275,11 @@ def _warn_if_collections(transformation_name):
 class MapDataset(Dataset):
   """A `Dataset` that maps a function over elements in its input."""
 
-  def __init__(self, input_dataset, map_func):
+  def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
     super(MapDataset, self).__init__()
     self._input_dataset = input_dataset
+    self._use_inter_op_parallelism = use_inter_op_parallelism
 
     wrapped_func = StructuredFunctionWrapper(
         map_func, "Dataset.map()", input_dataset)
@@ -2207,6 +2294,7 @@ class MapDataset(Dataset):
         input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
         **flat_structure(self))
 
   @property
@@ -2225,9 +2313,14 @@ class MapDataset(Dataset):
 class ParallelMapDataset(MapDataset):
   """A `Dataset` that maps a function over elements in its input in parallel."""
 
-  def __init__(self, input_dataset, map_func, num_parallel_calls):
+  def __init__(self,
+               input_dataset,
+               map_func,
+               num_parallel_calls,
+               use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
-    super(ParallelMapDataset, self).__init__(input_dataset, map_func)
+    super(ParallelMapDataset, self).__init__(input_dataset, map_func,
+                                             use_inter_op_parallelism)
 
     self._num_parallel_calls = ops.convert_to_tensor(
         num_parallel_calls, dtype=dtypes.int32, name="num_parallel_calls")
@@ -2240,6 +2333,7 @@ class ParallelMapDataset(MapDataset):
         self._map_func.captured_inputs,
         f=self._map_func,
         num_parallel_calls=self._num_parallel_calls,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
         **flat_structure(self))
     # pylint: enable=protected-access
 
@@ -2303,6 +2397,36 @@ class InterleaveDataset(FlatMapDataset):
         self._map_func.captured_inputs,  # pylint: disable=protected-access
         self._cycle_length,
         self._block_length,
+        f=self._map_func,  # pylint: disable=protected-access
+        **flat_structure(self))
+
+  def _transformation_name(self):
+    return "Dataset.interleave()"
+
+
+class ParallelInterleaveDataset(FlatMapDataset):
+  """A `Dataset` that maps a function over its input and interleaves the result.
+
+  """
+
+  def __init__(self, input_dataset, map_func, cycle_length, block_length,
+               num_parallel_calls):
+    """See `Dataset.interleave()` for details."""
+    super(ParallelInterleaveDataset, self).__init__(input_dataset, map_func)
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
+    self._num_parallel_calls = ops.convert_to_tensor(
+        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.parallel_interleave_dataset_v2(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._map_func.captured_inputs,  # pylint: disable=protected-access
+        self._cycle_length,
+        self._block_length,
+        self._num_parallel_calls,
         f=self._map_func,  # pylint: disable=protected-access
         **flat_structure(self))
 
@@ -2374,3 +2498,53 @@ class PrefetchDataset(Dataset):
   @property
   def output_types(self):
     return self._input_dataset.output_types
+
+
+class WindowDataset(Dataset):
+  """A dataset that creates window datasets from the input elements."""
+
+  def __init__(self, input_dataset, size, shift, stride, drop_remainder):
+    """See `window_dataset()` for more details."""
+    super(WindowDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._size = ops.convert_to_tensor(size, dtype=dtypes.int64, name="size")
+    self._shift = ops.convert_to_tensor(shift, dtype=dtypes.int64, name="shift")
+    self._stride = ops.convert_to_tensor(
+        stride, dtype=dtypes.int64, name="stride")
+    self._drop_remainder = ops.convert_to_tensor(
+        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
+    self._output_classes = nest.pack_sequence_as(
+        input_dataset.output_classes,
+        [
+            _NestedDatasetComponent(  # pylint: disable=protected-access
+                output_classes=output_class,
+                output_shapes=output_shape,
+                output_types=output_type)
+            for output_class, output_shape, output_type in zip(
+                nest.flatten(input_dataset.output_classes),
+                nest.flatten(input_dataset.output_shapes),
+                nest.flatten(input_dataset.output_types))
+        ])
+    self._output_shapes = self._output_classes
+    self._output_types = self._output_classes
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.window_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._size,
+        self._shift,
+        self._stride,
+        self._drop_remainder,
+        **flat_structure(self))
+
+  @property
+  def output_classes(self):
+    return self._output_classes
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types

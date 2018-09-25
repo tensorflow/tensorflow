@@ -1,12 +1,10 @@
-book_path: /mobile/_book.yaml
-project_path: /mobile/_project.yaml
 
 # Overview
 
 TensorFlow was designed to be a good deep learning solution for mobile
 platforms. Currently we have two solutions for deploying machine learning
 applications on mobile and embedded devices: TensorFlow for Mobile and
-<a href="../index.md">TensorFlow Lite</a>.
+<a href="../../lite">TensorFlow Lite</a>.
 
 ## TensorFlow Lite versus TensorFlow Mobile
 

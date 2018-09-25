@@ -122,6 +122,18 @@ class TfInspectTest(test.TestCase):
 
     self.assertEqual(argspec, tf_inspect.getargspec(partial_func))
 
+  def testGetFullArgsSpecForPartial(self):
+
+    def func(a, b):
+      del a, b
+
+    partial_function = functools.partial(func, 1)
+    argspec = tf_inspect.FullArgSpec(
+        args=['b'], varargs=None, varkw=None, defaults=None,
+        kwonlyargs=[], kwonlydefaults=None, annotations={})
+
+    self.assertEqual(argspec, tf_inspect.getfullargspec(partial_function))
+
   def testGetArgSpecOnPartialInvalidArgspec(self):
     """Tests getargspec on partial function that doesn't have valid argspec."""
 

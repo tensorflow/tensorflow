@@ -218,7 +218,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
 void Remapper::Feedback(Cluster* /*cluster*/, const GrapplerItem& /*item*/,
                         const GraphDef& /*optimized_graph*/,
                         double /*result*/) {
-  // Nothing to do for ArithmeticOptimizer.
+  // Nothing to do for RemapperOptimizer.
 }
 
 }  // namespace grappler

@@ -61,7 +61,7 @@ def random_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -110,7 +110,7 @@ def parameterized_truncated_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -158,7 +158,7 @@ def truncated_normal(shape,
     dtype: The type of the output.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -212,7 +212,7 @@ def random_uniform(shape,
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See @{tf.set_random_seed}
+      See `tf.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -264,7 +264,7 @@ def random_shuffle(value, seed=None, name=None):
     value: A Tensor to be shuffled.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for the operation (optional).
 
@@ -292,7 +292,7 @@ def random_crop(value, size, seed=None, name=None):
     value: Input tensor to crop.
     size: 1-D tensor with size the rank of `value`.
     seed: Python integer. Used to create a random seed. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for this operation (optional).
 
@@ -338,7 +338,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: Optional name for the operation.
     output_dtype: integer type to use for the output. Defaults to int64.
@@ -417,7 +417,7 @@ def random_gamma(shape,
       `float64`.
     seed: A Python integer. Used to create a random seed for the distributions.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: Optional name for the operation.
 
@@ -467,7 +467,7 @@ def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
       `int64`.
     seed: A Python integer. Used to create a random seed for the distributions.
       See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: Optional name for the operation.
 

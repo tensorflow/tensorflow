@@ -66,6 +66,25 @@ public class TestHelper {
   }
 
   /**
+   * Gets the string name of the data type of an input.
+   *
+   * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code
+   *     IllegalArgumentException} will be thrown.
+   * @param index an integer index of the input. If it is invalid, an {@code
+   *     IllegalArgumentException} will be thrown.
+   * @return string name of the data type. Possible values include "float", "int", "byte", and
+   *     "long".
+   */
+  public static String getInputDataType(Interpreter interpreter, int index) {
+    if (interpreter != null && interpreter.wrapper != null) {
+      return interpreter.wrapper.getInputTensor(index).dataType().toStringName();
+    } else {
+      throw new IllegalArgumentException(
+          "Interpreter has not initialized;" + " Failed to get input data type.");
+    }
+  }
+
+  /**
    * Gets the string name of the data type of an output.
    *
    * @param interpreter an instance of {@code Interpreter}. If it is not initialized, an {@code

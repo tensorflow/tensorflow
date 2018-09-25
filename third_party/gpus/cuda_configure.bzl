@@ -61,6 +61,7 @@ CUDA_LIB_PATHS = [
 CUPTI_HEADER_PATHS = [
     "extras/CUPTI/include/",
     "include/cuda/CUPTI/",
+    "include/",
 ]
 
 # Lookup paths for the cupti library, relative to the
@@ -69,7 +70,7 @@ CUPTI_HEADER_PATHS = [
 # the other CUDA libraries but rather in a special extras/CUPTI directory.
 CUPTI_LIB_PATHS = [
     "extras/CUPTI/lib64/",
-    "lib/x86_64-linux-gnu",
+    "lib/x86_64-linux-gnu/",
     "lib64/",
     "extras/CUPTI/libx64/",
     "extras/CUPTI/lib/",
@@ -96,6 +97,7 @@ CUDNN_INCLUDE_PATHS = [
 NVVM_LIBDEVICE_PATHS = [
     "nvvm/libdevice/",
     "share/cuda/",
+    "lib/nvidia-cuda-toolkit/libdevice/",
 ]
 
 # Files used to detect the NVVM libdevice path.
@@ -1301,6 +1303,19 @@ def _create_local_cuda_repository(repository_ctx):
 
     host_compiler_includes = _host_compiler_includes(repository_ctx, cc_fullpath)
     cuda_defines = {}
+    # Bazel sets '-B/usr/bin' flag to workaround build errors on RHEL (see
+    # https://github.com/bazelbuild/bazel/issues/760).
+    # However, this stops our custom clang toolchain from picking the provided
+    # LLD linker, so we're only adding '-B/usr/bin' when using non-downloaded
+    # toolchain.
+    # TODO: when bazel stops adding '-B/usr/bin' by default, remove this
+    #       flag from the CROSSTOOL completely (see
+    #       https://github.com/bazelbuild/bazel/issues/5634)
+    if should_download_clang:
+      cuda_defines["%{linker_bin_path_flag}"] = ""
+    else:
+      cuda_defines["%{linker_bin_path_flag}"] = 'flag: "-B/usr/bin"'
+
     if is_cuda_clang:
         cuda_defines["%{host_compiler_path}"] = str(cc)
         cuda_defines["%{host_compiler_warnings}"] = """

@@ -30,6 +30,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import session_manager
@@ -97,7 +98,7 @@ class SessionManagerTest(test.TestCase):
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
       v = variables.Variable([6.0, 7.0, 8.0], name="v")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
@@ -174,13 +175,13 @@ class SessionManagerTest(test.TestCase):
                  os.path.join(checkpoint_dir, "recover_session_checkpoint"))
     self._test_recovered_variable(checkpoint_dir=checkpoint_dir)
     self._test_recovered_variable(
-        checkpoint_filename_with_path=saver_lib.latest_checkpoint(
+        checkpoint_filename_with_path=checkpoint_management.latest_checkpoint(
             checkpoint_dir))
     # Cannot set both checkpoint_dir and checkpoint_filename_with_path.
     with self.assertRaises(ValueError):
       self._test_recovered_variable(
           checkpoint_dir=checkpoint_dir,
-          checkpoint_filename_with_path=saver_lib.latest_checkpoint(
+          checkpoint_filename_with_path=checkpoint_management.latest_checkpoint(
               checkpoint_dir))
 
   def testWaitForSessionReturnsNoneAfterTimeout(self):
@@ -235,7 +236,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -293,7 +294,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -325,7 +326,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables(),
@@ -361,7 +362,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -466,7 +467,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
         self.assertEqual(False, variables.is_variable_initialized(x).eval())
@@ -518,7 +519,7 @@ class SessionManagerTest(test.TestCase):
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x_res")
 
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
         self.assertEqual(False, variables.is_variable_initialized(x).eval())
@@ -565,7 +566,7 @@ class SessionManagerTest(test.TestCase):
     with ops.Graph().as_default():
       i = control_flow_ops.while_loop(lambda i: i < 1, lambda i: i + 1, [0])
       v = variables.Variable(array_ops.identity(i), name="v")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       sm = session_manager.SessionManager(
           ready_op=variables.report_uninitialized_variables())
@@ -584,7 +585,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -601,7 +602,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -618,7 +619,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -639,7 +640,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="w")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
         self.assertEqual(False, variables.is_variable_initialized(w).eval())
       sm2 = session_manager.SessionManager(
@@ -713,7 +714,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
       os.rename(checkpoint_dir, checkpoint_dir2)
       gfile.MakeDirs(checkpoint_dir)
       v = variables.Variable([6.0, 7.0, 8.0], name="v")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())
@@ -768,7 +769,7 @@ class ObsoleteSessionManagerTest(test.TestCase):
     # Create a new Graph and SessionManager and recover.
     with ops.Graph().as_default():
       v = variables.Variable(2, name="v")
-      with self.test_session():
+      with self.cached_session():
         self.assertEqual(False, variables.is_variable_initialized(v).eval())
       sm2 = session_manager.SessionManager(
           ready_op=variables.assert_variables_initialized())

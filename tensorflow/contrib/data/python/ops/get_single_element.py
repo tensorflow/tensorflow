@@ -29,8 +29,8 @@ from tensorflow.python.ops import gen_dataset_ops
 def get_single_element(dataset):
   """Returns the single element in `dataset` as a nested structure of tensors.
 
-  This function enables you to use a @{tf.data.Dataset} in a stateless
-  "tensor-in tensor-out" expression, without creating a @{tf.data.Iterator}.
+  This function enables you to use a `tf.data.Dataset` in a stateless
+  "tensor-in tensor-out" expression, without creating a `tf.data.Iterator`.
   This can be useful when your preprocessing transformations are expressed
   as a `Dataset`, and you want to use the transformation at serving time.
   For example:
@@ -50,10 +50,10 @@ def get_single_element(dataset):
   ```
 
   Args:
-    dataset: A @{tf.data.Dataset} object containing a single element.
+    dataset: A `tf.data.Dataset` object containing a single element.
 
   Returns:
-    A nested structure of @{tf.Tensor} objects, corresponding to the single
+    A nested structure of `tf.Tensor` objects, corresponding to the single
     element of `dataset`.
 
   Raises:
@@ -77,11 +77,11 @@ def reduce_dataset(dataset, reducer):
   """Returns the result of reducing the `dataset` using `reducer`.
 
   Args:
-    dataset: A @{tf.data.Dataset} object.
-    reducer: A @{tf.contrib.data.Reducer} object representing the reduce logic.
+    dataset: A `tf.data.Dataset` object.
+    reducer: A `tf.contrib.data.Reducer` object representing the reduce logic.
 
   Returns:
-    A nested structure of @{tf.Tensor} objects, corresponding to the result
+    A nested structure of `tf.Tensor` objects, corresponding to the result
     of reducing `dataset` using `reducer`.
 
   Raises:

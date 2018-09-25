@@ -28,14 +28,12 @@ template <typename T>
 void TestOneResizeBilinear(int batch, int depth, int input_width,
                            int input_height, int output_width,
                            int output_height, float error_threshold) {
-  Dims<4> input_dims_inference =
-      MakeDimsForInference(depth, input_width, input_height, batch);
-  Dims<4> output_dims_inference =
-      MakeDimsForInference(depth, output_width, output_height, batch);
+  RuntimeShape input_dims_inference({batch, input_height, input_width, depth});
+  RuntimeShape output_dims_inference(
+      {batch, output_height, output_width, depth});
 
-  const int input_buffer_size = RequiredBufferSizeForDims(input_dims_inference);
-  const int output_buffer_size =
-      RequiredBufferSizeForDims(output_dims_inference);
+  const int input_buffer_size = input_dims_inference.FlatSize();
+  const int output_buffer_size = output_dims_inference.FlatSize();
 
   std::vector<T> input_data(input_buffer_size, 0);
   std::vector<T> reference_output_data(output_buffer_size, 0);
@@ -47,15 +45,19 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
   const T max_amplitude = static_cast<T>(255);
   FillRandom(&input_data, min_amplitude, max_amplitude);
 
-  Dims<4> output_size_dims = MakeDimsForInference(2, 1, 1, 1);
+  RuntimeShape output_size_dims({1, 1, 1, 2});
   std::vector<int32> output_size_data = {output_height, output_width};
 
-  reference_ops::ResizeBilinear(
-      input_data.data(), input_dims_inference, output_size_data.data(),
-      output_size_dims, reference_output_data.data(), output_dims_inference);
-  optimized_ops::ResizeBilinear(input_data.data(), input_dims_inference,
-                                output_size_data.data(), output_size_dims,
-                                output_data.data(), output_dims_inference);
+  tflite::ResizeBilinearParams op_params;
+  op_params.align_corners = false;
+
+  reference_ops::ResizeBilinear(op_params, input_dims_inference,
+                                input_data.data(), output_size_dims,
+                                output_size_data.data(), output_dims_inference,
+                                reference_output_data.data());
+  optimized_ops::ResizeBilinear(
+      op_params, input_dims_inference, input_data.data(), output_size_dims,
+      output_size_data.data(), output_dims_inference, output_data.data());
 
   double sum_diff = 0;
   float max_abs_val = 0;

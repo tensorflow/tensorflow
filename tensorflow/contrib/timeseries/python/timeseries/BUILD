@@ -94,7 +94,6 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:export",
         "//tensorflow/python/feature_column",
     ],
 )
@@ -149,9 +148,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:export",
-        "//tensorflow/python/estimator:head",
-        "//tensorflow/python/estimator:metric_keys",
     ],
 )
 
@@ -161,6 +157,7 @@ py_test(
     srcs = [
         "head_test.py",
     ],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip_gpu"],  # b/63391119
     deps = [

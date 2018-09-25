@@ -148,7 +148,7 @@ class SavedModelEstimator(estimator_lib.Estimator):
     super(SavedModelEstimator, self).__init__(
         model_fn=self._model_fn_from_saved_model, model_dir=model_dir,
         warm_start_from=warm_start_settings)
-    if self._distribution is not None:
+    if self._train_distribution or self._eval_distribution:
       raise NotImplementedError(
           'SavedModelEstimator currently does not support '
           'DistributionStrategy.')

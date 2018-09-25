@@ -65,7 +65,7 @@ class PowerSignOptimizer(optimizer.Optimizer):
     Example usage for PowerSign-cd (PowerSign with cosine sign decay)
     ```
     decay_steps = 1000
-    linear_decay_fn = sign_decays.get_linear_decay_fn(decay_steps)
+    linear_decay_fn = sign_decays.get_cosine_decay_fn(decay_steps)
     opt = PowerSignOptimizer(learning_rate=0.1, sign_decay_fn=linear_decay_fn)
     ```
 

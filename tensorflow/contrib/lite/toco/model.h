@@ -147,6 +147,10 @@ enum class OperatorType : uint8 {
   kAny,
   kLogicalAnd,
   kLogicalNot,
+  kLogicalOr,
+  kCTCBeamSearchDecoder,
+  kUnpack,
+  kZerosLike,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -437,6 +441,28 @@ struct ConvOperator : Operator {
   int dilation_height_factor = 1;
 };
 
+// CTCBeamSearchDecoder operator:
+//
+// Inputs:
+//   inputs[0]: required: the logits.
+//   inputs[1]: required: sequence length.
+//   inputs[2]: optional: beam width.
+//   inputs[3]: optional: top paths.
+//   inputs[4]: optional: merge repeated.
+//
+//  Outputs:
+//    outputs[0]: deocoded.
+//    outputs[1]: log probability.
+//
+// TensorFlow equivalent: CTCBeamSearchDecoder
+struct CTCBeamSearchDecoderOperator : Operator {
+  CTCBeamSearchDecoderOperator()
+      : Operator(OperatorType::kCTCBeamSearchDecoder) {}
+  int beam_width;
+  int top_paths;
+  bool merge_repeated = true;
+};
+
 // Depthwise-separable convolution operator.
 //
 // Inputs:
@@ -452,6 +478,11 @@ struct DepthwiseConvOperator : Operator {
   int stride_height = 0;
   int stride_width = 0;
   int depth_multiplier = 0;
+  // A dilation_rate of 0 is invalid and this field is an optional attribute.
+  // Thus initializing it to 1 to allow default conv behavior when the
+  // attribute is not present.
+  int dilation_width_factor = 1;
+  int dilation_height_factor = 1;
 };
 
 // Depth-to-space transform operator.
@@ -1508,6 +1539,9 @@ struct TensorFlowUnsupportedOperator : Operator {
   string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
+  // A boolean indicating if the unsupported op output should allow float values
+  // in quantized mode.
+  bool support_output_type_float_in_quantized_op = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
   // Output shapes.
@@ -1743,8 +1777,9 @@ struct PowOperator : Operator {
 // Inputs[1]: required: reduction_indices.
 //
 // TensorFlow equivalent: tf.reduce_any.
-struct AnyOperator : Operator {
-  AnyOperator() : Operator(OperatorType::kAny) {}
+struct TensorFlowAnyOperator : Operator {
+  TensorFlowAnyOperator() : Operator(OperatorType::kAny) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1788,6 +1823,41 @@ struct OneHotOperator : Operator {
 
   OneHotOperator() : Operator(OperatorType::kOneHot) {}
   int axis = -1;
+};
+
+// LogicalOr operator:
+//
+// Inputs:
+// Inputs[0]: required: A Bool tensor.
+// Inputs[1]: required: A Bool tensor.
+//
+// TensorFlow equivalent: LogicalOr.
+struct LogicalOrOperator : Operator {
+  LogicalOrOperator() : Operator(OperatorType::kLogicalOr) {}
+};
+
+// Unpack operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.unstack.
+struct UnpackOperator : Operator {
+  UnpackOperator() : Operator(OperatorType::kUnpack) {}
+  int num;
+  int axis;
+  ArrayDataType dtype = ArrayDataType::kNone;
+};
+
+// ZerosLike operator:
+//
+// Inputs:
+// inputs[0]: required: the input array
+//
+// TensorFlow equivalent: tf.zeros_like
+struct TensorFlowZerosLikeOperator : Operator {
+  TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
@@ -2014,6 +2084,7 @@ class Model {
     }
   }
   const ArrayMap& GetArrayMap() const { return arrays; }
+  ArrayMap& GetMutableArrayMap() { return arrays; }
 
   int64 ArithmeticOpsCount() const { return ops_count; }
 
@@ -2033,7 +2104,7 @@ class Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
-  // Arithmatic operations performed in the model.
+  // Arithmetic operations performed in the model.
   int64 ops_count = 0;
 
  private:

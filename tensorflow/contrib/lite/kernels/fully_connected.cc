@@ -20,8 +20,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
@@ -121,10 +121,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
-    TF_LITE_ENSURE(context, real_multiplier < 1.0);
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
-    data->output_shift *= -1;
+    int exponent;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
+    data->output_shift = -exponent;
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
@@ -282,15 +281,23 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   int32_t input_offset = -input->params.zero_point;
   int32_t filter_offset = -filter->params.zero_point;
   int32_t output_offset = output->params.zero_point;
-#define TF_LITE_FULLY_CONNECTED(type, output_data_type)                     \
-  type::FullyConnected(                                                     \
-      GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,    \
-      GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset, \
-      GetTensorData<int32_t>(bias), GetTensorDims(bias), output_offset,     \
-      data->output_multiplier, data->output_shift,                          \
-      data->output_activation_min, data->output_activation_max,             \
-      GetTensorData<output_data_type>(output), GetTensorDims(output),       \
-      gemm_context)
+#define TF_LITE_FULLY_CONNECTED(type, output_data_type)                  \
+  {                                                                      \
+    FullyConnectedParams op_params;                                      \
+    op_params.input_offset = input_offset;                               \
+    op_params.weights_offset = filter_offset;                            \
+    op_params.output_offset = output_offset;                             \
+    op_params.output_multiplier = data->output_multiplier;               \
+    op_params.output_shift = -data->output_shift;                        \
+    op_params.quantized_activation_min = data->output_activation_min;    \
+    op_params.quantized_activation_max = data->output_activation_max;    \
+    type::FullyConnected(                                                \
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
+        GetTensorShape(output), GetTensorData<output_data_type>(output), \
+        gemm_context);                                                   \
+  }
   if (kernel_type == kReference) {
     switch (output->type) {
       case kTfLiteUInt8:
@@ -350,15 +357,20 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
     return kTfLiteError;
   }
 
-#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                  \
-  type::ShuffledFullyConnected(                                 \
-      GetTensorData<uint8_t>(input), GetTensorDims(input),      \
-      GetTensorData<uint8_t>(filter), GetTensorDims(filter),    \
-      GetTensorData<int32_t>(bias), GetTensorDims(bias),        \
-      data->output_multiplier, data->output_shift,              \
-      data->output_activation_min, data->output_activation_max, \
-      GetTensorData<int16_t>(output), GetTensorDims(output),    \
-      GetTensorData<uint8_t>(shuffled_input_workspace), gemm_context)
+#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                           \
+  {                                                                      \
+    FullyConnectedParams op_params;                                      \
+    op_params.output_multiplier = data->output_multiplier;               \
+    op_params.output_shift = -data->output_shift;                        \
+    op_params.quantized_activation_min = data->output_activation_min;    \
+    op_params.quantized_activation_max = data->output_activation_max;    \
+    type::ShuffledFullyConnected(                                        \
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input), \
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),          \
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),              \
+        GetTensorShape(output), GetTensorData<int16_t>(output),          \
+        GetTensorData<uint8_t>(shuffled_input_workspace), gemm_context); \
+  }
   if (kernel_type == kReference) {
     TF_LITE_SHUFFLED_FULLY_CONNECTED(reference_ops);
   } else {
@@ -377,12 +389,17 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
-#define TF_LITE_FULLY_CONNECTED(type)                                       \
-  type::FullyConnected(GetTensorData<float>(input), GetTensorDims(input),   \
-                       GetTensorData<float>(filter), GetTensorDims(filter), \
-                       GetTensorData<float>(bias), GetTensorDims(bias),     \
-                       output_activation_min, output_activation_max,        \
-                       GetTensorData<float>(output), GetTensorDims(output))
+#define TF_LITE_FULLY_CONNECTED(type)                                         \
+  {                                                                           \
+    FullyConnectedParams op_params;                                           \
+    op_params.float_activation_min = output_activation_min;                   \
+    op_params.float_activation_max = output_activation_max;                   \
+    type::FullyConnected(op_params, GetTensorShape(input),                    \
+                         GetTensorData<float>(input), GetTensorShape(filter), \
+                         GetTensorData<float>(filter), GetTensorShape(bias),  \
+                         GetTensorData<float>(bias), GetTensorShape(output),  \
+                         GetTensorData<float>(output));                       \
+  }
   if (kernel_type == kReference) {
     TF_LITE_FULLY_CONNECTED(reference_ops);
   } else if (kernel_type == kPie) {

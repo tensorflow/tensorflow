@@ -164,8 +164,8 @@ bool CUDAExecutor::FindOnDiskForComputeCapability(
 
   VLOG(2) << "could not find compute-capability specific file at: "
           << cc_specific;
-  if (port::FileExists(filename.ToString()).ok()) {
-    *found_filename = filename.ToString();
+  if (port::FileExists(string(filename)).ok()) {
+    *found_filename = string(filename);
     return true;
   }
 

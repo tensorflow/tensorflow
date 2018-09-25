@@ -31,7 +31,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -186,7 +185,7 @@ def dense_to_sparse_batch(batch_size, row_shape):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -273,9 +272,9 @@ def _padded_batch_dense_window(dataset, padded_shape, padding_value=None):
       padding_value = 0
 
   def batch_init_fn(_):
-    return array_ops.fill(
-        array_ops.concat([np.array([0], dtype=np.int32), padded_shape], 0),
-        constant_op.constant(padding_value, dtype=dataset.output_types))
+    batch_shape = array_ops.concat(
+        [np.array([0], dtype=np.int32), padded_shape], 0)
+    return gen_array_ops.empty(batch_shape, dtype=dataset.output_types)
 
   def batch_reduce_fn(state, value):
     return array_ops.concat([state, [value]], 0)
@@ -402,7 +401,7 @@ def unbatch():
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -439,54 +438,12 @@ def unbatch():
   return _apply_fn
 
 
-def _filter_irregular_batches(batch_size):
-  """Transformation that filters out batches that are not of size batch_size."""
-
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    tensor_batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-
-    flattened = _RestructuredDataset(
-        dataset,
-        tuple(nest.flatten(dataset.output_types)),
-        output_classes=tuple(nest.flatten(dataset.output_classes)))
-
-    def _predicate(*xs):
-      """Return `True` if this element is a full batch."""
-      # Extract the dynamic batch size from the first component of the flattened
-      # batched element.
-      first_component = xs[0]
-      first_component_batch_size = array_ops.shape(
-          first_component, out_type=dtypes.int64)[0]
-
-      return math_ops.equal(first_component_batch_size, tensor_batch_size)
-
-    filtered = flattened.filter(_predicate)
-
-    maybe_constant_batch_size = tensor_util.constant_value(tensor_batch_size)
-
-    def _set_first_dimension(shape):
-      return shape.merge_with(
-          tensor_shape.vector(maybe_constant_batch_size).concatenate(shape[1:]))
-
-    known_shapes = nest.map_structure(_set_first_dimension,
-                                      dataset.output_shapes)
-    return _RestructuredDataset(
-        filtered,
-        dataset.output_types,
-        known_shapes,
-        output_classes=dataset.output_classes)
-
-  return _apply_fn
-
-
 @deprecation.deprecated(
     None, "Use `tf.data.Dataset.batch(..., drop_remainder=True)`.")
 def batch_and_drop_remainder(batch_size):
   """A batching transformation that omits the final small batch (if present).
 
-  Like @{tf.data.Dataset.batch}, this transformation combines
+  Like `tf.data.Dataset.batch`, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
@@ -510,7 +467,7 @@ def batch_and_drop_remainder(batch_size):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _apply_fn(dataset):
@@ -527,25 +484,25 @@ def padded_batch_and_drop_remainder(batch_size,
                                     padding_values=None):
   """A batching and padding transformation that omits the final small batch.
 
-  Like @{tf.data.Dataset.padded_batch}, this transformation combines
+  Like `tf.data.Dataset.padded_batch`, this transformation combines
   consecutive elements of this dataset into batches. However, if the batch
   size does not evenly divide the input dataset size, this transformation will
   drop the final smaller element.
 
-  See `@{tf.contrib.data.batch_and_drop_remainder}` for more details.
+  See `tf.contrib.data.batch_and_drop_remainder` for more details.
 
   Args:
     batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       consecutive elements of this dataset to combine in a single batch.
     padded_shapes: A nested structure of `tf.TensorShape` or
       `tf.int64` vector tensor-like objects. See
-      @{tf.data.Dataset.padded_batch} for details.
+      `tf.data.Dataset.padded_batch` for details.
     padding_values: (Optional.) A nested structure of scalar-shaped
-      `tf.Tensor`. See @{tf.data.Dataset.padded_batch} for details.
+      `tf.Tensor`. See `tf.data.Dataset.padded_batch` for details.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
 
   def _apply_fn(dataset):
@@ -690,37 +647,50 @@ def assert_element_shape(expected_shapes):
   """Assert the shape of this `Dataset`.
 
   ```python
-  shapes = [tf.TensorShape([16, 256]), tf.TensorShape(None)]
+  shapes = [tf.TensorShape([16, 256]), tf.TensorShape([None, 2])]
   result = dataset.apply(tf.contrib.data.assert_element_shape(shapes))
-  print(result.output_shapes)  # ==> "((16, 256), <unknown>)"
+  print(result.output_shapes)  # ==> "((16, 256), (<unknown>, 2))"
   ```
 
   If dataset shapes and expected_shape, are fully defined, assert they match.
   Otherwise, add assert op that will validate the shapes when tensors are
   evaluated, and set shapes on tensors, respectively.
 
+  Note that unknown dimension in `expected_shapes` will be ignored.
+
   Args:
     expected_shapes: A nested structure of `tf.TensorShape` objects.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}
+    `tf.data.Dataset.apply`
   """
+
+  def _merge_output_shapes(original_shapes, expected_shapes):
+    flat_original_shapes = nest.flatten(original_shapes)
+    flat_new_shapes = nest.flatten_up_to(original_shapes, expected_shapes)
+    flat_merged_output_shapes = [
+        original_shape.merge_with(new_shape)
+        for original_shape, new_shape in zip(flat_original_shapes,
+                                             flat_new_shapes)]
+    return nest.pack_sequence_as(original_shapes, flat_merged_output_shapes)
 
   def _check_shape(*elements):
     flatten_tensors = nest.flatten(elements)
     flatten_shapes = nest.flatten(expected_shapes)
     checked_tensors = [
-        with_shape(shape, tensor)
+        with_shape(shape, tensor) if shape else tensor  # Ignore unknown shape
         for shape, tensor in zip(flatten_shapes, flatten_tensors)
     ]
     return nest.pack_sequence_as(elements, checked_tensors)
 
   def _apply_fn(dataset):
+    output_shapes = _merge_output_shapes(dataset.output_shapes,
+                                         expected_shapes)
     return _RestructuredDataset(
         dataset.map(_check_shape),
         dataset.output_types,
-        output_shapes=expected_shapes,
+        output_shapes=output_shapes,
         output_classes=dataset.output_classes)
 
   return _apply_fn
@@ -803,7 +773,7 @@ def map_and_batch(map_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: If both `num_parallel_batches` and `num_parallel_calls` are

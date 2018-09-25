@@ -28,7 +28,7 @@ namespace io {
 PyRecordWriter::PyRecordWriter() {}
 
 PyRecordWriter* PyRecordWriter::New(const string& filename,
-                                    const string& compression_type_string,
+                                    const io::RecordWriterOptions& options,
                                     TF_Status* out_status) {
   std::unique_ptr<WritableFile> file;
   Status s = Env::Default()->NewWritableFile(filename, &file);
@@ -38,24 +38,35 @@ PyRecordWriter* PyRecordWriter::New(const string& filename,
   }
   PyRecordWriter* writer = new PyRecordWriter;
   writer->file_ = std::move(file);
-
-  RecordWriterOptions options =
-      RecordWriterOptions::CreateRecordWriterOptions(compression_type_string);
-
   writer->writer_.reset(new RecordWriter(writer->file_.get(), options));
   return writer;
 }
 
 PyRecordWriter::~PyRecordWriter() {
+  // Writer depends on file during close for zlib flush, so destruct first.
+  writer_.reset();
+  file_.reset();
 }
 
-bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
-  if (writer_ == nullptr) return false;
+void PyRecordWriter::WriteRecord(tensorflow::StringPiece record,
+                                 TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
   Status s = writer_->WriteRecord(record);
-  return s.ok();
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+  }
 }
 
 void PyRecordWriter::Flush(TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
   Status s = writer_->Flush();
   if (!s.ok()) {
     Set_TF_Status_from_Status(out_status, s);
@@ -64,18 +75,22 @@ void PyRecordWriter::Flush(TF_Status* out_status) {
 }
 
 void PyRecordWriter::Close(TF_Status* out_status) {
-  Status s = writer_->Close();
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(out_status, s);
-    return;
+  if (writer_ != nullptr) {
+    Status s = writer_->Close();
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    writer_.reset(nullptr);
   }
-  writer_.reset(nullptr);
-  s = file_->Close();
-  if (!s.ok()) {
-    Set_TF_Status_from_Status(out_status, s);
-    return;
+  if (file_ != nullptr) {
+    Status s = file_->Close();
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    file_.reset(nullptr);
   }
-  file_.reset(nullptr);
 }
 
 }  // namespace io

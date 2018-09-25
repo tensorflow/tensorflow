@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
@@ -53,7 +54,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
                      BigtableTableResource* table,
@@ -61,7 +62,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
                      std::vector<string> columns,
                      const DataTypeVector& output_types,
                      std::vector<PartialTensorShape> output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           table_(table),
           column_families_(std::move(column_families)),
@@ -80,8 +81,8 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtableLookupDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtableLookup")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -94,6 +95,14 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "BigtableLookupDatasetOp::Dataset";
+    }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
     }
 
    private:
@@ -218,4 +227,5 @@ REGISTER_KERNEL_BUILDER(Name("BigtableLookupDataset").Device(DEVICE_CPU),
                         BigtableLookupDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

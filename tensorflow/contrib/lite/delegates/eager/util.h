@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -28,13 +28,18 @@ namespace eager {
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status);
 
-// Copies the given shape of the given 'src' into a TF Lite 'tensor'. Logs an
-// error and returns kTfLiteError if the shape can't be converted.
-TfLiteStatus CopyShape(TfLiteContext* context, const tensorflow::Tensor& src,
-                       TfLiteTensor* tensor);
+// Copies the given shape and type of the TensorFlow 'src' tensor into a TF Lite
+// 'tensor'. Logs an error and returns kTfLiteError if the shape or type can't
+// be converted.
+TfLiteStatus CopyShapeAndType(TfLiteContext* context,
+                              const tensorflow::Tensor& src,
+                              TfLiteTensor* tensor);
 
 // Returns the TF C API Data type that corresponds to the given TfLiteType.
 TF_DataType GetTensorFlowDataType(TfLiteType type);
+
+// Returns the TfLiteType that corresponds to the given TF C API Data type.
+TfLiteType GetTensorFlowLiteType(TF_DataType);
 
 }  // namespace eager
 }  // namespace tflite

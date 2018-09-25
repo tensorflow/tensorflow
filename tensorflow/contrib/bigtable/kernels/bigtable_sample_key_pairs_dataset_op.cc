@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
@@ -52,11 +53,11 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string prefix, string start_key, string end_key)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           table_(table),
           key_range_(MakeMultiModeKeyRange(
               std::move(prefix), std::move(start_key), std::move(end_key))) {
@@ -68,7 +69,7 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtableSampleKeyPairsDataset")}));
+          {this, strings::StrCat(prefix, "::BigtableSampleKeyPairs")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -85,6 +86,14 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override {
       return "BigtableSampleKeyPairsDatasetOp::Dataset";
+    }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
     }
 
    private:
@@ -197,4 +206,5 @@ REGISTER_KERNEL_BUILDER(
     BigtableSampleKeyPairsDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

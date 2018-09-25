@@ -148,6 +148,9 @@ class TPUClusterResolver(ClusterResolver):
       else:
         tpu = self._envVarFallback()
 
+    if tpu is None:
+      raise ValueError('Please provide a TPU Name to connect to.')
+
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
     self._job_name = job_name
     self._credentials = credentials
@@ -225,6 +228,10 @@ class TPUClusterResolver(ClusterResolver):
 
   def get_master(self):
     return self.master()
+
+  def get_job_name(self):
+    if self._shouldResolve():
+      return self._job_name
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.

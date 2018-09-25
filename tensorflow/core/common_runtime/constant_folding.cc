@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -59,6 +61,7 @@ bool ReadPartialShapesFromShapeMap(
         shape_map,
     std::vector<PartialTensorShape>* input_shapes) {
   CHECK(shape_map != nullptr);
+  input_shapes->resize(n->num_inputs());
   for (const Edge* in : n->in_edges()) {
     // Don't need to check if incoming control edges have known shapes.
     if (in->IsControlEdge()) continue;
@@ -69,7 +72,9 @@ bool ReadPartialShapesFromShapeMap(
     }
     const auto& known_shape = known_shape_iter->second;
     CHECK_GT(known_shape.size(), in->src_output()) << known_shape_iter->first;
-    input_shapes->push_back(known_shape[in->src_output()]);
+    DCHECK_GE(in->dst_input(), 0);
+    DCHECK_LT(in->dst_input(), input_shapes->size());
+    (*input_shapes)[in->dst_input()] = known_shape[in->src_output()];
   }
   return true;
 }
@@ -553,6 +558,11 @@ bool ReplaceTensorWithConstant(
 Status ConstantFold(const ConstantFoldingOptions& opts,
                     FunctionLibraryRuntime* function_library, Env* env,
                     Device* partition_device, Graph* graph, bool* was_mutated) {
+  // TensorFlow flushes denormals to zero and rounds to nearest, so we do
+  // the same here.
+  port::ScopedFlushDenormal flush;
+  port::ScopedSetRound round(FE_TONEAREST);
+
   DumpGraph("Before", graph);
   ConstantFoldNameGenerator generate_new_name = opts.generate_new_name;
   if (generate_new_name == nullptr) {

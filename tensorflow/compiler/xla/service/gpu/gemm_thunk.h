@@ -52,12 +52,12 @@ class GemmThunk : public Thunk {
                          se::Stream* stream,
                          HloExecutionProfiler* profiler) override;
 
-  // Returns true if we'll perform autotuning if run on the given stream.  If
-  // so, we want the GPU to be quiescent during autotuning, so as not to
-  // introduce noise in our results.
-  bool ShouldHaltAllActivityBeforeRunning(se::Stream* stream) override {
-    return autotune_results_.count(
-               stream->parent()->GetDeviceDescription().name()) != 0;
+  bool WillAutotuneKernel(se::Stream* stream) override {
+    // We will autotune this kernel if we don't already have a autotune result
+    // for the stream device.
+    return autotune_results_.find(
+               stream->parent()->GetDeviceDescription().name()) ==
+           autotune_results_.end();
   }
 
  private:
@@ -75,6 +75,8 @@ class GemmThunk : public Thunk {
   // results.  The map's value is the best algorithm we've found for this thunk
   // on this device, or an error if none of the algorithms worked and we should
   // use the regular gemm without an algorithm.
+  //
+  // TODO(b/112415150):  Make this thread safe.
   std::unordered_map<string, StatusOr<se::blas::AlgorithmType>>
       autotune_results_;
 };

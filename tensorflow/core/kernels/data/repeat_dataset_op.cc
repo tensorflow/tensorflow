@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -39,10 +39,10 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
-        : GraphDatasetBase(ctx), count_(count), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
       input_->Ref();
     }
 
@@ -72,10 +72,11 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "RepeatDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* count = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
       TF_RETURN_IF_ERROR(
@@ -145,7 +146,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         }
         return Status::OK();
       }
@@ -155,7 +156,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -171,32 +172,39 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
     class ForeverIterator : public DatasetIterator<Dataset> {
      public:
       explicit ForeverIterator(const Params& params)
-          : DatasetIterator<Dataset>(params), input_impl_(nullptr) {}
+          : DatasetIterator<Dataset>(params),
+            input_impl_(nullptr),
+            first_call_(true) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
         do {
-          bool first_call = false;
           if (!input_impl_) {
-            first_call = true;
             TF_RETURN_IF_ERROR(
                 dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
           }
-          TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
-          if (!*end_of_sequence) {
+          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          if (first_call_ && *end_of_sequence) {
+            // If the first call to GetNext() fails because the end
+            // of sequence has been reached, we terminate the
+            // iteration immediately. (Otherwise, this iterator
+            // would loop infinitely and never produce a value.)
+            input_impl_.reset();
             return Status::OK();
+          }
+          first_call_ = false;
+          if (!*end_of_sequence) {
+            return s;
           } else {
             input_impl_.reset();
-            if (first_call) {
-              // If the first call to GetNext() fails because the end
-              // of sequence has been reached, we terminate the
-              // iteration immediately. (Otherwise, this iterator
-              // would loop infinitely and never produce a value.)
-              return Status::OK();
-            }
+            first_call_ = true;
           }
         } while (true);
       }
@@ -204,8 +212,8 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        if (!first_call_)
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("uninitialized"), ""));
@@ -217,10 +225,12 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("uninitialized"))) {
           input_impl_.reset();
+          first_call_ = true;
         } else {
           TF_RETURN_IF_ERROR(
               dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
+          first_call_ = false;
         }
         return Status::OK();
       }
@@ -228,6 +238,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
      private:
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      bool first_call_ GUARDED_BY(mu_);
     };
 
     const int64 count_;
@@ -239,5 +250,5 @@ REGISTER_KERNEL_BUILDER(Name("RepeatDataset").Device(DEVICE_CPU),
                         RepeatDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

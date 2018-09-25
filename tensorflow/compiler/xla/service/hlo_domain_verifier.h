@@ -29,11 +29,11 @@ namespace xla {
 
 // Verifies that the domain instructions are consistent, and the each domain is
 // surrounded by the same metadata.
-class HloDomainVerifier : public HloPassInterface {
+class HloDomainVerifier : public HloModulePass {
  public:
   HloDomainVerifier(std::vector<string> kinds) : kinds_(std::move(kinds)) {}
 
-  tensorflow::StringPiece name() const override { return "domain_verifier"; }
+  absl::string_view name() const override { return "domain_verifier"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 

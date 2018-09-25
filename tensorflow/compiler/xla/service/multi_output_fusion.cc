@@ -262,7 +262,7 @@ void MultiOutputFusion::RecomputeReachability() {
 
 void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
-    tensorflow::gtl::ArraySlice<HloInstruction*> instrs_to_update,
+    absl::Span<HloInstruction* const> instrs_to_update,
     const std::function<bool(HloInstruction*)>& skip) {
   for (auto instr : instrs_to_update) {
     if (skip != nullptr && skip(instr)) {

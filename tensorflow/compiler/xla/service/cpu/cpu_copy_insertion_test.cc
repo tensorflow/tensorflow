@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -52,7 +52,7 @@ int64 CountCopies(const HloModule& module) {
   return count;
 }
 
-class CpuCopyInsertionTest : public HloTestBase {
+class CpuCopyInsertionTest : public HloVerifiedTestBase {
  protected:
   void InsertCopies(HloModule* module) {
     CpuCopyInsertion copy_insertion;
@@ -90,7 +90,7 @@ TEST_F(CpuCopyInsertionTest, WhileBodyWithConstantRoot) {
 
   module->AddEntryComputation(builder.Build());
 
-  InsertCopies(module.get());
+  InsertCopies(module);
 
   EXPECT_EQ(CountCopies(*module), 3);
 
@@ -127,7 +127,7 @@ TEST_F(CpuCopyInsertionTest, TupleCall) {
 
   module->AddEntryComputation(builder.Build());
 
-  InsertCopies(module.get());
+  InsertCopies(module);
 
   EXPECT_EQ(CountCopies(*subcomputation), 2);
   EXPECT_THAT(subcomputation->root_instruction(),

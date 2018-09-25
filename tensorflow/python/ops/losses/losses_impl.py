@@ -190,10 +190,10 @@ def compute_weighted_loss(
     When calculating the gradient of a weighted loss contributions from
     both `losses` and `weights` are considered. If your `weights` depend
     on some model parameters but you do not want this to affect the loss
-    gradient, you need to apply @{tf.stop_gradient} to `weights` before
+    gradient, you need to apply `tf.stop_gradient` to `weights` before
     passing them to `compute_weighted_loss`.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -266,7 +266,7 @@ def absolute_difference(
       `labels` or if the shape of `weights` is invalid or if `labels`
       or `predictions` is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -317,7 +317,7 @@ def cosine_distance(
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `axis`, `labels`, `predictions` or `weights` is `None`.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -369,7 +369,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
     ValueError: If the shapes of `logits` and `labels` don't match or
       if `labels` or `logits` is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -437,7 +437,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
       if the shape of `weights` is invalid.  Also if `labels` or
      `predictions` is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -503,7 +503,7 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
       if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -571,7 +571,7 @@ def mean_pairwise_squared_error(
       if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -654,7 +654,7 @@ def mean_squared_error(
       if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -711,7 +711,7 @@ def sigmoid_cross_entropy(
       `multi_class_labels` or if the shape of `weights` is invalid, or if
       `weights` is None.  Also if `multi_class_labels` or `logits` is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -777,7 +777,7 @@ def softmax_cross_entropy(
       or if the shape of `weights` is invalid or if `weights` is None.  Also if
       `onehot_labels` or `logits` is None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
@@ -894,7 +894,7 @@ def sparse_softmax_cross_entropy(
     ValueError: If the shapes of `logits`, `labels`, and `weights` are
       incompatible, or if any of them are None.
 
-  @compatbility(eager)
+  @compatibility(eager)
   The `loss_collection` argument is ignored when executing eagerly. Consider
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility

@@ -17,7 +17,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -310,6 +315,151 @@ class AdjustHueOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP(Name("AdjustHue"), AdjustHueOp);
+
+class NonMaxSuppressionOp : public XlaOpKernel {
+ public:
+  explicit NonMaxSuppressionOp(OpKernelConstruction* context)
+      : XlaOpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
+                                             &pad_to_max_output_size_));
+  }
+
+  void Compile(XlaOpKernelContext* context) override {
+    // TODO(b/111646731): Improve scalability of this op, using blocking.
+    int num_boxes_dim = 0;
+    int coords_dim = 1;
+    const TensorShape& boxes_shape = context->InputShape("boxes");
+    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(boxes_shape),
+                errors::InvalidArgument("boxes must be 2-D, currently: ",
+                                        boxes_shape.DebugString()));
+    const int64 num_boxes = boxes_shape.dim_size(num_boxes_dim);
+    OP_REQUIRES(context, boxes_shape.dim_size(coords_dim) == 4,
+                errors::InvalidArgument("boxes must have 4 columns",
+                                        boxes_shape.DebugString()));
+    const TensorShape& scores_shape = context->InputShape("scores");
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(scores_shape),
+                errors::InvalidArgument("scores must be 1-D, currently: ",
+                                        scores_shape.DebugString()));
+    OP_REQUIRES(
+        context, scores_shape.dim_size(0) == num_boxes,
+        errors::InvalidArgument("scores size must equal number of boxes",
+                                scores_shape.DebugString()));
+    OP_REQUIRES(context, pad_to_max_output_size_,
+                errors::InvalidArgument(
+                    "XLA compilation requires pad_to_max_output_size == True"));
+
+    xla::XlaOp boxes = context->Input("boxes");
+    xla::XlaOp scores = context->Input("scores");
+    int64 output_size;
+    OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &output_size));
+    OP_REQUIRES(
+        context, output_size >= 0,
+        errors::InvalidArgument("Need output_size >= 0, got ", output_size));
+    xla::XlaOp score_thresh = context->Input("score_threshold");
+    xla::XlaOp iou_thresh = context->Input("iou_threshold");
+
+    xla::XlaBuilder* const builder = context->builder();
+
+    // Choose a more convenient layout.
+    xla::XlaOp boxes_t = xla::Transpose(boxes, {1, 0});
+    coords_dim = 0;
+    num_boxes_dim = 1;
+
+    // Shapes are henceforth [1, num_boxes].
+    xla::XlaOp coord_y0 = xla::SliceInDim(boxes_t,
+                                          /*start_index=*/0,
+                                          /*limit_index=*/1,
+                                          /*stride=*/1,
+                                          /*dimno=*/coords_dim);
+    xla::XlaOp coord_x0 = xla::SliceInDim(boxes_t,
+                                          /*start_index=*/1,
+                                          /*limit_index=*/2,
+                                          /*stride=*/1,
+                                          /*dimno=*/coords_dim);
+    xla::XlaOp coord_y1 = xla::SliceInDim(boxes_t,
+                                          /*start_index=*/2,
+                                          /*limit_index=*/3,
+                                          /*stride=*/1,
+                                          /*dimno=*/coords_dim);
+    xla::XlaOp coord_x1 = xla::SliceInDim(boxes_t,
+                                          /*start_index=*/3,
+                                          /*limit_index=*/4,
+                                          /*stride=*/1,
+                                          /*dimno=*/coords_dim);
+    xla::XlaOp y1 =
+        xla::Select(xla::Le(coord_y0, coord_y1), coord_y0, coord_y1);
+    xla::XlaOp y2 =
+        xla::Select(xla::Le(coord_y0, coord_y1), coord_y1, coord_y0);
+    xla::XlaOp x1 =
+        xla::Select(xla::Le(coord_x0, coord_x1), coord_x0, coord_x1);
+    xla::XlaOp x2 =
+        xla::Select(xla::Le(coord_x0, coord_x1), coord_x1, coord_x0);
+    xla::XlaOp area = (y2 - y1) * (x2 - x1);
+
+    // Transpose the 1xN tensors, instead of the NxN tensors.
+    xla::XlaOp y1_t = xla::Transpose(y1, {1, 0});
+    xla::XlaOp y2_t = xla::Transpose(y2, {1, 0});
+    xla::XlaOp x1_t = xla::Transpose(x1, {1, 0});
+    xla::XlaOp x2_t = xla::Transpose(x2, {1, 0});
+    xla::XlaOp area_t = xla::Transpose(area, {1, 0});
+
+    // Shapes are henceforth [num_boxes, num_boxes].
+    xla::XlaOp i_xmin = xla::Max(x1, x1_t);
+    xla::XlaOp i_ymin = xla::Max(y1, y1_t);
+    xla::XlaOp i_xmax = xla::Min(x2, x2_t);
+    xla::XlaOp i_ymax = xla::Min(y2, y2_t);
+    auto square_zero = xla::ZerosLike(i_xmin);
+
+    xla::XlaOp i_area = xla::Max(i_xmax - i_xmin, square_zero) *
+                        xla::Max(i_ymax - i_ymin, square_zero);
+    xla::XlaOp u_area = area + area_t - i_area;
+    xla::XlaOp iou = i_area / u_area;
+
+    xla::XlaOp iou_thresh_mask = xla::Gt(iou, iou_thresh + square_zero);
+    xla::XlaOp scores_2d = xla::Reshape(scores, {num_boxes, 1});
+    xla::XlaOp score_cmp_mask =
+        xla::Gt(scores_2d, xla::Transpose(scores_2d, {1, 0}));
+    xla::XlaOp suppress = xla::And(iou_thresh_mask, score_cmp_mask);
+
+    // Shapes are [num_boxes] after the reduce.
+    xla::XlaOp included_iou = xla::Not(xla::Reduce(
+        suppress,
+        /*init_value=*/xla::ConstantR0<bool>(builder, false),
+        /*computation=*/CreateScalarOrComputation(xla::PRED, builder),
+        /*dimensions_to_reduce=*/{0}));
+    xla::XlaOp included_score =
+        xla::Gt(scores, xla::Broadcast(score_thresh, {num_boxes}));
+    xla::XlaOp included = xla::And(included_iou, included_score);
+    xla::XlaOp neg_inf =
+        xla::Broadcast(xla::MinValue(builder, xla::F32), {num_boxes});
+    xla::XlaOp scores_included = xla::Select(included, scores, neg_inf);
+
+    xla::XlaOp ones_included = xla::Select(
+        included,
+        xla::Broadcast(xla::ConstantR0<int32>(builder, 1), {num_boxes}),
+        xla::Broadcast(xla::ConstantR0<int32>(builder, 0), {num_boxes}));
+
+    // num_valid is scalar.
+    xla::XlaOp num_valid = xla::Reduce(
+        ones_included,
+        /*init_value=*/xla::ConstantR0<int>(builder, 0),
+        /*computation=*/CreateScalarAddComputation(xla::S32, builder),
+        /*dimensions_to_reduce=*/{0});
+
+    xla::XlaOp output_tuple = TopK(scores_included, output_size);
+    xla::XlaOp selected_indices = xla::GetTupleElement(output_tuple, 1);
+
+    context->SetOutput(0, selected_indices);
+    context->SetOutput(1, num_valid);
+  }
+
+ private:
+  bool pad_to_max_output_size_;
+};
+
+REGISTER_XLA_OP(
+    Name("NonMaxSuppressionV4").CompileTimeConstInput("max_output_size"),
+    NonMaxSuppressionOp);
 
 }  // namespace
 }  // namespace tensorflow

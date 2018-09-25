@@ -229,7 +229,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
-    test::ExpectTensorNear<T>(unfused_tensors[0], fused_tensors[0], 1e-5);
+    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
   }
 
   template <typename T>
@@ -282,7 +282,7 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
-    test::ExpectTensorNear<T>(unfused_tensors[0], fused_tensors[0], 1e-5);
+    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
   }
 };
 

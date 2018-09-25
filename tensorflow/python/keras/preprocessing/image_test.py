@@ -161,9 +161,6 @@ class TestImage(test.TestCase):
 
     generator = keras.preprocessing.image.ImageDataGenerator(
         zoom_range=(2, 2))
-    with self.assertRaises(ValueError):
-      generator = keras.preprocessing.image.ImageDataGenerator(
-          zoom_range=(2, 2, 2))
 
   def test_image_data_generator_fit(self):
     generator = keras.preprocessing.image.ImageDataGenerator(

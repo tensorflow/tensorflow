@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -80,10 +81,8 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
-// TODO(mrry): Convert to std::make_unique when available.
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : OpKernel(context,
-               std::unique_ptr<const NodeDef>(new NodeDef(context->def()))) {}
+    : OpKernel(context, MakeUnique<const NodeDef>(context->def())) {}
 
 OpKernel::OpKernel(OpKernelConstruction* context,
                    std::unique_ptr<const NodeDef> node_def)
@@ -266,9 +265,12 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
   params_->ensure_eigen_gpu_device();
   if (params_->eigen_gpu_device != nullptr) {
     Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
-    params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
-                                           params_->op_device_context,
-                                           eigen_gpu_allocator);
+    Status s = params_->device->ReinitializeGpuDevice(
+        this, params_->eigen_gpu_device, params_->op_device_context,
+        eigen_gpu_allocator);
+    if (!s.ok()) {
+      SetStatus(s);
+    }
   }
   if (params_->record_tensor_accesses) {
     referenced_tensors_.Init();
@@ -525,10 +527,8 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
       return nullptr;
     }
   }
-  // TODO(rmlarsen): Use MakeUnique here. There is already a copy in
-  // tensorflow/compiler/xla/ptr_util.h. Perhaps this should be part of
-  // general cleanup of ownership in this code.
-  std::unique_ptr<Tensor> output_tensor(new Tensor());
+
+  auto output_tensor = MakeUnique<Tensor>();
   CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
   return output_tensor;
 }
@@ -826,19 +826,6 @@ Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
   return Status::OK();
 }
 
-Status OpKernelContext::release_output(StringPiece name, TensorValue* value) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  *value = release_output(start);
-  return Status::OK();
-}
-
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   const auto& inputs = *params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
@@ -926,7 +913,7 @@ void OpKernelContext::clear_recorded_memory() {
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
                      kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(std::string(c)), factory(f) {}
+      : def(d), kernel_class_name(c), factory(f) {}
   const KernelDef def;
   const string kernel_class_name;
   const kernel_factory::OpKernelRegistrar::Factory factory;

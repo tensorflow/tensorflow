@@ -58,15 +58,13 @@ namespace xla {
 // BFloat16ConversionFolding. If other passes are needed after this pass, run
 // BFloat16MixedPrecisionRemoval first to undo some of the changes made by this
 // pass.
-class BFloat16Propagation : public HloPassInterface {
+class BFloat16Propagation : public HloModulePass {
  public:
   explicit BFloat16Propagation(const BFloat16Support* bfloat16_support);
 
   ~BFloat16Propagation() override = default;
 
-  tensorflow::StringPiece name() const override {
-    return "bfloat16-propagation";
-  }
+  absl::string_view name() const override { return "bfloat16-propagation"; }
 
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).

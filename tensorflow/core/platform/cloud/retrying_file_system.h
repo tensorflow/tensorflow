@@ -177,7 +177,7 @@ class RetryingWritableFile : public WritableFile {
     Close().IgnoreError();
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     return RetryingUtils::CallWithRetries(
         [this, &data]() { return base_file_->Append(data); },
         initial_delay_microseconds_);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -96,7 +97,7 @@ void SaveTensors(
               return tensor_names_flat(a) < tensor_names_flat(b);
             });
 
-  for (size_t i : sorted_name_idx) {
+  for (const size_t i : sorted_name_idx) {
     const string& name = tensor_names_flat(i);
     const Tensor& input = context->input(i + kFixedInputs);
     TensorShape shape(input.shape());
@@ -160,9 +161,12 @@ void RestoreTensor(OpKernelContext* context,
   // If we cannot find a cached reader we will allocate our own.
   std::unique_ptr<checkpoint::TensorSliceReader> allocated_reader;
 
-  const checkpoint::TensorSliceReader* reader =
-      context->slice_reader_cache()->GetReader(file_pattern, open_func,
-                                               preferred_shard);
+  const checkpoint::TensorSliceReader* reader = nullptr;
+
+  if (context->slice_reader_cache()) {
+    reader = context->slice_reader_cache()->GetReader(file_pattern, open_func,
+                                                      preferred_shard);
+  }
   if (!reader) {
     allocated_reader.reset(new checkpoint::TensorSliceReader(
         file_pattern, open_func, preferred_shard));
@@ -332,6 +336,26 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
 
   BundleReader default_reader(Env::Default(), prefix_string);
   TF_RETURN_IF_ERROR(default_reader.status());
+
+  std::vector<string> mismatched_errors;
+  for (const size_t i : sorted_name_idx) {
+    TensorShape restored_full_shape;
+    DataType original_dtype;
+    const string& tensor_name = tensor_names_flat(i);
+    TF_RETURN_IF_ERROR(default_reader.LookupDtypeAndShape(
+        tensor_name, &original_dtype, &restored_full_shape));
+    if (dtypes[i] != original_dtype) {
+      string error_msg = strings::StrCat(
+          "tensor_name = ", tensor_name, "; expected dtype ",
+          DataTypeString(dtypes[i]), " does not equal original dtype ",
+          DataTypeString(original_dtype));
+      mismatched_errors.emplace_back(error_msg);
+    }
+  }
+  if (!mismatched_errors.empty()) {
+    const string error_msg = str_util::Join(mismatched_errors, "\n");
+    return errors::InvalidArgument(error_msg);
+  }
 
   for (auto i : sorted_name_idx) {
     const string& tensor_name = tensor_names_flat(i);

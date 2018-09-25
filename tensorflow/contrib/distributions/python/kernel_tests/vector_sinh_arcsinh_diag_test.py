@@ -35,7 +35,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     scale_diag = rng.rand(d)
     scale_identity_multiplier = np.float64(1.0)
     loc = rng.randn(d)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       norm = ds.MultivariateNormalDiag(
           loc=loc,
           scale_diag=scale_diag,
@@ -65,7 +65,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     scale_diag = rng.rand(d)
     scale_identity_multiplier = np.float64(1.2)
     loc = rng.randn(d)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       vlap = ds.VectorLaplaceDiag(
           loc=loc,
           scale_diag=scale_diag,
@@ -96,7 +96,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     scale_diag = rng.rand(d)
     scale_identity_multiplier = np.float64(0.9)
     loc = rng.randn(d)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       norm = ds.MultivariateNormalDiag(
           loc=loc,
           scale_diag=scale_diag,
@@ -141,7 +141,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     scale_diag = rng.rand(d)
     scale_identity_multiplier = np.float64(1.0)
     loc = rng.randn(d)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       norm = ds.MultivariateNormalDiag(
           loc=loc,
           scale_diag=scale_diag,
@@ -186,7 +186,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     scale_diag = rng.rand(d)
     scale_identity_multiplier = np.float64(1.0)
     loc = rng.randn(d)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sasnorm = ds.VectorSinhArcsinhDiag(
           loc=loc,
           scale_diag=scale_diag,
@@ -201,7 +201,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     b, d = 5, 2
     scale_diag = rng.rand(b, d)
     scale_identity_multiplier = np.float64(1.1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sasnorm = ds.VectorSinhArcsinhDiag(
           scale_diag=scale_diag,
           scale_identity_multiplier=scale_identity_multiplier,
@@ -228,7 +228,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
     d = 3
     scale_diag = rng.rand(d)
     scale_identity_multiplier = np.float64(1.1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sasnorm = ds.VectorSinhArcsinhDiag(
           scale_diag=scale_diag,
           scale_identity_multiplier=scale_identity_multiplier,
@@ -252,7 +252,7 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
           rtol=0.1)
 
   def test_pdf_reflected_for_negative_skewness(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sas_pos_skew = ds.VectorSinhArcsinhDiag(
           loc=[0.],
           scale_identity_multiplier=1.,

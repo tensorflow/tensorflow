@@ -997,9 +997,14 @@ class _OneHotColumn(
       # Remove (?, -1) index
       weighted_column = sparse_ops.sparse_slice(
           weighted_column,
-          [0, 0],
+          array_ops.zeros_like(weighted_column.dense_shape),
           weighted_column.dense_shape)
-      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+      dense_tensor = sparse_ops.sparse_tensor_to_dense(weighted_column)
+      batch_shape = array_ops.shape(dense_tensor)[:-1]
+      dense_tensor_shape = array_ops.concat(
+          [batch_shape, [self.length]], axis=0)
+      dense_tensor = array_ops.reshape(dense_tensor, dense_tensor_shape)
+      return dense_tensor
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(sparse_id_column,
                                                         default_value=-1)
@@ -1095,9 +1100,9 @@ class _EmbeddingColumn(
       raise ValueError("Must specify both `ckpt_to_load_from` and "
                        "`tensor_name_in_ckpt` or none of them.")
     if initializer is None:
-      logging.warn("The default stddev value of initializer will change from "
-                   "\"1/sqrt(vocab_size)\" to \"1/sqrt(dimension)\" after "
-                   "2017/02/25.")
+      logging.warn("The default stddev value of initializer was changed from "
+                   "\"1/sqrt(vocab_size)\" to \"1/sqrt(dimension)\" in core "
+                   "implementation (tf.feature_column.embedding_column).")
       stddev = 1 / math.sqrt(sparse_id_column.length)
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)
@@ -1496,8 +1501,6 @@ class _ScatteredEmbeddingColumn(
       raise ValueError("initializer must be callable if specified. "
                        "column_name: {}".format(column_name))
     if initializer is None:
-      logging.warn("The default stddev value of initializer will change from "
-                   "\"0.1\" to \"1/sqrt(dimension)\" after 2017/02/25.")
       stddev = 0.1
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=stddev)

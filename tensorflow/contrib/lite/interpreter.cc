@@ -21,23 +21,17 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/contrib/lite/arena_planner.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
-#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
-#endif
 #include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
-#ifdef TFLITE_MCU
-class NNAPIDelegate {};
-#endif
-
 namespace {
 
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
@@ -129,6 +123,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
+  context_.allow_fp32_relax_to_fp16 = false;
   context_.recommended_num_threads = -1;
   context_.GetExternalContext = GetExternalContext;
   context_.SetExternalContext = SetExternalContext;
@@ -163,7 +158,7 @@ Interpreter::~Interpreter() {
     TfLiteTensor* tensor = &context_.tensors[i];
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
         tensor->delegate->FreeBufferHandle != nullptr) {
-      tensor->delegate->FreeBufferHandle(tensor->delegate,
+      tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
                                          &tensor->buffer_handle);
     }
     TfLiteTensorFree(tensor);
@@ -482,6 +477,10 @@ TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
   return kTfLiteOk;
 }
 
+void Interpreter::ReserveNodes(int count) {
+  nodes_and_registration_.reserve(count);
+}
+
 TfLiteStatus Interpreter::AddNodeWithParameters(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const char* init_data, size_t init_data_size, void* builtin_data,
@@ -630,7 +629,6 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   TfLiteStatus status = kTfLiteOk;
-#ifndef TFLITE_MCU
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -644,7 +642,6 @@ TfLiteStatus Interpreter::Invoke() {
       return kTfLiteError;
     }
   }
-#endif
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
@@ -902,17 +899,15 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Interpreter::UseNNAPI(bool enable) {
-#ifndef TFLITE_MCU
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
-  if (!NNAPIExists()) enable = false;
+  if (!NNAPIDelegate::IsSupported()) enable = false;
   if (!enable) {
     nnapi_delegate_.reset();
   } else if (!nnapi_delegate_) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
-#endif
 }
 
 void Interpreter::SetNumThreads(int num_threads) {
@@ -998,7 +993,7 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
   tensor->delegate = delegate;
   if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
     TF_LITE_ENSURE(&context_, tensor->delegate->FreeBufferHandle != nullptr);
-    tensor->delegate->FreeBufferHandle(tensor->delegate,
+    tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
                                        &tensor->buffer_handle);
   }
   tensor->buffer_handle = buffer_handle;

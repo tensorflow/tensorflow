@@ -52,12 +52,17 @@ bool IsString(PyObject* o) {
 // returned value is a list.
 //
 // As with PyMapping_Keys, returns a new reference.
+//
+// On failure, returns nullptr.
 PyObject* MappingKeys(PyObject* o) {
 #if PY_MAJOR_VERSION >= 3
   return PyMapping_Keys(o);
 #else
   static char key_method_name[] = "keys";
   Safe_PyObjectPtr raw_result(PyObject_CallMethod(o, key_method_name, nullptr));
+  if (PyErr_Occurred() || raw_result.get() == nullptr) {
+    return nullptr;
+  }
   return PySequence_Fast(
       raw_result.get(),
       "The '.keys()' method of a custom mapping returned a non-sequence.");
@@ -260,6 +265,9 @@ class ValIterator {
   // Return a borrowed reference to the next element from iterable.
   // Return nullptr when iteration is over.
   PyObject* next() {
+    if (TF_PREDICT_FALSE(seq_ == nullptr)) {
+      return nullptr;
+    }
     PyObject* element = nullptr;
     if (index_ < size_) {
       // Both PySequence_Fast_GET_ITEM and PyDict_GetItem return borrowed
@@ -430,16 +438,26 @@ bool FlattenHelper(
 // 'dict1' and 'dict2' are assumed to be Python dictionaries.
 void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
                            bool* is_type_error) {
-  PyObject* k1 = MappingKeys(dict1);
-  PyObject* k2 = MappingKeys(dict2);
+  Safe_PyObjectPtr k1(MappingKeys(dict1));
+  if (PyErr_Occurred() || k1.get() == nullptr) {
+    *error_msg =
+        ("The two dictionaries don't have the same set of keys. Failed to "
+         "fetch keys.");
+    return;
+  }
+  Safe_PyObjectPtr k2(MappingKeys(dict2));
+  if (PyErr_Occurred() || k2.get() == nullptr) {
+    *error_msg =
+        ("The two dictionaries don't have the same set of keys. Failed to "
+         "fetch keys.");
+    return;
+  }
   *is_type_error = false;
   *error_msg = tensorflow::strings::StrCat(
       "The two dictionaries don't have the same set of keys. "
       "First structure has keys ",
-      PyObjectToString(k1), ", while second structure has keys ",
-      PyObjectToString(k2));
-  Py_DECREF(k1);
-  Py_DECREF(k2);
+      PyObjectToString(k1.get()), ", while second structure has keys ",
+      PyObjectToString(k2.get()));
 }
 
 // Returns true iff there were no "internal" errors. In other words,
@@ -452,12 +470,14 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 // Leaves `error_msg` empty if structures matched. Else, fills `error_msg`
 // with appropriate error and sets `is_type_error` to true iff
 // the error to be raised should be TypeError.
-bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
-                               string* error_msg, bool* is_type_error) {
+bool AssertSameStructureHelper(
+    PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
+    bool* is_type_error,
+    const std::function<int(PyObject*)>& is_sequence_helper) {
   DCHECK(error_msg);
   DCHECK(is_type_error);
-  const bool is_seq1 = IsSequence(o1);
-  const bool is_seq2 = IsSequence(o2);
+  const bool is_seq1 = is_sequence_helper(o1);
+  const bool is_seq2 = is_sequence_helper(o2);
   if (PyErr_Occurred()) return false;
   if (is_seq1 != is_seq2) {
     string seq_str = is_seq1 ? PyObjectToString(o1) : PyObjectToString(o2);
@@ -469,7 +489,9 @@ bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
     return true;
   }
 
-  // Got to scalars, so finished checking. Structures are the same.
+  // Got to objects that are considered non-sequences. Note that in tf.data
+  // use case lists and sparse_tensors are not considered sequences. So finished
+  // checking, structures are the same.
   if (!is_seq1) return true;
 
   if (check_types) {
@@ -522,7 +544,7 @@ bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
       return true;
     }
 
-    if (PyDict_Check(o1)) {
+    if (PyDict_Check(o1) && PyDict_Check(o2)) {
       if (PyDict_Size(o1) != PyDict_Size(o2)) {
         SetDifferentKeysError(o1, o2, error_msg, is_type_error);
         return true;
@@ -568,7 +590,7 @@ bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
         return false;
       }
       bool no_internal_errors = AssertSameStructureHelper(
-          v1, v2, check_types, error_msg, is_type_error);
+          v1, v2, check_types, error_msg, is_type_error, is_sequence_helper);
       Py_LeaveRecursiveCall();
       if (!no_internal_errors) return false;
       if (!error_msg->empty()) return true;
@@ -629,6 +651,7 @@ void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class) {
 }
 
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
+bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
 
 PyObject* Flatten(PyObject* nested) {
   PyObject* list = PyList_New(0);
@@ -740,7 +763,37 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
 PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types) {
   string error_msg;
   bool is_type_error = false;
-  AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error);
+  AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
+                            IsSequenceHelper);
+  if (PyErr_Occurred()) {
+    // Don't hide Python exceptions while checking (e.g. errors fetching keys
+    // from custom mappings).
+    return nullptr;
+  }
+  if (!error_msg.empty()) {
+    PyErr_SetString(
+        is_type_error ? PyExc_TypeError : PyExc_ValueError,
+        tensorflow::strings::StrCat(
+            "The two structures don't have the same nested structure.\n\n",
+            "First structure: ", PyObjectToString(o1), "\n\nSecond structure: ",
+            PyObjectToString(o2), "\n\nMore specifically: ", error_msg)
+            .c_str());
+    return nullptr;
+  }
+  Py_RETURN_NONE;
+}
+
+PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
+                                     bool check_types) {
+  string error_msg;
+  bool is_type_error = false;
+  AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
+                            IsSequenceForDataHelper);
+  if (PyErr_Occurred()) {
+    // Don't hide Python exceptions while checking (e.g. errors fetching keys
+    // from custom mappings).
+    return nullptr;
+  }
   if (!error_msg.empty()) {
     PyErr_SetString(
         is_type_error ? PyExc_TypeError : PyExc_ValueError,

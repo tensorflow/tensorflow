@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/human_readable.h"
 #include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/notification.h"
+#include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -66,14 +67,17 @@ class CreatedContexts {
     return Live()->find(context) != Live()->end();
   }
 
-  // Adds context to the live set.
+  // Adds context to the live set, or returns it if it's already present.
   static CudaContext* Add(CUcontext context) {
     CHECK(context != nullptr);
     mutex_lock lock(mu_);
-    auto cuda_context = new CudaContext(context, next_id_++);
-    Live()->insert(
-        std::make_pair(context, std::unique_ptr<CudaContext>(cuda_context)));
-    return cuda_context;
+    auto insert_result = Live()->insert(std::make_pair(context, nullptr));
+    auto it = insert_result.first;
+    if (insert_result.second) {
+      // context was not present in the map.  Add it.
+      it->second = MakeUnique<CudaContext>(context, next_id_++);
+    }
+    return it->second.get();
   }
 
   // Removes context from the live set.
@@ -427,7 +431,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     *context = CreatedContexts::Add(new_context);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
-    VLOG(2) << "created context " << context << " for this thread";
+    VLOG(2) << "created or reused context " << context << " for this thread";
     return port::Status::OK();
   }
 

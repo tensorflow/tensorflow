@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_RESOURCE_MGR_H_
-#define TENSORFLOW_FRAMEWORK_RESOURCE_MGR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_MGR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_MGR_H_
 
 #include <string>
 #include <typeindex>
@@ -61,8 +61,8 @@ namespace tensorflow {
 //
 //   // Create a var.
 //   MyVar* my_var = new MyVar;
-//   my_var.val = Tensor(DT_FLOAT, my_shape);
-//   my_var.val.flat<float>().setZeros();   // 0 initialized.
+//   my_var->val = Tensor(DT_FLOAT, my_shape);
+//   my_var->val.flat<float>().setZeros();   // 0 initialized.
 //   ctx->SetStatus(rm.Create("my_container", "my_name", my_var));
 //
 //   // += a variable.
@@ -79,7 +79,7 @@ class ResourceBase : public core::RefCounted {
   virtual string DebugString() = 0;
 
   // Returns memory used by this resource.
-  virtual int64 MemoryUsed() const { return 0; };
+  virtual int64 MemoryUsed() const { return 0; }
 };
 
 // Container used for per-step resources.
@@ -234,7 +234,7 @@ ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
                                          const string& name);
 
 // Returns a resource handle from a numbered op input.
-ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
+const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input);
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle);
 
@@ -347,6 +347,8 @@ class ResourceHandleOp : public OpKernel {
   explicit ResourceHandleOp(OpKernelConstruction* context);
 
   void Compute(OpKernelContext* ctx) override;
+
+  bool IsExpensive() override { return false; }
 
  private:
   string container_;
@@ -555,4 +557,4 @@ void ResourceHandleOp<T>::Compute(OpKernelContext* ctx) {
 
 }  //  end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_RESOURCE_MGR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_RESOURCE_MGR_H_

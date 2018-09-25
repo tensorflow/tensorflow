@@ -52,7 +52,7 @@ Status HloDomainVerifier::RunContext::PopulateDomainKinds() {
           TF_RET_CHECK(instruction->user_side_metadata().Kind() ==
                        instruction->operand_side_metadata().Kind())
               << instruction->ToString();
-          kinds.insert(instruction->user_side_metadata().Kind().ToString());
+          kinds.insert(string(instruction->user_side_metadata().Kind()));
         }
       }
     }

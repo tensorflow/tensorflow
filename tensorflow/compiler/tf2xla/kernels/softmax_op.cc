@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific Ops for softmax.
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace {
@@ -33,16 +33,20 @@ namespace {
 class SoftmaxOp : public XlaOpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    log_ = str_util::StartsWith(type_string(), "Log");
+    log_ = absl::StartsWith(type_string(), "Log");
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape logits_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(logits_shape),
-                errors::InvalidArgument("logits must be 2-dimensional"));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(logits_shape),
+                errors::InvalidArgument("logits must have >= 1 dimension, got ",
+                                        logits_shape.DebugString()));
 
-    const int kBatchDim = 0;
-    const int kClassDim = 1;
+    // Major dimensions are batch dimensions, minor dimension is the class
+    // dimension.
+    std::vector<int64> batch_dims(logits_shape.dims() - 1);
+    std::iota(batch_dims.begin(), batch_dims.end(), 0);
+    const int kClassDim = logits_shape.dims() - 1;
 
     const DataType type = input_type(0);
     const xla::PrimitiveType xla_type = ctx->input_xla_type(0);
@@ -56,7 +60,7 @@ class SoftmaxOp : public XlaOpKernel {
         xla::Reduce(logits, xla::MinValue(b, xla_type), max_func, {kClassDim});
     // Subtract the max in batch b from every element in batch b. Broadcasts
     // along the batch dimension.
-    auto shifted_logits = xla::Sub(logits, logits_max, {kBatchDim});
+    auto shifted_logits = xla::Sub(logits, logits_max, batch_dims);
     auto exp_shifted = xla::Exp(shifted_logits);
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
     xla::PrimitiveType xla_accumulation_type;
@@ -71,9 +75,9 @@ class SoftmaxOp : public XlaOpKernel {
     auto softmax =
         log_
             // softmax = shifted_logits - log(sum(exp(shifted_logits)))
-            ? xla::Sub(shifted_logits, xla::Log(sum), {kBatchDim})
+            ? xla::Sub(shifted_logits, xla::Log(sum), batch_dims)
             // softmax = exp(shifted_logits) / sum(exp(shifted_logits))
-            : xla::Div(exp_shifted, sum, {kBatchDim});
+            : xla::Div(exp_shifted, sum, batch_dims);
     ctx->SetOutput(0, softmax);
   }
 

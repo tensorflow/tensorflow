@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -87,8 +87,9 @@ std::pair<int, int> TileOneDimension(const TfLiteIntArray& in_dimensions,
   if (dimension == in_dimensions.size - 1) {
     CopyMultipleTimes(in_data, dimension_size, multipliers[dimension],
                       out_data);
-    return std::make_pair(dimension_size,
-                          dimension_size * multipliers[dimension]);
+    return std::make_pair(
+        dimension_size,
+        dimension_size * static_cast<int>(multipliers[dimension]));
   }
   int total_stride_size = 0, total_tiled_stride_size = 0;
   const T* copy_from_data = in_data;

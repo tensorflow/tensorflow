@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_MACROS_H_
-#define TENSORFLOW_PLATFORM_MACROS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_MACROS_H_
+#define TENSORFLOW_CORE_PLATFORM_MACROS_H_
 
 // Compiler attributes
 #if (defined(__GNUC__) || defined(__APPLE__)) && !defined(SWIG)
@@ -125,4 +125,4 @@ limitations under the License.
   } while (0)
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_MACROS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_

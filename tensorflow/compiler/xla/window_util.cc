@@ -17,16 +17,15 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace window_util {
 
-Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
+Window MakeWindow(absl::Span<const int64> sizes) {
   Window window;
   for (int64 size : sizes) {
     auto* dimension = window.add_dimensions();
@@ -38,7 +37,7 @@ Window MakeWindow(tensorflow::gtl::ArraySlice<int64> sizes) {
   return window;
 }
 
-PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
+PaddingConfig MakeSymmetricPadding(absl::Span<const int64> sizes) {
   PaddingConfig config;
   for (int64 size : sizes) {
     auto* dimension = config.add_dimensions();
@@ -49,8 +48,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 /* static */ string ToString(const WindowDimension& dim) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
   string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
@@ -75,8 +74,8 @@ PaddingConfig MakeSymmetricPadding(tensorflow::gtl::ArraySlice<int64> sizes) {
 }
 
 string ToString(const Window& window) {
-  using tensorflow::strings::StrAppend;
-  using tensorflow::strings::StrCat;
+  using absl::StrAppend;
+  using absl::StrCat;
 
   string str;
   const auto add_field =
