@@ -49,6 +49,7 @@ std::map<int, OptionalTensor> SnapshotResourceVariables(
     ResourceHandle handle = HandleFromInput(ctx, i);
     OptionalTensor& tensor = snapshot[i];
     if (LookupResource(ctx, handle, &variable).ok()) {
+      core::ScopedUnref scoped_unref(variable);
       tf_shared_lock lock(*variable->mu());
       tensor.name = handle.name();
       tensor.present = true;
