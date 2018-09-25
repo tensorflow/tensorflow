@@ -170,7 +170,7 @@ class EqualitySplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, split_node.feature_id)
 
   def testObliviousFeatureSplitGeneration(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The data looks like the following:
       # Example |  Gradients    | Partition | Feature ID     |
       # i0      |  (0.2, 0.12)  | 1         | 1              |
