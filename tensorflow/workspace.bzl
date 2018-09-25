@@ -595,6 +595,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         testonly_ = True,
     )
 
+    tf_http_archive(
+        name = "arrow",
+        urls = [
+            "https://mirror.bazel.build/github.com/apache/arrow/archive/apache-arrow-0.10.0.tar.gz",
+            "https://github.com/apache/arrow/archive/apache-arrow-0.10.0.tar.gz",
+        ],
+        sha256 = "2094cc6492e77ede19937375769de105603a50440a6257fefd4038f1176a0626",
+        strip_prefix = "arrow-apache-arrow-0.10.0",
+        build_file = clean_dep("//third_party:arrow.BUILD"),
+    )
+
     java_import_external(
         name = "com_google_testing_compile",
         jar_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",

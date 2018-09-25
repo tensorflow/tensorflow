@@ -84,6 +84,8 @@ tensorflow/contrib/android/java/org/tensorflow
 tensorflow/contrib/android/java/org/tensorflow/contrib
 tensorflow/contrib/android/java/org/tensorflow/contrib/android
 tensorflow/contrib/android/jni
+tensorflow/contrib/arrow/python
+tensorflow/contrib/arrow/python/ops
 tensorflow/contrib/batching
 tensorflow/contrib/batching/python
 tensorflow/contrib/batching/python/ops

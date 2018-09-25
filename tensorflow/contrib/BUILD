@@ -126,6 +126,15 @@ py_library(
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:no_arrow_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/arrow",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
         "//tensorflow:no_aws_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/kinesis",
@@ -189,6 +198,15 @@ cc_library(
         "//tensorflow:no_kafka_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_kernels",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_arrow_support": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/arrow:dataset_kernels",
         ],
     }) + select({
         "//tensorflow:android": [],
