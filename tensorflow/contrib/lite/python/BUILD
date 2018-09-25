@@ -144,7 +144,7 @@ py_library(
     name = "convert_saved_model",
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow/contrib/lite:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":convert",
         "//tensorflow/contrib/saved_model:saved_model_py",
