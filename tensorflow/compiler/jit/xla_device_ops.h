@@ -73,8 +73,7 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                           KERNEL);
 
 #define REGISTER_XLA_RUN_KERNEL(DEVICE, KERNEL, TYPES) \
-  REGISTER_KERNEL_BUILDER(                             \
-      Name("_XlaRun").Device(DEVICE).HostMemory("constants"), KERNEL);
+  REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE), KERNEL);
 
 #define REGISTER_XLA_DEVICE_KERNELS(DEVICE, TYPES)                             \
   REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE), SendOp);               \

@@ -326,12 +326,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = [
-        "manual",
-        "no_oss",
-        "no_windows_gpu",
-        "notap",
-    ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(

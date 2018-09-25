@@ -75,7 +75,7 @@ class OriginInfo(
 
 
 # TODO(mdan): This source map should be a class - easier to refer to.
-def source_map(nodes, code, filename, indices_in_code):
+def create_source_map(nodes, code, filename, indices_in_code):
   """Creates a source map between an annotated AST and the code it compiles to.
 
   Args:

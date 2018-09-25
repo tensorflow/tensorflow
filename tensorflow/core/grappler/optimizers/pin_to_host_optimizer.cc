@@ -156,11 +156,29 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
   // We couldn't find an appropriate Host device, return original device.
   return device;
 }
+
+bool IsTPUGraphDef(const GraphDef& def) {
+  for (auto node : def.node()) {
+    if (node.op() == "TPUCompile" || node.op() == "TPUExecute" ||
+        node.op() == "TPUPartitionedCall") {
+      return true;
+    }
+  }
+  return false;
+}
+
+// All the nodes that should be blacklisted and not swapped.
+bool IsBlacklisted(const NodeDef& node) { return IsCollective(node); }
 }  // end namespace internal
 
 Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
+
+  // Skip all TPU graphs.
+  if (internal::IsTPUGraphDef(*optimized_graph)) {
+    return Status::OK();
+  }
 
   GraphProperties properties(item);
   bool has_properties = false;
@@ -182,6 +200,11 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (auto& node : *optimized_graph->mutable_node()) {
     // Check if node already on CPU.
     if (str_util::StrContains(node.device(), DEVICE_CPU)) {
+      continue;
+    }
+
+    // Skip these node types.
+    if (internal::IsBlacklisted(node)) {
       continue;
     }
 

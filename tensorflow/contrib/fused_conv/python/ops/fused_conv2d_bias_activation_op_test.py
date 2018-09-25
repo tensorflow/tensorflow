@@ -268,7 +268,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     with self.cached_session() as sess:
       values = sess.run(tensors)
       for i in range(1, len(values)):
-        self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
+        self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, bias, strides,
                     padding):
@@ -873,9 +873,7 @@ class FusedConvInt8Tests(test.TestCase):
 
     with self.test_session(use_gpu=True) as sess:
       actual_y, expected_y = sess.run([actual, expected])
-      tf_logging.info("actual_y = ", actual_y)
-      tf_logging.info("expected_y = ", expected_y)
-      self.assertTrue(np.array_equal(actual_y, expected_y))
+      self.assertAllClose(actual_y, expected_y, rtol=0, atol=1)
 
   def testFusedConvInt8(self):
     if not test.is_gpu_available(

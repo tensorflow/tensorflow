@@ -61,6 +61,7 @@ bool ReadPartialShapesFromShapeMap(
         shape_map,
     std::vector<PartialTensorShape>* input_shapes) {
   CHECK(shape_map != nullptr);
+  input_shapes->resize(n->num_inputs());
   for (const Edge* in : n->in_edges()) {
     // Don't need to check if incoming control edges have known shapes.
     if (in->IsControlEdge()) continue;
@@ -71,7 +72,9 @@ bool ReadPartialShapesFromShapeMap(
     }
     const auto& known_shape = known_shape_iter->second;
     CHECK_GT(known_shape.size(), in->src_output()) << known_shape_iter->first;
-    input_shapes->push_back(known_shape[in->src_output()]);
+    DCHECK_GE(in->dst_input(), 0);
+    DCHECK_LT(in->dst_input(), input_shapes->size());
+    (*input_shapes)[in->dst_input()] = known_shape[in->src_output()];
   }
   return true;
 }

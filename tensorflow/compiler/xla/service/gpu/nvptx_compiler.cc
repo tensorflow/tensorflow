@@ -402,7 +402,7 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot
-        << ", which older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+        << ", which is older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
            "miscompile XLA code, leading to incorrect results or "
            "invalid-address errors.\n\nYou do not need to update to CUDA "
            "9.2.88; cherry-picking the ptxas binary is sufficient.";
