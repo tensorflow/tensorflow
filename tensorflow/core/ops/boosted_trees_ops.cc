@@ -180,6 +180,8 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
       return Status::OK();
     });
 
+// TODO(nponomareva): when/if creating the new op for unbucketized data, rename
+// bucketized_features to features.
 REGISTER_OP("BoostedTreesPredict")
     .Input("tree_ensemble_handle: resource")
     .Input("bucketized_features: num_bucketized_features * int32")
