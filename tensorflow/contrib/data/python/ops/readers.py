@@ -508,7 +508,7 @@ def make_csv_dataset(
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
 
 
-class CsvDataset(dataset_ops.Dataset):
+class CsvDataset(dataset_ops.DatasetSource):
   """A Dataset comprising lines from one or more CSV files."""
 
   def __init__(self,
@@ -924,7 +924,7 @@ def _get_file_names(file_pattern, shuffle):
   return file_names
 
 
-class SqlDataset(dataset_ops.Dataset):
+class SqlDataset(dataset_ops.DatasetSource):
   """A `Dataset` consisting of the results from a SQL query."""
 
   def __init__(self, driver_name, data_source_name, query, output_types):
@@ -985,7 +985,7 @@ class SqlDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-class LMDBDataset(dataset_ops.Dataset):
+class LMDBDataset(dataset_ops.DatasetSource):
   """A LMDB Dataset that reads the lmdb file."""
 
   def __init__(self, filenames):

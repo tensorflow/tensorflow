@@ -155,10 +155,11 @@ class _PrefetchToDeviceIterator(object):
 # pylint: enable=protected-access
 
 
-class _PrefetchToDeviceDataset(dataset_ops.Dataset):
+class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
   """A `Dataset` whose iterator prefetches elements to other device(s)."""
 
   def __init__(self, input_dataset, devices, buffer_size):
+    super(_PrefetchToDeviceDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._devices = devices
     self._buffer_size = buffer_size if buffer_size is not None else 1
