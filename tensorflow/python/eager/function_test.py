@@ -21,10 +21,12 @@ import collections
 import functools
 from multiprocessing.pool import ThreadPool
 import sys
+import weakref
 
 import numpy
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
@@ -46,6 +48,7 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -72,6 +75,13 @@ class MiniModel(keras_training.Model):
 
   def call(self, inputs, training=True):
     return self.fc(inputs)
+
+
+class DefunnedMiniModel(MiniModel):
+
+  @function.defun
+  def call(self, inputs, training=True):
+    return super(DefunnedMiniModel, self).call(inputs, training=training)
 
 
 @test_util.with_c_shapes
@@ -140,8 +150,8 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def f():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      return v.read_value()
+      self.v = resource_variable_ops.ResourceVariable(1.0)
+      return self.v.read_value()
 
     self.assertAllEqual(f(), 1.0)
 
@@ -399,9 +409,9 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def tensor_init():
-      v = resource_variable_ops.ResourceVariable(
+      self.v = resource_variable_ops.ResourceVariable(
           lambda: constant_op.constant(2.0))
-      return v.read_value()
+      return self.v.read_value()
 
     value = tensor_init()
     if not context.executing_eagerly():
@@ -415,8 +425,8 @@ class FunctionTest(test.TestCase):
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
-      v = resource_variable_ops.ResourceVariable(const)
-      return v.read_value()
+      self.v = resource_variable_ops.ResourceVariable(const)
+      return self.v.read_value()
 
     value = tensor_init()
     if not context.executing_eagerly():
@@ -429,10 +439,17 @@ class FunctionTest(test.TestCase):
     def f():
       x = constant_op.constant([[1, 2], [3, 4]])
       out = math_ops.matmul(v, x)
-      self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+      self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
+      # We do not return v directly since the tensor conversion function of
+      # ResourceVariable returns the read value and not the resource itself.
+      return v._handle
 
     compiled = function.defun(f)
-    compiled()
+    var_handle = compiled()
+    self.assertEqual(var_handle.dtype, dtypes.resource)
+    self.assertEqual(var_handle.shape, tensor_shape.scalar())
+    var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
+    self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testVariableInLoopInFunction(self):
 
@@ -456,10 +473,17 @@ class FunctionTest(test.TestCase):
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
         out = math_ops.matmul(v, x)
-        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+        self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
+        # We do not return v directly since the tensor conversion function of
+        # ResourceVariable returns the read value and not the resource itself.
+        return v._handle
 
       compiled = function.defun(f)
-      compiled()
+      var_handle = compiled()
+      self.assertEqual(var_handle.dtype, dtypes.resource)
+      self.assertEqual(var_handle.shape, tensor_shape.scalar())
+      var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
+      self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testDefunShapeInferenceWithCapturedVariableInGraphMode(self):
     with context.graph_mode():
@@ -468,23 +492,46 @@ class FunctionTest(test.TestCase):
       def f():
         x = constant_op.constant([[1, 2], [3, 4]])
         out = math_ops.matmul(v, x)
-        self.assertEqual(out.get_shape(), tensor_shape.TensorShape([2, 2]))
+        self.assertEqual(out.shape, tensor_shape.TensorShape([2, 2]))
 
       # Check that shape inference works while creating the defun
       compiled = function.defun(f)
       compiled()
 
+  def testDefunShapeInferenceWithCapturedTensorListInGraphMode(self):
+    with context.graph_mode():
+      tensor_list = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      tensor_list = list_ops.tensor_list_push_back(tensor_list,
+                                                   constant_op.constant(1.0))
+      tensor_list = list_ops.tensor_list_push_back(tensor_list,
+                                                   constant_op.constant(2.0))
+
+      def f():
+        tl, value = list_ops.tensor_list_pop_back(
+            tensor_list, element_dtype=dtypes.float32)
+        self.assertEqual(value.shape, tensor_shape.scalar())
+        return tl
+
+      compiled = function.defun(f)
+      output_tensor_list = compiled()
+      _, value = list_ops.tensor_list_pop_back(
+          output_tensor_list, element_dtype=dtypes.float32)
+      self.assertEqual(value.shape, tensor_shape.scalar())
+
   @test_util.run_in_graph_and_eager_modes
   def testDefunForcesResourceVariables(self):
 
     def variable_creator():
-      return variables.Variable(0.0).read_value()
+      self.v = variables.Variable(0.0)
+      return self.v.read_value()
 
+    self.v = None
     defined = function.defun(variable_creator)
     defined()  # Create the variable.
-    self.assertEqual(len(defined.variables), 1)
     self.assertIsInstance(
-        defined.variables[0], resource_variable_ops.ResourceVariable)
+        self.v, resource_variable_ops.ResourceVariable)
 
   def testDefunDifferentiable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1184,13 +1231,11 @@ class FunctionTest(test.TestCase):
     defined = function.defun(foo)
 
     x = constant_op.constant([1.0])
-    self.assertAllEqual(defined.variables, [])
-    _ = defined(x)
-    self.assertAllEqual(defined.variables, [v])
+    self.assertEqual(1., self.evaluate(defined(x)))
+    v.assign(2.)
 
     x = constant_op.constant([1.0, 2.0])
-    _ = defined(x)  # ensure the variables list remains the same
-    self.assertAllEqual(defined.variables, [v])
+    self.assertAllEqual([2., 4.], self.evaluate(defined(x)))
 
   def testPythonFunctionWithDefaultArgs(self):
 
@@ -1557,7 +1602,7 @@ class FunctionTest(test.TestCase):
     defun_add = function.defun_with_attributes(
         add, attributes={'experimental_3': True, 'experimental_4': 1.0})
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
         sq = matmul(t, t)
@@ -1591,7 +1636,7 @@ class FunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError,
                                  '.*Attribute name is not whitelisted.*'):
-      with context.graph_mode(), self.test_session():
+      with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           matmul(t, t)
@@ -1602,10 +1647,200 @@ class FunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError,
                                  '.*Unsupported attribute type.*'):
-      with context.graph_mode(), self.test_session():
+      with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
+
+  def testRegisterFunction(self):
+    @function.defun
+    def add(x, y):
+      return math_ops.add(x, y)
+
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(matmul)
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register(defun_matmul, t, t)
+        function.register(add, t, t)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        pre_register_matmul_func_name = functions[0].definition.signature.name
+        self.assertRegexpMatches(pre_register_matmul_func_name, '.*matmul.*')
+        pre_register_add_func_name = functions[1].definition.signature.name
+        self.assertRegexpMatches(pre_register_add_func_name, '.*add.*')
+
+        sq = defun_matmul(t, t)
+        double = add(t, t)
+        self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
+        self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
+        # Make sure the pre registered function is used, and no other function
+        # is added.
+        self.assertEqual(len(graph._functions), 2)
+        functions = list(graph._functions.values())
+        called_func_name = functions[0].definition.signature.name
+        self.assertEqual(pre_register_matmul_func_name, called_func_name)
+        called_func_name = functions[1].definition.signature.name
+        self.assertEqual(pre_register_add_func_name, called_func_name)
+
+  def testRegisterFunctionWithInputSignature(self):
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(
+        matmul,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32),
+            tensor_spec.TensorSpec(shape=(2, 2), dtype=dtypes.float32)
+        ])
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        function.register(defun_matmul, t, t)
+
+        graph = ops.get_default_graph()
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 1)
+
+        # Test input param shape mismatch
+        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        with self.assertRaisesRegexp(
+            ValueError, 'Python inputs incompatible with input_signature'):
+          function.register(defun_matmul, t2, t2)
+
+  def testRegisterFunctionWithCache(self):
+    def matmul(x, y):
+      return math_ops.matmul(x, y)
+    defun_matmul = function.defun(matmul)
+
+    with context.graph_mode(), self.cached_session():
+      with ops.get_default_graph().as_default():
+        t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+        t2 = constant_op.constant([[2.0, 3.0], [4.0, 5.0]])
+        function.register(defun_matmul, t, t)
+        function.register(defun_matmul, t2, t2)
+
+        graph = ops.get_default_graph()
+        # Only one function is registered since the input param are in same type
+        # pylint: disable=protected-access
+        self.assertEqual(len(graph._functions), 1)
+
+  def testCallingFunctionWithDifferentVariables(self):
+
+    @function.defun
+    def foo(v):
+      v.assign_add(1.0)
+      return v.read_value()
+
+    v = resource_variable_ops.ResourceVariable(0.0)
+    graph_function = foo.get_concrete_function(v)
+    self.assertEqual(len(graph_function.inputs), 1)
+    self.assertEqual(len(graph_function.captured_inputs), 0)
+
+    self.assertEqual(float(graph_function(v)), 1.0)
+    self.assertEqual(float(graph_function(v)), 2.0)
+
+    w = resource_variable_ops.ResourceVariable(0.0)
+
+    @function.defun
+    def bar(v):
+      del v
+      return constant_op.constant(1.0)
+
+    graph_function = bar.get_concrete_function(v)
+    self.assertEqual(float(graph_function(v)), 1.0)
+    self.assertEqual(float(graph_function(w)), 1.0)
+
+  def testCallingFunctionWithNonTensorsFails(self):
+
+    @function.defun
+    def foo(x):
+      return x
+
+    graph_function = foo.get_concrete_function(constant_op.constant(1.0))
+    with self.assertRaisesRegexp(ValueError, 'All inputs to `Function`s must '
+                                 'be Tensors;.*'):
+      graph_function('Not a Tensor.')
+
+  def testSwapImplementationWithGrapplerPlugin(self):
+    rewrites = rewriter_config_pb2.RewriterConfig()
+    # function_optimizer has to be turn off, otherwise it will delete the
+    # registered function if it does not get called.
+    # TODO(scottzhu): Move the ExperimentalImplementationSelector to be called
+    # before function_optimizer in future.
+    rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
+    customer_optimizer = rewrites.custom_optimizers.add()
+    customer_optimizer.name = 'ExperimentalImplementationSelector'
+    rewrites.min_graph_nodes = -1
+    graph_options = config_pb2.GraphOptions(
+        rewrite_options=rewrites, build_cost_model=1)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+
+    with context.graph_mode(), self.cached_session(
+        config=config, graph=ops.Graph(), use_gpu=True) as sess:
+
+      @function.defun_with_attributes(
+          attributes={
+              'experimental_api_implements': 'random_boost',
+              'experimental_api_preferred_device': 'CPU'
+          })
+      def cpu_boost(x):
+        return math_ops.add(x, 2.0)
+
+      @function.defun_with_attributes(
+          attributes={
+              'experimental_api_implements': 'random_boost',
+              'experimental_api_preferred_device': 'GPU'
+          })
+      def gpu_boost(x):
+        return math_ops.add(x, 4.0)
+
+      x = constant_op.constant(1.0)
+
+      function.register(cpu_boost, x)
+      y = gpu_boost(x)
+      y_value = sess.run(y)
+
+      if test.is_gpu_available():
+        self.assertEquals(y_value, 5.0)
+      else:
+        # Grappler fallback to use the CPU impl even called with GPU function.
+        self.assertEquals(y_value, 3.0)
+
+  def testDefunFunctionSeparateGraphs(self):
+    with context.graph_mode():
+
+      @function.defun
+      def add(x):
+        return x + 5
+
+      @function.defun
+      def maybe_add(x, should_add):
+        if should_add:
+          return add(x)
+        else:
+          return x
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 1)
+        self.assertEqual(len(add._function_cache), 1)
+
+        maybe_add(x, False)
+        self.assertEqual(len(maybe_add._function_cache), 2)
+        self.assertEqual(len(add._function_cache), 1)
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 3)
+        self.assertEqual(len(add._function_cache), 2)
 
 
 @test_util.with_c_shapes
@@ -1798,10 +2033,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     @function.defun
     def train():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(v)
+      self.v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
-      return v.read_value()
+      return self.v.read_value()
 
     value = train()
     self.assertEqual(value.numpy(), -1.0)
@@ -1828,10 +2063,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     @function.defun
     def train():
-      v = resource_variable_ops.ResourceVariable(1.0)
-      grad = backprop.implicit_grad(loss)(v)
+      self.v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
-      return v.read_value()
+      return self.v.read_value()
 
     train()
 
@@ -2018,6 +2253,13 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
       modify_same_flat(nested_input)
 
+  def testDecoratedMethodVariableCleanup(self):
+    m = DefunnedMiniModel()
+    m(array_ops.ones([1, 2]))
+    weak_variables = weakref.WeakSet(m.variables)
+    self.assertEqual(2, len(weak_variables))
+    del m
+    self.assertEqual([], list(weak_variables))
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

@@ -128,7 +128,7 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = [f * 1.0 / filter_size for f in range(1, filter_size + 1)]
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
           dtypes.float16: 4e-2,
           dtypes.float32: 1e-8,
@@ -366,7 +366,7 @@ class DepthwiseConv2DTest(test.TestCase):
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
           dtypes.float16: 4e-0,
           dtypes.float32: 8e-4,

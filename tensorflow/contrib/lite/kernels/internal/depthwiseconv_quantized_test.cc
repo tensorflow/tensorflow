@@ -199,6 +199,7 @@ void TestOneDepthwiseConv(
 bool TryTestDepthwiseConv(int batch, int input_depth, int input_width,
                           int input_height, int filter_width, int filter_height,
                           int depth_multiplier, int stride,
+                          int dilation_width_factor, int dilation_height_factor,
                           PaddingType padding_type) {
   const int output_depth = input_depth * depth_multiplier;
   // The optimized DepthwiseConv implementation currently uses a fixed-size
@@ -231,7 +232,8 @@ bool TryTestDepthwiseConv(int batch, int input_depth, int input_width,
   Dims<4> output_dims_inference;
   int pad_width, pad_height;
   if (!ComputeConvSizes(input_dims_inference, output_depth, filter_width,
-                        filter_height, stride, padding_type,
+                        filter_height, stride, dilation_width_factor,
+                        dilation_height_factor, padding_type,
                         &output_dims_inference, &pad_width, &pad_height)) {
     return false;
   }
@@ -274,12 +276,15 @@ bool TryTestOneDepthwiseConv() {
   const int filter_height = ExponentialRandomPositiveInt(0.9f, 4, 10);
   const int depth_multiplier = ExponentialRandomPositiveInt(0.8f, 6, 50);
   const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
+  const int dilation_width_factor = RandomElement(std::vector<int>({1, 2, 4}));
+  const int dilation_height_factor = RandomElement(std::vector<int>({1, 2, 4}));
   const auto padding_type =
       UniformRandomInt(0, 1) ? PaddingType::kSame : PaddingType::kValid;
 
   return TryTestDepthwiseConv(batch, input_depth, input_width, input_height,
                               filter_width, filter_height, depth_multiplier,
-                              stride, padding_type);
+                              stride, dilation_width_factor,
+                              dilation_height_factor, padding_type);
 }
 
 // Tests parameters for the 3x3 filter kernel.
@@ -292,6 +297,9 @@ bool TryTestOneDepthwiseConv3x3Filter() {
   const int filter_height = 3;
   const int depth_multiplier = 1;
   const int stride = UniformRandomInt(1, 2);
+  // We don't support dilations in the 3x3 filter.
+  const int dilation_width_factor = 1;
+  const int dilation_height_factor = 1;
   // Although the kernel supports only kValid padding, we test that kSame
   // is using the correct code path.
   const auto padding_type =
@@ -299,7 +307,8 @@ bool TryTestOneDepthwiseConv3x3Filter() {
 
   return TryTestDepthwiseConv(batch, input_depth, input_width, input_height,
                               filter_width, filter_height, depth_multiplier,
-                              stride, padding_type);
+                              stride, dilation_width_factor,
+                              dilation_height_factor, padding_type);
 }
 
 void TestOneDepthwiseConv() {

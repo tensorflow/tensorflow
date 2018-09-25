@@ -78,23 +78,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "signature_def_utils_test",
-    size = "small",
-    srcs = ["python/saved_model/signature_def_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":saved_model_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
-        "//tensorflow/python/saved_model:utils",
-    ],
-)
-
 py_library(
     name = "keras_saved_model",
     srcs = ["python/saved_model/keras_saved_model.py"],

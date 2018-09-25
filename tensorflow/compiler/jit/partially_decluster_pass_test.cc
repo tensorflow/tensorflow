@@ -60,9 +60,9 @@ class FakeBinaryOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override { CHECK(false); }
 };
 
-class FakeResourceVarUpdateOp : public OpKernel {
+class FakeResourceUpdateOp : public OpKernel {
  public:
-  explicit FakeResourceVarUpdateOp(OpKernelConstruction* context)
+  explicit FakeResourceUpdateOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* ctx) override { CHECK(false); }
@@ -74,10 +74,9 @@ REGISTER_KERNEL_BUILDER(Name("FakeBinary")
                             .HostMemory("host_out"),
                         FakeBinaryOp);
 
-REGISTER_KERNEL_BUILDER(Name("FakeResourceVarUpdate")
-                            .Device(DEVICE_CPU)
-                            .HostMemory("something_else"),
-                        FakeResourceVarUpdateOp);
+REGISTER_KERNEL_BUILDER(
+    Name("FakeResourceUpdate").Device(DEVICE_CPU).HostMemory("something_else"),
+    FakeResourceUpdateOp);
 
 Status PartiallyDecluster(std::unique_ptr<Graph>* graph) {
   FixupSourceAndSinkEdges(graph->get());

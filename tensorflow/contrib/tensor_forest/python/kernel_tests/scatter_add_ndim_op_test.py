@@ -32,7 +32,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     indices = [[1], [10]]
     updates = [100., 200.]
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual(
@@ -45,7 +45,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     indices = [[0, 0, 1], [1, 1, 2]]
     updates = [100., 200.]
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([[[1., 102., 3.], [4., 5., 6.]],
@@ -57,7 +57,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     indices = []
     updates = []
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual(init_val, input_data.eval())
@@ -67,7 +67,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     input_data = variables.Variable(init_val)
     indices = [[0, 0, 1], [1, 1, 2]]
     updates = [100.]
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       with self.assertRaisesOpError(
           'Number of updates should be same as number of indices.'):
@@ -80,7 +80,7 @@ class ScatterAddNdimTest(test_util.TensorFlowTestCase):
     indices = [[0, 0], [1, 1]]
     updates = [[100., 200., 300.], [400., 500., 600.]]
 
-    with self.test_session():
+    with self.cached_session():
       variables.global_variables_initializer().run()
       tensor_forest_ops.scatter_add_ndim(input_data, indices, updates).run()
       self.assertAllEqual([[[101., 202., 303.], [4., 5., 6.]],

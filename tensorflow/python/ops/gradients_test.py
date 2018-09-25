@@ -531,6 +531,24 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       with self.cached_session() as sess:
         self.assertEqual(sess.run(z_grad), 3.0)
 
+  def testCapturedEagerTensors(self):
+    # Test that we can handle captured eager tensors unrelated to the gradient
+    # computation (i.e. we need to ignore them).
+    # TODO(skyewm): make it an error if you try to take the gradient wrt a
+    # captured EagerTensor
+    with context.eager_mode():
+      c = constant_op.constant(2.0, name="c")
+
+      @function.defun
+      def Foo():
+        x = constant_op.constant(10.0, name="x")
+        y = math_ops.multiply(x, c, name="y")
+        z = math_ops.multiply(y, 3.0, name="z")
+        g = gradients_impl.gradients(z, x)
+        return g[0]
+
+      self.assertEqual(Foo().numpy(), 6.0)
+
 
 class StopGradientTest(test_util.TensorFlowTestCase):
 

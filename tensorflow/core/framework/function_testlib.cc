@@ -91,6 +91,40 @@ FunctionDef IsZero() {
       });
 }
 
+FunctionDef RandomUniform() {
+  const Tensor kZero = test::AsScalar<int64>(0);
+  const Tensor kTen = test::AsScalar<int64>(10);
+
+  return FDH::Define(
+      // Name
+      "RandomUniform",
+      // Args
+      {"x: T"},
+      // Return values
+      {"random_uniform: int64"},
+      // Attr def
+      {"T:{float, double, int32, int64, string}"},
+      {{{"random_uniform/shape"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT64}}},
+       {{"random_uniform/min"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT64}}},
+       {{"random_uniform/max"},
+        "Const",
+        {},
+        {{"value", kTen}, {"dtype", DT_INT64}}},
+       {{"random_uniform"},
+        "RandomUniformInt",
+        {},
+        {{"T", DT_INT64},
+         {"Tout", DT_INT64},
+         {"seed", 87654321},
+         {"seed2", 42}}}});
+}
+
 FunctionDef XTimesTwo() {
   const Tensor kTwo = test::AsScalar<int64>(2);
   return FDH::Define(

@@ -173,16 +173,6 @@ class MapVectorizationBenchmark(test.Benchmark):
     self.report_benchmark(iters=num_iters, wall_time=median_time, name=name)
     return median_time
 
-  def benchmark_CheapFns(self):
-
-    input_sizes = [(10, 10, 3), (10, 100, 300)]
-    batch_size = 1000
-    for input_size in input_sizes:
-      input_dataset = dataset_ops.Dataset.from_tensor_slices(
-          (np.random.rand(*input_size), np.random.rand(*input_size))).repeat()
-      for map_fn, str_id in self._get_known_cheap_fns():
-        self._compare(input_dataset, map_fn, batch_size, input_size, str_id)
-
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
     num_elems = np.prod(input_size)
     name_template = "{}__batch_size_{}_input_size_{}_{}"
@@ -205,14 +195,28 @@ class MapVectorizationBenchmark(test.Benchmark):
           "Speedup: {}\n".format(batch_size, input_size, str_id,
                                  (unoptimized_time / optimized_time)))
 
-  def _get_known_cheap_fns(self):
-    return [
-        (lambda *args: [array_ops.identity(x) for x in args], "identity"),
-        (lambda *args: [x + 1 for x in args], "add_const"),
-        (lambda *args: args[0], "select"),
-        (lambda *args: [math_ops.cast(x, dtypes.float64) for x in args],
-         "cast"),
-    ]
+  # Known cheap functions
+  def benchmarkIdentity(self):
+    self._benchmark_helper(lambda *args: [array_ops.identity(x) for x in args],
+                           "identity")
+
+  def benchmarkAddConst(self):
+    self._benchmark_helper(lambda *args: [x + 1 for x in args], "add_const")
+
+  def benchmarkSelect(self):
+    self._benchmark_helper(lambda *args: args[0], "select")
+
+  def benchmarkCast(self):
+    self._benchmark_helper(
+        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
+
+  def _benchmark_helper(self, map_fn, str_id):
+    input_sizes = [(10, 10, 3), (10, 100, 300)]
+    batch_size = 1000
+    for input_size in input_sizes:
+      input_dataset = dataset_ops.Dataset.from_tensor_slices(
+          (np.random.rand(*input_size), np.random.rand(*input_size))).repeat()
+      self._compare(input_dataset, map_fn, batch_size, input_size, str_id)
 
 
 if __name__ == "__main__":

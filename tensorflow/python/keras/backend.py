@@ -367,18 +367,26 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.executing_eagerly():
-    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
-      # Fallback to inference mode as default.
-      return 0
-    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+  with ops.init_scope():
+    # We always check & set the learning phase inside the init_scope,
+    # otherwise the wrong default_graph will be used to look up the learning
+    # phase inside of functions & defuns.
+    #
+    # This is because functions & defuns (both in graph & in eager mode)
+    # will always execute non-eagerly using a function-specific default
+    # subgraph.
+    if context.executing_eagerly():
+      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+        # Fallback to inference mode as default.
+        return 0
+      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
-  graph = ops.get_default_graph()
-  if graph not in _GRAPH_LEARNING_PHASES:
-    phase = array_ops.placeholder_with_default(
-        False, shape=(), name='keras_learning_phase')
-    _GRAPH_LEARNING_PHASES[graph] = phase
-  return _GRAPH_LEARNING_PHASES[graph]
+    graph = ops.get_default_graph()
+    if graph not in _GRAPH_LEARNING_PHASES:
+      phase = array_ops.placeholder_with_default(
+          False, shape=(), name='keras_learning_phase')
+      _GRAPH_LEARNING_PHASES[graph] = phase
+    return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -394,10 +402,11 @@ def set_learning_phase(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
-  if context.executing_eagerly():
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
-  else:
-    _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+  with ops.init_scope():
+    if context.executing_eagerly():
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    else:
+      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
 
 
 @tf_contextlib.contextmanager
@@ -423,10 +432,11 @@ def learning_phase_scope(value):
     yield value
   finally:
     # Restore learning phase to initial value.
-    if context.executing_eagerly():
-      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
-    else:
-      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
+    with ops.init_scope():
+      if context.executing_eagerly():
+        _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+      else:
+        _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
 @tf_export('keras.backend.get_session')
@@ -696,14 +706,14 @@ def track_variable(v):
     return
   graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
   if graph not in _GRAPH_VARIABLES:
-    _GRAPH_VARIABLES[graph] = set()
+    _GRAPH_VARIABLES[graph] = weakref.WeakSet()
   _GRAPH_VARIABLES[graph].add(v)
 
 
 def _get_variables(graph=None):
   """Returns variables corresponding to the given graph for initialization."""
   assert not context.executing_eagerly()
-  variables = _GRAPH_VARIABLES.get(graph, set())
+  variables = _GRAPH_VARIABLES.setdefault(graph, weakref.WeakSet())
   for opt in _GRAPH_TF_OPTIMIZERS.get(graph, set()):
     variables.update(opt.optimizer.variables())
   return variables
@@ -3459,13 +3469,17 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-  clip_max = max_value is not None
 
   if alpha != 0.:
+    if max_value is None and threshold == 0:
+      return nn.leaky_relu(x, alpha=alpha)
+
     if threshold != 0:
       negative_part = nn.relu(-x + threshold)
     else:
       negative_part = nn.relu(-x)
+
+  clip_max = max_value is not None
 
   if threshold != 0:
     # computes x for x > threshold else 0

@@ -21,8 +21,8 @@
 # Required environment variables:
 #     TF_GPU_COUNT = Number of GPUs available.
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
-TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU:-4}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
+TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU:-8}
 # We want to allow running one of the following configs:
 #  - 4 tests per GPU on k80
 #  - 8 tests per GPU on p100
@@ -30,6 +30,28 @@ TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU:-4}
 # To leave some room in case we want to run more tests in parallel in the
 # future and to use a rounder number, we set it to 1G.
 export TF_PER_DEVICE_MEMORY_LIMIT_MB=1024
+
+# *******************************************************************
+#         This section of the script is needed to
+#         make things work on windows under msys.
+# *******************************************************************
+RUNFILES_MANIFEST_FILE="${TEST_SRCDIR}/MANIFEST"
+function rlocation() {
+  if is_absolute "$1" ; then
+    # If the file path is already fully specified, simply return it.
+    echo "$1"
+  elif [[ -e "$TEST_SRCDIR/$1" ]]; then
+    # If the file exists in the $TEST_SRCDIR then just use it.
+    echo "$TEST_SRCDIR/$1"
+  elif [[ -e "$RUNFILES_MANIFEST_FILE" ]]; then
+    # If a runfiles manifest file exists then use it.
+    echo "$(grep "^$1 " "$RUNFILES_MANIFEST_FILE" | sed 's/[^ ]* //')"
+  fi
+}
+
+TEST_BINARY="$(rlocation $TEST_WORKSPACE/${1#./})"
+shift
+# *******************************************************************
 
 mkdir -p /var/lock
 # Try to acquire any of the TF_GPU_COUNT * TF_TESTS_PER_GPU
@@ -46,8 +68,8 @@ for j in `seq 0 $((TF_TESTS_PER_GPU-1))`; do
         # This export only works within the brackets, so it is isolated to one
         # single command.
         export CUDA_VISIBLE_DEVICES=$i
-        echo "Running test $@ on GPU $CUDA_VISIBLE_DEVICES"
-        $@
+        echo "Running test $TEST_BINARY $* on GPU $CUDA_VISIBLE_DEVICES"
+        "$TEST_BINARY" $@
       )
       return_code=$?
       flock -u "$lock_fd"

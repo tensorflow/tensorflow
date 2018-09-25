@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -209,7 +210,11 @@ static std::vector<HloInstruction*> GetRelevantConvs(HloComputation* comp) {
   std::vector<HloInstruction*> convs;
   for (HloInstruction* instr : comp->instructions()) {
     if (IsCustomCallToDnnConvolution(*instr) &&
-        instr->operand(0)->shape().element_type() == F16) {
+        instr->operand(0)->shape().element_type() == F16 &&
+        // TODO(timshen): Disable for fused conv for now. Implement it if it's
+        // needed.
+        Cast<HloCustomCallInstruction>(instr)->custom_call_target() !=
+            kCudnnConvBiasActivationForwardCallTarget) {
       convs.push_back(instr);
     }
   }

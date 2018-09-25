@@ -44,7 +44,7 @@ namespace xla {
 //  Note that the reachability map is updated based on the original computation.
 //  This works because the reachability is monotonically increasing with
 //  instruction fusion.
-class MultiOutputFusion : public HloPassInterface {
+class MultiOutputFusion : public HloModulePass {
  public:
   MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
 

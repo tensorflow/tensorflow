@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -147,6 +148,19 @@ TEST_F(UtilsTest, NodePosition) {
   EXPECT_EQ(0, NodePosition(""));
 }
 
+TEST_F(UtilsTest, NodePositionIfSameNode) {
+  EXPECT_EQ(0, NodePositionIfSameNode("abc", "abc"));
+  EXPECT_EQ(123, NodePositionIfSameNode("abc:123", "abc"));
+  EXPECT_EQ(-1, NodePositionIfSameNode("^abc", "abc"));
+  EXPECT_EQ(-1, NodePositionIfSameNode("^abc:123", "abc"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc", "xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc", "abc/xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc/xyz", "abc"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc:123", "xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("^abc", "xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("^abc:123", "xyz"));
+}
+
 TEST_F(UtilsTest, AddNodeNamePrefix) {
   EXPECT_EQ("OPTIMIZED/abc", AddPrefixToNodeName("abc", "OPTIMIZED"));
   EXPECT_EQ("^OPTIMIZED/abc", AddPrefixToNodeName("^abc", "OPTIMIZED"));
@@ -209,7 +223,6 @@ TEST_F(UtilsTest, GetTailOfChain) {
   auto noop = ops::NoOp(s.WithControlDependencies(neg0).WithOpName("noop"));
   GraphDef graph;
   TF_CHECK_OK(s.ToGraphDef(&graph));
-  LOG(INFO) << graph.DebugString();
 
   ASSERT_EQ("c0", graph.node(0).name());
   ASSERT_EQ("c1", graph.node(1).name());
@@ -336,8 +349,25 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
 }
 
 TEST_F(UtilsTest, DeleteNodes) {
-  // TODO(rmlarsen): write forgtten test.
+  // TODO(rmlarsen): write forgotten test.
 }
+
+#define BM_NodePositionIfSameNode(I, N, NAME)               \
+  static void BM_NodePositionIfSameNode_##NAME(int iters) { \
+    string input = I;                                       \
+    string node = N;                                        \
+    for (int i = 0; i < iters; ++i) {                       \
+      const int pos = NodePositionIfSameNode(input, node);  \
+      CHECK_GT(pos, -3);                                    \
+    }                                                       \
+  }                                                         \
+  BENCHMARK(BM_NodePositionIfSameNode_##NAME)
+
+BM_NodePositionIfSameNode("foo/bar/baz:7", "foo/bar/baz", Match_7);
+BM_NodePositionIfSameNode("foo/bar/baz", "foo/bar/baz", Match_0);
+BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
+BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
+BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
 
 }  // namespace
 }  // namespace grappler
