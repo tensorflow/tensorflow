@@ -102,7 +102,8 @@ class PartitionedCallOp : public AsyncOpKernel {
         // by name.
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
         FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-        graph.get()->AddFunctionLibrary(global_flib.ToProto());
+        TF_CHECK_OK(
+                    graph.get()->AddFunctionLibrary(global_flib.ToProto()));
         CopyGraph(*fbody->graph, graph.get());
         OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
@@ -258,7 +259,8 @@ class PartitionedCallOp : public AsyncOpKernel {
     for (const auto& partition : partitions) {
       std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
       FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-      subgraph.get()->AddFunctionLibrary(global_flib.ToProto());
+      TF_CHECK_OK(
+                subgraph.get()->AddFunctionLibrary(global_flib.ToProto()));
       GraphConstructorOptions opts;
       opts.allow_internal_ops = true;
       opts.expect_device_spec = true;
