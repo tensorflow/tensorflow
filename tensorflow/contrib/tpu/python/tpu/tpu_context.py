@@ -703,7 +703,7 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
       config.tpu_config.num_cores_per_replica is None):
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
-        'Please fix as soon as possible (leaving num_shards as None.')
+        'Please fix as soon as possible (leaving num_shards as None.)')
     return _OneCoreTPUContext(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 
