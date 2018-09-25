@@ -118,11 +118,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "eigen_archive",
         urls = [
-            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/eigen-upstream/archive/e85e22959ae92994776c9b05828cd986aa1291e8.tar.gz",
-            "https://github.com/ROCmSoftwarePlatform/eigen-upstream/archive/e85e22959ae92994776c9b05828cd986aa1291e8.tar.gz",
+            "https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/eigen-upstream/archive/14efab92496da81f91dd04d23f1fb67162732df3.tar.gz",
+            "https://github.com/ROCmSoftwarePlatform/eigen-upstream/archive/14efab92496da81f91dd04d23f1fb67162732df3.tar.gz",
         ],
-        sha256 = "40f5c5e4f3be755b007cf97dfb1984f4c3d595ac6d22ef7be5a1a3a0fc3fbc18",
-        strip_prefix = "eigen-upstream-e85e22959ae92994776c9b05828cd986aa1291e8",
+        sha256 = "37a6ee7f91cae06e6365321839e95d5bdc777f29fc6bbc3e6efe7c43493f757a",
+        strip_prefix = "eigen-upstream-14efab92496da81f91dd04d23f1fb67162732df3",
         build_file = clean_dep("//third_party:eigen.BUILD"),
     )
 
