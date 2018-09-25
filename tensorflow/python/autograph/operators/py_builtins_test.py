@@ -126,6 +126,13 @@ class PyBuiltinsTest(test.TestCase):
       r = py_builtins.range_(2, 0, constant_op.constant(-1))
       self.assertAllEqual(sess.run(r), [2, 1])
 
+  def test_range_tensor_empty_range(self):
+    with self.test_session() as sess:
+      r = py_builtins.range_(constant_op.constant(-3))
+      self.assertAllEqual(sess.run(r), [])
+      r = py_builtins.range_(5, constant_op.constant(2))
+      self.assertAllEqual(sess.run(r), [])
+
 
 if __name__ == '__main__':
   test.main()
