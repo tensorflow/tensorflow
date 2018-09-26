@@ -61,7 +61,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<string> patterns)
-        : DatasetBase(DatasetContext(ctx)), pattern_(std::move(patterns)) {}
+        : DatasetBase(DatasetContext(ctx)), patterns_(std::move(patterns)) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
@@ -89,7 +89,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* patterns_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddVector(pattern_, &patterns_node));
+      TF_RETURN_IF_ERROR(b->AddVector(patterns_, &patterns_node));
       TF_RETURN_IF_ERROR(b->AddDataset(this, {patterns_node}, output));
       return Status::OK();
     }
@@ -107,7 +107,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         Status ret;
 
         while (!filepath_queue_.empty() ||
-               current_pattern_index_ < dataset()->pattern_.size()) {
+               current_pattern_index_ < dataset()->patterns_.size()) {
           // All the elements in the heap will be the matched filename or the
           // potential directory.
           if (!filepath_queue_.empty()) {
@@ -135,7 +135,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             ret.Update(s);
           } else {
             // search a new pattern
-            current_pattern_ = dataset()->pattern_[current_pattern_index_];
+            current_pattern_ = dataset()->patterns_[current_pattern_index_];
             Status s = UpdateIterator(ctx, current_pattern_);
             ret.Update(s);
             ++current_pattern_index_;
@@ -293,7 +293,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       string current_pattern_ GUARDED_BY(mu_);
     };
 
-    const std::vector<string> pattern_;
+    const std::vector<string> patterns_;
   };
 };
 

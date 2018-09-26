@@ -2660,7 +2660,6 @@ class MatchingFilesDataset(Dataset):
     self._patterns = ops.convert_to_tensor(
       patterns, dtype=dtypes.string, name="patterns")
 
-
   def _as_variant_tensor(self):
     return gen_dataset_ops.matching_files_dataset(self._patterns)
 
