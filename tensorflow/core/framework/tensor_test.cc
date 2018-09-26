@@ -1246,6 +1246,9 @@ TEST(Tensor, SubSlice_Basic) {
         EXPECT_EQ(&tx(5, j, k), &ty(j, k));
       }
     }
+    Tensor z = y.SubSlice(3).SubSlice(31);
+    auto tz = z.unaligned_flat<float>();
+    EXPECT_EQ(*tz.data(), 5.0);
   }
   {
     // Test unaligned access via a SubSlice.
