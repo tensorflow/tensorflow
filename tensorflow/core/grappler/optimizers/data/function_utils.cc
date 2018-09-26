@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -22,23 +23,6 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace function_utils {
-namespace {
-
-template <typename Predicate, typename Collection>
-std::vector<int> GetElementIndicesWithPredicate(const Predicate& predicate,
-                                                const Collection& collection) {
-  std::vector<int> indices = {};
-  unsigned idx = 0;
-  for (auto&& element : collection) {
-    if (predicate(element)) {
-      indices.push_back(idx);
-    }
-    idx++;
-  }
-  return indices;
-}
-
-}  // namespace
 
 FunctionDefTensorDesc::FunctionDefTensorDesc(const string& node_name,
                                              const string& output, int position)
@@ -152,32 +136,27 @@ bool ContainsFunctionOutputWithName(StringPiece name,
 }
 
 int FindFunctionInputWithName(StringPiece name, const FunctionDef& function) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return graph_utils::GetFirstElementIndexWithPredicate(
       [&name](const OpDef_ArgDef& arg) { return arg.name() == name; },
       function.signature().input_arg());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindFunctionOutputWithName(StringPiece name, const FunctionDef& function) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return graph_utils::GetFirstElementIndexWithPredicate(
       [&name](const OpDef_ArgDef& arg) { return arg.name() == name; },
       function.signature().output_arg());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return graph_utils::GetFirstElementIndexWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       function.node_def());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return graph_utils::GetFirstElementIndexWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; },
       function.node_def());
-
-  return indices.empty() ? -1 : indices.front();
 }
 
 void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,

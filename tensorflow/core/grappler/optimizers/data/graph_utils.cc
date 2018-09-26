@@ -201,25 +201,22 @@ bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph) {
 
 int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return GetFirstElementIndexWithPredicate(
       [&name](const FunctionDef& function) {
         return function.signature().name() == name;
       },
       library.function());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindGraphNodeWithName(StringPiece name, const GraphDef& graph) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return GetFirstElementIndexWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       graph.node());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return GetFirstElementIndexWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
-  return indices.empty() ? -1 : indices.front();
 }
 
 std::vector<int> FindAllGraphNodesWithOp(const string& op,

@@ -31,6 +31,21 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_utils {
 
+// Returns the index of the first element in collection that fulfills predicate.
+// If no such element exists, returns -1.
+template <typename Predicate, typename Collection>
+int GetFirstElementIndexWithPredicate(const Predicate& predicate,
+                                      const Collection& collection) {
+  unsigned idx = 0;
+  for (auto&& element : collection) {
+    if (predicate(element)) {
+      return idx;
+    }
+    idx++;
+  }
+  return -1;
+}
+
 // Adds a node to the graph.
 NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
