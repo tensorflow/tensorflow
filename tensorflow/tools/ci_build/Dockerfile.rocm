@@ -76,6 +76,10 @@ ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
+# Workadround : build HIP from source using fork that holds roc-1.9.x with HIP PR 692
+RUN cd $HOME && git clone -b roc-1.9.x-reinit https://github.com/whchung/HIP.git
+RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && sudo make -j$(nproc) && sudo dpkg -i *.deb
+
 # Install RCCL
 RUN cd ~ && \
 git clone https://github.com/ROCmSoftwarePlatform/rccl.git && \
