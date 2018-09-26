@@ -1182,7 +1182,7 @@ def set_tf_nccl_install_path(environ_cp):
           for relative_path in NCCL_LIB_PATHS:
             path = '%s/%s%s' % (nccl_install_path, relative_path, nccl_lib_filename)
             if os.path.exists(path):
-              print("found at " + path)
+              print("NCCL found at " + path)
               nccl_lib_path = path
               break
         else:
@@ -1191,7 +1191,7 @@ def set_tf_nccl_install_path(environ_cp):
         nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
 
       nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
-      nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
+      nccl_hdr_path = os.path.join(os.path.dirname(nccl_lib_path), '../include/nccl.h')
       print("Assuming NCCL header path is "+nccl_hdr_path)
       if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
         # Set NCCL_INSTALL_PATH
