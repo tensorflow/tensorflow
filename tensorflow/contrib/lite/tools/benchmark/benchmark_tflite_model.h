@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #ifdef TFLITE_EXTENDED
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #endif  // TFLITE_EXTENDED
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/profiling/profile_summarizer.h"
@@ -74,7 +74,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
 
  private:
 #ifdef TFLITE_EXTENDED
-  std::unique_ptr<EagerDelegate> delegate_;
+  std::unique_ptr<FlexDelegate> delegate_;
 #endif  // TFLITE_EXTENDED
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;

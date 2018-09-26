@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
-#define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_UTIL_H_
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/c/c_api_internal.h"
@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
-namespace eager {
+namespace flex {
 
 // Converts a tensorflow:Status into a TfLiteStatus. If the original status
 // represented an error, reports it using the given 'context'.
@@ -41,7 +41,7 @@ TF_DataType GetTensorFlowDataType(TfLiteType type);
 // Returns the TfLiteType that corresponds to the given TF C API Data type.
 TfLiteType GetTensorFlowLiteType(TF_DataType);
 
-}  // namespace eager
+}  // namespace flex
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_UTIL_H_

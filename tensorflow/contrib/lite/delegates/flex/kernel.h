@@ -12,23 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_KERNEL_H_
-#define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_KERNEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_KERNEL_H_
+#define TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_KERNEL_H_
 
 #include "tensorflow/contrib/lite/c/c_api_internal.h"
 
 namespace tflite {
-namespace eager {
+namespace flex {
 
 // Return the registration object used to initialize and execute ops that will
 // be delegated to TensorFlow's Eager runtime. This TF Lite op is created by
-// the eager delegate to handle execution of a supported subgraph. The usual
+// the flex delegate to handle execution of a supported subgraph. The usual
 // flow is that the delegate informs the interpreter of supported nodes in a
 // graph, and each supported subgraph is replaced with one instance of this
 // kernel.
 TfLiteRegistration GetKernel();
 
-}  // namespace eager
+}  // namespace flex
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_KERNEL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_KERNEL_H_

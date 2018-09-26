@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/eager/buffer_map.h"
+#include "tensorflow/contrib/lite/delegates/flex/buffer_map.h"
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/contrib/lite/delegates/eager/util.h"
+#include "tensorflow/contrib/lite/delegates/flex/util.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 
 namespace tflite {
-namespace eager {
+namespace flex {
 namespace {
 // A tensor buffer that is allocated, deallocated and populated by TF Lite.
 class TfLiteTensorBuffer : public tensorflow::TensorBuffer {
@@ -107,5 +107,5 @@ void BufferMap::SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor) {
   id_to_tensor_[tensor_index] = std::move(tensor);
 }
 
-}  // namespace eager
+}  // namespace flex
 }  // namespace tflite
