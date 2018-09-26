@@ -2028,8 +2028,8 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:resource_variable_ops_op_lib",
-        "//third_party/eigen3",
     ],
 )
 
