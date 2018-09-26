@@ -411,7 +411,7 @@ class MklSliceOp : public OpKernel {
         context->input(0).tensor<T, NDIM>(), indices, sizes);
   }
 };
-#endif
+#endif  // INTEL_MKL
 
 // Forward declarations of the functor specializations for declared in the
 // sharded source files.
@@ -440,19 +440,7 @@ TF_CALL_ALL_TYPES(DECLARE_FOR_N);
 #undef DECLARE_CPU_SPEC
 }  // namespace functor
 
-#ifndef INTEL_MKL
-#define REGISTER_SLICE(type)                             \
-  REGISTER_KERNEL_BUILDER(Name("Slice")                  \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("begin")       \
-                              .HostMemory("size"),       \
-                          SliceOp<CPUDevice, type>)
-
-TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
-TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
-#undef REGISTER_SLICE
-#else
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #define REGISTER_SLICE(type)                             \
   REGISTER_KERNEL_BUILDER(Name("Slice")                  \
                               .Device(DEVICE_CPU)        \
@@ -460,11 +448,19 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
                               .HostMemory("begin")       \
                               .HostMemory("size"),       \
                           MklSliceOp<CPUDevice, type>)
+#else
+#define REGISTER_SLICE(type)                             \
+  REGISTER_KERNEL_BUILDER(Name("Slice")                  \
+                              .Device(DEVICE_CPU)        \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("begin")       \
+                              .HostMemory("size"),       \
+                          SliceOp<CPUDevice, type>)
+#endif  // INTEL_MKL && ENABLE_MKL
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
 #undef REGISTER_SLICE
-#endif  // INTEL_MKL
 
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.

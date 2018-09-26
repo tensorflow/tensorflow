@@ -219,7 +219,7 @@ class Tensor {
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
-  /// REQUIRES: `dims()` >= 2
+  /// REQUIRES: `dims()` >= 1
   /// REQUIRES: `0 <= dim0_start < dim_size(0)`
   Tensor SubSlice(int64 index) const;
 
