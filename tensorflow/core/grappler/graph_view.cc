@@ -72,7 +72,7 @@ void GraphView::AddUniqueNodeOrDie(NodeDef* node) {
 void GraphView::AddFanouts(NodeDef* node) {
   for (int i = 0; i < node->input_size(); ++i) {
     OutputPort fanin;
-    string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
+    const string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
     fanin.node = nodes_[fanin_name];
 
     InputPort input;
