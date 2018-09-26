@@ -135,7 +135,7 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
 
   Returns:
     A `Tensor` or `SparseTensor` the same size, type, and sparsity as `x` with 
-      absolute values. 
+      absolute values.
     Note, for `complex64` or `complex128` input, the returned `Tensor` will be
       of type `float32` or `float64`, respectively.
   """
@@ -2179,6 +2179,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   save memory if inputs are ready at different times, since minimum temporary
   storage is proportional to the output size rather than the inputs' size.
 
+  Optionally, pass `shape` and `tensor_dtype` for shape and type checking;
+  and to provide a concrete output shape for shape inference in ops that 
+  consume the output of this op. Otherwise, these parameters are inferred.
+
   `accumulate_n` is differentiable (but wasn't previous to TensorFlow 1.7).
 
   For example:
@@ -2195,9 +2199,10 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   ```
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.
-    shape: Expected shape of elements of `inputs`.
+    shape: Expected shape of elements of `inputs`. Also controls the output 
+      shape of this op, which may affect type inference in other ops.
       A value of `None` means "infer the input shape from the shapes in `inputs`".
-    tensor_dtype: Expected data type of `inputs`. 
+    tensor_dtype: Expected data type of `inputs`.
       A value of `None` means "infer the input type from `inputs[0]`".
     name: A name for the operation (optional).
 
