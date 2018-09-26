@@ -191,7 +191,7 @@ mlfunc @complex_loops() {
 mlfunc @triang_loop(%arg0 : affineint, %arg1 : memref<?x?xi32>) {
   %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
   for %i0 = 1 to %arg0 {      // CHECK: for %i0 = 1 to %arg0 {
-    for %i1 = %i0 to %arg0 {  // CHECK:   for %i1 = %i0 to %arg0 {
+    for %i1 = %i0 to %arg0 {  // CHECK:   for %i1 = #map1(%i0) to %arg0 {
       store %c, %arg1[%i0, %i1] : memref<?x?xi32>  // CHECK: store %c0_i32, %arg1[%i0, %i1]
     }          // CHECK:     }
   }            // CHECK:   }
@@ -214,7 +214,7 @@ mlfunc @loop_bounds(%N : affineint) {
   %s = "foo"(%N) : (affineint) -> affineint
   // CHECK: for %i0 = %0 to %arg0
   for %i = %s to %N {
-    // CHECK: for %i1 = %i0 to 0 step -1
+    // CHECK: for %i1 = #map1(%i0) to 0 step -1
     for %j = %i to 0 step -1 {
        // CHECK: %1 = affine_apply #map{{.*}}(%i0, %i1)[%0]
        %w = affine_apply(d0, d1)[s0] -> (d0+d1, s0+1) (%i, %j) [%s]
@@ -456,12 +456,30 @@ mlfunc @mlfuncattrempty() -> ()
 }
 
 // CHECK-label mlfunc @mlfuncsimplemap
-#mapsimple0 = ()[s0, s1, s2] -> (s0)
-#mapsimple1 = (d0)[s0, s1, s2] -> (s1)
-mlfunc @mlfuncsimplemap(%arg0 : affineint, %arg1 : affineint, %arg2 : affineint) -> () {
-  for %i0 = 0 to #mapsimple0()[%arg0, %arg1, %arg2] { // CHECK: for %i0 = 0 to %arg0 {
-    for %i1 = 0 to #mapsimple1(%i0)[%arg0, %arg1, %arg2] { // CHECK: for %i1 = 0 to %arg1 {
-      %c42_i32 = constant 42 : i32
+#map_simple0 = ()[] -> (10)
+#map_simple1 = ()[s0] -> (s0)
+#map_non_simple0 = (d0)[] -> (d0)
+#map_non_simple1 = (d0)[s0] -> (d0 + s0)
+#map_non_simple2 = ()[s0, s1] -> (s0 + s1)
+#map_non_simple3 = ()[s0] -> (s0 + 3)
+mlfunc @mlfuncsimplemap(%arg0 : affineint, %arg1 : affineint) -> () {
+  for %i0 = 0 to #map_simple0()[] { 
+  // CHECK: for %i0 = 0 to 10 {
+    for %i1 = 0 to #map_simple1()[%arg1] { 
+    // CHECK: for %i1 = 0 to %arg1 {
+      for %i2 = 0 to #map_non_simple0(%i0)[] { 
+      // CHECK: for %i2 = 0 to #map{{[a-z_0-9]*}}(%i0) {
+        for %i3 = 0 to #map_non_simple1(%i0)[%arg1] { 
+        // CHECK: for %i3 = 0 to #map{{[a-z_0-9]*}}(%i0)[%arg1] {
+          for %i4 = 0 to #map_non_simple2()[%arg1, %arg0] { 
+          // CHECK: for %i4 = 0 to #map{{[a-z_0-9]*}}()[%arg1, %arg0] { 
+            for %i5 = 0 to #map_non_simple3()[%arg0] { 
+            // CHECK: for %i5 = 0 to #map{{[a-z_0-9]*}}()[%arg0] { 
+              %c42_i32 = constant 42 : i32
+            }
+          }
+        }
+      }
     }
   }
   return

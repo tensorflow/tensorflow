@@ -1422,31 +1422,36 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
   AffineMap *map = bound.getMap();
 
   // Check if this bound should be printed using short-hand notation.
+  // The decision to restrict printing short-hand notation to trivial cases
+  // comes from the will to roundtrip MLIR binary -> text -> binary in a
+  // lossless way.
+  // Therefore, short-hand parsing and printing is only supported for
+  // zero-operand constant maps and single symbol operand identity maps.
   if (map->getNumResults() == 1) {
     AffineExpr *expr = map->getResult(0);
 
     // Print constant bound.
-    if (auto *constExpr = dyn_cast<AffineConstantExpr>(expr)) {
-      os << constExpr->getValue();
-      return;
+    if (map->getNumDims() == 0 && map->getNumSymbols() == 0) {
+      if (auto *constExpr = dyn_cast<AffineConstantExpr>(expr)) {
+        os << constExpr->getValue();
+        return;
+      }
     }
 
-    // Print bound that consists of a single SSA id, we need an indirection
-    // to achieve this.
-    if (auto *dimExpr = dyn_cast<AffineDimExpr>(expr)) {
-      printOperand(bound.getOperand(dimExpr->getPosition()));
-      return;
-    } else if (auto *symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
-      printOperand(
-          bound.getOperand(map->getNumDims() + symExpr->getPosition()));
-      return;
+    // Print bound that consists of a single SSA symbol if the map is over a
+    // single symbol.
+    if (map->getNumDims() == 0 && map->getNumSymbols() == 1) {
+      if (auto *symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
+        printOperand(bound.getOperand(0));
+        return;
+      }
     }
   } else {
     // Map has multiple results. Print 'min' or 'max' prefix.
     os << prefix << ' ';
   }
 
-  // Print the map and the operands.
+  // Print the map and its operands.
   printAffineMapReference(map);
   printDimAndSymbolList(bound.getStmtOperands(), map->getNumDims());
 }

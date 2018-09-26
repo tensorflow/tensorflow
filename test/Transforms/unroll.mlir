@@ -467,7 +467,7 @@ mlfunc @loop_nest_operand2() {
 mlfunc @loop_nest_operand3() {
   // UNROLL-BY-4: for %i0 = 1 to 100 step 2 {
   for %i = 1 to 100 step 2 {
-    // UNROLL-BY-4: for %i1 = %i0 to #map{{[0-9]+}}(%i0) step 4 {
+    // UNROLL-BY-4: for %i1 = (d0) -> (d0)(%i0) to #map{{[0-9]+}}(%i0) step 4 {
     // UNROLL-BY-4-NEXT: %0 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %1 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32
@@ -485,7 +485,7 @@ mlfunc @loop_nest_operand3() {
 mlfunc @loop_nest_operand4(%N : affineint) {
   // UNROLL-BY-4: for %i0 = 1 to 100 {
   for %i = 1 to 100 {
-    // UNROLL-BY-4: for %i1 = 1 to #map{{[0-9]+}}()[%arg0] step 4 {
+    // UNROLL-BY-4: for %i1 = ()[s0] -> (1)()[%arg0] to #map{{[0-9]+}}()[%arg0] step 4 {
     // UNROLL-BY-4: %0 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %1 = "foo"() : () -> i32
     // UNROLL-BY-4-NEXT: %2 = "foo"() : () -> i32
