@@ -9,26 +9,10 @@ http_archive(
         "https://github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",  # 2018-04-13
     ],
 )
+
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
+
 closure_repositories()
-
-http_archive(
-    name = "io_bazel_rules_python",
-    strip_prefix = "rules_python-8b5d0683a7d878b28fffe464779c8a53659fc645",
-    urls = [
-        "https://github.com/bazelbuild/rules_python/archive/8b5d0683a7d878b28fffe464779c8a53659fc645.tar.gz",
-    ],
-)
-load("@io_bazel_rules_python//python:pip.bzl", "pip_repositories")
-pip_repositories()
-
-load("@io_bazel_rules_python//python:pip.bzl", "pip_import")
-pip_import(
-    name = "pip_deps",
-    requirements = "//tensorflow:requirements.txt",
-)
-load("@pip_deps//:requirements.bzl", "pip_install")
-pip_install()
 
 # We must check the bazel version before trying to parse any other BUILD
 # files, in case the parsing of those build files depends on the bazel
