@@ -108,7 +108,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
         EXPECT_EQ(2, shape.dim(0).size());
         EXPECT_EQ(1, shape.dim(1).size());
         if (node->name() == y->name()) {
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
           // if MKL is used, it goes through various additional
           // graph rewrite pass. In TF, everytime a graph pass
           // happens, "constant" nodes are allocated
@@ -120,13 +120,13 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
           EXPECT_EQ(29, cm->AllocationId(node, 0));
 #else
           EXPECT_EQ(21, cm->AllocationId(node, 0));
-#endif
+#endif  // INTEL_MKL && ENABLE_MKL
         } else {
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
           EXPECT_EQ(30, cm->AllocationId(node, 0));
 #else
           EXPECT_EQ(22, cm->AllocationId(node, 0));
-#endif
+#endif  // INTEL_MKL && ENABLE_MKL
         }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));

@@ -977,7 +977,9 @@ std::vector<MklLayoutRewritePass::ContextInfo*> MklLayoutRewritePass::cinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
+#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -3150,7 +3152,9 @@ MklLayoutRewritePass::ConstStringsInfo MklLayoutRewritePass::csinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
+#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
