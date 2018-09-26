@@ -37,15 +37,32 @@ static constexpr int64 kDesiredNumFeaturesFactor = 8;
 // there's additional room for speedups.  Achieving those speedups without also
 // slowing other things down will likely require a more sophisticated heuristic,
 // possibly some form of auto-tuning.
-static constexpr double kMaxBytesTouchedIncrease = 1.2;
+//
+// This value should be >= 4/3, otherwise the "dims of size 3 padded up to 4"
+// special case inside PadShape won't fire.
+static constexpr double kMaxBytesTouchedIncrease = 1.35;
 
 // Pads the given dimensions in the given shape up to a multiple of
 // kDesiredNumFeaturesFactor.
 static Shape PadShape(Shape s, absl::Span<const int64> dims) {
   for (int64 dim : dims) {
     int64 dim_to_pad_size = s.dimensions(dim);
-    int64 new_dim_to_pad_size =
-        RoundUpToNearest(dim_to_pad_size, kDesiredNumFeaturesFactor);
+
+    // Round dim_to_pad_size up to the next multiple of
+    // kDesiredNumFeaturesFactor.
+    //
+    // Special case: dims of size 3 are rounded up to 4, not
+    // kDesiredNumFeaturesFactor.  Empirically (and on the advice of nvidia),
+    // this helps, but as of writing, it's not supported by anything in the
+    // cudnn docs.
+    int64 new_dim_to_pad_size;
+    if (dim_to_pad_size == 3) {
+      new_dim_to_pad_size = 4;
+    } else {
+      new_dim_to_pad_size =
+          RoundUpToNearest(dim_to_pad_size, kDesiredNumFeaturesFactor);
+    }
+
     s.set_dimensions(dim, new_dim_to_pad_size);
   }
   return s;
