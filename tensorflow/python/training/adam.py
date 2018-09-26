@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -174,7 +175,51 @@ class AdamOptimizer(optimizer.Optimizer):
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-  def _apply_sparse_shared(self, grad, var, indices, scatter_add):
+  class ScatterOpWrapper(object):
+    """Wraps necessary scatter ops for sparse tensors."""
+
+    def __init__(self, use_locking=False):
+      self._use_locking = use_locking
+
+    def add(self, sparse_tensor, index, delta):
+      return state_ops.scatter_add(sparse_tensor, index, delta,
+                                   use_locking = self._use_locking)
+
+    def sub(self, sparse_tensor, index, delta):
+      return state_ops.scatter_sub(sparse_tensor, index, delta,
+                                   use_locking = self._use_locking)
+
+    def update(self, sparse_tensor, index, value):
+      return state_ops.scatter_update(sparse_tensor, index, value,
+                                      use_locking = self._use_locking)
+
+
+  class ResourceScatterOpWrapper(ScatterOpWrapper):
+    """Wraps necessay scatter ops for sparse resource variables."""
+
+    def __init__(self, use_locking=False):
+      super(AdamOptimizer.ResourceScatterOpWrapper, self).__init__(use_locking)
+
+    def add(self, sparse_tensor, index, delta):
+      with ops.control_dependencies(
+          [resource_variable_ops.resource_scatter_add(
+              sparse_tensor.handle, index, delta)]):
+        return sparse_tensor.value()
+
+    def sub(self, sparse_tensor, index, delta):
+      with ops.control_dependencies(
+          [resource_variable_ops.resource_scatter_sub(
+              sparse_tensor.handle, index, delta)]):
+        return sparse_tensor.value()
+
+    def update(self, sparse_tensor, index, value):
+      with ops.control_dependencies(
+          [resource_variable_ops.resource_scatter_update(
+              sparse_tensor.handle, index, value)]):
+        return sparse_tensor.value()
+
+
+  def _apply_sparse_shared(self, grad, var, indices, scatter_op_wrapper):
     beta1_power, beta2_power = self._get_beta_accumulators()
     beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
     beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
@@ -186,37 +231,29 @@ class AdamOptimizer(optimizer.Optimizer):
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = self.get_slot(var, "m")
     m_scaled_g_values = grad * (1 - beta1_t)
-    m_t = state_ops.assign(m, m * beta1_t,
-                           use_locking=self._use_locking)
-    with ops.control_dependencies([m_t]):
-      m_t = scatter_add(m, indices, m_scaled_g_values)
+    m_gathered = array_ops.gather(m, indices)
+    m_t_gathered = m_gathered * beta1_t + m_scaled_g_values
+    m_t = scatter_op_wrapper.update(m, indices, m_t_gathered)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
-    v_t = state_ops.assign(v, v * beta2_t, use_locking=self._use_locking)
-    with ops.control_dependencies([v_t]):
-      v_t = scatter_add(v, indices, v_scaled_g_values)
-    v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
+    v_gathered = array_ops.gather(v, indices)
+    v_t_gathered = v_gathered * beta2_t + v_scaled_g_values
+    v_t = scatter_op_wrapper.update(v, indices, v_t_gathered)
+
+    v_sqrt_gathered = math_ops.sqrt(v_t_gathered)
+    var_update = scatter_op_wrapper.sub(
+        var, indices, lr * m_t_gathered / (v_sqrt_gathered + epsilon_t))
     return control_flow_ops.group(*[var_update, m_t, v_t])
+
 
   def _apply_sparse(self, grad, var):
     return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
-        lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking))
-
-  def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(
-            x.handle, i, v)]):
-      return x.value()
+        grad.values, var, grad.indices, AdamOptimizer.ScatterOpWrapper(self._use_locking))
 
   def _resource_apply_sparse(self, grad, var, indices):
     return self._apply_sparse_shared(
-        grad, var, indices, self._resource_scatter_add)
+       grad, var, indices, AdamOptimizer.ResourceScatterOpWrapper(self._use_locking))
 
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
