@@ -452,7 +452,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
                                          keras_kwargs={'axis': -1},
                                          np_kwargs={'axis': -1})
-        if 'keepdims' in tf_inspect.getargspec(keras_op).args:
+        if 'keepdims' in tf_inspect.getfullargspec(keras_op).args:
           compare_single_input_op_to_numpy(keras_op, np_op,
                                            input_shape=(4, 7, 5),
                                            keras_kwargs={'axis': 1,

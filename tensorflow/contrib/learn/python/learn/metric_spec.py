@@ -51,7 +51,7 @@ def _args(fn):
     return tuple(
         [arg for arg in _args(fn.func) if arg not in set(fn.keywords.keys())])
   # Handle function.
-  return tuple(tf_inspect.getargspec(fn).args)
+  return tuple(tf_inspect.getfullargspec(fn).args)
 
 
 _CANONICAL_LABELS_ARG = 'labels'

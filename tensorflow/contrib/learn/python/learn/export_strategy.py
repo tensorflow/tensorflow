@@ -96,7 +96,7 @@ class ExportStrategy(
     """
     # don't break existing export_fns that don't accept checkpoint_path and
     # eval_result
-    export_fn_args = tf_inspect.getargspec(self.export_fn).args
+    export_fn_args = tf_inspect.getfullargspec(self.export_fn).args
     kwargs = {}
     if 'checkpoint_path' in export_fn_args:
       kwargs['checkpoint_path'] = checkpoint_path

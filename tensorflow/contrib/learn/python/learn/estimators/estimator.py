@@ -199,11 +199,11 @@ def _model_fn_args(fn):
   if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
     # Handle functools.partial and similar objects.
     return tuple([
-        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        arg for arg in tf_inspect.getfullargspec(fn.func).args[len(fn.args):]
         if arg not in set(fn.keywords.keys())
     ])
   # Handle function.
-  return tuple(tf_inspect.getargspec(fn).args)
+  return tuple(tf_inspect.getfullargspec(fn).args)
 
 
 def _get_replica_device_setter(config):

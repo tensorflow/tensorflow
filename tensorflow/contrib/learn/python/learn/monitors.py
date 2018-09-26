@@ -1303,7 +1303,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
   def end(self, session):
     self._last_step = None
     for m in self._monitors:
-      if "session" in tf_inspect.getargspec(m.end).args:
+      if "session" in tf_inspect.getfullargspec(m.end).args:
         m.end(session=session)
       else:
         m.end()

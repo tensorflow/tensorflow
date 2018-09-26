@@ -132,9 +132,9 @@ class Defun(object):
       raise ValueError("func %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
-    argspec = tf_inspect.getargspec(func)
-    if argspec.keywords or argspec.defaults:
-      raise ValueError("Functions with argument defaults or keyword "
+    argspec = tf_inspect.getfullargspec(func)
+    if argspec.varkw or argspec.defaults:
+      raise ValueError("Functions with argument defaults or varkw "
                        "arguments are not supported.")
 
     # Computes how many arguments 'func' has.
