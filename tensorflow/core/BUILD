@@ -1057,7 +1057,6 @@ tf_gen_op_libs(
         "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
-        "resource_variable_ops",
         "rpc_ops",
         "scoped_allocator_ops",
         "sdca_ops",
@@ -1097,6 +1096,14 @@ tf_gen_op_libs(
 tf_gen_op_libs(
     op_lib_names = ["debug_ops"],
     deps = ["//tensorflow/core/kernels:debug_ops"],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "resource_variable_ops",
+    ],
+    deps = [":lib"],
 )
 
 # And one for all user ops
