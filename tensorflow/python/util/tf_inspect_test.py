@@ -353,41 +353,6 @@ class TfInspectTest(test.TestCase):
 
     self.assertEqual(argspec, tf_inspect.getfullargspec(partial_function))
 
-  def testGetFullArgSpecOnPartialInvalidFullArgSpec(self):
-    """Tests getfullargspec.
-
-    Tests on partial function that doesn't have valid fullargspec.
-    """
-
-    def func(m, n, l, k=4):
-      return 2 * m + l + n * k
-
-    partial_func = functools.partial(func, n=7)
-
-    exception_message = (r"Some arguments \['l'\] do not have default value, "
-                         "but they are positioned after those with default "
-                         "values. This can not be expressed with ArgSpec.")
-    with self.assertRaisesRegexp(ValueError, exception_message):
-      tf_inspect.getfullargspec(partial_func)
-
-  def testGetFullArgSpecOnPartialValidFullArgSpec(self):
-    """Tests getfullargspec on partial function with valid fullargspec."""
-
-    def func(m, n, l, k=4):
-      return 2 * m + l + n * k
-
-    partial_func = functools.partial(func, n=7, l=2)
-    argspec = tf_inspect.FullArgSpec(
-        args=['m', 'n', 'l', 'k'],
-        varargs=None,
-        varkw=None,
-        defaults=(7, 2, 4),
-        kwonlyargs=[],
-        kwonlydefaults=None,
-        annotations={})
-
-    self.assertEqual(argspec, tf_inspect.getfullargspec(partial_func))
-
   def testGetFullArgSpecOnPartialNoArgumentsLeft(self):
     """Tests getfullargspec on partial function that prunes all arguments."""
 
@@ -397,35 +362,6 @@ class TfInspectTest(test.TestCase):
     partial_func = functools.partial(func, 7, 10)
     argspec = tf_inspect.FullArgSpec(
         args=[], varargs=None, varkw=None, defaults=None,
-        kwonlyargs=[], kwonlydefaults=None, annotations={})
-
-    self.assertEqual(argspec, tf_inspect.getfullargspec(partial_func))
-
-  def testGetFullArgSpecOnPartialKeywordArgument(self):
-    """Tests getfullargspec on partial function that prunes some arguments."""
-
-    def func(m, n):
-      return 2 * m + n
-
-    partial_func = functools.partial(func, n=7)
-    argspec = tf_inspect.FullArgSpec(
-        args=['m', 'n'], varargs=None, varkw=None, defaults=(7,),
-        kwonlyargs=[], kwonlydefaults=None, annotations={})
-
-    self.assertEqual(argspec, tf_inspect.getfullargspec(partial_func))
-
-  def testGetFullArgSpecOnPartialKeywordArgumentWithDefaultValue(self):
-    """Tests getfullargspec.
-    
-    Tests on partial function that prunes argument by keyword.
-    """
-
-    def func(m=1, n=2):
-      return 2 * m + n
-
-    partial_func = functools.partial(func, n=7)
-    argspec = tf_inspect.FullArgSpec(
-        args=['m', 'n'], varargs=None, varkw=None, defaults=(1, 7),
         kwonlyargs=[], kwonlydefaults=None, annotations={})
 
     self.assertEqual(argspec, tf_inspect.getfullargspec(partial_func))
@@ -455,20 +391,6 @@ class TfInspectTest(test.TestCase):
     partial_func = functools.partial(func, 7)
     argspec = tf_inspect.FullArgSpec(
         args=['n'], varargs=None, varkw='kwarg', defaults=None,
-        kwonlyargs=[], kwonlydefaults=None, annotations={})
-
-    self.assertEqual(argspec, tf_inspect.getfullargspec(partial_func))
-
-  def testGetFullArgSpecOnPartialWithDecorator(self):
-    """Tests getfullargspec on decorated partial function."""
-
-    @test_decorator('decorator')
-    def func(m=1, n=2):
-      return 2 * m + n
-
-    partial_func = functools.partial(func, n=7)
-    argspec = tf_inspect.FullArgSpec(
-        args=['m', 'n'], varargs=None, varkw=None, defaults=(1, 7),
         kwonlyargs=[], kwonlydefaults=None, annotations={})
 
     self.assertEqual(argspec, tf_inspect.getfullargspec(partial_func))
