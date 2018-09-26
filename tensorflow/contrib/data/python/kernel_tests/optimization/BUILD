@@ -20,6 +20,23 @@ py_test(
 )
 
 py_test(
+    name = "hoist_random_uniform_test",
+    size = "small",
+    srcs = ["hoist_random_uniform_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "latency_all_edges_test",
     size = "small",
     srcs = ["latency_all_edges_test.py"],

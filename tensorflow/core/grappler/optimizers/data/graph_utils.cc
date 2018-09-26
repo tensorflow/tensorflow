@@ -260,6 +260,21 @@ void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
   }
   function->mutable_signature()->set_name(std::move(name));
 }
+
+void CopyAttribute(const string& attribute_name, const NodeDef& from,
+                   NodeDef* to_node) {
+  (*to_node->mutable_attr())[attribute_name] = from.attr().at(attribute_name);
+}
+
+void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
+                         const NodeDef& second, NodeDef* to_node) {
+  CopyAttribute(attribute_name, first, to_node);
+  (*to_node->mutable_attr())
+      .at(attribute_name)
+      .mutable_list()
+      ->MergeFrom(second.attr().at(attribute_name).list());
+}
+
 }  // end namespace graph_utils
 }  // end namespace grappler
 }  // end namespace tensorflow

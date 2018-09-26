@@ -35,10 +35,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-void CopyAttribute(const string& attr_name, const NodeDef& from, NodeDef* to) {
-  (*to->mutable_attr())[attr_name] = from.attr().at(attr_name);
-}
-
 // Returns a FunctionDef containing a MapDefun op that wraps the original
 // function.
 FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
@@ -61,7 +57,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
   for (const string& k : {"f", "output_types", "output_shapes"}) {
     // Function, output types and (unbatched) shapes are the same as the
     // original map node.
-    CopyAttribute(k, map_node, map_defun_node);
+    graph_utils::CopyAttribute(k, map_node, map_defun_node);
   }
 
   // Get types of input arguments from original map function
@@ -195,13 +191,16 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
   }
 
   // Set attrs
-  CopyAttribute("Targuments", old_map_node, &map_node);
+  graph_utils::CopyAttribute("Targuments", old_map_node, &map_node);
   auto& func_attr = (*map_node.mutable_attr())["f"];
   func_attr.mutable_func()->set_name(vectorized_func.signature().name());
 
   for (auto key : {"output_shapes", "output_types"}) {
-    CopyAttribute(key, old_batch_node, &map_node);
+    graph_utils::CopyAttribute(key, old_batch_node, &map_node);
   }
+
+  (*map_node.mutable_attr())["use_inter_op_parallelism"].set_b(true);
+
   return map_node;
 }
 

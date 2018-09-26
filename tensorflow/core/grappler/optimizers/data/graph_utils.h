@@ -106,6 +106,16 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function);
 
+// Copies attribute having name `attribute_name` from node `from` to node
+// `to_node`.
+void CopyAttribute(const string& attribute_name, const NodeDef& from,
+                   NodeDef* to_node);
+
+// Concatenates list attribute having name `attribute_name` from `first` and
+// `second` node, setting it to `to_node`.
+void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
+                         const NodeDef& second, NodeDef* to_node);
+
 }  // end namespace graph_utils
 }  // end namespace grappler
 }  // end namespace tensorflow
