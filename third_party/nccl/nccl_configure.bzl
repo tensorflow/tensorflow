@@ -113,7 +113,6 @@ def _find_nccl_lib(repository_ctx, nccl_install_path, nccl_version):
   """
   lib_path = repository_ctx.path("%s/lib/libnccl.so.%s" % (nccl_install_path,
                                                            nccl_version))
-
   if not lib_path.exists:
     auto_configure_fail("Cannot find NCCL library %s" % str(lib_path))
   return lib_path
