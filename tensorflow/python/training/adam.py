@@ -183,15 +183,15 @@ class AdamOptimizer(optimizer.Optimizer):
 
     def add(self, sparse_tensor, index, delta):
       return state_ops.scatter_add(sparse_tensor, index, delta,
-                                   use_locking = self._use_locking)
+                                   use_locking=self._use_locking)
 
     def sub(self, sparse_tensor, index, delta):
       return state_ops.scatter_sub(sparse_tensor, index, delta,
-                                   use_locking = self._use_locking)
+                                   use_locking=self._use_locking)
 
     def update(self, sparse_tensor, index, value):
       return state_ops.scatter_update(sparse_tensor, index, value,
-                                      use_locking = self._use_locking)
+                                      use_locking=self._use_locking)
 
 
   class ResourceScatterOpWrapper(ScatterOpWrapper):
@@ -246,14 +246,15 @@ class AdamOptimizer(optimizer.Optimizer):
         var, indices, lr * m_t_gathered / (v_sqrt_gathered + epsilon_t))
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
-
   def _apply_sparse(self, grad, var):
     return self._apply_sparse_shared(
-        grad.values, var, grad.indices, AdamOptimizer.ScatterOpWrapper(self._use_locking))
+        grad.values, var, grad.indices,
+        AdamOptimizer.ScatterOpWrapper(self._use_locking))
 
   def _resource_apply_sparse(self, grad, var, indices):
     return self._apply_sparse_shared(
-       grad, var, indices, AdamOptimizer.ResourceScatterOpWrapper(self._use_locking))
+        grad, var, indices,
+        AdamOptimizer.ResourceScatterOpWrapper(self._use_locking))
 
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
