@@ -89,6 +89,8 @@ bool SafeLess(const NativeT& a, const NativeT& b) {
 // to this rule, notably:
 // - HandleCompare and HandleIsFinite: where the resulting literal type is
 //   always boolean.
+// - HandleImag and HandleReal: where the resulting literal type is always float
+//   and the operand is always complex, or real in the case of HandleReal.
 // These operations are handled outside of the parent HloEvaluator handlers
 // instead of from within TypedVisitor.
 //
@@ -327,14 +329,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleFloor(HloInstruction* floor) override {
     return HandleFloor<ReturnT>(floor);
-  }
-
-  Status HandleImag(HloInstruction* imag) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[imag],
-                        ElementWiseUnaryOp(imag, [](ElementwiseT elem_operand) {
-                          return std::imag(elem_operand);
-                        }));
-    return Status::OK();
   }
 
   Status HandleLog(HloInstruction* log) override {
@@ -680,14 +674,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
                                                       ElementwiseT rhs_el) {
                           return std::pow(lhs_el, rhs_el);
-                        }));
-    return Status::OK();
-  }
-
-  Status HandleReal(HloInstruction* real) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[real],
-                        ElementWiseUnaryOp(real, [](ElementwiseT elem_operand) {
-                          return std::real(elem_operand);
                         }));
     return Status::OK();
   }
