@@ -602,6 +602,13 @@ bool DeallocOp::verify() const {
 // DimOp
 //===----------------------------------------------------------------------===//
 
+void DimOp::build(Builder *builder, OperationState *result,
+                  SSAValue *memrefOrTensor, unsigned index) {
+  result->addOperands(memrefOrTensor);
+  result->addAttribute("index", builder->getIntegerAttr(index));
+  result->types.push_back(builder->getAffineIntType());
+}
+
 void DimOp::print(OpAsmPrinter *p) const {
   *p << "dim " << *getOperand() << ", " << getIndex();
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"index");

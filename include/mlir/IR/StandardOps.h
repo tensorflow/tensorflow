@@ -323,9 +323,13 @@ private:
 ///
 class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *memrefOrTensor, unsigned index);
+
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
-    return (unsigned)getAttrOfType<IntegerAttr>("index")->getValue();
+    return static_cast<unsigned>(
+        getAttrOfType<IntegerAttr>("index")->getValue());
   }
 
   static StringRef getOperationName() { return "dim"; }

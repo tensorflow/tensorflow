@@ -33,7 +33,7 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
 
   // CHECK: %1 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a2 = dim %t, 2 : tensor<4x4x?xf32>
-
+  
   // CHECK: %2 = addf %arg1, %arg1 : f32
   %f2 = "addf"(%f, %f) : (f32,f32) -> f32
 
@@ -162,6 +162,15 @@ mlfunc @shape_cast(%arg0 : tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2 : tenso
   // CHECK: %3 = shape_cast %2 : tensor<4x?xf32> to tensor<?x?xf32>
   %3 = shape_cast %2 : tensor<4x?xf32> to tensor<?x?xf32>
 
+  return
+}
+
+// CHECK-LABEL: mlfunc @test_dimop(%arg0
+mlfunc @test_dimop(%arg0 : tensor<4x4x?xf32>) {
+  // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
+  %0 = dim %arg0, 2 : tensor<4x4x?xf32>
+  // use dim as an affine_int to ensure type correctness
+  %1 = affine_apply (d0) -> (d0)(%0)
   return
 }
 
