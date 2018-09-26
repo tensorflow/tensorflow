@@ -190,7 +190,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
