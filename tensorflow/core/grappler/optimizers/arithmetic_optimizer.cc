@@ -276,7 +276,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
         auto input = output->input(i);
-        string name = ParseNodeName(input, &position);
+        StringPiece name = ParseNodeNameAsStringPiece(input, &position);
         if (name == node.name() && /*control input*/ position < 0) {
           return true;
         }
@@ -1568,7 +1568,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       for (NodeDef* output : outputs) {
         if (IsControlInput(output->input(0))) continue;
         int port;
-        const string node_name = ParseNodeName(output->input(0), &port);
+        const StringPiece node_name =
+            ParseNodeNameAsStringPiece(output->input(0), &port);
         if (node_name == node.name()) {
           tails->insert(ChainLink(output, port));
         } else {
@@ -1618,7 +1619,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
           int port;
-          const string node_name = ParseNodeName(new_tail->input(0), &port);
+          const StringPiece node_name =
+              ParseNodeNameAsStringPiece(new_tail->input(0), &port);
           if (node_name != tail->name()) {
             return Status::OK();
           }
@@ -2929,8 +2931,8 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
 
   for (const auto& input : node.input()) {
     int pos;
-    string node_name = ParseNodeName(input, &pos);
-    h = Hash64CombineUnordered(Hash64(node_name), h);
+    const StringPiece node_name = ParseNodeNameAsStringPiece(input, &pos);
+    h = Hash64CombineUnordered(Hash64(node_name.data(), node_name.size()), h);
     h = Hash64CombineUnordered(std::hash<int>()(pos), h);
   }
   for (const auto& attr : node.attr()) {
