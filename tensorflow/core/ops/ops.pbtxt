@@ -11459,6 +11459,12 @@ op {
     default_value {
       s: "NHWC"
     }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
   }
   attr {
     name: "is_training"
@@ -11531,6 +11537,12 @@ op {
     type: "string"
     default_value {
       s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
     }
   }
   attr {
@@ -11616,6 +11628,12 @@ op {
     default_value {
       s: "NHWC"
     }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
   }
   attr {
     name: "is_training"
@@ -11699,6 +11717,12 @@ op {
     type: "string"
     default_value {
       s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
     }
   }
   attr {
