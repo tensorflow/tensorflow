@@ -576,7 +576,8 @@ def _recomputing_grad_fn(compute_fn,
 
 def _recompute_grad(fn, args, use_data_dep=_USE_DEFAULT, tupleize_grads=False):
   """See recompute_grad."""
-  has_is_recompute_kwarg = "is_recomputing" in tf_inspect.getargspec(fn).args
+  has_is_recompute_kwarg = (
+      "is_recomputing" in tf_inspect.getfullargspec(fn).args)
   for arg in args:
     if not isinstance(arg, framework_ops.Tensor):
       raise ValueError("All inputs to function must be Tensors")

@@ -126,7 +126,7 @@ class TestBaseEstimator(object):
 
 def _check_method_supports_args(method, kwargs):
   """Checks that the given method supports the given args."""
-  supported_args = tuple(tf_inspect.getargspec(method).args)
+  supported_args = tuple(tf_inspect.getfullargspec(method).args)
   for kwarg in kwargs:
     if kwarg not in supported_args:
       raise ValueError(

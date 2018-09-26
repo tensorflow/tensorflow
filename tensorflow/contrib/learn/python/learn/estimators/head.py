@@ -1861,7 +1861,7 @@ def _get_arguments(func):
   _, func = tf_decorator.unwrap(func)
   if hasattr(func, "__code__"):
     # Regular function.
-    return tf_inspect.getargspec(func)
+    return tf_inspect.getfullargspec(func)
   elif hasattr(func, "func"):
     # Partial function.
     return _get_arguments(func.func)

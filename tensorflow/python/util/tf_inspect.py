@@ -43,7 +43,12 @@ def currentframe():
 
 
 def getargspec(obj):
-  """TFDecorator-aware replacement for inspect.getargspec.
+  """TFDecorator-aware replacement for `inspect.getargspec`.
+
+  This should not be called from other modules. It is deprecated in python3.
+
+  Use `getfullargspec`. It is a TFDecorator-aware replacement for 
+  `inspect.getfullargspec` compatible with both python2 and python3.
 
   Args:
     obj: A function, partial function, or callable object, possibly
