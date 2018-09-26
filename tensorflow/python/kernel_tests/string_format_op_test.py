@@ -34,14 +34,14 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorOneDim(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       format_output = string_ops.string_format("{}", tensor)
       out = self.evaluate(format_output)
       expected = "[0 1 2 ... 7 8 9]"
       self.assertEqual(compat.as_text(out), expected)
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       format_output = string_ops.string_format("{}", [tensor])
       out = self.evaluate(format_output)
@@ -50,7 +50,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneVariableScalar(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(3.34)
       format_output = string_ops.string_format("{}", [var])
       if not context.executing_eagerly():
@@ -61,7 +61,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneVariableOneDim(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(math_ops.range(10))
       format_output = string_ops.string_format("{}", [var])
       if not context.executing_eagerly():
@@ -72,7 +72,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatTwoVariablesWithAssignAdd(self):
-    with self.test_session():
+    with self.cached_session():
       var_one = variables.Variable(2.14)
       plus_one = var_one.assign_add(1.0)
       var_two = variables.Variable(math_ops.range(10))
@@ -86,7 +86,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorOneDimFloat(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = constant_op.constant([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7])
       format_output = string_ops.string_format("{}", tensor)
       out = self.evaluate(format_output)
@@ -95,7 +95,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorOneDimMatchesSummarize(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(6)
       format_output = string_ops.string_format("{}", tensor, summarize=3)
       out = self.evaluate(format_output)
@@ -104,28 +104,28 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorOneDimVarySummarize(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(6)
       format_output = string_ops.string_format("{}", tensor, summarize=-1)
       out = self.evaluate(format_output)
       expected = "[0 1 2 3 4 5]"
       self.assertEqual(compat.as_text(out), expected)
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(6)
       format_output = string_ops.string_format("{}", tensor, summarize=1)
       out = self.evaluate(format_output)
       expected = "[0 ... 5]"
       self.assertEqual(compat.as_text(out), expected)
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(6)
       format_output = string_ops.string_format("{}", tensor, summarize=2)
       out = self.evaluate(format_output)
       expected = "[0 1 ... 4 5]"
       self.assertEqual(compat.as_text(out), expected)
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(6)
       format_output = string_ops.string_format("{}", tensor, summarize=10)
       out = self.evaluate(format_output)
@@ -134,7 +134,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorOneDimAlmostSummarize(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(5)
       format_output = string_ops.string_format("{}", tensor, summarize=3)
       out = self.evaluate(format_output)
@@ -143,7 +143,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorTwoDimLessThanSummarize(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(4), [2, 2])
       format_output = string_ops.string_format("{}", tensor, summarize=3)
       out = self.evaluate(format_output)
@@ -153,7 +153,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorTwoDim(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("{}", tensor)
       out = self.evaluate(format_output)
@@ -168,7 +168,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorTwoDimSummarizeTwo(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("{}", tensor, summarize=2)
       out = self.evaluate(format_output)
@@ -181,7 +181,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorThreeDim(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(1000), [10, 10, 10])
       format_output = string_ops.string_format("{}", tensor)
       out = self.evaluate(format_output)
@@ -237,7 +237,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorTemplatePrefix(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("tensor summary: {}", tensor)
       out = self.evaluate(format_output)
@@ -252,7 +252,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorTemplatePrefixAndSuffix(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("tensor summary: {}, suffix",
                                                tensor)
@@ -268,7 +268,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatOneTensorTemplateSuffix(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("{}, suffix", tensor)
       out = self.evaluate(format_output)
@@ -283,7 +283,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatNoTensor(self):
-    with self.test_session():
+    with self.cached_session():
       format_output = string_ops.string_format("No tensor.", ())
       out = self.evaluate(format_output)
       expected = "No tensor."
@@ -291,7 +291,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatMultiTensor(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_one = array_ops.reshape(math_ops.range(100), [10, 10])
       tensor_two = tensor_one * 10
       format_output = string_ops.string_format("One: {},\nTwo: {}",
@@ -315,7 +315,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatSummarizeOne(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("tensor summary: {}", tensor,
                                                summarize=1)
@@ -327,7 +327,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatSummarizeTwo(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("tensor summary: {}", tensor,
                                                summarize=2)
@@ -341,7 +341,7 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testFormatPlaceholder(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = array_ops.reshape(math_ops.range(100), [10, 10])
       format_output = string_ops.string_format("tensor summary: %t%", tensor,
                                                placeholder="%t%")
@@ -357,21 +357,21 @@ class StringFormatOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testTensorCountMustMatchPlaceholderCount(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, r"2 placeholder\(s\) in template does not match 1 "
                       r"tensor\(s\) provided as input"):
         tensor = math_ops.range(10)
         format_output = string_ops.string_format("{} {}", tensor)
         self.evaluate(format_output)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, r"2 placeholder\(s\) in template does not match 1 "
                       r"tensor\(s\) provided as input"):
         tensor = math_ops.range(10)
         format_output = string_ops.string_format("{} {}", [tensor])
         self.evaluate(format_output)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, r"1 placeholder\(s\) in template does not match 2 "
                       r"tensor\(s\) provided as input"):

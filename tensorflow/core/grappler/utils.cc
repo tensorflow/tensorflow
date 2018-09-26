@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils.h"
 
+#include <iterator>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -163,6 +165,34 @@ int NodePosition(const string& name) {
   int position;
   ParseNodeNameAsStringPiece(name, &position);
   return position;
+}
+
+int NodePositionIfSameNode(const string& input_name, const string& node_name) {
+  const bool is_ctrl = input_name[0] == '^';
+  auto input_it = is_ctrl ? input_name.begin() + 1 : input_name.begin();
+  auto node_it = node_name.begin();
+  if (node_name.empty() ||
+      std::distance(input_it, input_name.end()) < node_name.size()) {
+    return -2;
+  }
+  while (node_it != node_name.end()) {
+    if (*input_it++ != *node_it++) {
+      return -2;
+    }
+  }
+  if (input_it == input_name.end()) {
+    return is_ctrl ? -1 : 0;
+  } else if (*input_it++ == ':') {
+    StringPiece remaining(&(*input_it),
+                          std::distance(input_it, input_name.end()));
+    int position;
+    if (!strings::safe_strto32(remaining, &position)) {
+      return -2;
+    }
+    return is_ctrl ? -1 : position;
+  } else {
+    return -2;
+  }
 }
 
 string AddPrefixToNodeName(const string& name, const string& prefix,

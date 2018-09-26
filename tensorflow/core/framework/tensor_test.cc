@@ -1228,6 +1228,45 @@ TEST(Tensor, Slice_Basic) {
   }
 }
 
+TEST(Tensor, SubSlice_Basic) {
+  {  // General
+    Tensor x(DT_FLOAT, TensorShape({10, 4, 36}));
+    // Fills in known values.
+    for (int i = 0; i < 10; ++i) {
+      x.SubSlice(i).flat<float>().setConstant(i * 1.f);
+    }
+    // A simple sub-slice along dim0.
+    Tensor y = x.SubSlice(5);
+    EXPECT_TRUE(y.shape().IsSameSize(TensorShape({4, 36})));
+    auto tx = x.tensor<float, 3>();
+    auto ty = y.tensor<float, 2>();
+    for (int j = 0; j < 4; ++j) {
+      for (int k = 0; k < 36; ++k) {
+        EXPECT_EQ(ty(j, k), 5.0);
+        EXPECT_EQ(&tx(5, j, k), &ty(j, k));
+      }
+    }
+    Tensor z = y.SubSlice(3).SubSlice(31);
+    auto tz = z.unaligned_flat<float>();
+    EXPECT_EQ(*tz.data(), 5.0);
+  }
+  {
+    // Test unaligned access via a SubSlice.
+    Tensor x(DT_FLOAT, TensorShape({30, 5}));
+    x.flat<float>().setConstant(0.0);
+
+    // Take an unaligned subslice.
+    Tensor y = x.SubSlice(1);
+#if EIGEN_MAX_ALIGN_BYTES > 0
+    EXPECT_FALSE(y.IsAligned());
+#endif
+    y.unaligned_flat<float>().setConstant(1.0);
+    for (int64 i = 0; i < y.NumElements(); ++i) {
+      EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
+    }
+  }
+}
+
 template <typename T>
 Tensor MkTensor(DataType dt, const TensorShape& shape,
                 std::vector<T> init_values) {

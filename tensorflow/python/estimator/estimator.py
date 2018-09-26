@@ -614,7 +614,7 @@ class Estimator(object):
     # pylint: disable=line-too-long,g-doc-args,g-doc-return-or-yield
     """Exports inference graph as a `SavedModel` into the given dir.
 
-    Note that `export_to_savedmodel` will be renamed to `export_to_saved_model`
+    Note that `export_to_savedmodel` will be renamed to `export_saved_model`
     in TensorFlow 2.0. At that time, `export_to_savedmodel` without the
     additional underscore will be available only through tf.compat.v1.
 
@@ -699,7 +699,7 @@ class Estimator(object):
     """
     # pylint: enable=line-too-long
     # TODO(b/111442174): `export_to_savedmodel` will be renamed to
-    # `export_to_saved_model` in TensorFlow 2.0. This function is a wrapper
+    # `export_saved_model` in TensorFlow 2.0. This function is a wrapper
     # while staging the new version; do not add any logic here.
     return self.export_savedmodel(
         export_dir_base,

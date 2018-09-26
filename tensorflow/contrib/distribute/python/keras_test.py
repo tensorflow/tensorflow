@@ -635,6 +635,29 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
                                    'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
+  @combinations.generate(combinations.combine(
+      distribution=[combinations.tpu_strategy_one_step],
+      mode=['graph']))
+  def test_dataset_input_shape_fully_defined(self, distribution):
+    with self.cached_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss, distribute=distribution)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      targets = np.zeros((10, 4), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      # Input shapes are not fully known. Batch dimension is unknown as we are
+      # not using the drop_remainder argument.
+      dataset = dataset.repeat(100).batch(10)
+
+      with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
+        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
+
   def test_learning_phase_value(self):
     # TODO(anjalisridhar): Modify this test to use Lambdas since we can compare
     # meaningful values. Currently we don't pass the learning phase if the

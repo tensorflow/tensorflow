@@ -26,11 +26,11 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import parsing_ops
 
 
-class _ParseExampleDataset(dataset_ops.Dataset):
+class _ParseExampleDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that parses `example` dataset into a `dict` dataset."""
 
   def __init__(self, input_dataset, features, num_parallel_calls):
-    super(_ParseExampleDataset, self).__init__()
+    super(_ParseExampleDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     if not all(types == dtypes.string
                for types in nest.flatten(input_dataset.output_types)):
