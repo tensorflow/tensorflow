@@ -158,6 +158,18 @@ class TemplatesTest(test.TestCase):
     self.assertIsInstance(function_call_arg.elts[0].elts[0].ctx, gast.Load)
     self.assertIsInstance(function_call_arg.elts[0].elts[1].ctx, gast.Load)
 
+  def test_replace_index(self):
+    template = """
+      def test_fn(foo):
+        foo = 0
+    """
+
+    node = templates.replace(
+        template, foo=parser.parse_expression('foo(a[b]).bar'))[0]
+    function_call_arg = node.body[0].targets[0].value.args[0]
+    self.assertIsInstance(function_call_arg.ctx, gast.Load)
+    self.assertIsInstance(function_call_arg.slice.value.ctx, gast.Load)
+
   def test_replace_call_keyword(self):
     template = """
       def test_fn():
