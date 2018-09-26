@@ -400,7 +400,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
         memory_by_computation) {
   // These variables are a hack to prevent overflows.
   int64 cumulative_total_size = 0;
-  int64 total_hlos = computation.parent()->NumUniqueInstructionIds();
+  int64 total_hlos = computation.parent()->instruction_count();
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
