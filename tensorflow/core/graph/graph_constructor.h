@@ -138,6 +138,9 @@ struct ImportGraphDefOptions {
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
+
+  // Try to bind grapth to given device.
+  std::string bind_device;
 };
 
 // Optional results that may be returned by ImportGraphDef.
