@@ -86,8 +86,6 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(dataset()->init_func_->Instantiate(ctx));
       TF_RETURN_IF_ERROR(dataset()->next_func_->Instantiate(ctx));
       TF_RETURN_IF_ERROR(dataset()->finalize_func_->Instantiate(ctx));
-      TF_RETURN_IF_ERROR(
-          dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
       return Status::OK();
     }
 
@@ -95,6 +93,12 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
+
+      if (!initialized_) {
+        TF_RETURN_IF_ERROR(
+            dataset()->init_func_->RunWithBorrowedArgs(ctx, {}, &state_));
+        initialized_ = true;
+      }
 
       if (finalized_) {
         *end_of_sequence = true;
@@ -123,6 +127,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
+    bool initialized_ GUARDED_BY(mu_) = false;
     bool finalized_ GUARDED_BY(mu_) = false;
     std::vector<Tensor> state_ GUARDED_BY(mu_);
   };
