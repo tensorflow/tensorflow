@@ -37,49 +37,16 @@ class Builder;
 ///
 ///   %2 = addf %0, %1 : f32
 ///
-class AddFOp
-    : public OpBase<AddFOp, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
-                    OpTrait::SameOperandsAndResultType> {
+class AddFOp : public BinaryOp<AddFOp, OpTrait::ResultsAreFloatLike> {
 public:
   static StringRef getOperationName() { return "addf"; }
 
-  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
-                    SSAValue *rhs);
-  bool verify() const;
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
   Attribute *constantFold(ArrayRef<Attribute *> operands,
                           MLIRContext *context) const;
 
 private:
   friend class Operation;
-  explicit AddFOp(const Operation *state) : OpBase(state) {}
-};
-
-/// The "mulf" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be a floating point
-/// scalar type, a vector whose element type is a floating point type, or a
-/// floating point tensor. For example:
-///
-///   %2 = mulf %0, %1 : f32
-///
-class MulFOp
-    : public OpBase<MulFOp, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
-                    OpTrait::SameOperandsAndResultType> {
-public:
-  static StringRef getOperationName() { return "mulf"; }
-
-  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
-                    SSAValue *rhs);
-  bool verify() const;
-  static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  Attribute *constantFold(ArrayRef<Attribute *> operands,
-                          MLIRContext *context) const;
-
-private:
-  friend class Operation;
-  explicit MulFOp(const Operation *state) : OpBase(state) {}
+  explicit AddFOp(const Operation *state) : BinaryOp(state) {}
 };
 
 /// The "affine_apply" operation applies an affine map to a list of operands,
@@ -448,6 +415,25 @@ public:
 private:
   friend class Operation;
   explicit LoadOp(const Operation *state) : OpBase(state) {}
+};
+
+/// The "mulf" operation takes two operands and returns one result, each of
+/// these is required to be of the same type.  This type may be a floating point
+/// scalar type, a vector whose element type is a floating point type, or a
+/// floating point tensor. For example:
+///
+///   %2 = mulf %0, %1 : f32
+///
+class MulFOp : public BinaryOp<MulFOp, OpTrait::ResultsAreFloatLike> {
+public:
+  static StringRef getOperationName() { return "mulf"; }
+
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
+
+private:
+  friend class Operation;
+  explicit MulFOp(const Operation *state) : BinaryOp(state) {}
 };
 
 /// The "return" operation represents a return statement of an ML function.

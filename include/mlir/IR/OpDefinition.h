@@ -33,11 +33,11 @@
 #include <type_traits>
 
 namespace mlir {
+class Builder;
 class Type;
 class OpAsmParser;
 class OpAsmPrinter;
 namespace OpTrait {
-template <typename ConcreteType> class OneResult;
 }
 
 /// This type trait produces true if the specified type is in the specified
@@ -206,85 +206,6 @@ public:
     results.push_back(result);
     return false;
   }
-};
-
-/// This provides public APIs that all operations should have.  The template
-/// argument 'ConcreteType' should be the concrete type by CRTP and the others
-/// are base classes by the policy pattern.
-template <typename ConcreteType, template <typename T> class... Traits>
-class OpBase
-    : public OpBaseState,
-      public Traits<ConcreteType>...,
-      public ConstFoldingHook<
-          ConcreteType,
-          typelist_contains<OpTrait::OneResult<ConcreteType>, OpBaseState,
-                            Traits<ConcreteType>...>::value> {
-public:
-  /// Return the operation that this refers to.
-  const Operation *getOperation() const { return OpBaseState::getOperation(); }
-  Operation *getOperation() { return OpBaseState::getOperation(); }
-
-  /// Return true if this "op class" can match against the specified operation.
-  /// This hook can be overridden with a more specific implementation in
-  /// the subclass of Base.
-  ///
-  static bool isClassFor(const Operation *op) {
-    return op->getName().is(ConcreteType::getOperationName());
-  }
-
-  /// This is the hook used by the AsmParser to parse the custom form of this
-  /// op from an .mlir file.  Op implementations should provide a parse method,
-  /// which returns boolean true on failure.  On success, they should return
-  /// false and fill in result with the fields to use.
-  static bool parseAssembly(OpAsmParser *parser, OperationState *result) {
-    return ConcreteType::parse(parser, result);
-  }
-
-  /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
-  /// Op implementations should provide a print method.
-  static void printAssembly(const Operation *op, OpAsmPrinter *p) {
-    op->getAs<ConcreteType>()->print(p);
-  }
-
-  /// This is the hook that checks whether or not this instruction is well
-  /// formed according to the invariants of its opcode.  It delegates to the
-  /// Traits for their policy implementations, and allows the user to specify
-  /// their own verify() method.
-  ///
-  /// On success this returns false; on failure it emits an error to the
-  /// diagnostic subsystem and returns true.
-  static bool verifyInvariants(const Operation *op) {
-    return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
-           op->getAs<ConcreteType>()->verify();
-  }
-
-  // TODO: Provide a dump() method.
-
-protected:
-  explicit OpBase(const Operation *state) : OpBaseState(state) {}
-
-private:
-  template <typename... Types>
-  struct BaseVerifier;
-
-  template <typename First, typename... Rest>
-  struct BaseVerifier<First, Rest...> {
-    static bool verifyTrait(const Operation *op) {
-      return First::verifyTrait(op) || BaseVerifier<Rest...>::verifyTrait(op);
-    }
-  };
-
-  template <typename First>
-  struct BaseVerifier<First> {
-    static bool verifyTrait(const Operation *op) {
-      return First::verifyTrait(op);
-    }
-  };
-
-  template <>
-  struct BaseVerifier<> {
-    static bool verifyTrait(const Operation *op) { return false; }
-  };
 };
 
 //===----------------------------------------------------------------------===//
@@ -603,6 +524,15 @@ public:
   }
 };
 
+// These functions are out-of-line implementations of the methods in the
+// corresponding trait classes.  This avoids them being template
+// instantiated/duplicated.
+namespace impl {
+bool verifySameOperandsAndResult(const Operation *op);
+bool verifyResultsAreFloatLike(const Operation *op);
+bool verifyResultsAreIntegerLike(const Operation *op);
+} // namespace impl
+
 /// This class provides verification for ops that are known to have the same
 /// operand and result type.
 template <typename ConcreteType>
@@ -610,22 +540,150 @@ class SameOperandsAndResultType
     : public TraitBase<ConcreteType, SameOperandsAndResultType> {
 public:
   static bool verifyTrait(const Operation *op) {
-    auto *type = op->getResult(0)->getType();
-    for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
-      if (op->getResult(i)->getType() != type)
-        return op->emitOpError(
-            "requires the same type for all operands and results");
-    }
-    for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
-      if (op->getOperand(i)->getType() != type)
-        return op->emitOpError(
-            "requires the same type for all operands and results");
-    }
-    return false;
+    return impl::verifySameOperandsAndResult(op);
+  }
+};
+
+/// This class verifies that any results of the specified op have a floating
+/// point type, a vector thereof, or a tensor thereof.
+template <typename ConcreteType>
+class ResultsAreFloatLike
+    : public TraitBase<ConcreteType, ResultsAreFloatLike> {
+public:
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyResultsAreFloatLike(op);
+  }
+};
+
+/// This class verifies that any results of the specified op have an integer
+/// type, a vector thereof, or a tensor thereof.
+template <typename ConcreteType>
+class ResultsAreIntegerLike
+    : public TraitBase<ConcreteType, ResultsAreIntegerLike> {
+public:
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyResultsAreIntegerLike(op);
   }
 };
 
 } // end namespace OpTrait
+
+//===----------------------------------------------------------------------===//
+// Operation Definition classes
+//===----------------------------------------------------------------------===//
+
+/// This provides public APIs that all operations should have.  The template
+/// argument 'ConcreteType' should be the concrete type by CRTP and the others
+/// are base classes by the policy pattern.
+template <typename ConcreteType, template <typename T> class... Traits>
+class OpBase
+    : public OpBaseState,
+      public Traits<ConcreteType>...,
+      public ConstFoldingHook<
+          ConcreteType,
+          typelist_contains<OpTrait::OneResult<ConcreteType>, OpBaseState,
+                            Traits<ConcreteType>...>::value> {
+public:
+  /// Return the operation that this refers to.
+  const Operation *getOperation() const { return OpBaseState::getOperation(); }
+  Operation *getOperation() { return OpBaseState::getOperation(); }
+
+  /// Return true if this "op class" can match against the specified operation.
+  /// This hook can be overridden with a more specific implementation in
+  /// the subclass of Base.
+  ///
+  static bool isClassFor(const Operation *op) {
+    return op->getName().is(ConcreteType::getOperationName());
+  }
+
+  /// This is the hook used by the AsmParser to parse the custom form of this
+  /// op from an .mlir file.  Op implementations should provide a parse method,
+  /// which returns boolean true on failure.  On success, they should return
+  /// false and fill in result with the fields to use.
+  static bool parseAssembly(OpAsmParser *parser, OperationState *result) {
+    return ConcreteType::parse(parser, result);
+  }
+
+  /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
+  /// Op implementations should provide a print method.
+  static void printAssembly(const Operation *op, OpAsmPrinter *p) {
+    op->getAs<ConcreteType>()->print(p);
+  }
+
+  /// This is the hook that checks whether or not this instruction is well
+  /// formed according to the invariants of its opcode.  It delegates to the
+  /// Traits for their policy implementations, and allows the user to specify
+  /// their own verify() method.
+  ///
+  /// On success this returns false; on failure it emits an error to the
+  /// diagnostic subsystem and returns true.
+  static bool verifyInvariants(const Operation *op) {
+    return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
+           op->getAs<ConcreteType>()->verify();
+  }
+
+  // TODO: Provide a dump() method.
+
+protected:
+  explicit OpBase(const Operation *state) : OpBaseState(state) {}
+
+private:
+  template <typename... Types> struct BaseVerifier;
+
+  template <typename First, typename... Rest>
+  struct BaseVerifier<First, Rest...> {
+    static bool verifyTrait(const Operation *op) {
+      return First::verifyTrait(op) || BaseVerifier<Rest...>::verifyTrait(op);
+    }
+  };
+
+  template <typename First> struct BaseVerifier<First> {
+    static bool verifyTrait(const Operation *op) {
+      return First::verifyTrait(op);
+    }
+  };
+
+  template <> struct BaseVerifier<> {
+    static bool verifyTrait(const Operation *op) { return false; }
+  };
+};
+
+// These functions are out-of-line implementations of the methods in BinaryOp,
+// which avoids them being template instantiated/duplicated.
+namespace impl {
+void buildBinaryOp(Builder *builder, OperationState *result, SSAValue *lhs,
+                   SSAValue *rhs);
+bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
+void printBinaryOp(const Operation *op, OpAsmPrinter *p);
+} // namespace impl
+
+/// This template is used for operations that are simple binary ops that have
+/// two input operands, one result, and whose operands and results all have
+/// the same type.
+///
+/// From this structure, subclasses get a standard builder, parser and printer.
+///
+template <typename ConcreteType, template <typename T> class... Traits>
+class BinaryOp : public OpBase<ConcreteType, OpTrait::NOperands<2>::Impl,
+                               OpTrait::OneResult,
+                               OpTrait::SameOperandsAndResultType, Traits...> {
+public:
+  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
+                    SSAValue *rhs) {
+    impl::buildBinaryOp(builder, result, lhs, rhs);
+  }
+  static bool parse(OpAsmParser *parser, OperationState *result) {
+    return impl::parseBinaryOp(parser, result);
+  }
+  void print(OpAsmPrinter *p) const {
+    return impl::printBinaryOp(this->getOperation(), p);
+  }
+
+protected:
+  explicit BinaryOp(const Operation *state)
+      : OpBase<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
+               OpTrait::SameOperandsAndResultType, Traits...>(state) {}
+};
 
 } // end namespace mlir
 

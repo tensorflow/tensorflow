@@ -22,6 +22,7 @@
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
 using namespace mlir;
@@ -219,4 +220,83 @@ void OpBaseState::emitWarning(const Twine &message) const {
 /// handlers that may be listening.
 void OpBaseState::emitNote(const Twine &message) const {
   getOperation()->emitNote(message);
+}
+
+//===----------------------------------------------------------------------===//
+// Op Trait implementations
+//===----------------------------------------------------------------------===//
+
+bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
+  auto *type = op->getResult(0)->getType();
+  for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {
+    if (op->getResult(i)->getType() != type)
+      return op->emitOpError(
+          "requires the same type for all operands and results");
+  }
+  for (unsigned i = 0, e = op->getNumOperands(); i < e; ++i) {
+    if (op->getOperand(i)->getType() != type)
+      return op->emitOpError(
+          "requires the same type for all operands and results");
+  }
+  return false;
+}
+
+/// If this is a vector type, or a tensor type, return the scalar element type
+/// that it is built around, otherwise return the type unmodified.
+static Type *getTensorOrVectorElementType(Type *type) {
+  if (auto *vec = dyn_cast<VectorType>(type))
+    return vec->getElementType();
+
+  // Look through tensor<vector<...>> to find the underlying element type.
+  if (auto *tensor = dyn_cast<TensorType>(type))
+    return getTensorOrVectorElementType(tensor->getElementType());
+  return type;
+}
+
+bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
+  for (auto *result : op->getResults()) {
+    if (!isa<FloatType>(getTensorOrVectorElementType(result->getType())))
+      return op->emitOpError("requires a floating point type");
+  }
+
+  return false;
+}
+
+bool OpTrait::impl::verifyResultsAreIntegerLike(const Operation *op) {
+  for (auto *result : op->getResults()) {
+    if (!isa<IntegerType>(getTensorOrVectorElementType(result->getType())))
+      return op->emitOpError("requires an integer type");
+  }
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// BinaryOp implementation
+//===----------------------------------------------------------------------===//
+
+// These functions are out-of-line implementations of the methods in BinaryOp,
+// which avoids them being template instantiated/duplicated.
+
+void impl::buildBinaryOp(Builder *builder, OperationState *result,
+                         SSAValue *lhs, SSAValue *rhs) {
+  assert(lhs->getType() == rhs->getType());
+  result->addOperands({lhs, rhs});
+  result->types.push_back(lhs->getType());
+}
+
+bool impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type *type;
+  return parser->parseOperandList(ops, 2) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(type) ||
+         parser->resolveOperands(ops, type, result->operands) ||
+         parser->addTypeToList(type, result->types);
+}
+
+void impl::printBinaryOp(const Operation *op, OpAsmPrinter *p) {
+  *p << op->getName() << " " << *op->getOperand(0) << ", "
+     << *op->getOperand(1);
+  p->printOptionalAttrDict(op->getAttrs());
+  *p << " : " << *op->getResult(0)->getType();
 }

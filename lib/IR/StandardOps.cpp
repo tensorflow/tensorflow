@@ -63,51 +63,9 @@ parseDimAndSymbolList(OpAsmParser *parser,
   return false;
 }
 
-/// If this is a vector type, or a tensor type, return the scalar element type
-/// that it is built around, otherwise return the type unmodified.
-static Type *getTensorOrVectorElementType(Type *type) {
-  if (auto *vec = dyn_cast<VectorType>(type))
-    return vec->getElementType();
-
-  // Look through tensor<vector<...>> to find the underlying element type.
-  if (auto *tensor = dyn_cast<TensorType>(type))
-    return getTensorOrVectorElementType(tensor->getElementType());
-  return type;
-}
-
 //===----------------------------------------------------------------------===//
 // AddFOp
 //===----------------------------------------------------------------------===//
-
-void AddFOp::build(Builder *builder, OperationState *result, SSAValue *lhs,
-                   SSAValue *rhs) {
-  assert(lhs->getType() == rhs->getType());
-  result->addOperands({lhs, rhs});
-  result->types.push_back(lhs->getType());
-}
-
-bool AddFOp::parse(OpAsmParser *parser, OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type *type;
-  return parser->parseOperandList(ops, 2) ||
-         parser->parseOptionalAttributeDict(result->attributes) ||
-         parser->parseColonType(type) ||
-         parser->resolveOperands(ops, type, result->operands) ||
-         parser->addTypeToList(type, result->types);
-}
-
-void AddFOp::print(OpAsmPrinter *p) const {
-  *p << "addf " << *getOperand(0) << ", " << *getOperand(1);
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << *getType();
-}
-
-bool AddFOp::verify() const {
-  if (!isa<FloatType>(getTensorOrVectorElementType(getType())))
-    return emitOpError("requires a floating point type");
-
-  return false;
-}
 
 Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
@@ -122,54 +80,15 @@ Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
 }
 
 //===----------------------------------------------------------------------===//
-// MulFOp
-//===----------------------------------------------------------------------===//
-
-void MulFOp::build(Builder *builder, OperationState *result, SSAValue *lhs,
-                   SSAValue *rhs) {
-  assert(lhs->getType() == rhs->getType());
-  result->addOperands({lhs, rhs});
-  result->types.push_back(lhs->getType());
-}
-
-bool MulFOp::parse(OpAsmParser *parser, OperationState *result) {
-  SmallVector<OpAsmParser::OperandType, 2> ops;
-  Type *type;
-  return parser->parseOperandList(ops, 2) ||
-         parser->parseOptionalAttributeDict(result->attributes) ||
-         parser->parseColonType(type) ||
-         parser->resolveOperands(ops, type, result->operands) ||
-         parser->addTypeToList(type, result->types);
-}
-
-void MulFOp::print(OpAsmPrinter *p) const {
-  *p << "mulf " << *getOperand(0) << ", " << *getOperand(1);
-  p->printOptionalAttrDict(getAttrs());
-  *p << " : " << *getType();
-}
-
-bool MulFOp::verify() const {
-  if (!isa<FloatType>(getTensorOrVectorElementType(getType())))
-    return emitOpError("requires a floating point type");
-
-  return false;
-}
-
-Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
-                                MLIRContext *context) const {
-  assert(operands.size() == 2 && "mulf takes two operands");
-
-  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
-      return FloatAttr::get(lhs->getValue() * rhs->getValue(), context);
-  }
-
-  return nullptr;
-}
-
-//===----------------------------------------------------------------------===//
 // AffineApplyOp
 //===----------------------------------------------------------------------===//
+
+void AffineApplyOp::build(Builder *builder, OperationState *result,
+                          AffineMap *map, ArrayRef<SSAValue *> operands) {
+  result->addOperands(operands);
+  result->types.append(map->getNumResults(), builder->getAffineIntType());
+  result->addAttribute("map", builder->getAffineMapAttr(map));
+}
 
 bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
@@ -653,17 +572,6 @@ void ConstantAffineIntOp::build(Builder *builder, OperationState *result,
 }
 
 //===----------------------------------------------------------------------===//
-// AffineApplyOp
-//===----------------------------------------------------------------------===//
-
-void AffineApplyOp::build(Builder *builder, OperationState *result,
-                          AffineMap *map, ArrayRef<SSAValue *> operands) {
-  result->addOperands(operands);
-  result->types.append(map->getNumResults(), builder->getAffineIntType());
-  result->addAttribute("map", builder->getAffineMapAttr(map));
-}
-
-//===----------------------------------------------------------------------===//
 // DeallocOp
 //===----------------------------------------------------------------------===//
 
@@ -857,6 +765,22 @@ bool LoadOp::verify() const {
   // TODO: in MLFunction verify that the indices are parameters, IV's, or the
   // result of an affine_apply.
   return false;
+}
+
+//===----------------------------------------------------------------------===//
+// MulFOp
+//===----------------------------------------------------------------------===//
+
+Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "mulf takes two operands");
+
+  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+      return FloatAttr::get(lhs->getValue() * rhs->getValue(), context);
+  }
+
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
