@@ -294,6 +294,7 @@ def generated_test_models():
         #"transpose_conv",   # disabled due to b/111213074
         "unpack",
         "where",
+        "zeros_like",
     ]
 
 def generated_test_conversion_modes():
@@ -337,11 +338,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         flags = "--ignore_toco_errors --run_with_extended"
         kwargs["tags"].append("skip_already_failing")
         kwargs["tags"].append("no_oss")
-
-        # TODO(b/115504899): Re-enable asan, msan and tsan tests.
-        kwargs["tags"].append("noasan")
-        kwargs["tags"].append("nomsan")
-        kwargs["tags"].append("notsan")
+        kwargs["tags"].append("notap")
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

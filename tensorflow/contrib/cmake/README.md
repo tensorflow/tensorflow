@@ -1,6 +1,10 @@
 TensorFlow CMake build
 ======================
 
+CMAKE build is deprecated for TensorFlow. Please use `bazel` to build TF for all
+platforms. For details, see the
+[TensorFlow install guide](https://www.tensorflow.org/install/).
+
 This directory contains CMake files for building TensorFlow on Microsoft
 Windows. [CMake](https://cmake.org) is a cross-platform tool that can
 generate build scripts for multiple build systems, including Microsoft
@@ -13,7 +17,7 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/install_windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/source_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations

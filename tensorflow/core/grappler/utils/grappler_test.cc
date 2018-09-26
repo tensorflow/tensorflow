@@ -30,13 +30,16 @@ GrapplerTest::GrapplerTest() {
   // optimizations interfering in the comparison.
   RewriterConfig* cfg =
       options_.config.mutable_graph_options()->mutable_rewrite_options();
-  cfg->set_constant_folding(RewriterConfig::OFF);
+  // TODO(rmlarsen): Add utility to generate config w/ all optimizers turned
+  // off.
   cfg->set_arithmetic_optimization(RewriterConfig::OFF);
+  cfg->set_constant_folding(RewriterConfig::OFF);
+  cfg->set_debug_stripper(RewriterConfig::OFF);
   cfg->set_dependency_optimization(RewriterConfig::OFF);
-  cfg->set_loop_optimization(RewriterConfig::OFF);
   cfg->set_function_optimization(RewriterConfig::OFF);
   cfg->set_layout_optimizer(RewriterConfig::OFF);
-  cfg->set_debug_stripper(RewriterConfig::OFF);
+  cfg->set_loop_optimization(RewriterConfig::OFF);
+  cfg->set_pin_to_host_optimization(RewriterConfig::OFF);
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(

@@ -134,9 +134,11 @@ class HloComputation {
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
   // Set the root of the computation to the given instruction. The instruction
-  // must have already been added to the computation and have the same shape as
-  // the result of the computation for non fusion computations.
-  void set_root_instruction(HloInstruction* new_root_instruction);
+  // must have already been added to the computation. In addition it must have
+  // the same shape as the result of the computation for non fusion
+  // computations, except if accept_different_shape is set to true.
+  void set_root_instruction(HloInstruction* new_root_instruction,
+                            bool accept_different_shape = false);
 
   // Return the root instruction of the computation. The root instruction is the
   // instruction which produces the output of the computation.
@@ -225,7 +227,7 @@ class HloComputation {
   void UpdateReachabilityThroughInstruction(
       const HloInstruction* instruction, HloReachabilityMap* reachability_map);
 
-  int64 instruction_count() const { return instructions_.size(); }
+  int64 instruction_count() const { return instruction_iterators_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -331,10 +333,13 @@ class HloComputation {
   //
   // If replacements maps a key to nullptr, we remove that instruction from the
   // new computation.
+  // If additional instructions are used by instructions in replacement map,
+  // they must be passed in post-order in the extras span.
   std::unique_ptr<HloComputation> CloneWithReplacements(
       std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
           replacements,
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      absl::Span<HloInstruction*> extras, HloCloneContext* context = nullptr,
+      const string& suffix = "clone");
 
   // Returns true if the given instruction can be removed from the computation.
   // Parameter instructions cannot be removed without violating invariants of
@@ -434,7 +439,7 @@ class HloComputation {
   // instruction pointer to location in the list for fast lookup.
   using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
-  std::unordered_map<const HloInstruction*, InstructionList::iterator>
+  tensorflow::gtl::FlatMap<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;

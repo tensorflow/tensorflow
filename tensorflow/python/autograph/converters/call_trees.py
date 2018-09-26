@@ -238,9 +238,16 @@ class CallTreeTransformer(converter.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      ag__.converted_call(func, True, False, False, {}, args)
+      ag__.converted_call(
+          func,
+          ag__.ConversionOptions.new(recursive=recursive_val),
+          args)
     """
-    call_expr = templates.replace(template, func=node.func, args=node.args)
+    call_expr = templates.replace(
+        template,
+        func=node.func,
+        recursive_val=parser.parse_expression(str(self.ctx.program.recursive)),
+        args=node.args)
     new_call = call_expr[0].value
     # TODO(mdan): Improve the template mechanism to better support this.
     new_call.keywords = node.keywords

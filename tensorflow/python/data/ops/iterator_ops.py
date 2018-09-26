@@ -24,6 +24,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -85,10 +86,10 @@ class Iterator(checkpointable.CheckpointableBase):
       initializer: A `tf.Operation` that should be run to initialize this
         iterator.
       output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this dataset.
+        each component of an element of this iterator.
       output_shapes: A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset.
-      output_classes: A nested structure of Python `type` object corresponding
+        corresponding to each component of an element of this iterator.
+      output_classes: A nested structure of Python `type` objects corresponding
         to each component of an element of this iterator.
     """
     self._iterator_resource = iterator_resource
@@ -670,6 +671,6 @@ def get_next_as_optional(iterator):
           output_shapes=nest.flatten(
               sparse.as_dense_shapes(iterator.output_shapes,
                                      iterator.output_classes))),
-      output_shapes=iterator.output_shapes,
-      output_types=iterator.output_types,
-      output_classes=iterator.output_classes)
+      structure.Structure._from_legacy_structure(iterator.output_types,
+                                                 iterator.output_shapes,
+                                                 iterator.output_classes))

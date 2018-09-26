@@ -253,6 +253,7 @@ tensorflow/core/kernels/strided_slice_op_inst_5.cc
 tensorflow/core/kernels/strided_slice_op_inst_6.cc
 tensorflow/core/kernels/strided_slice_op_inst_7.cc
 tensorflow/core/kernels/string_join_op.cc
+tensorflow/core/kernels/string_util.cc
 tensorflow/core/kernels/tensor_array.cc
 tensorflow/core/kernels/tensor_array_ops.cc
 tensorflow/core/kernels/tile_functor_cpu.cc

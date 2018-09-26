@@ -8,10 +8,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # Platform specific build config
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_protos_grappler",
-)
-load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "if_static",
 )
@@ -97,7 +93,6 @@ cc_library(
     deps = [
         ":evaluation_utils",
         ":graph_optimizer",
-        ":symbolic_shapes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -107,6 +102,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:symbolic_shapes",
     ],
 )
 
@@ -261,7 +257,6 @@ cc_library(
         ":constant_folding",
         ":graph_optimizer",
         ":graph_optimizer_stage",
-        ":symbolic_shapes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -270,6 +265,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
     ],
 )
@@ -515,12 +511,14 @@ cc_library(
         ":custom_graph_optimizer_registry",
         ":debug_stripper",
         ":dependency_optimizer",
+        ":experimental_implementation_selector",
         ":function_optimizer",
         ":graph_optimizer",
         ":layout_optimizer",
         ":loop_optimizer",
         ":memory_optimizer",
         ":model_pruner",
+        ":pin_to_host_optimizer",
         ":remapper",
         ":scoped_allocator_optimizer",
         ":shape_optimizer",
@@ -647,7 +645,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_optimizer",
-        ":symbolic_shapes",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -657,6 +654,7 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:symbolic_shapes",
     ],
 )
 
@@ -710,31 +708,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "//tensorflow/core/grappler/utils:grappler_test",
-    ],
-)
-
-cc_library(
-    name = "symbolic_shapes",
-    srcs = ["symbolic_shapes.cc"],
-    hdrs = ["symbolic_shapes.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ] + tf_protos_grappler(),
-)
-
-tf_cc_test(
-    name = "symbolic_shapes_test",
-    srcs = ["symbolic_shapes_test.cc"],
-    deps = [
-        ":symbolic_shapes",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -908,6 +881,44 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
+    name = "pin_to_host_optimizer",
+    srcs = ["pin_to_host_optimizer.cc"],
+    hdrs = [
+        "pin_to_host_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:symbolic_shapes",
+        "//tensorflow/core/grappler/utils:topological_sort",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "pin_to_host_optimizer_test",
+    srcs = ["pin_to_host_optimizer_test.cc"],
+    deps = [
+        ":pin_to_host_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )

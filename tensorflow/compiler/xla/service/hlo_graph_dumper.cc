@@ -123,8 +123,8 @@ class NodeFilter {
 // We arbitrarily set this as the boundary between "large" and "small"
 // instructions.
 bool IsSmall(const HloInstruction* instr) {
-  if (ShapeUtil::IsOpaque(instr->shape()) ||
-      ShapeUtil::IsToken(instr->shape())) {
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+      ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
     return true;
   }
   return ShapeUtil::ElementsInRecursive(instr->shape()) < 4096;
@@ -1110,7 +1110,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                               instr->metadata().source_line()));
   }
 
-  return StrJoin(lines, "<br/>");
+  return StrJoin(lines, "\n");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(

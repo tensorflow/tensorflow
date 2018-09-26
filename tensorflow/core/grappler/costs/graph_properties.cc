@@ -260,13 +260,13 @@ typename DisjointSet<Handle>::Rep* DisjointSet<Handle>::Find(Handle value) {
 }
 
 bool IsEnqueue(const NodeDef& n) {
-  return (n.op().find("Enqueue") != std::string::npos &&
-          n.op().find("EnqueueMany") == std::string::npos);
+  return (n.op().find("Enqueue") != string::npos &&
+          n.op().find("EnqueueMany") == string::npos);
 }
 
 bool IsDequeue(const NodeDef& n) {
-  return (n.op().find("Dequeue") != std::string::npos &&
-          n.op().find("DequeueMany") == std::string::npos);
+  return (n.op().find("Dequeue") != string::npos &&
+          n.op().find("DequeueMany") == string::npos);
 }
 
 bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {

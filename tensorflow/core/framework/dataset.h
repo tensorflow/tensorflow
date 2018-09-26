@@ -47,6 +47,8 @@ class GraphDefBuilder;
 class Node;
 
 namespace data {
+// A constant that can be used to enable auto-tuning.
+constexpr int kAutoTune = -1;
 
 class DatasetBase;
 class SerializationContext;
@@ -527,25 +529,11 @@ class DatasetBase : public core::RefCounted {
                       std::unique_ptr<IteratorBase>* iterator) const {
     *iterator = MakeIteratorInternal(prefix);
     if (ctx->model()) {
-      // The prefix might contain an index. We need to strip it to make it
-      // possible for the model to successfully identify the output node.
-      string sanitized_prefix = prefix;
-      if (str_util::EndsWith(prefix, "]")) {
-        sanitized_prefix = prefix.substr(0, prefix.rfind('['));
-      }
-      std::shared_ptr<model::Node> node =
-          ctx->model()->AddNode((*iterator)->prefix(), sanitized_prefix);
-      std::vector<string> tokens =
-          str_util::Split((*iterator)->prefix(), ':', str_util::SkipEmpty());
-      node->set_name(tokens[tokens.size() - 1]);
+      ctx->model()->AddNode((*iterator)->prefix(), prefix);
       std::shared_ptr<model::Model> model = ctx->model();
       const string& prefix = (*iterator)->prefix();
-      (*iterator)->AddCleanupFunction([model, node, prefix]() {
-        if (node->output()) {
-          node->output()->remove_input(node);
-        }
-        model->RemoveNode(prefix);
-      });
+      (*iterator)->AddCleanupFunction(
+          [model, prefix]() { model->RemoveNode(prefix); });
     }
     return (*iterator)->Initialize(ctx);
   }
@@ -627,23 +615,10 @@ class DatasetBaseIterator : public IteratorBase {
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
     tracing::ScopedActivity activity(params_.prefix);
-    Status s;
-    if (ctx->model()) {
-      std::shared_ptr<model::Node> node =
-          ctx->model()->LookupNode(params_.prefix);
-      if (node->output()) {
-        node->output()->stop_work();
-      }
-      node->start_work();
-      s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-      node->stop_work();
-      node->add_element();
-      if (node->output()) {
-        node->output()->start_work();
-      }
-    } else {
-      s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-    }
+    RecordStart(ctx, true /* stop_output */);
+    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+    RecordStop(ctx, true /* start_output */);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
           "Iterator \"", params_.prefix,
@@ -670,36 +645,51 @@ class DatasetBaseIterator : public IteratorBase {
     return strings::StrCat(params_.prefix, ":", name);
   }
 
-  // When performance modeling is enabled, this method sets metadata entry for
-  // the model node corresponding to this iterator.
-  void SetMetadata(IteratorContext* ctx, const string& key, int64 value) {
+  // When performance modeling is enabled, this method adds a constant parameter
+  // to the model node corresponding to this iterator.
+  void AddConstantParameter(IteratorContext* ctx, const string& name,
+                            int64 value) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->set_metadata(key, value);
-      }
+      ctx->model()->AddConstantParameter(prefix(), name, value);
+    }
+  }
+
+  // When performance modeling is enabled, this method adds a tunable parameter
+  // to the model node corresponding to this iterator.
+  //
+  // The performance modeling logic may use `value` to set the value of the
+  // tunable parameter at any point during the lifetime of this iterator. When
+  // it does, it notifies `cond_var`.
+  void AddTunableParameter(IteratorContext* ctx, const string& name,
+                           std::atomic<int64>* value, int64 min, int64 max,
+                           condition_variable* cond_var) {
+    if (ctx->model()) {
+      ctx->model()->AddTunableParameter(prefix(), name, value, min, max,
+                                        cond_var);
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // this iterator has produced an element.
+  void RecordElement(IteratorContext* ctx) {
+    if (ctx->model()) {
+      ctx->model()->RecordElement(prefix());
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has started work.
-  void StartWork(IteratorContext* ctx) {
+  void RecordStart(IteratorContext* ctx, bool stop_output = false) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->start_work();
-      }
+      ctx->model()->RecordStart(prefix(), stop_output);
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has stopped work.
-  void StopWork(IteratorContext* ctx) {
+  void RecordStop(IteratorContext* ctx, bool start_output = false) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->stop_work();
-      }
+      ctx->model()->RecordStop(prefix(), start_output);
     }
   }
 

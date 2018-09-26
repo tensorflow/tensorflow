@@ -2423,7 +2423,7 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  visitor->ReserveVisitStates(root->GetModule()->NumUniqueInstructionIds());
+  visitor->ReserveVisitStates(root->GetModule()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //
@@ -2908,6 +2908,26 @@ StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name) {
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
   return os << ToString(kind);
+}
+
+bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
+                                  const HloInstruction* const& rhs) const {
+  if (rhs == nullptr) {
+    // Nothing compares less than nullptr.
+    return false;
+  }
+  if (lhs == nullptr) {
+    return true;
+  }
+  auto lhs_module = lhs->GetModule();
+  auto rhs_module = rhs->GetModule();
+  CHECK((lhs_module == nullptr && rhs_module == nullptr) ||
+        (lhs_module != nullptr && rhs_module != nullptr));
+  if (lhs_module != nullptr &&
+      lhs_module->unique_id() != rhs_module->unique_id()) {
+    return lhs_module->unique_id() < rhs_module->unique_id();
+  }
+  return lhs->unique_id() < rhs->unique_id();
 }
 
 bool HloInstruction::CouldBeBitcast() const {

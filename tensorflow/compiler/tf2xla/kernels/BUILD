@@ -113,6 +113,7 @@ tf_kernel_library(
         "shape_util.h",
     ],
     deps = [
+        ":conv_op_helpers",
         ":if_op",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
@@ -168,6 +169,27 @@ tf_kernel_library(
         "//tensorflow/core/kernels:transpose_op",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "conv_op_helpers",
+    srcs = ["conv_op_helpers.cc"],
+    hdrs = ["conv_op_helpers.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -49,9 +49,18 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
                            filter_width != 1 || filter_height != 1;
   if (need_im2col) {
     TFLITE_DCHECK(im2col_data);
-    optimized_ops::Im2col(input_data, input_dims, stride_width, stride_height,
-                          pad_width, pad_height, filter_height, filter_width, 0,
-                          im2col_data, im2col_dims);
+    ConvParams op_params;
+    op_params.padding_type = PaddingType::kSame;
+    op_params.padding_values.width = pad_width;
+    op_params.padding_values.height = pad_height;
+    op_params.stride_width = stride_width;
+    op_params.stride_height = stride_height;
+    op_params.dilation_width_factor = 1;
+    op_params.dilation_height_factor = 1;
+    optimized_ops::Im2col(op_params, filter_height, filter_width, 0,
+                          DimsToShape(input_dims), input_data,
+                          DimsToShape(im2col_dims), im2col_data);
+
     gemm_input_data = im2col_data;
     gemm_input_dims = &im2col_dims;
   } else {
@@ -82,8 +91,8 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
               stride_a, b, stride_b, 0.0f, c, stride_c);
 
   optimized_ops::AddBiasAndEvalActivationFunction(
-      bias_data, bias_dims, output_data, output_dims, output_activation_min,
-      output_activation_max);
+      output_activation_min, output_activation_max, DimsToShape(bias_dims),
+      bias_data, DimsToShape(output_dims), output_data);
 }
 
 }  // namespace cblas_ops

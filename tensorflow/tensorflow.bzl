@@ -22,6 +22,7 @@ load(
 )
 load(
     "//third_party/mkl:build_defs.bzl",
+    "if_enable_mkl",
     "if_mkl",
     "if_mkl_lnx_x64",
     "if_mkl_ml",
@@ -237,6 +238,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+        if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_mkl_lnx_x64(["-fopenmp"]) +
         if_android_arm(["-mfpu=neon"]) +
@@ -448,7 +450,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm"]),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -602,6 +604,7 @@ def tf_gen_op_wrappers_cc(
 #     is invalid to specify both "hidden" and "op_whitelist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
 #     specified ops.
+
 def tf_gen_op_wrapper_py(
         name,
         out = None,
@@ -623,7 +626,7 @@ def tf_gen_op_wrapper_py(
         deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
     tf_cc_binary(
         name = tool_name,
-        linkopts = if_not_windows(["-lm"]) + cc_linkopts,
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
         copts = tf_copts(),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = ([
@@ -1081,6 +1084,7 @@ def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs)
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
                  if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+                 if_enable_mkl(["-DENABLE_MKL"]) +
                  if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
@@ -1215,9 +1219,11 @@ def tf_mkl_kernel_library(
     if prefix:
         srcs = srcs + native.glob(
             [prefix + "*.cc"],
+            exclude = [prefix + "*test*"],
         )
         hdrs = hdrs + native.glob(
             [prefix + "*.h"],
+            exclude = [prefix + "*test*"],
         )
 
     # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
@@ -1674,7 +1680,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
-        }) + tf_binary_dynamic_kernel_deps(kernels),
+        }),
         data = data + select({
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],

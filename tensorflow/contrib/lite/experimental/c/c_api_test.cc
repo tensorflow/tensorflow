@@ -85,6 +85,37 @@ TEST(CApiSimple, Smoke) {
   TFL_DeleteInterpreter(interpreter);
 }
 
+TEST(CApiSimple, ErrorReporter) {
+  TFL_Model* model = TFL_NewModelFromFile(
+      "tensorflow/contrib/lite/testdata/add.bin");
+  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
+
+  // Install a custom error reporter into the interpreter by way of options.
+  tflite::TestErrorReporter reporter;
+  TFL_InterpreterOptionsSetErrorReporter(
+      options,
+      [](void* user_data, const char* format, va_list args) {
+        reinterpret_cast<tflite::TestErrorReporter*>(user_data)->Report(format,
+                                                                        args);
+      },
+      &reporter);
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
+
+  // The options/model can be deleted immediately after interpreter creation.
+  TFL_DeleteInterpreterOptions(options);
+  TFL_DeleteModel(model);
+
+  // Invoke the interpreter before tensor allocation.
+  EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteError);
+
+  // The error should propagate to the custom error reporter.
+  EXPECT_EQ(reporter.error_messages(),
+            "Invoke called on model that is not ready.");
+  EXPECT_EQ(reporter.num_calls(), 1);
+
+  TFL_DeleteInterpreter(interpreter);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {

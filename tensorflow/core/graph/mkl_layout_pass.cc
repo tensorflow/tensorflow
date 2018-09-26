@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -976,7 +977,9 @@ std::vector<MklLayoutRewritePass::ContextInfo*> MklLayoutRewritePass::cinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
+#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -3149,7 +3152,9 @@ MklLayoutRewritePass::ConstStringsInfo MklLayoutRewritePass::csinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
+#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node

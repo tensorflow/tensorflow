@@ -62,6 +62,10 @@ class InterpreterWriter {
   // caller to change the custom data.
   TfLiteStatus RegisterCustomWriter(const std::string& custom_name,
                                     CustomWriter custom_writer);
+  // Tensors that are unused and shouldn't be written.
+  void SetUnusedTensors(const std::set<int>& unused_tensors) {
+    unused_tensors_ = unused_tensors;
+  }
 
  private:
   template <class T>
@@ -111,8 +115,9 @@ class InterpreterWriter {
     int builtin;
     std::string custom;
   };
+  std::set<int> unused_tensors_;
   // For every tensor index in the interpreter, the index in the written.
-  // This is different due to temporary tensors not being written.
+  // This is different due to temporary and unused tensors not being written.
   std::vector<int> tensor_to_written_tensor_;
   // List of used opcodes
   std::vector<OpCode> opcodes_;

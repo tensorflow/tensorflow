@@ -39,11 +39,31 @@ class MockErrorReporter : public ErrorReporter {
   int buffer_size_;
 };
 
+// Used to determine how the op data parsing function creates its working space.
+class MockDataAllocator : public BuiltinDataAllocator {
+ public:
+  MockDataAllocator() : is_allocated_(false) {}
+  void* Allocate(size_t size) override {
+    EXPECT_FALSE(is_allocated_);
+    const int max_size = kBufferSize;
+    EXPECT_LE(size, max_size);
+    is_allocated_ = true;
+    return buffer_;
+  }
+  void Deallocate(void* data) override { is_allocated_ = false; }
+
+ private:
+  static constexpr int kBufferSize = 1024;
+  char buffer_[kBufferSize];
+  bool is_allocated_;
+};
+
 }  // namespace
 
 TEST(FlatbufferConversions, TestParseOpDataConv) {
   MockErrorReporter mock_reporter;
   ErrorReporter* reporter = &mock_reporter;
+  MockDataAllocator mock_allocator;
 
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<void> conv_options =
@@ -58,7 +78,7 @@ TEST(FlatbufferConversions, TestParseOpDataConv) {
   const Operator* conv_op = flatbuffers::GetRoot<Operator>(conv_pointer);
   void* output_data = nullptr;
   EXPECT_EQ(kTfLiteOk, ParseOpData(conv_op, BuiltinOperator_CONV_2D, reporter,
-                                   &output_data));
+                                   &mock_allocator, &output_data));
   EXPECT_NE(nullptr, output_data);
   TfLiteConvParams* params = reinterpret_cast<TfLiteConvParams*>(output_data);
   EXPECT_EQ(kTfLitePaddingSame, params->padding);
@@ -67,12 +87,12 @@ TEST(FlatbufferConversions, TestParseOpDataConv) {
   EXPECT_EQ(kTfLiteActRelu, params->activation);
   EXPECT_EQ(3, params->dilation_width_factor);
   EXPECT_EQ(4, params->dilation_height_factor);
-  free(output_data);
 }
 
 TEST(FlatbufferConversions, TestParseOpDataCustom) {
   MockErrorReporter mock_reporter;
   ErrorReporter* reporter = &mock_reporter;
+  MockDataAllocator mock_allocator;
 
   flatbuffers::FlatBufferBuilder builder;
   flatbuffers::Offset<void> null_options;
@@ -84,7 +104,7 @@ TEST(FlatbufferConversions, TestParseOpDataCustom) {
   const Operator* custom_op = flatbuffers::GetRoot<Operator>(custom_pointer);
   void* output_data = nullptr;
   EXPECT_EQ(kTfLiteOk, ParseOpData(custom_op, BuiltinOperator_CUSTOM, reporter,
-                                   &output_data));
+                                   &mock_allocator, &output_data));
   EXPECT_EQ(nullptr, output_data);
 }
 

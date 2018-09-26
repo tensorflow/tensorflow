@@ -116,7 +116,7 @@ class MapDefunTest(test.TestCase):
     elems2 = array_ops.placeholder(dtypes.int32)
     result = map_defun.map_defun(fn, [elems1, elems2],
                                  [dtypes.int32, dtypes.int32], [(), ()])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesWithPredicateMatch(
           errors.InvalidArgumentError,
           "All inputs must have the same dimension 0."):
@@ -225,7 +225,7 @@ class MapDefunTest(test.TestCase):
     c = constant_op.constant([1, 2, 3, 4, 5])
     map_defun_op = map_defun.map_defun(simple_fn, [c], [dtypes.int32], [()])[0]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       thread = self.checkedThread(
           self._assert_op_cancelled, args=(sess, map_defun_op))
       thread.start()

@@ -27,6 +27,16 @@ Status MakeIteratorFromInputElement(
     int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
 
+// Returns Status::OK() if `expected` and `received` types match,
+// errors::InvalidArgument otherwise.
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const DataTypeVector& received);
+
+// Returns Status::OK() if `expected` and `received` shapes are compatible,
+// errors::InvalidArgument otherwise.
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<PartialTensorShape>& received);
+
 }  // namespace data
 }  // namespace tensorflow
 

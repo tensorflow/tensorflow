@@ -29,7 +29,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -301,21 +300,21 @@ def random_flip_left_right(image, seed=None):
 
 def _random_flip(image, flip_index, seed, scope_name):
   """Randomly (50% chance) flip an image along axis `flip_index`.
-    Args:
-      image: 4-D Tensor of shape `[batch, height, width, channels]` or
-             3-D Tensor of shape `[height, width, channels]`.
-      flip_index: The dimension along which to flip the image.
-                  Vertical: 0, Horizontal: 1
-      seed: A Python integer. Used to create a random seed. See
-        `tf.set_random_seed`
-        for behavior.
-      scope_name: Name of the scope in which the ops are added.
 
-    Returns:
-      A tensor of the same type and shape as `image`.
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+    flip_index: Dimension along which to flip image. Vertical: 0, Horizontal: 1
+    seed: A Python integer. Used to create a random seed. See
+      `tf.set_random_seed`
+      for behavior.
+    scope_name: Name of the scope in which the ops are added.
 
-    Raises:
-      ValueError: if the shape of `image` not supported.
+  Returns:
+    A tensor of the same type and shape as `image`.
+
+  Raises:
+    ValueError: if the shape of `image` not supported.
   """
   with ops.name_scope(None, scope_name, [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
@@ -330,19 +329,18 @@ def _random_flip(image, flip_index, seed, scope_name):
           lambda: image,
           name=scope
       )
-      if isinstance(result, tuple):
-        result = result[0]  # TODO(b/111124878) remove this logic (CondV2).
       return fix_image_flip_shape(image, result)
     elif shape.ndims == 4:
+      batch_size = array_ops.shape(image)[0]
       uniform_random = random_ops.random_uniform(
-          [array_ops.shape(image)[0]], 0, 1.0, seed=seed
+          [batch_size], 0, 1.0, seed=seed
       )
-      mirror_cond = math_ops.less(uniform_random, .5)
-      return array_ops.where(
-          mirror_cond,
-          image,
-          functional_ops.map_fn(lambda x: array_ops.reverse(x, [flip_index]), image, dtype=image.dtype)
+      flips = math_ops.round(
+          array_ops.reshape(uniform_random, [batch_size, 1, 1, 1])
       )
+      flips = math_ops.cast(flips, image.dtype)
+      flipped_input = array_ops.reverse(image, [flip_index + 1])
+      return flips * flipped_input + (1 - flips) * image
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
@@ -1029,10 +1027,10 @@ def resize_images(images,
       scale_factor_width = (math_ops.to_float(new_width_const) /
                             math_ops.to_float(current_width))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(scale_factor *
-                                              math_ops.to_float(current_height))
-      scaled_width_const = math_ops.to_int32(scale_factor *
-                                             math_ops.to_float(current_width))
+      scaled_height_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_height)))
+      scaled_width_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_width)))
 
       # NOTE: Reset the size and other constants used later.
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
@@ -1176,7 +1174,7 @@ def resize_image_with_pad(image,
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit norm.
+  """Linearly scales `image` to have zero mean and unit variance.
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
   of all values in image, and
@@ -1379,7 +1377,7 @@ def adjust_gamma(image, gamma=1, gain=1):
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
-  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma'):
+  with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
     # Convert pixel value to DT_FLOAT for computing adjusted image.
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
     # Keep image dtype for computing the scale of corresponding dtype.

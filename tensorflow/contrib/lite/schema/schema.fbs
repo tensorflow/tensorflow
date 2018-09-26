@@ -174,6 +174,8 @@ enum BuiltinOperator : byte {
   FLOOR_DIV = 90,
   REDUCE_ANY = 91,
   SQUARE = 92,
+  ZEROS_LIKE = 93,
+  FILL = 94,
 }
 
 // Options for the builtin operators.
@@ -244,6 +246,8 @@ union BuiltinOptions {
   UnpackOptions,
   FloorDivOptions,
   SquareOptions,
+  ZerosLikeOptions,
+  FillOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -276,11 +280,15 @@ table Pool2DOptions {
 }
 
 table DepthwiseConv2DOptions {
+  // Parameters for DepthwiseConv version 1 or above.
   padding:Padding;
   stride_w:int;
   stride_h:int;
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
+  // Parameters for DepthwiseConv version 2 or above.
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table ConcatEmbeddingsOptions {
@@ -582,6 +590,12 @@ table FloorDivOptions {
 }
 
 table SquareOptions {
+}
+
+table ZerosLikeOptions {
+}
+
+table FillOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

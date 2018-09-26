@@ -260,7 +260,7 @@ interpreter.allocate_tensors()
 In order to run the latest version of the TOCO Python API, clone the TensorFlow
 repository, configure the installation, and build and install the pip package.
 Detailed instructions are available
-[here](https://www.tensorflow.org/install/install_sources).
+[here](https://www.tensorflow.org/install/source).
 
 ### Converting models prior to TensorFlow 1.9. <a name="pre-tensorflow-1.9"></a>
 

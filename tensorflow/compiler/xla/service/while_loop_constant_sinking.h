@@ -50,7 +50,7 @@ namespace xla {
 // conditions as well.
 //
 // TODO(b/79121449):  We should also sink broadcasts of constants.
-class WhileLoopConstantSinking : public HloPassInterface {
+class WhileLoopConstantSinking : public HloModulePass {
  public:
   ~WhileLoopConstantSinking() override = default;
 
