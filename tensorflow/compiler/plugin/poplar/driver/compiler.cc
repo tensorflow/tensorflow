@@ -343,12 +343,13 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
     perftools::gputools::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
-  VLOG(1) << "Begin compilation: " << module->name();
-
   if (stream_exec == nullptr) {
     return tensorflow::errors::Unknown(
         "NULL stream pointer in poplar compiler");
   }
+
+  VLOG(1) << "Begin compilation: " << module->name() << " for ordinal  "
+          << stream_exec->device_ordinal();
 
   PoplarExecutor* poplarExecutor(
       static_cast<PoplarExecutor*>(stream_exec->implementation()));

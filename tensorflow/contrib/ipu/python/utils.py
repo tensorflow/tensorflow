@@ -22,58 +22,144 @@ from tensorflow.python.framework import ops
 
 import time
 
-def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
+def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
+                      num_ipus=None, tiles_per_ipu=None,
+                      ipu_device_config_index=None,
                       use_poplar_text_report=False,
-                      report_every_nth_execution=0, type='IPU_MODEL',
-                      ipu_device_config_index=None):
+                      report_every_nth_execution=0):
   """Create the IPU options for an IPU model device.
 
-<<<<<<< HEAD
-  ```python
-  opts = create_ipu_config(profiling=True, num_ipus=1, tiles_per_ipu=64)
-  with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
-    ...
-  ```
+  The configuration describes a system connsisting of multiple Tensorflow
+  devices, each with control of one of more IPUs. The devices will be labelled
+  `/device:IPU:0`, `/device:IPU:1' and so on.  Up to four devices can be
+  configured. The `num_devices` parameter specifies the number of Tensorflow
+  devices.
 
-  :param profiling: Enable all IPU profiling
-  :param num_ipus: Number of IPUs in the model
-  :param tiles_per_ipu: Number of tiles per IPU in the model
-  :param use_poplar_text_report: Enable the poplar textual report summary
-  :param report_every_nth_execution: Only produce an execution report on every
-                                     Nth execution.  0=One report only.
-  :param type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
-  :param ipu_device_config_index: Index into the vector returned by getDevices()
-                                  without specifying the number of IPUs. If not
-                                  specified then first available device is used.
-  :return: An IPUOptions configuration protobuf, suitable for using in the creation
-           of the ConfigProto session options.
+  Each device can control a specific number of IPUs, given by the `num_ipus`
+  parameter.   This can either be an integer or a list of integers. A single
+  integer will make each device in the system have the same number of IPUs.
+  A list allows each device to have a different number of IPUs.  The list
+  must have the same number of elements as the number of devices.
+
+  As an alternative to supplying the number of IPUs, the index of the poplar
+  device can be specified in the `ipu_device_config_index` parameter. An
+  integer or a list can be provided, like for `num_ipus`.
+
+  Examples:
+
+    ```python
+    # Create a single device, with one IPU and 64 tiles per IPU.
+    opts = create_ipu_config(profiling=True, num_ipus=1, tiles_per_ipu=64)
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+    ```python
+    # Create a single device, using poplar configuration 4
+    opts = create_ipu_config(ipu_device_config_index=4)
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+    ```python
+    # Create two devices, with 2 IPUs per device.
+    opts = create_ipu_config(num_devices=2, num_ipus=2)
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+    ```python
+    # Create two devices, with 1 IPU in the first device and 2 IPUs
+    # in the second device.
+    opts = create_ipu_config(num_devices=2, num_ipus=[1,2])
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+    ```python
+    # Create four devices, using poplar device IDs 0, 1, 2, an 3
+    # in the second device.
+    opts = create_ipu_config(num_devices=2, ipu_device_config_index=[0, 1, 2, 3])
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+  Args:
+    :param type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
+    :param profiling: Enable all IPU profiling
+    :param num_devices: The number of Tensorflow devices to configure
+    :param num_ipus: Number of IPUs pre Tensorflow device
+    :param tiles_per_ipu: Number of tiles per IPU in the model. This only
+                          applies when the `type` parameter is `IPU_MODEL`.
+    :param ipu_device_config_index: Index into the vector returned by
+                                getDevices() without specifying the number
+                                of IPUs. This only applies when the `type`
+                                parameter is `IPU`.
+    :param use_poplar_text_report: Enable the poplar textual report summary
+    :param report_every_nth_execution: Only produce an execution report on
+                                       every Nth execution.  0=One report
+                                       only.
+  Returns:
+
+    :return: An IPUOptions configuration protobuf, suitable for using in the
+             creation of the ConfigProto session options.
   """
+
+  if ipu_device_config_index is not None:
+    if (num_ipus is not None) or (tiles_per_ipu is not None):
+      raise Exception(
+        "Cannot specify `ipu_device_config_index` and `num_ipus` or "
+        "`tiles_per_ipu`")
+
+  if isinstance(num_ipus, (list, tuple)):
+    if len(num_ipus) != num_devices:
+      raise Exception("`num_ipus` must contain `num_devices` entries.")
+
+  if isinstance(ipu_device_config_index, (list, tuple)):
+    if len(ipu_device_config_index) != num_devices:
+      raise Exception(
+        "`ipu_device_config_index` must contain `num_devices` entries.")
+
+  if num_devices > 1 and isinstance(ipu_device_config_index, (int)):
+    raise Exception(
+      "`ipu_device_config_index` must be a list of length `num_devices`")
+
+  if num_devices > 4:
+    raise Exception("`num_devices` must not exceed 4")
+
   opts = config_pb2.IPUOptions()
-  dev = opts.device_config.add()
-  if type == 'IPU':
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU
-  elif type == 'CPU':
-    dev.type = config_pb2.IPUOptions.DeviceConfig.CPU
-  elif type == 'IPU_MODEL':
-    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
-  else:
-    raise Exception("type parameter must be 'IPU', 'CPU', or 'IPU_MODEL'")
 
-  dev.profiling.enable_compilation_trace = profiling
-  dev.profiling.enable_io_trace = profiling
-  dev.profiling.enable_execution_trace = profiling
-  dev.profiling.enable_poplar_reports_text = use_poplar_text_report
-  dev.profiling.report_every_nth_execution = report_every_nth_execution
+  for d in range(num_devices):
+    dev = opts.device_config.add()
+    if type == 'IPU':
+      dev.type = config_pb2.IPUOptions.DeviceConfig.IPU
+    elif type == 'CPU':
+      dev.type = config_pb2.IPUOptions.DeviceConfig.CPU
+    elif type == 'IPU_MODEL':
+      dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+    else:
+      raise Exception("`type` parameter must be 'IPU', 'CPU', or 'IPU_MODEL'")
 
-  if num_ipus:
-    dev.ipu_model_config.num_ipus = num_ipus
+    dev.profiling.enable_compilation_trace = profiling
+    dev.profiling.enable_io_trace = profiling
+    dev.profiling.enable_execution_trace = profiling
+    dev.profiling.enable_poplar_reports_text = use_poplar_text_report
+    dev.profiling.report_every_nth_execution = report_every_nth_execution
 
-  if tiles_per_ipu:
-    dev.ipu_model_config.tiles_per_ipu = tiles_per_ipu
+    if isinstance(num_ipus, int):
+      dev.ipu_model_config.num_ipus = num_ipus
+    if isinstance(num_ipus, (list, tuple)):
+      dev.ipu_model_config.num_ipus = num_ipus[d]
 
-  if ipu_device_config_index:
-    dev.device_config_index.has_index = True
-    dev.device_config_index.index = ipu_device_config_index
+    if isinstance(ipu_device_config_index, int):
+      dev.device_config_index.has_index = True
+      dev.device_config_index.index = ipu_device_config_index
+    if isinstance(ipu_device_config_index, (list, tuple)):
+      dev.device_config_index.has_index = True
+      dev.device_config_index.index = ipu_device_config_index[d]
+
+    if isinstance(tiles_per_ipu, int):
+      dev.ipu_model_config.tiles_per_ipu = tiles_per_ipu
 
   return opts
 

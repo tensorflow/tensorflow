@@ -56,8 +56,33 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(type='CPU')
     self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
 
+    cfg = ipu.utils.create_ipu_config(type='CPU', num_devices=2)
+    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+    self.assertTrue(len(cfg.device_config), 2)
+
+    cfg = ipu.utils.create_ipu_config(type='CPU', num_devices=2, num_ipus=4)
+    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+    self.assertTrue(len(cfg.device_config), 2)
+    self.assertTrue(cfg.device_config[0].ipu_model_config.num_ipus, 4)
+    self.assertTrue(cfg.device_config[1].ipu_model_config.num_ipus, 4)
+
     with self.assertRaises(Exception):
       cfg = ipu.utils.create_ipu_config(type='Other')
+
+    with self.assertRaises(Exception):
+      ipu.utils.create_ipu_config(num_ipus=[1,2,3])
+
+    with self.assertRaises(Exception):
+      ipu.utils.create_ipu_config(num_devices=1, ipu_device_config_index=[1,2])
+
+    with self.assertRaises(Exception):
+      ipu.utils.create_ipu_config(num_devices=2, ipu_device_config_index=1)
+
+    with self.assertRaises(Exception):
+      ipu.utils.create_ipu_config(num_ipus=2, ipu_device_config_index=0)
+
+    with self.assertRaises(Exception):
+      ipu.utils.create_ipu_config(num_devices=5)
 
   def testEventFetchAndStringDecode(self):
     with ops.device("/device:IPU:0"):
@@ -213,7 +238,6 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       )
       raised = True
     self.assertTrue(raised)
-
 
 if __name__ == "__main__":
     googletest.main()

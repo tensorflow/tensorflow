@@ -39,7 +39,7 @@ namespace xla {
 namespace poplarplugin {
 
 PoplarPlatform::PoplarPlatform() : name_("Poplar") {
-  num_devices_ = 1;
+  num_devices_ = 4;
 
   VLOG(1) << "Poplar version: " << poplar::versionString();
 }

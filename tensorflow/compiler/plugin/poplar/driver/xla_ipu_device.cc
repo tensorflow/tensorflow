@@ -92,6 +92,9 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
   int visible_devices = p->VisibleDeviceCount();
+  int config_count = options.config.ipu_options().device_config_size();
+  visible_devices = std::min(visible_devices, config_count);
+  visible_devices = std::max(visible_devices, 1);
   for (int ordinal = 0; ordinal < visible_devices; ordinal++) {
     XlaOpRegistry::DeviceRegistration registration;
     registration.compilation_device_name = DEVICE_IPU_XLA_JIT;

@@ -578,7 +578,7 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::AllocateSingleOutput(
   } else {
     // The output is not one of the inputs
     se::DeviceMemoryBase allocated =
-        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
+        allocator->Allocate(ordinal_, size, false).ConsumeValueOrDie().Forget();
     TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
     tc->size = size;
     tc->on_device = streamed[n] ? false : true;
@@ -908,7 +908,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           AllocateOutputBuffer(allocator, output_shape, 0, output_map, args,
                                executable.OutputStreamed());
 
-      VLOG(1) << "Executing on poplar device type " << GetDeviceTargetName();
+      VLOG(1) << "Executing on poplar stream ordinal " << ordinal_
+              << " of type " << GetDeviceTargetName();
 
       try {
         // Input streams
