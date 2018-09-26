@@ -900,6 +900,11 @@ TF_CAPI_EXPORT extern void TF_DeleteImportGraphDefOptions(
 TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetPrefix(
     TF_ImportGraphDefOptions* opts, const char* prefix);
 
+// Set bind device for the nodes in the `graph_def` that will be imported into `graph`.
+// `device` is copied and has no lifetime requirements.
+TF_CAPI_EXPORT extern void TF_ImportGraphDefOptionsSetBindDevice(
+    TF_ImportGraphDefOptions* opts, const char* device);
+
 // Set whether to uniquify imported operation names. If true, imported operation
 // names will be modified if their name already exists in the graph. If false,
 // conflicting names will be treated as an error. Note that this option has no
@@ -1018,14 +1023,6 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDefWithReturnOutputs(
 TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
-
-// Import the graph serialized in `graph_def` into `graph`.
-// Convenience function for when no results are needed.
-// Optionally try to bind resulted graph to given device ('/gpu:1' for example)
-void TF_GraphImportGraphDefWithDevice(TF_Graph* graph, const TF_Buffer* graph_def,
-                            const TF_ImportGraphDefOptions* options,
-			    const char *device,
-                            TF_Status* status);
 
 // Adds a copy of function `func` and optionally its gradient function `grad`
 // to `g`. Once `func`/`grad` is added to `g`, it can be called by creating

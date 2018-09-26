@@ -1942,6 +1942,10 @@ void TF_ImportGraphDefOptionsSetPrefix(TF_ImportGraphDefOptions* opts,
                                        const char* prefix) {
   opts->opts.prefix = prefix;
 }
+void TF_ImportGraphDefOptionsSetBindDevice(TF_ImportGraphDefOptions* opts,
+                                       const char* device) {
+  opts->opts.bind_device = device;
+}
 
 void TF_ImportGraphDefOptionsSetUniquifyNames(TF_ImportGraphDefOptions* opts,
                                               unsigned char uniquify_names) {
@@ -2126,22 +2130,6 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
                             TF_Status* status) {
   TF_ImportGraphDefResults* results =
       TF_GraphImportGraphDefWithResults(graph, graph_def, options, status);
-  TF_DeleteImportGraphDefResults(results);
-}
-
-void TF_GraphImportGraphDefWithDevice(TF_Graph* graph, const TF_Buffer* graph_def,
-                            const TF_ImportGraphDefOptions* options,
-			    const char *device,
-                            TF_Status* status) {
-  TF_ImportGraphDefResults* results =
-      TF_GraphImportGraphDefWithResults(graph, graph_def, options, status);
-
-  if ((device != NULL) && (TF_GetCode(status) == TF_OK)) {
-    for (Node *node: graph->graph.nodes()) {
-      node->set_requested_device(device);
-    }
-  }
-
   TF_DeleteImportGraphDefResults(results);
 }
 

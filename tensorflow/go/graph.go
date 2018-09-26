@@ -100,6 +100,12 @@ func (g *Graph) ImportWithDevice(def []byte, prefix string, device string) error
 	defer C.TF_DeleteImportGraphDefOptions(opts)
 	C.TF_ImportGraphDefOptionsSetPrefix(opts, cprefix)
 
+	if len(device) != 0 {
+		cdev := C.CString(device)
+		defer C.free(unsafe.Pointer(cdev))
+		C.TF_ImportGraphDefOptionsSetBindDevice(opts, cdev)
+	}
+
 	buf := C.TF_NewBuffer()
 	defer C.TF_DeleteBuffer(buf)
 	// Would have preferred to use C.CBytes, but that does not play well
@@ -115,15 +121,7 @@ func (g *Graph) ImportWithDevice(def []byte, prefix string, device string) error
 
 	status := newStatus()
 
-	if len(device) != 0 {
-		cdev := C.CString(device)
-		defer C.free(unsafe.Pointer(cdev))
-
-		C.TF_GraphImportGraphDefWithDevice(g.c, buf, opts, cdev, status.c)
-	} else {
-		C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
-	}
-
+	C.TF_GraphImportGraphDef(g.c, buf, opts, status.c)
 	if err := status.Err(); err != nil {
 		return err
 	}
