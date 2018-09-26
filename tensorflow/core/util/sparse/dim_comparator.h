@@ -113,6 +113,74 @@ class FixedDimComparator : DimComparator {
   }
 };
 
+template <int DIMS>
+class NaiveDimComparator {
+ public:
+  typedef typename gtl::ArraySlice<int64> VarDimArray;
+
+  NaiveDimComparator(const TTypes<int64>::Matrix& ix)
+      : ix_flat_(ix.data()) {}
+
+  inline bool operator()(const int64 i, const int64 j) const {
+    const int64 off_i = i * DIMS;
+    const int64 off_j = j * DIMS;
+    for (int di = 0; di < DIMS; ++di) {
+      if (ix_flat_[off_i + di] < ix_flat_[off_j + di]) return true;
+      if (ix_flat_[off_i + di] > ix_flat_[off_j + di]) return false;
+    }
+    return false;
+  }
+
+ private:
+  const int64* ix_flat_;
+};
+
+#define COMPARE_ONCE(OFFI, OFFJ, N)                         \
+  if (ix_flat_[OFFI + N] < ix_flat_[OFFJ + N]) return true; \
+  if (ix_flat_[OFFI + N] > ix_flat_[OFFJ + N]) return false;
+
+#define COMPARE_PASS_1D(OFFI, OFFJ)
+
+#define COMPARE_PASS_2D(OFFI, OFFJ) COMPARE_ONCE(OFFI, OFFJ, 0);
+
+#define COMPARE_PASS_3D(OFFI, OFFJ) \
+  COMPARE_PASS_2D(OFFI, OFFJ);      \
+  COMPARE_ONCE(OFFI, OFFJ, 1);
+
+#define COMPARE_PASS_4D(OFFI, OFFJ) \
+  COMPARE_PASS_3D(OFFI, OFFJ);      \
+  COMPARE_ONCE(OFFI, OFFJ, 2);
+
+#define COMPARE_PASS_5D(OFFI, OFFJ) \
+  COMPARE_PASS_4D(OFFI, OFFJ);      \
+  COMPARE_ONCE(OFFI, OFFJ, 3);
+
+#define HANDLE_COMPARE(NDIM)                                          \
+  template <>                                                         \
+  class NaiveDimComparator<NDIM> {                                    \
+   public:                                                            \
+    typedef typename gtl::ArraySlice<int64> VarDimArray;              \
+                                                                      \
+    NaiveDimComparator(const TTypes<int64>::Matrix& ix)               \
+        : ix_flat_(ix.data()) {}                                      \
+                                                                      \
+    inline bool operator()(const int64 i, const int64 j) const {      \
+      const int64 off_i = i * NDIM;                                   \
+      const int64 off_j = j * NDIM;                                   \
+      COMPARE_PASS_##NDIM##D(off_i, off_j);                           \
+      return ix_flat_[off_i + NDIM - 1] < ix_flat_[off_j + NDIM - 1]; \
+    }                                                                 \
+                                                                      \
+   private:                                                           \
+    const int64* ix_flat_;                                            \
+  };
+
+HANDLE_COMPARE(1);
+HANDLE_COMPARE(2);
+HANDLE_COMPARE(3);
+HANDLE_COMPARE(4);
+HANDLE_COMPARE(5);
+
 }  // namespace sparse
 }  // namespace tensorflow
 

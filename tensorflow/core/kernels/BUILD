@@ -3093,6 +3093,7 @@ tf_cc_tests(
     size = "small",
     srcs = [
         "sparse_add_op_test.cc",
+        "sparse_concat_op_test.cc",
         "sparse_dense_binary_op_shared_test.cc",
         "sparse_reduce_sum_op_test.cc",
     ],
@@ -3100,6 +3101,7 @@ tf_cc_tests(
         ":ops_testutil",
         ":ops_util",
         ":sparse_add_op",
+        ":sparse_concat_op",
         ":sparse_dense_binary_op_shared",
         ":sparse_reduce_op",
         "//tensorflow/core:core_cpu",
