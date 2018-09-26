@@ -22,6 +22,7 @@ load(
 )
 load(
     "//third_party/mkl:build_defs.bzl",
+    "if_enable_mkl",
     "if_mkl",
     "if_mkl_lnx_x64",
     "if_mkl_ml",
@@ -237,6 +238,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+        if_enable_mkl(["-DENABLE_MKL"]) +
         if_ngraph(["-DINTEL_NGRAPH=1"]) +
         if_mkl_lnx_x64(["-fopenmp"]) +
         if_android_arm(["-mfpu=neon"]) +
@@ -1082,6 +1084,7 @@ def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs)
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
                  if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +
+                 if_enable_mkl(["-DENABLE_MKL"]) +
                  if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
