@@ -1331,6 +1331,30 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
 
+  def testRot90ND4Dims(self):
+    image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
+    with self.test_session(use_gpu=True):
+      rotated = image
+      for _ in xrange(4):
+        rotated = image_ops.rot90ND(rotated, 0, 1)
+      self.assertAllEqual(image, rotated.eval())
+
+  def testRot90ND4DimsWithBatch(self):
+    image = np.arange(96, dtype=np.uint8).reshape([2, 2, 2, 4, 3])
+    with self.test_session(use_gpu=True):
+      rotated = image
+      for _ in xrange(4):
+        rotated = image_ops.rot90ND(rotated, 1, 2)
+      self.assertAllEqual(image, rotated.eval())
+
+  def testRot90ND4DimsReverseIndexes(self):
+    image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
+    with self.test_session(use_gpu=True):
+      rotated = image
+      for _ in xrange(4):
+        rotated = image_ops.rot90ND(rotated, 1, 0)
+      self.assertAllEqual(image, rotated.eval())
+
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
   def _testContrast(self, x_np, y_np, contrast_factor):
