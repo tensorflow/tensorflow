@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -125,8 +124,8 @@ class SoftplusTest(test.TestCase):
   def testNoInts(self):
     with self.cached_session():
       with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "No OpKernel was registered to support Op 'Softplus'"):
+          TypeError,
+          "'features' has DataType int32 not in list of allowed values"):
         nn_ops.softplus(constant_op.constant(7)).eval()
 
 

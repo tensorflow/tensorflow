@@ -1009,32 +1009,30 @@ REGISTER_OP("SeluGrad")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
-// TODO(b/111515541): change T to {half, bfloat16, float, double}
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SoftplusGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
-// TODO(b/111515541): change T to {half, bfloat16, float, double}
 REGISTER_OP("Softsign")
     .Input("features: T")
     .Output("activations: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("SoftsignGrad")
     .Input("gradients: T")
     .Input("features: T")
     .Output("backprops: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn(shape_inference::MergeBothInputsShapeFn);
 
 // --------------------------------------------------------------------------
