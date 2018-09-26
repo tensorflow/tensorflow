@@ -57,7 +57,7 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
                        "[optional] Number of full runs in each pass."),
       tensorflow::Flag("delegate", &values.delegate,
                        "[optional] Delegate to use for executing ops. Must be "
-                       "`{\"\", EAGER}`"),
+                       "`{\"\", FLEX}`"),
   };
 
   bool no_inputs = *argc == 1;
@@ -70,7 +70,7 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
              values.input_layer_shape.empty() || values.output_layer.empty()) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
     return {};
-  } else if (!(values.delegate == "" || values.delegate == "EAGER")) {
+  } else if (!(values.delegate == "" || values.delegate == "FLEX")) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
     return {};
   }

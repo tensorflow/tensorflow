@@ -421,7 +421,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
       interpreter.allocate_tensors()
     self.assertIn(
         'Regular TensorFlow ops are not supported by this interpreter. Make '
-        'sure you invoke the Eager delegate before inference.',
+        'sure you invoke the Flex delegate before inference.',
         str(error.exception))
 
 

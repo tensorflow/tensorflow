@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_H_
-#define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_DELEGATE_H_
+#define TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_DELEGATE_H_
 
 #include "tensorflow/contrib/lite/c/c_api_internal.h"
-#include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
+#include "tensorflow/contrib/lite/delegates/flex/delegate_data.h"
 
 namespace tflite {
 
@@ -24,12 +24,12 @@ namespace tflite {
 // Delegate that can be used to extract parts of a graph that are designed to be
 // executed by TensorFlow's runtime via Eager.
 //
-// The interpreter must be constructed after the EagerDelegate and destructed
-// before the EagerDelegate. This delegate may be used with multiple
+// The interpreter must be constructed after the FlexDelegate and destructed
+// before the FlexDelegate. This delegate may be used with multiple
 // interpreters, but it is *not* thread-safe.
 //
 // Usage:
-//   auto delegate = EagerDelegate::Create();
+//   auto delegate = FlexDelegate::Create();
 //   ... build interpreter ...
 //
 //   if (delegate) {
@@ -39,21 +39,21 @@ namespace tflite {
 //   ... run inference ...
 //   ... destroy interpreter ...
 //   ... destroy delegate ...
-class EagerDelegate : public TfLiteDelegate {
+class FlexDelegate : public TfLiteDelegate {
  public:
   // Creates a delegate that supports TF ops.
   //
-  // If the underyling TF Eager context creation fails, returns null.
-  static std::unique_ptr<EagerDelegate> Create();
+  // If the underyling TF Flex context creation fails, returns null.
+  static std::unique_ptr<FlexDelegate> Create();
 
-  ~EagerDelegate();
+  ~FlexDelegate();
 
  private:
-  explicit EagerDelegate(std::unique_ptr<eager::DelegateData> delegate_data);
+  explicit FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data);
 
-  std::unique_ptr<eager::DelegateData> delegate_data_;
+  std::unique_ptr<flex::DelegateData> delegate_data_;
 };
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_DELEGATE_H_

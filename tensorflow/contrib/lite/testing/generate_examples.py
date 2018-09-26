@@ -343,7 +343,7 @@ def toco_convert(graph_def_str, input_tensors, output_tensors,
       opts = ("--input_arrays={0} --output_arrays={1}".format(
           ",".join(input_arrays), ",".join(output_tensors)))
     elif FLAGS.run_with_extended:
-      opts += " --allow_eager_ops --force_eager_ops"
+      opts += " --allow_flex_ops --force_flex_ops"
     cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
            (bin_path, graphdef_file.name, output_file.name, opts,
             stdout_file.name))
