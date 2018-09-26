@@ -1408,10 +1408,6 @@ def set_other_mpi_vars(environ_cp):
     raise ValueError('Cannot find the MPI library file in %s/lib' % mpi_home)
 
 
-def set_grpc_build_flags():
-  write_to_bazelrc('build --define grpc_no_ares=true')
-
-
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
   if syslibs and syslibs != '':
@@ -1498,8 +1494,6 @@ def main():
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
     environ_cp['TF_ENABLE_XLA'] = '0'
-    environ_cp['TF_NEED_GDR'] = '0'
-    environ_cp['TF_NEED_VERBS'] = '0'
     environ_cp['TF_NEED_MPI'] = '0'
     environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
@@ -1526,12 +1520,7 @@ def main():
                 'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
-  set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support', False,
-                'gdr')
-  set_build_var(environ_cp, 'TF_NEED_VERBS', 'VERBS', 'with_verbs_support',
-                False, 'verbs')
-  set_build_var(environ_cp, 'TF_NEED_NGRAPH', 'nGraph', 'with_ngraph_support',
-                False, 'ngraph')
+
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
@@ -1588,7 +1577,6 @@ def main():
     set_mpi_home(environ_cp)
     set_other_mpi_vars(environ_cp)
 
-  set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
   set_system_libs_flag(environ_cp)
   if is_windows():
@@ -1613,7 +1601,11 @@ def main():
           'more details.')
     config_info_line('mkl', 'Build with MKL support.')
     config_info_line('monolithic', 'Config for mostly static monolithic build.')
+    config_info_line('gdr', 'Build with GDR support.')
+    config_info_line('verbs', 'Build with libverbs support.')
+    config_info_line('ngraph', 'Build with Intel ngraph support.')
 
 
 if __name__ == '__main__':
   main()
+
