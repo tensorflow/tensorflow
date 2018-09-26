@@ -1471,7 +1471,7 @@ def set_system_libs_flag(environ_cp):
   if 'LIBDIR' in environ_cp:
     write_to_bazelrc('build --define=LIBDIR=%s' % environ_cp['LIBDIR'])
   if 'INCLUDEDIR' in environ_cp:
-write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
+    write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
 
 
 def set_windows_build_flags(environ_cp):
