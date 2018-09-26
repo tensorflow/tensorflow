@@ -126,7 +126,7 @@ class SoftplusTest(test.TestCase):
       with self.assertRaisesRegexp(
           TypeError,
           "'features' has DataType int32 not in list of allowed values"):
-        nn_ops.softplus(constant_op.constant(7)).eval()
+        nn_ops.softplus(constant_op.constant(42)).eval()
 
 
 if __name__ == "__main__":
