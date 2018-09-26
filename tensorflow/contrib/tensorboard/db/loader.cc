@@ -111,10 +111,10 @@ int main(int argc, char* argv[]) {
     ++records;
   }
   uint64 elapsed = env->NowMicros() - start;
+  uint64 bps = (elapsed == 0 ? offset : static_cast<uint64>(
+                                            offset / (elapsed / 1000000.0)));
   LOG(INFO) << "Loaded " << AddCommas(offset) << " bytes with "
-            << AddCommas(records) << " records at "
-            << AddCommas(offset / (elapsed / 1000000)) << " bps";
-
+            << AddCommas(records) << " records at " << AddCommas(bps) << " bps";
   return 0;
 }
 

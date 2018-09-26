@@ -45,6 +45,7 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -530,6 +531,24 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       with self.cached_session() as sess:
         self.assertEqual(sess.run(z_grad), 3.0)
 
+  def testCapturedEagerTensors(self):
+    # Test that we can handle captured eager tensors unrelated to the gradient
+    # computation (i.e. we need to ignore them).
+    # TODO(skyewm): make it an error if you try to take the gradient wrt a
+    # captured EagerTensor
+    with context.eager_mode():
+      c = constant_op.constant(2.0, name="c")
+
+      @function.defun
+      def Foo():
+        x = constant_op.constant(10.0, name="x")
+        y = math_ops.multiply(x, c, name="y")
+        z = math_ops.multiply(y, 3.0, name="z")
+        g = gradients_impl.gradients(z, x)
+        return g[0]
+
+      self.assertEqual(Foo().numpy(), 6.0)
+
 
 class StopGradientTest(test_util.TensorFlowTestCase):
 
@@ -1002,6 +1021,26 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         [[1., 2.], [5, 6], [10., 12.]])
     result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
+
+
+class TensorListGradientsTest(test_util.TensorFlowTestCase):
+
+  def testDefaultGradYs(self):
+    with ops.Graph().as_default():
+      tl = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      a = constant(1.0)
+      tl = list_ops.tensor_list_push_back(tl, a)
+
+      grad_tl = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      grad_tl = list_ops.tensor_list_push_back(tl, constant(5.0))
+
+      grad = gradients.gradients(tl, a, grad_ys=grad_tl)[0]
+      with self.cached_session() as sess:
+        self.assertEquals(sess.run(grad), 5.)
 
 
 if __name__ == "__main__":

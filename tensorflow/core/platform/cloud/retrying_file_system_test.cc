@@ -72,7 +72,7 @@ class MockRandomAccessFile : public RandomAccessFile {
 class MockWritableFile : public WritableFile {
  public:
   explicit MockWritableFile(const ExpectedCalls& calls) : calls_(calls) {}
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     return calls_.ConsumeNextCall("Append");
   }
   Status Close() override { return calls_.ConsumeNextCall("Close"); }

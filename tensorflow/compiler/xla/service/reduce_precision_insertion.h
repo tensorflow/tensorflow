@@ -29,7 +29,7 @@ namespace xla {
 // HLO pass which inserts reduce-precision instructions into the HLO graph, for
 // purposes of experimenting with the effects of reduced-precision storage of
 // intermediate values.
-class ReducePrecisionInsertion : public HloPassInterface {
+class ReducePrecisionInsertion : public HloModulePass {
   using InstructionFilterFunction = std::function<bool(const HloInstruction*)>;
 
  public:

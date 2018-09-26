@@ -358,6 +358,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
                 const OpRegistrationData** op_reg_data) const override
       LOCKS_EXCLUDED(mu_);
 
+  // Generates new function name with the specified prefix that is unique
+  // across this library.
+  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
+
   // Ops created for function arguments bear the name given by `kArgOp`; those
   // created for return values bear the name given by `kRetOp`.
   static constexpr const char* const kArgOp = "_Arg";

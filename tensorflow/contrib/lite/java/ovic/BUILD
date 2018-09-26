@@ -44,6 +44,7 @@ java_binary(
 android_library(
     name = "ovicbenchmarkerlib",
     srcs = [
+        "src/main/java/org/tensorflow/ovic/OvicBenchmarker.java",
         "src/main/java/org/tensorflow/ovic/OvicClassifier.java",
         "src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
     ],

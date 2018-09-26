@@ -197,6 +197,7 @@ py_library(
     srcs = ["canned/boosted_trees.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":boosted_trees_utils",
         ":estimator",
         ":head",
         ":model_fn",
@@ -220,6 +221,35 @@ py_test(
         ":boosted_trees",
         ":inputs",
         "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+py_library(
+    name = "boosted_trees_utils",
+    srcs = ["canned/boosted_trees_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":head",
+        ":model_fn",
+        "//tensorflow:tensorflow_py_no_contrib",
+    ],
+)
+
+py_test(
+    name = "boosted_trees_utils_test",
+    size = "medium",
+    srcs = ["canned/boosted_trees_utils_test.py"],
+    shard_count = 2,
+    srcs_version = "PY2AND3",
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":boosted_trees",
+        ":inputs",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -685,6 +715,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
+        "notsan",  # b/67510291
     ],
     deps = [
         ":keras",

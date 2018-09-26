@@ -1,5 +1,12 @@
 package(default_visibility = ["//visibility:private"])
 
+package_group(
+    name = "experimental",
+    packages = [
+        "//tensorflow/contrib/lite/experimental/...",
+    ],
+)
+
 licenses(["notice"])  # Apache 2.0
 
 load(
@@ -51,6 +58,9 @@ cc_library(
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
+    visibility = [
+        ":experimental",
+    ],
     deps = [
         ":c_api_internal",
         "//tensorflow/contrib/lite:context",
@@ -68,6 +78,7 @@ cc_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "//tensorflow/contrib/lite:kernel_api",
     ],
 )
 
@@ -93,6 +104,7 @@ cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

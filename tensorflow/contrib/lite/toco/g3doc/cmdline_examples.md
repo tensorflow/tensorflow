@@ -38,7 +38,7 @@ There are two approaches to running TOCO via command line.
     examples below use `tflite_convert` for simplicity.
     *   Example: `tflite_convert --output_file=...`
 *   `bazel`: In order to run the latest version of TOCO, [clone the TensorFlow
-    repository](https://www.tensorflow.org/install/install_sources#clone_the_tensorflow_repository)
+    repository](https://www.tensorflow.org/install/source)
     and use `bazel`. This is the recommended approach for converting models that
     utilize new features that were not supported by TOCO in TensorFlow 1.9.
     *   Example: `bazel run

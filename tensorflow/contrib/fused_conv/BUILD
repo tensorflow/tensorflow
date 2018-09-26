@@ -111,7 +111,6 @@ tf_gen_op_wrapper_py(
 
 cuda_py_test(
     name = "fused_conv2d_bias_activation_op_test",
-    size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_op_test.py"],
     additional_deps = [
         ":fused_conv_py",
@@ -130,14 +129,12 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = [
-        "manual",
-        "requires_cudnn6",
+        "requires-gpu-sm70",
     ],
 )
 
 cuda_py_test(
     name = "fused_conv2d_bias_activation_benchmark",
-    size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_benchmark.py"],
     additional_deps = [
         ":fused_conv_py",
@@ -155,7 +152,6 @@ cuda_py_test(
     ],
     main = "python/ops/fused_conv2d_bias_activation_benchmark.py",
     tags = [
-        "manual",
-        "requires_cudnn6",
+        "requires-gpu-sm70",
     ],
 )

@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
-#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -437,25 +437,6 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
 }
 
 namespace {
-bool ShapesEqual(const TensorShapeProto& shape1,
-                 const TensorShapeProto& shape2) {
-  if (shape1.unknown_rank() || shape2.unknown_rank()) {
-    return false;
-  }
-  if (shape1.dim_size() != shape2.dim_size()) {
-    return false;
-  }
-  for (int i = 0; i < shape1.dim_size(); ++i) {
-    if (shape1.dim(i).size() != shape2.dim(i).size()) {
-      return false;
-    }
-    if (shape1.dim(i).size() == -1 || shape2.dim(i).size() == -1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ExtractShape(const NodeDef& shape_node, const GraphProperties& properties,
                   BCast::Vec* shape, int64* min_id) {
   if (shape_node.op() == "Shape") {
@@ -2125,7 +2106,8 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
     Tensor axis_t(DT_INT32, TensorShape({}));
     NodeDef* axis_node = optimized_graph->add_node();
     axis_node->set_name(OptimizedNodeName(*node, "_const_axis"));
-    const int axis = node->attr().at("axis").i();
+    const int axis =
+        node->attr().count("axis") == 0 ? 0 : node->attr().at("axis").i();
     if (!SetTensorValue(DT_INT32, axis, &axis_t).ok() ||
         !CreateNodeDef(axis_node->name(), TensorValue(&axis_t), axis_node)
              .ok()) {
@@ -2348,7 +2330,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         properties.GetInputProperties(node->name())[1].shape();
     const bool x_is_zero = IsZeros(*x);
     const bool x_is_one = x_is_zero ? false : IsOnes(*x);
-    const bool y_matches_output_shape = ShapesEqual(output_shape, y_shape);
+    const bool y_matches_output_shape =
+        ShapesSymbolicallyEqual(output_shape, y_shape);
     if (y_matches_output_shape &&
         ((is_mul && x_is_one) || (is_add && x_is_zero))) {
       // 1 * y = y or 0 + y = y.
@@ -2378,7 +2361,8 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         properties.GetInputProperties(node->name())[0].shape();
     const bool y_is_zero = IsZeros(*y);
     const bool y_is_one = y_is_zero ? false : IsOnes(*y);
-    const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
+    const bool x_matches_output_shape =
+        ShapesSymbolicallyEqual(output_shape, x_shape);
     if (x_matches_output_shape && (((is_mul || is_any_div) && y_is_one) ||
                                    ((is_add || is_sub) && y_is_zero))) {
       // x * 1 = x or x / 1 = x or x +/- 0 = x

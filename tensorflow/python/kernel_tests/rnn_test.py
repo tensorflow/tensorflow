@@ -516,7 +516,7 @@ class RNNTest(test.TestCase):
     fix_weights_generator.build((None, input_shape))
     weights = fix_weights_generator.get_weights()
 
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape))
       cell = keras.layers.SimpleRNNCell(output_shape)
@@ -524,7 +524,7 @@ class RNNTest(test.TestCase):
           cell, inputs, dtype=dtypes.float32)
       cell.set_weights(weights)
       [tf_out, tf_state] = sess.run([tf_out, tf_state], {inputs: x_train})
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       k_input = keras.Input(shape=(timestep, input_shape),
                             dtype=dtypes.float32)
       cell = keras.layers.SimpleRNNCell(output_shape)
@@ -536,7 +536,7 @@ class RNNTest(test.TestCase):
     self.assertAllClose(tf_state, k_state)
 
   def testBasicLSTMCellInterchangeWithLSTMCell(self):
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       basic_cell = rnn_cell_impl.BasicLSTMCell(1)
       basic_cell(array_ops.ones([1, 1]),
                  state=basic_cell.get_initial_state(inputs=None,
@@ -548,7 +548,7 @@ class RNNTest(test.TestCase):
       prefix = os.path.join(self.get_temp_dir(), "ckpt")
       save_path = save.save(sess, prefix)
 
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       lstm_cell = rnn_cell_impl.LSTMCell(1, name="basic_lstm_cell")
       lstm_cell(array_ops.ones([1, 1]),
                 state=lstm_cell.get_initial_state(inputs=None,

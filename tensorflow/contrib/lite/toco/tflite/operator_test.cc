@@ -144,6 +144,10 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogicalNotOperator>("LOGICAL_NOT",
                                           OperatorType::kLogicalNot);
   CheckSimpleOperator<FloorDivOperator>("FLOOR_DIV", OperatorType::kFloorDiv);
+  CheckSimpleOperator<TensorFlowSquareOperator>("SQUARE",
+                                                OperatorType::kSquare);
+  CheckSimpleOperator<TensorFlowZerosLikeOperator>("ZEROS_LIKE",
+                                                   OperatorType::kZerosLike);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

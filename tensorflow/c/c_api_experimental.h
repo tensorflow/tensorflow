@@ -174,6 +174,15 @@ TF_CAPI_EXPORT extern void TFE_EnqueueVariantTensor(TF_Session* session,
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
     TF_Session* session, int tensor_id, TF_Status* status);
 
+// Prints `handle` in a human readable format to standard output for debugging.
+TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
+    TFE_TensorHandle* handle);
+
+// Returns a const scalar tensor.
+// Caller owns both the input and the output tensor handles.
+// TODO: Remove this API with hard-coded tensor computation.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_RunConstOp(TFE_Context* ctx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

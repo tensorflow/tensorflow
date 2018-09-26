@@ -123,8 +123,8 @@ class NodeFilter {
 // We arbitrarily set this as the boundary between "large" and "small"
 // instructions.
 bool IsSmall(const HloInstruction* instr) {
-  if (ShapeUtil::IsOpaque(instr->shape()) ||
-      ShapeUtil::IsToken(instr->shape())) {
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+      ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
     return true;
   }
   return ShapeUtil::ElementsInRecursive(instr->shape()) < 4096;
@@ -469,9 +469,8 @@ stylesheet=<
   string graph_label =
       StrCat(label_, "<br/>Computation ", computation_->name());
   if (computation_->IsFusionComputation()) {
-    StrAppend(&graph_label,
-              StrCat(" (in fusion instruction ",
-                     computation_->FusionInstruction()->name(), ")"));
+    StrAppend(&graph_label, " (in fusion instruction ",
+              computation_->FusionInstruction()->name(), ")");
   }
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
@@ -1111,7 +1110,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                               instr->metadata().source_line()));
   }
 
-  return StrJoin(lines, "<br/>");
+  return StrJoin(lines, "\n");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(

@@ -146,7 +146,7 @@ class IdentityReaderTest(test.TestCase):
     self.assertAllEqual(expected, v)
 
   def testOneEpoch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.IdentityReader("test_reader")
       work_completed = reader.num_work_units_completed()
       produced = reader.num_records_produced()
@@ -180,7 +180,7 @@ class IdentityReaderTest(test.TestCase):
       self.assertAllEqual(0, queued_length.eval())
 
   def testMultipleEpochs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.IdentityReader("test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       enqueue = queue.enqueue_many([["DD", "EE"]])
@@ -201,7 +201,7 @@ class IdentityReaderTest(test.TestCase):
         sess.run([key, value])
 
   def testSerializeRestore(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.IdentityReader("test_reader")
       produced = reader.num_records_produced()
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
@@ -256,7 +256,7 @@ class IdentityReaderTest(test.TestCase):
         reader.restore_state(b"BOGUS" + state[5:]).run()
 
   def testReset(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.IdentityReader("test_reader")
       work_completed = reader.num_work_units_completed()
       produced = reader.num_records_produced()
@@ -307,7 +307,7 @@ class WholeFileReaderTest(test.TestCase):
     self.assertAllEqual(self._content[index], v)
 
   def testOneEpoch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.WholeFileReader("test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       queue.enqueue_many([self._filenames]).run()
@@ -323,7 +323,7 @@ class WholeFileReaderTest(test.TestCase):
         sess.run([key, value])
 
   def testInfiniteEpochs(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.WholeFileReader("test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       enqueue = queue.enqueue_many([self._filenames])
@@ -366,7 +366,7 @@ class TextLineReaderTest(test.TestCase):
     return filenames
 
   def _testOneEpoch(self, files):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.TextLineReader(name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -391,7 +391,7 @@ class TextLineReaderTest(test.TestCase):
 
   def testSkipHeaderLines(self):
     files = self._CreateFiles()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.TextLineReader(skip_header_lines=1, name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -522,7 +522,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
   # gap_bytes=hop_bytes-record_bytes
   def _TestOneEpoch(self, files, num_records, gap_bytes, encoding=None):
     hop_bytes = 0 if gap_bytes == 0 else self._record_bytes + gap_bytes
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.FixedLengthRecordReader(
           header_bytes=self._header_bytes,
           record_bytes=self._record_bytes,
@@ -549,7 +549,7 @@ class FixedLengthRecordReaderTest(TFCompressionTestCase):
                                 files,
                                 num_overlapped_records,
                                 encoding=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.FixedLengthRecordReader(
           header_bytes=self._header_bytes,
           record_bytes=self._record_bytes,
@@ -621,7 +621,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
 
   def testOneEpoch(self):
     files = self._CreateFiles()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.TFRecordReader(name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -640,7 +640,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
 
   def testReadUpTo(self):
     files = self._CreateFiles()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.TFRecordReader(name="test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       batch_size = 3
@@ -670,7 +670,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.ZLIB)
     files = self._CreateFiles(options)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.TFRecordReader(name="test_reader", options=options)
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -687,7 +687,7 @@ class TFRecordReaderTest(TFCompressionTestCase):
     options = tf_record.TFRecordOptions(TFRecordCompressionType.GZIP)
     files = self._CreateFiles(options)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.TFRecordReader(name="test_reader", options=options)
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -752,7 +752,7 @@ class LMDBReaderTest(test.TestCase):
     shutil.copy(path, self.db_path)
 
   def testReadFromFile(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_file")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -770,7 +770,7 @@ class LMDBReaderTest(test.TestCase):
         k, v = sess.run([key, value])
 
   def testReadFromSameFile(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader1 = io_ops.LMDBReader(name="test_read_from_same_file1")
       reader2 = io_ops.LMDBReader(name="test_read_from_same_file2")
       filename_queue = input_lib.string_input_producer(
@@ -789,7 +789,7 @@ class LMDBReaderTest(test.TestCase):
       coord.join(threads)
 
   def testReadFromFolder(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_folder")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
@@ -807,7 +807,7 @@ class LMDBReaderTest(test.TestCase):
         k, v = sess.run([key, value])
 
   def testReadFromFileRepeatedly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_file_repeated")
       filename_queue = input_lib.string_input_producer(
           [self.db_path], num_epochs=None)

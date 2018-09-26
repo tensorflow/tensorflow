@@ -465,35 +465,18 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 
   if (IsCustomCallToDnnConvolution(*custom_call)) {
     const auto& assn = ir_emitter_context_->buffer_assignment();
-    auto lhs_slice = GetAllocationSlice(*custom_call->operand(0));
-    auto rhs_slice = GetAllocationSlice(*custom_call->operand(1));
+    std::vector<BufferAllocation::Slice> operand_slices;
+    operand_slices.reserve(custom_call->operand_count());
+    for (const auto* operand : custom_call->operands()) {
+      operand_slices.push_back(GetAllocationSlice(*operand));
+    }
     auto tuple_result_slice = GetAllocationSlice(*custom_call);
     auto conv_result_slice = assn.GetUniqueSlice(custom_call, {0}).ValueOrDie();
     auto scratch_slice = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
 
-    const auto& target = custom_call->custom_call_target();
-    BufferAllocation::Slice input_slice, filter_slice, output_slice;
-
-    if (target == kCudnnConvForwardCallTarget) {
-      input_slice = lhs_slice;
-      filter_slice = rhs_slice;
-      output_slice = conv_result_slice;
-    } else if (target == kCudnnConvBackwardInputCallTarget) {
-      input_slice = conv_result_slice;
-      filter_slice = rhs_slice;
-      output_slice = lhs_slice;
-    } else if (target == kCudnnConvBackwardFilterCallTarget) {
-      input_slice = lhs_slice;
-      filter_slice = conv_result_slice;
-      output_slice = rhs_slice;
-    } else {
-      LOG(FATAL) << "Unexpected custom call target: "
-                 << custom_call->custom_call_target();
-    }
-
     thunk_sequence_->emplace_back(absl::make_unique<ConvolutionThunk>(
-        Cast<HloCustomCallInstruction>(custom_call), input_slice, filter_slice,
-        output_slice, scratch_slice, tuple_result_slice));
+        Cast<HloCustomCallInstruction>(custom_call), std::move(operand_slices),
+        conv_result_slice, scratch_slice, tuple_result_slice));
     return Status::OK();
   }
 

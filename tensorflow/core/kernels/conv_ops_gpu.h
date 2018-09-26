@@ -142,8 +142,12 @@ class ConvParameters {
   template <typename T>
   bool ShouldIncludeWinogradNonfusedAlgo(
       se::StreamExecutor* stream_exec) const {
+    auto* dnn_support = stream_exec->AsDnn();
+    if (!dnn_support) {
+      return false;
+    }
     // Skip this check for cuDNN 7 and newer.
-    auto version = stream_exec->AsDnn()->GetVersion();
+    auto version = dnn_support->GetVersion();
     if (version.ok() && version.ValueOrDie().major_version() >= 7) {
       return true;
     }

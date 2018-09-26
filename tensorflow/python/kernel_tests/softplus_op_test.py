@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_ops
@@ -72,7 +71,7 @@ class SoftplusTest(test.TestCase):
           use_gpu=True)
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -88,7 +87,7 @@ class SoftplusTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testGradGrad(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -105,7 +104,7 @@ class SoftplusTest(test.TestCase):
     self.assertLess(err, 5e-5)
 
   def testGradGradGrad(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -123,10 +122,10 @@ class SoftplusTest(test.TestCase):
     self.assertLess(err, 5e-5)
 
   def testNoInts(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "No OpKernel was registered to support Op 'Softplus'"):
+          TypeError,
+          "'features' has DataType int32 not in list of allowed values"):
         nn_ops.softplus(constant_op.constant(7)).eval()
 
 

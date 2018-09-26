@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import OrderedDict
 import copy
 import math
 
@@ -484,29 +485,36 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
                            'as the output.')
 
 
-def collect_metrics(metrics, output_names):
-  """Maps metric functions to model outputs.
+def collect_per_output_metric_info(metrics,
+                                   output_names,
+                                   output_shapes,
+                                   loss_fns,
+                                   sample_weights=None):
+  """Maps metric names and functions to model outputs.
 
   Arguments:
       metrics: a list or dict of metric functions.
       output_names: a list of the names (strings) of model outputs.
+      output_shapes: a list of the shapes (strings) of model outputs.
+      loss_fns: a list of the loss functions corresponding to the model outputs.
+      sample_weights: a list of weights to be applied on the model outputs.
 
   Returns:
-      A list (one entry per model output) of lists of metric functions.
+      A list (one entry per model output) of dicts.
       For instance, if the model has 2 outputs, and for the first output
       we want to compute "binary_accuracy" and "binary_crossentropy",
       and just "binary_accuracy" for the second output,
-      the list would look like:
-          `[[binary_accuracy, binary_crossentropy], [binary_accuracy]]`
+      the list would look like: `[[('acc', binary_accuracy()),
+      ('ce', binary_crossentropy())], [('acc', binary_accuracy())]]`
 
   Raises:
       TypeError: if an incorrect type is passed for the `metrics` argument.
   """
   if not metrics:
-    return [[] for _ in output_names]
+    return [{} for _ in output_names]
   if isinstance(metrics, list):
     # we then apply all metrics to all outputs.
-    return [copy.copy(metrics) for _ in output_names]
+    nested_metrics = [copy.copy(metrics) for _ in output_names]
   elif isinstance(metrics, dict):
     nested_metrics = []
     for name in output_names:
@@ -514,10 +522,23 @@ def collect_metrics(metrics, output_names):
       if not isinstance(output_metrics, list):
         output_metrics = [output_metrics]
       nested_metrics.append(output_metrics)
-    return nested_metrics
   else:
     raise TypeError('Type of `metrics` argument not understood. '
                     'Expected a list or dictionary, found: ' + str(metrics))
+
+  per_output_metrics = []
+  for i, metrics in enumerate(nested_metrics):
+    metrics_dict = OrderedDict()
+    for metric in metrics:
+      weighted = False if (sample_weights is None) else (
+          sample_weights[i] is not None)
+      metric_name = get_metric_name(metric, weighted)
+      metric_fn = get_metric_function(
+          metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
+      metrics_dict[metric_name] = metric_fn
+    per_output_metrics.append(metrics_dict)
+
+  return per_output_metrics
 
 
 def batch_shuffle(index_array, batch_size):
@@ -729,6 +750,33 @@ def has_tensors(ls):
   return tensor_util.is_tensor(ls)
 
 
+def get_metric_name(metric, weighted=False):
+  """Returns the name corresponding to the given metric input.
+
+  Arguments:
+    metric: Metric function name or reference.
+    weighted: Boolean indicating if the given metric is weighted.
+
+  Returns:
+      The metric name.
+  """
+  metric_name_prefix = 'weighted_' if weighted else ''
+  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
+    if metric in ('accuracy', 'acc'):
+      suffix = 'acc'
+    elif metric in ('crossentropy', 'ce'):
+      suffix = 'ce'
+  else:
+    metric_fn = metrics_module.get(metric)
+    # Get metric name as string
+    if hasattr(metric_fn, 'name'):
+      suffix = metric_fn.name
+    else:
+      suffix = metric_fn.__name__
+  metric_name = metric_name_prefix + suffix
+  return metric_name
+
+
 def get_metric_function(metric, output_shape=None, loss_fn=None):
   """Returns the metric function corresponding to the given metric input.
 
@@ -795,6 +843,18 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
         '`validation_split` argument is not supported when '
         'input `x` is a dataset or a dataset iterator. '
         'Received: x=%s, validation_split=%f' % (x, validation_split))
+
+
+def check_generator_arguments(y=None, sample_weight=None):
+  """Validates arguments passed when using a generator."""
+  if y is not None:
+    raise ValueError('`y` argument is not supported when data is'
+                     'a generator or Sequence instance. Instead pass targets'
+                     ' as the second element of the generator.')
+  if sample_weight is not None:
+    raise ValueError('`sample_weight` argument is not supported when data is'
+                     'a generator or Sequence instance. Instead pass sample'
+                     ' weights as the third element of the generator.')
 
 
 def check_steps_argument(input_data, steps, steps_name):

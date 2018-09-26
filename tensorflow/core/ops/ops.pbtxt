@@ -4272,6 +4272,29 @@ op {
   is_commutative: true
 }
 op {
+  name: "BoostedTreesBucketize"
+  input_arg {
+    name: "float_values"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "buckets"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+}
+op {
   name: "BoostedTreesCalculateBestGainsPerFeature"
   input_arg {
     name: "node_id_range"
@@ -4381,6 +4404,29 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesCreateQuantileStreamResource"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "epsilon"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_streams"
+    type: DT_INT64
+  }
+  attr {
+    name: "max_elements"
+    type: "int"
+    default_value {
+      i: 1099511627776
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesDeserializeEnsemble"
   input_arg {
     name: "tree_ensemble_handle"
@@ -4474,6 +4520,32 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesMakeQuantileSummaries"
+  input_arg {
+    name: "float_values"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "example_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "epsilon"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+}
+op {
   name: "BoostedTreesMakeStatsSummary"
   input_arg {
     name: "node_ids"
@@ -4539,6 +4611,83 @@ op {
   attr {
     name: "logits_dimension"
     type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesQuantileStreamResourceAddSummaries"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "summaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesQuantileStreamResourceFlush"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "num_buckets"
+    type: DT_INT64
+  }
+  attr {
+    name: "generate_quantiles"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesQuantileStreamResourceGetBucketBoundaries"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "BoostedTreesQuantileStreamResourceHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -10038,6 +10187,59 @@ op {
   }
 }
 op {
+  name: "ExtractVolumePatches"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "patches"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksizes"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
   name: "FFT"
   input_arg {
     name: "input"
@@ -13162,6 +13364,18 @@ op {
   is_stateful: true
 }
 op {
+  name: "IsBoostedTreesQuantileStreamResourceInitialized"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}
+op {
   name: "IsFinite"
   input_arg {
     name: "x"
@@ -14440,6 +14654,38 @@ op {
   output_arg {
     name: "output"
     type: DT_BOOL
+  }
+}
+op {
+  name: "LowerBound"
+  input_arg {
+    name: "sorted_inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
 }
 op {
@@ -16628,6 +16874,29 @@ op {
   }
 }
 op {
+  name: "ModelDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "Mul"
   input_arg {
     name: "x"
@@ -16662,6 +16931,134 @@ op {
     }
   }
   is_commutative: true
+}
+op {
+  name: "MultiDeviceIterator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "devices"
+    type: "list(string)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorGetNextFromShard"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "shard_num"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "incarnation_id"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorInit"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "max_buffer_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "incarnation_id"
+    type: DT_INT64
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorToStringHandle"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  is_stateful: true
 }
 op {
   name: "Multinomial"
@@ -19400,6 +19797,30 @@ op {
     type: "int"
     default_value {
       i: 3
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "PrintV2"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  attr {
+    name: "output_stream"
+    type: "string"
+    default_value {
+      s: "stderr"
+    }
+    allowed_values {
+      list {
+        s: "stdout"
+        s: "stderr"
+        s: "log(info)"
+        s: "log(warning)"
+        s: "log(error)"
+      }
     }
   }
   is_stateful: true
@@ -28361,18 +28782,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -28396,18 +28809,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -28427,18 +28832,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -28462,18 +28859,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -32619,6 +33008,43 @@ op {
   }
 }
 op {
+  name: "StringFormat"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "template"
+    type: "string"
+    default_value {
+      s: "%s"
+    }
+  }
+  attr {
+    name: "placeholder"
+    type: "string"
+    default_value {
+      s: "%s"
+    }
+  }
+  attr {
+    name: "summarize"
+    type: "int"
+    default_value {
+      i: 3
+    }
+  }
+}
+op {
   name: "StringJoin"
   input_arg {
     name: "inputs"
@@ -32652,6 +33078,19 @@ op {
   output_arg {
     name: "output"
     type: DT_INT32
+  }
+  attr {
+    name: "unit"
+    type: "string"
+    default_value {
+      s: "BYTE"
+    }
+    allowed_values {
+      list {
+        s: "BYTE"
+        s: "UTF8_CHAR"
+      }
+    }
   }
 }
 op {
@@ -35838,6 +36277,38 @@ op {
   is_stateful: true
 }
 op {
+  name: "UpperBound"
+  input_arg {
+    name: "sorted_inputs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "VarHandleOp"
   output_arg {
     name: "resource"
@@ -36083,8 +36554,20 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "window_size"
+    name: "size"
     type: DT_INT64
+  }
+  input_arg {
+    name: "shift"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "stride"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
   }
   output_arg {
     name: "handle"

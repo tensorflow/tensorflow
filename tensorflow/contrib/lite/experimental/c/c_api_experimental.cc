@@ -26,6 +26,22 @@ TFL_Status TFL_InterpreterResetVariableTensorsToZero(
   return interpreter->impl->ResetVariableTensorsToZero();
 }
 
+void TFL_InterpreterOptionsAddBuiltinOp(TFL_InterpreterOptions* options,
+                                        TFL_BuiltinOperator op,
+                                        const TFL_Registration* registration,
+                                        int32_t min_version,
+                                        int32_t max_version) {
+  options->op_resolver.AddBuiltin(static_cast<tflite::BuiltinOperator>(op),
+                                  registration, min_version, max_version);
+}
+
+void TFL_InterpreterOptionsAddCustomOp(TFL_InterpreterOptions* options,
+                                       const char* name,
+                                       const TFL_Registration* registration,
+                                       int min_version, int max_version) {
+  options->op_resolver.AddCustom(name, registration, min_version, max_version);
+}
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
