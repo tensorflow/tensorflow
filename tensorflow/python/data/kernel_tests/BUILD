@@ -336,6 +336,7 @@ tf_py_test(
     size = "small",
     srcs = ["matching_files_dataset_op_test.py"],
     additional_deps = [
+        "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
