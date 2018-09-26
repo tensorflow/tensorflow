@@ -74,8 +74,19 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Sets whether to allow float16 precision for FP32 calculation when possible. Defaults to false
+     * (disallow).
+     * WARNING: This is an experimental API and subject to change.
+     */
+    public Options setAllowFp16PrecisionForFp32(boolean allow) {
+      this.allowFp16PrecisionForFp32 = allow;
+      return this;
+    }
+
     int numThreads = -1;
     boolean useNNAPI = false;
+    boolean allowFp16PrecisionForFp32 = false;
   }
 
   /**
@@ -256,8 +267,9 @@ public final class Interpreter implements AutoCloseable {
 
   /**
    * Returns native inference timing.
-   * <p>IllegalArgumentException will be thrown if the model is not initialized by the
-   * {@link Interpreter}.
+   *
+   * <p>IllegalArgumentException will be thrown if the model is not initialized by the {@link
+   * Interpreter}.
    */
   public Long getLastNativeInferenceDurationNanoseconds() {
     checkNotClosed();
