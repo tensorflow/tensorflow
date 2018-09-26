@@ -1800,7 +1800,6 @@ inline void Concatenation(int concat_dim, const Scalar* const* input_data,
 // quantized as it takes scale as a floating point value. This should be fixed
 // when optimizng this routine further.
 
-// template <>
 inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const RuntimeShape* const* input_shapes,
                                      const uint8* const* input_data,
@@ -1813,15 +1812,13 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   const int32 output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
 
-  // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization parameters for all the inputs to the concat
-  // operator.
-  TFLITE_DCHECK_GT(inputs_count, 1);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int concat_dimensions = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LT(axis, concat_dimensions);
+
   int64_t concat_size = 0;
   for (int i = 0; i < inputs_count; i++) {
-    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), 4);
-    for (int j = 0; j < 4; j++) {
+    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
+    for (int j = 0; j < concat_dimensions; j++) {
       if (j != axis) {
         MatchingDim(*input_shapes[i], j, output_shape, j);
       }
@@ -1836,9 +1833,10 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   // For all input arrays,
   // FlatSize() = outer_size * Dims(axis) * base_inner_size;
   int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < 4; ++i) {
+  for (int i = axis + 1; i < concat_dimensions; ++i) {
     base_inner_size *= output_shape.Dims(i);
   }
+
   const float inverse_output_scale = 1.f / output_scale;
   uint8* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
@@ -1892,37 +1890,51 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
 }
 
 template <typename Scalar>
-void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, int inputs_count,
-          Scalar* output_data, const Dims<4>& output_dims) {
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
+          const Scalar* const* input_data, const RuntimeShape& output_shape,
+          Scalar* output_data) {
+  const int dimensions = output_shape.DimensionsCount();
+  int axis = params.axis;
+  int inputs_count = params.inputs_count;
+
   int outer_size = 1;
-  for (int i = dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
+  for (int i = 0; i < axis; i++) {
+    outer_size *= output_shape.Dims(i);
   }
-  Scalar* output_ptr = output_data;
-  const int copy_size = FlatSize(**input_dims) / outer_size;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      memcpy(output_ptr, input_data[i] + k * copy_size,
-             copy_size * sizeof(Scalar));
-      output_ptr += copy_size;
+  int copy_size = 1;
+  for (int i = params.axis + 1; i < dimensions; i++) {
+    copy_size *= output_shape.Dims(i);
+  }
+  TFLITE_DCHECK_EQ((**input_shapes).FlatSize(), copy_size * outer_size);
+
+  for (int i = 0; i < inputs_count; ++i) {
+    for (int k = 0; k < outer_size; k++) {
+      const Scalar* input_ptr = input_data[i] + copy_size * k;
+      int loc = k * inputs_count * copy_size + i * copy_size;
+      memcpy(output_data + loc, input_ptr, copy_size * sizeof(Scalar));
     }
   }
 }
 
 template <typename Scalar>
-void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
-            int dimensions, int outputs_count, Scalar* const* output_datas,
-            const Dims<4>& output_dims) {
-  int outer_size = 1;
-  for (int i = dimensions - axis; i < 4; i++) {
-    outer_size *= input_dims.sizes[i];
-  }
+void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
+            const Scalar* input_data, const RuntimeShape& output_shape,
+            Scalar* const* output_datas) {
+  const int dimensions = input_shape.DimensionsCount();
+  const int outputs_count = params.num_split;
 
-  const int copy_size = FlatSize(input_dims) / outer_size / outputs_count;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < outputs_count; ++i) {
+  int outer_size = 1;
+  for (int i = 0; i < params.axis; i++) {
+    outer_size *= input_shape.Dims(i);
+  }
+  int copy_size = 1;
+  for (int i = params.axis + 1; i < dimensions; i++) {
+    copy_size *= input_shape.Dims(i);
+  }
+  TFLITE_DCHECK_EQ(output_shape.FlatSize(), copy_size * outer_size);
+
+  for (int i = 0; i < outputs_count; ++i) {
+    for (int k = 0; k < outer_size; k++) {
       Scalar* output_ptr = output_datas[i] + copy_size * k;
       int loc = k * outputs_count * copy_size + i * copy_size;
       memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
@@ -1931,18 +1943,29 @@ void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
 }
 
 template <typename Scalar>
-void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, const int32* input_zeropoint,
-          const float* input_scale, int inputs_count, Scalar* output_data,
-          const Dims<4>& output_dims, const int32 output_zeropoint,
-          const float output_scale) {
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+void PackWithScaling(const PackParams& params,
+                     const RuntimeShape* const* input_shapes,
+                     const uint8* const* input_data,
+                     const RuntimeShape& output_shape, uint8* output_data) {
+  const int dimensions = output_shape.DimensionsCount();
+  int axis = params.axis;
+  const int32* input_zeropoint = params.input_zeropoint;
+  const float* input_scale = params.input_scale;
+  int inputs_count = params.inputs_count;
+  const int32 output_zeropoint = params.output_zeropoint;
+  const float output_scale = params.output_scale;
+
   int outer_size = 1;
-  for (int i = dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
+  for (int i = 0; i < axis; i++) {
+    outer_size *= output_shape.Dims(i);
   }
+  int copy_size = 1;
+  for (int i = axis + 1; i < dimensions; i++) {
+    copy_size *= output_shape.Dims(i);
+  }
+  TFLITE_DCHECK_EQ((**input_shapes).FlatSize(), copy_size * outer_size);
+
   Scalar* output_ptr = output_data;
-  const int copy_size = FlatSize(**input_dims) / outer_size;
   const float inverse_output_scale = 1.f / output_scale;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
@@ -3374,15 +3397,21 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
 
 template <typename T>
 inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const int32* coords_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  // Enable these checks when moving legacy ops to legacy_reference_ops.
-  //
-  // TFLITE_DCHECK_EQ(coords_shape.DimensionsCount(), 1);
+                   const RuntimeShape& unextended_input_shape,
+                   const T* input_data, const RuntimeShape& coords_shape,
+                   const int32* coords_data,
+                   const RuntimeShape& unextended_output_shape,
+                   T* output_data) {
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   const int input_rank = op_params.input_rank;
   const int gather_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), gather_dimensions);
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), gather_dimensions);
   const int axis = gather_dimensions - input_rank;
   TFLITE_DCHECK_LT(axis, gather_dimensions);
   TFLITE_DCHECK_GE(axis, 0);
@@ -4762,22 +4791,44 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
                          input2_data, output_shape, output_data);              \
   }                                                                            \
   template <typename T>                                                        \
+  inline void name##NoScaling(                                                 \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const T* input1_data, const RuntimeShape& input2_shape,                  \
+      const T* input2_data, const RuntimeShape& output_shape,                  \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label(#name "NoScaling");                   \
+    ComparisonImpl<T, name##Fn>(op_params, input1_shape, input1_data,          \
+                                input2_shape, input2_data, output_shape,       \
+                                output_data);                                  \
+  }                                                                            \
+  template <typename T>                                                        \
   inline void name##WithScaling(                                               \
       const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
       const T* input1_data, const RuntimeShape& input2_shape,                  \
       const T* input2_data, const RuntimeShape& output_shape,                  \
       bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                       \
+    gemmlowp::ScopedProfilingLabel label(#name "WithScaling/8bit");            \
     ComparisonWithScaling<T, name##Fn>(op_params, input1_shape, input1_data,   \
                                        input2_shape, input2_data,              \
                                        output_shape, output_data);             \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void Broadcast4DSlow##name##NoScaling(                                \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const T* input1_data, const RuntimeShape& input2_shape,                  \
+      const T* input2_data, const RuntimeShape& output_shape,                  \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name "NoScaling"); \
+    BroadcastComparison4DSlowImpl<T, name##Fn>(                                \
+        op_params, input1_shape, input1_data, input2_shape, input2_data,       \
+        output_shape, output_data);                                            \
   }                                                                            \
   inline void Broadcast4DSlow##name(                                           \
       const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
       const float* input1_data, const RuntimeShape& input2_shape,              \
       const float* input2_data, const RuntimeShape& output_shape,              \
       bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                   \
+    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name);             \
     BroadcastComparison4DSlow<name##Fn>(op_params, input1_shape, input1_data,  \
                                         input2_shape, input2_data,             \
                                         output_shape, output_data);            \
@@ -4788,7 +4839,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input1_data, const RuntimeShape& input2_shape,                  \
       const T* input2_data, const RuntimeShape& output_shape,                  \
       bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");           \
+    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name "/8bit");     \
     BroadcastComparison4DSlowWithScaling<T, name##Fn>(                         \
         op_params, input1_shape, input1_data, input2_shape, input2_data,       \
         output_shape, output_data);                                            \
