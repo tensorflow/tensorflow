@@ -90,7 +90,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(1, dtype=dtypes.float32)
       v = array_ops.broadcast_to(x, [2, 4, 3])
       out = 2 * v
-      with self.test_session():
+      with self.cached_session():
         err = gradient_checker.compute_gradient_error(x, x.get_shape(),
                                                       out, out.get_shape())
     self.assertLess(err, 1e-4)
@@ -100,7 +100,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
                              dtype=dtypes.float32)
     v = array_ops.broadcast_to(x, [2, 5, 3])
     out = 2 * v
-    with self.test_session():
+    with self.cached_session():
       err = gradient_checker.compute_gradient_error(x, x.get_shape(),
                                                     out, out.get_shape())
     self.assertLess(err, 1e-4)
@@ -110,7 +110,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
                              dtype=dtypes.float32)
     v = array_ops.broadcast_to(x, [5, 2, 3])
     out = 2 * v
-    with self.test_session():
+    with self.cached_session():
       err = gradient_checker.compute_gradient_error(x, x.get_shape(),
                                                     out, out.get_shape())
     self.assertLess(err, 1e-4)
@@ -119,7 +119,7 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
     x = constant_op.constant([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32)
     v = array_ops.broadcast_to(x, [5, 4, 6])
     out = 2 * v
-    with self.test_session():
+    with self.cached_session():
       err = gradient_checker.compute_gradient_error(x, x.get_shape(),
                                                     out, out.get_shape())
     self.assertLess(err, 1e-4)

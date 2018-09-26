@@ -158,7 +158,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       raise ValueError(
           'TPU currently requires fully defined shapes. Either use '
           'set_shape() on the input tensors or use '
-          'dataset.apply(map_and_batch(..., drop_remainder=True)).')
+          'dataset.batch(..., drop_remainder=True).')
     types = nest.flatten(iterator.output_types)
 
     enqueue_ops = [
@@ -307,6 +307,22 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def num_towers_per_host(self):
     return self._tpu_metadata.num_of_cores_per_host
 
+  @property
+  def between_graph(self):
+    return False
+
+  @property
+  def should_init(self):
+    return True
+
+  @property
+  def should_checkpoint(self):
+    return True
+
+  @property
+  def should_save_summary(self):
+    return True
+
   def get_host_cpu_device(self, host_id):
     if self._tpu_cluster_resolver.get_master() in ('', 'local'):
       return '/replica:0/task:0/device:CPU:0'
@@ -324,4 +340,3 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       cluster_spec = self._tpu_cluster_resolver.cluster_spec()
       if cluster_spec:
         session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
-

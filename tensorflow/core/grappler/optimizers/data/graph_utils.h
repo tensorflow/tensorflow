@@ -37,11 +37,8 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
 
-// Adds a node to a FunctionDef.
-NodeDef* AddNode(StringPiece name, StringPiece op,
-                 const std::vector<string>& inputs,
-                 const std::vector<std::pair<string, AttrValue>>& attributes,
-                 FunctionDef* fd);
+// Adds Placeholder node for given type.
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph);
 
 // Adds a Const node with the given value to the graph.
 template <typename T>
@@ -76,13 +73,6 @@ bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph);
 bool ContainsGraphFunctionWithName(StringPiece name,
                                    const FunctionDefLibrary& library);
 
-// Checks whether the function contains a node with the given name.
-bool ContainsFunctionNodeWithName(StringPiece name,
-                                  const FunctionDef& function);
-
-// Checks whether the function contains a node with the given op.
-bool ContainsFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
-
 // Checks whether the graph contains a node with the given op.
 bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph);
 
@@ -94,14 +84,6 @@ int FindGraphNodeWithName(StringPiece name, const GraphDef& graph);
 // does not exist.
 int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library);
-
-// Returns the index of the function node with the given name or -1 if the
-// function node does not exist.
-int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function);
-
-// Returns the index of the function node with the given op or -1 if the
-// function node does not exist.
-int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
 
 // Returns the index of the first node with the given op or -1 if no such  node
 // exists.
@@ -118,11 +100,6 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 // Sets the node name using `prefix` as a prefix while guaranteeing the name
 // is unique across the graph.
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
-
-// Sets the function node name using the `prefix` as a prefix while guaranteeing
-// the name is unique across the functions nodes.
-void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
-                               NodeDef* node);
 
 // Sets the node name using the `prefix` name as a prefix while guaranteeing the
 // name is unique across the graph.

@@ -512,6 +512,10 @@ TfLiteStatus AddOpsAndParams(
         nn_op_type = ANEURALNETWORKS_FULLY_CONNECTED;
         break;
       case tflite::BuiltinOperator_RESHAPE:
+        if (node.inputs->size != 2) {
+          logError("NNAPI only supports 2-input RESHAPE");
+          return kTfLiteError;
+        }
         nn_op_type = ANEURALNETWORKS_RESHAPE;
         // add_reshape_params(node.builtin_data);
         break;
@@ -672,6 +676,9 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_UNPACK:
       case tflite::BuiltinOperator_FLOOR_DIV:
       case tflite::BuiltinOperator_REDUCE_ANY:
+      case tflite::BuiltinOperator_SQUARE:
+      case tflite::BuiltinOperator_ZEROS_LIKE:
+      case tflite::BuiltinOperator_FILL:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;
@@ -757,6 +764,11 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
         reinterpret_cast<const uint32_t*>(augmented_inputs.data()),
         static_cast<uint32_t>(augmented_outputs.size()),
         reinterpret_cast<const uint32_t*>(augmented_outputs.data())));
+
+    if (GetAndroidSdkVersionCached() >= 28) {
+      CHECK_NN(ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+          nn_model_, interpreter->GetAllowFp16PrecisionForFp32()));
+    }
     CHECK_NN(ANeuralNetworksModel_finish(nn_model_));
   }
   if (!nn_compiled_model_) {

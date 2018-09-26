@@ -69,6 +69,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     std::vector<int> shape;
   };
 
+ protected:
+  void PrepareInputsAndOutputs() override;
+
  private:
 #ifdef TFLITE_EXTENDED
   std::unique_ptr<EagerDelegate> delegate_;

@@ -184,6 +184,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleSort(HloInstruction* sort) override;
 
+  Status HandleReal(HloInstruction* real) override;
+
+  Status HandleImag(HloInstruction* imag) override;
+
   Status HandleReduce(HloInstruction* reduce) override;
 
   // Returns the already-evaluated literal result for the instruction.

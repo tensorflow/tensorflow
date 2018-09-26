@@ -74,6 +74,58 @@ py_test(
 )
 
 py_test(
+    name = "map_parallelization_test",
+    size = "small",
+    srcs = ["map_parallelization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "model_dataset_op_test",
+    size = "medium",
+    srcs = ["model_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "noop_elimination_test",
+    size = "small",
+    srcs = ["noop_elimination_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/contrib/data/python/ops:interleave_ops",
+        "//tensorflow/contrib/data/python/ops:optimization",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "optimize_dataset_op_test",
     size = "small",
     srcs = ["optimize_dataset_op_test.py"],

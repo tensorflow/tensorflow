@@ -24,6 +24,7 @@ from collections import OrderedDict
 import contextlib
 import gc
 import itertools
+import os
 import math
 import random
 import re
@@ -69,6 +70,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
@@ -413,15 +415,13 @@ def enable_cond_v2(fn):
     The wrapped function
   """
 
-  # pylint: disable=protected-access
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops._ENABLE_COND_V2
-    control_flow_ops._ENABLE_COND_V2 = True
+    prev_value = control_flow_ops.ENABLE_COND_V2
+    control_flow_ops.ENABLE_COND_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops._ENABLE_COND_V2 = prev_value
-  # pylint: enable=protected-access
+      control_flow_ops.ENABLE_COND_V2 = prev_value
 
   return wrapper
 
@@ -438,7 +438,7 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops._ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
@@ -780,7 +780,7 @@ def run_in_graph_and_eager_modes(func=None,
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
-          with ops.device("/cpu:0"):
+          with ops.device("/device:CPU:0"):
             f(self, **kwargs)
         else:
           f(self, **kwargs)
@@ -869,6 +869,19 @@ def device(use_gpu):
     yield
 
 
+class CapturedWrites(object):
+  """A utility class to load the captured writes made to a stream."""
+
+  def __init__(self, capture_location):
+    self.capture_location = capture_location
+
+  def contents(self):
+    """Get the captured writes as a single string."""
+    with open(self.capture_location) as tmp_file:
+      output_data = "".join(tmp_file.readlines())
+    return output_data
+
+
 class ErrorLoggingSession(session.Session):
   """Wrapper around a Session that logs errors in run().
   """
@@ -877,7 +890,11 @@ class ErrorLoggingSession(session.Session):
     try:
       return super(ErrorLoggingSession, self).run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(str(e))
+      # Note: disable the logging for OutOfRangeError, which makes the output
+      # of tf.data tests hard to read, because OutOfRangeError is used as the
+      # signal completion
+      if not isinstance(e, errors.OutOfRangeError):
+        logging.error(str(e))
       raise
 
 
@@ -934,6 +951,52 @@ class TensorFlowTestCase(googletest.TestCase):
     if not self._tempdir:
       self._tempdir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     return self._tempdir
+
+  @contextlib.contextmanager
+  def captureWritesToStream(self, stream):
+    """A context manager that captures the writes to a given stream.
+
+    This context manager captures all writes to a given stream inside of a
+    `CapturedWrites` object. When this context manager is created, it yields
+    the `CapturedWrites` object. The captured contents can be accessed  by
+    calling `.contents()` on the `CapturedWrites`.
+
+    For this function to work, the stream must have a file descriptor that
+    can be modified using `os.dup` and `os.dup2`, and the stream must support
+    a `.flush()` method. The default python sys.stdout and sys.stderr are
+    examples of this. Note that this does not work in Colab or Jupyter
+    notebooks, because those use alternate stdout streams.
+
+    Example:
+    ```python
+    class MyOperatorTest(test_util.TensorFlowTestCase):
+      def testMyOperator(self):
+        input = [1.0, 2.0, 3.0, 4.0, 5.0]
+        with self.captureWritesToStream(sys.stdout) as captured:
+          result = MyOperator(input).eval()
+        self.assertStartsWith(captured.contents(), "This was printed.")
+    ```
+
+    Args:
+      stream: The stream whose writes should be captured. This
+        stream must have a file descriptor, support writing via using that
+        file descriptor, and must have a `.flush()` method.
+
+    Yields:
+      A `CapturedWrites` object that contains all writes to the specified stream
+      made during this context.
+    """
+    stream.flush()
+    fd = stream.fileno()
+    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
+    tmp_file = open(tmp_file_path, "w")
+    orig_fd = os.dup(fd)
+    os.dup2(tmp_file.fileno(), fd)
+    try:
+      yield CapturedWrites(tmp_file_path)
+    finally:
+      tmp_file.close()
+      os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):
     """Asserts that a and b are the same proto.
@@ -1338,35 +1401,36 @@ class TensorFlowTestCase(googletest.TestCase):
                                                                      b.shape)
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
+    msgs = [msg]
     if not np.allclose(a, b, rtol=rtol, atol=atol):
-      # Prints more details than np.testing.assert_allclose.
+      # Adds more details to np.testing.assert_allclose.
       #
       # NOTE: numpy.allclose (and numpy.testing.assert_allclose)
       # checks whether two arrays are element-wise equal within a
       # tolerance. The relative difference (rtol * abs(b)) and the
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
-      # print out which elements violate such conditions.
+      # tell user which elements violate such conditions.
       cond = np.logical_or(
           np.abs(a - b) > atol + rtol * np.abs(b),
           np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
-        print("not close where = ", np.where(cond))
+        msgs.append("not close where = {}".format(np.where(cond)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not close lhs = ", x)
-      print("not close rhs = ", y)
-      print("not close dif = ", np.abs(x - y))
-      print("not close tol = ", atol + rtol * np.abs(y))
-      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
+      msgs.append("not close lhs = {}".format(x))
+      msgs.append("not close rhs = {}".format(y))
+      msgs.append("not close dif = {}".format(np.abs(x - y)))
+      msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
+      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
       np.testing.assert_allclose(
-          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
+          a, b, rtol=rtol, atol=atol, err_msg="\n".join(msgs), equal_nan=True)
 
   def _assertAllCloseRecursive(self,
                                a,
@@ -1548,19 +1612,20 @@ class TensorFlowTestCase(googletest.TestCase):
         np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
     ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
+    msgs = [msg]
     if not np.all(same):
-      # Prints more details than np.testing.assert_array_equal.
+      # Adds more details to np.testing.assert_array_equal.
       diff = np.logical_not(same)
       if a.ndim:
         x = a[np.where(diff)]
         y = b[np.where(diff)]
-        print("not equal where = ", np.where(diff))
+        msgs.append("not equal where = {}".format(np.where(diff)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not equal lhs = ", x)
-      print("not equal rhs = ", y)
-      np.testing.assert_array_equal(a, b, err_msg=msg)
+      msgs.append("not equal lhs = {}".format(x))
+      msgs.append("not equal rhs = {}".format(y))
+      np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   def assertAllGreater(self, a, comparison_target):
     """Assert element values are all greater than a target value.
@@ -1663,7 +1728,7 @@ class TensorFlowTestCase(googletest.TestCase):
         if any of the elements do not fall in the specified range.
     """
     target = self._GetNdArray(target)
-    if not (np.issubdtype(target.dtype, np.float) or
+    if not (np.issubdtype(target.dtype, np.floating) or
             np.issubdtype(target.dtype, np.integer)):
       raise AssertionError(
           "The value of %s does not have an ordered numeric type, instead it "
@@ -1840,7 +1905,7 @@ class TensorFlowTestCase(googletest.TestCase):
         elif use_gpu:
           yield sess
         else:
-          with sess.graph.device("/cpu:0"):
+          with sess.graph.device("/device:CPU:0"):
             yield sess
 
   def _create_session(self, graph, config, force_gpu):
@@ -1855,12 +1920,18 @@ class TensorFlowTestCase(googletest.TestCase):
       Returns:
         A config_pb2.ConfigProto object.
       """
+      # TODO(b/114333779): Enforce allow_soft_placement=False when
+      # use_gpu=False. Currently many tests rely on the fact that any device
+      # will be used even when a specific device is supposed to be used.
+      allow_soft_placement = not force_gpu
       if config is None:
         config = config_pb2.ConfigProto()
-        config.allow_soft_placement = not force_gpu
+        config.allow_soft_placement = allow_soft_placement
         config.gpu_options.per_process_gpu_memory_fraction = 0.3
-      elif force_gpu and config.allow_soft_placement:
-        config = config_pb2.ConfigProto().CopyFrom(config)
+      elif not allow_soft_placement and config.allow_soft_placement:
+        config_copy = config_pb2.ConfigProto()
+        config_copy.CopyFrom(config)
+        config = config_copy
         config.allow_soft_placement = False
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
@@ -1868,6 +1939,8 @@ class TensorFlowTestCase(googletest.TestCase):
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 
@@ -2010,3 +2083,42 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+def dismantle_func_graph(func_graph):
+  """Removes reference cycles in `func_graph` FuncGraph.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  the FuncGraph goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
+  # Clearing captures using clear() leaves some cycles around.
+  while func_graph.captures:
+    func_graph.captures.popitem()
+  memory.dismantle_ordered_dict(func_graph.captures)
+  ops.dismantle_graph(func_graph)
+
+
+def dismantle_polymorphic_function(func):
+  """Removes reference cycles in PolymorphicFunction `func`.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  PolymorphicFunction goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func: A `PolymorphicFunction` object to destroy. `func` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added
+  cache = func._function_cache  # pylint: disable=protected-access
+  for concrete_func in cache.values():
+    dismantle_func_graph(concrete_func.graph)
+  while cache:
+    cache.popitem()
+  memory.dismantle_ordered_dict(cache)

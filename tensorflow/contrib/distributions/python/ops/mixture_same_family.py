@@ -44,7 +44,8 @@ class MixtureSameFamily(distribution.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   ### Create a mixture of two scalar Gaussians:
 
@@ -113,12 +114,12 @@ class MixtureSameFamily(distribution.Distribution):
     """Construct a `MixtureSameFamily` distribution.
 
     Args:
-      mixture_distribution: `tf.distributions.Categorical`-like instance.
+      mixture_distribution: `tfp.distributions.Categorical`-like instance.
         Manages the probability of selecting components. The number of
         categories must match the rightmost batch dimension of the
         `components_distribution`. Must have either scalar `batch_shape` or
         `batch_shape` matching `components_distribution.batch_shape[:-1]`.
-      components_distribution: `tf.distributions.Distribution`-like instance.
+      components_distribution: `tfp.distributions.Distribution`-like instance.
         Right-most batch dimension indexes components.
       validate_args: Python `bool`, default `False`. When `True` distribution
         parameters are checked for validity despite possibly degrading runtime

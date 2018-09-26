@@ -422,8 +422,11 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
-  CHECK_EQ(shape.dimensions_size(), Rank(shape));
+  DCHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
+  DCHECK_EQ(shape.dimensions_size(), Rank(shape));
+  if (shape.dimensions().size() == 1) {
+    return shape.dimensions()[0];
+  }
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
       std::multiplies<int64>());
@@ -439,6 +442,19 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     count += ElementsInRecursive(element_shape);
   }
   return count;
+}
+
+/* static */ bool ShapeUtil::HasPrimitiveType(const Shape& shape,
+                                              PrimitiveType primitive_type) {
+  if (shape.element_type() == primitive_type) {
+    return true;
+  }
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    if (HasPrimitiveType(element_shape, primitive_type)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {

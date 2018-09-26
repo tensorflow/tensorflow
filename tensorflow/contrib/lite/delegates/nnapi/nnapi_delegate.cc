@@ -518,7 +518,7 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinReshape:
-        if (version == 1) {
+        if (version == 1 && node->inputs->size == 2) {
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             return ANEURALNETWORKS_RESHAPE;
@@ -1115,6 +1115,14 @@ class NNAPIDelegateKernel {
     CHECK_NN(context, ANeuralNetworksModel_identifyInputsAndOutputs(
                           nn_model_.get(), inputs.size(), inputs.data(),
                           outputs.size(), outputs.data()));
+
+    // Set relaxed computation mode for fp32 if possible.
+    if (kAndroidSdkVersion >= kMinSdkVersionForNNAPI11) {
+      CHECK_NN(context,
+               ANeuralNetworksModel_relaxComputationFloat32toFloat16(
+                   nn_model_.get(), context->allow_fp32_relax_to_fp16));
+    }
+
     // Finalize the model
     CHECK_NN(context, ANeuralNetworksModel_finish(nn_model_.get()));
 

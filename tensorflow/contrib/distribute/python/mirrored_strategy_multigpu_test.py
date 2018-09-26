@@ -300,9 +300,15 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     dist = mirrored_strategy.MirroredStrategy(
         ["/device:GPU:0", "/device:CPU:0"])
-    features = dist.distribute_dataset(
-        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10)
-    ).make_one_shot_iterator().get_next()
+    ds = dist.distribute_dataset(
+        lambda: dataset_ops.Dataset.from_tensors([[1.]]).repeat(10))
+    if context.executing_eagerly():
+      iterator = ds.make_one_shot_iterator()
+    else:
+      iterator = ds.make_initializable_iterator()
+      self.evaluate([iterator.initializer])
+
+    features = iterator.get_next()
 
     with dist.scope():
       result = dist.call_for_each_tower(
@@ -1271,7 +1277,17 @@ class MirroredStrategyDefunTest(test.TestCase):
                             self.evaluate(device_result))
 
       for defun in defuns:
-        self.assertEqual(set(mock_model.variables), set(defun.variables))
+        # PolymorphicFunctions are specialized to the current device stack, so
+        # call_for_each has one trace per device. To check that the expected set
+        # of variables was accessed on each trace, we first retrieve each
+        # device-specific graph function.
+        per_device_graph_functions = dist.call_for_each_tower(
+            defun.get_concrete_function,
+            mock_model, *inputs, run_concurrently=False)
+        for device in devices:
+          graph_function = per_device_graph_functions.get(device=device)
+          self.assertEqual(set(mock_model.variables),
+                           set(graph_function.graph.variables))
 
   @test_util.run_in_graph_and_eager_modes()
   def testVariableInDefun(self):

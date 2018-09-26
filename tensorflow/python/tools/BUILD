@@ -44,6 +44,7 @@ py_library(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
+        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:loader",
         "@six_archive//:six",
     ],

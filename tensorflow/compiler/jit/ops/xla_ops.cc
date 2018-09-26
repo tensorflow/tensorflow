@@ -51,4 +51,43 @@ REGISTER_OP("XlaClusterOutput")
         "Operator that connects the output of an XLA computation to other "
         "consumer graph nodes.");
 
+REGISTER_OP("_XlaCompile")
+    .Input("constants: Tconstants")
+    .Attr("Tconstants: list(type) >= 0")
+    .Input("args: Targs")
+    .Attr("Targs: list(type) >= 0")
+    .Input("resources: Nresources * resource")
+    .Attr("Nresources: int >= 0")
+    .Output("key: string")
+    .Output("compilation_successful: bool")
+    .Attr("function: func")
+    // The compilation cache is stateful.
+    .SetIsStateful()
+    .Doc(R"(XLA Compile Op. For use by the XLA JIT only.
+
+Compiles a TensorFlow function into an XLA LocalExecutable and returns a key
+that _XlaRun can use to look up the LocalExecutable and execute it.
+
+key: A key that can be used to look up the local executable compiled by the
+   node and associated metadata.
+
+compilation_successful: True iff the compilation was successful.  Always true
+for now.
+)");
+
+REGISTER_OP("_XlaRun")
+    .Input("args: Targs")
+    .Attr("Targs: list(type) >= 0")
+    .Output("results: Tresults")
+    .Attr("Tresults: list(type) >= 0")
+    .Input("key: string")
+    // XLA random-number generation ops are stateful.
+    // TODO(phawkins): create stateful and non-stateful variants of _XlaRun.
+    .SetIsStateful()
+    .Doc(R"(XLA Run Op. For use by the XLA JIT only.
+
+Executes a TensorFlow function previously compiled into a LocalExecutable by an
+_XlaCompile op.
+)");
+
 }  // namespace tensorflow

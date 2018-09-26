@@ -396,14 +396,20 @@ REGISTER_OP("FilterByLastComponentDataset")
 
 REGISTER_OP("WindowDataset")
     .Input("input_dataset: variant")
-    .Input("window_size: int64")
+    .Input("size: int64")
+    .Input("shift: int64")
+    .Input("stride: int64")
+    .Input("drop_remainder: bool")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // batch_size should be a scalar.
+      // size, shift, stride, and drop_remainder should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
@@ -873,6 +879,13 @@ REGISTER_OP("IteratorGetNextAsOptional")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ModelDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("MapDefun")
     .Input("arguments: Targuments")
     .Output("output: output_types")
@@ -918,5 +931,42 @@ REGISTER_OP("MapDefun")
       }
       return Status::OK();
     });
+
+REGISTER_OP("MultiDeviceIterator")
+    .Output("handle: resource")
+    .Attr("devices: list(string) >= 1")
+    .Attr("shared_name: string")
+    .Attr("container: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MultiDeviceIteratorInit")
+    .Input("dataset: variant")
+    .Input("multi_device_iterator: resource")
+    .Input("max_buffer_size: int64")
+    .Output("incarnation_id: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
+    .Input("multi_device_iterator: resource")
+    .Input("shard_num: int32")
+    .Input("incarnation_id: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(IteratorGetNextShapeFn);
+
+REGISTER_OP("MultiDeviceIteratorToStringHandle")
+    .Input("multi_device_iterator: resource")
+    .Output("string_handle: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MultiDeviceIteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("multi_device_iterator: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow

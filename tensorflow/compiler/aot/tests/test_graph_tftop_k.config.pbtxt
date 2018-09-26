@@ -1,0 +1,13 @@
+# Text form of tensorflow.tf2xla.Config proto.
+feed {
+  id { node_name: "x" }
+  shape {
+    dim { size: 5 }
+  }
+}
+fetch {
+  id { node_name: "values" }
+}
+fetch {
+  id { node_name: "indices" }
+}

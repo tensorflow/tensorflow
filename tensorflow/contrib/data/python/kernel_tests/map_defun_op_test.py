@@ -28,6 +28,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -115,7 +116,7 @@ class MapDefunTest(test.TestCase):
     elems2 = array_ops.placeholder(dtypes.int32)
     result = map_defun.map_defun(fn, [elems1, elems2],
                                  [dtypes.int32, dtypes.int32], [(), ()])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesWithPredicateMatch(
           errors.InvalidArgumentError,
           "All inputs must have the same dimension 0."):
@@ -206,6 +207,31 @@ class MapDefunTest(test.TestCase):
     with session.Session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(r, feed_dict={p: 0})
+
+  def _assert_op_cancelled(self, sess, map_defun_op):
+    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+      sess.run(map_defun_op)
+
+  def testMapDefunWithParentCancellation(self):
+    # Checks that a cancellation of the parent graph is threaded through to
+    # MapDefunOp correctly.
+    @function.Defun(dtypes.int32)
+    def simple_fn(x):
+      del x
+      queue = data_flow_ops.FIFOQueue(10, dtypes.int32, ())
+      # Blocking
+      return queue.dequeue_many(5)
+
+    c = constant_op.constant([1, 2, 3, 4, 5])
+    map_defun_op = map_defun.map_defun(simple_fn, [c], [dtypes.int32], [()])[0]
+
+    with self.cached_session() as sess:
+      thread = self.checkedThread(
+          self._assert_op_cancelled, args=(sess, map_defun_op))
+      thread.start()
+      time.sleep(0.1)
+      sess.close()
+      thread.join()
 
 
 class MapDefunBenchmark(test.Benchmark):

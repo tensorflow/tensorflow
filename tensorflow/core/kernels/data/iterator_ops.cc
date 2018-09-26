@@ -44,43 +44,6 @@ namespace {
 
 const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 
-Status VerifyTypesMatch(const DataTypeVector& expected,
-                        const DataTypeVector& received) {
-  if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
-        "Number of components does not match: expected ", expected.size(),
-        " types but got ", received.size(), ".");
-  }
-  for (size_t i = 0; i < expected.size(); ++i) {
-    if (expected[i] != received[i]) {
-      return errors::InvalidArgument("Data type mismatch at component ", i,
-                                     ": expected ", DataTypeString(expected[i]),
-                                     " but got ", DataTypeString(received[i]),
-                                     ".");
-    }
-  }
-  return Status::OK();
-}
-
-Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
-                              const std::vector<PartialTensorShape>& received) {
-  if (expected.size() != received.size()) {
-    return errors::InvalidArgument(
-        "Number of components does not match: expected ", expected.size(),
-        " shapes but got ", received.size(), ".");
-  }
-  for (size_t i = 0; i < expected.size(); ++i) {
-    if (!expected[i].IsCompatibleWith(received[i])) {
-      return errors::InvalidArgument("Incompatible shapes at component ", i,
-                                     ": expected ", expected[i].DebugString(),
-                                     " but got ", received[i].DebugString(),
-                                     ".");
-    }
-  }
-
-  return Status::OK();
-}
-
 }  // namespace
 
 class IteratorResource : public ResourceBase {
@@ -403,12 +366,12 @@ class IteratorStateVariant {
   }
   string TypeName() const { return kIteratorVariantTypeName; }
   void Encode(VariantTensorData* data) const { *data = *data_; }
-  bool Decode(const VariantTensorData& data) {
+  bool Decode(VariantTensorData data) {
     if (data.type_name() != TypeName()) {
       return false;
     }
     std::unique_ptr<VariantTensorData> tensor_data(new VariantTensorData);
-    *tensor_data = data;
+    std::swap(*tensor_data, data);
     std::unique_ptr<VariantTensorDataReader> reader(
         new VariantTensorDataReader(tensor_data.get()));
     status_ = reader->status();

@@ -852,7 +852,7 @@ def set_tf_cuda_version(environ_cp):
 
     # Reset and retry
     print('Invalid path to CUDA %s toolkit. %s cannot be found' %
-          (tf_cuda_version, cuda_toolkit_path_full))
+          (tf_cuda_version, cuda_toolkit_paths_full))
     environ_cp['TF_CUDA_VERSION'] = ''
     environ_cp['CUDA_TOOLKIT_PATH'] = ''
 
@@ -1401,9 +1401,19 @@ def set_grpc_build_flags():
 
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
-  syslibs = ','.join(sorted(syslibs.split(',')))
   if syslibs and syslibs != '':
+    if ',' in syslibs:
+      syslibs = ','.join(sorted(syslibs.split(',')))
+    else:
+      syslibs = ','.join(sorted(syslibs.split()))
     write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
+
+  if 'PREFIX' in environ_cp:
+    write_to_bazelrc('build --define=PREFIX=%s' % environ_cp['PREFIX'])
+  if 'LIBDIR' in environ_cp:
+    write_to_bazelrc('build --define=LIBDIR=%s' % environ_cp['LIBDIR'])
+  if 'INCLUDEDIR' in environ_cp:
+    write_to_bazelrc('build --define=INCLUDEDIR=%s' % environ_cp['INCLUDEDIR'])
 
 
 def set_windows_build_flags(environ_cp):
@@ -1571,6 +1581,9 @@ def main():
   set_system_libs_flag(environ_cp)
   if is_windows():
     set_windows_build_flags(environ_cp)
+
+  # Add a config option to build TensorFlow 2.0 API.
+  write_to_bazelrc('build:v2 --define=tf_api_version=2')
 
   if get_var(
       environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',

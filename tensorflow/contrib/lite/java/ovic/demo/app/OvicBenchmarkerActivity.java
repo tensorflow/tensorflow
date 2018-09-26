@@ -34,7 +34,9 @@ import java.io.InputStream;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.text.DecimalFormat;
+import org.tensorflow.ovic.OvicBenchmarker;
 import org.tensorflow.ovic.OvicSingleImageResult;
+
 
 /** Class that benchmark image classifier models. */
 public class OvicBenchmarkerActivity extends Activity {
