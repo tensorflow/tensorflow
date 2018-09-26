@@ -1677,7 +1677,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
         deps = select({
             "//conditions:default": deps,
             clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
-        }) + tf_binary_dynamic_kernel_deps(kernels),
+        }),
         data = data + select({
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
