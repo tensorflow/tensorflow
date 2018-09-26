@@ -89,10 +89,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
     ] + tf_protos_all(),
 )
