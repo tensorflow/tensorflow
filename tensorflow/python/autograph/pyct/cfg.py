@@ -27,6 +27,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import weakref
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
@@ -61,7 +62,10 @@ class Node(object):
 
   def freeze(self):
     self.next = frozenset(self.next)
-    self.prev = frozenset(self.prev)
+    # Assumption: All CFG nodes have identical life spans, because the graph
+    # owns them. Nodes should never be used outside the context of an existing
+    # graph.
+    self.prev = weakref.WeakSet(self.prev)
 
   def __repr__(self):
     if isinstance(self.ast_node, gast.FunctionDef):
@@ -256,7 +260,7 @@ class GraphBuilder(object):
     """Resets the state of this factory."""
     self.head = None
     self.errors = set()
-    self.node_index = collections.OrderedDict()
+    self.node_index = {}
 
     # TODO(mdan): Too many primitives. Use classes.
     self.leaves = set()
@@ -309,7 +313,10 @@ class GraphBuilder(object):
     """Grows the graph by adding a CFG node following the current leaves."""
     if ast_node is self.node_index:
       raise ValueError('%s added twice' % ast_node)
-    node = Node(next_=set(), prev=set(), ast_node=ast_node)
+    # Assumption: All CFG nodes have identical life spans, because the graph
+    # owns them. Nodes should never be used outside the context of an existing
+    # graph.
+    node = Node(next_=set(), prev=weakref.WeakSet(), ast_node=ast_node)
     self.node_index[ast_node] = node
     self.owners[node] = frozenset(self.active_stmts)
 

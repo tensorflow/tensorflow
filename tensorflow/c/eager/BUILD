@@ -68,7 +68,10 @@ tf_gpu_library(
 tf_gpu_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//learning/deepmind/courier:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/c:c_api",

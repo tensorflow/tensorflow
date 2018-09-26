@@ -43,4 +43,6 @@ tf_ops_fuzz_target_lib("example_proto_fast_parsing")
 
 tf_ops_fuzz_target_lib("parse_tensor_op")
 
+tf_ops_fuzz_target_lib("decode_compressed")
+
 tf_ops_fuzz_target_lib("decode_json_example")

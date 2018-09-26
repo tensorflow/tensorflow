@@ -21,8 +21,8 @@
 # Required environment variables:
 #     TF_GPU_COUNT = Number of GPUs available.
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
-TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU:-4}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
+TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU:-8}
 # We want to allow running one of the following configs:
 #  - 4 tests per GPU on k80
 #  - 8 tests per GPU on p100

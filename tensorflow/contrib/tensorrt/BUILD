@@ -19,8 +19,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -445,6 +444,7 @@ gpu_py_tests(
 gpu_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
+        "test/base_test.py",
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
@@ -468,26 +468,6 @@ gpu_py_tests(
         "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
-    ],
-)
-
-gpu_py_tests(
-    name = "base_test",
-    srcs = [
-        "test/base_test.py",
-    ],
-    additional_deps = [
-        ":tf_trt_integration_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-    ],
-    tags = [
-        "manual",
-        "no_cuda_on_cpu_tap",
-        "no_gpu",
-        "no_windows",
-        "nomac",
-        "notap",
     ],
 )
 

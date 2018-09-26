@@ -200,7 +200,7 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
         optimization.optimize(["filter_fusion"]))
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for x in range(5):
         r = map_function(x)
         filtered = False

@@ -300,7 +300,8 @@ class VectorDiffeomixture(distribution_lib.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Create two batches of VectorDiffeomixtures, one with mix_loc=[0.],
   # another with mix_loc=[1]. In both cases, `K=2` and the affine

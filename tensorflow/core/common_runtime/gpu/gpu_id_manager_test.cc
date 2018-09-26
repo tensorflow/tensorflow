@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-PhysicalGpuId TfToPlatformGpuId(TfGpuId tf) {
+PlatformGpuId TfToPlatformGpuId(TfGpuId tf) {
   PlatformGpuId platform_gpu_id;
   TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf, &platform_gpu_id));
   return platform_gpu_id;

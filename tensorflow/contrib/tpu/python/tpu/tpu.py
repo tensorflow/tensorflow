@@ -76,7 +76,7 @@ def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
-    embedding_config: If not None, an `EmbeddingLayerConfiguration` proto
+    embedding_config: If not None, a `TPUEmbeddingConfiguration` proto
       describing the desired configuration of the hardware embedding lookup
       tables. If embedding_config is None, no hardware embeddings can be used.
     job: The job (the XXX in TensorFlow device specification /job:XXX) that
@@ -562,13 +562,14 @@ def split_compile_and_replicate(computation,
             device_assignment.core_assignment.flatten().tolist()
     }
     # TODO(phawkins): remove this case after the forward compatibility window
-    # expires on 2018-10-6.
-    if api_compat.forward_compatible(2018, 10, 6):
+    # expires on 2018-10-5.
+    if api_compat.forward_compatible(2018, 10, 5):
       metadata_kwargs["num_cores_per_replica"] = (
           device_assignment.num_cores_per_replica)
     else:
-      metadata_kwargs["computation_shape"] = (
-          device_assignment.computation_shape.tolist())
+      metadata_kwargs["computation_shape"] = [
+          device_assignment.num_cores_per_replica
+      ]
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -847,8 +848,12 @@ def shard(computation,
   if num_shards <= 0:
     raise ValueError("num_shards must be a positive integer.")
 
+  inputs = [] if inputs is None else inputs
+  if not isinstance(inputs, list):
+    raise TypeError("tpu.shard()'s inputs must be a list of Tensors or None.")
+
   # Converts inputs to Tensors.
-  inputs = [] if inputs is None else [ops.convert_to_tensor(x) for x in inputs]
+  inputs = [ops.convert_to_tensor(x) for x in inputs]
 
   if input_shard_axes is None:
     input_shard_axes = [0] * len(inputs)

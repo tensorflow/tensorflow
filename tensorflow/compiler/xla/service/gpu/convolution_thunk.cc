@@ -29,20 +29,50 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using se::dnn::AlgorithmDesc;
+ConvolutionThunk::ConvolutionThunk(
+    const HloCustomCallInstruction* cudnn_call,
+    std::vector<BufferAllocation::Slice> operand_slices,
+    BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice,
+    BufferAllocation::Slice tuple_result_slice)
+    : Thunk(Kind::kConvolution, cudnn_call),
+      cudnn_call_(cudnn_call),
+      operand_buffers_(std::move(operand_slices)),
+      result_buffer_(result_slice),
+      scratch_buffer_(scratch_slice),
+      tuple_result_buffer_(tuple_result_slice) {}
 
 Status ConvolutionThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
     HloExecutionProfiler* profiler) {
   CudnnConvParams params;
+  TF_RETURN_IF_ERROR(PopulateCudnnConvParams(cudnn_call_, &params));
 
-  params.input_buf = buffer_allocations.GetDeviceAddress(input_buffer_);
-  params.filter_buf = buffer_allocations.GetDeviceAddress(filter_buffer_);
-  params.output_buf = buffer_allocations.GetDeviceAddress(output_buffer_);
+  switch (params.kind) {
+    case CudnnConvKind::kForward:
+      params.input_buf =
+          buffer_allocations.GetDeviceAddress(operand_buffers_[0]);
+      params.filter_buf =
+          buffer_allocations.GetDeviceAddress(operand_buffers_[1]);
+      params.output_buf = buffer_allocations.GetDeviceAddress(result_buffer_);
+      break;
+    case CudnnConvKind::kBackwardInput:
+      params.input_buf = buffer_allocations.GetDeviceAddress(result_buffer_);
+      params.filter_buf =
+          buffer_allocations.GetDeviceAddress(operand_buffers_[1]);
+      params.output_buf =
+          buffer_allocations.GetDeviceAddress(operand_buffers_[0]);
+      break;
+    case CudnnConvKind::kBackwardFilter:
+      params.input_buf =
+          buffer_allocations.GetDeviceAddress(operand_buffers_[0]);
+      params.filter_buf = buffer_allocations.GetDeviceAddress(result_buffer_);
+      params.output_buf =
+          buffer_allocations.GetDeviceAddress(operand_buffers_[1]);
+      break;
+  }
+
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
-
-  TF_RETURN_IF_ERROR(PopulateCudnnConvParams(cudnn_call_, &params));
 
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   TF_RETURN_IF_ERROR(RunCudnnConvolution(params, scratch, stream));

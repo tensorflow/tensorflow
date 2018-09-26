@@ -231,7 +231,13 @@ class RandomUniformIntOp : public OpKernel {
                 errors::InvalidArgument("maxval must be 0-D, got shape ",
                                         maxval.shape().DebugString()));
 
-    // Verify that minval < maxval
+    // Allocate output, and exit early if possible
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, AllocateOutputWithShape(ctx, shape, 0, &output));
+    if (output->NumElements() == 0) return;
+
+    // Verify that minval < maxval.  This check intentionally happens after the
+    // early exit for empty output.  Zero impossible things are fine.
     IntType lo = minval.scalar<IntType>()();
     IntType hi = maxval.scalar<IntType>()();
     OP_REQUIRES(
@@ -243,8 +249,6 @@ class RandomUniformIntOp : public OpKernel {
         Distribution;
     Distribution dist(lo, hi);
 
-    Tensor* output;
-    OP_REQUIRES_OK(ctx, AllocateOutputWithShape(ctx, shape, 0, &output));
     auto output_flat = output->flat<IntType>();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(),

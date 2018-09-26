@@ -1616,6 +1616,10 @@ class HloInstruction {
   InstructionVector operands_;
 
   // The set of control predecessors of this instruction.
+  // Note that the order of the instructions in the vector influences the order
+  // computed in HloComputation::ComputeInstructionPostOrder, which may
+  // influence the result of the compilation by changing the scheduling. We are
+  // not sure if it matters.
   std::vector<HloInstruction*> control_predecessors_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
@@ -1689,21 +1693,9 @@ std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 // To make the iteration order over the map deterministic, the comparator
 // should not be using the pointer values, but rather an intrinsic property of
 // the hlo. Exception: null pointer values compare less than non-null.
-//
-// Note that this cannot be used for HLO instructions across multiple modules
-// since the id of HLO instructions are only unique within each HLO module.
 struct HloPtrComparator {
   bool operator()(const HloInstruction* const& lhs,
-                  const HloInstruction* const& rhs) const {
-    if (rhs == nullptr) {
-      // Nothing compares less than nullptr.
-      return false;
-    }
-    if (lhs == nullptr) {
-      return true;
-    }
-    return lhs->unique_id() < rhs->unique_id();
-  }
+                  const HloInstruction* const& rhs) const;
 };
 
 template <typename ValueT>

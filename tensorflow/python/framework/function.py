@@ -762,13 +762,12 @@ class _FuncGraph(ops.Graph):
         if handle_data:
           handle_data = handle_data.SerializeToString()
       else:
-        handle_data = c_api.GetResourceHandleShapeAndType(
-            tensor.graph._c_graph, tensor._as_tf_output())
+        handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
+                                                  tensor._as_tf_output())
 
       if handle_data:
-        c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
-                                            ph._as_tf_output(),
-                                            compat.as_bytes(handle_data))
+        c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
+                                    compat.as_bytes(handle_data))
     else:
       ph._handle_data = tensor._handle_data
     # pylint: enable=protected-access
@@ -1097,6 +1096,21 @@ def _from_library(lib):
   return initialized.values()
 
 
+def _get_experimental_kwarg_as_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, bool):
+    return attr_value_pb2.AttrValue(b=value)
+  elif isinstance(value, int):
+    return attr_value_pb2.AttrValue(i=value)
+  elif isinstance(value, float):
+    return attr_value_pb2.AttrValue(f=value)
+  elif isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -1123,7 +1137,7 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   kwargs_keys = list(kwargs.keys())
   for key in kwargs_keys:
     if key.startswith("experimental_"):
-      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(kwargs[key]))
+      attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
       del kwargs[key]
 
   if kwargs:

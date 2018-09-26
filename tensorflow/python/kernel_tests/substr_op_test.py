@@ -46,7 +46,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     expected_value = b"ell"
 
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
@@ -57,7 +57,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     expected_value = b""
 
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
@@ -79,7 +79,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     expected_value = [b"ell", b"orl"]
 
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
@@ -104,7 +104,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
                       [b"ixte", b"even", b"ight"]]
 
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
@@ -196,7 +196,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     position = np.array(-7, dtype)
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         substr = substr_op.eval()
 
@@ -234,7 +234,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     position = np.array([[1, 2, -3], [1, 2, -4], [1, 2, -3]], dtype)
     length = np.array([[3, 2, 1], [1, 2, 3], [2, 2, 2]], dtype)
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         substr = substr_op.eval()
 
@@ -252,7 +252,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     position = np.array([-1, -2, -4], dtype)
     length = np.array([1, 2, 3], dtype)
     substr_op = string_ops.substr(test_string, position, length)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
         substr = substr_op.eval()
 
