@@ -42,12 +42,12 @@ void mlir::initializeAllRegisteredOps(MLIRContext *context) {
 OpAsmParser::~OpAsmParser() {}
 
 // The fallback for the printer is to reject the short form.
-bool OpBaseState::parse(OpAsmParser *parser, OperationState *result) {
+bool OpState::parse(OpAsmParser *parser, OperationState *result) {
   return parser->emitError(parser->getNameLoc(), "has no concise form");
 }
 
 // The fallback for the printer is to print it the longhand form.
-void OpBaseState::print(OpAsmPrinter *p) const {
+void OpState::print(OpAsmPrinter *p) const {
   p->printDefaultOp(getOperation());
 }
 

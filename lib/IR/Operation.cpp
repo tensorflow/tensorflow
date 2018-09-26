@@ -193,32 +193,32 @@ bool Operation::constantFold(ArrayRef<Attribute *> operands,
 }
 
 //===----------------------------------------------------------------------===//
-// OpBaseState trait class.
+// OpState trait class.
 //===----------------------------------------------------------------------===//
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
-void OpBaseState::emitError(const Twine &message) const {
+void OpState::emitError(const Twine &message) const {
   getOperation()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-bool OpBaseState::emitOpError(const Twine &message) const {
+bool OpState::emitOpError(const Twine &message) const {
   return getOperation()->emitOpError(message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpBaseState::emitWarning(const Twine &message) const {
+void OpState::emitWarning(const Twine &message) const {
   getOperation()->emitWarning(message);
 }
 
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpBaseState::emitNote(const Twine &message) const {
+void OpState::emitNote(const Twine &message) const {
   getOperation()->emitNote(message);
 }
 

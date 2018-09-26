@@ -63,8 +63,8 @@ private:
 ///   #map42 = (d0)->(d0+1)
 ///   %y = affine_apply #map42(%x)
 ///
-class AffineApplyOp : public OpBase<AffineApplyOp, OpTrait::VariadicOperands,
-                                    OpTrait::VariadicResults> {
+class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
+                                OpTrait::VariadicResults> {
 public:
   /// Builds an affine apply op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap *map,
@@ -93,7 +93,7 @@ public:
 
 private:
   friend class Operation;
-  explicit AffineApplyOp(const Operation *state) : OpBase(state) {}
+  explicit AffineApplyOp(const Operation *state) : Op(state) {}
 };
 
 /// The "alloc" operation allocates a region of memory, as specified by its
@@ -116,7 +116,7 @@ private:
 /// This operation returns a single ssa value of memref type, which can be used
 /// by subsequent load and store operations.
 class AllocOp
-    : public OpBase<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
+    : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
   SSAValue *getMemRef() { return getOperation()->getResult(0); }
   const SSAValue *getMemRef() const { return getOperation()->getResult(0); }
@@ -132,7 +132,7 @@ public:
 
 private:
   friend class Operation;
-  explicit AllocOp(const Operation *state) : OpBase(state) {}
+  explicit AllocOp(const Operation *state) : Op(state) {}
 };
 
 /// The "call" operation represents a direct call to a function.  The operands
@@ -141,8 +141,8 @@ private:
 ///
 ///   %31 = call @my_add(%0, %1)
 ///            : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
-class CallOp : public OpBase<CallOp, OpTrait::VariadicOperands,
-                             OpTrait::VariadicResults> {
+class CallOp
+    : public Op<CallOp, OpTrait::VariadicOperands, OpTrait::VariadicResults> {
 public:
   static StringRef getOperationName() { return "call"; }
 
@@ -160,7 +160,7 @@ public:
 
 protected:
   friend class Operation;
-  explicit CallOp(const Operation *state) : OpBase(state) {}
+  explicit CallOp(const Operation *state) : Op(state) {}
 };
 
 /// The "call_indirect" operation represents an indirect call to a value of
@@ -171,8 +171,8 @@ protected:
 ///   %31 = call_indirect %15(%0, %1)
 ///            : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ///
-class CallIndirectOp : public OpBase<CallIndirectOp, OpTrait::VariadicOperands,
-                                     OpTrait::VariadicResults> {
+class CallIndirectOp : public Op<CallIndirectOp, OpTrait::VariadicOperands,
+                                 OpTrait::VariadicResults> {
 public:
   static StringRef getOperationName() { return "call_indirect"; }
 
@@ -189,7 +189,7 @@ public:
 
 protected:
   friend class Operation;
-  explicit CallIndirectOp(const Operation *state) : OpBase(state) {}
+  explicit CallIndirectOp(const Operation *state) : Op(state) {}
 };
 
 /// The "constant" operation requires a single attribute named "value".
@@ -199,7 +199,7 @@ protected:
 ///   %2 = "constant"(){value: @foo} : (f32)->f32
 ///
 class ConstantOp
-    : public OpBase<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult> {
+    : public Op<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult> {
 public:
   /// Builds a constant op with the specified attribute value and result type.
   static void build(Builder *builder, OperationState *result, Attribute *value,
@@ -218,7 +218,7 @@ public:
 
 protected:
   friend class Operation;
-  explicit ConstantOp(const Operation *state) : OpBase(state) {}
+  explicit ConstantOp(const Operation *state) : Op(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -297,7 +297,7 @@ private:
 ///   dealloc %0 : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
 ///
 class DeallocOp
-    : public OpBase<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
+    : public Op<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
   SSAValue *getMemRef() { return getOperand(); }
   const SSAValue *getMemRef() const { return getOperand(); }
@@ -312,7 +312,7 @@ public:
 
 private:
   friend class Operation;
-  explicit DeallocOp(const Operation *state) : OpBase(state) {}
+  explicit DeallocOp(const Operation *state) : Op(state) {}
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an
@@ -321,7 +321,7 @@ private:
 ///
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>
 ///
-class DimOp : public OpBase<DimOp, OpTrait::OneOperand, OpTrait::OneResult> {
+class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
@@ -337,7 +337,7 @@ public:
 
 private:
   friend class Operation;
-  explicit DimOp(const Operation *state) : OpBase(state) {}
+  explicit DimOp(const Operation *state) : Op(state) {}
 };
 
 /// The "extract_element" op reads a tensor or vector and returns one element
@@ -351,9 +351,8 @@ private:
 ///
 ///   %3 = extract_element %0[%1, %2] : vector<4x4xi32>
 ///
-class ExtractElementOp
-    : public OpBase<ExtractElementOp, OpTrait::VariadicOperands,
-                    OpTrait::OneResult> {
+class ExtractElementOp : public Op<ExtractElementOp, OpTrait::VariadicOperands,
+                                   OpTrait::OneResult> {
 public:
   static void build(Builder *builder, OperationState *result,
                     SSAValue *aggregate, ArrayRef<SSAValue *> indices = {});
@@ -378,7 +377,7 @@ public:
 
 private:
   friend class Operation;
-  explicit ExtractElementOp(const Operation *state) : OpBase(state) {}
+  explicit ExtractElementOp(const Operation *state) : Op(state) {}
 };
 
 /// The "load" op reads an element from a memref specified by an index list. The
@@ -390,7 +389,7 @@ private:
 ///   %3 = load %0[%1, %1] : memref<4x4xi32>
 ///
 class LoadOp
-    : public OpBase<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
+    : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
   SSAValue *getMemRef() { return getOperand(0); }
   const SSAValue *getMemRef() const { return getOperand(0); }
@@ -414,7 +413,7 @@ public:
 
 private:
   friend class Operation;
-  explicit LoadOp(const Operation *state) : OpBase(state) {}
+  explicit LoadOp(const Operation *state) : Op(state) {}
 };
 
 /// The "mulf" operation takes two operands and returns one result, each of
@@ -446,7 +445,7 @@ private:
 ///   return %0, %1 : i32, f8
 ///
 class ReturnOp
-    : public OpBase<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+    : public Op<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
   static StringRef getOperationName() { return "return"; }
 
@@ -460,7 +459,7 @@ public:
 
 private:
   friend class Operation;
-  explicit ReturnOp(const Operation *state) : OpBase(state) {}
+  explicit ReturnOp(const Operation *state) : Op(state) {}
 };
 
 /// The "shape_cast" operation converts a tensor from one type to an equivalent
@@ -474,7 +473,7 @@ private:
 ///    %2 = shape_cast %1 : tensor<??f32> to tensor<?x?xf32>
 ///
 class ShapeCastOp
-    : public OpBase<ShapeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
+    : public Op<ShapeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
   static StringRef getOperationName() { return "shape_cast"; }
 
@@ -493,7 +492,7 @@ public:
 
 private:
   friend class Operation;
-  explicit ShapeCastOp(const Operation *state) : OpBase(state) {}
+  explicit ShapeCastOp(const Operation *state) : Op(state) {}
 };
 
 /// The "store" op writes an element to a memref specified by an index list.
@@ -507,7 +506,7 @@ private:
 ///   store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
 ///
 class StoreOp
-    : public OpBase<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+    : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
   SSAValue *getValueToStore() { return getOperand(0); }
   const SSAValue *getValueToStore() const { return getOperand(0); }
@@ -535,7 +534,7 @@ public:
 
 private:
   friend class Operation;
-  explicit StoreOp(const Operation *state) : OpBase(state) {}
+  explicit StoreOp(const Operation *state) : Op(state) {}
 };
 
 /// Install the standard operations in the specified operation set.

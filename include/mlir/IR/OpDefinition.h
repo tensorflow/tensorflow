@@ -16,7 +16,7 @@
 // =============================================================================
 //
 // This file implements helper classes for implementing the "Op" types.  This
-// includes the OpBase type, which is the base class for Op class definitions,
+// includes the Op type, which is the base class for Op class definitions,
 // as well as number of traits in the OpTrait namespace that provide a
 // declarative way to specify properties of Ops.
 //
@@ -93,7 +93,7 @@ private:
 ///
 /// This also has the fallback implementations of customization hooks for when
 /// they aren't customized.
-class OpBaseState {
+class OpState {
 public:
   /// Return the operation that this refers to.
   const Operation *getOperation() const { return state; }
@@ -153,7 +153,7 @@ protected:
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
-  explicit OpBaseState(const Operation *state)
+  explicit OpState(const Operation *state)
       : state(const_cast<Operation *>(state)) {}
 
 private:
@@ -227,7 +227,7 @@ protected:
     // be able to disambiguate the path for the C++ compiler.
     auto *trait = static_cast<TraitType<ConcreteType> *>(this);
     auto *concrete = static_cast<ConcreteType *>(trait);
-    auto *base = static_cast<OpBaseState *>(concrete);
+    auto *base = static_cast<OpState *>(concrete);
     return base->getOperation();
   }
   const Operation *getOperation() const {
@@ -281,7 +281,7 @@ public:
 /// This class provides the API for ops that are known to have a specified
 /// number of operands.  This is used as a trait like this:
 ///
-///   class FooOp : public OpBase<FooOp, OpTrait::NOperands<2>::Impl> {
+///   class FooOp : public Op<FooOp, OpTrait::NOperands<2>::Impl> {
 ///
 template <unsigned N> class NOperands {
 public:
@@ -311,7 +311,7 @@ public:
 /// This class provides the API for ops that are known to have a at least a
 /// specified number of operands.  This is used as a trait like this:
 ///
-///   class FooOp : public OpBase<FooOp, OpTrait::AtLeastNOperands<2>::Impl> {
+///   class FooOp : public Op<FooOp, OpTrait::AtLeastNOperands<2>::Impl> {
 ///
 template <unsigned N> class AtLeastNOperands {
 public:
@@ -451,7 +451,7 @@ public:
 /// This class provides the API for ops that are known to have a specified
 /// number of results.  This is used as a trait like this:
 ///
-///   class FooOp : public OpBase<FooOp, OpTrait::NResults<2>::Impl> {
+///   class FooOp : public Op<FooOp, OpTrait::NResults<2>::Impl> {
 ///
 template <unsigned N> class NResults {
 public:
@@ -479,7 +479,7 @@ public:
 /// This class provides the API for ops that are known to have at least a
 /// specified number of results.  This is used as a trait like this:
 ///
-///   class FooOp : public OpBase<FooOp, OpTrait::AtLeastNResults<2>::Impl> {
+///   class FooOp : public Op<FooOp, OpTrait::AtLeastNResults<2>::Impl> {
 ///
 template <unsigned N> class AtLeastNResults {
 public:
@@ -576,17 +576,16 @@ public:
 /// argument 'ConcreteType' should be the concrete type by CRTP and the others
 /// are base classes by the policy pattern.
 template <typename ConcreteType, template <typename T> class... Traits>
-class OpBase
-    : public OpBaseState,
-      public Traits<ConcreteType>...,
-      public ConstFoldingHook<
-          ConcreteType,
-          typelist_contains<OpTrait::OneResult<ConcreteType>, OpBaseState,
-                            Traits<ConcreteType>...>::value> {
+class Op : public OpState,
+           public Traits<ConcreteType>...,
+           public ConstFoldingHook<
+               ConcreteType,
+               typelist_contains<OpTrait::OneResult<ConcreteType>, OpState,
+                                 Traits<ConcreteType>...>::value> {
 public:
   /// Return the operation that this refers to.
-  const Operation *getOperation() const { return OpBaseState::getOperation(); }
-  Operation *getOperation() { return OpBaseState::getOperation(); }
+  const Operation *getOperation() const { return OpState::getOperation(); }
+  Operation *getOperation() { return OpState::getOperation(); }
 
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in
@@ -625,7 +624,7 @@ public:
   // TODO: Provide a dump() method.
 
 protected:
-  explicit OpBase(const Operation *state) : OpBaseState(state) {}
+  explicit Op(const Operation *state) : OpState(state) {}
 
 private:
   template <typename... Types> struct BaseVerifier;
@@ -664,9 +663,9 @@ void printBinaryOp(const Operation *op, OpAsmPrinter *p);
 /// From this structure, subclasses get a standard builder, parser and printer.
 ///
 template <typename ConcreteType, template <typename T> class... Traits>
-class BinaryOp : public OpBase<ConcreteType, OpTrait::NOperands<2>::Impl,
-                               OpTrait::OneResult,
-                               OpTrait::SameOperandsAndResultType, Traits...> {
+class BinaryOp
+    : public Op<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
+                OpTrait::SameOperandsAndResultType, Traits...> {
 public:
   static void build(Builder *builder, OperationState *result, SSAValue *lhs,
                     SSAValue *rhs) {
@@ -681,8 +680,8 @@ public:
 
 protected:
   explicit BinaryOp(const Operation *state)
-      : OpBase<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
-               OpTrait::SameOperandsAndResultType, Traits...>(state) {}
+      : Op<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
+           OpTrait::SameOperandsAndResultType, Traits...>(state) {}
 };
 
 } // end namespace mlir
