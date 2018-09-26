@@ -446,6 +446,12 @@ class TensorForestEstimator(estimator.Estimator):
     Returns:
       A `TensorForestEstimator` instance.
     """
+    # Override default number of trainers if config is provided.
+    if num_trainers == 1 and config is not None:
+      num_trainers = config.num_worker_replicas
+    if trainer_id == 0 and config is not None:
+      trainer_id = config.global_id_in_cluster
+
     super(TensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
             params.fill(),
@@ -564,6 +570,12 @@ class MultiForestMultiHeadEstimator(estimator.Estimator):
                local_eval=False):
     """See TensorForestEstimator.__init__."""
     model_fns = []
+    # Override default number of trainers if config is provided.
+    if num_trainers == 1 and config is not None:
+      num_trainers = config.num_worker_replicas
+    if trainer_id == 0 and config is not None:
+      trainer_id = config.global_id_in_cluster
+
     for i in range(len(params_list)):
       params = params_list[i].fill()
       model_fns.append(
@@ -709,6 +721,11 @@ class CoreTensorForestEstimator(core_estimator.Estimator):
     Returns:
       A `TensorForestEstimator` instance.
     """
+    # Override default number of trainers if config is provided.
+    if num_trainers == 1 and config is not None:
+      num_trainers = config.num_worker_replicas
+    if trainer_id == 0 and config is not None:
+      trainer_id = config.global_id_in_cluster
 
     super(CoreTensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
