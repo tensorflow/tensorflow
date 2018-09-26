@@ -2653,16 +2653,16 @@ class MapDataset(UnaryDataset):
 
 
 class MatchingFilesDataset(Dataset):
-  """A `Dataset` that list the files according to the input patterns"""
+  """A `Dataset` that list the files according to the input patterns."""
 
-  def __init__(self, pattern):
+  def __init__(self, patterns):
     super(MatchingFilesDataset, self).__init__()
-    self._pattern = ops.convert_to_tensor(
-      pattern, dtype=dtypes.string, name="pattern")
+    self._patterns = ops.convert_to_tensor(
+      patterns, dtype=dtypes.string, name="patterns")
 
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.matching_files_dataset(self._pattern)
+    return gen_dataset_ops.matching_files_dataset(self._patterns)
 
   @property
   def output_classes(self):

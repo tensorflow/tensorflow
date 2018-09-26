@@ -620,7 +620,7 @@ REGISTER_OP("TextLineDataset")
     });
 
 REGISTER_OP("MatchingFilesDataset")
-    .Input("pattern: string")
+    .Input("patterns: string")
     .Output("handle: variant")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
         // stateful to inhibit constant folding.
