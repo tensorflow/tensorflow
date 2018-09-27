@@ -363,7 +363,7 @@ Status DirectSession::MaybeInitializeExecutionState(
 Status DirectSession::Create(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     if (graph_created_) {
       return errors::AlreadyExists(
           "A Graph has already been created for this session.");
@@ -375,7 +375,7 @@ Status DirectSession::Create(const GraphDef& graph) {
 
 Status DirectSession::Extend(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
-  mutex_lock l(graph_def_lock_);
+  mutex_lock l(graph_state_lock_);
   return ExtendLocked(graph);
 }
 
@@ -1172,7 +1172,7 @@ Status DirectSession::CreateExecutors(
 
   int graph_def_version;
   {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     graph_def_version =
         execution_state_->original_graph_def().versions().producer();
   }
@@ -1400,7 +1400,7 @@ Status DirectSession::CreateGraphs(
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types, int64* collective_graph_key) {
-  mutex_lock l(graph_def_lock_);
+  mutex_lock l(graph_state_lock_);
   std::unique_ptr<ClientGraph> client_graph;
 
   std::unique_ptr<GraphExecutionState> temp_exec_state_holder;
