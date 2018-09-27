@@ -15,8 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/MatrixFunctions"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -25,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/MatrixFunctions"
 
 namespace tensorflow {
 
@@ -33,8 +33,7 @@ class MatrixSquareRootOp : public LinearAlgebraOp<Scalar> {
  public:
   INHERIT_LINALG_TYPEDEFS(Scalar);
 
-  explicit MatrixSquareRootOp(OpKernelConstruction* context) : Base(context) {
-  }
+  explicit MatrixSquareRootOp(OpKernelConstruction* context) : Base(context) {}
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
@@ -52,6 +51,8 @@ class MatrixSquareRootOp : public LinearAlgebraOp<Scalar> {
 
 REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<float>), float);
 REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<double>), double);
-REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex64>), complex64);
-REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex128>), complex128);
+REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex64>), 
+                   complex64);
+REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<complex128>), 
+                   complex128);
 }
