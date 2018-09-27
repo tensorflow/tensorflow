@@ -86,10 +86,6 @@ inline const bool* GetTensorData(const TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.b : nullptr;
 }
 
-inline int RemapDim(int max_dimensions, int d) {
-  return max_dimensions - d - 1;
-}
-
 // TODO(ahentz): the implementations in kernels/internal/ take a Dims<4> object
 // even if the original tensors were not 4D. We should consider rewriting them
 // to take a more generic 'shape' object.
