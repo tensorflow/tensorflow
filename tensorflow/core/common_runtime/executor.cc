@@ -72,141 +72,49 @@ bool IsInitializationOp(const Node* node) {
   return node->op_def().allows_uninitialized_input();
 }
 
-// Sets the timeline_label field of *node_stats, using data from *node.
-// Returns true iff the node is a transfer node.
-// TODO(tucker): merge with the DetailText function in session.cc
-// in a common location.
-bool SetTimelineLabel(const Node* node, NodeExecStatsWrapper* stats) {
-  bool is_transfer_node = false;
-  if (!stats) {
-    return is_transfer_node;
-  }
-  string memory;
-  for (auto& all : stats->stats()->memory()) {
-    int64 tot = all.total_bytes();
-    if (tot >= 0.1 * 1048576.0) {
-      int64 peak = all.peak_bytes();
-      if (peak > 0) {
-        memory =
-            strings::StrCat(memory, "[", all.allocator_name(),
-                            strings::Printf(" %.1fMB %.1fMB] ", tot / 1048576.0,
-                                            peak / 1048576.0));
-      } else {
-        memory = strings::StrCat(memory, "[", all.allocator_name(),
-                                 strings::Printf(" %.1fMB] ", tot / 1048576.0));
-      }
-    }
-  }
-  const AttrSlice attrs = node->attrs();
-  string text;
-  if (IsSend(node)) {
-    string tensor_name;
-    TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
-    string recv_device;
-    TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
-    text = strings::StrCat(memory, node->name(), " = ", node->type_string(),
-                           "(", tensor_name, " @", recv_device);
-    is_transfer_node = true;
-  } else if (IsRecv(node)) {
-    string tensor_name;
-    TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
-    string send_device;
-    TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
-    text = strings::StrCat(memory, node->name(), " = ", node->type_string(),
-                           "(", tensor_name, " @", send_device);
-    is_transfer_node = true;
-  } else {
-    text =
-        strings::StrCat(memory, node->name(), " = ", node->type_string(), "(",
-                        str_util::Join(node->requested_inputs(), ", "), ")");
-  }
-  stats->stats()->set_timeline_label(text);
-  return is_transfer_node;
-}
-
 // Helper routines for collecting step stats.
 namespace nodestats {
-inline int64 NowInUsec() { return Env::Default()->NowMicros(); }
 inline int64 NowInNsec() { return Env::Default()->NowNanos(); }
 
-void SetScheduled(NodeExecStatsWrapper* stats, int64 nanos) {
+void SetScheduled(NodeExecStatsInterface* stats, int64 micros) {
   if (!stats) return;
-  stats->stats()->set_scheduled_micros(nanos / EnvTime::kMicrosToNanos);
-  stats->stats()->set_scheduled_nanos(nanos);
+  stats->SetScheduled(micros * EnvTime::kMicrosToNanos);
 }
 
-void SetAllStart(NodeExecStatsWrapper* stats) {
+void SetAllStart(NodeExecStatsInterface* stats) {
   if (!stats) return;
-  int64 now_nanos = NowInNsec();
-  stats->stats()->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
-  stats->stats()->set_all_start_nanos(now_nanos);
+  stats->RecordExecutorStarted();
 }
 
-void SetOpStart(NodeExecStatsWrapper* stats) {
+void SetOpStart(NodeExecStatsInterface* stats) {
   if (!stats) return;
-  NodeExecStats* nt = stats->stats();
-  DCHECK_NE(nt->all_start_micros(), 0);
-  DCHECK_NE(nt->all_start_nanos(), 0);
-  int64 now_nanos = NowInNsec();
-  nt->set_op_start_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
-                              nt->all_start_micros());
-  nt->set_op_start_rel_nanos(now_nanos - nt->all_start_nanos());
+  stats->RecordComputeStarted();
 }
 
-void SetOpEnd(NodeExecStatsWrapper* stats) {
+void SetOpEnd(NodeExecStatsInterface* stats) {
   if (!stats) return;
-  NodeExecStats* nt = stats->stats();
-  DCHECK_NE(nt->all_start_micros(), 0);
-  DCHECK_NE(nt->all_start_nanos(), 0);
-  int64 now_nanos = NowInNsec();
-  nt->set_op_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
-                            nt->all_start_micros());
-  nt->set_op_end_rel_nanos(now_nanos - nt->all_start_nanos());
+  stats->RecordComputeEnded();
 }
 
-void SetAllEnd(NodeExecStatsWrapper* stats) {
+void SetAllEnd(NodeExecStatsInterface* stats) {
   if (!stats) return;
-  NodeExecStats* nt = stats->stats();
-  DCHECK_NE(nt->all_start_micros(), 0);
-  DCHECK_NE(nt->all_start_nanos(), 0);
-  int64 now_nanos = NowInNsec();
-  nt->set_all_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
-                             nt->all_start_micros());
-  nt->set_all_end_rel_nanos(now_nanos - nt->all_start_nanos());
+  stats->RecordExecutorEnded();
 }
 
-void SetOutput(NodeExecStatsWrapper* stats, int slot, const Tensor* v) {
+void SetOutput(NodeExecStatsInterface* stats, int slot, const Tensor* v) {
   if (!stats) return;
-  DCHECK(v);
-  NodeOutput* no = stats->stats()->add_output();
-  no->set_slot(slot);
-  v->FillDescription(no->mutable_tensor_description());
+  stats->SetOutput(slot, v);
 }
 
-void SetMemory(NodeExecStatsWrapper* stats, OpKernelContext* ctx) {
+void SetMemory(NodeExecStatsInterface* stats, OpKernelContext* ctx) {
   if (!stats) return;
-
-  for (const auto& allocator_pair : ctx->wrapped_allocators()) {
-    stats->AddAllocation(allocator_pair.first, allocator_pair.second);
-  }
-  auto* ms = stats->stats()->mutable_memory_stats();
-  ms->set_temp_memory_size(ctx->temp_memory_allocated());
-  for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
-    ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
-  }
-  ms->set_persistent_memory_size(ctx->persistent_memory_allocated());
+  stats->SetMemory(ctx);
 }
 
-void SetReferencedTensors(NodeExecStatsWrapper* stats,
+void SetReferencedTensors(NodeExecStatsInterface* stats,
                           const TensorReferenceVector& tensors) {
   if (!stats) return;
-  // be careful not to increment the reference count on any tensor
-  // while recording the information
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    AllocationDescription* description =
-        stats->stats()->add_referenced_tensor();
-    tensors.at(i).FillDescription(description);
-  }
+  stats->SetReferencedTensors(tensors);
 }
 
 }  // namespace nodestats
@@ -235,6 +143,8 @@ struct NodeItem {
   bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
   bool is_merge : 1;             // True iff IsMerge(node)
   bool is_enter : 1;             // True iff IsEnter(node)
+  bool is_constant_enter : 1;    // True iff IsEnter(node) and
+                                 // node->GetAttr("is_constant") == true.
   bool is_exit : 1;              // True iff IsExit(node)
   bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
   bool is_sink : 1;              // True iff IsSink(node)
@@ -718,6 +628,14 @@ Status ExecutorImpl::Initialize() {
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
     item->is_enter = IsEnter(n);
+    if (item->is_enter) {
+      bool is_constant_enter;
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(n->attrs(), "is_constant", &is_constant_enter));
+      item->is_constant_enter = is_constant_enter;
+    } else {
+      item->is_constant_enter = false;
+    }
     item->is_exit = IsExit(n);
     item->is_control_trigger = IsControlTrigger(n);
     item->is_sink = IsSink(n);
@@ -1319,7 +1237,10 @@ class ExecutorState {
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
-  StepStatsCollector* stats_collector_;
+  StepStatsCollectorInterface* const stats_collector_;
+  const tracing::TraceCollector* const trace_collector_;
+  const tracing::EventCollector* const event_collector_;
+
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
@@ -1328,6 +1249,7 @@ class ExecutorState {
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
+  const bool trace_using_annotations_;
 
   // Owned.
 
@@ -1384,7 +1306,7 @@ class ExecutorState {
 
   // After item->kernel computation is done, processes its outputs.
   Status ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
-                        EntryVector* outputs, NodeExecStatsWrapper* stats);
+                        EntryVector* outputs, NodeExecStatsInterface* stats);
 
   // After processing the outputs, propagates the outputs to their dsts.
   // Contents of *outputs are left in an indeterminate state after
@@ -1395,7 +1317,7 @@ class ExecutorState {
   // "node" just finishes. Takes ownership of "stats". Returns true if
   // execution has completed.
   bool NodeDone(const Status& s, const Node* node, const TaggedNodeSeq& ready,
-                NodeExecStatsWrapper* stats,
+                NodeExecStatsInterface* stats,
                 TaggedNodeReadyQueue* inline_ready);
 
   // Schedule all the expensive nodes in 'ready', and put all the inexpensive
@@ -1442,12 +1364,16 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
+      trace_collector_(tracing::GetTraceCollector()),
+      event_collector_(
+          tracing::GetEventCollector(tracing::EventCategory::kCompute)),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
       impl_(impl),
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
+      trace_using_annotations_(impl->params_.device->TraceUsingAnnotations()),
       num_outstanding_ops_(0) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
@@ -1565,6 +1491,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
   const Status fill_status =
       device->FillContextMap(graph, &device_context_map_);
   if (!fill_status.ok()) {
+    delete this;
     done(fill_status);
     return;
   }
@@ -1575,6 +1502,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
     ready.push_back(TaggedNode{n, root_frame_, 0, false});
   }
   if (ready.empty()) {
+    delete this;
     done(Status::OK());
   } else {
     num_outstanding_ops_ = ready.size();
@@ -1594,7 +1522,7 @@ void ExecutorState::RunAsync(Executor::DoneCallback done) {
 struct ExecutorState::AsyncState {
   AsyncState(const OpKernelContext::Params& p, const TaggedNode& _tagged_node,
              const NodeItem* _item, Entry* _first_input,
-             NodeExecStatsWrapper* _stats)
+             NodeExecStatsInterface* _stats)
       : saved_inputs(*p.inputs),
         saved_input_device_contexts(*p.input_device_contexts),
         saved_input_alloc_attrs(*p.input_alloc_attrs),
@@ -1619,7 +1547,7 @@ struct ExecutorState::AsyncState {
   const NodeItem* item;
   Entry* first_input;
   OpKernelContext ctx;
-  NodeExecStatsWrapper* stats;
+  NodeExecStatsInterface* stats;
 
  private:
   OpKernelContext::Params* ParamsButClearingEigenGPUDevice(
@@ -1630,6 +1558,32 @@ struct ExecutorState::AsyncState {
     return p;
   }
 };
+
+// Returns true if `item` might be traced by the given trace and event
+// collectors. Returns false only if `item` definitely will not be traced.
+bool MightTrace(const NodeItem& item,
+                const tracing::TraceCollector* trace_collector,
+                const tracing::EventCollector* event_collector,
+                bool using_annotations) {
+  // Tracing will only be enabled if either `event_collector` is non null,
+  // or `trace_collector` is non-null and enabled for this particular kernel.
+  // Although `tracing::ScopedActivity`,
+  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
+  // these properties internally in their constructors, the cost of passing the
+  // necessary arguments to them can be significant, so we avoid constructing
+  // them in the common case (when we know they will not be used).
+  if (event_collector != nullptr) {
+    return true;
+  }
+  if (trace_collector) {
+    if (using_annotations) {
+      return trace_collector->IsEnabledForAnnotations();
+    } else {
+      return trace_collector->IsEnabledForActivities(item.kernel_is_expensive);
+    }
+  }
+  return false;
+}
 
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   const GraphView& gview = impl_->gview_;
@@ -1664,7 +1618,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.stats_collector = stats_collector_;
 
   Status s;
-  NodeExecStatsWrapper* stats = nullptr;
+  NodeExecStatsInterface* stats = nullptr;
+
   EntryVector outputs;
   bool completed = false;
   inline_ready.push_back(tagged_node);
@@ -1694,15 +1649,14 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     if (stats_collector_ && !tagged_node.is_dead) {
       // track allocations if and only if we are collecting statistics
       params.track_allocations = true;
-      stats = new NodeExecStatsWrapper;
-      stats->stats()->set_node_name(node->name());
+      stats = stats_collector_->CreateNodeExecStats(node);
       nodestats::SetScheduled(stats, scheduled_nsec);
       nodestats::SetAllStart(stats);
     }
 
     if (vlog_) {
       VLOG(1) << "Process node: " << id << " step " << params.step_id << " "
-              << SummarizeNode(*node) << " is dead: " << tagged_node.is_dead
+              << SummarizeNode(*node) << (tagged_node.is_dead ? " is dead" : "")
               << " device: " << device->name();
     }
 
@@ -1753,7 +1707,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
-          NodeExecStatsWrapper* stats = state->stats;  // Shorthand
+          NodeExecStatsInterface* stats = state->stats;  // Shorthand
           Entry* first_input = state->first_input;     // Shorthand
 
           nodestats::SetOpEnd(stats);
@@ -1764,7 +1718,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
             VLOG(2) << "Async kernel done: " << state->item->node->id()
                     << " step " << step_id_ << " "
                     << SummarizeNode(*state->item->node)
-                    << " is dead: " << state->tagged_node.is_dead
+                    << (state->tagged_node.is_dead ? " is dead" : "")
                     << " device: " << device->name();
           }
 
@@ -1802,7 +1756,32 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
-        device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+
+        if (TF_PREDICT_FALSE(MightTrace(item, trace_collector_,
+                                        event_collector_,
+                                        trace_using_annotations_))) {
+          const string& op_name = op_kernel->name();
+          tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                                       op_name);
+          if (trace_using_annotations_) {
+            // The OpKernel may create child activities (such as GPU kernel
+            // launches), so use a `ScopedAnnotation` to relate these activities
+            // in the trace.
+            tracing::ScopedAnnotation activity(op_name,
+                                               op_kernel->type_string());
+            device->Compute(op_kernel, &ctx);
+          } else {
+            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // execution.
+            tracing::ScopedActivity activity(op_name, op_kernel->type_string(),
+                                             item.kernel_is_expensive);
+            device->Compute(op_kernel, &ctx);
+          }
+        } else {
+          // In the common case, avoid creating any tracing objects.
+          device->Compute(op_kernel, &ctx);
+        }
+
         nodestats::SetOpEnd(stats);
         s = ProcessOutputs(item, &ctx, &outputs, stats);
         if (s.ok() && impl_->device_record_tensor_accesses_) {
@@ -1818,7 +1797,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       if (vlog_) {
         VLOG(2) << "Synchronous kernel done: " << id << " step "
                 << params.step_id << " " << SummarizeNode(*node)
-                << " is dead: " << tagged_node.is_dead
+                << (tagged_node.is_dead ? " is dead: " : "")
                 << " device: " << device->name();
       }
 
@@ -1944,7 +1923,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
 
 Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
                                      EntryVector* outputs,
-                                     NodeExecStatsWrapper* stats) {
+                                     NodeExecStatsInterface* stats) {
   const Node* node = item.node;
   DCHECK_EQ(0, outputs->size());
   outputs->resize(item.num_outputs);
@@ -2079,15 +2058,12 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     is_frame_done = input_frame->DecrementOutstandingOpsLocked(
         &impl_->gview_, input_iter, ready);
   } else if (item->is_enter) {
-    bool is_constant;
-    const Status s = GetNodeAttr(node->attrs(), "is_constant", &is_constant);
-    DCHECK(s.ok()) << s;
     FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
     output_iter = 0;
     {
       const NodeItem* item = impl_->gview_.node(node->id());
       mutex_lock l(output_frame->mu);
-      if (is_constant) {
+      if (item->is_constant_enter) {
         // Propagate to all active iterations if this is a loop invariant.
         output_frame->AddLoopInv(item, (*outputs)[0], ready);
       } else {
@@ -2162,15 +2138,15 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
 
 bool ExecutorState::NodeDone(const Status& s, const Node* node,
                              const TaggedNodeSeq& ready,
-                             NodeExecStatsWrapper* stats,
+                             NodeExecStatsInterface* stats,
                              TaggedNodeReadyQueue* inline_ready) {
   nodestats::SetAllEnd(stats);
-  if (stats_collector_ != nullptr && !SetTimelineLabel(node, stats)) {
-    // Only record non-transfer nodes.
-    // Transfers 'stats' ownership to 'stats_collector_'.
-    stats_collector_->Save(impl_->params_.device->name(), stats);
-  } else if (stats) {
-    delete stats;
+  if (stats) {
+    if (stats_collector_) {
+      stats->Done(impl_->params_.device->name());
+    } else {
+      delete stats;
+    }
   }
 
   bool abort_run = false;
@@ -2392,13 +2368,15 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
-  if (sync_on_finish_ && status.ok()) {
+  Device* device = impl_->params_.device;
+  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status = impl_->params_.device->Sync();
+    status.Update(device->Sync());
   }
+
   delete this;
   CHECK(done_cb != nullptr);
   runner([=]() { done_cb(status); });
@@ -2502,8 +2480,7 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
         }
         if (dst_ready) {
           if (IsControlTrigger(dst_node)) dst_dead = false;
-          ready->push_back(
-              TaggedNode(dst_node, parent_frame, parent_iter, dst_dead));
+          ready->emplace_back(dst_node, parent_frame, parent_iter, dst_dead);
           parent_iter_state->outstanding_ops++;
         }
       }
@@ -2627,7 +2604,7 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
     // Add dst to the ready queue if it's ready
     if (dst_ready) {
       if (dst_item->is_control_trigger) dst_dead = false;
-      ready->push_back(TaggedNode(dst_item->node, this, iter, dst_dead));
+      ready->emplace_back(dst_item->node, this, iter, dst_dead);
       iter_state->outstanding_ops++;
     }
   }

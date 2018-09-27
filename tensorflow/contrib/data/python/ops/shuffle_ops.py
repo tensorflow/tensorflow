@@ -25,16 +25,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class _ShuffleAndRepeatDataset(dataset_ops.Dataset):
+class _ShuffleAndRepeatDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that fuses `shuffle` and `repeat`."""
 
-  def __init__(self,
-               input_dataset,
-               buffer_size,
-               count=None,
-               seed=None):
-    """See `Dataset.map()` for details."""
-    super(_ShuffleAndRepeatDataset, self).__init__()
+  def __init__(self, input_dataset, buffer_size, count=None, seed=None):
+    super(_ShuffleAndRepeatDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
@@ -92,11 +87,11 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
       indefinitely.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):  # pylint: disable=missing-docstring

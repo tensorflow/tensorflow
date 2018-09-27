@@ -29,7 +29,8 @@ from tensorflow.python.util import tf_inspect
 def get_test_data(train_samples,
                   test_samples,
                   input_shape,
-                  num_classes):
+                  num_classes,
+                  random_seed=None):
   """Generates test data to train a model on.
 
   Arguments:
@@ -37,10 +38,13 @@ def get_test_data(train_samples,
     test_samples: Integer, how many test samples to generate.
     input_shape: Tuple of integers, shape of the inputs.
     num_classes: Integer, number of classes for the data and targets.
+    random_seed: Integer, random seed used by numpy to generate data.
 
   Returns:
     A tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
+  if random_seed is not None:
+    np.random.seed(random_seed)
   num_sample = train_samples + test_samples
   templates = 2 * num_classes * np.random.random((num_classes,) + input_shape)
   y = np.random.randint(0, num_classes, size=(num_sample,))
@@ -184,3 +188,22 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # for further checks in the caller function
   return actual_output
 
+
+def get_small_sequential_mlp(num_hidden, num_classes, input_dim=None):
+  model = keras.models.Sequential()
+  if input_dim:
+    model.add(keras.layers.Dense(num_hidden, activation='relu',
+                                 input_dim=input_dim))
+  else:
+    model.add(keras.layers.Dense(num_hidden, activation='relu'))
+  activation = 'sigmoid' if num_classes == 1 else 'softmax'
+  model.add(keras.layers.Dense(num_classes, activation=activation))
+  return model
+
+
+def get_small_functional_mlp(num_hidden, num_classes, input_dim):
+  inputs = keras.Input(shape=(input_dim,))
+  outputs = keras.layers.Dense(num_hidden, activation='relu')(inputs)
+  activation = 'sigmoid' if num_classes == 1 else 'softmax'
+  outputs = keras.layers.Dense(num_classes, activation=activation)(outputs)
+  return keras.Model(inputs, outputs)

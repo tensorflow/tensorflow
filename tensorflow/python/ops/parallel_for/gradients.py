@@ -42,6 +42,7 @@ def jacobian(output, inputs, use_pfor=True):
     [y_1, ..., y_n, x_1, ..., x_m].
   """
   flat_inputs = nest.flatten(inputs)
+  output_tensor_shape = output.shape
   output_shape = array_ops.shape(output)
   output = array_ops.reshape(output, [-1])
 
@@ -61,9 +62,11 @@ def jacobian(output, inputs, use_pfor=True):
         loop_fn, [output.dtype] * len(flat_inputs), output_size)
 
   for i, out in enumerate(pfor_outputs):
-    new_shape = array_ops.concat(
-        [output_shape, array_ops.shape(out)[1:]], axis=0)
-    out = array_ops.reshape(out, new_shape)
+    if out is not None:
+      new_shape = array_ops.concat(
+          [output_shape, array_ops.shape(out)[1:]], axis=0)
+      out = array_ops.reshape(out, new_shape)
+      out.set_shape(output_tensor_shape.concatenate(flat_inputs[i].shape))
     pfor_outputs[i] = out
 
   return nest.pack_sequence_as(inputs, pfor_outputs)
@@ -119,6 +122,8 @@ def batch_jacobian(output, inp, use_pfor=True):
   else:
     pfor_output = control_flow_ops.for_loop(loop_fn, output.dtype,
                                             output_row_size)
+  if pfor_output is None:
+    return None
   pfor_output = array_ops.reshape(pfor_output,
                                   [output_row_size, batch_size, -1])
   output = array_ops.transpose(pfor_output, [1, 0, 2])

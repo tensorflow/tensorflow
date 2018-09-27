@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import collections
 import hashlib
-import sys
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -34,16 +33,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
-
-# This is to avoid a circular dependency with cond_v2_impl.
-cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 class Defun(object):
@@ -665,7 +660,7 @@ class _FuncGraph(ops.Graph):
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
 
-    Overridden from @{tf.Graph} to update both the init_scope container
+    Overridden from `tf.Graph` to update both the init_scope container
     and the present inner container. This is necessary to make sure setting
     containers applies correctly both to created variables and to stateful
     ops.
@@ -767,13 +762,12 @@ class _FuncGraph(ops.Graph):
         if handle_data:
           handle_data = handle_data.SerializeToString()
       else:
-        handle_data = c_api.GetResourceHandleShapeAndType(
-            tensor.graph._c_graph, tensor._as_tf_output())
+        handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
+                                                  tensor._as_tf_output())
 
       if handle_data:
-        c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
-                                            ph._as_tf_output(),
-                                            compat.as_bytes(handle_data))
+        c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
+                                    compat.as_bytes(handle_data))
     else:
       ph._handle_data = tensor._handle_data
     # pylint: enable=protected-access
@@ -1029,20 +1023,10 @@ def _from_definition(fdef, grad_func=None):
   result = _DefinedFunction(func, argnames, input_types, func_name, grad_func,
                             python_grad_func, out_names)
   # pylint: disable=protected-access
-  if ops._USE_C_API:
-    serialized = fdef.SerializeToString()
-    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-    result._c_func = c_api_util.ScopedTFFunction(c_func)
-    result._extra_inputs = []
-  else:
-    result._definition = fdef
-    # Captured inputs are added as regular inputs to a function when it's
-    # serialized, i.e. any extra inputs from the original function are now
-    # included in `result`._args
-    result._extra_inputs = []
-    result._hash_str = result._create_hash_str(
-        result._definition.signature.input_arg,
-        result._definition.signature.output_arg, result._definition.node_def)
+  serialized = fdef.SerializeToString()
+  c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  result._c_func = c_api_util.ScopedTFFunction(c_func)
+  result._extra_inputs = []
   # pylint: enable=protected-access
 
   return result
@@ -1112,6 +1096,21 @@ def _from_library(lib):
   return initialized.values()
 
 
+def _get_experimental_kwarg_as_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, bool):
+    return attr_value_pb2.AttrValue(b=value)
+  elif isinstance(value, int):
+    return attr_value_pb2.AttrValue(i=value)
+  elif isinstance(value, float):
+    return attr_value_pb2.AttrValue(f=value)
+  elif isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -1138,7 +1137,7 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   kwargs_keys = list(kwargs.keys())
   for key in kwargs_keys:
     if key.startswith("experimental_"):
-      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(kwargs[key]))
+      attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
       del kwargs[key]
 
   if kwargs:

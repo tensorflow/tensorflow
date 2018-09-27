@@ -70,7 +70,7 @@ class OpRegistryInterface;
 class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
-class StepStatsCollector;
+class StepStatsCollectorInterface;
 
 class OpKernel {
  public:
@@ -372,18 +372,37 @@ class OpKernelConstruction {
 template <typename ListType, typename ElementType>
 class OpArgIterator {
  public:
-  typedef OpArgIterator<ListType, ElementType> ME;
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = ElementType;
+  using pointer = ElementType*;
+  using reference = ElementType&;
+  using difference_type = ptrdiff_t;
+
   OpArgIterator(const ListType* list, int i) : list_(list), i_(i) {}
-  bool operator==(const ME& rhs) {
+
+  bool operator==(const OpArgIterator& rhs) {
     DCHECK(list_ == rhs.list_);
     return i_ == rhs.i_;
   }
-  bool operator!=(const ME& rhs) {
+
+  bool operator!=(const OpArgIterator& rhs) {
     DCHECK(list_ == rhs.list_);
     return i_ != rhs.i_;
   }
-  void operator++() { ++i_; }
-  ElementType& operator*() { return (*list_)[i_]; }
+
+  OpArgIterator operator++() {  // prefix ++it
+    ++i_;
+    return *this;
+  }
+
+  OpArgIterator operator++(int) {  // postfix it++
+    OpArgIterator old_value = *this;
+    ++i_;
+    return old_value;
+  }
+
+  reference operator*() { return (*list_)[i_]; }
+  pointer operator->() { return &(*list_)[i_]; }
 
  private:
   const ListType* const list_;
@@ -394,7 +413,7 @@ class OpArgIterator {
 // that are passed to the op as a single named argument.
 class OpInputList {
  public:
-  typedef OpArgIterator<OpInputList, const Tensor&> Iterator;
+  typedef OpArgIterator<OpInputList, const Tensor> Iterator;
   OpInputList() : ctx_(nullptr), start_(0), stop_(0) {}
   OpInputList(OpKernelContext* ctx, int start, int stop)
       : ctx_(ctx), start_(start), stop_(stop) {}
@@ -569,7 +588,7 @@ class OpKernelContext {
     CallFrameInterface* call_frame = nullptr;
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -984,7 +1003,7 @@ class OpKernelContext {
   std::function<void(std::function<void()>)>* runner() const {
     return params_->runner;
   }
-  StepStatsCollector* stats_collector() const {
+  StepStatsCollectorInterface* stats_collector() const {
     return params_->stats_collector;
   }
 

@@ -169,6 +169,13 @@ enum BuiltinOperator : byte {
   ONE_HOT = 85,
   LOGICAL_AND = 86,
   LOGICAL_NOT = 87,
+  UNPACK = 88,
+  REDUCE_MIN = 89,
+  FLOOR_DIV = 90,
+  REDUCE_ANY = 91,
+  SQUARE = 92,
+  ZEROS_LIKE = 93,
+  FILL = 94,
 }
 
 // Options for the builtin operators.
@@ -236,6 +243,11 @@ union BuiltinOptions {
   OneHotOptions,
   LogicalAndOptions,
   LogicalNotOptions,
+  UnpackOptions,
+  FloorDivOptions,
+  SquareOptions,
+  ZerosLikeOptions,
+  FillOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -268,11 +280,15 @@ table Pool2DOptions {
 }
 
 table DepthwiseConv2DOptions {
+  // Parameters for DepthwiseConv version 1 or above.
   padding:Padding;
   stride_w:int;
   stride_h:int;
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
+  // Parameters for DepthwiseConv version 2 or above.
+  dilation_w_factor:int = 1;
+  dilation_h_factor:int = 1;
 }
 
 table ConcatEmbeddingsOptions {
@@ -565,6 +581,23 @@ table LogicalAndOptions {
 table LogicalNotOptions {
 }
 
+table UnpackOptions {
+  num:int;
+  axis:int;
+}
+
+table FloorDivOptions {
+}
+
+table SquareOptions {
+}
+
+table ZerosLikeOptions {
+}
+
+table FillOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -631,9 +664,9 @@ table SubGraph {
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors
-// by index.
+// by index. The generous alignment accommodates mmap-friendly data structures.
 table Buffer {
-  data:[ubyte];
+  data:[ubyte] (force_align: 16);
 }
 
 table Model {

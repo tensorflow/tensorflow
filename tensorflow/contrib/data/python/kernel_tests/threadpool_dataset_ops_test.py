@@ -33,8 +33,17 @@ from tensorflow.python.platform import test
 
 class OverrideThreadpoolDatasetTest(test.TestCase, parameterized.TestCase):
 
-  @parameterized.parameters((1, None), (2, None), (4, None), (8, None),
-                            (16, None), (4, -1), (4, 0), (4, 1), (4, 4))
+  @parameterized.named_parameters(
+      ("1", 1, None),
+      ("2", 2, None),
+      ("3", 4, None),
+      ("4", 8, None),
+      ("5", 16, None),
+      ("6", 4, -1),
+      ("7", 4, 0),
+      ("8", 4, 1),
+      ("9", 4, 4),
+  )
   def testNumThreads(self, num_threads, max_intra_op_parallelism):
 
     def get_thread_id(_):
@@ -60,7 +69,7 @@ class OverrideThreadpoolDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       thread_ids = []
       try:

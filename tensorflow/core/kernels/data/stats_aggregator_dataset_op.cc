@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
@@ -33,16 +34,18 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
                                        &stats_aggregator_resource));
     core::ScopedUnref unref_stats_aggregator(stats_aggregator_resource);
 
-    *output = new Dataset(ctx, input, stats_aggregator_resource);
+    *output = new Dataset(ctx, input, ctx->input(1), stats_aggregator_resource);
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, const DatasetBase* input,
+                     const Tensor& resource_handle,
                      StatsAggregatorResource* stats_aggregator_resource)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
+          resource_handle_(resource_handle),
           stats_aggregator_resource_(stats_aggregator_resource) {
       input_->Ref();
       stats_aggregator_resource_->Ref();
@@ -71,11 +74,16 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented(
-          "Cannot currently serialize the `stats_aggregator` for a "
-          "SetStatsAggregatorDataset.");
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
+      Node* resource_handle_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {input_graph_node, resource_handle_node}, output));
+      return Status::OK();
     }
 
    private:
@@ -111,14 +119,14 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
       }
 
@@ -128,6 +136,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
+    const Tensor resource_handle_;
     StatsAggregatorResource* stats_aggregator_resource_;
   };
 };
@@ -135,4 +144,5 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("SetStatsAggregatorDataset").Device(DEVICE_CPU),
                         SetStatsAggregatorDatasetOp);
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

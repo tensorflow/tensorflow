@@ -34,15 +34,6 @@ namespace xla {
 
 namespace gpu {
 
-StatusOr<HloInstruction*> GpuCopyInsertion::FindOrInsertCopy(
-    HloInstruction* hlo) {
-  HloInstruction*& copy = hlo_to_copy_map_[hlo];
-  if (copy == nullptr) {
-    TF_ASSIGN_OR_RETURN(copy, hlo->parent()->DeepCopyInstruction(hlo));
-  }
-  return copy;
-}
-
 StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
   CopyInsertion generic_copy_insertion;
 

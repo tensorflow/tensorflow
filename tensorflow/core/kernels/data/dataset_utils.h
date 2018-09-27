@@ -20,16 +20,24 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
-namespace dataset {
+namespace data {
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
     int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
 
-}  // namespace dataset
+// Returns Status::OK() if `expected` and `received` types match,
+// errors::InvalidArgument otherwise.
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const DataTypeVector& received);
 
+// Returns Status::OK() if `expected` and `received` shapes are compatible,
+// errors::InvalidArgument otherwise.
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<PartialTensorShape>& received);
+
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -125,14 +125,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
 #define TF_LITE_BATCH_TO_SPACE_ND(type, scalar)                        \
-  type::BatchToSpaceND(GetTensorData<scalar>(op_context.input),        \
-                       GetTensorDims(op_context.input),                \
+  type::BatchToSpaceND(GetTensorShape(op_context.input),               \
+                       GetTensorData<scalar>(op_context.input),        \
+                       GetTensorShape(op_context.block_shape),         \
                        GetTensorData<int32_t>(op_context.block_shape), \
-                       GetTensorDims(op_context.block_shape),          \
+                       GetTensorShape(op_context.crops),               \
                        GetTensorData<int32_t>(op_context.crops),       \
-                       GetTensorDims(op_context.crops),                \
-                       GetTensorData<scalar>(op_context.output),       \
-                       GetTensorDims(op_context.output))
+                       GetTensorShape(op_context.output),              \
+                       GetTensorData<scalar>(op_context.output))
   switch (op_context.input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {

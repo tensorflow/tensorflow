@@ -31,6 +31,9 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/contrib/tensorrt/test/utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -675,7 +678,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
 // Function to construct a funcdef from the segment and add it to the graph.
 tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
     tensorflow::Graph* graph, const tensorflow::GraphDef& segment,
-    const string& name) {
+    const string& engine_name) {
   tensorflow::Graph sgraph(graph->flib_def());
   tensorflow::GraphConstructorOptions gcopts;
   TF_RETURN_IF_ERROR(
@@ -758,9 +761,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
   tensorflow::FunctionDefLibrary fdeflib;
   auto native_segment = fdeflib.add_function();
   TF_RETURN_IF_ERROR(tensorflow::GraphToFunctionDef(
-      sgraph, StrCat(name, "_native_segment"), native_segment));
+      sgraph, StrCat(engine_name, "_native_segment"), native_segment));
   if (VLOG_IS_ON(7)) {
-    VLOG(7) << name << " Function_Def ";
+    VLOG(7) << engine_name << " Function_Def ";
     VLOG(7) << native_segment->DebugString();
   }
   VLOG(1) << "Adding funcdef to graphlib";
@@ -772,33 +775,55 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
     const ConversionParams& params, const EngineInfo& engine) {
   int cuda_device_id = -1;
   tensorflow::Allocator* dev_allocator = nullptr;
-  if (params.cluster) {
-    std::vector<tensorflow::Device*> devices;
-    if (!engine.device.empty() && params.cluster->GetDeviceSet()) {
-      DeviceNameUtils::ParsedName parsed_name;
-      if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name) &&
-          parsed_name.has_id) {
-        params.cluster->GetDeviceSet()->FindMatchingDevices(parsed_name,
-                                                            &devices);
+  if (params.cluster == nullptr || params.cluster->GetDeviceSet() == nullptr ||
+      engine.device.empty()) {
+    // If device is not set, use the first found GPU device for the conversion.
+    for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
+      TfGpuId tf_gpu_id(tf_gpu_id_value);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+      if (s.ok()) {
+        VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
+                << platform_gpu_id.value();
+        cuda_device_id = platform_gpu_id.value();
+        GPUOptions gpu_options;
+        // If the TF to Cuda gpu id mapping exist, the device and corresponding
+        // allocator must have been initialized already, so the
+        // GetGPUAllocator() call won't create a new allocator.
+        dev_allocator = GPUProcessState::singleton()->GetGPUAllocator(
+            gpu_options, tf_gpu_id, 1);
+        break;
       }
+      LOG(ERROR) << "TF GPU with id " << tf_gpu_id_value << " does not exist "
+                 << s;
     }
-    if (!devices.empty()) {
-      if (devices.size() > 1) {
-        string msg = "Found multiple matching devices using name '";
-        StrAppend(&msg, engine.device, "': ");
-        for (auto d : devices) StrAppend(&msg, d->name(), ", ");
-        StrAppend(&msg, ". Will get the allocator from first one.");
-        LOG(WARNING) << msg;
-      }
-      tensorflow::AllocatorAttributes alloc_attr;
-      cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
-      dev_allocator = devices[0]->GetAllocator(alloc_attr);
-      VLOG(1) << "Using allocator " << dev_allocator->Name()
-              << " and cuda_device_id " << cuda_device_id;
-    } else {
-      LOG(WARNING) << "Cluster is set but device '" << engine.device
-                   << "' is not found in the cluster";
+    return std::make_pair(cuda_device_id, dev_allocator);
+  }
+
+  // Use the device requested by the engine.
+  auto device_set = params.cluster->GetDeviceSet();
+  std::vector<tensorflow::Device*> devices;
+  DeviceNameUtils::ParsedName parsed_name;
+  if (DeviceNameUtils::ParseFullName(engine.device, &parsed_name) &&
+      parsed_name.has_id) {
+    device_set->FindMatchingDevices(parsed_name, &devices);
+  }
+  if (!devices.empty()) {
+    if (devices.size() > 1) {
+      string msg = "Found multiple matching devices using name '";
+      StrAppend(&msg, engine.device, "': ");
+      for (auto d : devices) StrAppend(&msg, d->name(), ", ");
+      StrAppend(&msg, ". Will get the allocator from first one.");
+      LOG(WARNING) << msg;
     }
+    tensorflow::AllocatorAttributes alloc_attr;
+    cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
+    dev_allocator = devices[0]->GetAllocator(alloc_attr);
+    VLOG(1) << "Using allocator " << dev_allocator->Name()
+            << " and cuda_device_id " << cuda_device_id;
+  } else {
+    LOG(WARNING) << "Cluster is set but device '" << engine.device
+                 << "' is not found in the cluster";
   }
   return std::make_pair(cuda_device_id, dev_allocator);
 }

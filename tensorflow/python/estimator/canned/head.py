@@ -335,8 +335,8 @@ def _check_dense_labels_match_logits_and_reshape(
               'Expected labels dimension=%s.  Received %s. '
               'Suggested Fix:'
               'If your classifier expects one-hot encoding label,'
-              'check your n_classes argument to the estimator'
-              'and/or the shape of your label.'
+              'check your n_classes argument to the estimator '
+              'and/or the shape of your label. '
               'Otherwise, check the shape of your label.' %
               (expected_labels_dimension, dim1))
       expected_labels_shape = array_ops.concat(

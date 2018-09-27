@@ -16,7 +16,7 @@
 
 FeatureColumns provide a high level abstraction for ingesting and representing
 features. FeatureColumns are also the primary way of encoding features for
-canned @{tf.estimator.Estimator}s.
+canned `tf.estimator.Estimator`s.
 
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
@@ -169,7 +169,9 @@ def _internal_input_layer(features,
                           weight_collections=None,
                           trainable=True,
                           cols_to_vars=None,
-                          scope=None):
+                          scope=None,
+                          cols_to_output_tensors=None,
+                          from_template=False):
   """See input_layer. `scope` is a name or variable scope to use."""
 
   feature_columns = _normalize_feature_columns(feature_columns)
@@ -185,10 +187,7 @@ def _internal_input_layer(features,
   if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
 
-  # a non-None `scope` can allow for variable reuse, when, e.g., this function
-  # is wrapped by a `make_template`.
-  with variable_scope.variable_scope(
-      scope, default_name='input_layer', values=features.values()):
+  def _get_logits():  # pylint: disable=missing-docstring
     builder = _LazyBuilder(features)
     output_tensors = []
     ordered_columns = []
@@ -202,16 +201,29 @@ def _internal_input_layer(features,
             trainable=trainable)
         num_elements = column._variable_shape.num_elements()  # pylint: disable=protected-access
         batch_size = array_ops.shape(tensor)[0]
-        output_tensors.append(
-            array_ops.reshape(tensor, shape=(batch_size, num_elements)))
+        output_tensor = array_ops.reshape(
+            tensor, shape=(batch_size, num_elements))
+        output_tensors.append(output_tensor)
         if cols_to_vars is not None:
           # Retrieve any variables created (some _DenseColumn's don't create
           # variables, in which case an empty list is returned).
           cols_to_vars[column] = ops.get_collection(
               ops.GraphKeys.GLOBAL_VARIABLES,
               scope=variable_scope.get_variable_scope().name)
+        if cols_to_output_tensors is not None:
+          cols_to_output_tensors[column] = output_tensor
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
+
+  # If we're constructing from the `make_template`, that by default adds a
+  # variable scope with the name of the layer. In that case, we dont want to
+  # add another `variable_scope` as that would break checkpoints.
+  if from_template:
+    return _get_logits()
+  else:
+    with variable_scope.variable_scope(
+        scope, default_name='input_layer', values=features.values()):
+      return _get_logits()
 
 
 @tf_export('feature_column.input_layer')
@@ -219,7 +231,8 @@ def input_layer(features,
                 feature_columns,
                 weight_collections=None,
                 trainable=True,
-                cols_to_vars=None):
+                cols_to_vars=None,
+                cols_to_output_tensors=None):
   """Returns a dense `Tensor` as input layer based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -264,6 +277,9 @@ def input_layer(features,
         dimension=10): [<tf.Variable 'some_variable:0' shape=(5, 10),
                         <tf.Variable 'some_variable:1' shape=(5, 10)]}
       If a column creates no variables, its value will be an empty list.
+    cols_to_output_tensors: If not `None`, must be a dictionary that will be
+      filled with a mapping from '_FeatureColumn' to the associated
+      output `Tensor`s.
 
   Returns:
     A `Tensor` which represents input layer of a model. Its shape
@@ -273,8 +289,13 @@ def input_layer(features,
   Raises:
     ValueError: if an item in `feature_columns` is not a `_DenseColumn`.
   """
-  return _internal_input_layer(features, feature_columns, weight_collections,
-                               trainable, cols_to_vars)
+  return _internal_input_layer(
+      features,
+      feature_columns,
+      weight_collections=weight_collections,
+      trainable=trainable,
+      cols_to_vars=cols_to_vars,
+      cols_to_output_tensors=cols_to_output_tensors)
 
 
 # TODO(akshayka): InputLayer should be a subclass of Layer, and it
@@ -288,17 +309,18 @@ class InputLayer(object):
                feature_columns,
                weight_collections=None,
                trainable=True,
-               cols_to_vars=None):
+               cols_to_vars=None,
+               name='feature_column_input_layer',
+               create_scope_now=True):
     """See `input_layer`."""
 
     self._feature_columns = feature_columns
     self._weight_collections = weight_collections
     self._trainable = trainable
     self._cols_to_vars = cols_to_vars
+    self._name = name
     self._input_layer_template = template.make_template(
-        'feature_column_input_layer',
-        _internal_input_layer,
-        create_scope_now_=True)
+        self._name, _internal_input_layer, create_scope_now_=create_scope_now)
     self._scope = self._input_layer_template.variable_scope
 
   def __call__(self, features):
@@ -308,7 +330,11 @@ class InputLayer(object):
         weight_collections=self._weight_collections,
         trainable=self._trainable,
         cols_to_vars=None,
-        scope=self._scope)
+        from_template=True)
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def non_trainable_variables(self):
@@ -1936,7 +1962,7 @@ class _FeatureColumn(object):
 
     It is used for get_parsing_spec for `tf.parse_example`. Returned spec is a
     dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of @{tf.parse_example} for all
+    supported objects. Please check documentation of `tf.parse_example` for all
     supported spec objects.
 
     Let's say a Feature column depends on raw feature ('raw') and another
@@ -1995,7 +2021,7 @@ class _DenseColumn(_FeatureColumn):
       weight_collections: List of graph collections to which Variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.Variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
 
     Returns:
       `Tensor` of shape [batch_size] + `_variable_shape`.
@@ -2062,7 +2088,7 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a @{tf.SparseTensor} of IDs.
+  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
   """
   __metaclass__ = abc.ABCMeta
 
@@ -2097,7 +2123,7 @@ class _CategoricalColumn(_FeatureColumn):
       weight_collections: List of graph collections to which variables (if any
         will be created) are added.
       trainable: If `True` also add variables to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see @{tf.get_variable}).
+        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.get_variable`).
     """
     pass
 

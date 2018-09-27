@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
-#define TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -102,9 +102,12 @@ class LookupTableOp : public OpKernel {
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
     if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
-      TF_CHECK_OK(
-          cinfo_.resource_manager()->template Delete<lookup::LookupInterface>(
-              cinfo_.container(), cinfo_.name()));
+      if (!cinfo_.resource_manager()
+               ->template Delete<lookup::LookupInterface>(cinfo_.container(),
+                                                          cinfo_.name())
+               .ok()) {
+        // Do nothing; the resource can have been deleted by session resets.
+      }
     }
   }
 
@@ -272,4 +275,4 @@ class HashTable : public InitializableLookupTable {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_

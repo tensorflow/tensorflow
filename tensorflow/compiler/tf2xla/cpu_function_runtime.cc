@@ -55,19 +55,26 @@ size_t align_to(size_t n, size_t align) {
 }  // namespace
 
 namespace cpu_function_runtime {
-size_t AlignedBufferBytes(const intptr_t* sizes, size_t n) {
+size_t AlignedBufferBytes(const BufferInfo* buffer_infos, size_t n,
+                          bool allocate_entry_params) {
   size_t total = 0;
   for (size_t i = 0; i < n; ++i) {
-    if (sizes[i] > 0) {
-      total += align_to(sizes[i], kAlign);
+    bool should_allocate =
+        buffer_infos[i].is_temp_buffer() ||
+        (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
+
+    if (should_allocate) {
+      total += align_to(buffer_infos[i].size(), kAlign);
     }
   }
   return total;
 }
 
-void* MallocContiguousBuffers(const intptr_t* sizes, size_t n, void** bufs,
+void* MallocContiguousBuffers(const BufferInfo* buffer_infos, size_t n,
+                              bool allocate_entry_params, void** bufs,
                               bool annotate_initialized) {
-  const size_t total = AlignedBufferBytes(sizes, n);
+  const size_t total =
+      AlignedBufferBytes(buffer_infos, n, allocate_entry_params);
   void* contiguous = nullptr;
   if (total > 0) {
     contiguous = aligned_malloc(total, kAlign);
@@ -79,13 +86,14 @@ void* MallocContiguousBuffers(const intptr_t* sizes, size_t n, void** bufs,
   }
   uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);
   for (size_t i = 0; i < n; ++i) {
-    if (sizes[i] < 0) {
-      // bufs[i] is either a constant, an entry parameter or a thread local
-      // allocation.
-      bufs[i] = nullptr;
-    } else {
+    bool should_allocate =
+        buffer_infos[i].is_temp_buffer() ||
+        (buffer_infos[i].is_entry_parameter() && allocate_entry_params);
+    if (should_allocate) {
       bufs[i] = reinterpret_cast<void*>(pos);
-      pos += align_to(sizes[i], kAlign);
+      pos += align_to(buffer_infos[i].size(), kAlign);
+    } else {
+      bufs[i] = nullptr;
     }
   }
   return contiguous;

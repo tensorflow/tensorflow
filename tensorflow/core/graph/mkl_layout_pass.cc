@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -43,7 +44,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -334,6 +335,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
                       CopyAttrsConv2D, AlwaysRewrite, nullptr});
+
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite, nullptr});
@@ -546,14 +548,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // If Op has been specifically assigned to a non-CPU device, then No.
     if (!n->assigned_device_name().empty() &&
-        !str_util::StrContains(n->assigned_device_name(),kCPUDeviceSubStr)) {
+       !str_util::StrContains(n->assigned_device_name(), kCPUDeviceSubStr)) {
       result = false;
       reason = "Op has been assigned a runtime device that is not CPU.";
     }
 
     // If user has specifically assigned this op to a non-CPU device, then No.
     if (!n->def().device().empty() &&
-        !str_util::StrContains(n->def().device(),kCPUDeviceSubStr)) {
+       !str_util::StrContains(n->def().device(), kCPUDeviceSubStr)) {
       result = false;
       reason = "User has assigned a device that is not CPU.";
     }
@@ -975,7 +977,9 @@ std::vector<MklLayoutRewritePass::ContextInfo*> MklLayoutRewritePass::cinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
+#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -1042,6 +1046,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
                                                       // device of the original
                                                       // node.
                   .Finalize(&**g, out));
+  CHECK_NOTNULL(*out); // Make sure we got a valid object before using it
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -1335,6 +1340,7 @@ void MklLayoutRewritePass::GetDummyWorkspaceTensorNode(
                                                       // device of the original
                                                       // node.
                   .Finalize(&**g, out));
+  CHECK_NOTNULL(*out); // Make sure we got a valid object before using it
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -2211,7 +2217,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
   return Status::OK();
 }
 
-#else   // INTEL_MKL_ML
+#else   // INTEL_MKL_ML_ONLY
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -2408,6 +2414,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.addn = "AddN";
     csinfo_.avg_pool = "AvgPool";
     csinfo_.avg_pool_grad = "AvgPoolGrad";
+    csinfo_.avg_pool3d = "AvgPool3D";
+    csinfo_.avg_pool3d_grad = "AvgPool3DGrad";
     csinfo_.bias_add = "BiasAdd";
     csinfo_.bias_add_grad = "BiasAddGrad";
     csinfo_.concat = "Concat";
@@ -2418,6 +2426,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv2d_grad_filter = "Conv2DBackpropFilter";
     csinfo_.conv2d_grad_filter_with_bias =
         "__MklDummyConv2DBackpropFilterWithBias";
+    csinfo_.conv3d = "Conv3D";
+    csinfo_.conv3d_grad_input = "Conv3DBackpropInputV2";
+    csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.identity = "Identity";
@@ -2426,6 +2437,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.matmul = "MatMul";
     csinfo_.max_pool = "MaxPool";
     csinfo_.max_pool_grad = "MaxPoolGrad";
+    csinfo_.max_pool3d = "MaxPool3D";
+    csinfo_.max_pool3d_grad = "MaxPool3DGrad";
     csinfo_.mkl_conv2d = "_MklConv2D";
     csinfo_.mkl_conv2d_grad_input = "_MklConv2DBackpropInput";
     csinfo_.mkl_conv2d_grad_filter = "_MklConv2DBackpropFilter";
@@ -2466,6 +2479,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.tanh = "Tanh";
     csinfo_.tanh_grad = "TanhGrad";
     csinfo_.reshape = "Reshape";
+    csinfo_.slice = "Slice";
     csinfo_.softmax = "Softmax";
     csinfo_.split = "Split";
     // Element-wise ops. Ensure you also add any new ops to IsOpElementWise
@@ -2489,6 +2503,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.avg_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool_grad),
                       CopyAttrsPooling, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.avg_pool3d,
+                      mkl_op_registry::GetMklOpName(csinfo_.avg_pool3d),
+                      CopyAttrsPooling, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.avg_pool3d_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.avg_pool3d_grad),
+                      CopyAttrsPooling, AlwaysRewrite});
     rinfo_.push_back({csinfo_.concat,
                       mkl_op_registry::GetMklOpName(csinfo_.concat),
                       CopyAttrsConcat, AlwaysRewrite});
@@ -2497,18 +2517,27 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConcatV2, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_with_bias, csinfo_.mkl_conv2d_with_bias,
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_filter_with_bias,
-                      csinfo_.mkl_conv2d_grad_filter_with_bias, CopyAttrsConv2D,
+                      csinfo_.mkl_conv2d_grad_filter_with_bias, CopyAttrsConv,
                       AlwaysRewrite});
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
-                      CopyAttrsConv2D, AlwaysRewrite});
+                      CopyAttrsConv, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv3d,
+                      mkl_op_registry::GetMklOpName(csinfo_.conv3d),
+                      CopyAttrsConv, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv3d_grad_filter,
+                      mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_filter),
+                      CopyAttrsConv, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.conv3d_grad_input,
+                      mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_input),
+                      CopyAttrsConv, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -2530,7 +2559,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
                       CopyAttrsPooling, MaxpoolGradRewrite});
-
+    rinfo_.push_back({csinfo_.max_pool3d,
+                      mkl_op_registry::GetMklOpName(csinfo_.max_pool3d),
+                      CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
+    rinfo_.push_back({csinfo_.max_pool3d_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.max_pool3d_grad),
+                      CopyAttrsPooling, AlwaysRewrite});
     rinfo_.push_back({csinfo_.maximum,
                       mkl_op_registry::GetMklOpName(csinfo_.maximum),
                       CopyAttrsDataType, AlwaysRewrite});
@@ -2615,6 +2649,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.reshape,
                       mkl_op_registry::GetMklOpName(csinfo_.reshape),
                       CopyAttrsReshape, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.slice,
+                      mkl_op_registry::GetMklOpName(csinfo_.slice),
+                      CopyAttrsSlice, AlwaysRewrite});
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsDataType, AlwaysRewrite});
@@ -2629,6 +2666,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});
     wsinfo_.push_back({csinfo_.max_pool, csinfo_.max_pool_grad, 0, 1, 1, 3});
+    wsinfo_.push_back
+        ({csinfo_.max_pool3d, csinfo_.max_pool3d_grad, 0, 1, 1, 3});
 
     // Add a rule for merging nodes
     minfo_.push_back({csinfo_.conv2d, csinfo_.bias_add,
@@ -2696,6 +2735,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string add;
     string avg_pool;
     string avg_pool_grad;
+    string avg_pool3d;
+    string avg_pool3d_grad;
     string bias_add;
     string bias_add_grad;
     string concat;
@@ -2705,6 +2746,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv2d_grad_input;
     string conv2d_grad_filter;
     string conv2d_grad_filter_with_bias;
+    string conv3d;
+    string conv3d_grad_input;
+    string conv3d_grad_filter;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string identity;
@@ -2713,6 +2757,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string matmul;
     string max_pool;
     string max_pool_grad;
+    string max_pool3d;
+    string max_pool3d_grad;
     string maximum;
     string mkl_conv2d;
     string mkl_conv2d_grad_input;
@@ -2740,6 +2786,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string tanh;
     string tanh_grad;
     string reshape;
+    string slice;
     string softmax;
     string split;
     string squared_difference;
@@ -3193,7 +3240,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
-  static void CopyAttrsConv2D(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb);
@@ -3203,6 +3250,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsQuantizedConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsRequantize(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsSlice(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSplit(const Node* orig_node, NodeBuilder* nb);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
@@ -3221,7 +3269,9 @@ MklLayoutRewritePass::ConstStringsInfo MklLayoutRewritePass::csinfo_;
 // nodes. Do not change the ordering of the Mkl passes.
 const OptimizationPassRegistry::Grouping kMklLayoutRewritePassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklLayoutRewritePassGroup, 1, MklLayoutRewritePass);
+#endif  // ENABLE_MKL
 
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions for creating new node
@@ -3288,6 +3338,7 @@ void MklLayoutRewritePass::GetDummyMklTensorNode(std::unique_ptr<Graph>* g,
                                                       // device of the original
                                                       // node.
                   .Finalize(&**g, out));
+  CHECK_NOTNULL(*out); // Make sure we got a valid object before using it
 
   // If number of inputs to the original node is > 0, then we add
   // control dependency between 1st input (index 0) of the original node and
@@ -3701,14 +3752,13 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 // Op-specific functions to copy attributes from old node to new node
 //////////////////////////////////////////////////////////////////////////
 
-void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
-                                           NodeBuilder* nb) {
+void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node,
+                                         NodeBuilder* nb) {
   DataType T;
   string data_format;
   string padding;
   std::vector<int32> strides;
   std::vector<int32> dilations;
-  bool use_cudnn_on_gpu;
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
@@ -3716,8 +3766,6 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
-  TF_CHECK_OK(
-      GetNodeAttr(orig_node->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
 
   // Add attributes to new node.
   nb->Attr("T", T);
@@ -3725,7 +3773,6 @@ void MklLayoutRewritePass::CopyAttrsConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("padding", padding);
   nb->Attr("data_format", data_format);
-  nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
 }
 
 void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node,
@@ -3889,6 +3936,19 @@ void MklLayoutRewritePass::CopyAttrsReshape(const Node* orig_node,
   // Add attributes to new node.
   nb->Attr("T", T);
   nb->Attr("Tshape", Tshape);
+}
+
+void MklLayoutRewritePass::CopyAttrsSlice(const Node* orig_node,
+                                          NodeBuilder* nb) {
+  DataType T;
+  DataType Index;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Index", &Index));
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("Index", Index);
 }
 
 void MklLayoutRewritePass::CopyAttrsSplit(const Node* orig_node,
@@ -4089,7 +4149,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   nb.Input(succ_in[1].first, succ_in[1].second);  // In2 of BiasAdd
 
   // Copy attributes from Conv2D to Conv2DWithBias.
-  CopyAttrsConv2D(const_cast<const Node*>(pred), &nb);
+  CopyAttrsConv(const_cast<const Node*>(pred), &nb);
 
   // Copy the device assigned to old node to new node.
   nb.Device(succ->def().device());
@@ -4200,7 +4260,7 @@ Status MklLayoutRewritePass::MergeConv2DBackpropFilterWithBiasAddGrad(
   }
 
   // Copy attributes from Conv2DBackpropFilter.
-  CopyAttrsConv2D(const_cast<const Node*>(fltr), &nb);
+  CopyAttrsConv(const_cast<const Node*>(fltr), &nb);
 
   // Copy the device assigned to old node to new node.
   nb.Device(fltr->def().device());
@@ -4702,7 +4762,7 @@ Status MklLayoutRewritePass::Run(const GraphOptimizationPassOptions& options) {
 
   return Status::OK();
 }
-#endif  // INTEL_MKL_ML
+#endif  // INTEL_MKL_ML_ONLY
 }  // namespace tensorflow
 
 #endif

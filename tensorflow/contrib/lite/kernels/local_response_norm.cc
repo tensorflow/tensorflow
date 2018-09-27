@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -64,11 +64,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_LOCAL_RESPONSE_NORM(type)                                      \
-  type::LocalResponseNormalization(                                            \
-      GetTensorData<float>(input), GetTensorDims(input), params->radius,       \
-      params->bias, params->alpha, params->beta, GetTensorData<float>(output), \
-      GetTensorDims(output))
+#define TF_LITE_LOCAL_RESPONSE_NORM(type)                            \
+  tflite::LocalResponseNormalizationParams op_params;                \
+  op_params.range = params->radius;                                  \
+  op_params.bias = params->bias;                                     \
+  op_params.alpha = params->alpha;                                   \
+  op_params.beta = params->beta;                                     \
+  type::LocalResponseNormalization(                                  \
+      op_params, GetTensorShape(input), GetTensorData<float>(input), \
+      GetTensorShape(output), GetTensorData<float>(output))
     if (kernel_type == kReference) {
       TF_LITE_LOCAL_RESPONSE_NORM(reference_ops);
     }

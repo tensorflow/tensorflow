@@ -51,7 +51,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "tensorflow/core/kernels/resource_variable_ops.h"
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -60,10 +62,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -72,6 +76,8 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_RESOURCE_HANDLE_KERNEL(Var);
+REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
+                        ResourceHandlesOp<Var>);
 
 ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
@@ -79,7 +85,7 @@ ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
 
 void ReadVariableOp::Compute(OpKernelContext* ctx) {
   Var* variable = nullptr;
-  ResourceHandle handle = HandleFromInput(ctx, 0);
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               errors::FailedPrecondition(
@@ -101,13 +107,58 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, t);
 }
 
+ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
+  int n;
+  OP_REQUIRES_OK(c, c->GetAttr("N", &n));
+  OP_REQUIRES_OK(c, c->GetAttr("dtypes", &dtypes_));
+  OP_REQUIRES(c, n == dtypes_.size(),
+              errors::InvalidArgument(
+                  "Mismatched number of arguments to ReadVariablesOp (", n,
+                  " vs. ", dtypes_.size(), ")"));
+}
+
+void ReadVariablesOp::Compute(OpKernelContext* ctx) {
+  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables(
+      dtypes_.size());
+  std::vector<const ResourceHandle*> handles(dtypes_.size());
+  for (size_t i = 0; i < dtypes_.size(); ++i) {
+    handles[i] = &HandleFromInput(ctx, i);
+  }
+  const auto status = LookupResources(ctx, handles, &variables);
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Error while reading resource variable. This could mean that "
+                  "the variable was uninitialized. ",
+                  status.ToString()));
+
+  for (size_t i = 0; i < dtypes_.size(); ++i) {
+    // We're acquiring a reference to the underlying buffer while
+    // holding a shared lock to guarantee ordering of reads and
+    // writes.
+    tf_shared_lock ml(*variables[i]->mu());
+    const Tensor& t = *variables[i]->tensor();
+    OP_REQUIRES(ctx, dtypes_[i] == t.dtype(),
+                errors::InvalidArgument(
+                    "Trying to read variable ", handles[i]->name(),
+                    " from Container: ", handles[i]->container(),
+                    " with wrong dtype. Expected ", DataTypeString(dtypes_[i]),
+                    " got ", DataTypeString(t.dtype())));
+    ctx->set_output(i, t);
+  }
+}
+
 REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
+REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
+                        ReadVariablesOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
     ReadVariableOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_ReadVariablesOp").Device(DEVICE_GPU).HostMemory("resources"),
+    ReadVariablesOp);
 
 #define REGISTER_GPU_KERNELS(type)                             \
   namespace functor {                                          \
@@ -121,7 +172,12 @@ REGISTER_KERNEL_BUILDER(
                               .Device(DEVICE_GPU)              \
                               .HostMemory("resource")          \
                               .TypeConstraint<type>("dtype"),  \
-                          ResourceHandleOp<Var>)
+                          ResourceHandleOp<Var>)               \
+  REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")                \
+                              .Device(DEVICE_GPU)              \
+                              .HostMemory("resources")         \
+                              .TypeConstraint<type>("dtypes"), \
+                          ResourceHandlesOp<Var>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
@@ -211,7 +267,8 @@ class AssignVariableOp : public OpKernel {
     OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
                 errors::InvalidArgument(
                     "Variable and value dtypes don't match; respectively, ",
-                    dtype_, " and ", context->input(1).dtype()));
+                    DataTypeString(dtype_), " and ",
+                    DataTypeString(context->input(1).dtype())));
     Var* variable = nullptr;
     const Tensor& value = context->input(1);
     // Note: every resource-variable-manipulating op assumes copy-on-write
@@ -231,12 +288,12 @@ class AssignVariableOp : public OpKernel {
                                   return Status::OK();
                                 }));
     core::ScopedUnref s(variable);
+    mutex_lock ml(*variable->mu());
     OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
                 errors::InvalidArgument(
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
-    mutex_lock ml(*variable->mu());
     variable->is_initialized = true;
     *variable->tensor() = value;
   }
@@ -267,11 +324,6 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
                                   return Status::OK();
                                 }));
     core::ScopedUnref s(variable);
-    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
-                errors::InvalidArgument(
-                    "Trying to assign variable with wrong dtype. Expected ",
-                    DataTypeString(variable->tensor()->dtype()), " got ",
-                    DataTypeString(DT_VARIANT)));
 
     // For purposes of forwarding DT_VARIANT, we want the least
     // restrictive attr; we already know the input is on host.
@@ -292,6 +344,11 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
         attr);
 
     mutex_lock ml(*variable->mu());
+    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(DT_VARIANT)));
     variable->is_initialized = true;
     *variable->tensor() = Tensor(DT_VARIANT, value.shape());
 

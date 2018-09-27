@@ -22,6 +22,7 @@ import collections
 import functools
 import six
 
+from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -299,6 +300,7 @@ class HashTable(InitializableLookupTableBase):
         self._value_shape))
     return exported_keys, exported_values
 
+
 class TableInitializerBase(object):
   """Base class for lookup table initializers."""
 
@@ -370,8 +372,13 @@ class KeyValueTensorInitializer(TableInitializerBase):
         # Ensure a unique name when eager execution is enabled to avoid spurious
         # sharing issues.
         scope += str(ops.uid())
-      init_op = gen_lookup_ops.initialize_table_v2(
-          table.table_ref, self._keys, self._values, name=scope)
+      if fwd_compat.forward_compatible(2018, 9, 19):
+        init_op = gen_lookup_ops.lookup_table_import_v2(
+            table.table_ref, self._keys, self._values, name=scope)
+      else:
+        # To maintain forward compatibiltiy, use the old implementation.
+        init_op = gen_lookup_ops.initialize_table_v2(
+            table.table_ref, self._keys, self._values, name=scope)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
@@ -415,7 +422,7 @@ class TextFileInitializer(TableInitializerBase):
   * `palmer -> 30`
 
   ```python
-  table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
+  table = tf.lookup.HashTable(tf.lookup.TextFileInitializer(
       "test.txt", tf.string, 0, tf.int64, 1, delimiter=" "), -1)
   ...
   table.init.run()
@@ -428,9 +435,9 @@ class TextFileInitializer(TableInitializerBase):
   * `palmer 30 -> 2`
 
   ```python
-  table = tf.contrib.lookup.HashTable(tf.contrib.lookup.TextFileInitializer(
-      "test.txt", tf.string, tf.contrib.lookup.TextFileIndex.WHOLE_LINE,
-      tf.int64, tf.contrib.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
+  table = tf.lookup.HashTable(tf.lookup.TextFileInitializer(
+      "test.txt", tf.string, tf.lookup.TextFileIndex.WHOLE_LINE,
+      tf.int64, tf.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
   ...
   table.init.run()
   ```
@@ -946,7 +953,7 @@ def index_table_from_file(vocabulary_file=None,
 
   ```python
   features = tf.constant(["emerson", "lake", "and", "palmer"])
-  table = tf.contrib.lookup.index_table_from_file(
+  table = tf.lookup.index_table_from_file(
       vocabulary_file="test.txt", num_oov_buckets=1)
   ids = table.lookup(features)
   ...
@@ -1047,21 +1054,21 @@ def index_table_from_tensor(vocabulary_list,
 
   Any lookup of an out-of-vocabulary token will return a bucket ID based on its
   hash if `num_oov_buckets` is greater than zero. Otherwise it is assigned the
-  `default_value`.
-  The bucket ID range is `[mapping size, mapping size + num_oov_buckets - 1]`.
+  `default_value`. The bucket ID range is
+  `[vocabulary list size, vocabulary list size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
 
-  Elements in `mapping` cannot have duplicates, otherwise when executing the
-  table initializer op, it will throw a `FailedPreconditionError`.
+  Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
+  the table initializer op, it will throw a `FailedPreconditionError`.
 
   Sample Usages:
 
   ```python
   vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
-  table = tf.contrib.lookup.index_table_from_tensor(
-      mapping=vocabulary_list, num_oov_buckets=1, default_value=-1)
+  table = tf.lookup.index_table_from_tensor(
+      vocabulary_list=vocabulary_list, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
@@ -1086,7 +1093,7 @@ def index_table_from_tensor(vocabulary_list,
     The lookup table to map an input `Tensor` to index `int64` `Tensor`.
 
   Raises:
-    ValueError: If `mapping` is invalid.
+    ValueError: If `vocabulary_list` is invalid.
     ValueError: If `num_oov_buckets` is negative.
   """
   if vocabulary_list is None:
@@ -1178,7 +1185,7 @@ def index_to_string_table_from_file(vocabulary_file,
 
   ```python
   indices = tf.constant([1, 5], tf.int64)
-  table = tf.contrib.lookup.index_to_string_table_from_file(
+  table = tf.lookup.index_to_string_table_from_file(
       vocabulary_file="test.txt", default_value="UNKNOWN")
   values = table.lookup(indices)
   ...
@@ -1243,25 +1250,25 @@ def index_to_string_table_from_tensor(vocabulary_list,
   """Returns a lookup table that maps a `Tensor` of indices into strings.
 
   This operation constructs a lookup table to map int64 indices into string
-  values. The mapping is initialized from a string `mapping` 1-D `Tensor` where
-  each element is a value and the corresponding index within the tensor is the
-  key.
+  values. The mapping is initialized from a string `vocabulary_list` 1-D
+  `Tensor` where each element is a value and the corresponding index within the
+  tensor is the key.
 
-  Any input which does not have a corresponding index in 'mapping'
+  Any input which does not have a corresponding index in 'vocabulary_list'
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
   `tf.tables_initializer.run()` or `table.init.run()` once.
 
-  Elements in `mapping` cannot have duplicates, otherwise when executing the
-  table initializer op, it will throw a `FailedPreconditionError`.
+  Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
+  the table initializer op, it will throw a `FailedPreconditionError`.
 
   Sample Usages:
 
   ```python
   vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
-  table = tf.contrib.lookup.index_to_string_table_from_tensor(
+  table = tf.lookup.index_to_string_table_from_tensor(
       vocabulary_list, default_value="UNKNOWN")
   values = table.lookup(indices)
   ...

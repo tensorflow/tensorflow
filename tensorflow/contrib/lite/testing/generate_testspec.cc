@@ -114,7 +114,13 @@ bool GenerateTestSpecFromTensorflowModel(
     // different set.
     std::vector<string> input_values =
         GenerateInputValues(input_layer, input_layer_type, input_layer_shape);
-    if (input_values.empty()) return false;
+    if (input_values.empty()) {
+      std::cerr << "Unable to generate input values for the TensorFlow model. "
+                   "Make sure the correct values are defined for "
+                   "input_layer, input_layer_type, and input_layer_shape."
+                << std::endl;
+      return false;
+    }
 
     // Run TensorFlow.
     for (int j = 0; j < input_values.size(); j++) {

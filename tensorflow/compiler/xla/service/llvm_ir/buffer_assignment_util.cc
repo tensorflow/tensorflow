@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
+#include "absl/strings/str_cat.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -48,7 +49,7 @@ string ConstantBufferAllocationToGlobalName(
       c = '_';
     }
   }
-  return tensorflow::strings::StrCat("buffer_for_", instr_name);
+  return absl::StrCat("buffer_for_", instr_name);
 }
 
 const Literal& LiteralForConstantAllocation(

@@ -44,6 +44,9 @@ struct DiffOptions {
   // each of the passes. The first pass has a single inference, while the
   // second pass does multiple inferences back to back.
   int num_runs_per_pass;
+  // Path to the delegate library to be loaded in order to execute ops. Must be
+  // `{"", EAGER}`.
+  string delegate;
 };
 
 // Run a single TensorFLow Lite diff test with a given options.

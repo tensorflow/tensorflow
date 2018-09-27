@@ -33,6 +33,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
 
 class _CustomMapping(collections.Mapping):
 
@@ -52,6 +57,35 @@ class _CustomMapping(collections.Mapping):
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
+
+  if attr:
+    class BadAttr(object):
+      """Class that has a non-iterable __attrs_attrs__."""
+      __attrs_attrs__ = None
+
+    @attr.s
+    class SampleAttr(object):
+      field1 = attr.ib()
+      field2 = attr.ib()
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testAttrsFlattenAndPack(self):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    field_values = [1, 2]
+    sample_attr = NestTest.SampleAttr(*field_values)
+    self.assertFalse(nest._is_attrs(field_values))
+    self.assertTrue(nest._is_attrs(sample_attr))
+    flat = nest.flatten(sample_attr)
+    self.assertEqual(field_values, flat)
+    restructured_from_flat = nest.pack_sequence_as(sample_attr, flat)
+    self.assertIsInstance(restructured_from_flat, NestTest.SampleAttr)
+    self.assertEqual(restructured_from_flat, sample_attr)
+
+    # Check that flatten fails if attributes are not iterable
+    with self.assertRaisesRegexp(TypeError, "object is not iterable"):
+      flat = nest.flatten(NestTest.BadAttr())
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack(self):
@@ -264,7 +298,11 @@ class NestTest(parameterized.TestCase, test.TestCase):
          "Second structure:.*\n\n"
          "More specifically: Substructure "
          r'"type=tuple str=\(\(1, 2\), 3\)" is a sequence, while '
-         'substructure "type=str str=spam" is not')):
+         'substructure "type=str str=spam" is not\n'
+         "Entire first structure:\n"
+         r"\(\(\(\., \.\), \.\), \., \(\., \.\)\)\n"
+         "Entire second structure:\n"
+         r"\(\., \.\)")):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
     with self.assertRaisesRegexp(
@@ -461,7 +499,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
         inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
     }
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_np = sess.run(output, feed_dict=feed_dict)
     self.assertAllClose(output_np[0],
                         feed_dict[inp_a][0] + feed_dict[inp_b][0])

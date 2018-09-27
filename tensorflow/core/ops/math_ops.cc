@@ -392,6 +392,13 @@ Returns x * y element-wise.
 REGISTER_OP("Div").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("DivNoNan")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("FloorDiv")
     .BINARY_MORE()
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
@@ -421,6 +428,20 @@ Returns (x - y)(x - y) element-wise.
 *NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
+
+REGISTER_OP("Xlogy")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double, complex64, complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("Xdivy")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {half, float, double, complex64, complex128}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 #undef BINARY_FEWER
 #undef BINARY_MORE

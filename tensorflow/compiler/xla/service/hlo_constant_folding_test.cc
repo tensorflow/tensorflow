@@ -24,10 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 
@@ -36,7 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-using HloConstantFoldingTest = HloTestBase;
+using HloConstantFoldingTest = HloVerifiedTestBase;
 
 TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   HloComputation::Builder builder(TestName());
@@ -51,7 +52,7 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
@@ -72,7 +73,7 @@ TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
@@ -93,7 +94,7 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
@@ -104,8 +105,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
 TEST_F(HloConstantFoldingTest, Concatenate) {
   const struct TestConfig {
     int concat_dimension;
-    tensorflow::gtl::ArraySlice<int64> dimensions;
-    tensorflow::gtl::ArraySlice<int64> concat_sizes;
+    absl::Span<const int64> dimensions;
+    absl::Span<const int64> concat_sizes;
   } test_configs[] = {
       {1, {11, 0, 7, 5, 9}, {2, 5, 7, 11}},
       {3, {1, 4, 17, 0, 8}, {1, 3, 9, 12}},
@@ -133,7 +134,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     auto computation = module->AddEntryComputation(builder.Build());
 
     HloConstantFolding const_folder;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
     EXPECT_TRUE(result);
 
     HloInstruction* root = computation->root_instruction();
@@ -160,7 +161,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
   EXPECT_TRUE(result);
 
   HloInstruction* root = computation->root_instruction();
@@ -174,7 +175,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = literal->Literal::CloneToUnique();
+  auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
@@ -185,7 +186,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
-  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module));
   EXPECT_TRUE(result);
 
   HloInstruction* root = computation->root_instruction();
@@ -195,11 +196,50 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;
   root->literal().EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
+      [&](absl::Span<const int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
+        matched = matched && (value == literal_clone.Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);
+}
+
+const char* const kConstantFoldReduce = R"(
+  HloModule ConstantFoldReduce
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = s32[] add(a, b)
+  }
+
+  ENTRY r {
+    x = s32[3] constant({1, 2, 3})
+    init = s32[] constant(0)
+    ROOT reduce = s32[] reduce(x, init), dimensions={0}, to_apply=add
+  })";
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
+  ParseAndVerifyModule(kConstantFoldReduce);
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(&module()));
+  EXPECT_TRUE(result);
+
+  EXPECT_EQ(6, module()
+                   .entry_computation()
+                   ->root_instruction()
+                   ->literal()
+                   .GetFirstElement<int32>());
+}
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
+  ParseAndVerifyModule(kConstantFoldReduce);
+  HloInstruction* add = module().computations().begin()->root_instruction();
+  LayoutUtil::ClearLayout(add->mutable_shape());
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(&module()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module().entry_computation()->root_instruction(), op::Reduce());
 }
 
 }  // namespace

@@ -25,6 +25,7 @@ limitations under the License.
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
+#include "absl/base/macros.h"
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -63,7 +64,7 @@ constexpr int kGetChildrenDefaultPageSize = 1000;
 // The HTTP response code "308 Resume Incomplete".
 constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
 // The environment variable that overrides the size of the readahead buffer.
-// DEPRECATED. Use GCS_BLOCK_SIZE_MB instead.
+ABSL_DEPRECATED("Use GCS_BLOCK_SIZE_MB instead.")
 constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 // The environment variable that disables the GCS block cache for reads.
 // This is the explicit alternative to setting BLOCK_SIZE or MAX_SIZE to 0, and
@@ -179,13 +180,13 @@ Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
     return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
                                    fname);
   }
-  *bucket = std::string(bucketp);
+  *bucket = string(bucketp);
   if (bucket->empty() || *bucket == ".") {
     return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
                                    fname);
   }
   str_util::ConsumePrefix(&objectp, "/");
-  *object = std::string(objectp);
+  *object = string(objectp);
   if (!empty_object_ok && object->empty()) {
     return errors::InvalidArgument("GCS path doesn't contain an object name: ",
                                    fname);
@@ -224,7 +225,7 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
   for (const string& path : paths) {
     StringPiece subpath = io::Dirname(path);
     while (!subpath.empty()) {
-      result.emplace(std::string(subpath));
+      result.emplace(string(subpath));
       subpath = io::Dirname(subpath);
     }
   }
@@ -371,7 +372,7 @@ class GcsWritableFile : public WritableFile {
 
   ~GcsWritableFile() override { Close().IgnoreError(); }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     sync_needed_ = true;
     outfile_ << data;
@@ -618,9 +619,11 @@ bool StringPieceIdentity(StringPiece str, StringPiece* value) {
 }
 
 /// \brief Utility function to split a comma delimited list of strings to an
-/// unordered set
-bool SplitByCommaToSet(StringPiece list, std::unordered_set<string>* set) {
-  std::vector<string> vector = str_util::Split(list, ",");
+/// unordered set, lowercasing all values.
+bool SplitByCommaToLowercaseSet(StringPiece list,
+                                std::unordered_set<string>* set) {
+  std::vector<string> vector =
+      str_util::Split(tensorflow::str_util::Lowercase(list), ",");
   *set = std::unordered_set<string>(vector.begin(), vector.end());
   return true;
 }
@@ -721,7 +724,7 @@ GcsFileSystem::GcsFileSystem() {
 
       if (!header_name.empty() && !header_value.empty()) {
         additional_header_.reset(new std::pair<const string, const string>(
-            std::string(header_name), std::string(header_value)));
+            string(header_name), string(header_value)));
 
         VLOG(1) << "GCS additional header ENABLED. "
                 << "Name: " << additional_header_->first << ", "
@@ -778,7 +781,8 @@ GcsFileSystem::GcsFileSystem() {
     throttle_.SetConfig(config);
   }
 
-  GetEnvVar(kAllowedBucketLocations, SplitByCommaToSet, &allowed_locations_);
+  GetEnvVar(kAllowedBucketLocations, SplitByCommaToLowercaseSet,
+            &allowed_locations_);
 }
 
 GcsFileSystem::GcsFileSystem(
@@ -1155,8 +1159,11 @@ Status GcsFileSystem::GetBucketLocation(const string& bucket,
     Status status = GetBucketMetadata(bucket, &result_buffer);
     Json::Value result;
     TF_RETURN_IF_ERROR(ParseJson(result_buffer, &result));
+    string bucket_location;
     TF_RETURN_IF_ERROR(
-        GetStringValue(result, kBucketMetadataLocationKey, location));
+        GetStringValue(result, kBucketMetadataLocationKey, &bucket_location));
+    // Lowercase the GCS location to be case insensitive for allowed locations.
+    *location = tensorflow::str_util::Lowercase(bucket_location);
     return Status::OK();
   };
 
@@ -1223,7 +1230,7 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
         // Find the fixed prefix by looking for the first wildcard.
         const string& fixed_prefix =
             pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const string& dir = std::string(io::Dirname(fixed_prefix));
+        const string dir(io::Dirname(fixed_prefix));
         if (dir.empty()) {
           return errors::InvalidArgument(
               "A GCS pattern doesn't have a bucket name: ", pattern);
@@ -1320,7 +1327,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               " doesn't match the prefix ", object_prefix));
         }
         if (!relative_path.empty() || include_self_directory_marker) {
-          result->emplace_back(std::string(relative_path));
+          result->emplace_back(relative_path);
         }
         if (++retrieved_results >= max_results) {
           return Status::OK();
@@ -1348,7 +1355,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
               "Unexpected response: the returned folder name ", prefix_str,
               " doesn't match the prefix ", object_prefix);
         }
-        result->emplace_back(std::string(relative_path));
+        result->emplace_back(relative_path);
         if (++retrieved_results >= max_results) {
           return Status::OK();
         }

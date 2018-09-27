@@ -61,6 +61,9 @@ class TextLineDataset(dataset_ops.Dataset):
     return gen_dataset_ops.text_line_dataset(
         self._filenames, self._compression_type, self._buffer_size)
 
+  def _inputs(self):
+    return []
+
   @property
   def output_classes(self):
     return ops.Tensor
@@ -104,6 +107,9 @@ class _TFRecordDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
+
+  def _inputs(self):
+    return []
 
   @property
   def output_classes(self):
@@ -224,6 +230,9 @@ class TFRecordDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return self._impl._as_variant_tensor()  # pylint: disable=protected-access
 
+  def _inputs(self):
+    return self._impl._inputs()  # pylint: disable=protected-access
+
   @property
   def output_classes(self):
     return self._impl.output_classes
@@ -277,6 +286,9 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
     return gen_dataset_ops.fixed_length_record_dataset(
         self._filenames, self._header_bytes, self._record_bytes,
         self._footer_bytes, self._buffer_size)
+
+  def _inputs(self):
+    return []
 
   @property
   def output_classes(self):

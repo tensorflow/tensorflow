@@ -49,7 +49,7 @@ struct DepthwiseConvParams {
   int32 output_multiplier;
   int32 output_activation_min;
   int32 output_activation_max;
-  int32 output_shift;
+  int32 output_right_shift;
   int32 input_width;
   int32 input_height;
   int32 stride_width;
@@ -75,7 +75,7 @@ struct DepthwiseConvParams {
 #define OFFSET_OUTPUT_MULTIPLIER 52
 #define OFFSET_OUTPUT_ACTIVATION_MIN 56
 #define OFFSET_OUTPUT_ACTIVATION_MAX 60
-#define OFFSET_OUTPUT_SHIFT 64
+#define OFFSET_OUTPUT_RIGHT_SHIFT 64
 #define OFFSET_INPUT_WIDTH 68
 #define OFFSET_INPUT_HEIGHT 72
 #define OFFSET_STRIDE_WIDTH 76
@@ -105,8 +105,8 @@ static_assert(offsetof(DepthwiseConvParams, output_activation_min) ==
                   OFFSET_OUTPUT_ACTIVATION_MIN, "");
 static_assert(offsetof(DepthwiseConvParams, output_activation_max) ==
                   OFFSET_OUTPUT_ACTIVATION_MAX, "");
-static_assert(offsetof(DepthwiseConvParams, output_shift) ==
-                  OFFSET_OUTPUT_SHIFT, "");
+static_assert(offsetof(DepthwiseConvParams, output_right_shift) ==
+                  OFFSET_OUTPUT_RIGHT_SHIFT, "");
 static_assert(offsetof(DepthwiseConvParams, input_width) ==
                   OFFSET_INPUT_WIDTH, "");
 static_assert(offsetof(DepthwiseConvParams, input_height) ==
@@ -189,7 +189,7 @@ struct DepthwiseConvWindow<8, 1, 1> {
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_MULTIPLIER) "]\n"
         "ldr w2, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w9\n"
-        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_SHIFT) "]\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v29.4s, w2\n"
         "ldr w4, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "dup v30.4s, w4\n"
@@ -1166,7 +1166,7 @@ struct DepthwiseConvWindow<8, 2, 2> {
         // values from time to time when there are not enough NEON registers.
         // We use x9--x15 general purpose registers as they are caller-saved
         // temporary registers (see http://infocenter.arm.com/help/topic/com.arm.doc.ihi0055b/IHI0055B_aapcs64.pdf).  // NOLINT
-        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_SHIFT) "]\n"
+        "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "ldr w0, [%[params_ptr], #" STR(OFFSET_INPUT_OFFSET) "]\n"
         "cmp %w[output_window_height], #2\n"
         "dup v28.8h, w0\n"
@@ -2216,7 +2216,7 @@ struct DepthwiseConvPartial<EdgeType::kCenter, 1, 1> {
         "dup v27.4s, w10\n"
         "ld1 {v0.8b}, [%[filter_ptr]], #8\n"
         "cmp x11, #16\n"
-        "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_SHIFT) "]\n"
+        "ldr w10, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.4s, w9\n"
         "ldr w9, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w10, w10\n"
@@ -2355,7 +2355,7 @@ struct DepthwiseConvPartial<EdgeType::kCorner, 1, 1> {
         "dup v26.8h, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w7\n"
-        "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_SHIFT) "]\n"
+        "ldr w7, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.4s, w6\n"
         "ldr w6, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w7, w7\n"
@@ -2532,7 +2532,7 @@ struct DepthwiseConvPartial<EdgeType::kHorizontal, 1, 1> {
         "dup v26.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w13\n"
-        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_SHIFT) "]\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.4s, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w13, w13\n"
@@ -2739,7 +2739,7 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
         "dup v26.8h, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_OFFSET) "]\n"
         "dup v27.4s, w13\n"
-        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_SHIFT) "]\n"
+        "ldr w13, [%[params_ptr], #" STR(OFFSET_OUTPUT_RIGHT_SHIFT) "]\n"
         "dup v28.4s, w12\n"
         "ldr w12, [%[params_ptr], #" STR(OFFSET_OUTPUT_ACTIVATION_MIN) "]\n"
         "neg w13, w13\n"
@@ -2910,7 +2910,7 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
 #undef OFFSET_OUTPUT_MULTIPLIER
 #undef OFFSET_OUTPUT_ACTIVATION_MIN
 #undef OFFSET_OUTPUT_ACTIVATION_MAX
-#undef OFFSET_OUTPUT_SHIFT
+#undef OFFSET_OUTPUT_RIGHT_SHIFT
 #undef OFFSET_INPUT_WIDTH
 #undef OFFSET_INPUT_HEIGHT
 #undef OFFSET_OUTPUT_WIDTH
@@ -3175,16 +3175,18 @@ inline void DepthwiseConvHandlePadding(const uint8* input_data,
 }
 
 inline bool Fast3x3FilterKernelSupported(
-    const Dims<4>& input_dims, const Dims<4>& filter_dims, int32 stride_width,
-    int32 stride_height, int32 pad_width, int32 pad_height,
-    int32 depth_multiplier, const Dims<4>& output_dims, int32 output_shift) {
-  const int32 input_height = ArraySize(input_dims, 2);
-  const int32 input_width = ArraySize(input_dims, 1);
-  const int32 input_depth = ArraySize(input_dims, 0);
-  const int32 filter_height = ArraySize(filter_dims, 2);
-  const int32 filter_width = ArraySize(filter_dims, 1);
-  const int32 output_height = ArraySize(output_dims, 2);
-  const int32 output_width = ArraySize(output_dims, 1);
+    const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
+    int32 stride_width, int32 stride_height, int32 dilation_width_factor,
+    int32 dilation_height_factor, int32 pad_width, int32 pad_height,
+    int32 depth_multiplier, const RuntimeShape& output_shape,
+    int32 output_shift) {
+  const int32 input_height = input_shape.Dims(1);
+  const int32 input_width = input_shape.Dims(2);
+  const int32 input_depth = input_shape.Dims(3);
+  const int32 filter_height = filter_shape.Dims(1);
+  const int32 filter_width = filter_shape.Dims(2);
+  const int32 output_height = output_shape.Dims(1);
+  const int32 output_width = output_shape.Dims(2);
 
   bool supported =
       filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
@@ -3192,7 +3194,8 @@ inline bool Fast3x3FilterKernelSupported(
       (stride_height == 1 || stride_height == 2) &&
       (stride_width == stride_height) && (pad_width == 0 || pad_width == 1) &&
       (pad_height == 0 || pad_height == 1) && (pad_width == pad_height) &&
-      (input_depth % 8) == 0 && (output_shift > 0);
+      (input_depth % 8) == 0 && (output_shift <= 0) &&
+      dilation_width_factor == 1 && dilation_height_factor == 1;
 
   if (!supported) {
     return false;
@@ -3234,36 +3237,47 @@ inline bool Fast3x3FilterKernelSupported(
 }
 
 inline void DepthwiseConv3x3Filter(
-    const uint8* input_data, const Dims<4>& input_dims, int32 input_offset,
-    const uint8* filter_data, const Dims<4>& filter_dims, int32 filter_offset,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 stride_width,
-    int32 stride_height, int32 pad_width, int32 pad_height,
-    int32 depth_multiplier, int32 output_offset, int32 output_multiplier,
-    int32 output_shift, int32 output_activation_min,
-    int32 output_activation_max, uint8* output_data,
-    const Dims<4>& output_dims) {
+    const DepthwiseParams& rt_params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
   DepthwiseConvParams params;
-  params.input_depth = ArraySize(input_dims, 0);
-  params.input_width = ArraySize(input_dims, 1);
-  params.input_height = ArraySize(input_dims, 2);
+
+  const int32 stride_width = rt_params.stride_width;
+  const int32 stride_height = rt_params.stride_height;
+  const int32 pad_width = rt_params.padding_values.width;
+  const int32 pad_height = rt_params.padding_values.height;
+  const int32 depth_multiplier = rt_params.depth_multiplier;
+  const int32 output_activation_min = rt_params.quantized_activation_min;
+  const int32 output_activation_max = rt_params.quantized_activation_max;
+  const int32 input_offset = rt_params.input_offset;
+  const int32 filter_offset = rt_params.weights_offset;
+  const int32 output_offset = rt_params.output_offset;
+  const int32 output_multiplier = rt_params.output_multiplier;
+  const int32 output_shift = rt_params.output_shift;
+
+  params.input_depth = input_shape.Dims(3);
+  params.input_width = input_shape.Dims(2);
+  params.input_height = input_shape.Dims(1);
   params.input_row_size = params.input_depth * params.input_width;
   params.input_offset = input_offset;
   params.stride_width = stride_width;
   params.stride_height = stride_height;
-  params.output_depth = MatchingArraySize(filter_dims, 0, output_dims, 0);
-  params.output_width = ArraySize(output_dims, 1);
-  params.output_height = ArraySize(output_dims, 2);
+  params.output_depth = MatchingDim(filter_shape, 3, output_shape, 3);
+  params.output_width = output_shape.Dims(2);
+  params.output_height = output_shape.Dims(1);
   params.output_row_size = params.output_depth * params.output_width;
   params.output_offset = output_offset;
   params.filter_offset = filter_offset;
   params.output_multiplier = output_multiplier;
-  params.output_shift = output_shift;
+  params.output_right_shift = -output_shift;
   params.output_activation_min = output_activation_min;
   params.output_activation_max = output_activation_max;
 
-  const int32 filter_height = ArraySize(filter_dims, 2);
-  const int32 filter_width = ArraySize(filter_dims, 1);
+  const int32 filter_height = filter_shape.Dims(1);
+  const int32 filter_width = filter_shape.Dims(2);
   params.filter_row_size = params.output_depth * filter_width;
 
   // Algorithm assumes below constraints. It is optimized for depth
@@ -3279,7 +3293,7 @@ inline void DepthwiseConv3x3Filter(
   TFLITE_DCHECK(pad_width == 0 || pad_width == 1);
   TFLITE_DCHECK(pad_width == pad_height);
 
-  const int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int64_t input_batch_size = params.input_row_size * params.input_height;
   const int64_t output_batch_size =
       params.output_row_size * params.output_height;

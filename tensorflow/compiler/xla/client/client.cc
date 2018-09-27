@@ -18,15 +18,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,8 +37,8 @@ Client::Client(ServiceInterface* stub) : stub_(stub) {}
 
 Client::~Client() = default;
 
-StatusOr<std::unique_ptr<Literal>> Client::Transfer(
-    const GlobalData& data, const Shape* shape_with_layout) {
+StatusOr<Literal> Client::Transfer(const GlobalData& data,
+                                   const Shape* shape_with_layout) {
   TransferToClientRequest request;
   *request.mutable_data() = data.handle();
   if (shape_with_layout != nullptr) {
@@ -89,7 +89,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
         "TransferToServer request");
   }
 
-  return MakeUnique<GlobalData>(stub_, response.data());
+  return absl::make_unique<GlobalData>(stub_, response.data());
 }
 
 Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
@@ -114,7 +114,7 @@ Status Client::TransferToInfeed(const LiteralSlice& literal, int64 replica_id,
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
+StatusOr<Literal> Client::TransferFromOutfeed(
     const Shape* shape_with_layout, int64 replica_id,
     const DeviceHandle* device_handle) {
   TransferFromOutfeedRequest request;
@@ -162,9 +162,8 @@ Status Client::ResetDevice() {
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+StatusOr<Literal> Client::ExecuteAndTransfer(
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   TF_ASSIGN_OR_RETURN(
@@ -178,8 +177,8 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
   return Transfer(*data, shape_with_output_layout);
 }
 
-StatusOr<std::unique_ptr<Literal>> Client::ComputeConstant(
-    const XlaComputation& computation, const Layout* output_layout) const {
+StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
+                                          const Layout* output_layout) const {
   ComputeConstantGraphRequest request;
   *request.mutable_computation() = computation.proto();
   if (output_layout != nullptr) {
@@ -212,8 +211,7 @@ StatusOr<XlaComputation> Client::LoadSnapshot(const HloSnapshot& module) {
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
-    const XlaComputation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
   ExecuteGraphRequest request;
@@ -248,11 +246,11 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     }
   }
 
-  return MakeUnique<GlobalData>(stub_, response.output());
+  return absl::make_unique<GlobalData>(stub_, response.output());
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
-    tensorflow::gtl::ArraySlice<XlaComputationInstance> computations) {
+    absl::Span<const XlaComputationInstance> computations) {
   ExecuteGraphParallelRequest request;
 
   for (const XlaComputationInstance& computation : computations) {
@@ -278,7 +276,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   std::vector<std::unique_ptr<GlobalData>> outputs;
   for (size_t i = 0; i < computations.size(); ++i) {
     outputs.push_back(
-        MakeUnique<GlobalData>(stub_, response.responses(i).output()));
+        absl::make_unique<GlobalData>(stub_, response.responses(i).output()));
     if (computations[i].execution_profile != nullptr) {
       *computations[i].execution_profile = response.responses(i).profile();
     }
@@ -340,7 +338,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 
   std::vector<std::unique_ptr<GlobalData>> handles;
   for (auto& handle : response.element_handles()) {
-    handles.push_back(MakeUnique<GlobalData>(stub_, handle));
+    handles.push_back(absl::make_unique<GlobalData>(stub_, handle));
   }
   return std::move(handles);
 }
@@ -369,7 +367,7 @@ StatusOr<ComputationStats> Client::GetComputationStats(
 StatusOr<std::unique_ptr<ProgramShape>> Client::GetComputationShape(
     const XlaComputation& computation) {
   TF_ASSIGN_OR_RETURN(const auto& result, computation.GetProgramShape());
-  return MakeUnique<ProgramShape>(result);
+  return absl::make_unique<ProgramShape>(result);
 }
 
 StatusOr<Shape> Client::GetShape(const GlobalData& data) {
@@ -400,7 +398,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
     int64 nanoseconds = profile.compute_time_ns();
     int64 cycle_count = profile.compute_cycle_count();
     double gflops = total_flops / nanoseconds;
-    return tensorflow::strings::StrCat(
+    return absl::StrCat(
         "[Execution Statistics] flop count: ", computation_stats.flop_count(),
         ", transcendental count: ", computation_stats.transcendental_count(),
         ", compute execution time: ", nanoseconds, " nsec",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && !defined(DO_NOT_USE_ML)
+#if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY)
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "third_party/intel_mkl_ml/include/mkl_cblas.h"
 #include "third_party/intel_mkl_ml/include/mkl_service.h"

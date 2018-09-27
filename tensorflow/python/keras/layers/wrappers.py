@@ -331,7 +331,7 @@ class TimeDistributed(Wrapper):
       inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
     input_uid = generic_utils.object_list_uid(inputs)
-    inner_inputs = self._input_map[input_uid]
+    inner_inputs = self._input_map.get(input_uid, inputs)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:
@@ -545,11 +545,27 @@ class Bidirectional(Wrapper):
 
     if initial_state is not None and generic_utils.has_arg(
         self.layer.call, 'initial_state'):
-      forward_state = initial_state[:len(initial_state) // 2]
-      backward_state = initial_state[len(initial_state) // 2:]
-      y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)
-      y_rev = self.backward_layer.call(
-          inputs, initial_state=backward_state, **kwargs)
+      forward_inputs = [inputs[0]]
+      backward_inputs = [inputs[0]]
+      pivot = len(initial_state) // 2 + 1
+      # add forward initial state
+      forward_state = inputs[1:pivot]
+      forward_inputs += forward_state
+      if self._num_constants is None:
+        # add backward initial state
+        backward_state = inputs[pivot:]
+        backward_inputs += backward_state
+      else:
+        # add backward initial state
+        backward_state = inputs[pivot:-self._num_constants]
+        backward_inputs += backward_state
+        # add constants for forward and backward layers
+        forward_inputs += inputs[-self._num_constants:]
+        backward_inputs += inputs[-self._num_constants:]
+      y = self.forward_layer.call(forward_inputs,
+                                  initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer.call(backward_inputs,
+                                       initial_state=backward_state, **kwargs)
     else:
       y = self.forward_layer.call(inputs, **kwargs)
       y_rev = self.backward_layer.call(inputs, **kwargs)

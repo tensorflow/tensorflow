@@ -68,6 +68,8 @@ def _regression_dataset_fn():
       "predictions": [1., .75, .25, 0.]}).repeat()
 
 
+# TODO(priyag): Add TPU Strategy to this once metrics aggregate correctly using
+# TowerLocalVariables on TPUs. Submit http://cl/208914352.
 def all_combinations():
   return combinations.combine(
       distribution=[combinations.default_strategy,
@@ -84,10 +86,11 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
       iterator = distribution.distribute_dataset(
-          dataset_fn).make_one_shot_iterator()
+          dataset_fn).make_initializable_iterator()
       value, update = distribution.call_for_each_tower(
           metric_fn, iterator.get_next())
       update = distribution.group(update)
+      self.evaluate(iterator.initializer)
       self.evaluate(variables.local_variables_initializer())
       # TODO(josh11b): Once we switch to using a global batch size for input,
       # replace "distribution.num_towers" with "1".

@@ -135,16 +135,37 @@ bool IsDequeueOp(const NodeDef& node) {
 
 bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 
-bool IsElementWiseMonotonic(const NodeDef& node) {
-  static const std::unordered_set<string>* element_wise_monotonic_ops =
+// Returns true if node represents a unary elementwise function that is
+// monotonic. If *is_non_decreasing is true, the function is non-decreasing,
+// e.g. sqrt, exp. *is_non_decreasing is false, the function is non-increasing,
+// e.g. inv.
+bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
+  static const std::unordered_set<string>* monotonic_non_decreasing_ops =
       CHECK_NOTNULL((new std::unordered_set<string>{
-          "Relu",
-          "Relu6",
-          "Sigmoid",
-          "Sqrt",
-          "Tanh",
+          "Asinh", "Atanh",   "Ceil",  "Elu",  "Erf",  "Exp",   "Expm1",
+          "Floor", "Log",     "Log1p", "Relu", "Relu", "Relu6", "Rint",
+          "Selu",  "Sigmoid", "Sign",  "Sinh", "Sqrt", "Tanh",
       }));
-  return element_wise_monotonic_ops->count(node.op()) > 0;
+  static const std::unordered_set<string>* monotonic_non_increasing_ops =
+      CHECK_NOTNULL((new std::unordered_set<string>{
+          "Inv",
+          "Reciprocal",
+          "Erfc",
+          "Rsqrt",
+          "Neg",
+      }));
+  if (monotonic_non_decreasing_ops->count(node.op()) > 0) {
+    if (is_non_decreasing) {
+      *is_non_decreasing = true;
+    }
+    return true;
+  } else if (monotonic_non_increasing_ops->count(node.op()) > 0) {
+    if (is_non_decreasing) {
+      *is_non_decreasing = false;
+    }
+    return true;
+  }
+  return false;
 }
 
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
@@ -470,7 +491,7 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     }
   }
   // Queue ops modify the queue which is a side effect.
-  if (node.op().find("Queue") != std::string::npos) {
+  if (node.op().find("Queue") != string::npos) {
     return false;
   }
   return !ModifiesInputsInPlace(node);

@@ -148,6 +148,9 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
       node_stats->set_op_end_rel_micros((now_nanos - pre_time_nanos) /
                                         EnvTime::kMicrosToNanos);
       node_stats->set_op_end_rel_nanos(now_nanos - pre_time_nanos);
+      node_stats->set_all_end_rel_micros((now_nanos - pre_time_nanos) /
+                                         EnvTime::kMicrosToNanos);
+      node_stats->set_all_end_rel_nanos(now_nanos - pre_time_nanos);
     }
     if (!status.ok()) {
       if (result_handle != nullptr) result_handle->Unref();
@@ -189,17 +192,14 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
 }
 
 Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  DeviceSet ds;
-  for (Device* d : *ctx->devices()) {
-    ds.AddDevice(d);
-  }
   DeviceTypeVector final_devices;
-  auto status = SupportedDeviceTypesForNode(ds.PrioritizedDeviceTypeList(),
-                                            ndef, &final_devices);
-  if (!status.ok()) return status;
+  TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
+      ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
-    return errors::Internal("Could not find valid device for node ",
-                            ndef.DebugString());
+    return errors::Internal(
+        "Could not find valid device for node.\nNode: ", SummarizeNodeDef(ndef),
+        "\nAll kernels registered for op ", ndef.op(), " :\n",
+        KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
     if (d->device_type() == final_devices[0].type_string()) {
@@ -208,7 +208,7 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
     }
   }
   return errors::Unknown("Could not find a device for node ",
-                         ndef.DebugString());
+                         SummarizeNodeDef(ndef));
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
@@ -251,26 +251,6 @@ Status EagerLocalExecute(EagerOperation* op,
   EagerContext* ctx = op->EagerContext();
   auto status = ctx->GetStatus();
   if (!status.ok()) return status;
-  // Ensure all resource-touching ops run in the device the resource is,
-  // regardless of anything else that has been specified. This is identical to
-  // the graph mode behavior.
-  for (int i = 0; i < op->Inputs().size(); ++i) {
-    Device* input_op_device = nullptr;
-    status = op->Inputs()[i]->OpDevice(&input_op_device);
-    if (!status.ok()) return status;
-    VLOG(2) << "for op " << op->Name() << " input " << i << " "
-            << DataTypeString(op->Inputs()[i]->dtype) << " "
-            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
-            << " " << (op->Device() == nullptr ? "cpu" : op->Device()->name());
-    if (op->Inputs()[i]->dtype == DT_RESOURCE &&
-        (input_op_device != op->Device() || input_op_device == nullptr)) {
-      Device* d = input_op_device == nullptr ? ctx->HostCPU() : input_op_device;
-      VLOG(1) << "Changing device of operation " << op->Name() << " to "
-              << d->name() << " because input #" << i
-              << " is a resource in this device.";
-      op->SetDevice(d);
-    }
-  }
   Device* device = op->Device();
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(
@@ -296,13 +276,7 @@ Status EagerLocalExecute(EagerOperation* op,
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous());
-    // Knowledge of the implementation of Init (and in-turn
-    // FunctionLibraryRuntime::CreateKernel) tells us that ctx->func_lib_def
-    // will be accessed, so grab on to the lock.
-    // See WARNING comment in Execute (before kernel->Run) - would be nice to
-    // rework to avoid this subtlety.
-    tf_shared_lock l(*ctx->FunctionsMu());
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
     auto* flr = ctx->func_lib(device);
 
     if (flr == nullptr) {
@@ -610,6 +584,27 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 Status EagerExecute(EagerOperation* op,
                     gtl::InlinedVector<TensorHandle*, 2>* retvals,
                     int* num_retvals) {
+  // Ensure all resource-touching ops run in the device the resource is,
+  // regardless of anything else that has been specified. This is identical to
+  // the graph mode behavior.
+  EagerContext* ctx = op->EagerContext();
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    Device* input_op_device = nullptr;
+    auto status = op->Inputs()[i]->OpDevice(&input_op_device);
+    if (!status.ok()) return status;
+    VLOG(2) << "for op " << op->Name() << " input " << i << " "
+            << DataTypeString(op->Inputs()[i]->dtype) << " "
+            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
+            << " " << (op->Device() == nullptr ? "cpu" : op->Device()->name());
+    if (op->Inputs()[i]->dtype == DT_RESOURCE &&
+        (input_op_device != op->Device() || input_op_device == nullptr)) {
+      Device* d = input_op_device == nullptr ? ctx->HostCPU() : input_op_device;
+      VLOG(1) << "Changing device of operation " << op->Name() << " to "
+              << d->name() << " because input #" << i
+              << " is a resource in this device.";
+      op->SetDevice(d);
+    }
+  }
   bool op_is_local = IsLocal(op->EagerContext(), op->Device());
 
   if (op_is_local) {
@@ -643,22 +638,23 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     TF_RETURN_IF_ERROR(op_inputs[i]->Tensor(&input_tensor));
     inputs[i] = *input_tensor;
   }
-  // WARNING: kernel->Run utilizes the FunctionLibraryRuntime
-  // (ctx->func_lib(device)), which in turn holds a pointer to func_lib_def.
-  // But knowledge of the implementation
-  // of FunctionLibraryRuntime tells us that func_lib_def is not accessed by
-  // FunctionLibraryRuntime::Run(), so there is no thread-safety concern here.
-  // This is quite subtle. Re-work things to make this better?  (Would it make
-  // sense for FunctionLibraryRuntime to ensure thread-safe access to
-  // FunctionLibraryDefinition?).  TODO(apassos) figure out how to record stats
-  // for ops which are a part of functions.
+  //  TODO(apassos) figure out how to record stats for ops which are a part of
+  //  functions.
   // TODO(agarwal): change Run to take vector of handles ?
-  TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+  ScopedStepContainer* container = ctx->StepContainer();
+  if (container == nullptr) {
+    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+  } else {
+    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats));
+  }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();
     maybe_stats->set_op_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
                                        maybe_stats->all_start_micros());
     maybe_stats->set_op_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
+    maybe_stats->set_all_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
+                                        maybe_stats->all_start_micros());
+    maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
     mutex_lock ml(*ctx->MetadataMu());
     if (ctx->ShouldStoreMetadata()) {
       auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();

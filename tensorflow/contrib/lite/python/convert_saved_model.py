@@ -44,7 +44,7 @@ def _log_tensor_details(tensor_info):
                  dtype)
 
 
-def _get_meta_graph_def(saved_model_dir, tag_set):
+def get_meta_graph_def(saved_model_dir, tag_set):
   """Validate saved_model and extract MetaGraphDef.
 
   Args:
@@ -61,7 +61,7 @@ def _get_meta_graph_def(saved_model_dir, tag_set):
     return loader.load(sess, tag_set, saved_model_dir)
 
 
-def _get_signature_def(meta_graph, signature_key):
+def get_signature_def(meta_graph, signature_key):
   """Get the signature def from meta_graph with given signature_key.
 
   Args:
@@ -86,7 +86,7 @@ def _get_signature_def(meta_graph, signature_key):
   return signature_def_map[signature_key]
 
 
-def _get_inputs_outputs(signature_def):
+def get_inputs_outputs(signature_def):
   """Get inputs and outputs from SignatureDef.
 
   Args:
@@ -236,9 +236,9 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
       input_arrays or output_arrays are not valid.
   """
   # Read SignatureDef.
-  meta_graph = _get_meta_graph_def(saved_model_dir, tag_set)
-  signature_def = _get_signature_def(meta_graph, signature_key)
-  inputs, outputs = _get_inputs_outputs(signature_def)
+  meta_graph = get_meta_graph_def(saved_model_dir, tag_set)
+  signature_def = get_signature_def(meta_graph, signature_key)
+  inputs, outputs = get_inputs_outputs(signature_def)
 
   # Check SavedModel for assets directory.
   collection_def = meta_graph.collection_def

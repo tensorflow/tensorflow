@@ -100,8 +100,11 @@ class Gamma(distribution.Distribution):
   #### Examples
 
   ```python
-  dist = tf.distributions.Gamma(concentration=3.0, rate=2.0)
-  dist2 = tf.distributions.Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
+  dist = tfd.Gamma(concentration=3.0, rate=2.0)
+  dist2 = tfd.Gamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
 
   Compute the gradients of samples w.r.t. the parameters:
@@ -109,7 +112,7 @@ class Gamma(distribution.Distribution):
   ```python
   concentration = tf.constant(3.0)
   rate = tf.constant(2.0)
-  dist = tf.distributions.Gamma(concentration, rate)
+  dist = tfd.Gamma(concentration, rate)
   samples = dist.sample(5)  # Shape [5]
   loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
   # Unbiased stochastic gradients of the loss function

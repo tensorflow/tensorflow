@@ -102,7 +102,7 @@ class SpeechTest : public ::testing::TestWithParam<int> {
   int GetMaxInvocations() { return GetParam(); }
 };
 
-TEST_P(SpeechTest, HotwordOkGoogleRank1Test) {
+TEST_P(SpeechTest, DISABLED_HotwordOkGoogleRank1Test) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData(
       "speech_hotword_model_rank1.tflite", "speech_hotword_model_in.csv",
@@ -114,7 +114,7 @@ TEST_P(SpeechTest, HotwordOkGoogleRank1Test) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, HotwordOkGoogleRank2Test) {
+TEST_P(SpeechTest, DISABLED_HotwordOkGoogleRank2Test) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData(
       "speech_hotword_model_rank2.tflite", "speech_hotword_model_in.csv",
@@ -126,7 +126,7 @@ TEST_P(SpeechTest, HotwordOkGoogleRank2Test) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, SpeakerIdOkGoogleTest) {
+TEST_P(SpeechTest, DISABLED_SpeakerIdOkGoogleTest) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData(
       "speech_speakerid_model.tflite", "speech_speakerid_model_in.csv",
@@ -139,7 +139,7 @@ TEST_P(SpeechTest, SpeakerIdOkGoogleTest) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, AsrAmTest) {
+TEST_P(SpeechTest, DISABLED_AsrAmTest) {
   std::stringstream os;
   ASSERT_TRUE(
       ConvertCsvData("speech_asr_am_model.tflite", "speech_asr_am_model_in.csv",
@@ -156,7 +156,7 @@ TEST_P(SpeechTest, AsrAmTest) {
 // through the interpreter and stored the sum of all the output, which was them
 // compared for correctness. In this test we are comparing all the intermediate
 // results.
-TEST_P(SpeechTest, AsrLmTest) {
+TEST_P(SpeechTest, DISABLED_AsrLmTest) {
   std::ifstream in_file;
   testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
   ASSERT_TRUE(Init("speech_asr_lm_model.test_spec", &test_driver, &in_file));
@@ -165,7 +165,7 @@ TEST_P(SpeechTest, AsrLmTest) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, EndpointerTest) {
+TEST_P(SpeechTest, DISABLED_EndpointerTest) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData(
       "speech_endpointer_model.tflite", "speech_endpointer_model_in.csv",
@@ -178,7 +178,7 @@ TEST_P(SpeechTest, EndpointerTest) {
       << test_driver.GetErrorMessage();
 }
 
-TEST_P(SpeechTest, TtsTest) {
+TEST_P(SpeechTest, DISABLED_TtsTest) {
   std::stringstream os;
   ASSERT_TRUE(ConvertCsvData("speech_tts_model.tflite",
                              "speech_tts_model_in.csv",

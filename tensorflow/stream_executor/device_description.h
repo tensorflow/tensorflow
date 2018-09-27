@@ -22,8 +22,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
-
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -359,9 +358,8 @@ class DeviceDescriptionBuilder {
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim);
 
-// [deprecated] Use MathUtil::CeilOfRatio directly instead.
-//
 // Equivalent to ceil(double(element_count) / threads_per_block).
+ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
 uint64 DivideCeil(uint64 x, uint64 y);
 
 // Calculate the number of threads/blocks required to process element_count

@@ -19,6 +19,9 @@ This module can perform operations on nested structures. A nested structure is a
 Python sequence, tuple (including `namedtuple`), or dict that can contain
 further sequences, tuples, and dicts.
 
+attr.s decorated classes (http://www.attrs.org) are also supported, in the
+same way as `namedtuple`.
+
 The utilities here assume (and do not check) that the nested structures form a
 'tree', i.e., no references in the structure of the input of these functions
 should be recursive.
@@ -36,6 +39,12 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+
+
+def _get_attrs_values(obj):
+  """Returns the list of values from an attrs instance."""
+  attrs = getattr(obj.__class__, "__attrs_attrs__")
+  return [getattr(obj, a.name) for a in attrs]
 
 
 def _sorted(dict_):
@@ -62,6 +71,11 @@ def _is_namedtuple(instance, strict=False):
   return _pywrap_tensorflow.IsNamedtuple(instance, strict)
 
 
+# See the swig file (util.i) for documentation.
+_is_mapping = _pywrap_tensorflow.IsMapping
+_is_attrs = _pywrap_tensorflow.IsAttrs
+
+
 def _sequence_like(instance, args):
   """Converts the sequence `args` to the same type as `instance`.
 
@@ -73,7 +87,7 @@ def _sequence_like(instance, args):
   Returns:
     `args` with the type of `instance`.
   """
-  if isinstance(instance, (dict, _collections.Mapping)):
+  if _is_mapping(instance):
     # Pack dictionaries in a deterministic order by sorting the keys.
     # Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -81,7 +95,7 @@ def _sequence_like(instance, args):
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
     return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
-  elif _is_namedtuple(instance):
+  elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   else:
     # Not a namedtuple
@@ -89,7 +103,8 @@ def _sequence_like(instance, args):
 
 
 def _yield_value(iterable):
-  if isinstance(iterable, (dict, _collections.Mapping)):
+  """Yields the next value from the given iterable."""
+  if _is_mapping(iterable):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -97,58 +112,36 @@ def _yield_value(iterable):
     # corresponding `OrderedDict` to pack it back).
     for key in _sorted(iterable):
       yield iterable[key]
+  elif _is_attrs(iterable):
+    for value in _get_attrs_values(iterable):
+      yield value
   else:
     for value in iterable:
       yield value
 
 
-def is_sequence(seq):
-  """Returns a true if its input is a collections.Sequence (except strings).
-
-  Args:
-    seq: an input sequence.
-
-  Returns:
-    True if the sequence is a not a string and is a collections.Sequence or a
-    dict.
-  """
-  return _pywrap_tensorflow.IsSequence(seq)
+# See the swig file (util.i) for documentation.
+is_sequence = _pywrap_tensorflow.IsSequence
 
 
-def flatten(nest):
-  """Returns a flat list from a given nested structure.
-
-  If `nest` is not a sequence, tuple, or dict, then returns a single-element
-  list: `[nest]`.
-
-  In the case of dict instances, the sequence consists of the values, sorted by
-  key to ensure deterministic behavior. This is true also for `OrderedDict`
-  instances: their sequence order is ignored, the sorting order of keys is
-  used instead. The same convention is followed in `pack_sequence_as`. This
-  correctly repacks dicts and `OrderedDict`s after they have been flattened,
-  and also allows flattening an `OrderedDict` and then repacking it back using
-  a corresponding plain dict, or vice-versa.
-  Dictionaries with non-sortable keys cannot be flattened.
-
-  Users must not modify any collections used in `nest` while this function is
-  running.
-
-  Args:
-    nest: an arbitrarily nested structure or a scalar object. Note, numpy
-        arrays are considered scalars.
-
-  Returns:
-    A Python list, the flattened version of the input.
-
-  Raises:
-    TypeError: The nest is or contains a dict with non-sortable keys.
-  """
-  return _pywrap_tensorflow.Flatten(nest)
+# See the swig file (util.i) for documentation.
+flatten = _pywrap_tensorflow.Flatten
 
 
-def _same_namedtuples(nest1, nest2):
-  """Returns True if the two namedtuples have the same name and fields."""
-  return _pywrap_tensorflow.SameNamedtuples(nest1, nest2)
+# See the swig file (util.i) for documentation.
+_same_namedtuples = _pywrap_tensorflow.SameNamedtuples
+
+
+class _DotString(object):
+
+  def __str__(self):
+    return "."
+
+  def __repr__(self):
+    return "."
+
+
+_DOT = _DotString()
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
@@ -182,7 +175,15 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+  try:
+    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+  except (ValueError, TypeError) as e:
+    str1 = str(map_structure(lambda _: _DOT, nest1))
+    str2 = str(map_structure(lambda _: _DOT, nest2))
+    raise type(e)("%s\n"
+                  "Entire first structure:\n%s\n"
+                  "Entire second structure:\n%s"
+                  % (str(e), str1, str2))
 
 
 def flatten_dict_items(dictionary):
@@ -311,14 +312,17 @@ def pack_sequence_as(structure, flat_sequence):
                        % len(flat_sequence))
     return flat_sequence[0]
 
-  flat_structure = flatten(structure)
-  if len(flat_structure) != len(flat_sequence):
-    raise ValueError(
-        "Could not pack sequence. Structure had %d elements, but flat_sequence "
-        "had %d elements.  Structure: %s, flat_sequence: %s."
-        % (len(flat_structure), len(flat_sequence), structure, flat_sequence))
-
-  _, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
+  try:
+    final_index, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
+    if final_index < len(flat_sequence):
+      raise IndexError
+  except IndexError:
+    flat_structure = flatten(structure)
+    if len(flat_structure) != len(flat_sequence):
+      raise ValueError(
+          "Could not pack sequence. Structure had %d elements, but "
+          "flat_sequence had %d elements.  Structure: %s, flat_sequence: %s." %
+          (len(flat_structure), len(flat_sequence), structure, flat_sequence))
   return _sequence_like(structure, packed)
 
 

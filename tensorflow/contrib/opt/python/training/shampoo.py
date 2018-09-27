@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from tensorflow.contrib.opt.python.training import matrix_functions
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -66,8 +67,9 @@ class ShampooOptimizer(optimizer.Optimizer):
   a lambda function that depends on step.
   """
 
-  def __init__(self, global_step=0,
-               max_matrix_size=500,
+  def __init__(self,
+               global_step=0,
+               max_matrix_size=768,
                gbar_decay=0.0,
                gbar_weight=1.0,
                mat_gbar_decay=1.0,
@@ -75,7 +77,7 @@ class ShampooOptimizer(optimizer.Optimizer):
                learning_rate=1.0,
                svd_interval=1,
                precond_update_interval=1,
-               epsilon=0.1,
+               epsilon=1e-4,
                alpha=0.5,
                use_iterative_root=False,
                use_locking=False,
@@ -138,7 +140,7 @@ class ShampooOptimizer(optimizer.Optimizer):
         shape = np.array(v.get_shape())
         for i, d in enumerate(shape):
           d_tensor = ops.convert_to_tensor(d)
-          if d < self._max_matrix_size:
+          if d <= self._max_matrix_size:
             mat_g_init = array_ops.zeros_like(linalg_ops.eye(d_tensor))
             if self._svd_interval > 1:
               _ = self._get_or_make_slot(v, linalg_ops.eye(d_tensor),
@@ -149,18 +151,27 @@ class ShampooOptimizer(optimizer.Optimizer):
           _ = self._get_or_make_slot(v, mat_g_init, "Gbar_" + str(i),
                                      self._name)
 
+  def _resource_apply_dense(self, grad, var):
+    return self._apply_dense(grad, var)
+
   def _apply_dense(self, grad, var):
     return self._apply_gradient(grad, var)
 
+  def _resource_apply_sparse(self, grad_values, var, grad_indices):
+    return self._apply_sparse_shared(grad_values, grad_indices, var)
+
   def _apply_sparse(self, grad, var):
-    if var.get_shape()[0] < self._max_matrix_size or self._gbar_decay != 0.0:
+    return self._apply_sparse_shared(grad.values, grad.indices, var)
+
+  def _apply_sparse_shared(self, grad_values, grad_indices, var):
+    if var.get_shape()[0] <= self._max_matrix_size or self._gbar_decay != 0.0:
       # The dimension is small enough, we can make the variable dense and
       # do a dense update
       dense_grad = array_ops.scatter_nd(
-          array_ops.expand_dims(grad.indices, axis=1),
-          grad.values, array_ops.shape(var, out_type=grad.indices.dtype))
+          array_ops.expand_dims(grad_indices, axis=1), grad_values,
+          array_ops.shape(var, out_type=grad_indices.dtype))
       return self._apply_gradient(dense_grad, var)
-    return self._apply_gradient(grad.values, var, grad.indices)
+    return self._apply_gradient(grad_values, var, grad_indices)
 
   def _weighted_average(self, var, weight, weight_t, rest):
     """Computes exponential weighted average: var = weight_t * var + rest.
@@ -245,93 +256,31 @@ class ShampooOptimizer(optimizer.Optimizer):
 
   def _compute_power_iter(self, var, mat_g, mat_g_size, alpha, mat_h_slot_name,
                           iter_count=100, epsilon=1e-6):
-    """Computes mat_g^alpha, where alpha = -1/p, p a positive integer.
+    """Computes mat_g^alpha, where alpha = -1/p, p a positive integer."""
 
-    We use an iterative Schur-Newton method from equation 3.2 on page 9 of:
+    mat_g_sqrt = matrix_functions.matrix_square_root(mat_g, mat_g_size,
+                                                     iter_count, self._epsilon)
+    mat_h = matrix_functions.matrix_inverse_pth_root(
+        mat_g_sqrt,
+        mat_g_size,
+        2 * alpha,
+        iter_count,
+        epsilon,
+        ridge_epsilon=0.0)
 
-    A Schur-Newton Method for the Matrix p-th Root and its Inverse
-    by Chun-Hua Guo and Nicholas J. Higham
-    SIAM Journal on Matrix Analysis and Applications,
-    2006, Vol. 28, No. 3 : pp. 788-804
-    https://pdfs.semanticscholar.org/0abe/7f77433cf5908bfe2b79aa91af881da83858.pdf
-
-    Args:
-      var: the variable we are updating.
-      mat_g: the symmetric PSD matrix whose power it to be computed
-      mat_g_size: size of mat_g.
-      alpha: exponent, must be -1/p for p a positive integer.
-      mat_h_slot_name: name of slot to store the power, if needed.
-      iter_count: Maximum number of iterations.
-      epsilon: accuracy indicator, useful for early termination.
-
-    Returns:
-      mat_g^alpha
-    """
-
-    identity = linalg_ops.eye(math_ops.to_int32(mat_g_size))
-
-    def MatPower(mat_m, p):
-      """Computes mat_m^p, for p a positive integer.
-
-      Power p is known at graph compile time, so no need for loop and cond.
-      Args:
-        mat_m: a square matrix
-        p: a positive integer
-
-      Returns:
-        mat_m^p
-      """
-      assert p == int(p) and p > 0
-      power = None
-      while p > 0:
-        if p % 2 == 1:
-          power = math_ops.matmul(mat_m, power) if power is not None else mat_m
-        p //= 2
-        mat_m = math_ops.matmul(mat_m, mat_m)
-      return power
-
-    def IterCondition(i, mat_m, _):
-      return math_ops.logical_and(
-          i < iter_count,
-          math_ops.reduce_max(math_ops.abs(mat_m - identity)) > epsilon)
-
-    def IterBody(i, mat_m, mat_x):
-      mat_m_i = (1 - alpha) * identity + alpha * mat_m
-      return (i + 1, math_ops.matmul(MatPower(mat_m_i, -1.0/alpha), mat_m),
-              math_ops.matmul(mat_x, mat_m_i))
-
-    if mat_g_size == 1:
-      mat_h = math_ops.pow(mat_g + self._epsilon, alpha)
-    else:
-      damped_mat_g = mat_g + self._epsilon * identity
-      z = (1 - 1/alpha) / (2 * linalg_ops.norm(damped_mat_g, ord=2))
-      # The best value for z is
-      # (1 - 1/alpha) * (c_max^{-alpha} - c_min^{-alpha}) /
-      #                 (c_max^{1-alpha} - c_min^{1-alpha})
-      # where c_max and c_min are the largest and smallest singular values of
-      # damped_mat_g.
-      # The above estimate assumes that c_max > c_min * 2^p. (p = -1/alpha)
-      # Can replace above line by the one below, but it is less accurate,
-      # hence needs more iterations to converge.
-      # z = (1 - 1/alpha) / math_ops.trace(damped_mat_g)
-      # If we want the method to always converge, use z = 1 / norm(damped_mat_g)
-      # or z = 1 / math_ops.trace(damped_mat_g), but these can result in many
-      # extra iterations.
-      _, _, mat_h = control_flow_ops.while_loop(
-          IterCondition, IterBody,
-          [0, damped_mat_g * z, identity * math_ops.pow(z, -alpha)])
     if mat_h_slot_name is not None:
       return state_ops.assign(self.get_slot(var, mat_h_slot_name), mat_h)
     return mat_h
 
   def _compute_power(self, var, mat_g, mat_g_size, alpha, mat_h_slot_name=None):
     """Just a switch between the iterative power vs svd."""
-    if self._use_iterative_root:
-      return self._compute_power_iter(var, mat_g, mat_g_size, alpha,
-                                      mat_h_slot_name)
-    else:
-      return self._compute_power_svd(var, mat_g, mat_g_size, alpha,
-                                     mat_h_slot_name)
+    with ops.name_scope("matrix_iterative_power"):
+      if self._use_iterative_root:
+        return self._compute_power_iter(var, mat_g, mat_g_size, alpha,
+                                        mat_h_slot_name)
+      else:
+        return self._compute_power_svd(var, mat_g, mat_g_size, alpha,
+                                       mat_h_slot_name)
 
   def _apply_gradient(self, grad, var, indices=None):
     """The main function to update a variable.
@@ -397,7 +346,7 @@ class ShampooOptimizer(optimizer.Optimizer):
     for i, mat_g in enumerate(mat_g_list):
       # axes is the list of indices to reduce - everything but the current i.
       axes = list(range(i)) + list(range(i+1, v_rank))
-      if shape[i] < self._max_matrix_size:
+      if shape[i] <= self._max_matrix_size:
         # If the tensor size is sufficiently small perform full Shampoo update
         # Note if precond_update_interval > 1 and mat_gbar_decay_t != 1, this
         # is not strictly correct. However we will use it for now, and
@@ -410,6 +359,8 @@ class ShampooOptimizer(optimizer.Optimizer):
                 mat_g, grad, axes, mat_gbar_decay_t,
                 mat_gbar_weight_t * precond_update_interval, i),
             lambda: mat_g)
+
+        mat_g_updated = mat_g_updated / float(shape[i].value)
 
         if self._svd_interval == 1:
           mat_h = self._compute_power(var, mat_g_updated, shape[i], neg_alpha)
@@ -432,7 +383,13 @@ class ShampooOptimizer(optimizer.Optimizer):
                                                  name="precond_" + str(i))
       else:
         # Tensor size is too large -- perform diagonal Shampoo update
-        grad_outer = math_ops.reduce_sum(grad * grad, axis=axes)
+        # Only normalize non-vector cases.
+        if axes:
+          normalizer = 1.0 if indices is not None else float(shape[i].value)
+          grad_outer = math_ops.reduce_sum(grad * grad, axis=axes) / normalizer
+        else:
+          grad_outer = grad * grad
+
         if i == 0 and indices is not None:
           assert self._mat_gbar_decay == 1.0
           mat_g_updated = state_ops.scatter_add(mat_g, indices,
@@ -455,8 +412,8 @@ class ShampooOptimizer(optimizer.Optimizer):
     # Update the variable based on the Shampoo update
     learning_rate_t = GetParam(self._learning_rate, global_step)
     if indices is not None:
-      var_updated = state_ops.scatter_sub(var, indices,
-                                          learning_rate_t * preconditioned_grad)
+      var_updated = state_ops.scatter_add(
+          var, indices, -learning_rate_t * preconditioned_grad)
     else:
       var_updated = state_ops.assign_sub(var,
                                          learning_rate_t * preconditioned_grad)

@@ -15,8 +15,8 @@ limitations under the License.
 #include <string.h>
 #include <cmath>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -56,17 +56,6 @@ struct StridedSliceContext {
   TfLiteTensor* output;
   int dims;
 };
-
-// Reverse order of bits in the mask to match the expected order in kernel
-inline int ReverseMaskBits(int mask, int num_dimensions) {
-  int out = 0;
-  for (int dim = 0; dim < num_dimensions; dim++) {
-    out <<= 1;
-    out += (mask & 1);
-    mask >>= 1;
-  }
-  return out;
-}
 
 // This Op only supports 1-4D cases and since we use the reference 4D
 // implementation, the 1-3D tensors are mapped to 4D.
@@ -198,30 +187,31 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   std::vector<int32_t> stops;
   std::vector<int32_t> strides;
 
-  for (int idx = op_context.dims - 1; idx >= 0; --idx) {
-    starts.emplace_back(GetTensorData<int32_t>(op_context.begin)[idx]);
-    stops.emplace_back(GetTensorData<int32_t>(op_context.end)[idx]);
-    strides.emplace_back(GetTensorData<int32_t>(op_context.strides)[idx]);
-  }
-
   for (int i = op_context.dims; i < kMaxDim; i++) {
     starts.emplace_back(0);
     stops.emplace_back(1);
     strides.emplace_back(1);
   }
 
-  int begin_mask =
-      ReverseMaskBits(op_context.params->begin_mask, op_context.dims);
-  int end_mask = ReverseMaskBits(op_context.params->end_mask, op_context.dims);
-  int shrink_axis_mask =
-      ReverseMaskBits(op_context.params->shrink_axis_mask, op_context.dims);
+  for (int idx = 0; idx < op_context.dims; ++idx) {
+    starts.emplace_back(GetTensorData<int32_t>(op_context.begin)[idx]);
+    stops.emplace_back(GetTensorData<int32_t>(op_context.end)[idx]);
+    strides.emplace_back(GetTensorData<int32_t>(op_context.strides)[idx]);
+  }
 
-#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                          \
-  kernel_type::StridedSlice(                                                   \
-      GetTensorData<data_type>(op_context.input),                              \
-      GetTensorDims(op_context.input), begin_mask, end_mask, shrink_axis_mask, \
-      starts, stops, strides, GetTensorData<data_type>(op_context.output),     \
-      GetTensorDims(op_context.output))
+  int begin_mask = op_context.params->begin_mask << (4 - op_context.dims);
+  int end_mask = op_context.params->end_mask << (4 - op_context.dims);
+  int shrink_axis_mask = op_context.params->shrink_axis_mask
+                         << (4 - op_context.dims);
+  TF_LITE_ENSURE_EQ(context, starts.size(), 4);
+  auto op_params = ::tflite::strided_slice::BuildStridedSliceParams(
+      begin_mask, end_mask, shrink_axis_mask, starts, stops, strides);
+
+#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                    \
+  kernel_type::StridedSlice(op_params, GetTensorShape(op_context.input), \
+                            GetTensorData<data_type>(op_context.input),  \
+                            GetTensorShape(op_context.output),           \
+                            GetTensorData<data_type>(op_context.output))
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:

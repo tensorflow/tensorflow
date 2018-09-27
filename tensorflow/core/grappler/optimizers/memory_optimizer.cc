@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
@@ -1070,11 +1071,13 @@ static bool IdentifySwappingCandidates(
         // ensure that swapping the tensor back in won't recreate the memory
         // bottleneck. Last but not least, we want the tensor to have as few
         // remaining uses as possible.
+        //
+        // Note that we must perform the arithmetic inexactly as "double", since
+        // the values do not fit into any integral type.
         mem_info.fitness =
-            MathUtil::IPow((earliest_use - peak_time).count(), 2);
-        mem_info.fitness /= MathUtil::IPow(mem_info.uses_left.size(), 2);
-        mem_info.fitness +=
-            MathUtil::IPow((allocation_time - peak_time).count(), 2);
+            MathUtil::IPow<double>((earliest_use - peak_time).count(), 2) /
+            MathUtil::IPow<double>(mem_info.uses_left.size(), 2) +
+            MathUtil::IPow<double>((allocation_time - peak_time).count(), 2);
         mem_info.fitness = -mem_info.fitness;
         mem_state.push_back(mem_info);
       }

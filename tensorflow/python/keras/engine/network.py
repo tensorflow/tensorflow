@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
@@ -116,6 +117,16 @@ class Network(base_layer.Layer):
     # included in base_init to avoid excessive special casing when retrieving
     # the value).
     self._extra_variables = []
+    # In many internal cases one needs to compute both the model's output
+    # and its output mask without relying on `__call__` (which would do both and
+    # set mask metadata), but for models, computing the mask requires to
+    # recompute the output.
+    # Hence the pattern `output = model.call(); mask = model.compute_mask()`
+    # would be redundant, and internal logic
+    # (susceptible to use `call` directly) should prefer using the
+    # internal method `output, mask = _call_and_compute_mask()`.
+    # This is True for Sequential networks and graph networks.
+    self._compute_output_and_mask_jointly = False
 
     self.supports_masking = False
     if not hasattr(self, 'optimizer'):
@@ -219,6 +230,7 @@ class Network(base_layer.Layer):
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
+    self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
 
     self._input_layers = []
@@ -382,10 +394,10 @@ class Network(base_layer.Layer):
     no_dependency = isinstance(value, data_structures.NoDependency)
     value = data_structures.sticky_attribute_assignment(
         checkpointable=self, value=value, name=name)
-    if isinstance(value, (
-        base_layer.Layer,
-        Network,
-        data_structures.CheckpointableDataStructure)):
+    if (isinstance(value, (base_layer.Layer,
+                           Network,
+                           data_structures.CheckpointableDataStructure))
+        or checkpointable_layer_utils.has_weights(value)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -677,14 +689,14 @@ class Network(base_layer.Layer):
   def trainable_weights(self):
     return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
     return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
+        sub_layers=self._layers,
         extra_variables=self._extra_variables)
 
   @property
@@ -758,7 +770,7 @@ class Network(base_layer.Layer):
       # and graph building, the variables created after building the model in
       # a Graph are still valid when executing eagerly.
       with context.graph_mode():
-        graph = eager_function.CapturingGraph()
+        graph = eager_function.FuncGraph('graph')
         with graph.as_default():
           if isinstance(input_shape, list):
             x = [base_layer.generate_placeholders_from_shape(shape)
@@ -819,6 +831,10 @@ class Network(base_layer.Layer):
         A tensor if there is a single output, or
         a list of tensors if there are more than one outputs.
     """
+    if not self._is_graph_network:
+      raise NotImplementedError('When subclassing the `Model` class, you should'
+                                ' implement a `call` method.')
+
     inputs = generic_utils.to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
@@ -1007,7 +1023,8 @@ class Network(base_layer.Layer):
                 kwargs.setdefault('mask', computed_mask)
 
               # Compute outputs and masks.
-              if isinstance(layer, Network) and layer._is_graph_network:
+              if (isinstance(layer, Network) and
+                  layer._compute_output_and_mask_jointly):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensor, **kwargs)
               else:
@@ -1027,7 +1044,8 @@ class Network(base_layer.Layer):
                 kwargs.setdefault('mask', computed_masks)
 
               # Compute outputs and masks.
-              if isinstance(layer, Network) and layer._is_graph_network:
+              if (isinstance(layer, Network) and
+                  layer._compute_output_and_mask_jointly):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensors, **kwargs)
               else:
@@ -1337,7 +1355,9 @@ class Network(base_layer.Layer):
     ```
     """
     if not self._is_graph_network:
-      raise NotImplementedError
+      raise NotImplementedError(
+          'Currently `save` requires model to be a graph network. Consider '
+          'using `save_weights`, in order to save the weights of the model.')
 
     from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
@@ -1438,6 +1458,11 @@ class Network(base_layer.Layer):
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
+      # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
+      checkpoint_management.update_checkpoint_state(
+          save_dir=os.path.dirname(filepath),
+          model_checkpoint_path=filepath,
+          all_model_checkpoint_paths=[filepath])
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -1551,7 +1576,10 @@ class Network(base_layer.Layer):
     def get_json_type(obj):
       # If obj is any numpy type
       if type(obj).__module__ == np.__name__:
-        return obj.item()
+        if isinstance(obj, np.ndarray):
+          return obj.tolist()
+        else:
+          return obj.item()
 
       # If obj is a python 'type'
       if type(obj).__name__ == type.__name__:

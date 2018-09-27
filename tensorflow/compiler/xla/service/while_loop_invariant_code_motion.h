@@ -25,7 +25,7 @@ namespace xla {
 // HLO pass that rewrites while loops to hoist loop invariant instructions in
 // the while body into the computation that contains the while instruction.
 
-class WhileLoopInvariantCodeMotion : public HloPassInterface {
+class WhileLoopInvariantCodeMotion : public HloModulePass {
  public:
   // If `hoist_constants` is true then constants are always hoisted out of while
   // loop bodies.  Otherwise they are only hoisted out if they enable other
@@ -38,7 +38,7 @@ class WhileLoopInvariantCodeMotion : public HloPassInterface {
       : hoist_constants_(hoist_constants) {}
   ~WhileLoopInvariantCodeMotion() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "while-loop-invariant-code-motion";
   }
   StatusOr<bool> Run(HloModule* module) override;

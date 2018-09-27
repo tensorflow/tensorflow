@@ -19,6 +19,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:smart_cond",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
@@ -27,6 +28,7 @@ py_library(
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:random_seed",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//third_party/py/numpy",
     ],
 )
@@ -62,6 +64,7 @@ py_library(
         "//tensorflow/python/compat",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
     ],
@@ -76,8 +79,23 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
+    name = "multi_device_iterator_ops",
+    srcs = ["multi_device_iterator_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
     ],

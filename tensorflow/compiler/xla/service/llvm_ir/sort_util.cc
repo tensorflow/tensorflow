@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -29,8 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -42,7 +43,7 @@ namespace {
 void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
                      const IrArray::Index& compare_keys_index,
                      const IrArray& keys_array,
-                     const tensorflow::gtl::optional<IrArray>& values_array,
+                     const absl::optional<IrArray>& values_array,
                      llvm::IRBuilder<>* b) {
   // if (is_smaller_index &&
   //     compare_keys[dimension_to_sort] < dimension_to_sort_bound)
@@ -59,15 +60,39 @@ void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
   SetToFirstInsertPoint(if_data.true_block, b);
   auto key1 = keys_array.EmitReadArrayElement(keys_index, b);
   auto key2 = keys_array.EmitReadArrayElement(compare_keys_index, b);
+  auto compare_key1 = key1;
+  auto compare_key2 = key2;
   auto key_type = keys_array.GetShape().element_type();
+  bool is_signed_comparison = true;
+  if (primitive_util::IsFloatingPointType(key_type)) {
+    // We would like a total order of floating point numbers so that the sort
+    // has a predictable behavior in the presence of NaNs. Rather than using
+    // floating point comparison, we use the following trick:
+    // If f is a float, and
+    // x = bit_cast<int32>(f);
+    // y = x < 0 ? 0x7FFFFFFF - x : x;
+    // then y is ordered as an int32 such that finite values have the obvious
+    // order, -0 is ordered before 0, and -NaN and NaN appear at the beginning
+    // and end of the ordering.
+    auto k = b->getInt(llvm::APInt::getSignedMaxValue(
+        key1->getType()->getPrimitiveSizeInBits()));
+    auto comparison_type = k->getType();
+    auto zero = llvm::ConstantInt::get(comparison_type, 0);
+    auto maybe_flip = [&](llvm::Value* v) {
+      return b->CreateSelect(b->CreateICmp(llvm::ICmpInst::ICMP_SLT, v, zero),
+                             b->CreateSub(k, v), v);
+    };
+    compare_key1 = b->CreateBitCast(key1, comparison_type);
+    compare_key2 = b->CreateBitCast(key2, comparison_type);
+    compare_key1 = maybe_flip(compare_key1);
+    compare_key2 = maybe_flip(compare_key2);
+  } else if (!primitive_util::IsSignedIntegralType(key_type)) {
+    is_signed_comparison = false;
+  }
   auto comparison =
-      primitive_util::IsFloatingPointType(key_type)
-          // TODO(b/26783907): Figure out how to handle NaNs.
-          ? b->CreateFCmp(llvm::FCmpInst::FCMP_ULT, key2, key1)
-          : b->CreateICmp(primitive_util::IsSignedIntegralType(key_type)
-                              ? llvm::ICmpInst::ICMP_SLT
-                              : llvm::ICmpInst::ICMP_ULT,
-                          key2, key1);
+      b->CreateICmp(is_signed_comparison ? llvm::ICmpInst::ICMP_SLT
+                                         : llvm::ICmpInst::ICMP_ULT,
+                    compare_key2, compare_key1);
   // If key2 < key1
   auto if_smaller_data =
       EmitIfThenElse(comparison, "is_smaller_than", b, /*emit_else=*/false);
@@ -87,8 +112,8 @@ void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
 }  // namespace
 
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
-                       const tensorflow::gtl::optional<IrArray>& values_array,
-                       tensorflow::StringPiece name, llvm::Value* xor_mask,
+                       const absl::optional<IrArray>& values_array,
+                       absl::string_view name, llvm::Value* xor_mask,
                        llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions* launch_dimensions) {
   const Shape& keys_shape = keys_array.GetShape();

@@ -54,6 +54,10 @@ class Interpreter(object):
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
+      # Take a reference, so the pointer remains valid.
+      # Since python strings are immutable then PyString_XX functions
+      # will always return the same pointer.
+      self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
               model_content))

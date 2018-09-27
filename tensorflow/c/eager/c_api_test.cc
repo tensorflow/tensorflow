@@ -151,7 +151,7 @@ void TestRemoteExecute(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
@@ -239,7 +239,7 @@ void TestRemoteExecuteSilentCopies(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
@@ -371,7 +371,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   const char remote_device_name[] =
@@ -397,7 +397,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   ASSERT_TRUE(s.ok()) << s.error_message();
   ASSERT_TRUE(worker_server->Start().ok());
 
-  TFE_ContextSetServerDef(ctx, serialized.data(), serialized.size(), status);
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Create a new tensor_handle.
@@ -1471,4 +1471,86 @@ void BM_ReadVariable(int iters) {
 }
 BENCHMARK(BM_ReadVariable);
 
+TEST(CAPI, StringAttributes) {
+  // Test that TFE_OpSetAttrString doesn't hold on to the value after it
+  // returns.
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::vector<int64_t> dims(4, 1);
+  TFE_Op* op = TFE_NewOp(ctx, "AvgPool", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_Tensor* tensor =
+      TF_AllocateTensor(TF_FLOAT, dims.data(), dims.size(), sizeof(float));
+  float tensor_data[] = {1};
+  memcpy(TF_TensorData(tensor), tensor_data, TF_TensorByteSize(tensor));
+  TFE_TensorHandle* tensor_handle = TFE_NewTensorHandle(tensor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, tensor_handle, status);
+  TF_DeleteTensor(tensor);
+  TFE_DeleteTensorHandle(tensor_handle);
+
+  std::vector<int64_t> values(4, 1);
+  TFE_OpSetAttrIntList(op, "ksize", values.data(), values.size());
+  TFE_OpSetAttrIntList(op, "strides", values.data(), values.size());
+
+  const int BUFFER_SIZE = 10;
+  char buffer[BUFFER_SIZE];
+  std::strncpy(buffer, "VALID", BUFFER_SIZE);
+  TFE_OpSetAttrString(op, "padding", buffer, std::strlen(buffer));
+  // Overwriting value in "buffer", should be fine since TFE_Op
+  // shouldn't be holding on to it.
+  std::strncpy(buffer, "NHWC", BUFFER_SIZE);
+  TFE_OpSetAttrString(op, "data_format", buffer, std::strlen(buffer));
+
+  TFE_OpSetAttrType(op, "T", TF_FLOAT);
+
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  TFE_Execute(op, &retvals[0], &num_retvals, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(1, num_retvals);
+
+  tensor = TFE_TensorHandleResolve(retvals[0], status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ(4, TF_TensorByteSize(tensor));
+  TF_DeleteTensor(tensor);
+  TFE_DeleteTensorHandle(retvals[0]);
+
+  TFE_DeleteOp(op);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI, TestTFE_TensorHandleCopySharingUnderlyingTensorHandle) {
+  TFE_TensorHandle* h = TestMatrixTensorHandle();
+  EXPECT_EQ(TF_FLOAT, TFE_TensorHandleDataType(h));
+
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+
+  TFE_TensorHandle* h_shares_tensor =
+      TFE_TensorHandleCopySharingTensor(h, status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  TF_Tensor* t = TFE_TensorHandleResolve(h_shares_tensor, status.get());
+  ASSERT_EQ(16, TF_TensorByteSize(t));
+  float data[4] = {0};
+  memcpy(&data[0], TF_TensorData(t), TF_TensorByteSize(t));
+  EXPECT_EQ(1.0, data[0]);
+  EXPECT_EQ(2.0, data[1]);
+  EXPECT_EQ(3.0, data[2]);
+  EXPECT_EQ(4.0, data[3]);
+  TF_DeleteTensor(t);
+
+  TFE_DeleteTensorHandle(h);
+  TFE_DeleteTensorHandle(h_shares_tensor);
+}
 }  // namespace

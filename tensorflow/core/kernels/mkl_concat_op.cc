@@ -27,8 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-
-#ifndef INTEL_MKL_ML
+#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::concat;
@@ -64,7 +63,7 @@ class EigenConcatBaseOp : public OpKernel {
   // we need to have empty Compute because Compute is pure virtual function.
   void Compute(OpKernelContext* c) {}
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
   void Compute(OpKernelContext* c, const std::vector<Tensor>& values) {
     const Tensor* concat_dim_tensor;
@@ -232,7 +231,7 @@ class EigenConcatBaseOp : public OpKernel {
 #endif
 };
 
-#ifdef INTEL_MKL_ML
+#ifdef INTEL_MKL_ML_ONLY
 
 // --------------------------------------------------------------------------
 //                      Mkl Concat Op

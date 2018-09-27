@@ -28,7 +28,7 @@ namespace io {
 PyRecordWriter::PyRecordWriter() {}
 
 PyRecordWriter* PyRecordWriter::New(const string& filename,
-                                    const string& compression_type_string,
+                                    const io::RecordWriterOptions& options,
                                     TF_Status* out_status) {
   std::unique_ptr<WritableFile> file;
   Status s = Env::Default()->NewWritableFile(filename, &file);
@@ -38,10 +38,6 @@ PyRecordWriter* PyRecordWriter::New(const string& filename,
   }
   PyRecordWriter* writer = new PyRecordWriter;
   writer->file_ = std::move(file);
-
-  RecordWriterOptions options =
-      RecordWriterOptions::CreateRecordWriterOptions(compression_type_string);
-
   writer->writer_.reset(new RecordWriter(writer->file_.get(), options));
   return writer;
 }
@@ -52,10 +48,17 @@ PyRecordWriter::~PyRecordWriter() {
   file_.reset();
 }
 
-bool PyRecordWriter::WriteRecord(tensorflow::StringPiece record) {
-  if (writer_ == nullptr) return false;
+void PyRecordWriter::WriteRecord(tensorflow::StringPiece record,
+                                 TF_Status* out_status) {
+  if (writer_ == nullptr) {
+    TF_SetStatus(out_status, TF_FAILED_PRECONDITION,
+                 "Writer not initialized or previously closed");
+    return;
+  }
   Status s = writer_->WriteRecord(record);
-  return s.ok();
+  if (!s.ok()) {
+    Set_TF_Status_from_Status(out_status, s);
+  }
 }
 
 void PyRecordWriter::Flush(TF_Status* out_status) {

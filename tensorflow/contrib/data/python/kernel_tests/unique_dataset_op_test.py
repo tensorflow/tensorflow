@@ -45,7 +45,7 @@ class UniqueDatasetTest(test.TestCase):
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for test_case, expected in test_cases:
         current_test_case = test_case
         sess.run(iterator.initializer)

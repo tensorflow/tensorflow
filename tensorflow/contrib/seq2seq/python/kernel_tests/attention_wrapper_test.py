@@ -512,7 +512,7 @@ class AttentionWrapperTest(test.TestCase):
 
     for axis in [0, 1]:
       for exclusive in [True, False]:
-        with self.test_session():
+        with self.cached_session():
           # Compute cumprod with regular tf.cumprod
           cumprod_output = math_ops.cumprod(
               test_input, axis=axis, exclusive=exclusive).eval()
@@ -548,7 +548,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       recursive_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'recursive').eval()
 
@@ -569,7 +569,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       parallel_output = wrapper.monotonic_attention(
           p_choose_i, previous_attention, 'parallel').eval()
 
@@ -594,7 +594,7 @@ class AttentionWrapperTest(test.TestCase):
         for p, a in zip(p_choose_i, previous_attention)])
 
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       hard_output = wrapper.monotonic_attention(
           # TensorFlow is unhappy when these are not wrapped as tf.constant
           constant_op.constant(p_choose_i),
@@ -634,7 +634,7 @@ class AttentionWrapperTest(test.TestCase):
     recursive_output = [np.array([1] + [0]*(p_choose_i.shape[1] - 1),
                                  np.float32)]
     # Compute output with TensorFlow function, for both calculation types
-    with self.test_session():
+    with self.cached_session():
       for j in range(p_choose_i.shape[0]):
         # Compute attention distribution for this output time step
         recursive_output.append(wrapper.monotonic_attention(
@@ -919,31 +919,28 @@ class AttentionWrapperTest(test.TestCase):
         wrapper.BahdanauAttention, wrapper.LuongAttention)
 
     expected_final_output = BasicDecoderOutput(
-        rnn_output=ResultSummary(shape=(5, 3, 20),
-                                 dtype=dtype('float32'),
-                                 mean=0.11723966),
-        sample_id=ResultSummary(shape=(5, 3),
-                                dtype=dtype('int32'),
-                                mean=9.2666666666666675))
+        rnn_output=ResultSummary(
+            shape=(5, 3, 20), dtype=dtype('float32'), mean=0.11723966),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=7.266666666666667))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
-            c=ResultSummary(shape=(5, 9),
-                            dtype=dtype('float32'),
-                            mean=-0.003545674),
-            h=ResultSummary(shape=(5, 9),
-                            dtype=dtype('float32'),
-                            mean=-0.0018327223)),
-        attention=ResultSummary(shape=(5, 20),
-                                dtype=dtype('float32'),
-                                mean=0.11728073),
+            c=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.003545674),
+            h=ResultSummary(
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0018327223)),
+        attention=ResultSummary(
+            shape=(5, 20), dtype=dtype('float32'), mean=0.11601614207),
         time=3,
-        alignments=(
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
+        alignments=(ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+                    ResultSummary(
+                        shape=(5, 8), dtype=dtype('float32'), mean=0.125)),
         alignment_history=(),
-        attention_state=(
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125),
-            ResultSummary(shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
+        attention_state=(ResultSummary(
+            shape=(5, 8), dtype=dtype('float32'), mean=0.125),
+                         ResultSummary(
+                             shape=(5, 8), dtype=dtype('float32'), mean=0.125)))
     expected_final_alignment_history = (
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125),
         ResultSummary(shape=(3, 5, 8), dtype=dtype('float32'), mean=0.125))

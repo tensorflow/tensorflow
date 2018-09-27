@@ -56,7 +56,7 @@ class CategoricalTest(xla_test.XLATestCase):
     Returns:
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       random_seed.set_random_seed(1618)
       op = random_ops.multinomial(logits, num_samples,
                                   output_dtype=dtypes.int32)
@@ -79,7 +79,7 @@ class CategoricalTest(xla_test.XLATestCase):
 
   def _testRngIsNotConstant(self, rng, dtype, output_dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = rng(dtype, output_dtype)
 
@@ -107,7 +107,7 @@ class CategoricalTest(xla_test.XLATestCase):
   def testCategoricalIsInRange(self):
     for dtype in self.float_types:
       for output_dtype in self.output_dtypes():
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           with self.test_scope():
             x = random_ops.multinomial(
                 array_ops.ones(shape=[1, 20], dtype=dtype), 1000,

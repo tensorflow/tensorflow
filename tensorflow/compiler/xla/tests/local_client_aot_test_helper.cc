@@ -92,10 +92,10 @@ int main(int argc, char** argv) {
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 1);
-  CHECK_EQ(result->buffer_sizes().size(), 3);
-  CHECK_EQ(result->buffer_sizes()[0], -2);             // param buffer
-  CHECK_EQ(result->buffer_sizes()[1], sizeof(float));  // result buffer
-  CHECK_EQ(result->buffer_sizes()[2], -1);             // const buffer
+  CHECK_EQ(result->buffer_infos().size(), 3);
+  CHECK(result->buffer_infos()[0].is_entry_parameter());      // param buffer
+  CHECK_EQ(result->buffer_infos()[1].size(), sizeof(float));  // result buffer
+  CHECK(result->buffer_infos()[2].is_constant());             // const buffer
   if (triple.isOSBinFormatELF()) {
     // Check the ELF magic.
     CHECK_EQ(result->object_file_data()[0], 0x7F);

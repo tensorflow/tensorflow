@@ -23,41 +23,44 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 
 namespace tensorflow {
-
 // Backwards dataflow analysis that finds arguments to a graph that must be
 // compile-time constants.
 Status BackwardsConstAnalysis(const Graph& g,
-                              std::vector<bool>* compile_time_const_args) {
-  // Operators that don't look at the data of their inputs, just the shapes.
-  const std::unordered_set<string> metadata_ops = {
-      "Rank",
-      "Shape",
-      "ShapeN",
-      "Size",
-  };
+                              std::vector<bool>* compile_time_const_arg_indices,
+                              std::vector<bool>* compile_time_const_nodes,
+                              std::function<bool(const Edge&)> edge_filter) {
+  std::vector<bool> compile_time_const_nodes_impl;
+  if (compile_time_const_nodes) {
+    CHECK_EQ(compile_time_const_nodes->size(), g.num_node_ids());
+  } else {
+    compile_time_const_nodes_impl.resize(g.num_node_ids());
+    compile_time_const_nodes = &compile_time_const_nodes_impl;
+  }
 
   Status status;
-  std::unordered_set<const Node*> must_be_const;
-  auto visit = [&status, &metadata_ops, &must_be_const,
-                compile_time_const_args](Node* node) {
+  auto visit = [&](Node* node) {
     if (!status.ok()) return;
 
     // If this is a metadata-only op, don't propagate the const requirement.
-    if (metadata_ops.find(node->type_string()) != metadata_ops.end()) return;
+    if (XlaOpRegistry::IsMetadataOp(node->type_string())) {
+      return;
+    }
 
     // If this node must be const, and it isn't a metadata op, then all of its
     // parents must be const.
-    if (must_be_const.find(node) != must_be_const.end()) {
+    if ((*compile_time_const_nodes)[node->id()]) {
       if (node->type_string() == "_Arg") {
         int index;
         status = GetNodeAttr(node->attrs(), "index", &index);
         if (!status.ok()) return;
-        compile_time_const_args->at(index) = true;
+        if (compile_time_const_arg_indices) {
+          (*compile_time_const_arg_indices)[index] = true;
+        }
         return;
       }
       for (const Edge* pred : node->in_edges()) {
-        if (!pred->IsControlEdge()) {
-          must_be_const.insert(pred->src());
+        if (!pred->IsControlEdge() && edge_filter(*pred)) {
+          (*compile_time_const_nodes)[pred->src()->id()] = true;
         }
       }
       return;
@@ -79,8 +82,9 @@ Status BackwardsConstAnalysis(const Graph& g,
 
       for (Edge const* edge : node->in_edges()) {
         if (edge->dst_input() >= name_range->second.first &&
-            edge->dst_input() < name_range->second.second) {
-          must_be_const.insert(edge->src());
+            edge->dst_input() < name_range->second.second &&
+            edge_filter(*edge)) {
+          (*compile_time_const_nodes)[edge->src()->id()] = true;
         }
       }
     }
@@ -88,7 +92,8 @@ Status BackwardsConstAnalysis(const Graph& g,
 
   // Post-order traversal visits nodes in reverse topological order for an
   // acyclic graph.
-  DFS(g, {}, visit);
+  DFS(g, /*enter=*/{}, /*leave=*/visit, NodeComparatorName{},
+      [](const Edge& edge) { return !edge.src()->IsNextIteration(); });
   return status;
 }
 

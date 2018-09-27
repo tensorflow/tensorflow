@@ -753,6 +753,78 @@ TEST_F(MathGradTest, Div) {
   }
 }
 
+TEST_F(MathGradTest, DivNoNan) {
+  auto x = test::AsTensor<float>(
+      {0.f, -3.f, -2.f, -1.f, 0.f, 1.f, 2.f, 3.f, 0.f}, TensorShape({3, 3}));
+  auto y = test::AsTensor<float>({-10.f, 0.f, 10.f}, TensorShape({3, 1}));
+  Tensor dx;
+  Tensor dy;
+  {
+    SymGrad("DivNoNan", x, y, &dx, &dy);
+    {
+      auto g = [](float x, float y) {
+        if (y == 0.f) {
+          return 0.f;
+        } else {
+          return 1.f / y;
+        }
+      };
+      test::ExpectClose(dx, test::AsTensor<float>(
+                                {g(0.f, -10.f), g(-3.f, -10.f), g(-2.f, -10.f),
+                                 g(-1.f, 0.f), g(0.f, 0.f), g(1.f, 0.f),
+                                 g(2.f, 10.f), g(3.f, 10.f), g(0.f, 10.f)},
+                                TensorShape({3, 3})));
+    }
+    {
+      auto g = [](float x, float y) {
+        if (y == 0.f) {
+          return 0.f;
+        } else {
+          return -x / (y * y);
+        }
+      };
+      test::ExpectClose(dy,
+                        test::AsTensor<float>(
+                            {g(0.f, -10.f) + g(-3.f, -10.f) + g(-2.f, -10.f),
+                             g(-1.f, 0.f) + g(0.f, 0.f) + g(1.f, 0.f),
+                             g(2.f, 10.f) + g(3.f, 10.f) + g(0.f, 10.f)},
+                            TensorShape({3, 1})));
+    }
+  }
+  {  // Swap x and y.
+    SymGrad("DivNoNan", y, x, &dy, &dx);
+    {
+      auto g = [](float x, float y) {
+        if (y == 0.f) {
+          return 0.f;
+        } else {
+          return 1.f / y;
+        }
+      };
+      test::ExpectClose(dy,
+                        test::AsTensor<float>(
+                            {g(-10.f, 0.f) + g(-10.f, -3.f) + g(-10.f, -2.f),
+                             g(0.f, -1.f) + g(0.f, 0.f) + g(0.f, 1.f),
+                             g(10.f, 2.f) + g(10.f, 3.f) + g(10.f, 0.f)},
+                            TensorShape({3, 1})));
+    }
+    {
+      auto g = [](float x, float y) {
+        if (y == 0.f) {
+          return 0.f;
+        } else {
+          return -x / (y * y);
+        }
+      };
+      test::ExpectClose(dx, test::AsTensor<float>(
+                                {g(-10.f, 0.f), g(-10.f, -3.f), g(-10.f, -2.f),
+                                 g(0.f, -1.f), g(0.f, 0.f), g(0.f, 1.f),
+                                 g(10.f, 2.f), g(10.f, 3.f), g(10.f, 0.f)},
+                                TensorShape({3, 3})));
+    }
+  }
+}
+
 TEST_F(MathGradTest, Pow) {
   auto x = test::AsTensor<float>({0.f, 1.f, 2.f, 3.f, 4.f, 5.f},
                                  TensorShape({2, 3}));
@@ -836,6 +908,46 @@ TEST_F(MathGradTest, ComplexPow) {
       4.5e-6f);
 }
 #endif  // TENSORFLOW_USE_SYCL
+
+TEST_F(MathGradTest, Xlogy) {
+  auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](float x, float y) -> float { return x == 0. ? 0. : std::log(y); };
+  auto h = [](float x, float y) -> float { return x == 0. ? 0. : x / y; };
+  SymGrad("Xlogy", x, y, &dx, &dy);
+  test::ExpectClose(
+      dx, test::AsTensor<float>({g(0.f, .5f), g(0.f, 0.f), g(2.f, .5f),
+                                 g(3.f, 2.f), g(4.f, 2.f), g(5.f, 2.f)},
+                                TensorShape({2, 3})));
+  test::ExpectClose(
+      dy, test::AsTensor<float>({h(0.f, .5f) + h(0.f, 0.f) + h(2.f, .5f),
+                                 h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                TensorShape({2, 1})));
+}
+
+TEST_F(MathGradTest, Xdivy) {
+  auto x = test::AsTensor<float>({0.f, 0.f, 2.f, 3.f, 4.f, 5.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](float x, float y) -> float { return x == 0. ? 0. : 1 / y; };
+  auto h = [](float x, float y) -> float {
+    return x == 0. ? 0. : -x / (y * y);
+  };
+  SymGrad("Xdivy", x, y, &dx, &dy);
+  test::ExpectClose(
+      dx, test::AsTensor<float>({g(0.f, .5f), g(0.f, 0.f), g(2.f, .5f),
+                                 g(3.f, 2.f), g(4.f, 2.f), g(5.f, 2.f)},
+                                TensorShape({2, 3})));
+  test::ExpectClose(
+      dy, test::AsTensor<float>({h(0.f, .5f) + h(0.f, 0.f) + h(2.f, .5f),
+                                 h(3.f, 2.f) + h(4.f, 2.f) + h(5.f, 2.f)},
+                                TensorShape({2, 1})));
+}
 
 TEST_F(MathGradTest, Maximum) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},

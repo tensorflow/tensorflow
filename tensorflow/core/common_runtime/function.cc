@@ -310,6 +310,7 @@ class CallOp : public AsyncOpKernel {
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -346,9 +347,10 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
     return nullptr;
   }
 
-  mutex_lock l(mu_);
-  CHECK_EQ(1, items_.count(local_handle));
-  return items_[local_handle]->func_graph;
+  tf_shared_lock l(mu_);
+  auto iter = items_.find(local_handle);
+  CHECK(iter != items_.end());
+  return iter->second->func_graph;
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
@@ -412,9 +414,8 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
       device_type, device_, device_->GetAllocator(AllocatorAttributes()), &ndef,
       &fbody->fdef.signature(), this, fbody->arg_types, input_memory_types,
       fbody->ret_types, output_memory_types, graph_def_version_, &s);
-  *kernel = new CallOp(handle, &construction);
-  if (!s.ok()) {
-    delete *kernel;
+  if (s.ok()) {
+    *kernel = new CallOp(handle, &construction);
   }
   return s;
 }
@@ -555,6 +556,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       next_handle_++;
     }
   }
+
+  if (options.create_kernels_eagerly) {
+    Item* item;
+    TF_RETURN_IF_ERROR(GetOrCreateItem(*handle, &item));
+  }
+
   return Status::OK();
 }
 
@@ -607,11 +614,14 @@ void PruneFunctionBody(Graph* g) {
   std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
-    // to the seed set of `nodes`.
+    // to the seed set of `nodes`. "_Arg" nodes are also stateful, but we
+    // specifically exclude them as seeds, to avoid unconditionally executing
+    // unused argument nodes (e.g. in a function like `lambda x, y: y`).
     // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
-    if (n->IsControlFlow() || n->op_def().is_stateful()) {
+    if (n->IsControlFlow() ||
+        (n->op_def().is_stateful() && n->type_string() != kArgOp)) {
       nodes.insert(n);
     }
   }
@@ -627,7 +637,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   const FunctionLibraryDefinition* lib_def;
   string executor_type;
   {
-    mutex_lock l(mu_);
+    tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
     lib_def = (*item)->overlay_lib;
     executor_type = (*item)->executor_type;
@@ -676,12 +686,13 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
 Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
   {
-    mutex_lock l(mu_);
-    if (items_.count(local_handle) == 0) {
+    tf_shared_lock l(mu_);
+    auto iter = items_.find(local_handle);
+    if (iter == items_.end()) {
       return errors::NotFound("Function handle ", handle,
                               " is not valid. Likely an internal error.");
     }
-    *item = items_[local_handle].get();
+    *item = iter->second.get();
     if ((*item)->exec != nullptr) {
       return Status::OK();
     }
@@ -916,29 +927,18 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   DCHECK(run_opts.runner != nullptr);
 
-  Executor::Args* exec_args = new Executor::Args;
+  Executor::Args exec_args;
   // Inherit the step_id from the caller.
-  exec_args->step_id = run_opts.step_id;
-  exec_args->rendezvous = run_opts.rendezvous;
-  exec_args->stats_collector = run_opts.stats_collector;
-  exec_args->cancellation_manager = run_opts.cancellation_manager;
-  exec_args->collective_executor = run_opts.collective_executor;
-  exec_args->step_container = run_opts.step_container;
-  exec_args->runner = *run_opts.runner;
-  exec_args->call_frame = frame;
+  exec_args.step_id = run_opts.step_id;
+  exec_args.rendezvous = run_opts.rendezvous;
+  exec_args.stats_collector = run_opts.stats_collector;
+  exec_args.cancellation_manager = run_opts.cancellation_manager;
+  exec_args.collective_executor = run_opts.collective_executor;
+  exec_args.step_container = run_opts.step_container;
+  exec_args.runner = *run_opts.runner;
+  exec_args.call_frame = frame;
 
-  item->exec->RunAsync(
-      // Executor args
-      *exec_args,
-      // Done callback.
-      std::bind(
-          [item, frame, exec_args](DoneCallback done,
-                                   // Start unbound arguments.
-                                   const Status& status) {
-            delete exec_args;
-            done(status);
-          },
-          std::move(done), std::placeholders::_1));
+  item->exec->RunAsync(exec_args, std::move(done));
 }
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {

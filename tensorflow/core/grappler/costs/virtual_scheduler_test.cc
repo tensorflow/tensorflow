@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
@@ -942,7 +943,6 @@ versions {
   // target_node.
   std::unordered_map<string, OpContext> RunScheduler(
       const string& target_node) {
-    Costs zero_costs = Costs::ZeroCosts();
     std::unordered_map<string, OpContext> ops_executed;
     bool more_nodes = true;
     do {
@@ -1632,6 +1632,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostTest) {
   // Misc - 5 * 1us
   // Total: 13000005
   EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(grappler_item_->graph.node_size(), c.num_ops_total);
+  EXPECT_FALSE(c.inaccurate);
+  EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
 }
 
 // Like the above SummaryCostTest, but makes sure the stepstats timeline is
@@ -1645,6 +1648,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   Costs c = scheduler_->Summary(&metadata);
   StepStats stepstats = metadata.step_stats();
   EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(grappler_item_->graph.node_size(), c.num_ops_total);
+  EXPECT_FALSE(c.inaccurate);
+  EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
 
   // Should only be 1 device!
   EXPECT_EQ(1, stepstats.dev_stats().size());
@@ -1993,13 +1999,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn_0") != std::string::npos) {
+    if (name.find("bn_0") != string::npos) {
       return 0;
-    } else if (name.find("bn_1") != std::string::npos) {
+    } else if (name.find("bn_1") != string::npos) {
       return 1;
-    } else if (name.find("bn_2") != std::string::npos) {
+    } else if (name.find("bn_2") != string::npos) {
       return 2;
-    } else if (name.find("bn_minus1") != std::string::npos) {
+    } else if (name.find("bn_minus1") != string::npos) {
       return -1;
     }
     return -999;

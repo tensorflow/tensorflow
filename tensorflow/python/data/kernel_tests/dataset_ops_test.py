@@ -19,15 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
 
-class DatasetOpsTest(test.TestCase):
+class DatasetOpsTest(test_base.DatasetTestBase):
 
   def testAsSerializedGraph(self):
     dataset = dataset_ops.Dataset.range(10)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
       self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))

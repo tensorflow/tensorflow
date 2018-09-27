@@ -26,6 +26,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -37,50 +43,25 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
-
-using ::tensorflow::Env;
-using ::tensorflow::WriteStringToFile;
-using ::tensorflow::gtl::nullopt;
-using ::tensorflow::gtl::optional;
-using ::tensorflow::io::JoinPath;
-using ::tensorflow::str_util::Join;
-using ::tensorflow::str_util::StringReplace;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace hlo_graph_dumper {
 namespace {
 
-// Helpers for Printf and Appendf.
-template <typename T>
-struct PrintfConvert {
-  const T& operator()(const T& t) const { return t; }
-};
-template <>
-struct PrintfConvert<string> {
-  const char* operator()(const string& s) const { return s.c_str(); }
-};
-
-// Like tensorflow::strings::Printf/Appendf, but you don't need to call c_str()
-// on strings.
-template <typename... Ts>
-string Printf(const char* fmt, const Ts&... ts) {
-  return tensorflow::strings::Printf(fmt, PrintfConvert<Ts>()(ts)...);
-}
-template <typename... Ts>
-void Appendf(string* s, const char* fmt, const Ts&... ts) {
-  tensorflow::strings::Appendf(s, fmt, PrintfConvert<Ts>()(ts)...);
-}
+using absl::nullopt;
+using absl::optional;
+using absl::StrAppend;
+using absl::StrCat;
+using absl::StrFormat;
+using absl::StrJoin;
+using tensorflow::Env;
+using tensorflow::WriteStringToFile;
+using tensorflow::io::JoinPath;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -139,12 +120,23 @@ class NodeFilter {
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
 };
 
+// We arbitrarily set this as the boundary between "large" and "small"
+// instructions.
+bool IsSmall(const HloInstruction* instr) {
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+      ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
+    return true;
+  }
+  return ShapeUtil::ElementsInRecursive(instr->shape()) < 4096;
+}
+
 // Node color schemes, used by NodeColorAttributes.
 enum ColorScheme {
   kBlue,
   kBrown,
   kDarkBlue,
   kDarkGreen,
+  kDarkOrange,
   kDarkRed,
   kGray,
   kGreen,
@@ -177,6 +169,10 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
       return NodeColors{"filled", "#1565c0", "#003c8f", "white"};
     case kDarkGreen:
       return NodeColors{"filled", "#2e7d32", "#005005", "white"};
+    case kDarkOrange:
+      // This is more of a "medium" orange, made to look close to kOrange;
+      // there's probably room for a darker weight if desired.
+      return NodeColors{"filled", "#ffb74d", "#c88719", "black"};
     case kDarkRed:
       return NodeColors{"filled", "#b71c1c", "#7f0000", "white"};
     case kGray:
@@ -209,17 +205,15 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
 string NodeColorAttributes(ColorScheme color) {
   NodeColors node_colors = NodeColorsForScheme(color);
 
-  return Printf(
-      R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
-      node_colors.style, node_colors.font_color, node_colors.stroke_color,
-      node_colors.fill_color);
+  return StrFormat(R"(style="%s", fontcolor="%s", color="%s", fillcolor="%s")",
+                   node_colors.style, node_colors.font_color,
+                   node_colors.stroke_color, node_colors.fill_color);
 }
 
 // Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
 // graphviz HTML-like string.
-string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
-  return StringReplace(StringReplace(s, "<", "&lt;", /*replace_all=*/true), ">",
-                       "&gt;", /*replace_all=*/true);
+string HtmlLikeStringSanitize(absl::string_view s) {
+  return absl::StrReplaceAll(s, {{"<", "&lt;"}, {">", "&gt;"}});
 }
 
 // Tries to generates a human-readable one-word description of the given
@@ -322,11 +316,11 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
 // Encapsulates logic for dumping an HLO module to DOT (i.e. graphviz syntax).
 class HloDotDumper {
  public:
-  HloDotDumper(const HloComputation* computation, tensorflow::StringPiece label,
+  HloDotDumper(const HloComputation* computation, absl::string_view label,
                const DebugOptions& debug_options, bool show_backend_config,
                const HloExecutionProfile* profile, NodeFilter filter)
       : computation_(computation),
-        label_(std::string(label)),
+        label_(label),
         debug_options_(debug_options),
         show_backend_config_(show_backend_config),
         profile_(profile),
@@ -448,7 +442,7 @@ string HloDotDumper::Dump() {
 }
 
 string HloDotDumper::Header() {
-  const char* fmt = R"(digraph G {
+  constexpr char fmt[] = R"(digraph G {
 rankdir = TB;
 compound = true;
 label = <<b>%s</b>>;
@@ -457,7 +451,7 @@ labelloc = t;
 tooltip = " ";
 // DOT graphs accept a stylesheet as a URI.  So naturally, an inline
 // stylesheet is a data URI!
-stylesheet="
+stylesheet=<
   data:text/css,
   @import url(https://fonts.googleapis.com/css?family=Roboto:400,700);
   svg text {
@@ -466,7 +460,7 @@ stylesheet="
   }
 
   %s
-"
+>
 
 )";
 
@@ -475,14 +469,13 @@ stylesheet="
   string graph_label =
       StrCat(label_, "<br/>Computation ", computation_->name());
   if (computation_->IsFusionComputation()) {
-    StrAppend(&graph_label,
-              StrCat(" (in fusion instruction ",
-                     computation_->FusionInstruction()->name(), ")"));
+    StrAppend(&graph_label, " (in fusion instruction ",
+              computation_->FusionInstruction()->name(), ")");
   }
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
-    Appendf(&graph_label, "<br/>total cycles = %lld (%s)", cycles,
-            tensorflow::strings::HumanReadableNum(cycles));
+    absl::StrAppendFormat(&graph_label, "<br/>total cycles = %d (%s)", cycles,
+                          tensorflow::strings::HumanReadableNum(cycles));
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
@@ -509,14 +502,14 @@ stylesheet="
       // One could imagine other ways of writing this CSS rule that involve
       // less duplication, but this way seems to be relatively performant.
       edge_css_rules.push_back(
-          Printf("  #%s%d:hover ~ #edge%lld text { fill: %s; }\n"
-                 "  #%s%d:hover ~ #edge%lld path { "
-                 "stroke: %s; stroke-width: .2em; }\n"
-                 "  #%s%d:hover ~ #edge%lld polygon { "
-                 "fill: %s; stroke: %s; stroke-width: .2em; }\n",
-                 elem_type, elem_id, edge_id, color,  //
-                 elem_type, elem_id, edge_id, color,  //
-                 elem_type, elem_id, edge_id, color, color));
+          StrFormat("  #%s%d:hover ~ #edge%d text { fill: %s; }\n"
+                    "  #%s%d:hover ~ #edge%d path { "
+                    "stroke: %s; stroke-width: .2em; }\n"
+                    "  #%s%d:hover ~ #edge%d polygon { "
+                    "fill: %s; stroke: %s; stroke-width: .2em; }\n",
+                    elem_type, elem_id, edge_id, color,  //
+                    elem_type, elem_id, edge_id, color,  //
+                    elem_type, elem_id, edge_id, color, color));
     };
 
     // The "to_node" value may be a NULL, indicating that this points to the
@@ -559,10 +552,10 @@ stylesheet="
     }
   }
 
-  return Printf(fmt, graph_label, Join(edge_css_rules, "\n"));
+  return StrFormat(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
 }
 
-string HloDotDumper::Footer() { return StrCat(Join(edges_, "\n"), "\n}"); }
+string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
 
 bool HloDotDumper::ShouldShowFusionSubcomputation(const HloInstruction* instr) {
   CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
@@ -600,9 +593,9 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
     VLOG(2) << "Edge: from " << from->name() << " to " << parent_instr->name()
             << " as " << next_edge_id_;
     edge_ids_.insert({{from, parent_instr}, next_edge_id_++});
-    const char* edge_fmt =
+    constexpr char edge_fmt[] =
         R"(%s -> %s [ltail="%s", style="dashed" tooltip="%s -> %s"];)";
-    edges_.push_back(Printf(
+    edges_.push_back(StrFormat(
         edge_fmt, InstructionId(from), InstructionId(parent_instr),
         SubcomputationId(subcomp), subcomp->name(), parent_instr->name()));
   }
@@ -619,9 +612,10 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
 
   string subcomp_label, style;
   if (parent_instr->opcode() == HloOpcode::kFusion) {
-    subcomp_label = Printf("Fused expression for <b>%s</b><br/>%s",
-                           HtmlLikeStringSanitize(parent_instr->name()),
-                           HtmlLikeStringSanitize(parent_instr->ToCategory()));
+    subcomp_label =
+        StrFormat("Fused expression for <b>%s</b><br/>%s",
+                  HtmlLikeStringSanitize(parent_instr->name()),
+                  HtmlLikeStringSanitize(parent_instr->ToCategory()));
     string extra_info = GetInstructionNodeExtraInfo(parent_instr);
     if (!extra_info.empty()) {
       StrAppend(&subcomp_label, "<br/>", extra_info);
@@ -647,18 +641,18 @@ string HloDotDumper::DumpSubcomputation(const HloComputation* subcomp,
       strokecolor = highlight ? "#b71c1c" : "#c2c2c2";
     }
     style =
-        Printf(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
-               fillcolor, strokecolor);
+        StrFormat(R"(style="rounded,filled,bold"; fillcolor="%s"; color="%s;")",
+                  fillcolor, strokecolor);
   } else {
-    subcomp_label = Printf("Subcomputation for <b>%s</b><br/>%s",
-                           HtmlLikeStringSanitize(parent_instr->name()),
-                           HtmlLikeStringSanitize(subcomp->name()));
+    subcomp_label = StrFormat("Subcomputation for <b>%s</b><br/>%s",
+                              HtmlLikeStringSanitize(parent_instr->name()),
+                              HtmlLikeStringSanitize(subcomp->name()));
     style = "style=rounded; color=black;";
   }
 
   string comp_body = DumpComputation(subcomp);
 
-  const char* computation_fmt = R"(subgraph %s {
+  constexpr char computation_fmt[] = R"(subgraph %s {
 %s
 label = <%s>;
 labelloc = t;
@@ -667,7 +661,7 @@ tooltip = " ";
 }  // %s
 
 )";
-  return Printf(computation_fmt, id, style, subcomp_label, comp_body, id);
+  return StrFormat(computation_fmt, id, style, subcomp_label, comp_body, id);
 }
 
 string HloDotDumper::DumpComputation(const HloComputation* comp) {
@@ -718,11 +712,11 @@ string HloDotDumper::DumpRootTag() {
   VLOG(2) << "Adding edge from " << from->name() << " to root tag as "
           << next_edge_id_;
   edge_ids_.insert({{from, to}, next_edge_id_++});
-  edges_.push_back(Printf(R"(%s -> %s [tooltip=" "];)", from_id, to_id));
+  edges_.push_back(StrFormat(R"(%s -> %s [tooltip=" "];)", from_id, to_id));
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
-                "\n",
-                to_id, node_body, node_shape, NodeColorAttributes(color));
+  return StrFormat(R"(%s [label=<%s>, shape=%s, tooltip=" ", %s];)"
+                   "\n",
+                   to_id, node_body, node_shape, NodeColorAttributes(color));
 }
 
 static const HloConstantInstruction* TryGetFusionParameterConstant(
@@ -817,10 +811,10 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
     }
   }
 
-  return Printf(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
-                "\n",
-                InstructionId(instr), node_body, node_shape, node_metadata,
-                NodeColorAttributes(color));
+  return StrFormat(R"(%s [label=<%s>, shape=%s, tooltip="%s", %s];)"
+                   "\n",
+                   InstructionId(instr), node_body, node_shape, node_metadata,
+                   NodeColorAttributes(color));
 }
 
 string HloDotDumper::GetInstructionNodeInlinedOperands(
@@ -833,7 +827,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
     // is just noise.
     if (ShapeUtil::IsZeroElementArray(shape)) {
-      return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
+      return StrFormat("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 
     // Print the literal value of constants with <= K elements.
@@ -848,19 +842,19 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return Printf("%s (%s)", constant->literal().ToString(),
-                    ShapeUtil::HumanString(constant->shape()));
+      return StrFormat("%s (%s)", constant->literal().ToString(),
+                       ShapeUtil::HumanString(constant->shape()));
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
     string constant_name;
-    if (tensorflow::str_util::StartsWith(constant->name(), "constant")) {
+    if (absl::StartsWith(constant->name(), "constant")) {
       constant_name = constant->name();
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
-    return Printf("%s %s", constant_name,
-                  ShapeUtil::HumanString(constant->shape()));
+    return StrFormat("%s %s", constant_name,
+                     ShapeUtil::HumanString(constant->shape()));
   };
 
   std::vector<string> lines;
@@ -881,7 +875,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
                 TryGetFusionParameterConstant(operand)) {
           operand_str = stringify_constant(constant);
         } else {
-          operand_str = Printf("Parameter %lld", operand->parameter_number());
+          operand_str = StrFormat("Parameter %d", operand->parameter_number());
         }
       } else {
         operand_str = operand->name();
@@ -890,13 +884,13 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     if (operand_str) {
       if (instr->operand_count() > 1) {
-        lines.push_back(Printf("<b>operand %lld</b> = %s", i, *operand_str));
+        lines.push_back(StrFormat("<b>operand %d</b> = %s", i, *operand_str));
       } else {
-        lines.push_back(Printf("<b>operand</b> = %s", *operand_str));
+        lines.push_back(StrFormat("<b>operand</b> = %s", *operand_str));
       }
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
@@ -913,7 +907,10 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     sharding_colors_.emplace(instr->sharding(), color);
     return color;
   }
-  const auto kParameterColor = kOrange;
+
+  // Choose different weights of orange for small vs large parameters.  This
+  // distinction is often important, especially in fusion nodes.
+  auto parameter_color = IsSmall(instr) ? kOrange : kDarkOrange;
 
   // Special case: If this instruction has a parameter merged into it, paint it
   // the same color as a parameter.  Unless the merged-in parameter is a
@@ -925,7 +922,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
                            ShouldMergeIntoUsers(operand) &&
                            TryGetFusionParameterConstant(operand) == nullptr;
                   })) {
-    return kParameterColor;
+    return parameter_color;
   }
 
   // Pick different colors or shapes for instructions which are particularly
@@ -1035,7 +1032,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReducePrecision:
       return kRed;
     case HloOpcode::kParameter:
-      return kParameterColor;
+      return parameter_color;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -1048,6 +1045,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kMap:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kRecv:
@@ -1058,7 +1057,6 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kHostCompute:
     case HloOpcode::kWhile:
       return kDarkGreen;
     case HloOpcode::kConstant:
@@ -1079,14 +1077,13 @@ string HloDotDumper::GetInstructionNodeShape(const HloInstruction* instr) {
 string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
   // If we have a parameter, put the param number in the name.
   if (instr->opcode() == HloOpcode::kParameter) {
-    return Printf("<b>Parameter %lld</b>", instr->parameter_number());
+    return StrFormat("<b>Parameter %d</b>", instr->parameter_number());
   }
 
   // The HLO instruction name contains usually the opcode, e.g. "%add.42" is
   // an add instruction.  In this case we render just the name.
-  if (tensorflow::str_util::StartsWith(instr->name(),
-                                       HloOpcodeString(instr->opcode()))) {
-    return Printf("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
+  if (absl::StartsWith(instr->name(), HloOpcodeString(instr->opcode()))) {
+    return StrFormat("<b>%s</b>", HtmlLikeStringSanitize(instr->name()));
   }
   string extended_opcode =
       StrCat(HloOpcodeString(instr->opcode()),
@@ -1094,8 +1091,8 @@ string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
                  ? ""
                  : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
-  return Printf("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
-                HtmlLikeStringSanitize(instr->name()));
+  return StrFormat("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
+                   HtmlLikeStringSanitize(instr->name()));
 }
 
 string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
@@ -1104,16 +1101,16 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
     lines.push_back(HtmlLikeStringSanitize(instr->metadata().op_name()));
   }
   if (!instr->metadata().op_type().empty()) {
-    lines.push_back(Printf(
+    lines.push_back(StrFormat(
         "op_type: %s", HtmlLikeStringSanitize(instr->metadata().op_type())));
   }
   if (!instr->metadata().source_file().empty() &&
       instr->metadata().source_line() != 0) {
-    lines.push_back(Printf("op_type: %s", instr->metadata().source_file(),
-                           instr->metadata().source_line()));
+    lines.push_back(StrFormat("op_type: %s:%d", instr->metadata().source_file(),
+                              instr->metadata().source_line()));
   }
 
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "\n");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(
@@ -1160,13 +1157,12 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
     constexpr int kMaxShapeLen = 64;
     if (instr_shape.length() > kMaxShapeLen) {
       instr_shape = StrCat(
-          tensorflow::StringPiece(instr_shape).substr(0, kMaxShapeLen - 3),
-          "...");
+          absl::string_view(instr_shape).substr(0, kMaxShapeLen - 3), "...");
     }
     lines.push_back(instr_shape);
   }
   if (debug_options_.xla_hlo_graph_addresses()) {
-    lines.push_back(Printf("[%p]", instr));
+    lines.push_back(StrFormat("[%p]", instr));
   }
   if (profile_ != nullptr) {
     double hlo_cycles_executed = profile_->GetCyclesTakenBy(*instr);
@@ -1174,25 +1170,11 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
         profile_->total_cycles_executed(*instr->parent());
     if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
       lines.push_back(
-          Printf("%% of cycles executed=%.2f",
-                 100 * hlo_cycles_executed / total_cycles_executed));
+          StrFormat("%% of cycles executed=%.2f",
+                    100 * hlo_cycles_executed / total_cycles_executed));
     }
   }
-  return Join(lines, "<br/>");
-}
-
-// Gets the total number of array elements in the given shape.  For tuples, this
-// is the sum of all the sizes of all of the array elements recursively in the
-// tuple.
-static int64 TotalElementsInShape(const Shape& shape) {
-  int64 elems = 0;
-  ShapeUtil::ForEachSubshape(
-      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
-        if (ShapeUtil::IsArray(subshape)) {
-          elems += ShapeUtil::ElementsIn(subshape);
-        }
-      });
-  return elems;
+  return StrJoin(lines, "<br/>");
 }
 
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
@@ -1210,20 +1192,19 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
 
     string edge_label;
     if (instr->operand_count() > 1 && !control_edge) {
-      edge_label = Printf(R"( headlabel="%lld", labeldistance=2)", operand_num);
+      edge_label =
+          StrFormat(R"( headlabel="%d", labeldistance=2)", operand_num);
     } else if (control_edge) {
       edge_label = "style=\"dotted\" color=\"gray\" label=\"ctrl\"";
     }
 
     // We print "small" arrays using a hollow arrowhead and "large" arrays using
-    // a filled arrowhead.  For now, we use an arbitrary cutoff for what "big"
-    // means.
-    bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
-
-    const char* kEdgeFmt = R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
-    edges_.push_back(Printf(kEdgeFmt, InstructionId(from), InstructionId(to),
-                            (is_big_array ? "normal" : "empty"), from->name(),
-                            to->name(), edge_label));
+    // a filled arrowhead.
+    constexpr char kEdgeFmt[] =
+        R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
+    edges_.push_back(StrFormat(kEdgeFmt, InstructionId(from), InstructionId(to),
+                               (IsSmall(from) ? "empty" : "normal"),
+                               from->name(), to->name(), edge_label));
   };
 
   // Add edges from instr's operands to instr.  Parameters within fusion
@@ -1264,14 +1245,14 @@ string HloDotDumper::GetInstructionTrivialComputationStr(
       continue;
     }
     if (instr->called_computations().size() == 1) {
-      lines.push_back(Printf("Subcomputation: <b>%s</b>",
-                             HtmlLikeStringSanitize(*computation_type)));
+      lines.push_back(StrFormat("Subcomputation: <b>%s</b>",
+                                HtmlLikeStringSanitize(*computation_type)));
     } else {
-      lines.push_back(Printf("Subcomputation %lld: <b>%s</b>", i,
-                             HtmlLikeStringSanitize(*computation_type)));
+      lines.push_back(StrFormat("Subcomputation %d: <b>%s</b>", i,
+                                HtmlLikeStringSanitize(*computation_type)));
     }
   }
-  return Join(lines, "<br/>");
+  return StrJoin(lines, "<br/>");
 }
 
 const HloInstruction* HloDotDumper::GetNodeForEdge(

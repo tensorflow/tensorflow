@@ -33,7 +33,7 @@ from tensorflow.python.platform import googletest
 class ConcatTest(xla_test.XLATestCase):
 
   def testHStack(self):
-    with self.test_session():
+    with self.cached_session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       with self.test_scope():
@@ -49,7 +49,7 @@ class ConcatTest(xla_test.XLATestCase):
     self.assertAllEqual(result[4:, :], params[p2])
 
   def testVStack(self):
-    with self.test_session():
+    with self.cached_session():
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       with self.test_scope():
@@ -65,7 +65,7 @@ class ConcatTest(xla_test.XLATestCase):
     self.assertAllEqual(result[:, 4:], params[p2])
 
   def testInt32(self):
-    with self.test_session():
+    with self.cached_session():
       p1 = np.random.rand(2, 3).astype("i")
       p2 = np.random.rand(2, 3).astype("i")
       x1 = constant_op.constant(p1)
@@ -88,7 +88,7 @@ class ConcatTest(xla_test.XLATestCase):
       dtype_feed = dtypes.float32
     else:
       dtype_feed = dtype
-    with self.test_session():
+    with self.cached_session():
       p = []
       for i in np.arange(num_tensors):
         input_shape = shape
@@ -130,7 +130,7 @@ class ConcatTest(xla_test.XLATestCase):
     self._testRandom(dtypes.int32)
 
   def _testGradientsSimple(self):
-    with self.test_session():
+    with self.cached_session():
       inp = []
       inp_tensors = []
       with self.test_scope():
@@ -157,7 +157,7 @@ class ConcatTest(xla_test.XLATestCase):
     self._testGradientsSimple()
 
   def _testGradientsFirstDim(self):
-    with self.test_session():
+    with self.cached_session():
       inp = []
       inp_tensors = []
       with self.test_scope():
@@ -185,7 +185,7 @@ class ConcatTest(xla_test.XLATestCase):
     self._testGradientsFirstDim()
 
   def _testGradientsLastDim(self):
-    with self.test_session():
+    with self.cached_session():
       inp = []
       inp_tensors = []
       with self.test_scope():
@@ -220,7 +220,7 @@ class ConcatTest(xla_test.XLATestCase):
     # Random dim to concat on
     concat_dim = np.random.randint(5)
     concat_dim_sizes = np.random.randint(1, 5, size=num_tensors)
-    with self.test_session():
+    with self.cached_session():
       inp = []
       inp_tensors = []
       with self.test_scope():
@@ -254,7 +254,7 @@ class ConcatTest(xla_test.XLATestCase):
   def DISABLED_testZeroSize(self):
     # Verify that concat doesn't crash and burn for zero size inputs
     np.random.seed(7)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         for shape0 in (), (2,):
           axis = len(shape0)
@@ -276,14 +276,14 @@ class ConcatTest(xla_test.XLATestCase):
   def testConcatTuple(self):
     c1 = np.random.rand(4, 4).astype(np.float32)
     c2 = np.random.rand(4, 4).astype(np.float32)
-    with self.test_session():
+    with self.cached_session():
       with self.test_scope():
         concat_list_t = array_ops.concat([c1, c2], 0)
         concat_tuple_t = array_ops.concat((c1, c2), 0)
       self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
 
   def testConcatNoScalars(self):
-    with self.test_session():
+    with self.cached_session():
       with self.test_scope():
         scalar = constant_op.constant(7)
         dim = array_ops.placeholder(dtypes.int32)
@@ -291,11 +291,46 @@ class ConcatTest(xla_test.XLATestCase):
             ValueError, r"Can't concatenate scalars \(use tf\.stack instead\)"):
           array_ops.concat([scalar, scalar, scalar], dim)
 
+  # The purpose of this is to ensure that XLA on GPU will not run out of memory
+  # with too many arguments.
+  def testConcatLargeNumberOfTensors(self):
+    with self.cached_session():
+      with self.test_scope():
+        for concat_dim in range(2):
+          params = {}
+          p = []
+          shape = np.array([7, 13])
+          num_tensors = 1001
+          for i in np.arange(num_tensors):
+            input_shape = shape
+            placeholder = array_ops.placeholder(
+                dtypes.float32, shape=input_shape)
+            p.append(placeholder)
+            params[placeholder] = np.random.rand(*input_shape).astype(
+                np.float32)
+
+          concat_inputs = p
+          c = array_ops.concat(concat_inputs, concat_dim)
+          result = c.eval(feed_dict=params)
+
+          self.assertEqual(result.shape, c.get_shape())
+          cur_offset = 0
+
+          for i in np.arange(num_tensors):
+            # The index into the result is the ':' along all dimensions
+            # except the concat_dim. slice(0, size) is used for ':', and
+            # a list of slices is used to index into result.
+            index = [slice(0, params[p[i]].shape[j]) for j in np.arange(2)]
+            index[concat_dim] = slice(
+                cur_offset, cur_offset + params[p[i]].shape[concat_dim])
+            cur_offset += params[p[i]].shape[concat_dim]
+            self.assertAllEqual(result[index], params[p[i]])
+
 
 class ConcatOffsetTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         cdim = constant_op.constant(1, dtypes.int32)
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
@@ -309,7 +344,7 @@ class ConcatOffsetTest(xla_test.XLATestCase):
 class PackTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
         s1 = constant_op.constant([2, 7, 5], dtypes.int32)
@@ -319,7 +354,7 @@ class PackTest(xla_test.XLATestCase):
         self.assertAllEqual(ans, [[2, 3, 5], [2, 7, 5], [2, 20, 5]])
 
   def testScalars(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         s0 = constant_op.constant(2, dtypes.int32)
         s1 = constant_op.constant(3, dtypes.int32)
@@ -329,7 +364,7 @@ class PackTest(xla_test.XLATestCase):
         self.assertAllEqual(ans, [2, 3, 5])
 
   def testEmpty(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         s0 = constant_op.constant([[]], dtypes.int32)
         s1 = constant_op.constant([[]], dtypes.int32)

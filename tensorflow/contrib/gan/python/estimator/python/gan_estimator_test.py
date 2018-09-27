@@ -116,7 +116,7 @@ def get_dummy_gan_model():
       discriminator_fn=None)
 
 
-def dummy_loss_fn(gan_model):
+def dummy_loss_fn(gan_model, add_summaries=True):
   return math_ops.reduce_sum(gan_model.discriminator_real_outputs -
                              gan_model.discriminator_gen_outputs)
 

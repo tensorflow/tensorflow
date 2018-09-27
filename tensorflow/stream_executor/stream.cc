@@ -587,6 +587,44 @@ Stream &Stream::ThenConvolveWithScratch(
 
 Stream &Stream::ThenFusedConvolveWithAlgorithm(
     const dnn::BatchDescriptor &conv_input_descriptor,
+    const DeviceMemory<double> &conv_input_data, double conv_input_scale,
+    const dnn::FilterDescriptor &filter_descriptor,
+    const DeviceMemory<double> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const DeviceMemory<double> &side_input_data, double side_input_scale,
+    const dnn::BatchDescriptor &bias_descriptor,
+    const DeviceMemory<double> &biases, dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<double> *output,
+    ScratchAllocator *scratch_allocator,
+    const dnn::AlgorithmConfig &algorithm_config,
+    dnn::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(conv_input_descriptor), PARAM(conv_input_data),
+            PARAM(conv_input_scale), PARAM(filter_descriptor),
+            PARAM(filter_data), PARAM(convolution_descriptor), PARAM(biases),
+            PARAM(side_input_data), PARAM(side_input_scale),
+            PARAM(activation_mode), PARAM(output_descriptor), PARAM(output),
+            PARAM(algorithm_config));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      auto status = dnn->DoFusedConvolve(
+          this, conv_input_descriptor, conv_input_data, conv_input_scale,
+          filter_descriptor, filter_data, convolution_descriptor,
+          side_input_data, side_input_scale, bias_descriptor, biases,
+          activation_mode, output_descriptor, output, scratch_allocator,
+          algorithm_config, output_profile_result);
+      if (!status && !output_profile_result) {
+        SetError();
+      }
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenFusedConvolveWithAlgorithm(
+    const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<float> &conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor &filter_descriptor,
     const DeviceMemory<float> &filter_data,
@@ -1959,7 +1997,9 @@ Stream *Stream::GetOrCreateSubStream() {
                             false);
   Stream *sub_stream = sub_streams_.back().first.get();
   sub_stream->Init();
-  CHECK(ok_) << "sub-stream failed to be initialized";
+  if (!sub_stream->ok_) {
+    LOG(ERROR) << "sub-stream failed to be initialized";
+  }
   VLOG(1) << DebugStreamPointers() << " created new sub_stream "
           << sub_stream->DebugStreamPointers();
 
@@ -5285,12 +5325,23 @@ Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
 Stream &Stream::ThenDoHostCallback(std::function<void()> callback) {
   VLOG_CALL(PARAM(callback));
 
-  if (ok()) {
-    CheckError(parent_->HostCallback(this, callback));
-  } else {
+  if (!ok()) {
     LOG(INFO) << DebugStreamPointers()
               << " was in error state before adding host callback";
   }
+  CheckError(parent_->HostCallback(this, std::move(callback)));
+  return *this;
+}
+
+Stream &Stream::ThenDoHostCallbackWithStatus(
+    std::function<port::Status()> callback) {
+  VLOG_CALL(PARAM(callback));
+
+  if (!ok()) {
+    LOG(INFO) << DebugStreamPointers()
+              << " was in error state before adding host callback";
+  }
+  CheckError(parent_->HostCallback(this, std::move(callback)));
   return *this;
 }
 

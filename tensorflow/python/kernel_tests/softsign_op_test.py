@@ -50,7 +50,7 @@ class SoftsignTest(test.TestCase):
           use_gpu=True)
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -65,11 +65,12 @@ class SoftsignTest(test.TestCase):
     print("softsign (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
-  def testWarnInts(self):
-    # NOTE(irving): Actually I don't know how to intercept the warning, but
-    # let's make sure it runs.  I promised I've looked, and there was a warning.
-    with self.test_session():
-      nn_ops.softsign(constant_op.constant(7)).eval()
+  def testNoInts(self):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          TypeError,
+          "'features' has DataType int32 not in list of allowed values"):
+        nn_ops.softsign(constant_op.constant(7)).eval()
 
 
 if __name__ == "__main__":

@@ -460,7 +460,7 @@ class CudnnRNNTestBasic(test_util.TensorFlowTestCase):
       grad, = gradients.gradients(
           math_ops.reduce_sum(accumulation), (original_input,))
     init_op = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       accumulation_eval, grad_eval = sess.run((accumulation, grad))
       self.assertAllEqual([28, 100, 100], accumulation_eval.shape)
@@ -802,7 +802,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
           [single_cell_fn() for _ in range(num_layers)])
     input_size = 3
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(graph=save_graph):
+    with save_graph.as_default(), self.session(graph=save_graph):
       save_layer = _MultiCellFn()
       save_layer(inputs=array_ops.ones([1, input_size]),
                  state=save_layer.zero_state(1, dtypes.float32))

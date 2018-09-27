@@ -32,18 +32,18 @@ from tensorflow.python.platform import test
 
 class SlideDatasetTest(test.TestCase, parameterized.TestCase):
 
-  @parameterized.parameters(
-      (20, 14, 7, 1),
-      (20, 17, 9, 1),
-      (20, 14, 14, 1),
-      (20, 10, 14, 1),
-      (20, 14, 19, 1),
-      (20, 4, 1, 2),
-      (20, 2, 1, 6),
-      (20, 4, 7, 2),
-      (20, 2, 7, 6),
-      (1, 10, 4, 1),
-      (0, 10, 4, 1),
+  @parameterized.named_parameters(
+      ("1", 20, 14, 7, 1),
+      ("2", 20, 17, 9, 1),
+      ("3", 20, 14, 14, 1),
+      ("4", 20, 10, 14, 1),
+      ("5", 20, 14, 19, 1),
+      ("6", 20, 4, 1, 2),
+      ("7", 20, 2, 1, 6),
+      ("8", 20, 4, 7, 2),
+      ("9", 20, 2, 7, 6),
+      ("10", 1, 10, 4, 1),
+      ("11", 0, 10, 4, 1),
   )
   def testSlideDataset(self, count, window_size, window_shift, window_stride):
     """Tests a dataset that slides a window its input elements."""
@@ -75,7 +75,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -96,18 +96,18 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (20, 14, 7, 1),
-      (20, 17, 9, 1),
-      (20, 14, 14, 1),
-      (20, 10, 14, 1),
-      (20, 14, 19, 1),
-      (20, 4, 1, 2),
-      (20, 2, 1, 6),
-      (20, 4, 7, 2),
-      (20, 2, 7, 6),
-      (1, 10, 4, 1),
-      (0, 10, 4, 1),
+  @parameterized.named_parameters(
+      ("1", 20, 14, 7, 1),
+      ("2", 20, 17, 9, 1),
+      ("3", 20, 14, 14, 1),
+      ("4", 20, 10, 14, 1),
+      ("5", 20, 14, 19, 1),
+      ("6", 20, 4, 1, 2),
+      ("7", 20, 2, 1, 6),
+      ("8", 20, 4, 7, 2),
+      ("9", 20, 2, 7, 6),
+      ("10", 1, 10, 4, 1),
+      ("11", 0, 10, 4, 1),
   )
   def testSlideDatasetDeprecated(self, count, window_size, stride,
                                  window_stride):
@@ -139,7 +139,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -160,10 +160,10 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (14, 0, 3, 1),
-      (14, 3, 0, 1),
-      (14, 3, 3, 0),
+  @parameterized.named_parameters(
+      ("1", 14, 0, 3, 1),
+      ("2", 14, 3, 0, 1),
+      ("3", 14, 3, 3, 0),
   )
   def testSlideDatasetInvalid(self, count, window_size, window_shift,
                               window_stride):
@@ -180,7 +180,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
                 window_stride=window_stride_t)).make_initializable_iterator())
     init_op = iterator.initializer
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(
             init_op,
@@ -214,7 +214,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       num_batches = (10 - 5) // 3 + 1
       for i in range(num_batches):
@@ -243,7 +243,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       num_batches = (10 - 5) // 3 + 1
       for i in range(num_batches):
@@ -277,7 +277,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       # Slide: 1st batch.
       actual = sess.run(get_next)
@@ -316,7 +316,7 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
         .make_initializable_iterator())
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,

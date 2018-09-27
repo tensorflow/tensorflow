@@ -42,7 +42,7 @@ inline void FileExists(const string& filename, TF_Status* out_status) {
 inline void FileExists(const tensorflow::StringPiece& filename,
     TF_Status* out_status) {
   tensorflow::Status status =
-      tensorflow::Env::Default()->FileExists(filename.ToString());
+      tensorflow::Env::Default()->FileExists(string(filename));
   if (!status.ok()) {
     Set_TF_Status_from_Status(out_status, status);
   }

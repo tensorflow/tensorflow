@@ -398,7 +398,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
       TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
       CHECK(DataTypeCanUseMemcpy(dtype));
       if (reinterpret_cast<intptr_t>(PyArray_DATA(input)) %
-              EIGEN_MAX_ALIGN_BYTES !=
+              std::max(1, EIGEN_MAX_ALIGN_BYTES) !=
           0) {
         Tensor t(dtype, shape);
         StringPiece p = t.tensor_data();
@@ -506,6 +506,17 @@ class PyFuncOp : public OpKernel {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       call.ins.push_back(ctx->input(i));
     }
+
+    // NOTE(mrry): There is a potential time-of-check-to-time-of-use race here.
+    // because it is possible that `Py_Finalize()` could be called in another
+    // thread between this check and the  call to `PyGILState_Ensure()`, which
+    // will abort the process if `Py_Finalize()` has been called. A more robust
+    // solution would be welcome, but it is not obvious how to make this work
+    // using the current Python C API.
+    OP_REQUIRES(ctx, Py_IsInitialized(),
+                errors::FailedPrecondition(
+                    "Python interpreter state is not initialized. "
+                    "The process may be terminated."));
 
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();

@@ -99,9 +99,9 @@ class Converter(object):
     # dispatch function table.
     self._schemas.sort()
     self._new_version, self._new_schema = self._schemas[-1][:2]
-    self._upgrade_dispatch = dict(
-        (version, dispatch)
-        for version, unused1, unused2, dispatch in self._schemas)
+    self._upgrade_dispatch = {
+        version: dispatch
+        for version, unused1, unused2, dispatch in self._schemas}
 
   def _Read(self, input_file, schema, raw_binary=False):
     """Read a tflite model assuming the given flatbuffer schema.

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class CSVDatasetOp : public DatasetOpKernel {
@@ -48,6 +49,9 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->input_list("record_defaults", &record_defaults_list));
     for (int i = 0; i < record_defaults_list.size(); ++i) {
+      OP_REQUIRES(ctx, record_defaults_list[i].dims() <= 1,
+                  errors::InvalidArgument(
+                      "Each record default should be at most rank 1"));
       OP_REQUIRES(ctx, record_defaults_list[i].NumElements() < 2,
                   errors::InvalidArgument(
                       "There should only be 1 default per field but field ", i,
@@ -131,7 +135,7 @@ class CSVDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<string> filenames, bool header,
             string compression_type, io::ZlibCompressionOptions options,
@@ -139,7 +143,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes,
             std::vector<Tensor> record_defaults, std::vector<int64> select_cols,
             bool use_quote_delim, char delim, string na_value)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_(header),
           out_type_(output_types),
@@ -168,7 +172,8 @@ class CSVDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* filenames = nullptr;
       Node* compression_type = nullptr;
@@ -712,7 +717,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<string>()() =
                   dataset()->record_defaults_[output_idx].flat<string>()(0);
             } else {
-              component.scalar<string>()() = field.ToString();
+              component.scalar<string>()() = string(field);
             }
             break;
           }
@@ -850,4 +855,5 @@ class CSVDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -31,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -38,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -205,27 +208,22 @@ TEST_F(XlaCompilerTest, Simple) {
                                      std::move(graph), args, &result));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
-  std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
-      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
       client_
           ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
           .ConsumeValueOrDie();
-  std::unique_ptr<xla::Literal> actual_literal =
-      client_->Transfer(*actual).ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected0 =
-      xla::LiteralUtil::CreateR1<int32>({4, 143});
-  std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({expected0.get()});
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({4, 143});
+  xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected0});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 // Tests compilation of a graph where the _Retval node is not necessarily last
@@ -261,23 +259,68 @@ TEST_F(XlaCompilerTest, OutOfOrderGraph) {
                                      args, &result));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
-  std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
-      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
       client_
           ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
           .ConsumeValueOrDie();
-  std::unique_ptr<xla::Literal> actual_literal =
-      client_->Transfer(*actual).ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
 
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*param0_literal, *actual_literal));
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(param0_literal, actual_literal));
+}
+
+// Tests that the compiler doesn't reorder the parameters.
+TEST_F(XlaCompilerTest, MixedOrderArguments) {
+  for (bool swap_order : {false, true}) {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto var =
+        ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, swap_order ? 0 : 1);
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, swap_order ? 1 : 0);
+    // Adds an identity op around the resource to make sure identity ops
+    // propagate resources correctly.
+    auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+    auto write = ops::AssignAddVariableOp(scope, identity, a);
+    auto read = ops::ReadVariableOp(
+        scope.WithControlDependencies(std::vector<Operation>{write}), var,
+        DT_INT32);
+    auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+    auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+    // Builds a description of the arguments.
+    std::vector<XlaCompiler::Argument> args(2);
+    args[0].kind = XlaCompiler::Argument::kParameter;
+    args[0].type = DT_INT32;
+    args[0].shape = TensorShape({2});
+    args[1].kind = XlaCompiler::Argument::kResource;
+    args[1].resource_kind = XlaResource::kVariable;
+    args[1].initialized = true;
+    args[1].type = DT_INT32;
+    args[1].shape = TensorShape({2});
+
+    if (swap_order) {
+      // Even after swapping arguments, the compiler should maintain the new
+      // ordering of parameters.
+      std::swap(args[0], args[1]);
+    }
+    // Compiles the graph.
+    XlaCompiler compiler(DefaultOptions());
+
+    XlaCompiler::CompileOptions compile_options;
+    compile_options.always_return_tuple = false;
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                       args, &result));
+
+    EXPECT_THAT(result.input_mapping, ::testing::ElementsAre(0, 1));
+  }
 }
 
 TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
@@ -309,10 +352,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
                             std::move(graph), args, &result);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "depends on a parameter"))
+      absl::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
+      absl::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
       << status.error_message();
 }
 
@@ -357,23 +400,19 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     EXPECT_FALSE(result.outputs[1].is_constant);
 
     // Tests that the generated computation works.
-    std::unique_ptr<xla::Literal> param0_literal =
-        xla::LiteralUtil::CreateR1<int32>({7, 42});
+    xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
-        client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+        client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
     std::unique_ptr<xla::GlobalData> actual =
         client_->Execute(*result.computation, {param0_data.get()})
             .ConsumeValueOrDie();
-    std::unique_ptr<xla::Literal> actual_literal =
+    xla::Literal actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
 
-    std::unique_ptr<xla::Literal> expected0 =
-        xla::LiteralUtil::CreateR1<int32>({-7, -42});
-    std::unique_ptr<xla::Literal> expected_literal =
-        xla::LiteralUtil::MakeTuple({expected0.get()});
-    EXPECT_TRUE(
-        xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+    xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({-7, -42});
+    xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected0});
+    EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
   }
 
   {
@@ -392,24 +431,21 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     EXPECT_FALSE(result.outputs[1].is_constant);
 
     // Tests that the generated computation works.
-    std::unique_ptr<xla::Literal> param0_literal =
-        xla::LiteralUtil::CreateR1<int32>({7, 42});
+    xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
     std::unique_ptr<xla::GlobalData> param0_data =
-        client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+        client_->TransferToServer(param0_literal).ConsumeValueOrDie();
 
     std::unique_ptr<xla::GlobalData> actual =
         client_->Execute(*result.computation, {param0_data.get()})
             .ConsumeValueOrDie();
-    std::unique_ptr<xla::Literal> actual_literal =
+    xla::Literal actual_literal =
         client_->Transfer(*actual).ConsumeValueOrDie();
 
-    std::unique_ptr<xla::Literal> expected0 =
-        xla::LiteralUtil::CreateR0<int32>(7);
-    std::unique_ptr<xla::Literal> expected1 =
-        xla::LiteralUtil::CreateR1<int32>({-7, -42});
-    std::unique_ptr<xla::Literal> expected =
-        xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
-    EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected, *actual_literal));
+    xla::Literal expected0 = xla::LiteralUtil::CreateR0<int32>(7);
+    xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({-7, -42});
+    xla::Literal expected =
+        xla::LiteralUtil::MakeTuple({&expected0, &expected1});
+    EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected, actual_literal));
   }
 }
 
@@ -568,10 +604,17 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
         auto instr1 = c1.instructions(j);
         auto instr2 = c2.instructions(j);
         instr1.clear_name();
+        instr1.clear_id();
+        instr1.clear_operand_ids();
         instr2.clear_name();
-        // The names of instructions were uniquified by the XlaBuilder, the rest
-        // of the fields should be identical.
+        instr2.clear_id();
+        instr2.clear_operand_ids();
+        // The names of instructions were uniquified by the XlaBuilder and the
+        // unique ids may be different, the rest of the fields should be
+        // identical.
         string str1, str2;
+        LOG(INFO) << "instr1 = " << instr1.DebugString();
+        LOG(INFO) << "instr2 = " << instr2.DebugString();
         instr1.AppendPartialToString(&str1);
         instr2.AppendPartialToString(&str2);
         EXPECT_EQ(str1, str2);
@@ -621,34 +664,26 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
             update.tensor_array_gradients_accessed);
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> input_base =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
-  std::unique_ptr<xla::Literal> input_grad2 =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
-  std::unique_ptr<xla::Literal> input =
-      xla::LiteralUtil::MakeTuple({input_base.get(), input_grad2.get()});
+  xla::Literal input_base = xla::LiteralUtil::CreateR1<int32>({7, 42});
+  xla::Literal input_grad2 = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal input = xla::LiteralUtil::MakeTuple({&input_base, &input_grad2});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*input).ConsumeValueOrDie();
+      client_->TransferToServer(input).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
       client_->Execute(*result.computation, {param0_data.get()})
           .ConsumeValueOrDie();
-  std::unique_ptr<xla::Literal> actual_literal =
-      client_->Transfer(*actual).ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> output_read =
-      xla::LiteralUtil::CreateR0<int32>(42);
-  std::unique_ptr<xla::Literal> output_base =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
-  std::unique_ptr<xla::Literal> output_grad1 =
-      xla::LiteralUtil::CreateR1<int32>({0, 1});
-  std::unique_ptr<xla::Literal> output_grad2 =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
-  std::unique_ptr<xla::Literal> output_resource = xla::LiteralUtil::MakeTuple(
-      {output_base.get(), output_grad1.get(), output_grad2.get()});
-  std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({output_read.get(), output_resource.get()});
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+  xla::Literal output_read = xla::LiteralUtil::CreateR0<int32>(42);
+  xla::Literal output_base = xla::LiteralUtil::CreateR1<int32>({7, 42});
+  xla::Literal output_grad1 = xla::LiteralUtil::CreateR1<int32>({0, 1});
+  xla::Literal output_grad2 = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  xla::Literal output_resource =
+      xla::LiteralUtil::MakeTuple({&output_base, &output_grad1, &output_grad2});
+  xla::Literal expected_literal =
+      xla::LiteralUtil::MakeTuple({&output_read, &output_resource});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 // Tests compilation and execution of a graph that adds two tensors.
@@ -727,8 +762,7 @@ TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
       compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
                                /*args=*/{}, &result);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "is not defined."))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
       << status.error_message();
 }
 
@@ -807,13 +841,33 @@ TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
 
   ASSERT_FALSE(status.ok());
   // Flib lookup failure.
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "is not defined."))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "is not defined."))
       << status.error_message();
   // Local flib lookup failure.
-  EXPECT_TRUE(str_util::StrContains(StringPiece(status.error_message()),
-                                    "Attr T is not found"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "Attr T is not found"))
       << status.error_message();
+}
+
+void RunAndCheckVariablesComputation(
+    xla::Client* client, const XlaCompiler::CompilationResult& result) {
+  xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
+  std::unique_ptr<xla::GlobalData> param0_data =
+      client->TransferToServer(param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<xla::GlobalData> param1_data =
+      client->TransferToServer(param1_literal).ConsumeValueOrDie();
+
+  std::unique_ptr<xla::GlobalData> actual =
+      client
+          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+          .ConsumeValueOrDie();
+  xla::Literal actual_literal = client->Transfer(*actual).ConsumeValueOrDie();
+
+  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({5, 144});
+  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({4, 143});
+  xla::Literal expected_literal =
+      xla::LiteralUtil::MakeTuple({&expected0, &expected1});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 // Tests a simple graph that reads and writes a variable.
@@ -821,7 +875,10 @@ TEST_F(XlaCompilerTest, Variables) {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
-  auto write = ops::AssignAddVariableOp(scope, var, a);
+  // Adds an identity op around the resource to make sure identity ops propagate
+  // resources correctly.
+  auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+  auto write = ops::AssignAddVariableOp(scope, identity, a);
   auto read = ops::ReadVariableOp(
       scope.WithControlDependencies(std::vector<Operation>{write}), var,
       DT_INT32);
@@ -847,31 +904,82 @@ TEST_F(XlaCompilerTest, Variables) {
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
                                      std::move(graph), args, &result));
+  RunAndCheckVariablesComputation(client_, result);
+}
+
+// Tests a simple graph that reads and writes a variable.
+TEST_F(XlaCompilerTest, ReturnResourceHandleOnly) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), var, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(1);
+  args[0].kind = XlaCompiler::Argument::kResource;
+  args[0].resource_kind = XlaResource::kVariable;
+  args[0].initialized = true;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
-      xla::LiteralUtil::CreateR1<int32>({7, 42});
-  std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR1<int32>({-3, 101});
-  std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
   std::unique_ptr<xla::GlobalData> param1_data =
-      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
-      client_
-          ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
+      client_->Execute(*result.computation, {param1_data.get()})
           .ConsumeValueOrDie();
-  std::unique_ptr<xla::Literal> actual_literal =
-      client_->Transfer(*actual).ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected0 =
-      xla::LiteralUtil::CreateR1<int32>({5, 144});
-  std::unique_ptr<xla::Literal> expected1 =
-      xla::LiteralUtil::CreateR1<int32>({4, 143});
-  std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+  xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
+}
+
+TEST_F(XlaCompilerTest, ReturnResourceHandle) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
+  // Adds an identity op around the resource to make sure identity ops propagate
+  // resources correctly.
+  auto identity = ops::Identity(scope.WithOpName("VIdentity"), var);
+  auto write = ops::AssignAddVariableOp(scope, identity, a);
+  auto read = ops::ReadVariableOp(
+      scope.WithControlDependencies(std::vector<Operation>{write}), var,
+      DT_INT32);
+  auto read_plus_one = ops::Add(scope, read, ops::Const<int32>(scope, 1));
+  auto r = ops::_Retval(scope.WithOpName("R"), var, 0);
+  auto d = ops::_Retval(scope.WithOpName("D"), read_plus_one, 1);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
+                                     std::move(graph), args, &result));
+  RunAndCheckVariablesComputation(client_, result);
 }
 
 xla::StatusOr<std::unique_ptr<Graph>> BuildTestGraph() {
@@ -937,29 +1045,27 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
            xla::ShapeUtil::MakeShape(xla::S32, {4})})));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
+  xla::Literal param0_literal =
       xla::LiteralUtil::CreateR2<int32>({{4, 55}, {1, -3}});
-  std::unique_ptr<xla::Literal> param1_literal =
+  xla::Literal param1_literal =
       xla::LiteralUtil::CreateR1<int32>({22, 11, 33, 404});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
-      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
       client_
           ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
           .ConsumeValueOrDie();
-  std::unique_ptr<xla::Literal> actual_literal =
-      client_->Transfer(*actual).ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected0 =
+  xla::Literal expected0 =
       xla::LiteralUtil::CreateR2<int32>({{27, 67}, {35, 402}});
-  std::unique_ptr<xla::Literal> expected1 =
-      xla::LiteralUtil::CreateR1<int32>({26, 66, 34, 401});
-  std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({26, 66, 34, 401});
+  xla::Literal expected_literal =
+      xla::LiteralUtil::MakeTuple({&expected0, &expected1});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
@@ -1006,29 +1112,26 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
            xla::ShapeUtil::MakeShape(xla::S32, {4})})));
 
   // Tests that the generated computation works.
-  std::unique_ptr<xla::Literal> param0_literal =
+  xla::Literal param0_literal =
       xla::LiteralUtil::CreateR1<int32>({4, 55, 1, -3});
-  std::unique_ptr<xla::Literal> param1_literal =
+  xla::Literal param1_literal =
       xla::LiteralUtil::CreateR1<int32>({22, 11, 33, 404});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
   std::unique_ptr<xla::GlobalData> param1_data =
-      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param1_literal).ConsumeValueOrDie();
 
   std::unique_ptr<xla::GlobalData> actual =
       client_
           ->Execute(*result.computation, {param0_data.get(), param1_data.get()})
           .ConsumeValueOrDie();
-  std::unique_ptr<xla::Literal> actual_literal =
-      client_->Transfer(*actual).ConsumeValueOrDie();
+  xla::Literal actual_literal = client_->Transfer(*actual).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> expected0 =
-      xla::LiteralUtil::CreateR1<int32>({27, 67, 35, 402});
-  std::unique_ptr<xla::Literal> expected1 =
-      xla::LiteralUtil::CreateR1<int32>({26, 66, 34, 401});
-  std::unique_ptr<xla::Literal> expected_literal =
-      xla::LiteralUtil::MakeTuple({expected0.get(), expected1.get()});
-  EXPECT_TRUE(xla::LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+  xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({27, 67, 35, 402});
+  xla::Literal expected1 = xla::LiteralUtil::CreateR1<int32>({26, 66, 34, 401});
+  xla::Literal expected_literal =
+      xla::LiteralUtil::MakeTuple({&expected0, &expected1});
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
 // Tests a graph which has a function with an invalid op.
@@ -1075,9 +1178,9 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "InvalidOp"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "InvalidOp"))
       << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node fill_fn}}"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node fill_fn}}"))
       << status.error_message();
 }
 
@@ -1100,10 +1203,10 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "invalid_type",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(),
-                                    "is not in the list of allowed values"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(),
+                                "is not in the list of allowed values"))
       << status.error_message();
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node Shape}}"))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), "{{node Shape}}"))
       << status.error_message();
 }
 
@@ -1123,25 +1226,73 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
-    status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
-                                   std::move(graph_copy), args, &result);
-    ASSERT_FALSE(status.ok());
-    EXPECT_TRUE(
-        str_util::StrContains(status.error_message(),
-                              "The following nodes are unreachable "
-                              "from the source in the graph: {{node NoOp}}"))
-        << status.error_message();
-  }
-
-  // Fix control edges for NoOp.
-  {
-    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
-    CopyGraph(*graph, graph_copy.get());
-    EXPECT_TRUE(FixupSourceAndSinkEdges(graph_copy.get()));
-    XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
                                        std::move(graph_copy), args, &result));
-    EXPECT_EQ(0, result.resource_updates.size());
+  }
+}
+
+class DummySideEffectingOp : public XlaOpKernel {
+ public:
+  explicit DummySideEffectingOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    OP_REQUIRES_OK(ctx, ctx->compiler()->SetNodeToken(
+                            name(), xla::CreateToken(ctx->builder())));
+  }
+};
+
+REGISTER_OP("DummySideEffectingOp");
+
+REGISTER_XLA_OP(Name("DummySideEffectingOp"), DummySideEffectingOp);
+
+TEST_F(XlaCompilerTest, TokenInputAndOutput) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  NodeDef side_effecting_op;
+  side_effecting_op.set_name("DummySideEffectingOp");
+  side_effecting_op.set_op("DummySideEffectingOp");
+  AddNodeAttr(kXlaTokenInputNodesAttrName,
+              std::vector<string>{kXlaTokenArgNodeName}, &side_effecting_op);
+  Status status;
+  graph->AddNode(side_effecting_op, &status);
+  TF_ASSERT_OK(status);
+  EXPECT_TRUE(FixupSourceAndSinkEdges(graph.get()));
+
+  const std::vector<XlaCompiler::Argument> empty_args;
+  {
+    // The case for entry computation: we don't add token input/output. Instead,
+    // we use CreateToken HLO to create the entry token.
+    XlaCompiler::CompileOptions options;
+    options.is_entry_computation = true;
+    options.add_token_input_output = false;
+    XlaCompiler compiler(DefaultOptions());
+
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
+                                       empty_args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 0);
+    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 0);
+  }
+  {
+    // The case for non-entry computation (e.g. while loop body). We add token
+    // input/output.
+    XlaCompiler::CompileOptions options;
+    options.is_entry_computation = false;
+    options.add_token_input_output = true;
+    XlaCompiler compiler(DefaultOptions());
+
+    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
+    CopyGraph(*graph, graph_copy.get());
+    XlaCompiler::CompilationResult result;
+    TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
+                                       empty_args, &result));
+    EXPECT_EQ(result.xla_input_shapes.size(), 1);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(result.xla_input_shapes[0]));
+    EXPECT_TRUE(xla::ShapeUtil::IsTuple(result.xla_output_shape));
+    EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
+    EXPECT_TRUE(xla::ShapeUtil::IsToken(
+        xla::ShapeUtil::GetTupleElementShape(result.xla_output_shape, 0)));
   }
 }
 

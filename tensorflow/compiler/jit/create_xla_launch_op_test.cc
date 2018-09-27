@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/create_xla_launch_op.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
@@ -65,11 +66,11 @@ class CreateXlaLaunchOpTest : public ::testing::Test {
     for (const auto& fdef : flib) {
       *(proto.add_function()) = fdef;
     }
-    lib_def_ =
-        MakeUnique<FunctionLibraryDefinition>(OpRegistry::Global(), proto);
+    lib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+        OpRegistry::Global(), proto);
     OptimizerOptions opts;
-    device_mgr_ = MakeUnique<DeviceMgr>(devices_);
-    pflr_ = MakeUnique<ProcessFunctionLibraryRuntime>(
+    device_mgr_ = absl::make_unique<DeviceMgr>(devices_);
+    pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
     flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
