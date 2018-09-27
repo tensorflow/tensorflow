@@ -175,7 +175,7 @@ class AdamOptimizer(optimizer.Optimizer):
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-  class ScatterOpWrapper(object):
+  class _ScatterOpWrapper(object):
     """Wraps necessary scatter ops for sparse tensors."""
 
     def __init__(self, use_locking=False):
@@ -194,11 +194,11 @@ class AdamOptimizer(optimizer.Optimizer):
                                       use_locking=self._use_locking)
 
 
-  class ResourceScatterOpWrapper(ScatterOpWrapper):
+  class _ResourceScatterOpWrapper(_ScatterOpWrapper):
     """Wraps necessay scatter ops for sparse resource variables."""
 
-    def __init__(self, use_locking=False):
-      super(AdamOptimizer.ResourceScatterOpWrapper, self).__init__(use_locking)
+    def __init__(self):
+      pass
 
     def add(self, sparse_tensor, index, delta):
       with ops.control_dependencies(
@@ -249,12 +249,12 @@ class AdamOptimizer(optimizer.Optimizer):
   def _apply_sparse(self, grad, var):
     return self._apply_sparse_shared(
         grad.values, var, grad.indices,
-        AdamOptimizer.ScatterOpWrapper(self._use_locking))
+        AdamOptimizer._ScatterOpWrapper(self._use_locking))
 
   def _resource_apply_sparse(self, grad, var, indices):
     return self._apply_sparse_shared(
         grad, var, indices,
-        AdamOptimizer.ResourceScatterOpWrapper(self._use_locking))
+        AdamOptimizer._ResourceScatterOpWrapper())
 
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
