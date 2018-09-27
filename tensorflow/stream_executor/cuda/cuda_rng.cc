@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/dso_loader.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -59,28 +60,55 @@ namespace cuda {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuRandPlugin);
 
-namespace wrap {
+namespace dynload {
 
-#define STREAM_EXECUTOR_CURAND_WRAP(__name)                         \
-  struct WrapperShim__##__name {                                    \
-    template <typename... Args>                                     \
-    curandStatus_t operator()(CUDAExecutor *parent, Args... args) { \
-      cuda::ScopedActivateExecutorContext sac{parent};              \
-      return ::__name(args...);                                     \
-    }                                                               \
-  } __name;
+#define STREAM_EXECUTOR_CURAND_WRAP(__name)                               \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetCurandDsoHandle();           \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in curand DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    curandStatus_t operator()(CUDAExecutor *parent, Args... args) {       \
+      cuda::ScopedActivateExecutorContext sac{parent};                    \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
 
-STREAM_EXECUTOR_CURAND_WRAP(curandCreateGenerator);
-STREAM_EXECUTOR_CURAND_WRAP(curandDestroyGenerator);
-STREAM_EXECUTOR_CURAND_WRAP(curandSetStream);
-STREAM_EXECUTOR_CURAND_WRAP(curandGenerateUniform);
-STREAM_EXECUTOR_CURAND_WRAP(curandGenerateUniformDouble);
-STREAM_EXECUTOR_CURAND_WRAP(curandSetPseudoRandomGeneratorSeed);
-STREAM_EXECUTOR_CURAND_WRAP(curandSetGeneratorOffset);
-STREAM_EXECUTOR_CURAND_WRAP(curandGenerateNormal);
-STREAM_EXECUTOR_CURAND_WRAP(curandGenerateNormalDouble);
+// clang-format off
 
-}  // namespace wrap
+#define CURAND_ROUTINE_EACH(__macro)            \
+  __macro(curandCreateGenerator)                \
+  __macro(curandDestroyGenerator)               \
+  __macro(curandSetStream)                      \
+  __macro(curandGenerateUniform)                \
+  __macro(curandGenerateUniformDouble)          \
+  __macro(curandSetPseudoRandomGeneratorSeed)   \
+  __macro(curandSetGeneratorOffset)             \
+  __macro(curandGenerateNormal)                 \
+  __macro(curandGenerateNormalDouble)
+
+// clang-format on
+
+CURAND_ROUTINE_EACH(STREAM_EXECUTOR_CURAND_WRAP)
+#undef CURAND_ROUTINE_EACH
+
+}  // namespace dynload
 
 template <typename T>
 string TypeString();
@@ -109,7 +137,7 @@ CUDARng::CUDARng(CUDAExecutor *parent) : parent_(parent), rng_(nullptr) {}
 
 CUDARng::~CUDARng() {
   if (rng_ != nullptr) {
-    wrap::curandDestroyGenerator(parent_, rng_);
+    dynload::curandDestroyGenerator(parent_, rng_);
   }
 }
 
@@ -118,7 +146,7 @@ bool CUDARng::Init() {
   CHECK(rng_ == nullptr);
 
   curandStatus_t ret =
-      wrap::curandCreateGenerator(parent_, &rng_, CURAND_RNG_PSEUDO_DEFAULT);
+      dynload::curandCreateGenerator(parent_, &rng_, CURAND_RNG_PSEUDO_DEFAULT);
   if (ret != CURAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to create random number generator: " << ret;
     return false;
@@ -130,7 +158,7 @@ bool CUDARng::Init() {
 
 bool CUDARng::SetStream(Stream *stream) {
   curandStatus_t ret =
-      wrap::curandSetStream(parent_, rng_, AsCUDAStreamValue(stream));
+      dynload::curandSetStream(parent_, rng_, AsCUDAStreamValue(stream));
   if (ret != CURAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for random generation: " << ret;
     return false;
@@ -168,11 +196,11 @@ bool CUDARng::DoPopulateRandUniformInternal(Stream *stream,
   curandStatus_t ret;
   if (std::is_same<T, float>::value ||
       std::is_same<T, std::complex<float>>::value) {
-    ret = wrap::curandGenerateUniform(
+    ret = dynload::curandGenerateUniform(
         parent_, rng_, reinterpret_cast<float *>(CUDAMemoryMutable(v)),
         element_count);
   } else {
-    ret = wrap::curandGenerateUniformDouble(
+    ret = dynload::curandGenerateUniformDouble(
         parent_, rng_, reinterpret_cast<double *>(CUDAMemoryMutable(v)),
         element_count);
   }
@@ -231,13 +259,13 @@ bool CUDARng::DoPopulateRandGaussianInternal(Stream *stream, ElemT mean,
 bool CUDARng::DoPopulateRandGaussian(Stream *stream, float mean, float stddev,
                                      DeviceMemory<float> *v) {
   return DoPopulateRandGaussianInternal(stream, mean, stddev, v,
-                                        wrap::curandGenerateNormal);
+                                        dynload::curandGenerateNormal);
 }
 
 bool CUDARng::DoPopulateRandGaussian(Stream *stream, double mean, double stddev,
                                      DeviceMemory<double> *v) {
   return DoPopulateRandGaussianInternal(stream, mean, stddev, v,
-                                        wrap::curandGenerateNormalDouble);
+                                        dynload::curandGenerateNormalDouble);
 }
 
 bool CUDARng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
@@ -254,14 +282,14 @@ bool CUDARng::SetSeed(Stream *stream, const uint8 *seed, uint64 seed_bytes) {
 
   // Requires 8 bytes of seed data; checked in RngSupport::CheckSeed (above)
   // (which itself requires 16 for API consistency with host RNG fallbacks).
-  curandStatus_t ret = wrap::curandSetPseudoRandomGeneratorSeed(
+  curandStatus_t ret = dynload::curandSetPseudoRandomGeneratorSeed(
       parent_, rng_, *(reinterpret_cast<const uint64 *>(seed)));
   if (ret != CURAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set rng seed: " << ret;
     return false;
   }
 
-  ret = wrap::curandSetGeneratorOffset(parent_, rng_, 0);
+  ret = dynload::curandSetGeneratorOffset(parent_, rng_, 0);
   if (ret != CURAND_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to reset rng position: " << ret;
     return false;
