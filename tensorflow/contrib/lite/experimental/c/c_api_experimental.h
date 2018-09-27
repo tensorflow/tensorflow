@@ -25,7 +25,7 @@ extern "C" {
 typedef TfLiteBuiltinOperator TFL_BuiltinOperator;
 
 // Resets all variable tensors to zero.
-TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterResetVariableTensorsToZero(
+TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterResetVariableTensors(
     TFL_Interpreter* interpreter);
 
 // Adds an op registration for a builtin operator.
