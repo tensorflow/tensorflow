@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
@@ -38,7 +38,7 @@ __global__ void UpperBoundKernel(const T* sorted_inputs, int batch_size,
   CUDA_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
     int bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = cuda_helper::upper_bound<T, OutType>(
+    outputs[work_unit_id] = gpu_helper::upper_bound<T, OutType>(
         sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
   }
 }
@@ -50,7 +50,7 @@ __global__ void LowerBoundKernel(const T* sorted_inputs, int batch_size,
   CUDA_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
     int bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = cuda_helper::lower_bound<T, OutType>(
+    outputs[work_unit_id] = gpu_helper::lower_bound<T, OutType>(
         sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
   }
 }
