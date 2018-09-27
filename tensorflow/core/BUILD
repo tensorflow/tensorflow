@@ -2484,8 +2484,6 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
     "framework/resource_var.h",
-    "framework/run_handler.h",
-    "framework/run_handler_util.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -2972,7 +2970,6 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":device_tracer",
         ":framework",
-        ":framework_internal",
         ":graph",
         ":lib",
         ":lib_internal",
@@ -4114,19 +4111,6 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "framework_run_handler_util_test",
-    size = "small",
-    srcs = ["framework/run_handler_util_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":framework_internal",
         ":lib",
         ":test",
         ":test_main",
