@@ -21,9 +21,11 @@ load(
     "def_file_filter_configure",
 )
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
+load("//third_party/icu:workspace.bzl", icu = "repo")
 
 def initialize_third_party():
     flatbuffers()
+    icu()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.

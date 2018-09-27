@@ -153,6 +153,7 @@ filegroup(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
