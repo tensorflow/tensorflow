@@ -45,6 +45,17 @@ def step(dynamics, optimizer, samples):
   return loss, samples
 
 
+# To be defunnable, the function cannot return an Operation, so the above
+# function is used for defun or eager, and this function is used in graph to be
+# able to run the gradient updates.
+def graph_step(dynamics, optimizer, samples):
+  loss, grads, samples, _ = l2hmc.loss_and_grads(
+      dynamics, samples, loss_fn=l2hmc.compute_loss)
+  train_op = optimizer.apply_gradients(zip(grads, dynamics.variables))
+
+  return train_op, loss, samples
+
+
 def warmup(dynamics,
            optimizer,
            n_iters=1,
@@ -134,51 +145,48 @@ class L2hmcBenchmark(tf.test.Benchmark):
     """Benchmark Graph performance."""
 
     hparams = get_default_hparams()
-    tf.reset_default_graph()
-    with tf.Graph().as_default():
-      energy_fn, _, _ = l2hmc.get_scg_energy_fn()
-      dynamics = l2hmc.Dynamics(
-          x_dim=hparams.x_dim,
-          minus_loglikelihood_fn=energy_fn,
-          n_steps=hparams.n_steps,
-          eps=hparams.eps)
-      x = tf.placeholder(tf.float32, shape=[None, hparams.x_dim])
-      loss, x_out, _ = l2hmc.compute_loss(dynamics, x)
+    tf.enable_resource_variables()
+    for sample_size in [10, 25, 50, 100, 200]:
+      hparams.n_samples = sample_size
+      tf.reset_default_graph()
+      with tf.Graph().as_default():
+        energy_fn, _, _ = l2hmc.get_scg_energy_fn()
+        x = tf.random_normal([hparams.n_samples, hparams.x_dim],
+                             dtype=tf.float32)
+        dynamics = l2hmc.Dynamics(
+            x_dim=hparams.x_dim,
+            minus_loglikelihood_fn=energy_fn,
+            n_steps=hparams.n_steps,
+            eps=hparams.eps)
+        loss, _, _ = l2hmc.compute_loss(dynamics, x)
 
-      global_step = tf.Variable(0., name="global_step", trainable=False)
-      learning_rate = tf.train.exponential_decay(
-          hparams.learning_rate, global_step, 1000, 0.96, staircase=True)
-      optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-      train_op = optimizer.minimize(loss, global_step=global_step)
+        optimizer = tf.train.AdamOptimizer(learning_rate=hparams.learning_rate)
+        train_op, loss, _ = graph_step(dynamics, optimizer, x)
 
-      # Single thread; fairer comparison against eager
-      session_conf = tf.ConfigProto(
-          intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
+        # Single thread; fairer comparison against eager
+        session_conf = tf.ConfigProto(inter_op_parallelism_threads=1)
 
-      with tf.Session(config=session_conf) as sess:
-        sess.run(tf.global_variables_initializer())
+        with tf.Session(config=session_conf) as sess:
+          sess.run(tf.global_variables_initializer())
 
-        # Warmup to reduce initialization effect when timing
-        samples = npr.normal(size=[hparams.n_samples, hparams.x_dim])
-        for _ in range(hparams.n_warmup_iters):
-          _, _, _, _ = sess.run(
-              [x_out, loss, train_op, learning_rate], feed_dict={x: samples})
+          # Warmup to reduce initialization effect when timing
+          for _ in range(hparams.n_warmup_iters):
+            _, _ = sess.run([train_op, loss])
 
-        # Training
-        start_time = time.time()
-        for i in range(hparams.n_iters):
-          samples, loss_np, _, _ = sess.run(
-              [x_out, loss, train_op, learning_rate], feed_dict={x: samples})
-          print("Iteration %d: loss %.4f" % (i, loss_np))
-        wall_time = time.time() - start_time
-        examples_per_sec = hparams.n_samples / wall_time
+          # Training
+          start_time = time.time()
+          for i in range(hparams.n_iters):
+            _, loss_np = sess.run([train_op, loss])
+            print("Iteration %d: loss %.4f" % (i, loss_np))
+          wall_time = (time.time() - start_time) / hparams.n_iters
+          examples_per_sec = hparams.n_samples / wall_time
 
-        self.report_benchmark(
-            name="graph_train_%s" % ("gpu"
-                                     if tf.test.is_gpu_available() else "cpu"),
-            iters=hparams.n_iters,
-            extras={"examples_per_sec": examples_per_sec},
-            wall_time=wall_time)
+          self.report_benchmark(
+              name="graph_train_%s_%d" %
+              ("gpu" if tf.test.is_gpu_available() else "cpu", sample_size),
+              iters=hparams.n_iters,
+              extras={"examples_per_sec": examples_per_sec},
+              wall_time=wall_time)
 
   def benchmark_eager(self):
     self._benchmark_eager()
@@ -190,32 +198,44 @@ class L2hmcBenchmark(tf.test.Benchmark):
     """Benchmark Eager performance."""
 
     hparams = get_default_hparams()
-    energy_fn, _, _ = l2hmc.get_scg_energy_fn()
-    dynamics = l2hmc.Dynamics(
-        x_dim=hparams.x_dim,
-        minus_loglikelihood_fn=energy_fn,
-        n_steps=hparams.n_steps,
-        eps=hparams.eps)
-    optimizer = tf.train.AdamOptimizer(learning_rate=hparams.learning_rate)
-    step_fn = tfe.defun(step) if defun else step
+    for sample_size in [10, 25, 50, 100, 200]:
+      hparams.n_samples = sample_size
+      energy_fn, _, _ = l2hmc.get_scg_energy_fn()
+      dynamics = l2hmc.Dynamics(
+          x_dim=hparams.x_dim,
+          minus_loglikelihood_fn=energy_fn,
+          n_steps=hparams.n_steps,
+          eps=hparams.eps)
+      optimizer = tf.train.AdamOptimizer(learning_rate=hparams.learning_rate)
+      step_fn = tfe.defun(step) if defun else step
 
-    # Warmup to reduce initialization effect when timing
-    warmup(dynamics, optimizer, n_iters=hparams.n_warmup_iters, step_fn=step_fn)
+      # Warmup to reduce initialization effect when timing
+      warmup(
+          dynamics,
+          optimizer,
+          n_iters=hparams.n_warmup_iters,
+          n_samples=hparams.n_samples,
+          step_fn=step_fn)
 
-    # Training
-    samples = tf.random_normal(
-        shape=[hparams.n_samples, hparams.x_dim], dtype=tf.float32)
-    start_time = time.time()
-    fit(dynamics, samples, optimizer, step_fn=step_fn, n_iters=hparams.n_iters)
-    wall_time = time.time() - start_time
-    examples_per_sec = hparams.n_samples / wall_time
+      # Training
+      samples = tf.random_normal(
+          shape=[hparams.n_samples, hparams.x_dim], dtype=tf.float32)
+      start_time = time.time()
+      fit(dynamics,
+          samples,
+          optimizer,
+          step_fn=step_fn,
+          n_iters=hparams.n_iters)
+      wall_time = (time.time() - start_time) / hparams.n_iters
+      examples_per_sec = hparams.n_samples / wall_time
 
-    self.report_benchmark(
-        name="eager_train_%s%s" % ("gpu" if tf.test.is_gpu_available() else
-                                   "cpu", "_defun" if defun else ""),
-        iters=hparams.n_iters,
-        extras={"examples_per_sec": examples_per_sec},
-        wall_time=wall_time)
+      self.report_benchmark(
+          name="eager_train_%s%s_%d" %
+          ("gpu" if tf.test.is_gpu_available() else "cpu",
+           "_defun" if defun else "", sample_size),
+          iters=hparams.n_iters,
+          extras={"examples_per_sec": examples_per_sec},
+          wall_time=wall_time)
 
     del dynamics
 
