@@ -25,6 +25,7 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops.dataset_ops import MatchingFilesDataset
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -32,7 +33,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class MatchingFilesDatasetTest(test.TestCase):
+class MatchingFilesDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     self.tmp_dir = tempfile.mkdtemp()

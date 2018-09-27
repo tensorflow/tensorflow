@@ -289,6 +289,22 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "matching_files_dataset_op_test",
+    size = "small",
+    srcs = ["matching_files_dataset_op_test.py"],
+    additional_deps = [
+        ":test_base",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 cuda_py_test(
     name = "multi_device_iterator_test",
     size = "medium",
@@ -328,29 +344,6 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
-    ],
-)
-
-tf_py_test(
-    name = "matching_files_dataset_op_test",
-    size = "small",
-    srcs = ["matching_files_dataset_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/ops:readers",
     ],
 )
 
