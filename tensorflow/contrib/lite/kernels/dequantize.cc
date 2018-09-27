@@ -77,13 +77,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
 
-  auto zero_point = op_context.input->params.zero_point;
-  auto scale = op_context.input->params.scale;
-
-  optimized_ops::Dequantize(GetTensorData<uint8_t>(op_context.input),
-                            GetTensorDims(op_context.input), zero_point, scale,
-                            GetTensorData<float>(op_context.output),
-                            GetTensorDims(op_context.output));
+  tflite::DequantizationParams op_params;
+  op_params.zero_point = op_context.input->params.zero_point;
+  op_params.scale = op_context.input->params.scale;
+  optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                            GetTensorData<uint8_t>(op_context.input),
+                            GetTensorShape(op_context.output),
+                            GetTensorData<float>(op_context.output));
 
   if (IsConstantTensor(op_context.input)) {
     op_data->float_dequantized_weights_initialized = true;
