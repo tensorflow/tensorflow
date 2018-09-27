@@ -1303,7 +1303,7 @@ class Estimator(object):
         # TODO(yuefengz): add a test for unwrapping per_device_hooks.
         def get_hooks_from_the_first_device(per_device_hooks):
           return [
-              self._distribution.unwrap(per_device_hook)[0]
+              self._train_distribution.unwrap(per_device_hook)[0]
               for per_device_hook in per_device_hooks
           ]
 
