@@ -502,3 +502,15 @@ mlfunc @loop_nest_operand4(%N : affineint) {
   }
   return
 }
+
+// CHECK-LABEL: mlfunc @loop_nest_unroll_full() {
+mlfunc @loop_nest_unroll_full() {
+  // CHECK-NEXT: %0 = "foo"() : () -> i32
+  // CHECK-NEXT: %1 = "bar"() : () -> i32
+  // CHECK-NEXT:  return
+  for %i = 0 to 0 {
+    %x = "foo"() : () -> i32
+    %y = "bar"() : () -> i32
+  }
+  return
+} // CHECK }

@@ -171,9 +171,14 @@ bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
 
 /// Unrolls this loop completely.
 bool mlir::loopUnrollFull(ForStmt *forStmt) {
-  Optional<uint64_t> tripCount = getConstantTripCount(*forStmt);
-  if (tripCount.hasValue())
-    return loopUnrollByFactor(forStmt, tripCount.getValue());
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forStmt);
+  if (mayBeConstantTripCount.hasValue()) {
+    uint64_t tripCount = mayBeConstantTripCount.getValue();
+    if (tripCount == 1) {
+      return promoteIfSingleIteration(forStmt);
+    }
+    return loopUnrollByFactor(forStmt, tripCount);
+  }
   return false;
 }
 
