@@ -8738,35 +8738,7 @@ void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   TF_DeleteStatus(status);
 }
 
-TFE_TensorHandle* TFE_RunConstOp(TFE_Context* ctx) {
-  // Intentionally LOG into INFO below for ease of debugging.
-  VLOG(1) << "TFE_RunConstOp called";
-
-  auto* status = TF_NewStatus();
-  auto* op = TFE_NewOp(ctx, "Const", status);
-  CheckOk(status);
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
-
-  auto* tensor =
-      TF_AllocateTensor(TF_FLOAT, /*shape.data()*/ nullptr, /*shape.size()*/ 0,
-                        TF_DataTypeSize(TF_FLOAT) * 1);
-  auto* ptr = reinterpret_cast<char*>(TF_TensorData(tensor));
-  *reinterpret_cast<float*>(ptr) = 17.0;
-
-  TFE_OpSetAttrTensor(op, "value", tensor, status);
-  CheckOk(status);
-  TF_DeleteTensor(tensor);
-  VLOG(1) << "New op created";
-
-  TFE_TensorHandle* retval;
-  int num_retvals = 1;
-  TFE_Execute(op, &retval, &num_retvals, status);
-  CheckOk(status);
-  CHECK_EQ(num_retvals, 1);
-  VLOG(1) << "Op executed";
-
-  TFE_DeleteOp(op);
-  TF_DeleteStatus(status);
-
-  return retval;
+TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
+                                                      const char* errMsg) {
+  status->status = tensorflow::errors::Internal(errMsg);
 }
