@@ -515,8 +515,10 @@ class _VariableStore(object):
           "synchronization": synchronization,
           "aggregation": aggregation,
       }
-      # `fn_args` can handle functions, `functools.partial`, `lambda`.
-      if "constraint" in function_utils.fn_args(custom_getter):
+      # `fn_args` and `has_kwargs` can handle functions, `functools.partial`,
+      # `lambda`.
+      if ("constraint" in function_utils.fn_args(custom_getter) or
+          function_utils.has_kwargs(custom_getter)):
         custom_getter_kwargs["constraint"] = constraint
       return custom_getter(**custom_getter_kwargs)
     else:
