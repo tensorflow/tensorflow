@@ -707,14 +707,11 @@ cc_library(
 cc_library(
     name = "feature_util",
     srcs = ["example/feature_util.cc"],
-    hdrs = [
-        "example/feature_util.h",
-        "platform/types.h",
-    ],
+    hdrs = ["example/feature_util.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":core_stringpiece",
-        ":platform_protobuf",
+        ":lib_proto_parsing",
         ":protos_all_cc",
     ],
 )
@@ -2561,6 +2558,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
             "example/example_parser_configuration.*",
+            "example/feature_util.cc",
             "util/reporter.cc",
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
@@ -2590,6 +2588,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":feature_util",
         ":lib",
         ":lib_internal",
         ":protos_all_proto_text",
