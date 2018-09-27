@@ -1693,6 +1693,29 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+# Similar to py_test above, this macro is used to exclude dependencies for some py_binary
+# targets in order to reduce the size of //tensorflow/tools/pip_package:simple_console_windows.
+# See https://github.com/tensorflow/tensorflow/issues/22390
+def py_binary(name, deps = [], **kwargs):
+    # Add an extra target for dependencies to avoid nested select statement.
+    native.py_library(
+        name = name + "_deps",
+        deps = deps,
+    )
+    native.py_binary(
+        name = name,
+        deps = select({
+            "//conditions:default": [":" + name + "_deps"],
+            clean_dep("//tensorflow:no_tensorflow_py_deps"): [],
+        }),
+        **kwargs
+    )
+
+register_extension_info(
+    extension_name = "py_binary",
+    label_regex_for_dep = "{extension_name}",
+)
+
 def tf_py_test(
         name,
         srcs,
