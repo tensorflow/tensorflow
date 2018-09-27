@@ -1205,6 +1205,126 @@ class Dataset(object):
       shift = size
     return WindowDataset(self, size, shift, stride, drop_remainder)
 
+  def reduce(self, initial_state, reduce_func):
+    """Reduces the input dataset to a single element.
+
+    The transformation calls `reduce_func` successively on every element of
+    the input dataset until the dataset is exhausted, aggregating information in
+    its internal state. The `initial_state` argument is used for the initial
+    state and the final state is returned as the result.
+
+    For example:
+    - `tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1)`
+      produces `5`
+    - `tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y)`
+      produces `10`
+
+    Args:
+      initial_state: A nested structure of tensors, representing the initial
+        state of the transformation.
+      reduce_func: A function that maps `(old_state, input_element)` to
+        `new_state`. It must take two arguments and return a nested structure
+        of tensors. The structure of `new_state` must match the structure of
+        `initial_state`.
+
+    Returns:
+      A nested structure of `tf.Tensor` objects, corresponding to the final
+      state of the transformation.
+
+    """
+
+    with ops.name_scope("initial_state"):
+      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
+      # values to tensors.
+      initial_state = nest.pack_sequence_as(initial_state, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
+              t, name="component_%d" % i)
+          for i, t in enumerate(nest.flatten(initial_state))
+      ])
+
+    # Compute initial values for the state classes, shapes and types based on
+    # the initial state.
+    state_classes = sparse.get_classes(initial_state)
+    state_shapes = nest.pack_sequence_as(
+        initial_state, [t.get_shape() for t in nest.flatten(initial_state)])
+    state_types = nest.pack_sequence_as(
+        initial_state, [t.dtype for t in nest.flatten(initial_state)])
+
+    # Iteratively rerun the reduce function until reaching a fixed point on
+    # `self._state_shapes`.
+    need_to_rerun = True
+    while need_to_rerun:
+
+      wrapped_func = StructuredFunctionWrapper(
+          reduce_func,
+          "reduce()",
+          input_classes=(state_classes, self.output_classes),
+          input_shapes=(state_shapes, self.output_shapes),
+          input_types=(state_types, self.output_types),
+          add_to_graph=False)
+
+      # Extract and validate class information from the returned values.
+      output_classes = wrapped_func.output_classes
+      for new_state_class, state_class in zip(
+          nest.flatten(output_classes), nest.flatten(state_classes)):
+        if not issubclass(new_state_class, state_class):
+          raise TypeError(
+              "The element classes for the new state must match the initial "
+              "state. Expected %s; got %s." % (state_classes,
+                                               wrapped_func.output_classes))
+
+      # Extract and validate type information from the returned values.
+      output_types = wrapped_func.output_types
+      for new_state_type, state_type in zip(
+          nest.flatten(output_types), nest.flatten(state_types)):
+        if new_state_type != state_type:
+          raise TypeError(
+              "The element types for the new state must match the initial "
+              "state. Expected %s; got %s." % (state_types,
+                                               wrapped_func.output_types))
+
+      # Extract shape information from the returned values.
+      output_shapes = wrapped_func.output_shapes
+      flat_state_shapes = nest.flatten(state_shapes)
+      flat_new_state_shapes = nest.flatten(output_shapes)
+      weakened_state_shapes = [
+          original.most_specific_compatible_shape(new)
+          for original, new in zip(flat_state_shapes, flat_new_state_shapes)
+      ]
+
+      need_to_rerun = False
+      for original_shape, weakened_shape in zip(flat_state_shapes,
+                                                weakened_state_shapes):
+        if original_shape.ndims is not None and (
+            weakened_shape.ndims is None or
+            original_shape.as_list() != weakened_shape.as_list()):
+          need_to_rerun = True
+          break
+
+      if need_to_rerun:
+        state_shapes = nest.pack_sequence_as(state_shapes,
+                                             weakened_state_shapes)
+
+    reduce_func = wrapped_func.function
+    reduce_func.add_to_graph(ops.get_default_graph())
+
+    return sparse.deserialize_sparse_tensors(
+        nest.pack_sequence_as(
+            output_types,
+            gen_dataset_ops.reduce_dataset(
+                self._as_variant_tensor(),  # pylint: disable=protected-access
+                nest.flatten(sparse.serialize_sparse_tensors(initial_state)),
+                reduce_func.captured_inputs,
+                f=reduce_func,
+                output_shapes=nest.flatten(
+                    sparse.as_dense_shapes(output_shapes, output_classes)),
+                output_types=nest.flatten(
+                    sparse.as_dense_types(output_types, output_classes)))),
+        output_types,
+        output_shapes,
+        output_classes)
+
 
 class DatasetSource(Dataset):
   """Abstract class representing a dataset with no inputs."""

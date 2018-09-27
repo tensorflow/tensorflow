@@ -405,6 +405,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "reduce_dataset_op_test",
+    size = "small",
+    srcs = ["reduce_dataset_op_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "sequence_dataset_op_test",
     size = "small",
     srcs = ["sequence_dataset_op_test.py"],
