@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/flex/kernel.h"
+#include "tensorflow/contrib/lite/delegates/eager/kernel.h"
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/contrib/lite/builtin_ops.h"
 #include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context_util.h"
-#include "tensorflow/contrib/lite/delegates/flex/delegate_data.h"
-#include "tensorflow/contrib/lite/delegates/flex/util.h"
+#include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
+#include "tensorflow/contrib/lite/delegates/eager/util.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
 #include "tensorflow/contrib/lite/string.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 
-// Note: this is part of TF Lite's Flex delegation code which is to be
+// Note: this is part of TF Lite's Eager delegation code which is to be
 // completed soon.
 
-// This is the TF Lite op that is created by the flex delegate to handle
+// This is the TF Lite op that is created by the eager delegate to handle
 // execution of a supported subgraph. The usual flow is that the delegate
 // informs the interpreter of supported nodes in a graph, and each supported
 // subgraph is replaced with one instance of this kernel.
@@ -46,7 +46,7 @@ limitations under the License.
 // corresponding TensorFlow/Eager Op.
 
 namespace tflite {
-namespace flex {
+namespace eager {
 namespace kernel {
 
 // Controls the lifetime of tensor handles in a vector.
@@ -72,11 +72,11 @@ class VectorOfHandles {
 
 // Executes the TensorFlow op given by 'op_name', with the attributes specified
 // in 'nodedef'. Inputs and outputs are given as indices into the 'buffer_map'.
-tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
-                                 BufferMap* buffer_map, const string& op_name,
-                                 const tensorflow::NodeDef& nodedef,
-                                 const std::vector<int>& inputs,
-                                 const std::vector<int>& outputs) {
+tensorflow::Status ExecuteEagerOp(tensorflow::EagerContext* eager_context,
+                                  BufferMap* buffer_map, const string& op_name,
+                                  const tensorflow::NodeDef& nodedef,
+                                  const std::vector<int>& inputs,
+                                  const std::vector<int>& outputs) {
   const tensorflow::AttrTypeMap* attr_types;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types),
@@ -258,13 +258,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Execute the TensorFlow Ops sequentially.
   for (const auto& node_data : op_data->nodes) {
     if (node_data.nodedef.op().empty()) {
-      context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
+      context->ReportError(context, "Invalid NodeDef in Eager op '%s'",
                            node_data.name.c_str());
       return kTfLiteError;
     }
     auto status =
-        ExecuteFlexOp(eager_context, buffer_map, node_data.name,
-                      node_data.nodedef, node_data.inputs, node_data.outputs);
+        ExecuteEagerOp(eager_context, buffer_map, node_data.name,
+                       node_data.nodedef, node_data.inputs, node_data.outputs);
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
@@ -295,5 +295,5 @@ TfLiteRegistration GetKernel() {
   return registration;
 }
 
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite

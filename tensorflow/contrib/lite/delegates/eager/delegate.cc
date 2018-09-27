@@ -12,19 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
 
 #include <vector>
 
 #include "tensorflow/contrib/lite/context_util.h"
-#include "tensorflow/contrib/lite/delegates/flex/buffer_map.h"
-#include "tensorflow/contrib/lite/delegates/flex/kernel.h"
-#include "tensorflow/contrib/lite/delegates/flex/util.h"
+#include "tensorflow/contrib/lite/delegates/eager/buffer_map.h"
+#include "tensorflow/contrib/lite/delegates/eager/kernel.h"
+#include "tensorflow/contrib/lite/delegates/eager/util.h"
 #include "tensorflow/contrib/lite/util.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 namespace delegate {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
@@ -32,7 +32,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   TfLiteIntArray* plan;
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
 
-  // Add all custom ops starting with "Flex" to list of supported nodes.
+  // Add all custom ops starting with "Eager" to list of supported nodes.
   std::vector<int> supported_nodes;
   for (int node_index : TfLiteIntArrayView(plan)) {
     TfLiteNode* node;
@@ -40,7 +40,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
     TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(
         context, node_index, &node, &registration));
 
-    if (IsFlexOp(registration->custom_name)) {
+    if (IsEagerOp(registration->custom_name)) {
       supported_nodes.push_back(node_index);
     }
   }
@@ -81,28 +81,28 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
 }
 
 }  // namespace delegate
-}  // namespace flex
+}  // namespace eager
 
-std::unique_ptr<FlexDelegate> FlexDelegate::Create() {
-  std::unique_ptr<flex::DelegateData> delegate_data;
-  if (!flex::DelegateData::Create(&delegate_data).ok()) {
+std::unique_ptr<EagerDelegate> EagerDelegate::Create() {
+  std::unique_ptr<eager::DelegateData> delegate_data;
+  if (!eager::DelegateData::Create(&delegate_data).ok()) {
     fprintf(stderr, "Unable to initialize TensorFlow context.\n");
     return nullptr;
   }
 
-  return std::unique_ptr<FlexDelegate>(
-      new FlexDelegate(std::move(delegate_data)));
+  return std::unique_ptr<EagerDelegate>(
+      new EagerDelegate(std::move(delegate_data)));
 }
 
-FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
+EagerDelegate::EagerDelegate(std::unique_ptr<eager::DelegateData> delegate_data)
     : TfLiteDelegate{
           /*data_=*/delegate_data.get(),
-          /*nullptr,*/ &flex::delegate::Prepare,
-          /*CopyFromBufferHandle=*/&flex::delegate::CopyFromBufferHandle,
+          /*nullptr,*/ &eager::delegate::Prepare,
+          /*CopyFromBufferHandle=*/&eager::delegate::CopyFromBufferHandle,
           /*CopyToBufferHandle=*/nullptr,
           /*FreeBufferHandle=*/nullptr},
       delegate_data_(std::move(delegate_data)) {}
 
-FlexDelegate::~FlexDelegate() {}
+EagerDelegate::~EagerDelegate() {}
 
 }  // namespace tflite

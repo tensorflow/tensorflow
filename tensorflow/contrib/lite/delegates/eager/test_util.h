@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_TEST_UTIL_H_
-#define TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_TEST_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_TEST_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_TEST_UTIL_H_
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 namespace testing {
 
 enum TfOpType {
@@ -35,12 +35,12 @@ enum TfOpType {
 };
 
 // This class creates models with TF and TFLite ops. In order to use this class
-// to test the Flex delegate, implement a function that calls
+// to test the Eager delegate, implement a function that calls
 // interpreter->ModifyGraphWithDelegate.
-class FlexModelTest : public ::testing::Test {
+class EagerModelTest : public ::testing::Test {
  public:
-  FlexModelTest() {}
-  ~FlexModelTest() {}
+  EagerModelTest() {}
+  ~EagerModelTest() {}
 
   bool Invoke();
 
@@ -104,7 +104,7 @@ class FlexModelTest : public ::testing::Test {
 
  private:
   // Helper method to add a TensorFlow op. tflite_names needs to start with
-  // "Flex" in order to work with the Flex delegate.
+  // "Eager" in order to work with the Eager delegate.
   void AddTfOp(const char* tflite_name, const string& tf_name,
                const string& nodedef_str, const std::vector<int>& inputs,
                const std::vector<int>& outputs);
@@ -113,7 +113,7 @@ class FlexModelTest : public ::testing::Test {
 };
 
 }  // namespace testing
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_TEST_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_TEST_UTIL_H_

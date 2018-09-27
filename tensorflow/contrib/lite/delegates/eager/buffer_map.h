@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_BUFFER_MAP_H_
-#define TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_BUFFER_MAP_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_BUFFER_MAP_H_
+#define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_BUFFER_MAP_H_
 
 #include <map>
 
@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 
 // Maps a TF Lite tensor index into a TensorFlow tensor.
 //
 // The TF Lite interpreter assigns integer indices to each of its tensors, but
-// the Flex delegate deals in terms of TensorFlow tensors. This class maps
+// the Eager delegate deals in terms of TensorFlow tensors. This class maps
 // from indices to tensors and allows the creation of new tensors to be
 // associated with a given index.
 class BufferMap {
@@ -55,7 +55,7 @@ class BufferMap {
   std::map<int, tensorflow::Tensor> id_to_tensor_;
 };
 
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_BUFFER_MAP_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_BUFFER_MAP_H_

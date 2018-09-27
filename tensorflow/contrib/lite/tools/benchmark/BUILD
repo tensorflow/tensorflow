@@ -36,7 +36,7 @@ cc_binary(
 )
 
 cc_binary(
-    name = "benchmark_model_plus_flex",
+    name = "benchmark_model_plus_eager",
     srcs = [
         "benchmark_main.cc",
     ],
@@ -49,7 +49,7 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
-        ":benchmark_tflite_model_plus_flex_lib",
+        ":benchmark_tflite_model_plus_eager_lib",
         ":logging",
     ],
 )
@@ -111,7 +111,7 @@ cc_library(
 )
 
 cc_library(
-    name = "benchmark_tflite_model_plus_flex_lib",
+    name = "benchmark_tflite_model_plus_eager_lib",
     srcs = [
         "benchmark_tflite_model.cc",
         "logging.h",
@@ -123,7 +123,7 @@ cc_library(
         ":logging",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
-        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/delegates/eager:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/profiling:profile_summarizer",
     ],
