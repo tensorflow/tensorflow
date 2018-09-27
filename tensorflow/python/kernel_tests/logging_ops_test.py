@@ -34,7 +34,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 
 
 class LoggingOpsTest(test.TestCase):
@@ -70,7 +69,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensor(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor)
@@ -81,7 +80,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorVarySummarize(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor, summarize=1)
@@ -90,7 +89,7 @@ class PrintV2Test(test.TestCase):
       expected = "[0 ... 9]"
       self.assertTrue((expected + "\n") in printed.contents())
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor, summarize=2)
@@ -99,7 +98,7 @@ class PrintV2Test(test.TestCase):
       expected = "[0 1 ... 8 9]"
       self.assertTrue((expected + "\n") in printed.contents())
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor, summarize=3)
@@ -108,7 +107,7 @@ class PrintV2Test(test.TestCase):
       expected = "[0 1 2 ... 7 8 9]"
       self.assertTrue((expected + "\n") in printed.contents())
 
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor, summarize=-1)
@@ -119,7 +118,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneVariable(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(math_ops.range(10))
       if not context.executing_eagerly():
         variables.global_variables_initializer().run()
@@ -131,7 +130,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintTwoVariablesInStructWithAssignAdd(self):
-    with self.test_session():
+    with self.cached_session():
       var_one = variables.Variable(2.14)
       plus_one = var_one.assign_add(1.0)
       var_two = variables.Variable(math_ops.range(10))
@@ -146,7 +145,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintTwoTensors(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor, tensor * 10)
@@ -156,7 +155,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintPlaceholderGeneration(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2("{}6", {"{}": tensor * 10})
@@ -166,7 +165,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintNoTensors(self):
-    with self.test_session():
+    with self.cached_session():
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(23, [23, 5], {"6": 12})
         self.evaluate(print_op)
@@ -175,7 +174,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintFloatScalar(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = ops.convert_to_tensor(434.43)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor)
@@ -185,7 +184,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintStringScalar(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = ops.convert_to_tensor("scalar")
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(tensor)
@@ -195,7 +194,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintComplexTensorStruct(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       small_tensor = constant_op.constant([0.3, 12.4, -16.1])
       big_tensor = math_ops.mul(tensor, 10)
@@ -215,7 +214,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintSparseTensor(self):
-    with self.test_session():
+    with self.cached_session():
       ind = [[0, 0], [1, 0], [1, 3], [4, 1], [1, 4], [3, 2], [3, 3]]
       val = [0, 10, 13, 4, 14, 32, 33]
       shape = [5, 6]
@@ -239,7 +238,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintSparseTensorInDataStruct(self):
-    with self.test_session():
+    with self.cached_session():
       ind = [[0, 0], [1, 0], [1, 3], [4, 1], [1, 4], [3, 2], [3, 3]]
       val = [0, 10, 13, 4, 14, 32, 33]
       shape = [5, 6]
@@ -263,7 +262,7 @@ class PrintV2Test(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorStdout(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stdout) as printed:
         print_op = logging_ops.print_v2(
@@ -273,41 +272,8 @@ class PrintV2Test(test.TestCase):
       self.assertTrue((expected + "\n") in printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
-  def testPrintOneTensorLogInfo(self):
-    with self.test_session():
-      tensor = math_ops.range(10)
-      with self.captureWritesToStream(sys.stderr) as printed:
-        print_op = logging_ops.print_v2(
-            tensor, output_stream=tf_logging.info)
-        self.evaluate(print_op)
-      expected = "[0 1 2 ... 7 8 9]"
-      self.assertTrue(expected in printed.contents())
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testPrintOneTensorLogWarning(self):
-    with self.test_session():
-      tensor = math_ops.range(10)
-      with self.captureWritesToStream(sys.stderr) as printed:
-        print_op = logging_ops.print_v2(
-            tensor, output_stream=tf_logging.warning)
-        self.evaluate(print_op)
-      expected = "[0 1 2 ... 7 8 9]"
-      self.assertTrue(expected in printed.contents())
-
-  @test_util.run_in_graph_and_eager_modes()
-  def testPrintOneTensorLogError(self):
-    with self.test_session():
-      tensor = math_ops.range(10)
-      with self.captureWritesToStream(sys.stderr) as printed:
-        print_op = logging_ops.print_v2(
-            tensor, output_stream=tf_logging.error)
-        self.evaluate(print_op)
-      expected = "[0 1 2 ... 7 8 9]"
-      self.assertTrue(expected in printed.contents())
-
-  @test_util.run_in_graph_and_eager_modes()
   def testInvalidOutputStreamRaisesError(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.assertRaises(ValueError):
         print_op = logging_ops.print_v2(
@@ -315,13 +281,13 @@ class PrintV2Test(test.TestCase):
         self.evaluate(print_op)
 
   def testPrintOpName(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       print_op = logging_ops.print_v2(tensor, name="print_name")
       self.assertEqual(print_op.name, "print_name")
 
   def testNoDuplicateFormatOpGraphModeAfterExplicitFormat(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       formatted_string = string_ops.string_format("{}", tensor)
       print_op = logging_ops.print_v2(formatted_string)
@@ -332,7 +298,7 @@ class PrintV2Test(test.TestCase):
       self.assertEqual(len(format_ops), 1)
 
   def testPrintOneTensorEagerOnOpCreate(self):
-    with self.test_session():
+    with self.cached_session():
       with context.eager_mode():
         tensor = math_ops.range(10)
         expected = "[0 1 2 ... 7 8 9]"

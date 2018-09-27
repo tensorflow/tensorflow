@@ -173,6 +173,9 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
         **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
+  def _inputs(self):
+    return [self._selector_input] + self._data_inputs
+
   @property
   def output_classes(self):
     return self._data_inputs[0].output_classes

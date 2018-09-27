@@ -564,7 +564,10 @@ def _aggregate_grads(gradients):
 def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
   if isinstance(grad, ops.Tensor):
-    return functools.reduce(operator.mul, grad._shape_tuple(), 1)  # pylint: disable=protected-access
+    shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
+    if shape_tuple is None or None in shape_tuple:
+      return 0
+    return functools.reduce(operator.mul, shape_tuple, 1)
   if isinstance(grad, ops.IndexedSlices):
     return functools.reduce(operator.mul, grad.values._shape_tuple(), 1)  # pylint: disable=protected-access
   raise ValueError("`grad` not a Tensor or IndexedSlices.")

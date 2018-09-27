@@ -41,7 +41,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(2.)
     ret = while_loop_v2(lambda v: v < 8., lambda v: v * v, [x])
     grad = gradients_impl.gradients(ret, [x])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(ret), 16.)
       self.assertSequenceEqual(sess.run(grad), [32.])
 
@@ -58,7 +58,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     # Note: This is simply d_ret[0]/d_x since d_ret[1]/d_x is 0.
     grad = gradients_impl.gradients(ret, [x])  # [2*x*y]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertSequenceEqual(sess.run(ret), [45., 3.])
       self.assertSequenceEqual(sess.run(grad), [9.])
 
@@ -81,7 +81,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grady_0 = gradients_impl.gradients(ret[0], [y])  # [2*x*y + x**2]
     grady_1 = gradients_impl.gradients(ret[1], [y])  # [x + 1]
     grady_2 = gradients_impl.gradients(ret, [y])  # [2*x*y + x**2 + x + 1]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertSequenceEqual(sess.run(ret), [120., 23.])
       self.assertSequenceEqual(sess.run(gradx_0), [39.])
       self.assertSequenceEqual(sess.run(gradx_1), [4.])
@@ -96,7 +96,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, ret1)  # x**4
     grad = gradients_impl.gradients(ret2, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertSequenceEqual(sess.run(grad), [32.])
       self.assertSequenceEqual(sess.run(grad_grad), [48.])
 
@@ -105,7 +105,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(lambda v: v < 8., lambda v: v**2, [x])  # x**4
     grad = gradients_impl.gradients(ret, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(ret), 16.)
       self.assertSequenceEqual(sess.run(grad), [32.])
       self.assertSequenceEqual(sess.run(grad_grad), [48.])
@@ -148,7 +148,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     y = constant_op.constant(1.)
     ret = while_loop_v2(lambda v: v + y < 9., lambda v: v * 3., [x])
     grad = gradients_impl.gradients(ret, [x])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(ret), 18.)
       self.assertSequenceEqual(sess.run(grad), [9.])
 
@@ -157,7 +157,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     y = constant_op.constant(3.)
     ret = while_loop_v2(lambda v: v < 8., lambda v: v * y, [x])
     grad = gradients_impl.gradients(ret, [x])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(ret), 18.)
       self.assertSequenceEqual(sess.run(grad), [9.])
 
@@ -178,7 +178,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     ret = while_loop_v2(Cond, Body, [x, tensor_list])
     grad = gradients_impl.gradients(ret[0], x)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(ret[0]), 16.)
       self.assertSequenceEqual(sess.run(grad), [32.])
 
@@ -212,7 +212,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     self.assertEqual(accumulator_count, 1)
 
     grad = gradients_impl.gradients(ret[0], x)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(sess.run(ret[0]), 16.)
       self.assertSequenceEqual(sess.run(grad), [32.])
 

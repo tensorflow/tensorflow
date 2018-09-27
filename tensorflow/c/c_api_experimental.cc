@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
@@ -8506,6 +8507,20 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
                 /*targets*/ &enqueue_op, /*ntargets*/ 1,
                 /*run_metadata*/ nullptr, status);
   VLOG(1) << "Enqueuing is done.";
+}
+
+TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(text_proto,
+                                                         &server_def)) {
+    status->status = tensorflow::errors::Internal(
+        "Invalid text proto for ServerDef: ", text_proto);
+    return nullptr;
+  }
+  status->status = tensorflow::Status();
+  TF_Buffer* ret = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(server_def, ret));
+  return ret;
 }
 
 TFE_Context* TFE_CreateContextFromSession(TF_Session* session,

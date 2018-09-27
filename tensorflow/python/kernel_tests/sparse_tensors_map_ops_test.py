@@ -76,7 +76,7 @@ class SparseTensorsMapTest(test.TestCase):
     return sparse_tensor_lib.SparseTensorValue(ind, val, shape)
 
   def testAddTakeMany(self):
-    with self.test_session(graph=ops.Graph(), use_gpu=False) as sess:
+    with self.session(graph=ops.Graph(), use_gpu=False) as sess:
       sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
       sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
       handle0 = add_sparse_to_tensors_map(sp_input0, shared_name="a")

@@ -15,8 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TYPES_H_
 #define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TYPES_H_
 
+#include <algorithm>
 #include <cstring>
-#include <iterator>
 
 #include "absl/base/macros.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
@@ -126,7 +126,11 @@ class RuntimeShape {
 
   explicit RuntimeShape(int dimensions_count) : size_(dimensions_count) {
     if (dimensions_count > kMaxSmallSize) {
+#ifdef TF_LITE_STATIC_MEMORY
+      TFLITE_CHECK(false && "No shape resizing supported on this platform");
+#else   // TF_LITE_STATIC_MEMORY
       dims_pointer_ = new int32[dimensions_count];
+#endif  // TF_LITE_STATIC_MEMORY
     }
   }
 
@@ -161,7 +165,11 @@ class RuntimeShape {
 
   ~RuntimeShape() {
     if (size_ > kMaxSmallSize) {
+#ifdef TF_LITE_STATIC_MEMORY
+      TFLITE_CHECK(false && "No shape resizing supported on this platform");
+#else   // TF_LITE_STATIC_MEMORY
       delete[] dims_pointer_;
+#endif  // TF_LITE_STATIC_MEMORY
     }
   }
 
@@ -192,11 +200,19 @@ class RuntimeShape {
 
   inline void Resize(int dimensions_count) {
     if (size_ > kMaxSmallSize) {
+#ifdef TF_LITE_STATIC_MEMORY
+      TFLITE_CHECK(false && "No shape resizing supported on this platform");
+#else   // TF_LITE_STATIC_MEMORY
       delete[] dims_pointer_;
+#endif  // TF_LITE_STATIC_MEMORY
     }
     size_ = dimensions_count;
     if (dimensions_count > kMaxSmallSize) {
+#ifdef TF_LITE_STATIC_MEMORY
+      TFLITE_CHECK(false && "No shape resizing supported on this platform");
+#else   // TF_LITE_STATIC_MEMORY
       dims_pointer_ = new int32[dimensions_count];
+#endif  // TF_LITE_STATIC_MEMORY
     }
   }
 
@@ -859,6 +875,15 @@ struct MeanParams {
   int16 axis[4];
 };
 
+struct PackParams {
+  int8 axis;
+  const int32* input_zeropoint;
+  const float* input_scale;
+  uint16 inputs_count;
+  int32 output_zeropoint;
+  float output_scale;
+};
+
 struct PadParams {
   int8 left_padding_count;
   int32 left_padding[4];
@@ -957,6 +982,11 @@ struct TanhParams {
 struct TransposeParams {
   int8 perm_count;
   int32 perm[4];
+};
+
+struct UnpackParams {
+  uint16 num_split;
+  int16 axis;
 };
 
 template <typename P>

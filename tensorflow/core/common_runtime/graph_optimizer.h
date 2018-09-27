@@ -45,12 +45,15 @@ class GraphOptimizer {
   //
   // If cse_consider_fn is not null then only nodes for which cse_consider_fn
   // returns true will be considered for CSE.
+  // If cf_consider_fn is not null then only nodes for which cf_consider_fn
+  // returns true will be considered for CF.
   void Optimize(
       FunctionLibraryRuntime* runtime, Env* env, Device* device,
       std::unique_ptr<Graph>* graph,
       const std::unordered_map<string, std::vector<PartialTensorShape>>*
           shape_map,
-      const std::function<bool(const Node*)>& cse_consider_fn = nullptr);
+      const std::function<bool(const Node*)>& cse_consider_fn = nullptr,
+      const std::function<bool(const Node*)>& cf_consider_fn = nullptr);
 
   const OptimizerOptions& options() { return opts_; }
 

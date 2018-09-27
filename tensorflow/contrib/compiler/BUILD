@@ -5,7 +5,10 @@ package(default_visibility = [":friends"])
 package_group(
     name = "friends",
     includes = ["//tensorflow/compiler/jit:friends"],
-    packages = ["//tensorflow/..."],
+    packages = [
+        "//tensorflow/...",
+        "//third_party/py/tensor2tensor/...",
+    ],
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
@@ -59,9 +62,10 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary_op_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 

@@ -915,7 +915,7 @@ class TopologyConstructionTest(test.TestCase):
 
   def test_constant_initializer_with_numpy(self):
 
-    with self.test_session():
+    with self.cached_session():
       initializer = keras.initializers.Constant(np.ones((3, 2)))
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,),

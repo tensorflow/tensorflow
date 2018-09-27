@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 
 #include "fixedpoint/fixedpoint.h"
-#include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 #include "tensorflow/contrib/lite/kernels/internal/types.h"
@@ -35,7 +34,6 @@ inline void DepthwiseConv(
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
     uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv/8bit");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;

@@ -66,10 +66,11 @@ class LossScaleOptimizer(optimizer.Optimizer):
 
   # Choose a loss scale manager which decides how to pick the right loss scale
   # throughout the training process.
-  loss_scale_manger = tf.contrib.mixed_precision.FixedLossScaleManager(5000)
+  loss_scale_manager = tf.contrib.mixed_precision.FixedLossScaleManager(5000)
 
   # Wraps the original optimizer in a LossScaleOptimizer.
-  loss_scale_optimizer = LossScaleOptimizer(opt, loss_scale_manager)
+  loss_scale_optimizer =
+      tf.contrib.mixed_precision.LossScaleOptimizer(opt, loss_scale_manager)
 
   # Call minimize() on the loss scale optimizer.
   train_op = loss_scale_optimizer.minimize(loss)

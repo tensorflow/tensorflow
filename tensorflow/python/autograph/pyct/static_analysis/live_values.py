@@ -89,7 +89,8 @@ class LiveValueResolver(transformer.Base):
 
       if has_single_def:
         def_, = defs
-        if def_.param_of is self.enclosing_entities[0]:
+        # Note: param_of is a weakref.
+        if def_.param_of and def_.param_of() is self.enclosing_entities[0]:
           if node.id in self.entity_info.arg_values:
             obj = self.entity_info.arg_values[node.id]
             anno.setanno(node, 'live_val', obj)

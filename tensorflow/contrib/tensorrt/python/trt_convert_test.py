@@ -104,7 +104,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   def _GetGraphDef(self):
     """Get the graph def for testing."""
     g, var, _, _ = self._GetGraph()
-    with self.test_session(graph=g, config=self._GetConfigProto()) as sess:
+    with self.session(graph=g, config=self._GetConfigProto()) as sess:
       sess.run(var.initializer)
       graph_def = graph_util.convert_variables_to_constants(
           sess, g.as_graph_def(add_shapes=True), ["output"])
@@ -128,7 +128,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         outputs={"myoutput": utils.build_tensor_info(out)},
         method_name=signature_constants.PREDICT_METHOD_NAME)
     saved_model_builder = builder.SavedModelBuilder(input_saved_model_dir)
-    with self.test_session(graph=g, config=self._GetConfigProto()) as sess:
+    with self.session(graph=g, config=self._GetConfigProto()) as sess:
       sess.run(var.initializer)
       saved_model_builder.add_meta_graph_and_variables(
           sess, [tag_constants.SERVING],

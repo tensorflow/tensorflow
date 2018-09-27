@@ -210,8 +210,9 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
                                                   &indices_vector));
   reference_ops::SparseToDense(indices_vector, GetTensorData<T>(values),
                                *GetTensorData<T>(default_value),
-                               GetTensorData<T>(output), GetTensorDims(output),
-                               value_is_scalar);
+                               value_is_scalar, GetTensorShape(output),
+                               GetTensorData<T>(output));
+
   return kTfLiteOk;
 }
 

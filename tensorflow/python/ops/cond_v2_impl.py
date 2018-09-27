@@ -119,7 +119,11 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
                       attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
 
-    return tuple(tensors[:num_cond_outputs])
+    result = tuple(tensors[:num_cond_outputs])
+    if len(result) == 1:
+      return result[0]
+    else:
+      return result
 
 
 @ops.RegisterGradient("If")

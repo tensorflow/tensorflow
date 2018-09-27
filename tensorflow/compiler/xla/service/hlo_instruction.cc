@@ -379,7 +379,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     case HloOpcode::kCustomCall:
       instruction = CreateCustomCall(proto.shape(), all_operands(),
-                                     proto.custom_call_target());
+                                     proto.custom_call_target(),
+                                     proto.custom_call_opaque());
       if (proto.has_window()) {
         static_cast<HloCustomCallInstruction*>(instruction.get())
             ->set_window(proto.window());
@@ -1108,9 +1109,9 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    absl::string_view custom_call_target) {
-  return absl::make_unique<HloCustomCallInstruction>(shape, operands,
-                                                     custom_call_target);
+    absl::string_view custom_call_target, absl::string_view opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, custom_call_target, opaque);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
@@ -2423,7 +2424,7 @@ template <typename Visitor>
 static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
                            const InternalCompareFunction* operand_order,
                            bool ignore_control_predecessors) {
-  visitor->ReserveVisitStates(root->GetModule()->NumUniqueInstructionIds());
+  visitor->ReserveVisitStates(root->GetModule()->instruction_count());
 
   // dfs_stack holds pairs of <HloInstruction*->unique_id(), HloInstruction*>.
   //

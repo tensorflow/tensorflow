@@ -120,6 +120,15 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useNNAPI(JNIEnv* env,
 /*
  *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
  *  Method:
+ *  Signature: (JZ)V
+ */
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
+    JNIEnv* env, jclass clazz, jlong handle, jboolean allow);
+
+/*
+ *  Class:     org_tensorflow_lite_NativeInterpreterWrapper
+ *  Method:
  *  Signature: (JI)V
  */
 JNIEXPORT void JNICALL

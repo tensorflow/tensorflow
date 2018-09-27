@@ -1097,6 +1097,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "unicode_script_op_test",
+    size = "small",
+    srcs = ["unicode_script_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
 cuda_py_test(
     name = "topk_op_test",
     size = "small",
@@ -1654,6 +1666,18 @@ cuda_py_test(
     name = "extract_image_patches_op_test",
     size = "small",
     srcs = ["extract_image_patches_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+cuda_py_test(
+    name = "extract_volume_patches_op_test",
+    size = "small",
+    srcs = ["extract_volume_patches_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",

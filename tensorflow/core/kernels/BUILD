@@ -217,6 +217,19 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "extract_volume_patches_op",
+    prefix = "extract_volume_patches_op",
+    deps = [
+        ":bounds_check",
+        ":eigen_helpers",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 cc_library(
     name = "conv_3d",
     hdrs = ["conv_3d.h"],
@@ -622,6 +635,7 @@ cc_library(
         ":diag_op",
         ":edit_distance_op",
         ":extract_image_patches_op",
+        ":extract_volume_patches_op",
         ":gather_nd_op",
         ":gather_op",
         ":guarantee_const_op",
@@ -2014,8 +2028,8 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:resource_variable_ops_op_lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -4417,11 +4431,20 @@ cc_library(
         ":string_strip_op",
         ":string_to_hash_bucket_op",
         ":substr_op",
+        ":unicode_script_op",
     ],
+)
+
+cc_library(
+    name = "string_util",
+    srcs = ["string_util.cc"],
+    hdrs = ["string_util.h"],
+    deps = ["//tensorflow/core:lib"],
 )
 
 STRING_DEPS = [
     ":bounds_check",
+    ":string_util",
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -5152,6 +5175,7 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "spectrogram.h",
+        "string_util.h",
         "tensor_array.h",
         "tile_functor.h",
         "tile_ops_cpu_impl.h",
@@ -5231,6 +5255,8 @@ filegroup(
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
+        "cwise_op_xlogy.cc",
+        "cwise_op_xdivy.cc",
         "data_format_ops.cc",
         "decode_wav_op.cc",
         "deep_conv2d.cc",
@@ -5320,6 +5346,7 @@ filegroup(
         "spectrogram_op.cc",
         "stack_ops.cc",
         "string_join_op.cc",
+        "string_util.cc",
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
@@ -5445,6 +5472,7 @@ filegroup(
             "batch_kernels.*",
             "regex_full_match_op.cc",
             "regex_replace_op.cc",
+            "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
             "mkl_*",
             "xsmm_*",
@@ -6390,6 +6418,12 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_slice_op",
+    prefix = "mkl_slice_op",
+    deps = ARRAY_DEPS + mkl_deps(),
+)
+
+tf_mkl_kernel_library(
     name = "mkl_identity_op",
     prefix = "mkl_identity_op",
     deps = ARRAY_DEPS + mkl_deps(),
@@ -6530,6 +6564,16 @@ tf_kernel_library(
         "//tensorflow/core/util/rpc:rpc_factory",
         "//tensorflow/core/util/rpc:rpc_factory_registry",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    name = "unicode_script_op",
+    srcs = ["unicode_script_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:string_ops_op_lib",
+        "@icu//:common",
     ],
 )
 

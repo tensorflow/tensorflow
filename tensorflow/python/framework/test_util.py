@@ -890,7 +890,11 @@ class ErrorLoggingSession(session.Session):
     try:
       return super(ErrorLoggingSession, self).run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(str(e))
+      # Note: disable the logging for OutOfRangeError, which makes the output
+      # of tf.data tests hard to read, because OutOfRangeError is used as the
+      # signal completion
+      if not isinstance(e, errors.OutOfRangeError):
+        logging.error(str(e))
       raise
 
 
@@ -1397,35 +1401,36 @@ class TensorFlowTestCase(googletest.TestCase):
                                                                      b.shape)
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
+    msgs = [msg]
     if not np.allclose(a, b, rtol=rtol, atol=atol):
-      # Prints more details than np.testing.assert_allclose.
+      # Adds more details to np.testing.assert_allclose.
       #
       # NOTE: numpy.allclose (and numpy.testing.assert_allclose)
       # checks whether two arrays are element-wise equal within a
       # tolerance. The relative difference (rtol * abs(b)) and the
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
-      # print out which elements violate such conditions.
+      # tell user which elements violate such conditions.
       cond = np.logical_or(
           np.abs(a - b) > atol + rtol * np.abs(b),
           np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
-        print("not close where = ", np.where(cond))
+        msgs.append("not close where = {}".format(np.where(cond)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not close lhs = ", x)
-      print("not close rhs = ", y)
-      print("not close dif = ", np.abs(x - y))
-      print("not close tol = ", atol + rtol * np.abs(y))
-      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
+      msgs.append("not close lhs = {}".format(x))
+      msgs.append("not close rhs = {}".format(y))
+      msgs.append("not close dif = {}".format(np.abs(x - y)))
+      msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
+      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
       np.testing.assert_allclose(
-          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
+          a, b, rtol=rtol, atol=atol, err_msg="\n".join(msgs), equal_nan=True)
 
   def _assertAllCloseRecursive(self,
                                a,
@@ -1607,19 +1612,20 @@ class TensorFlowTestCase(googletest.TestCase):
         np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
     ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
+    msgs = [msg]
     if not np.all(same):
-      # Prints more details than np.testing.assert_array_equal.
+      # Adds more details to np.testing.assert_array_equal.
       diff = np.logical_not(same)
       if a.ndim:
         x = a[np.where(diff)]
         y = b[np.where(diff)]
-        print("not equal where = ", np.where(diff))
+        msgs.append("not equal where = {}".format(np.where(diff)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not equal lhs = ", x)
-      print("not equal rhs = ", y)
-      np.testing.assert_array_equal(a, b, err_msg=msg)
+      msgs.append("not equal lhs = {}".format(x))
+      msgs.append("not equal rhs = {}".format(y))
+      np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   def assertAllGreater(self, a, comparison_target):
     """Assert element values are all greater than a target value.
@@ -1933,6 +1939,8 @@ class TensorFlowTestCase(googletest.TestCase):
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.arithmetic_optimization = (
+          rewriter_config_pb2.RewriterConfig.OFF)
+      config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 

@@ -34,8 +34,8 @@ class OptimizeStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         optimization.assert_next(
             ["LatencyStats", "Map", "LatencyStats", "Prefetch",
              "LatencyStats"])).map(lambda x: x * x).prefetch(1).apply(
-                 optimization.optimize(["latency_all_edges"])).apply(
-                     stats_ops.set_stats_aggregator(stats_aggregator))
+                 stats_ops.set_stats_aggregator(stats_aggregator)).apply(
+                     optimization.optimize(["latency_all_edges"]))
     iterator = dataset.make_initializable_iterator()
     get_next = iterator.get_next()
     summary_t = stats_aggregator.get_summary()

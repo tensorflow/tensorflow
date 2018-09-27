@@ -170,7 +170,8 @@ def _internal_input_layer(features,
                           trainable=True,
                           cols_to_vars=None,
                           scope=None,
-                          cols_to_output_tensors=None):
+                          cols_to_output_tensors=None,
+                          from_template=False):
   """See input_layer. `scope` is a name or variable scope to use."""
 
   feature_columns = _normalize_feature_columns(feature_columns)
@@ -186,10 +187,7 @@ def _internal_input_layer(features,
   if ops.GraphKeys.MODEL_VARIABLES not in weight_collections:
     weight_collections.append(ops.GraphKeys.MODEL_VARIABLES)
 
-  # a non-None `scope` can allow for variable reuse, when, e.g., this function
-  # is wrapped by a `make_template`.
-  with variable_scope.variable_scope(
-      scope, default_name='input_layer', values=features.values()):
+  def _get_logits():  # pylint: disable=missing-docstring
     builder = _LazyBuilder(features)
     output_tensors = []
     ordered_columns = []
@@ -216,6 +214,16 @@ def _internal_input_layer(features,
           cols_to_output_tensors[column] = output_tensor
     _verify_static_batch_size_equality(output_tensors, ordered_columns)
     return array_ops.concat(output_tensors, 1)
+
+  # If we're constructing from the `make_template`, that by default adds a
+  # variable scope with the name of the layer. In that case, we dont want to
+  # add another `variable_scope` as that would break checkpoints.
+  if from_template:
+    return _get_logits()
+  else:
+    with variable_scope.variable_scope(
+        scope, default_name='input_layer', values=features.values()):
+      return _get_logits()
 
 
 @tf_export('feature_column.input_layer')
@@ -301,17 +309,18 @@ class InputLayer(object):
                feature_columns,
                weight_collections=None,
                trainable=True,
-               cols_to_vars=None):
+               cols_to_vars=None,
+               name='feature_column_input_layer',
+               create_scope_now=True):
     """See `input_layer`."""
 
     self._feature_columns = feature_columns
     self._weight_collections = weight_collections
     self._trainable = trainable
     self._cols_to_vars = cols_to_vars
+    self._name = name
     self._input_layer_template = template.make_template(
-        'feature_column_input_layer',
-        _internal_input_layer,
-        create_scope_now_=True)
+        self._name, _internal_input_layer, create_scope_now_=create_scope_now)
     self._scope = self._input_layer_template.variable_scope
 
   def __call__(self, features):
@@ -321,7 +330,11 @@ class InputLayer(object):
         weight_collections=self._weight_collections,
         trainable=self._trainable,
         cols_to_vars=None,
-        scope=self._scope)
+        from_template=True)
+
+  @property
+  def name(self):
+    return self._name
 
   @property
   def non_trainable_variables(self):

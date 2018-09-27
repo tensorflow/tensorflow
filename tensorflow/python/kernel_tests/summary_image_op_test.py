@@ -52,7 +52,7 @@ class SummaryImageOpTest(test.TestCase):
   def testImageSummary(self):
     for depth in (1, 3, 4):
       for positive in False, True:
-        with self.test_session(graph=ops.Graph()) as sess:
+        with self.session(graph=ops.Graph()) as sess:
           shape = (4, 5, 7) + (depth,)
           bad_color = [255, 0, 0, 255][:depth]
           # Build a mostly random image with one nan
@@ -87,7 +87,7 @@ class SummaryImageOpTest(test.TestCase):
   def testImageSummaryUint8(self):
     np.random.seed(7)
     for depth in (1, 3, 4):
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         shape = (4, 5, 7) + (depth,)
 
         # Build a random uint8 image

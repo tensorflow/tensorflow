@@ -88,6 +88,16 @@ NodeDef* AddScalarConstNodeHelper(
 
 }  // namespace
 
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph) {
+  NodeDef node;
+  node.set_op("Placeholder");
+  SetUniqueGraphNodeName(node.op(), graph->GetGraph(), &node);
+  (*node.mutable_attr())["dtype"].set_type(dtype);
+  TensorShapeProto* shape = (*node.mutable_attr())["shape"].mutable_shape();
+  shape->set_unknown_rank(false);
+  return graph->AddNode(std::move(node));
+}
+
 NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
@@ -191,25 +201,22 @@ bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph) {
 
 int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return GetFirstElementIndexWithPredicate(
       [&name](const FunctionDef& function) {
         return function.signature().name() == name;
       },
       library.function());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindGraphNodeWithName(StringPiece name, const GraphDef& graph) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return GetFirstElementIndexWithPredicate(
       [&name](const NodeDef& node) { return node.name() == name; },
       graph.node());
-  return indices.empty() ? -1 : indices.front();
 }
 
 int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph) {
-  std::vector<int> indices = GetElementIndicesWithPredicate(
+  return GetFirstElementIndexWithPredicate(
       [&op](const NodeDef& node) { return node.op() == op; }, graph.node());
-  return indices.empty() ? -1 : indices.front();
 }
 
 std::vector<int> FindAllGraphNodesWithOp(const string& op,
@@ -250,6 +257,21 @@ void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
   }
   function->mutable_signature()->set_name(std::move(name));
 }
+
+void CopyAttribute(const string& attribute_name, const NodeDef& from,
+                   NodeDef* to_node) {
+  (*to_node->mutable_attr())[attribute_name] = from.attr().at(attribute_name);
+}
+
+void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
+                         const NodeDef& second, NodeDef* to_node) {
+  CopyAttribute(attribute_name, first, to_node);
+  (*to_node->mutable_attr())
+      .at(attribute_name)
+      .mutable_list()
+      ->MergeFrom(second.attr().at(attribute_name).list());
+}
+
 }  // end namespace graph_utils
 }  // end namespace grappler
 }  // end namespace tensorflow

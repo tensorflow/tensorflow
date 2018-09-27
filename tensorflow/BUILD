@@ -564,6 +564,7 @@ tf_cc_shared_object(
             "$(location //tensorflow/c:version_script.lds)",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -588,6 +589,7 @@ tf_cc_shared_object(
             "$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
         "//tensorflow:tf_version_script.lds",
@@ -626,6 +628,14 @@ genrule(
 
       if [[ $${d} == *local_config_* ]]; then
         continue
+      fi
+
+      if [[ $${d} == external* ]]; then
+        extname="$${d#*external/}"
+        extname="$${extname%%/*}"
+        if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
+          continue
+        fi
       fi
 
       mkdir -p "$@/$${d}"

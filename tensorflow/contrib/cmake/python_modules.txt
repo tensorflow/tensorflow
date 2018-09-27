@@ -406,7 +406,6 @@ tensorflow/contrib/summary
 tensorflow/contrib/tensorboard
 tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
-tensorflow/contrib/tensorboard/plugins/trace
 # TODO(sami): Add cmake implementations.
 # tensorflow/contrib/tensorrt/python
 # tensorflow/contrib/tensorrt/python/ops

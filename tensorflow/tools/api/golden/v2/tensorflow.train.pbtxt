@@ -265,10 +265,6 @@ tf_module {
     argspec: "args=[\'graph\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "do_quantize_training_on_graphdef"
-    argspec: "args=[\'input_graph\', \'num_bits\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "exponential_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }

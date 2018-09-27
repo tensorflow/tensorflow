@@ -471,6 +471,45 @@ struct functor_traits<bitwise_xor_op<Scalar>> {
   enum { Cost = Eigen::NumTraits<Scalar>::AddCost, PacketAccess = true };
 };
 
+// TODO(srvasude): Add packet versions of this operation.
+template <typename Scalar>
+struct xlogy_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xlogy_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x * numext::log(y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xlogy_op<Scalar>> {
+  enum {
+    Cost = (sizeof(Scalar) == 4 ? 40 : 85) + Eigen::NumTraits<Scalar>::MulCost,
+    PacketAccess = false
+  };
+};
+
+template <typename Scalar>
+// TODO(srvasude): Add packet versions of this operation.
+struct xdivy_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x / y;
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xdivy_op<Scalar>> {
+  enum { Cost = Eigen::NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -828,6 +867,12 @@ struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<
                   T, Eigen::internal::scalar_square_op<T>,
                   Eigen::internal::scalar_difference_op<T>>> {};
+
+template <typename T>
+struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
+
+template <typename T>
+struct xlogy : base<T, Eigen::internal::xlogy_op<T>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};

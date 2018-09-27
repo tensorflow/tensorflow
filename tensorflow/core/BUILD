@@ -144,10 +144,12 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
+    "if_dynamic_kernels",
     "if_static",
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -706,14 +708,11 @@ cc_library(
 cc_library(
     name = "feature_util",
     srcs = ["example/feature_util.cc"],
-    hdrs = [
-        "example/feature_util.h",
-        "platform/types.h",
-    ],
+    hdrs = ["example/feature_util.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":core_stringpiece",
-        ":platform_protobuf",
+        ":lib_proto_parsing",
         ":protos_all_cc",
     ],
 )
@@ -1056,7 +1055,6 @@ tf_gen_op_libs(
         "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
-        "resource_variable_ops",
         "rpc_ops",
         "scoped_allocator_ops",
         "sdca_ops",
@@ -1096,6 +1094,14 @@ tf_gen_op_libs(
 tf_gen_op_libs(
     op_lib_names = ["debug_ops"],
     deps = ["//tensorflow/core/kernels:debug_ops"],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "resource_variable_ops",
+    ],
+    deps = [":lib"],
 )
 
 # And one for all user ops
@@ -1292,8 +1298,8 @@ cc_library(
 
 # This includes implementations of all kernels built into TensorFlow.
 cc_library(
-    name = "all_kernels",
-    visibility = ["//visibility:public"],
+    name = "all_kernels_statically_linked",
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
@@ -1362,6 +1368,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_slice_op",
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_transpose_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
@@ -1370,6 +1377,15 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]),
+)
+
+cc_library(
+    name = "all_kernels",
+    visibility = ["//visibility:public"],
+    deps = if_dynamic_kernels(
+        [],
+        otherwise = [":all_kernels_statically_linked"],
+    ),
 )
 
 tf_cuda_library(
@@ -2501,7 +2517,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_internal_headers_lib",
-    includes = ["../../external/com_google_absl"],
+    # Fully depend on external repositories, because identifying the headers
+    # is fragile.
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
     deps = [
         ":lib",
         ":lib_internal",
@@ -2539,6 +2560,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
             "example/example_parser_configuration.*",
+            "example/feature_util.cc",
             "util/reporter.cc",
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
@@ -2568,6 +2590,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":feature_util",
         ":lib",
         ":lib_internal",
         ":protos_all_proto_text",
@@ -2587,11 +2610,12 @@ tf_cuda_library(
 
 cc_header_only_library(
     name = "framework_headers_lib",
+    # Fully depend on external repositories, because identifying the headers
+    # is fragile.
     extra_deps = [
-        # ABSL headers get dropped, so we add them back here.
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
-    includes = ["../../external/com_google_absl"],
     visibility = ["//visibility:public"],
     deps = [
         ":framework",
@@ -2601,7 +2625,12 @@ cc_header_only_library(
 
 cc_header_only_library(
     name = "stream_executor_headers_lib",
-    includes = ["../../external/com_google_absl"],
+    # Fully depend on external repositories, because identifying the headers
+    # is fragile.
+    extra_deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":stream_executor",
@@ -2792,7 +2821,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
-    "common_runtime/tracing_device.h",
     "common_runtime/process_state.h",
     "common_runtime/pool_allocator.h",
     "graph/gradients.h",
@@ -2979,7 +3007,7 @@ tf_cuda_library(
         "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = ["//visibility:private"],
     deps = [
         ":core_cpu_internal",
@@ -3801,6 +3829,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_slice_op",
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),

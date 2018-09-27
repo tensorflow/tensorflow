@@ -55,6 +55,18 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testInterpreterWithOptions() throws Exception {
+    Interpreter interpreter =
+        new Interpreter(MODEL_FILE, new Interpreter.Options().setNumThreads(2).setUseNNAPI(true));
+    assertThat(interpreter).isNotNull();
+    assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    interpreter.close();
+  }
+
+  @Test
   public void testRunWithMappedByteBufferModel() throws Exception {
     Path path = MODEL_FILE.toPath();
     FileChannel fileChannel =
@@ -304,40 +316,16 @@ public final class InterpreterTest {
   }
 
   @Test
-  public void testTurnOffNNAPI() throws Exception {
-    Path path = MODEL_FILE.toPath();
-    FileChannel fileChannel =
-        (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
-    MappedByteBuffer mappedByteBuffer =
-        fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
-    Interpreter interpreter = new Interpreter(mappedByteBuffer);
-    interpreter.setUseNNAPI(true);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
-    interpreter.run(fourD, parsedOutputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.setUseNNAPI(false);
-    interpreter.run(fourD, parsedOutputs);
-    outputOneD = parsedOutputs[0][0][0];
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
-    fileChannel.close();
-  }
-
-  @Test
   public void testTurnOnNNAPI() throws Exception {
     Path path = MODEL_FILE.toPath();
     FileChannel fileChannel =
         (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
     MappedByteBuffer mappedByteBuffer =
         fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
-    Interpreter interpreter = new Interpreter(mappedByteBuffer);
-    interpreter.setUseNNAPI(true);
+    Interpreter interpreter =
+        new Interpreter(
+            mappedByteBuffer,
+            new Interpreter.Options().setUseNNAPI(true).setAllowFp16PrecisionForFp32(true));
     float[] oneD = {1.23f, 6.54f, 7.81f};
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};

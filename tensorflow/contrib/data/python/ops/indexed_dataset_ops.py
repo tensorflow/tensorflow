@@ -171,3 +171,6 @@ class IdentityIndexedDataset(IndexedDataset):
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.identity_indexed_dataset(self._size)
+
+  def _inputs(self):
+    return []

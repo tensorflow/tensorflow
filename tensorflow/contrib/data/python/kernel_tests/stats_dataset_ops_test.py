@@ -93,6 +93,8 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         summary_str = sess.run(summary_t)
         self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
                                     float(i + 1))
+        self._assertSummaryContains(summary_str, "Prefetch::buffer_capacity")
+        self._assertSummaryContains(summary_str, "Prefetch::buffer_size")
         self._assertSummaryHasRange(summary_str, "Prefetch::buffer_utilization",
                                     0, 1)
       with self.assertRaises(errors.OutOfRangeError):
@@ -100,6 +102,28 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       summary_str = sess.run(summary_t)
       self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
                                   100)
+
+  def testPrefetchBufferScalars(self):
+    stats_aggregator = stats_ops.StatsAggregator()
+    dataset = dataset_ops.Dataset.range(10).map(
+        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(
+            0).apply(stats_ops.set_stats_aggregator(stats_aggregator))
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+    summary_t = stats_aggregator.get_summary()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer)
+      for i in range(10):
+        self.assertAllEqual(
+            np.array([i] * i, dtype=np.int64), sess.run(next_element))
+        summary_str = sess.run(summary_t)
+        self._assertSummaryHasScalarValue(summary_str,
+                                          "Prefetch::buffer_capacity", 0)
+        self._assertSummaryHasScalarValue(summary_str, "Prefetch::buffer_size",
+                                          0)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
 
   def testFilteredElementsStats(self):
     stats_aggregator = stats_ops.StatsAggregator()

@@ -718,10 +718,11 @@ class HloInstruction {
       HloComputation* computation);
 
   // Creates a custom call instruction that applies the given custom call target
-  // to the given operands. "shape" is the resultant shape.
+  // to the given operands. "opaque" can be an arbitrary string with a
+  // backend-specific interpretation. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      absl::string_view custom_call_target);
+      absl::string_view custom_call_target, absl::string_view opaque = "");
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.

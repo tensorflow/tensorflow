@@ -562,13 +562,14 @@ def split_compile_and_replicate(computation,
             device_assignment.core_assignment.flatten().tolist()
     }
     # TODO(phawkins): remove this case after the forward compatibility window
-    # expires on 2018-10-6.
-    if api_compat.forward_compatible(2018, 10, 6):
+    # expires on 2018-10-5.
+    if api_compat.forward_compatible(2018, 10, 5):
       metadata_kwargs["num_cores_per_replica"] = (
           device_assignment.num_cores_per_replica)
     else:
-      metadata_kwargs["computation_shape"] = (
-          device_assignment.computation_shape.tolist())
+      metadata_kwargs["computation_shape"] = [
+          device_assignment.num_cores_per_replica
+      ]
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -660,6 +661,10 @@ def split_compile_and_replicate(computation,
       # be less confusing to clients if they knowingly choose to use resource
       # variables.
       # Partitioned variables is not supported (b/112311320).
+      vscope = variable_scope.get_variable_scope()
+      saved_use_resource = vscope.use_resource
+      saved_custom_getter = vscope.custom_getter
+
       def custom_getter(getter, name, *args, **kwargs):
         """Variables on TPU have a few restrictions."""
         partitioner = kwargs["partitioner"]
@@ -670,12 +675,10 @@ def split_compile_and_replicate(computation,
               "`partitioner` that is {} for variable {}. "
               "Setting `partitioner` to `None`."
               .format(partitioner, name))
-        return getter(name, *args, **kwargs)
-
-      vscope = variable_scope.get_variable_scope()
-
-      saved_use_resource = vscope.use_resource
-      saved_custom_getter = vscope.custom_getter
+        if saved_custom_getter is None:
+          return getter(name, *args, **kwargs)
+        else:
+          return saved_custom_getter(getter, name, *args, **kwargs)
 
       vscope.set_use_resource(True)
       vscope.set_custom_getter(custom_getter)

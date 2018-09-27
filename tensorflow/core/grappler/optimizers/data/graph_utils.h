@@ -31,11 +31,29 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_utils {
 
+// Returns the index of the first element in collection that fulfills predicate.
+// If no such element exists, returns -1.
+template <typename Predicate, typename Collection>
+int GetFirstElementIndexWithPredicate(const Predicate& predicate,
+                                      const Collection& collection) {
+  unsigned idx = 0;
+  for (auto&& element : collection) {
+    if (predicate(element)) {
+      return idx;
+    }
+    idx++;
+  }
+  return -1;
+}
+
 // Adds a node to the graph.
 NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
+
+// Adds Placeholder node for given type.
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph);
 
 // Adds a Const node with the given value to the graph.
 template <typename T>
@@ -102,6 +120,16 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 // name is unique across the graph.
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function);
+
+// Copies attribute having name `attribute_name` from node `from` to node
+// `to_node`.
+void CopyAttribute(const string& attribute_name, const NodeDef& from,
+                   NodeDef* to_node);
+
+// Concatenates list attribute having name `attribute_name` from `first` and
+// `second` node, setting it to `to_node`.
+void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
+                         const NodeDef& second, NodeDef* to_node);
 
 }  // end namespace graph_utils
 }  // end namespace grappler
