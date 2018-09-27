@@ -147,7 +147,7 @@ func (g *Graph) Operations() []Operation {
 	return ops
 }
 
-// AddGradientsWithPrefix adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
+// AddGradients adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
 // i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
 // This methods allows to caller to pass a custom name prefix to the operations
 // added to a graph to compute the gradients.
