@@ -103,6 +103,9 @@ tf_gen_op_libs(
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -122,6 +125,8 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
         "//tensorflow/core:lib_proto_parsing",
     ],
 )
