@@ -2360,7 +2360,7 @@ class BatchNormTest(test.TestCase):
             batch_size * height * width, expected_var)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=dtypes.float32)
-      is_training = variables_lib.Variable(True)
+      is_training = variables_lib.VariableV1(True)
       output = _layers.batch_norm(
           images,
           decay=0.1,
@@ -2507,7 +2507,7 @@ class BatchNormTest(test.TestCase):
             batch_size * height * width, expected_var)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=dtypes.float32)
-      is_training = variables_lib.Variable(True)
+      is_training = variables_lib.VariableV1(True)
       output = _layers.batch_norm(
           images,
           decay=0.1,

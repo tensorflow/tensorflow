@@ -1001,14 +1001,14 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         errors.FailedPreconditionError,
         "Attempting to use uninitialized value Variable"):
       with self.cached_session() as sess:
-        v = variables.Variable([1, 2])
+        v = variables.VariableV1([1, 2])
         sess.run(v[:].assign([1, 2]))
 
   def testTypeError(self):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
     too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
-    v = variables.Variable(init_val)
+    v = variables.VariableV1(init_val)
     with self.assertRaises(TypeError):
       v[:].assign(too_small_val)
     with self.assertRaises(TypeError):

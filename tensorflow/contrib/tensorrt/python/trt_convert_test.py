@@ -94,7 +94,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       with g.device("/GPU:0"):
         inp = array_ops.placeholder(
             dtype=dtypes.float32, shape=[None, 1, 1], name="input")
-        var = variables.Variable([[[1.0]]], dtype=dtypes.float32, name="v1")
+        var = variables.VariableV1([[[1.0]]], dtype=dtypes.float32, name="v1")
         add = inp + var.value()
         mul = inp * add
         add = mul + add
