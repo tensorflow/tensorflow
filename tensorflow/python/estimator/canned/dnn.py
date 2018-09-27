@@ -82,8 +82,9 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
     batch_norm: A boolean indicating whether to to use batch normalization
-      after each hidden layer with default options, or a `_BatchNormOptions`
-      object that configures batch normalization after each hidden layer.
+      after each hidden layer with default options, or an
+      experimental_batch_norm_options object that configures batch
+      normalization after each hidden layer.
 
   Returns:
     A logit_fn (see below).
@@ -205,8 +206,9 @@ def _dnn_model_fn(features,
     tpu_estimator_spec: Whether to return a `_TPUEstimatorSpec` or
       or `model_fn.EstimatorSpec` instance.
     batch_norm: A boolean indicating whether to to use batch normalization
-      after each hidden layer with default options, or a `_BatchNormOptions`
-      object that configures batch normalization after each hidden layer.
+      after each hidden layer with default options, or an
+      experimental_batch_norm_options object that configures batch
+      normalization after each hidden layer.
 
   Returns:
     An `EstimatorSpec` instance.
@@ -405,8 +407,9 @@ class DNNClassifier(estimator.Estimator):
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
       batch_norm: A boolean indicating whether to to use batch normalization
-        after each hidden layer with default options, or a `_BatchNormOptions`
-        object that configures batch normalization after each hidden layer.
+        after each hidden layer with default options, or an
+        experimental_batch_norm_options object that configures batch
+        normalization after each hidden layer.
     """
     head = head_lib._binary_logistic_or_multi_class_head(  # pylint: disable=protected-access
         n_classes, weight_column, label_vocabulary, loss_reduction)
@@ -570,8 +573,9 @@ class DNNRegressor(estimator.Estimator):
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
       batch_norm: A boolean indicating whether to to use batch normalization
-        after each hidden layer with default options, or a `_BatchNormOptions`
-        object that configures batch normalization after each hidden layer.
+        after each hidden layer with default options, or an
+        experimental_batch_norm_options object that configures batch
+        normalization after each hidden layer.
     """
 
     def _model_fn(features, labels, mode, config):
