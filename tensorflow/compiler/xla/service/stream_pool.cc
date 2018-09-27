@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -28,14 +28,20 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
       // Re-use an existing stream from the pool.
       stream = std::move(streams_.back());
       streams_.pop_back();
-      VLOG(1) << stream->DebugStreamPointers()
-              << " StreamPool reusing existing stream";
+      if (stream->ok()) {
+        VLOG(1) << stream->DebugStreamPointers()
+                << " StreamPool reusing existing stream";
+      } else {
+        VLOG(1) << stream->DebugStreamPointers()
+                << " stream was not ok, StreamPool deleting";
+        stream = nullptr;
+      }
     }
   }
 
   if (!stream) {
     // Create a new stream.
-    stream = MakeUnique<se::Stream>(executor);
+    stream = absl::make_unique<se::Stream>(executor);
     stream->Init();
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool created new stream";

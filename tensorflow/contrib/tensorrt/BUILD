@@ -19,6 +19,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -181,7 +182,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":wrap_conversion",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:session",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -279,7 +285,9 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -291,6 +299,31 @@ tf_cuda_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]) + tf_custom_op_library_additional_deps(),
+)
+
+tf_cuda_cc_test(
+    name = "convert_graph_test",
+    size = "medium",
+    srcs = ["convert/convert_graph_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_conversion",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
 )
 
 # Library for the segmenting portion of TensorRT operation creation
@@ -383,21 +416,48 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "trt_convert_test",
+    srcs = ["python/trt_convert_test.py"],
+    additional_deps = [
+        ":trt_convert_py",
+        ":trt_ops_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/tools:freeze_graph_lib",
+        "//tensorflow/python/tools:saved_model_utils",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+)
+
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
         "test/base_test.py",
-        # "test/batch_matmul_test.py",
-        # "test/biasadd_matmul_test.py",
-        # "test/binary_tensor_weight_broadcast_test.py",  # Blocked by trt4 installation
-        # "test/concatenation_test.py",  # Blocked by trt4 installation
+        "test/batch_matmul_test.py",
+        "test/biasadd_matmul_test.py",
+        "test/binary_tensor_weight_broadcast_test.py",
+        "test/concatenation_test.py",
         "test/const_broadcast_test.py",
+        "test/manual_test.py",
+        "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
-        # "test/unary_test.py",  # Blocked by trt4 installation
-        # "test/vgg_block_nchw_test.py",
-        # "test/vgg_block_test.py",
-        "test/memory_alignment_test.py",
+        "test/rank_two_test.py",
+        "test/unary_test.py",
+        "test/vgg_block_nchw_test.py",
+        "test/vgg_block_test.py",
     ],
     additional_deps = [
         ":tf_trt_integration_test_base",

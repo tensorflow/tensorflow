@@ -64,15 +64,15 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertEqual(xs, ys)
 
-  @parameterized.parameters(
-      (None, np.int32([]), dtypes.bool),
-      (None, np.int32([]), dtypes.int32),
-      (None, np.int32([]), dtypes.float32),
-      (None, np.int32([]), dtypes.string),
-      (None, np.int32([2]), dtypes.int32),
-      (None, np.int32([2, 2]), dtypes.int32),
-      ((None, None, None), np.int32([]), dtypes.int32),
-      ((None, (None, None)), np.int32([]), dtypes.int32),
+  @parameterized.named_parameters(
+      ("1", None, np.int32([]), dtypes.bool),
+      ("2", None, np.int32([]), dtypes.int32),
+      ("3", None, np.int32([]), dtypes.float32),
+      ("4", None, np.int32([]), dtypes.string),
+      ("5", None, np.int32([2]), dtypes.int32),
+      ("6", None, np.int32([2, 2]), dtypes.int32),
+      ("7", (None, None, None), np.int32([]), dtypes.int32),
+      ("8", (None, (None, None)), np.int32([]), dtypes.int32),
   )
   def testWindowDatasetFlatMap(self, structure, shape, dtype):
     """Tests windowing by chaining it with flat map.
@@ -89,23 +89,24 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
       return dataset_ops.Dataset.zip(
           tuple([fn(*arg) if isinstance(arg, tuple) else arg for arg in args]))
 
-    dataset = self._structuredDataset(structure, shape, dtype).apply(
+    dataset = self._structuredDataset(structure, shape, dtype).repeat(5).apply(
         grouping.window_dataset(5)).flat_map(fn)
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(self._structuredElement(structure, shape, dtype))
-      actual = sess.run(get_next)
-      self._assertEqual(expected, actual)
+      for _ in range(5):
+        actual = sess.run(get_next)
+        self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (None, np.int32([]), dtypes.bool),
-      (None, np.int32([]), dtypes.int32),
-      (None, np.int32([]), dtypes.float32),
-      (None, np.int32([]), dtypes.string),
-      (None, np.int32([2]), dtypes.int32),
-      (None, np.int32([2, 2]), dtypes.int32),
-      ((None, None, None), np.int32([]), dtypes.int32),
-      ((None, (None, None)), np.int32([]), dtypes.int32),
+  @parameterized.named_parameters(
+      ("1", None, np.int32([]), dtypes.bool),
+      ("2", None, np.int32([]), dtypes.int32),
+      ("3", None, np.int32([]), dtypes.float32),
+      ("4", None, np.int32([]), dtypes.string),
+      ("5", None, np.int32([2]), dtypes.int32),
+      ("6", None, np.int32([2, 2]), dtypes.int32),
+      ("7", (None, None, None), np.int32([]), dtypes.int32),
+      ("8", (None, (None, None)), np.int32([]), dtypes.int32),
   )
   def testWindowDatasetBatchDense(self, structure, shape, dtype):
     """Tests batching of dense tensor windows.
@@ -128,17 +129,17 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     dataset = self._structuredDataset(structure, shape, dtype).repeat(5).apply(
         grouping.window_dataset(5)).apply(grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(
           self._structuredElement(structure, np.concatenate(
               ([5], shape), axis=0), dtype))
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (np.int32([]),),
-      (np.int32([1]),),
-      (np.int32([1, 2, 3]),),
+  @parameterized.named_parameters(
+      ("1", np.int32([])),
+      ("2", np.int32([1])),
+      ("3", np.int32([1, 2, 3])),
   )
   def testWindowDatasetBatchDenseDynamicShape(self, shape):
     """Tests batching of dynamically shaped dense tensor windows.
@@ -155,7 +156,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shape_t: shape})
       expected = sess.run(
           self._structuredElement(None, np.concatenate(([5], shape), axis=0),
@@ -203,15 +204,15 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
           for substructure in structure
       ])
 
-  @parameterized.parameters(
-      (None, np.int32([]), dtypes.bool),
-      (None, np.int32([]), dtypes.int32),
-      (None, np.int32([]), dtypes.float32),
-      (None, np.int32([]), dtypes.string),
-      (None, np.int32([2]), dtypes.int32),
-      (None, np.int32([2, 2]), dtypes.int32),
-      ((None, None, None), np.int32([]), dtypes.int32),
-      ((None, (None, None)), np.int32([]), dtypes.int32),
+  @parameterized.named_parameters(
+      ("1", None, np.int32([]), dtypes.bool),
+      ("2", None, np.int32([]), dtypes.int32),
+      ("3", None, np.int32([]), dtypes.float32),
+      ("4", None, np.int32([]), dtypes.string),
+      ("5", None, np.int32([2]), dtypes.int32),
+      ("6", None, np.int32([2, 2]), dtypes.int32),
+      ("7", (None, None, None), np.int32([]), dtypes.int32),
+      ("8", (None, (None, None)), np.int32([]), dtypes.int32),
   )
   def testWindowDatasetBatchSparse(self, structure, shape, dtype):
     """Tests batching of sparse tensor windows.
@@ -235,7 +236,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
         structure, shape, dtype).repeat(5).apply(
             grouping.window_dataset(5)).apply(grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(
           self._structuredSparseElement(structure,
                                         np.concatenate(([5], shape), axis=0),
@@ -243,10 +244,10 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (np.int32([]),),
-      (np.int32([1]),),
-      (np.int32([1, 2, 3]),),
+  @parameterized.named_parameters(
+      ("1", np.int32([])),
+      ("2", np.int32([1])),
+      ("3", np.int32([1, 2, 3])),
   )
   def testWindowDatasetBatchSparseDynamicShape(self, shape):
     """Tests batching of dynamically shaped sparse tensor windows.
@@ -263,7 +264,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shape_t: shape})
       expected = sess.run(
           self._structuredSparseElement(None,
@@ -284,17 +285,18 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
               for substructure in structure
           ]))
 
-  @parameterized.parameters(
-      (None, np.int32([[1], [2], [3]]), dtypes.bool, [-1]),
-      (None, np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
-      (None, np.int32([[1], [2], [3]]), dtypes.float32, [-1]),
-      (None, np.int32([[1], [2], [3]]), dtypes.string, [-1]),
-      (None, np.int32([[1, 3], [2, 2], [3, 1]]), dtypes.int32, [-1, -1]),
-      (None, np.int32([[3, 1, 3], [1, 3, 1]]), dtypes.int32, [-1, -1, -1]),
-      ((None, None, None), np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
-      ((None, (None, None)), np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
-      (None, np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
-      (None, np.int32([[1], [2], [3]]), dtypes.int32, np.int32([10])),
+  @parameterized.named_parameters(
+      ("1", None, np.int32([[1], [2], [3]]), dtypes.bool, [-1]),
+      ("2", None, np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("3", None, np.int32([[1], [2], [3]]), dtypes.float32, [-1]),
+      ("4", None, np.int32([[1], [2], [3]]), dtypes.string, [-1]),
+      ("5", None, np.int32([[1, 3], [2, 2], [3, 1]]), dtypes.int32, [-1, -1]),
+      ("6", None, np.int32([[3, 1, 3], [1, 3, 1]]), dtypes.int32, [-1, -1, -1]),
+      ("7", (None, None, None), np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("8", (None,
+             (None, None)), np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("9", None, np.int32([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("10", None, np.int32([[1], [2], [3]]), dtypes.int32, np.int32([10])),
   )
   def testWindowDatasetPaddedBatchDense(self, structure, shapes, dtype,
                                         padded_shape):
@@ -320,7 +322,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
         grouping.window_dataset(len(shapes))).apply(
             grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected_shape = np.maximum(np.amax(shapes, axis=0), padded_shape)
       expected = sess.run(
           self._structuredElement(
@@ -329,10 +331,10 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (np.int32([[1], [2], [3]]), [-1]),
-      (np.int32([[1, 3], [2, 2], [3, 1]]), [-1, -1]),
-      (np.int32([[3, 1, 3], [1, 3, 1]]), [-1, -1, -1]),
+  @parameterized.named_parameters(
+      ("1", np.int32([[1], [2], [3]]), [-1]),
+      ("2", np.int32([[1, 3], [2, 2], [3, 1]]), [-1, -1]),
+      ("3", np.int32([[3, 1, 3], [1, 3, 1]]), [-1, -1, -1]),
   )
   def testWindowDatasetPaddedBatchDenseDynamicShape(self, shapes, padded_shape):
     """Tests padded batching of dynamically shaped dense tensor windows.
@@ -351,7 +353,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shapes_t: shapes})
       expected_shape = np.maximum(np.amax(shapes, axis=0), padded_shape)
       expected = sess.run(
@@ -361,9 +363,9 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (np.int32([[1]]), np.int32([0])),
-      (np.int32([[10], [20]]), np.int32([15])),
+  @parameterized.named_parameters(
+      ("1", np.int32([[1]]), np.int32([0])),
+      ("2", np.int32([[10], [20]]), np.int32([15])),
   )
   def testWindowDatasetPaddedBatchDenseInvalid(self, shapes, padded_shape):
     """Tests invalid padded batching of dense tensor windows.
@@ -379,7 +381,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
                 grouping._map_x_dataset(
                     lambda x: batching.padded_batch_window(x, padded_shape)))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
 
@@ -420,17 +422,18 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
           for substructure in structure
       ])
 
-  @parameterized.parameters(
-      (None, np.int64([[1], [2], [3]]), dtypes.bool, [-1]),
-      (None, np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
-      (None, np.int64([[1], [2], [3]]), dtypes.float32, [-1]),
-      (None, np.int64([[1], [2], [3]]), dtypes.string, [-1]),
-      (None, np.int64([[1, 3], [2, 2], [3, 1]]), dtypes.int32, [-1, -1]),
-      (None, np.int64([[1, 3, 1], [3, 1, 3]]), dtypes.int32, [-1, -1, -1]),
-      ((None, None, None), np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
-      ((None, (None, None)), np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
-      (None, np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
-      (None, np.int64([[1], [2], [3]]), dtypes.int32, np.int64([10])),
+  @parameterized.named_parameters(
+      ("1", None, np.int64([[1], [2], [3]]), dtypes.bool, [-1]),
+      ("2", None, np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("3", None, np.int64([[1], [2], [3]]), dtypes.float32, [-1]),
+      ("4", None, np.int64([[1], [2], [3]]), dtypes.string, [-1]),
+      ("5", None, np.int64([[1, 3], [2, 2], [3, 1]]), dtypes.int32, [-1, -1]),
+      ("6", None, np.int64([[1, 3, 1], [3, 1, 3]]), dtypes.int32, [-1, -1, -1]),
+      ("7", (None, None, None), np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("8", (None,
+             (None, None)), np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("9", None, np.int64([[1], [2], [3]]), dtypes.int32, [-1]),
+      ("10", None, np.int64([[1], [2], [3]]), dtypes.int32, np.int64([10])),
   )
   def testWindowDatasetPaddedBatchSparse(self, structure, shapes, dtype,
                                          padded_shape):
@@ -456,17 +459,17 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
         structure, shapes, dtype).apply(grouping.window_dataset(
             len(shapes))).apply(grouping._map_x_dataset(fn))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       expected = sess.run(
           self._structuredRaggedSparseElement(structure, shapes, dtype,
                                               padded_shape))
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (np.int64([[1], [2], [3]]), [-1]),
-      (np.int64([[1, 3], [2, 2], [3, 1]]), [-1, -1]),
-      (np.int64([[3, 1, 3], [1, 3, 1]]), [-1, -1, -1]),
+  @parameterized.named_parameters(
+      ("1", np.int64([[1], [2], [3]]), [-1]),
+      ("2", np.int64([[1, 3], [2, 2], [3, 1]]), [-1, -1]),
+      ("3", np.int64([[3, 1, 3], [1, 3, 1]]), [-1, -1, -1]),
   )
   def testWindowDatasetPaddedBatchSparseDynamicShape(self, shapes,
                                                      padded_shape):
@@ -487,7 +490,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, {shapes_t: shapes})
       expected = sess.run(
           self._structuredRaggedSparseElement(None, shapes, dtypes.int32,
@@ -495,9 +498,9 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
       actual = sess.run(get_next)
       self._assertEqual(expected, actual)
 
-  @parameterized.parameters(
-      (np.int64([[1]]), [0]),
-      (np.int64([[10], [20]]), [15]),
+  @parameterized.named_parameters(
+      ("1", np.int64([[1]]), [0]),
+      ("2", np.int64([[10], [20]]), [15]),
   )
   def testWindowDatasetPaddedBatchSparseInvalid(self, shapes, padded_shape):
     """Tests invalid padded batching of sparse tensor windows.
@@ -514,7 +517,7 @@ class WindowDatasetTest(test.TestCase, parameterized.TestCase):
             grouping._map_x_dataset(
                 lambda x: batching.padded_batch_window(x, padded_shape)))
     get_next = dataset.make_one_shot_iterator().get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
 

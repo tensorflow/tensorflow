@@ -24,6 +24,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -85,10 +86,10 @@ class Iterator(checkpointable.CheckpointableBase):
       initializer: A `tf.Operation` that should be run to initialize this
         iterator.
       output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this dataset.
+        each component of an element of this iterator.
       output_shapes: A nested structure of `tf.TensorShape` objects
-        corresponding to each component of an element of this dataset.
-      output_classes: A nested structure of Python `type` object corresponding
+        corresponding to each component of an element of this iterator.
+      output_classes: A nested structure of Python `type` objects corresponding
         to each component of an element of this iterator.
     """
     self._iterator_resource = iterator_resource
@@ -220,9 +221,9 @@ class Iterator(checkpointable.CheckpointableBase):
     """Creates a new, uninitialized `Iterator` based on the given handle.
 
     This method allows you to define a "feedable" iterator where you can choose
-    between concrete iterators by feeding a value in a @{tf.Session.run} call.
-    In that case, `string_handle` would a @{tf.placeholder}, and you would feed
-    it with the value of @{tf.data.Iterator.string_handle} in each step.
+    between concrete iterators by feeding a value in a `tf.Session.run` call.
+    In that case, `string_handle` would be a `tf.placeholder`, and you would
+    feed it with the value of `tf.data.Iterator.string_handle` in each step.
 
     For example, if you had two iterators that marked the current position in
     a training dataset and a test dataset, you could choose which to use in
@@ -362,9 +363,9 @@ class Iterator(checkpointable.CheckpointableBase):
 
     In graph mode, you should typically call this method *once* and use its
     result as the input to another computation. A typical loop will then call
-    @{tf.Session.run} on the result of that computation. The loop will terminate
+    `tf.Session.run` on the result of that computation. The loop will terminate
     when the `Iterator.get_next()` operation raises
-    @{tf.errors.OutOfRangeError}. The following skeleton shows how to use
+    `tf.errors.OutOfRangeError`. The following skeleton shows how to use
     this method when building a training loop:
 
     ```python
@@ -670,6 +671,6 @@ def get_next_as_optional(iterator):
           output_shapes=nest.flatten(
               sparse.as_dense_shapes(iterator.output_shapes,
                                      iterator.output_classes))),
-      output_shapes=iterator.output_shapes,
-      output_types=iterator.output_types,
-      output_classes=iterator.output_classes)
+      structure.Structure._from_legacy_structure(iterator.output_types,
+                                                 iterator.output_shapes,
+                                                 iterator.output_classes))

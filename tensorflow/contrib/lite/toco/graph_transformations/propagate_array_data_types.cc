@@ -227,6 +227,15 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
           ArrayDataType::kFloat;
       break;
     }
+    case OperatorType::kUnpack: {
+      CHECK_EQ(op->inputs.size(), 1);
+      const int output_size = op->outputs.size();
+      for (int i = 0; i < output_size; ++i) {
+        model->GetArray(op->outputs[i]).data_type =
+            model->GetArray(op->inputs[0]).data_type;
+      }
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);

@@ -134,7 +134,10 @@ def _embedding_lookup_and_transform(params,
                        ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
-        return result
+      # Make sure the final result does not have colocation contraints on the
+      # params. Similar to the case np > 1 where parallel_dynamic_stitch is
+      # outside the scioe of all with ops.colocate_with(params[p]).
+      return array_ops.identity(result)
     else:
       # Flatten the ids. There are two cases where we need to do this.
       # - There is more than one params tensor.
@@ -253,7 +256,7 @@ def embedding_lookup(
 
   This function is used to perform parallel lookups on the list of
   tensors in `params`.  It is a generalization of
-  @{tf.gather}, where `params` is
+  `tf.gather`, where `params` is
   interpreted as a partitioning of a large embedding tensor.  `params` may be
   a `PartitionedVariable` as returned by using `tf.get_variable()` with a
   partitioner.
@@ -427,6 +430,8 @@ def embedding_lookup_sparse(params,
 
     embeddings = embedding_lookup(
         params, ids, partition_strategy=partition_strategy, max_norm=max_norm)
+    if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
+      embeddings = math_ops.to_float(embeddings)
     if not ignore_weights:
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:
@@ -545,9 +550,11 @@ def safe_embedding_lookup_sparse(embedding_weights,
     raise ValueError('Missing embedding_weights %s.' % embedding_weights)
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
-  embedding_weights = [
-      ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
-  ]
+  if not isinstance(embedding_weights[0],
+                    resource_variable_ops.ResourceVariable):
+    embedding_weights = [
+        ops.convert_to_tensor(w, dtype=dtype) for w in embedding_weights
+    ]
 
   with ops.name_scope(name, 'embedding_lookup',
                       embedding_weights + [sparse_ids,

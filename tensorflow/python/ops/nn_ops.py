@@ -22,7 +22,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -510,7 +509,7 @@ class _WithSpaceToBatch(object):
 
     # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
-      if not result_converted.shape[1].value:
+      if not result_converted.shape[1].value and filter is not None:
         output_shape = result_converted.shape.as_list()
         output_shape[1] = filter.shape[-1]
         result_converted.set_shape(output_shape)
@@ -698,7 +697,7 @@ def convolution(
   `padded_input` is obtained by zero padding the input using an effective
   spatial filter shape of `(spatial_filter_shape-1) * dilation_rate + 1` and
   output striding `strides` as described in the
-  @{$python/nn#Convolution$comment here}.
+  [comment here](https://tensorflow.org/api_guides/python/nn#Convolution).
 
   In the case that `data_format` does start with `"NC"`, the `input` and output
   (but not the `filter`) are simply transposed as follows:
@@ -898,8 +897,8 @@ def pool(
   ```
 
   where the reduction function REDUCE depends on the value of `pooling_type`,
-  and pad_before is defined based on the value of `padding` as described in the
-  @{tf.nn.convolution$comment here}.
+  and pad_before is defined based on the value of `padding` as described in
+  the "returns" section of `tf.nn.convolution` for details.
   The reduction never includes out-of-bounds positions.
 
   In the case that `data_format` starts with `"NC"`, the `input` and output are
@@ -921,7 +920,7 @@ def pool(
     window_shape: Sequence of N ints >= 1.
     pooling_type: Specifies pooling operation, must be "AVG" or "MAX".
     padding: The padding algorithm, must be "SAME" or "VALID".
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     dilation_rate: Optional.  Dilation rate.  List of N ints >= 1.
       Defaults to [1]*N.  If any value of dilation_rate is > 1, then all values
       of strides must be 1.
@@ -1045,8 +1044,8 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
   This function is a simpler wrapper around the more general
-  @{tf.nn.convolution}, and exists only for backwards compatibility. You can
-  use @{tf.nn.convolution} to perform 1-D, 2-D, or 3-D atrous convolution.
+  `tf.nn.convolution`, and exists only for backwards compatibility. You can
+  use `tf.nn.convolution` to perform 1-D, 2-D, or 3-D atrous convolution.
 
 
   Computes a 2-D atrous convolution, also known as convolution with holes or
@@ -1205,7 +1204,7 @@ def conv2d_transpose(
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the returned tensor.
 
@@ -1430,7 +1429,7 @@ def conv3d_transpose(
     strides: A list of ints. The stride of the sliding window for each
       dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string, either `'NDHWC'` or `'NCDHW`' specifying the layout
       of the input and output tensors. Defaults to `'NDHWC'`.
     name: Optional name for the returned tensor.
@@ -1586,7 +1585,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
   "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
-  http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
+  https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf
 
   Args:
     features: A `Tensor` representing preactivation values. Must be one of
@@ -1670,47 +1669,24 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   shape = logits.get_shape()
   is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
 
-  # TODO(phawkins): remove after 2018/8/27 and simplify this code.
-  softmax_accepts_r1_or_greater = compat.forward_compatible(2018, 8, 27)
-  reshape_required = (not softmax_accepts_r1_or_greater) and shape.ndims != 2
   if is_last_dim:
-    if reshape_required:
-      # If dim is the last dimension, simply reshape the logits to a matrix and
-      # apply the internal softmax.
-      input_shape = array_ops.shape(logits)
-      logits = _flatten_outer_dims(logits)
-      output = compute_op(logits)
-      output = array_ops.reshape(output, input_shape, name=name)
-      return output
     return compute_op(logits, name=name)
 
-  # If dim is not the last dimension, we have to do a reshape and transpose so
-  # that we can still perform softmax on its last dimension.
+  # If dim is not the last dimension, we have to do a transpose so that we can
+  # still perform softmax on its last dimension.
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
   dim_axis = dim % shape.ndims
   logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
-  shape_after_swap = array_ops.shape(logits)
 
-  if reshape_required:
-    # Reshape logits into a matrix.
-    logits = _flatten_outer_dims(logits)
-
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
-
-    # Transform back the output tensor.
-    output = array_ops.reshape(output, shape_after_swap)
-  else:
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
+  # Do the actual softmax on its last dimension.
+  output = compute_op(logits)
 
   output = _swap_axis(
       output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
-  # Make shape inference work since reshape and transpose may erase its static
-  # shape.
+  # Make shape inference work since transpose may erase its static shape.
   output.set_shape(shape)
 
   return output
@@ -1819,7 +1795,7 @@ def softmax_cross_entropy_with_logits_v2(
   or `float64`).
 
   Backpropagation will happen into both `logits` and `labels`.  To disallow
-  backpropagation into `labels`, pass label tensors through @{tf.stop_gradient}
+  backpropagation into `labels`, pass label tensors through `tf.stop_gradient`
   before feeding it to this function.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
@@ -1836,8 +1812,9 @@ def softmax_cross_entropy_with_logits_v2(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -1909,7 +1886,7 @@ _XENT_DEPRECATION = """
 Future major versions of TensorFlow will allow gradients to flow
 into the labels input on backprop by default.
 
-See @{tf.nn.softmax_cross_entropy_with_logits_v2}.
+See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 """
 
 
@@ -1946,7 +1923,7 @@ def softmax_cross_entropy_with_logits(
 
   Backpropagation will happen only into `logits`.  To calculate a cross entropy
   loss that allows backpropagation into both `logits` and `labels`, see
-  @{tf.nn.softmax_cross_entropy_with_logits_v2}.
+  `tf.nn.softmax_cross_entropy_with_logits_v2`.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
@@ -1962,8 +1939,9 @@ def softmax_cross_entropy_with_logits(
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor` of the same shape as `labels` and of the same type as `logits`
-    with the softmax cross entropy loss.
+    A `Tensor` that contains the softmax cross entropy loss. Its type is the
+    same as `logits` and its shape is the same as `labels` except that it does
+    not have the last dimension of `labels`.
   """
   _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
                     logits)
@@ -2003,8 +1981,8 @@ def sparse_softmax_cross_entropy_with_logits(
   A common use case is to have logits and labels of shape
   `[batch_size, num_classes]`, but higher dimensions are supported, in which
   case the `dim`-th dimension is assumed to be of size `num_classes`.
-  `logits` and `labels` must have the same dtype (either `float16`, `float32`,
-  or `float64`).
+  `logits` must have the dtype of `float16`, `float32`, or `float64`, and
+  `labels` must have the dtype of `int32` or `int64`.
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
@@ -2114,7 +2092,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list or tuple of 4 ints. The stride of the sliding window for
       each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
 
@@ -2143,7 +2121,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
     strides: A list or tuple of 4 ints. The stride of the sliding window for
       each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
@@ -2301,7 +2279,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed}
+      `tf.set_random_seed`
       for behavior.
     name: A name for this operation (optional).
 
@@ -2452,7 +2430,7 @@ def conv1d(value,
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
+    value: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
     filters: A 3D `Tensor`.  Must have the same type as `value`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
@@ -2521,7 +2499,7 @@ def conv1d_transpose(
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the returned tensor.
 

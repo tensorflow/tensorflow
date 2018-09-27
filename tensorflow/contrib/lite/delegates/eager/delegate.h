@@ -15,9 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_H_
 #define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_H_
 
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
-#include "tensorflow/contrib/lite/interpreter.h"
 
 namespace tflite {
 
@@ -26,30 +25,33 @@ namespace tflite {
 // executed by TensorFlow's runtime via Eager.
 //
 // The interpreter must be constructed after the EagerDelegate and destructed
-// before the EagerDelegate. This delegate can only be used with one
-// interpreter.
+// before the EagerDelegate. This delegate may be used with multiple
+// interpreters, but it is *not* thread-safe.
 //
 // Usage:
-//   EagerDelegate delegate();
+//   auto delegate = EagerDelegate::Create();
 //   ... build interpreter ...
 //
-//   delegate.Apply(interpreter);
+//   if (delegate) {
+//     interpreter->ModifyGraphWithDelegate(
+//         delegate.get(), /*allow_dynamic_tensors=*/true);
+//   }
 //   ... run inference ...
 //   ... destroy interpreter ...
 //   ... destroy delegate ...
-class EagerDelegate {
+class EagerDelegate : public TfLiteDelegate {
  public:
-  EagerDelegate();
+  // Creates a delegate that supports TF ops.
+  //
+  // If the underyling TF Eager context creation fails, returns null.
+  static std::unique_ptr<EagerDelegate> Create();
+
   ~EagerDelegate();
 
-  TfLiteStatus Apply(Interpreter* interpreter) {
-    return interpreter->ModifyGraphWithDelegate(delegate_.get(),
-                                                /*allow_dynamic_tensors=*/true);
-  }
-
  private:
+  explicit EagerDelegate(std::unique_ptr<eager::DelegateData> delegate_data);
+
   std::unique_ptr<eager::DelegateData> delegate_data_;
-  std::unique_ptr<TfLiteDelegate> delegate_;
 };
 
 }  // namespace tflite

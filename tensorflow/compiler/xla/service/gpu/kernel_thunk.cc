@@ -15,22 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
 
-KernelThunk::KernelThunk(
-    tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
-    const string& kernel_name, const HloInstruction* hlo_instruction,
-    int unroll_factor)
+KernelThunk::KernelThunk(absl::Span<const BufferAllocation* const> args,
+                         const string& kernel_name,
+                         const HloInstruction* hlo_instruction,
+                         int unroll_factor)
     : Thunk(Kind::kKernel, hlo_instruction),
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name),
@@ -41,11 +41,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   tensorflow::mutex_lock lock(mutex_);
   if (!loader_spec_) {
     loader_spec_.reset(new se::MultiKernelLoaderSpec(args_.size()));
-    tensorflow::StringPiece ptx = executable.ptx();
-    // Convert tensorflow::StringPiece to se::port::StringPiece because
-    // StreamExecutor uses the latter.
-    loader_spec_->AddCudaPtxInMemory(
-        se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
+    loader_spec_->AddCudaPtxInMemory(executable.ptx(), kernel_name_);
 
     if (!executable.cubin().empty()) {
       loader_spec_->AddCudaCubinInMemory(
@@ -63,7 +59,7 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
   if (kernel_cache_.end() == it) {
     it = kernel_cache_.emplace(executor, se::KernelBase(executor)).first;
     if (!executor->GetKernel(*loader_spec_, &it->second)) {
-      return InternalError("Unable to load kernel %s", kernel_name_.c_str());
+      return InternalError("Unable to load kernel %s", kernel_name_);
     }
   }
 
@@ -95,7 +91,7 @@ Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   VLOG(3) << "Launching " << kernel->name();
   // Launch the kernel with potentially multiple blocks and threads.
   static constexpr int kKernelArgsLimit = 1024;
-  auto kernel_args = MakeUnique<se::KernelArgsArray<kKernelArgsLimit>>();
+  auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
   for (const BufferAllocation* arg : args_) {
     const auto& buf = buffer_allocations.GetDeviceAddress(arg->index());
     kernel_args->add_device_memory_argument(buf);
@@ -107,7 +103,7 @@ Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
           stream, se::ThreadDim(launch_dimensions.threads_per_block()),
           se::BlockDim(launch_dimensions.block_count()), *kernel,
           *kernel_args)) {
-    return InternalError("Unable to launch kernel %s", kernel_name_.c_str());
+    return InternalError("Unable to launch kernel %s", kernel_name_);
   }
   return Status::OK();
 }

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
@@ -96,11 +96,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   const TfLiteTensor* axis = GetInput(context, node, kAxis);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type)         \
-  optimized_ops::ArgMinMax(                                            \
-      GetTensorData<axis_type>(axis), GetTensorData<data_type>(input), \
-      GetTensorDims(input), GetTensorData<output_type>(output),        \
-      GetTensorDims(output), GetComparefunction<data_type>(is_arg_max))
+#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type) \
+  optimized_ops::ArgMinMax(                                    \
+      GetTensorShape(input), GetTensorData<data_type>(input),  \
+      GetTensorData<axis_type>(axis), GetTensorShape(output),  \
+      GetTensorData<output_type>(output),                      \
+      GetComparefunction<data_type>(is_arg_max))
   if (axis->type == kTfLiteInt32) {
     switch (output->type) {
       case kTfLiteInt32: {

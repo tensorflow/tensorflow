@@ -37,7 +37,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -60,7 +60,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testBasicResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -85,7 +85,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testBasicCallableParams(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -111,7 +111,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testMinimizeResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
@@ -137,7 +137,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
@@ -164,7 +164,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -186,7 +186,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testGradWrtRef(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         opt = gradient_descent.GradientDescentOptimizer(3.0)
         values = [1.0, 3.0]
         vars_ = [variables.Variable([v], dtype=dtype) for v in values]
@@ -197,7 +197,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testWithGlobalStep(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         global_step = variables.Variable(0, trainable=False)
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
@@ -220,7 +220,7 @@ class GradientDescentOptimizerTest(test.TestCase):
 
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -252,12 +252,12 @@ class GradientDescentOptimizerTest(test.TestCase):
       optimizer = gradient_descent.GradientDescentOptimizer(1.0)
 
       def step():
-        v = resource_variable_ops.ResourceVariable(1.0)
+        self.v = resource_variable_ops.ResourceVariable(1.0)
         with backprop.GradientTape() as tape:
-          loss = v ** 2
-        grad = tape.gradient(loss, v)
-        optimizer.apply_gradients([(grad, v)])
-        return v.read_value()
+          loss = self.v ** 2
+        grad = tape.gradient(loss, self.v)
+        optimizer.apply_gradients([(grad, self.v)])
+        return self.v.read_value()
 
       compiled_step = function.defun(step)
 

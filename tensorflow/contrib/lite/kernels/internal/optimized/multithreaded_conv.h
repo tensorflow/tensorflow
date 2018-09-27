@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
-#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_MULTITHREADED_CONV_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_MULTITHREADED_CONV_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -26,7 +26,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
@@ -113,8 +113,8 @@ class EigenTensorConvFunctor {
           filter_width * filter_height * input_depth;
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-      EigenMatrix output(output_data, 1, filter_count);
-      ConstEigenMatrix input(input_data, 1, k);
+      EigenMatrix output(output_data, input_batches, filter_count);
+      ConstEigenMatrix input(input_data, input_batches, k);
       ConstEigenMatrix filter(filter_data, k, filter_count);
       MatMulConvFunctor<Eigen::ThreadPoolDevice, T>()(device, output, input,
                                                       filter, dim_pair);
@@ -157,11 +157,11 @@ inline void Conv(const Eigen::ThreadPoolDevice& device, const float* input_data,
                output_width);
 
   optimized_ops::AddBiasAndEvalActivationFunction(
-      bias_data, bias_dims, output_data, output_dims, output_activation_min,
-      output_activation_max);
+      output_activation_min, output_activation_max, DimsToShape(bias_dims),
+      bias_data, DimsToShape(output_dims), output_data);
 }
 
 }  // namespace multithreaded_ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_MULTITHREADED_CONV_H_

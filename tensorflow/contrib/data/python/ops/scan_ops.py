@@ -27,12 +27,12 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class _ScanDataset(dataset_ops.Dataset):
+class _ScanDataset(dataset_ops.UnaryDataset):
   """A dataset that scans a function across its input."""
 
   def __init__(self, input_dataset, initial_state, scan_func):
     """See `scan()` for details."""
-    super(_ScanDataset, self).__init__()
+    super(_ScanDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
     with ops.name_scope("initial_state"):
@@ -151,7 +151,7 @@ class _ScanDataset(dataset_ops.Dataset):
 def scan(initial_state, scan_func):
   """A transformation that scans a function across an input dataset.
 
-  This transformation is a stateful relative of @{tf.data.Dataset.map}.
+  This transformation is a stateful relative of `tf.data.Dataset.map`.
   In addition to mapping `scan_func` across the elements of the input dataset,
   `scan()` accumulates one or more state tensors, whose initial values are
   `initial_state`.
@@ -166,7 +166,7 @@ def scan(initial_state, scan_func):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
     return _ScanDataset(dataset, initial_state, scan_func)

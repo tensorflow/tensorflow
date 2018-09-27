@@ -70,7 +70,7 @@ class RangeDatasetSerializationTest(
     break_point = 5
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, _ = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point):
@@ -79,7 +79,7 @@ class RangeDatasetSerializationTest(
 
     with ops.Graph().as_default() as g:
       init_op, get_next, _, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(init_op)
         sess.run(restore_op)
         for i in range(break_point, stop):
@@ -90,7 +90,7 @@ class RangeDatasetSerializationTest(
     # Saving and restoring in same session.
     with ops.Graph().as_default() as g:
       init_op, get_next, save_op, restore_op = _build_graph(start, stop)
-      with self.test_session(graph=g) as sess:
+      with self.session(graph=g) as sess:
         sess.run(variables.global_variables_initializer())
         sess.run(init_op)
         for i in range(start, break_point):

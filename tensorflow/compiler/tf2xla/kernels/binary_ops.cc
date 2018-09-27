@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -30,21 +31,21 @@ namespace {
 // A subclass of a XlaBinaryOp must build the computation that
 // describes the (tensor,tensor)->tensor function to apply to each element of
 // the input.
-#define XLA_MAKE_BINARY(NAME, HLO)                                      \
-  class NAME##Op : public XlaBinaryOp {                                 \
-   public:                                                              \
-    explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}  \
-    xla::XlaOp Computation(                                             \
-        XlaOpKernelContext* ctx, const xla::XlaOp& lhs,                 \
-        const gtl::ArraySlice<int64>& lhs_shape, const xla::XlaOp& rhs, \
-        const gtl::ArraySlice<int64>& rhs_shape,                        \
-        const BCast& broadcast_helper,                                  \
-        const std::vector<int64>& extend_dimensions) override {         \
-      xla::XlaBuilder* b = ctx->builder();                              \
-      (void)b;                                                          \
-      return HLO;                                                       \
-    }                                                                   \
-  };                                                                    \
+#define XLA_MAKE_BINARY(NAME, HLO)                                       \
+  class NAME##Op : public XlaBinaryOp {                                  \
+   public:                                                               \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}   \
+    xla::XlaOp Computation(                                              \
+        XlaOpKernelContext* ctx, const xla::XlaOp& lhs,                  \
+        const absl::Span<const int64>& lhs_shape, const xla::XlaOp& rhs, \
+        const absl::Span<const int64>& rhs_shape,                        \
+        const BCast& broadcast_helper,                                   \
+        const std::vector<int64>& extend_dimensions) override {          \
+      xla::XlaBuilder* b = ctx->builder();                               \
+      (void)b;                                                           \
+      return HLO;                                                        \
+    }                                                                    \
+  };                                                                     \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op)
 
 XLA_MAKE_BINARY(Add, xla::Add(lhs, rhs, extend_dimensions));
@@ -54,6 +55,24 @@ XLA_MAKE_BINARY(Div, xla::Div(lhs, rhs, extend_dimensions));
 
 XLA_MAKE_BINARY(Atan2, xla::Atan2(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
+
+// Implementation of DivNoNan. Pseudo-code:
+// if (y == 0) {
+//   return 0
+// } else {
+//   return x / y;
+// }
+static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto y_equals_0 = xla::Eq(y, zero);
+  auto zeros = xla::ZerosLike(x);
+  auto result = xla::Select(y_equals_0, zeros, xla::Div(x, y));
+  return result;
+}
+XLA_MAKE_BINARY(DivNoNan,
+                DivNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
 // Implementation of FloorDiv. Pseudo-code:
 // if ((x < 0) != (y < 0)) {
@@ -66,6 +85,9 @@ XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
 static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  if (DataTypeIsUnsigned(dtype)) {
+    return xla::Div(x, y);
+  }
   auto zero = XlaHelpers::Zero(b, dtype);
   auto one = XlaHelpers::One(b, dtype);
   auto different_sign = xla::Ne(xla::Lt(x, zero), xla::Lt(y, zero));
@@ -80,6 +102,24 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 }
 XLA_MAKE_BINARY(FloorDiv,
                 FloorDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+
+static xla::XlaOp XlogyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                            xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto is_zero = xla::Eq(x, zero);
+  return xla::Select(is_zero, zero, xla::Mul(x, xla::Log(y)));
+}
+XLA_MAKE_BINARY(Xlogy, XlogyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+
+static xla::XlaOp XdivyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                            xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto is_zero = xla::Eq(x, zero);
+  return xla::Select(is_zero, zero, xla::Div(x, y));
+}
+XLA_MAKE_BINARY(Xdivy, XdivyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
 // Implementation of FloorMod. Pseudo-code:
 // T trunc_mod = std::fmod(x, y);

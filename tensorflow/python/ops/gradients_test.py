@@ -26,9 +26,10 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -44,6 +45,7 @@ from tensorflow.python.ops import data_flow_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import functional_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -159,7 +161,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
   def testBoundaryContinue(self):
     # Test that we differentiate both 'x' and 'y' correctly when x is a
     # predecessor of y.
-    with self.test_session():
+    with self.cached_session():
       x = constant(1.0)
       y = x * 2.0
       z = y * 3.0
@@ -168,7 +170,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(6.0, grads[0].eval())
 
   def testAggregationMethodAccumulateN(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant(1.0)
       y = x * 2.0
       z = y + y + y + y + y + y + y + y + y + y
@@ -181,7 +183,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testAggregationMethodAddN(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant(1.0)
       y = x * 2.0
       z = y + y + y + y + y + y + y + y + y + y
@@ -192,7 +194,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertEqual(10.0, grads[1].eval())
 
   def testAggregationMethodTree(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant(1.0)
       y = x * 2.0
       z = y + y + y + y + y + y + y + y + y + y
@@ -232,7 +234,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
           array_ops.placeholder(dtypes.int32))
       dx, = gradients.gradients(y, x, grad_ys=dy)
       # The IndexedSlices gradient of tf.identity is the identity map.
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         vdx, vdy = sess.run(
             [dx, dy], feed_dict={x: [1.0], dy.indices: [0], dy.values: [2.0]})
       self.assertEqual(vdx, vdy)
@@ -276,7 +278,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertIsNotNone(gradient)
 
   def testDependentYs(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(3.0)
       y = math_ops.square(x)
       y1 = math_ops.square(y)
@@ -291,7 +293,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(17502.0, g[0].eval())
 
   def testPartialDerivatives(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(1.)
       y = 2 * x
       z = x + y
@@ -341,7 +343,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
                           constants=constants, variables=variables_))
 
     # evaluate all tensors in one call to session.run for speed
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       results = sess.run([(case["grad1"], case["grad2"]) for case in cases])
 
     for (npgrad1, npgrad2), case in zip(results, cases):
@@ -369,8 +371,8 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
   @classmethod
   def _GetFunc(cls, **kwargs):
-    return function.Defun(dtypes.float32, dtypes.float32, **
-                          kwargs)(cls.XSquarePlusB)
+    return framework_function.Defun(dtypes.float32, dtypes.float32, **
+                                    kwargs)(cls.XSquarePlusB)
 
   def _GetFuncGradients(self, f, x_value, b_value):
     x = constant_op.constant(x_value, name="x")
@@ -378,7 +380,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
     y = f(x, b)
     grads = gradients.gradients(y, [x, b])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       return sess.run(grads)
 
   def testFunctionGradientsBasic(self):
@@ -401,15 +403,16 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       # Build gradient graph (should add SymbolicGradient node for function).
       grads = gradients.gradients(y, [x, b1])
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertAllEqual([40.0], sess.run(grads)[0])
         self.assertAllEqual([10.0], sess.run(grads)[1])
 
   def testFunctionGradientsWithGradFunc(self):
     g = ops.Graph()
     with g.as_default():
-      grad_func = function.Defun(dtypes.float32, dtypes.float32,
-                                 dtypes.float32)(self.XSquarePlusBGradient)
+      grad_func = framework_function.Defun(dtypes.float32, dtypes.float32,
+                                           dtypes.float32)(
+                                               self.XSquarePlusBGradient)
       f = self._GetFunc(grad_func=grad_func)
       # Get gradients (should add SymbolicGradient node for function, which
       # uses the grad_func above, which multiplies all gradients by 2).
@@ -430,8 +433,9 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
   def testFunctionGradientWithGradFuncAndRegistration(self):
     g = ops.Graph()
     with g.as_default():
-      grad_func = function.Defun(dtypes.float32, dtypes.float32,
-                                 dtypes.float32)(self.XSquarePlusBGradient)
+      grad_func = framework_function.Defun(dtypes.float32, dtypes.float32,
+                                           dtypes.float32)(
+                                               self.XSquarePlusBGradient)
       with self.assertRaisesRegexp(ValueError, "Gradient defined twice"):
         f = self._GetFunc(
             grad_func=grad_func, python_grad_func=self._PythonGradient)
@@ -441,14 +445,14 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
 
-      @function.Defun()
+      @function.defun()
       def Foo():
         y = math_ops.multiply(x, 2.0, name="y")
         g = gradients_impl.gradients(y, x)
         return g[0]
 
       f = Foo()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertEqual(sess.run(f), 2.0)
 
   def testGradientOfCaptured(self):
@@ -456,27 +460,27 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(1.0, name="x")
       y = math_ops.multiply(x, 2.0, name="y")
 
-      @function.Defun()
+      @framework_function.Defun()
       def Foo():
         g = gradients_impl.gradients(y, x)
         return g[0]
 
       f = Foo()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertEqual(sess.run(f), 2.0)
 
   def testCapturedResourceVariable(self):
     with ops.Graph().as_default():
       var = resource_variable_ops.ResourceVariable(1.0, name="var")
 
-      @function.Defun()
+      @function.defun()
       def Foo():
         y = math_ops.multiply(var, 2.0, name="y")
         g = gradients_impl.gradients(y, var)
         return g[0]
 
       f = Foo()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
         self.assertEqual(sess.run(f), 2.0)
 
@@ -486,11 +490,11 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       x2 = constant_op.constant(2.0, name="x2")
       x3 = math_ops.multiply(x1, x2, name="x3")
 
-      @function.Defun()
+      @function.defun()
       def Outer():
         outer1 = array_ops.identity(x1, name="outer1")
 
-        @function.Defun()
+        @function.defun()
         def Inner():
           inner1 = array_ops.identity(outer1, name="inner1")
           inner2 = array_ops.identity(x2, name="inner2")
@@ -501,7 +505,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
         return Inner()
 
       x1_grad, x2_grad = Outer()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         # 1.0 + None + 2.0 + 1.0 = 4.0
         self.assertEqual(sess.run(x1_grad), 4.0)
         # None + 1.0 + 1.0 + None = 2.0
@@ -511,11 +515,11 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       x = constant_op.constant(1.0, name="x")
 
-      @function.Defun()
+      @function.defun()
       def Outer():
         y = math_ops.multiply(x, 2.0, name="y")
 
-        @function.Defun()
+        @function.defun()
         def Inner():
           z = math_ops.multiply(y, 3.0, name="z")
           g = gradients_impl.gradients(z, y)
@@ -524,8 +528,26 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
         return Inner()
 
       z_grad = Outer()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         self.assertEqual(sess.run(z_grad), 3.0)
+
+  def testCapturedEagerTensors(self):
+    # Test that we can handle captured eager tensors unrelated to the gradient
+    # computation (i.e. we need to ignore them).
+    # TODO(skyewm): make it an error if you try to take the gradient wrt a
+    # captured EagerTensor
+    with context.eager_mode():
+      c = constant_op.constant(2.0, name="c")
+
+      @function.defun
+      def Foo():
+        x = constant_op.constant(10.0, name="x")
+        y = math_ops.multiply(x, c, name="y")
+        z = math_ops.multiply(y, 3.0, name="z")
+        g = gradients_impl.gradients(z, x)
+        return g[0]
+
+      self.assertEqual(Foo().numpy(), 6.0)
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):
@@ -667,7 +689,7 @@ class HessianTest(test_util.TensorFlowTestCase):
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
 
   def testIndexedSlicesToTensor(self):
-    with self.test_session():
+    with self.cached_session():
       np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)
       c = constant_op.constant(np_val)
       c_sparse = math_ops._as_indexed_slices(c)
@@ -676,7 +698,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np_val, c_dense.eval())
 
   def testIndexedSlicesToTensorList(self):
-    with self.test_session():
+    with self.cached_session():
       numpy_list = []
       dense_list = []
       sparse_list = []
@@ -692,7 +714,7 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
       self.assertAllClose(packed_dense.eval(), packed_sparse.eval())
 
   def testInt64Indices(self):
-    with self.test_session():
+    with self.cached_session():
       np_val = np.random.rand(4, 4, 4, 4).astype(np.float32)
       c = constant_op.constant(np_val)
       c_sparse = math_ops._as_indexed_slices(c)
@@ -938,7 +960,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       F(x)
 
   def testRVGradientsDynamicCond(self):
-    with self.test_session():
+    with self.cached_session():
       alpha = resource_variable_ops.ResourceVariable(
           np.random.random((1,)),
           dtype="float32")
@@ -999,6 +1021,26 @@ class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
         [[1., 2.], [5, 6], [10., 12.]])
     result = gradients_impl._AggregateIndexedSlicesGradients([t0, t1])
     self._assert_indexed_slices_equal(total, result)
+
+
+class TensorListGradientsTest(test_util.TensorFlowTestCase):
+
+  def testDefaultGradYs(self):
+    with ops.Graph().as_default():
+      tl = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      a = constant(1.0)
+      tl = list_ops.tensor_list_push_back(tl, a)
+
+      grad_tl = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=ops.convert_to_tensor([], dtype=dtypes.int32))
+      grad_tl = list_ops.tensor_list_push_back(tl, constant(5.0))
+
+      grad = gradients.gradients(tl, a, grad_ys=grad_tl)[0]
+      with self.cached_session() as sess:
+        self.assertEquals(sess.run(grad), 5.)
 
 
 if __name__ == "__main__":

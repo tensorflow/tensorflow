@@ -423,6 +423,37 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantized) {
               ElementsAre(151, 152, 153, 185, 186, 187));
 }
 
+TEST_P(QuantizedFullyConnectedOpTest,
+       SimpleTestQuantizedOutputMultiplierGreaterThan1) {
+  // real_multiplier = 2.
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches*/ 2,
+      /*input=*/{TensorType_UINT8, {2, 10}, -127, 128},
+      /*output=*/{TensorType_UINT8, {}, -63.5, 64});
+
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  24, 25, 26,  // first batch
+                  58, 59, 60,  // second batch
+              })));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAre(175, 177, 179, 243, 245, 247));
+}
+
 void SimpleTestQuantizedInt16OutputCase(
     TfLiteRegistration* registration, int input_depth, int output_depth,
     int batches, FullyConnectedOptionsWeightsFormat weights_format) {
@@ -629,6 +660,37 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantized) {
               })));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAre(151, 152, 153, 185, 186, 187));
+}
+
+TEST_P(QuantizedFullyConnectedOpTest,
+       SimpleTest4dInputQuantizedOutputMultiplierGreaterThan1) {
+  // real_multiplier = 2.
+  QuantizedFullyConnectedOpModel m(
+      GetRegistration(), /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_UINT8, {4, 1, 5, 1}, -127, 128},
+      /*output=*/{TensorType_UINT8, {}, -63.5, 64});
+
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear({
+                  24, 25, 26,  // first batch
+                  58, 59, 60,  // second batch
+              })));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAre(175, 177, 179, 243, 245, 247));
 }
 
 INSTANTIATE_TEST_CASE_P(

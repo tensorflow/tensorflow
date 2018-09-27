@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import time
 
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.framework import ops
@@ -26,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training
+from tensorflow.python.training import training_util
 
 
 # pylint: disable=protected-access
@@ -51,6 +53,7 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
   ```
 
   Current limitations of this approach are:
+
   * It doesn't support multi-node distributed mode.
   * It doesn't support saveable objects other than variables (such as boosted
     tree support)
@@ -72,8 +75,9 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
       estimator: A `tf.estimator.Estimator` instance to call evaluate.
       input_fn:  Equivalent to the `input_fn` arg to `estimator.evaluate`. A
         function that constructs the input data for evaluation.
-        See @{$premade_estimators#create_input_functions} for more
-        information. The function should construct and return one of
+        See [Createing input functions](
+        https://tensorflow.org/guide/premade_estimators#create_input_functions)
+        for more information. The function should construct and return one of
         the following:
 
           * A 'tf.data.Dataset' object: Outputs of `Dataset` object must be a
@@ -209,5 +213,73 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
     """Runs evaluator for final model."""
     self._evaluate(session)
 
+
+class _StopAtCheckpointStepHook(training.SessionRunHook):
+  """Hook that requests stop at a specified step based on checkpoint.
+
+  Note: We recommend using 'make_stop_at_checkpoint_step_hook` to get the proper
+  hook.
+  """
+
+  def __init__(self, model_dir, last_step,
+               wait_after_file_check_secs=30):
+    """Initializes a `StopAtCheckpointStepHook`.
+
+    This hook requests stop after a last step has been reached. It checks latest
+    checkpoint to verify last step is written on disk or not.
+
+    Args:
+      model_dir: Directory to read global step from latest checkpoint.
+      last_step: Step after which to stop.
+      wait_after_file_check_secs: Reading same file by many workers may create
+      I/O issues. To throttle that we will wait given secs after each read of
+      the file.
+
+    Raises:
+      ValueError: If one of the arguments is invalid.
+    """
+    if last_step is None:
+      raise ValueError('last_step must be specified.')
+    if model_dir is None:
+      raise ValueError('model_dir must be specified.')
+
+    self._model_dir = model_dir
+    self._last_step = last_step
+    self._wait_after_file_check_secs = wait_after_file_check_secs
+
+  def begin(self):
+    self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
+    if self._global_step_tensor is None:
+      raise RuntimeError(
+          'Global step should be created to use StopAtCheckpointStepHook.')
+
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    return training.SessionRunArgs(self._global_step_tensor)
+
+  def after_run(self, run_context, run_values):
+    global_step = run_values.results + 1
+    if global_step >= self._last_step:
+      # Check latest global step in the checkpoint to ensure that the targeted
+      # last step is written on disk.
+
+      step = estimator_lib._load_global_step_from_checkpoint_dir(
+          self._model_dir)
+      if step >= self._last_step:
+        run_context.request_stop()
+      else:
+        time.sleep(self._wait_after_file_check_secs)
+
+
+def make_stop_at_checkpoint_step_hook(estimator,
+                                      last_step,
+                                      wait_after_file_check_secs=30):
+  """Creates a proper StopAtCheckpointStepHook based on chief status."""
+
+  if estimator.config.is_chief:
+    return training.StopAtStepHook(last_step=last_step)
+  return _StopAtCheckpointStepHook(
+      model_dir=estimator.model_dir,
+      last_step=last_step,
+      wait_after_file_check_secs=wait_after_file_check_secs)
 
 # pylint: enable=protected-access

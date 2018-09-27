@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -111,11 +112,11 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   return stream_pools_.at(executor).BorrowStream(executor);
 }
 
-Backend::Backend(
-    se::Platform* platform, Compiler* compiler,
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
-    TransferManager* transfer_manager, ComputationPlacer* computation_placer,
-    int intra_op_parallelism_threads)
+Backend::Backend(se::Platform* platform, Compiler* compiler,
+                 absl::Span<se::StreamExecutor* const> stream_executors,
+                 TransferManager* transfer_manager,
+                 ComputationPlacer* computation_placer,
+                 int intra_op_parallelism_threads)
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),
@@ -127,8 +128,8 @@ Backend::Backend(
     }
   }
   // Create a memory allocator for the valid stream executors.
-  memory_allocator_ =
-      MakeUnique<StreamExecutorMemoryAllocator>(platform, stream_executors);
+  memory_allocator_ = absl::make_unique<StreamExecutorMemoryAllocator>(
+      platform, stream_executors);
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
 
@@ -176,7 +177,7 @@ StatusOr<se::StreamExecutor*> Backend::stream_executor(
     }
   }
   return InvalidArgument("device %s not supported by XLA service",
-                         device_name(device_ordinal).c_str());
+                         device_name(device_ordinal));
 }
 
 StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,

@@ -35,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as var_ops
+from tensorflow.python.ops.nn import log_poisson_loss
 from tensorflow.python.ops.nn import sigmoid_cross_entropy_with_logits
 from tensorflow.python.summary import summary
 
@@ -51,6 +52,7 @@ class SdcaModel(object):
      * Squared loss
      * Hinge loss
      * Smooth hinge loss
+     * Poisson log loss
 
     This class defines an optimizer API to train a linear model.
 
@@ -112,7 +114,7 @@ class SdcaModel(object):
       raise ValueError('examples, variables and options must all be specified.')
 
     supported_losses = ('logistic_loss', 'squared_loss', 'hinge_loss',
-                        'smooth_hinge_loss')
+                        'smooth_hinge_loss', 'poisson_loss')
     if options['loss_type'] not in supported_losses:
       raise ValueError('Unsupported loss_type: ', options['loss_type'])
 
@@ -315,6 +317,7 @@ class SdcaModel(object):
     """Add operations to compute predictions by the model.
 
     If logistic_loss is being used, predicted probabilities are returned.
+    If poisson_loss is being used, predictions are exponentiated.
     Otherwise, (raw) linear predictions (w*x) are returned.
 
     Args:
@@ -335,6 +338,10 @@ class SdcaModel(object):
       # Convert logits to probability for logistic loss predictions.
       with name_scope('sdca/logistic_prediction'):
         result = math_ops.sigmoid(result)
+    elif self._options['loss_type'] == 'poisson_loss':
+      # Exponeniate the prediction for poisson loss predictions.
+      with name_scope('sdca/poisson_prediction'):
+        result = math_ops.exp(result)
     return result
 
   def _get_partitioned_update_ops(self,
@@ -393,14 +400,16 @@ class SdcaModel(object):
 
       sparse_weights = []
       sparse_indices = []
-      # If we have partitioned variables, keep a few lists of Tensors around
-      # that we need for the assign_add after the op call to
-      # gen_sdca_ops.sdca_optimizer().
-      num_partitions_by_var = []
-      p_assignments_by_var = []
-      gather_ids_by_var = []
-      for w, i in zip(self._slots['unshrinked_sparse_features_weights'],
-                      sparse_feature_indices):
+      # If we have partitioned variables, keep a few dictionaries of Tensors
+      # around that we need for the assign_add after the op call to
+      # gen_sdca_ops.sdca_optimizer().  These are keyed because we may have a
+      # mix of partitioned and un-partitioned variables.
+      num_partitions_by_var = {}
+      p_assignments_by_var = {}
+      gather_ids_by_var = {}
+      for v_num, (w, i) in enumerate(
+          zip(self._slots['unshrinked_sparse_features_weights'],
+              sparse_feature_indices)):
         # Append the sparse_indices (in full-variable space).
         sparse_idx = math_ops.cast(
             array_ops.unique(math_ops.cast(i, dtypes.int32))[0],
@@ -449,10 +458,10 @@ class SdcaModel(object):
           gather_ids = data_flow_ops.dynamic_partition(new_ids,
                                                        p_assignments,
                                                        num_partitions)
-          # Append these to the lists for use in the later update.
-          num_partitions_by_var.append(num_partitions)
-          p_assignments_by_var.append(p_assignments)
-          gather_ids_by_var.append(gather_ids)
+          # Add these into the dictionaries for use in the later update.
+          num_partitions_by_var[v_num] = num_partitions
+          p_assignments_by_var[v_num] = p_assignments
+          gather_ids_by_var[v_num] = gather_ids
 
           # Gather the weights from each partition.
           partition_gathered_weights = []
@@ -622,6 +631,11 @@ class SdcaModel(object):
         return math_ops.reduce_sum(math_ops.multiply(
             sigmoid_cross_entropy_with_logits(labels=labels,
                                               logits=predictions),
+            weights)) / math_ops.reduce_sum(weights)
+
+      if self._options['loss_type'] == 'poisson_loss':
+        return math_ops.reduce_sum(math_ops.multiply(
+            log_poisson_loss(targets=labels, log_input=predictions),
             weights)) / math_ops.reduce_sum(weights)
 
       if self._options['loss_type'] in ['hinge_loss', 'smooth_hinge_loss']:

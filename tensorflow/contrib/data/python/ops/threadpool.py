@@ -61,11 +61,11 @@ class PrivateThreadPool(object):
           display_name=display_name)
 
 
-class _ThreadPoolDataset(dataset_ops.Dataset):
+class _ThreadPoolDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and sets a custom threadpool."""
 
   def __init__(self, input_dataset, thread_pool):
-    super(_ThreadPoolDataset, self).__init__()
+    super(_ThreadPoolDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._thread_pool = thread_pool
 
@@ -100,6 +100,6 @@ def override_threadpool(dataset, thread_pool):
   Returns:
     A dataset containing the same values as `dataset`, but which uses
     `thread_pool` to compute any of its parallel operations (such as
-    @{tf.data.Dataset.map}).
+    `tf.data.Dataset.map`).
   """
   return _ThreadPoolDataset(dataset, thread_pool)

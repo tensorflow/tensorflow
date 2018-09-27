@@ -72,7 +72,7 @@ py_test(
 
 tf_xla_py_test(
     name = "adadelta_test",
-    size = "medium",
+    size = "large",
     srcs = ["adadelta_test.py"],
     deps = [
         ":xla_test",
@@ -251,6 +251,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "matrix_triangular_solve_op_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["matrix_triangular_solve_op_test.py"],
     tags = ["optonly"],
     deps = [
@@ -276,9 +277,10 @@ tf_xla_py_test(
     ],
 )
 
+# This test is large because occasionally the cpu test is long for testConcatLargeNumberOfTensors
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",
@@ -384,6 +386,19 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
+    name = "reshape_op_test",
+    size = "small",
+    srcs = ["reshape_op_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -559,6 +574,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "matrix_band_part_test",
     size = "medium",
+    timeout = "long",
     srcs = ["matrix_band_part_test.py"],
     tags = ["optonly"],
     deps = [
@@ -566,6 +582,7 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -691,11 +708,7 @@ tf_xla_py_test(
     size = "small",
     srcs = ["random_ops_test.py"],
     disabled_backends = [
-        # TODO(b/110300529): RngNormal doesn't return values with the expected variance
-        "cpu",
         "cpu_ondemand",
-        # TODO(b/31361304): enable RNG ops on GPU when parallelized.
-        "gpu",
     ],
     deps = [
         ":xla_test",
@@ -719,6 +732,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -964,7 +978,7 @@ tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
-    tags = ["noasan"],  # times out, http://b/78599043
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1091,6 +1105,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1179,5 +1194,34 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "quantized_ops_test",
+    size = "small",
+    srcs = ["quantized_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "xla_ops_test",
+    size = "medium",
+    srcs = ["xla_ops_test.py"],
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

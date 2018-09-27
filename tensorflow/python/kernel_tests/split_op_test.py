@@ -174,6 +174,26 @@ class SplitOpTest(test.TestCase):
     for dtype in _TEST_DTYPES:
       self._testHugeNumberOfTensorsVariable(dtype)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testDegenerateVariable(self):
+    inp = np.random.rand(4, 4).astype("f")
+    with test_util.device(use_gpu=True):
+      result = self.evaluate(array_ops.split(inp, [-1, 4], 0))
+      self.assertAllEqual(result[0], inp[0:0, :])
+      self.assertAllEqual(result[1], inp[0:4, :])
+
+      result = self.evaluate(array_ops.split(inp, [4, -1], 0))
+      self.assertAllEqual(result[0], inp[0:4, :])
+      self.assertAllEqual(result[1], inp[4:4, :])
+
+      result = self.evaluate(array_ops.split(inp, [-1, 4], 1))
+      self.assertAllEqual(result[0], inp[:, 0:0])
+      self.assertAllEqual(result[1], inp[:, 0:4])
+
+      result = self.evaluate(array_ops.split(inp, [4, -1], 1))
+      self.assertAllEqual(result[0], inp[:, 0:4])
+      self.assertAllEqual(result[1], inp[:, 4:4])
+
   def _testGradientsSimpleVariable(self, dtype):
     inp = self._makeData((4, 4), dtype)
     with test_util.device(use_gpu=True):
@@ -335,6 +355,16 @@ class SplitOpTest(test.TestCase):
         axis=array_ops.placeholder(dtypes.int32))
     for s in splits:
       self.assertEqual(None, s.get_shape().ndims)
+
+  def testVariableShapeFunction(self):
+    # size_splits too big
+    with self.assertRaises(ValueError):
+      array_ops.split([0, 1], [3, -1], axis=0)
+
+    # Correct inference of variable dimension
+    s0, s1 = array_ops.split([0, 1, 2], [2, -1], axis=0)
+    assert s0.shape.as_list() == [2]
+    assert s1.shape.as_list() == [1]
 
   def testNonexistentDimTensor(self):
     x = array_ops.placeholder(dtypes.int32)

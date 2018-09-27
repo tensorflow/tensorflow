@@ -61,6 +61,6 @@ The resulting value `output` would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See @{tf.scatter_nd} for more details about how to make updates to slices.
+See `tf.scatter_nd` for more details about how to make updates to slices.
 END
 }

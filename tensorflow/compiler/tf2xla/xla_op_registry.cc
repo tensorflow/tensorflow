@@ -90,6 +90,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
                  << " have incompatible compile time constant inputs.";
     return false;
   }
+  if (x.is_metadata_op != y.is_metadata_op) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible values for is_metadata_op.";
+    return false;
+  }
   return true;
 }
 
@@ -105,7 +110,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 
 /* static */ void XlaOpRegistry::RegisterBackend(
     const string& compilation_device_name,
-    gtl::ArraySlice<DataType> supported_types, BackendOpFilter op_filter) {
+    absl::Span<const DataType> supported_types, BackendOpFilter op_filter) {
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
   auto result = registry.backends_.emplace(compilation_device_name, Backend());
@@ -325,6 +330,17 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   return kernels;
 }
 
+/*static*/ std::vector<string> XlaOpRegistry::GetAllRegisteredOps() {
+  std::vector<string> ops;
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  for (const auto& pair : registry.ops_) {
+    ops.push_back(pair.first);
+  }
+  std::sort(ops.begin(), ops.end());
+  return ops;
+}
+
 /* static */ const std::unordered_set<string>*
 XlaOpRegistry::CompileTimeConstantInputs(const string& op) {
   XlaOpRegistry& registry = Instance();
@@ -337,6 +353,20 @@ XlaOpRegistry::CompileTimeConstantInputs(const string& op) {
   // registrations for this op name, they all have the same value of
   // compile_time_constant_inputs, so only the first match is returned.
   return &it->second.front()->compile_time_constant_inputs;
+}
+
+/*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  auto it = registry.ops_.find(op);
+  if (it == registry.ops_.end() || it->second.empty()) {
+    return false;
+  }
+
+  // The test in IsCompatible ensures that if there are multiple matching
+  // registrations for this op name, they all have the same value of
+  // is_metadata_op, so only the first match is returned.
+  return it->second.front()->is_metadata_op;
 }
 
 std::vector<string> XlaOpRegistry::BackendNames() {
@@ -360,28 +390,30 @@ XlaOpRegistry& XlaOpRegistry::Instance() {
   return *r;
 }
 
-XlaOpRegistrationBuilder::XlaOpRegistrationBuilder(StringPiece name) {
+XlaOpRegistrationBuilder::XlaOpRegistrationBuilder(absl::string_view name) {
   registration_.reset(new XlaOpRegistry::OpRegistration);
-  registration_->name = std::string(name);
+  registration_->name = string(name);
 }
 
-XlaOpRegistrationBuilder XlaOpRegistrationBuilder::Name(StringPiece name) {
+XlaOpRegistrationBuilder XlaOpRegistrationBuilder::Name(
+    absl::string_view name) {
   XlaOpRegistrationBuilder registration(name);
   return registration;
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
-    gtl::ArraySlice<StringPiece> devices) {
+    absl::Span<const absl::string_view> devices) {
   registration_->has_device_whitelist = true;
-  for (StringPiece device : devices) {
-    registration_->device_whitelist.insert(std::string(device));
+  for (absl::string_view device : devices) {
+    registration_->device_whitelist.emplace(device);
   }
   return *this;
 }
 
-XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(StringPiece device) {
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Device(
+    absl::string_view device) {
   registration_->has_device_whitelist = true;
-  registration_->device_whitelist.insert(std::string(device));
+  registration_->device_whitelist.emplace(device);
   return *this;
 }
 
@@ -396,17 +428,17 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::AllowResourceTypes() {
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
-    StringPiece attr_name, DataType allowed) {
+    absl::string_view attr_name, DataType allowed) {
   std::set<DataType>& types =
-      registration_->type_constraints[std::string(attr_name)];
+      registration_->type_constraints[string(attr_name)];
   types.insert(allowed);
   return *this;
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
-    StringPiece attr_name, gtl::ArraySlice<DataType> allowed) {
+    absl::string_view attr_name, absl::Span<const DataType> allowed) {
   std::set<DataType>& types =
-      registration_->type_constraints[std::string(attr_name)];
+      registration_->type_constraints[string(attr_name)];
   for (DataType t : allowed) {
     types.insert(t);
   }
@@ -414,8 +446,13 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstInput(
-    StringPiece input_name) {
-  registration_->compile_time_constant_inputs.insert(std::string(input_name));
+    absl::string_view input_name) {
+  registration_->compile_time_constant_inputs.emplace(input_name);
+  return *this;
+}
+
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::IsMetadataOp() {
+  registration_->is_metadata_op = true;
   return *this;
 }
 
@@ -441,10 +478,10 @@ XlaOpRegistrar::XlaOpRegistrar(
 }
 
 XlaBackendRegistrar::XlaBackendRegistrar(
-    StringPiece name, gtl::ArraySlice<DataType> types,
+    absl::string_view name, absl::Span<const DataType> types,
     XlaOpRegistry::BackendOpFilter op_filter) {
   XlaOpRegistry& registry = XlaOpRegistry::Instance();
-  registry.RegisterBackend(std::string(name), types, op_filter);
+  registry.RegisterBackend(string(name), types, op_filter);
 }
 
 }  // namespace tensorflow

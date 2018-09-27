@@ -97,10 +97,10 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://www.bioinf.jku.at/publications/older/2604.pdf
+    https://pdfs.semanticscholar.org/1154/0131eae85b2e11d53df7f1360eeb6476e7f4.pdf
 
-  S. Hochreiter and J. Schmidhuber.
-  "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+  Felix Gers, Jurgen Schmidhuber, and Fred Cummins.
+  "Learning to forget: Continual prediction with LSTM." IET, 850-855, 1999.
 
   The peephole implementation is based on:
 
@@ -2448,10 +2448,10 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
   The default non-peephole implementation is based on:
 
-    http://www.bioinf.jku.at/publications/older/2604.pdf
+    https://pdfs.semanticscholar.org/1154/0131eae85b2e11d53df7f1360eeb6476e7f4.pdf
 
-  S. Hochreiter and J. Schmidhuber.
-  "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+  Felix Gers, Jurgen Schmidhuber, and Fred Cummins.
+  "Learning to forget: Continual prediction with LSTM." IET, 850-855, 1999.
 
   The peephole implementation is based on:
 
@@ -2802,9 +2802,11 @@ class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
     Training of Deep Neural Networks
 
     The default LSTM implementation based on:
-    http://www.bioinf.jku.at/publications/older/2604.pdf
-    S. Hochreiter and J. Schmidhuber.
-    "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+
+      https://pdfs.semanticscholar.org/1154/0131eae85b2e11d53df7f1360eeb6476e7f4.pdf
+
+    Felix Gers, Jurgen Schmidhuber, and Fred Cummins.
+    "Learning to forget: Continual prediction with LSTM." IET, 850-855, 1999.
 
     The class uses optional peephole connections, optional cell clipping
     and an optional projection layer.
@@ -3276,7 +3278,7 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
 
-  For advanced models, please use the full @{tf.nn.rnn_cell.LSTMCell}
+  For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
   that follows.
 
   TODO(gonnet): Write a paper describing this and add a reference here.

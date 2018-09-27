@@ -19,10 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.eager import function
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.ops.custom_gradient import custom_gradient
 from tensorflow.python.ops.gradients_impl import AggregationMethod
 from tensorflow.python.ops.gradients_impl import gradients
 from tensorflow.python.ops.gradients_impl import hessians
 # pylint: enable=unused-import
-

@@ -70,7 +70,7 @@ class SimpleMetaGraphTest(test.TestCase):
     input_feed_value = -10  # Arbitrary input value for feed_dict.
 
     orig_graph = ops.Graph()
-    with self.test_session(graph=orig_graph) as sess:
+    with self.session(graph=orig_graph) as sess:
       # Create a minimal graph with zero variables.
       input_tensor = array_ops.placeholder(
           dtypes.float32, shape=[], name="input")
@@ -98,7 +98,7 @@ class SimpleMetaGraphTest(test.TestCase):
 
     # Create a clean graph and import the MetaGraphDef nodes.
     new_graph = ops.Graph()
-    with self.test_session(graph=new_graph) as sess:
+    with self.session(graph=new_graph) as sess:
       # Import the previously export meta graph.
       meta_graph.import_scoped_meta_graph(filename)
 
@@ -117,7 +117,7 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertEqual(new_output_value, output_value)
 
   def testStrippedOpListNestedFunctions(self):
-    with self.test_session():
+    with self.cached_session():
       # Square two levels deep
       @function.Defun(dtypes.int32)
       def f0(x):
@@ -169,7 +169,7 @@ class SimpleMetaGraphTest(test.TestCase):
     # and "Tout" maps to complex64. Since these attr values map to their
     # defaults, they must be stripped unless stripping of default attrs is
     # disabled.
-    with self.test_session():
+    with self.cached_session():
       real_num = constant_op.constant(1.0, dtype=dtypes.float32, name="real")
       imag_num = constant_op.constant(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
@@ -197,7 +197,7 @@ class SimpleMetaGraphTest(test.TestCase):
     # When inputs to the Complex Op are float64 instances, "T" maps to float64
     # and "Tout" maps to complex128. Since these attr values don't map to their
     # defaults, they must not be stripped.
-    with self.test_session(graph=ops.Graph()):
+    with self.session(graph=ops.Graph()):
       real_num = constant_op.constant(1.0, dtype=dtypes.float64, name="real")
       imag_num = constant_op.constant(2.0, dtype=dtypes.float64, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
@@ -212,7 +212,8 @@ class SimpleMetaGraphTest(test.TestCase):
 
   def testDefaultAttrStrippingNestedFunctions(self):
     """Verifies that default attributes are stripped from function node defs."""
-    with self.test_session():
+    with self.cached_session():
+
       @function.Defun(dtypes.float32, dtypes.float32)
       def f0(i, j):
         return math_ops.complex(i, j, name="double_nested_complex")
@@ -251,7 +252,7 @@ class SimpleMetaGraphTest(test.TestCase):
     meta_info_def = meta_graph_pb2.MetaGraphDef.MetaInfoDef()
     meta_info_def.stripped_op_list.op.add()
 
-    with self.test_session():
+    with self.cached_session():
       meta_graph_def = meta_graph.create_meta_graph_def(
           meta_info_def=meta_info_def, graph_def=graph_def,
           strip_default_attrs=True)
@@ -855,7 +856,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
         _TestDir("metrics_export"), "meta_graph.pb")
 
     graph = ops.Graph()
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes.float32, shapes=(1, 2))
       _enqueue_vector(sess, values_queue, [0, 1])
@@ -876,7 +877,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
     # Verifies that importing a meta_graph with LOCAL_VARIABLES collection
     # works correctly.
     graph = ops.Graph()
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       meta_graph.import_scoped_meta_graph(meta_graph_filename)
       initializer = variables.local_variables_initializer()
       sess.run(initializer)
@@ -885,7 +886,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
     # collection is of node_list type works, but cannot build initializer
     # with the collection.
     graph = ops.Graph()
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       meta_graph.import_scoped_meta_graph(
           test.test_src_dir_path(
               "python/framework/testdata/metrics_export_meta_graph.pb"))

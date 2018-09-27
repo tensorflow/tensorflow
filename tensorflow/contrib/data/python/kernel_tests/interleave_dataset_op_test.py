@@ -177,7 +177,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testSingleThreaded(self, sloppy=False, prefetch_input_elements=0):
     # cycle_length=1,block_length=1 acts like `Dataset.interleave()` and
     # `Dataset.flat_map()` and is single-threaded. No synchronization required.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       sess.run(
           self.init_op,
@@ -212,7 +212,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
 
   def testSingleThreadedRagged(self):
     # Tests a sequence with wildly different elements per iterator.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       sess.run(
           self.init_op,
@@ -242,7 +242,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testTwoThreadsNoContention(self, sloppy=False):
     # num_threads > 1.
     # Explicit coordination should result in `Dataset.interleave()` behavior
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
       sess.run(
@@ -286,7 +286,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
     Args:
       sloppy: Whether to be sloppy or not.
     """
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
       sess.run(
@@ -328,7 +328,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testTwoThreadsNoContentionBlockLength(self, sloppy=False):
     # num_threads > 1.
     # Explicit coordination should result in `Dataset.interleave()` behavior
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
       sess.run(
@@ -373,7 +373,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
     Args:
       sloppy: Whether to be sloppy or not.
     """
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
       sess.run(
@@ -413,7 +413,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
     self._testTwoThreadsNoContentionWithRacesAndBlocking(sloppy=True)
 
   def _testEmptyInput(self, sloppy=False):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Empty input.
       self._clear_coordination_events()
       sess.run(
@@ -437,7 +437,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
 
   def _testNonEmptyInputIntoEmptyOutputs(self, sloppy=False):
     # Non-empty input leading to empty output.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       sess.run(
           self.init_op,
@@ -461,7 +461,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def _testPartiallyEmptyOutputs(self, sloppy=False, prefetch_input_elements=1):
     race_indices = {2, 8, 14}  # Sequence points when sloppy mode has race conds
     # Mixture of non-empty and empty interleaved datasets.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
       sess.run(
@@ -500,7 +500,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
   def testDelayedOutputSloppy(self):
     # Explicitly control the sequence of events to ensure we correctly avoid
     # head-of-line blocking.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       sess.run(
           self.init_op,
@@ -525,7 +525,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
         sess.run(self.next_element)
 
   def testBlockLengthWithContentionSloppy(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       done_first_event = False
       sess.run(
@@ -560,7 +560,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
 
   def _testEarlyExit(self, sloppy=False):
     # Exiting without consuming all input should not block
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       sess.run(
           self.init_op,
@@ -604,7 +604,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
             interleave_fn, cycle_length=16, block_length=2, sloppy=sloppy))
     iterator = dataset.make_one_shot_iterator()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_values = []
       for _ in range(30):
         output_values.append(sess.run(iterator.get_next()))
@@ -635,7 +635,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         for j in range(2):
@@ -645,7 +645,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testErrorsInOutputFn(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._clear_coordination_events()
       sess.run(
           self.init_op,
@@ -704,7 +704,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.init_op,
           feed_dict={
@@ -753,7 +753,7 @@ class ParallelInterleaveDatasetTest(test.TestCase):
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.init_op,
           feed_dict={
@@ -776,6 +776,34 @@ class ParallelInterleaveDatasetTest(test.TestCase):
                            (i, expected_element, actual_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(self.next_element)
+
+  def testShutdownRace(self):
+    dataset = dataset_ops.Dataset.range(20)
+    map_fn = lambda x: dataset_ops.Dataset.range(20 * x, 20 * (x + 1))
+    dataset = dataset.apply(
+        interleave_ops.parallel_interleave(
+            map_fn,
+            cycle_length=3,
+            sloppy=False,
+            buffer_output_elements=1,
+            prefetch_input_elements=0))
+    dataset = dataset.batch(32)
+    iterator = dataset.make_initializable_iterator()
+    next_element = iterator.get_next()
+
+    results = []
+    with self.cached_session() as sess:
+      for _ in range(2):
+        elements = []
+        sess.run(iterator.initializer)
+        try:
+          while True:
+            elements.extend(sess.run(next_element))
+        except errors.OutOfRangeError:
+          pass
+        results.append(elements)
+
+    self.assertAllEqual(results[0], results[1])
 
 
 if __name__ == "__main__":

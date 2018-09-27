@@ -50,7 +50,7 @@ def group_by_reducer(key_func, reducer):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -92,7 +92,7 @@ def group_by_window(key_func,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: if neither or both of {`window_size`, `window_size_func`} are
@@ -124,7 +124,8 @@ def bucket_by_sequence_length(element_length_func,
                               bucket_batch_sizes,
                               padded_shapes=None,
                               padding_values=None,
-                              pad_to_bucket_boundary=False):
+                              pad_to_bucket_boundary=False,
+                              no_padding=False):
   """A transformation that buckets elements in a `Dataset` by length.
 
   Elements of the `Dataset` are grouped together by length and then are padded
@@ -142,20 +143,22 @@ def bucket_by_sequence_length(element_length_func,
     bucket_batch_sizes: `list<int>`, batch size per bucket. Length should be
       `len(bucket_boundaries) + 1`.
     padded_shapes: Nested structure of `tf.TensorShape` to pass to
-      @{tf.data.Dataset.padded_batch}. If not provided, will use
+      `tf.data.Dataset.padded_batch`. If not provided, will use
       `dataset.output_shapes`, which will result in variable length dimensions
       being padded out to the maximum length in each batch.
     padding_values: Values to pad with, passed to
-      @{tf.data.Dataset.padded_batch}. Defaults to padding with 0.
+      `tf.data.Dataset.padded_batch`. Defaults to padding with 0.
     pad_to_bucket_boundary: bool, if `False`, will pad dimensions with unknown
       size to maximum length in batch. If `True`, will pad dimensions with
       unknown size to bucket boundary minus 1 (i.e., the maximum length in each
       bucket), and caller must ensure that the source `Dataset` does not contain
       any elements with length longer than `max(bucket_boundaries)`.
+    no_padding: `bool`, indicates whether to pad the batch features (features
+      need to be either of type `tf.SparseTensor` or of same shape).
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: if `len(bucket_batch_sizes) != len(bucket_boundaries) + 1`.
@@ -199,7 +202,9 @@ def bucket_by_sequence_length(element_length_func,
 
     def batching_fn(bucket_id, grouped_dataset):
       """Batch elements in dataset."""
-      batch_size = batch_sizes[bucket_id]
+      batch_size = window_size_fn(bucket_id)
+      if no_padding:
+        return grouped_dataset.batch(batch_size)
       none_filler = None
       if pad_to_bucket_boundary:
         err_msg = ("When pad_to_bucket_boundary=True, elements must have "
@@ -250,6 +255,7 @@ def _map_x_dataset(map_func):
   return _apply_fn
 
 
+# TODO(b/115382007) Remove this once canned reducers move to core.
 def window_dataset(window_size):
   """A transformation that creates window datasets from the input dataset.
 
@@ -266,17 +272,22 @@ def window_dataset(window_size):
   """
 
   def _apply_fn(dataset):
-    return _WindowDataset(dataset, window_size)
+    return dataset_ops.WindowDataset(
+        dataset,
+        size=window_size,
+        shift=window_size,
+        stride=1,
+        drop_remainder=False)
 
   return _apply_fn
 
 
-class _GroupByReducerDataset(dataset_ops.Dataset):
+class _GroupByReducerDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that groups its input and performs a reduction."""
 
   def __init__(self, input_dataset, key_func, reducer):
     """See `group_by_reducer()` for details."""
-    super(_GroupByReducerDataset, self).__init__()
+    super(_GroupByReducerDataset, self).__init__(input_dataset)
 
     self._input_dataset = input_dataset
 
@@ -405,12 +416,12 @@ class _GroupByReducerDataset(dataset_ops.Dataset):
         **dataset_ops.flat_structure(self))
 
 
-class _GroupByWindowDataset(dataset_ops.Dataset):
+class _GroupByWindowDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that groups its input and performs a windowed reduction."""
 
   def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
     """See `group_by_window()` for details."""
-    super(_GroupByWindowDataset, self).__init__()
+    super(_GroupByWindowDataset, self).__init__(input_dataset)
 
     self._input_dataset = input_dataset
 
@@ -514,12 +525,12 @@ class Reducer(object):
     return self._finalize_func
 
 
-class _MapXDataset(dataset_ops.Dataset):
+class _MapXDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
   def __init__(self, input_dataset, map_func):
     """See `map_x_dataset()` for details."""
-    super(_MapXDataset, self).__init__()
+    super(_MapXDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
@@ -538,49 +549,6 @@ class _MapXDataset(dataset_ops.Dataset):
         input_t,
         self._map_func.captured_inputs,
         f=self._map_func,
-        **dataset_ops.flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
-class _WindowDataset(dataset_ops.Dataset):
-  """A dataset that creates window datasets from the input elements."""
-
-  def __init__(self, input_dataset, window_size):
-    """See `window_dataset()` for more details."""
-    super(_WindowDataset, self).__init__()
-    self._input_dataset = input_dataset
-    self._window_size = ops.convert_to_tensor(
-        window_size, dtype=dtypes.int64, name="window_size")
-    self._output_classes = nest.pack_sequence_as(
-        input_dataset.output_classes,
-        [
-            dataset_ops._NestedDatasetComponent(  # pylint: disable=protected-access
-                output_classes=output_class,
-                output_shapes=output_shape,
-                output_types=output_type)
-            for output_class, output_shape, output_type in zip(
-                nest.flatten(input_dataset.output_classes),
-                nest.flatten(input_dataset.output_shapes),
-                nest.flatten(input_dataset.output_types))
-        ])
-    self._output_shapes = self._output_classes
-    self._output_types = self._output_classes
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.window_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._window_size,
         **dataset_ops.flat_structure(self))
 
   @property

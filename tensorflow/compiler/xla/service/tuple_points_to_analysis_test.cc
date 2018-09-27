@@ -72,9 +72,8 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   // Checks that the given points-to set contains exactly (unordered) the given
   // LogicalBuffers.
-  void ExpectHasBuffers(
-      const PointsToSet::BufferList& points_to_set,
-      tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
+  void ExpectHasBuffers(const PointsToSet::BufferList& points_to_set,
+                        absl::Span<const LogicalBuffer* const> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
     EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
   }
@@ -83,7 +82,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // top-level buffers of the given instructions.
   void ExpectHasTopLevelBuffers(
       const PointsToSet::BufferList& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+      absl::Span<HloInstruction* const> instructions) {
     PointsToSet::BufferList buffers;
     for (auto instruction : instructions) {
       buffers.push_back(GetBuffer(instruction, /*index=*/{}));
@@ -94,7 +93,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Overload which takes a set instead of a vector.
   void ExpectHasTopLevelBuffers(
       const PointsToSet::BufferSet& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+      absl::Span<HloInstruction* const> instructions) {
     ExpectHasTopLevelBuffers(
         PointsToSet::BufferList(points_to_set.begin(), points_to_set.end()),
         instructions);
@@ -104,8 +103,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // aliases which are exactly (unordered) the given instruction/index pairs.
   void ExpectHasBufferAliases(
       const HloInstruction* instruction, const ShapeIndex& index,
-      tensorflow::gtl::ArraySlice<std::pair<HloInstruction*, ShapeIndex>>
-          expected) {
+      absl::Span<const std::pair<HloInstruction*, ShapeIndex>> expected) {
     const LogicalBuffer* buffer =
         points_to_analysis_->GetBufferDefinedAt(instruction, index)
             .ValueOrDie();
@@ -557,10 +555,10 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
-  auto tuple_constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::MakeTuple(
-          {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-           LiteralUtil::CreateR1<float>({2.0, 42}).get()})));
+  Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
+                        LiteralUtil::CreateR1<float>({2.0, 42})};
+  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
 
@@ -1066,8 +1064,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      /*new_size=*/2, PrecisionConfig::DEFAULT);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums, precision_config));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));

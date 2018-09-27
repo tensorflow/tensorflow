@@ -286,7 +286,7 @@ class FileWriterTestCase(test.TestCase):
   def testAddingSummariesFromSessionRunCalls(self):
     test_dir = self._CleanTestDir("global_step")
     sw = self._FileWriter(test_dir)
-    with self.test_session():
+    with self.cached_session():
       i = constant_op.constant(1, dtype=dtypes.int32, shape=[])
       l = constant_op.constant(2, dtype=dtypes.int64, shape=[])
       # Test the summary can be passed serialized.
@@ -437,7 +437,7 @@ class SessionBasedFileWriterTestCase(FileWriterTestCase):
       # Pass in test_session() as the session. It will be cached during this
       # test method invocation so that any other use of test_session() with no
       # graph should result in re-using the same underlying Session.
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         kwargs["session"] = sess
         return writer.FileWriter(*args, **kwargs)
     return writer.FileWriter(*args, **kwargs)

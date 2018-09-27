@@ -94,7 +94,6 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:export",
         "//tensorflow/python/feature_column",
     ],
 )
@@ -149,9 +148,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/estimator:export",
-        "//tensorflow/python/estimator:head",
-        "//tensorflow/python/estimator:metric_keys",
     ],
 )
 

@@ -98,7 +98,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable(
             [[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
@@ -117,7 +117,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -141,7 +141,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -172,7 +172,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         repeated_index_update_var = variables.Variable(
             [[1.0], [2.0]], dtype=dtype)
         aggregated_update_var = variables.Variable(
@@ -202,7 +202,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseRepeatedIndicesResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var_repeated = resource_variable_ops.ResourceVariable(
             [1.0, 2.0], dtype=dtype)
         loss_repeated = math_ops.reduce_sum(
@@ -226,7 +226,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         shape = [1, 6]
         var0 = variables.Variable(
             [[
@@ -262,7 +262,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -295,12 +295,45 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]), var1.eval())
 
   def testDynamicShapeVariable_Ok(self):
-    with self.test_session():
+    with self.cached_session():
       v = variable_scope.get_variable("v", initializer=constant_op.constant(1.),
                                       validate_shape=False)
       self.assertFalse(v.shape.is_fully_defined())
       # Creating optimizer should cause no exception.
       adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
+
+  def testDynamicShapeVariableWithCallableInit(self):
+    var0 = variable_scope.get_variable("var0",
+                                       initializer=constant_op.constant(1.),
+                                       validate_shape=False)
+    self.assertFalse(var0.shape.is_fully_defined())
+
+    grads0 = constant_op.constant(0.1, dtype=dtypes.float32)
+    learning_rate = lambda: 3.0
+
+    ada_opt = adagrad.AdagradOptimizer(
+        learning_rate, initial_accumulator_value=0.1, use_locking=True)
+
+    if not context.executing_eagerly():
+      ada_update = ada_opt.apply_gradients(
+          zip([grads0], [var0]))
+      self.evaluate(variables.global_variables_initializer())
+
+    # Fetch params to validate initial values
+    v0_val = self.evaluate([var0])
+    self.assertAllClose([1.0], v0_val)
+
+    # Run 3 steps of adagrad
+    for _ in range(3):
+      if not context.executing_eagerly():
+        self.evaluate(ada_update)
+      else:
+        ada_opt.apply_gradients(zip([grads0], [var0]))
+
+    # Validate updated params
+    v0_val = self.evaluate([var0])
+    self.assertAllCloseAccordingToType(
+        np.array([-1.6026098728179932]), v0_val)
 
 
 if __name__ == "__main__":

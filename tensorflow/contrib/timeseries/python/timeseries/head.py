@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.summary import summary
@@ -123,6 +124,8 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
     metrics[feature_keys.FilteringResults.STATE_TUPLE] = (
         _identity_metric_nested(feature_keys.FilteringResults.STATE_TUPLE,
                                 model_outputs.end_state))
+    metrics[metric_keys.MetricKeys.LOSS_MEAN] = metrics_impl.mean(
+        model_outputs.loss, name="average_loss")
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
         mode=mode,
@@ -320,6 +323,14 @@ class OneShotPredictionHead(TimeSeriesRegressionHead):
             # the filtering phase.
             feature_keys.TrainEvalFeatures.VALUES,
         ]))
+
+  def _evaluate_ops(self, features):
+    """Add ops for evaluation (aka filtering) to the graph."""
+    spec = super(OneShotPredictionHead, self)._evaluate_ops(features)
+    # No state is fed to OneShotPredictionHead, so we don't return it; it being
+    # a tuple can cause issues for downstream infrastructure.
+    del spec.eval_metric_ops[feature_keys.State.STATE_TUPLE]
+    return spec
 
   def _serving_ops(self, features):
     """Add ops for serving to the graph."""

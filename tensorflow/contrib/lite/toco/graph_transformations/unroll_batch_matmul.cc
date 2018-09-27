@@ -154,6 +154,7 @@ bool UnrollBatchMatMul::Run(Model* model, std::size_t op_index) {
   pack_op->inputs = pack_inputs;
   pack_op->outputs = {batch_op->outputs[0]};
   pack_op->axis = 0;
+  pack_op->values_count = pack_inputs.size();
   model->operators.emplace(tail_it, pack_op);
 
   // Remove the old batch matmul now that we've unrolled.

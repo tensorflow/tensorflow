@@ -51,6 +51,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import device_setter
 
+
 # Key names for prediction dict.
 ENSEMBLE_STAMP = "ensemble_stamp"
 PREDICTIONS = "predictions"
@@ -217,6 +218,21 @@ def extract_features(features, feature_columns, use_core_columns):
   sparse_int_shapes = []
   for key in sorted(features.keys()):
     tensor = features[key]
+    # TODO(nponomareva): consider iterating over feature columns instead.
+    if isinstance(tensor, tuple):
+      # Weighted categorical feature.
+      categorical_tensor = tensor[0]
+      weight_tensor = tensor[1]
+
+      shape = categorical_tensor.dense_shape
+      indices = array_ops.concat([
+          array_ops.slice(categorical_tensor.indices, [0, 0], [-1, 1]),
+          array_ops.expand_dims(
+              math_ops.to_int64(categorical_tensor.values), -1)
+      ], 1)
+      tensor = sparse_tensor.SparseTensor(
+          indices=indices, values=weight_tensor.values, dense_shape=shape)
+
     if isinstance(tensor, sparse_tensor.SparseTensor):
       if tensor.values.dtype == dtypes.float32:
         sparse_float_names.append(key)
@@ -288,7 +304,8 @@ class GradientBoostedDecisionTreeModel(object):
                feature_columns=None,
                use_core_columns=False,
                output_leaf_index=False,
-               output_leaf_index_modes=None):
+               output_leaf_index_modes=None,
+               num_quantiles=100):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -311,6 +328,7 @@ class GradientBoostedDecisionTreeModel(object):
       output_leaf_index_modes: A list of modes from (TRAIN, EVAL, INFER) which
         dictates when leaf indices will be outputted. By default, leaf indices
         are only outputted in INFER mode.
+      num_quantiles: Number of quantiles to build for numeric feature values.
 
     Raises:
       ValueError: if inputs are not valid.
@@ -383,6 +401,7 @@ class GradientBoostedDecisionTreeModel(object):
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
+    self._num_quantiles = num_quantiles
     self._max_tree_depth = variables.Variable(
         initial_value=self._learner_config.constraints.max_tree_depth)
     self._attempted_trees = variables.Variable(
@@ -671,8 +690,10 @@ class GradientBoostedDecisionTreeModel(object):
         self._learner_config.constraints.min_node_weight, dtypes.float32)
     loss_uses_sum_reduction = self._loss_reduction == losses.Reduction.SUM
     loss_uses_sum_reduction = constant_op.constant(loss_uses_sum_reduction)
-    epsilon = 0.01
-    num_quantiles = 100
+    weak_learner_type = constant_op.constant(
+        self._learner_config.weak_learner_type)
+    num_quantiles = self._num_quantiles
+    epsilon = 1.0 / num_quantiles
     strategy_tensor = constant_op.constant(strategy)
     with ops.device(self._get_replica_device_setter(worker_device)):
       # Create handlers for dense float columns
@@ -695,6 +716,7 @@ class GradientBoostedDecisionTreeModel(object):
                 multiclass_strategy=strategy_tensor,
                 init_stamp_token=init_stamp_token,
                 loss_uses_sum_reduction=loss_uses_sum_reduction,
+                weak_learner_type=weak_learner_type,
             ))
         fc_name_idx += 1
 
@@ -743,7 +765,8 @@ class GradientBoostedDecisionTreeModel(object):
                 hessian_shape=self._hessian_shape,
                 multiclass_strategy=strategy_tensor,
                 init_stamp_token=init_stamp_token,
-                loss_uses_sum_reduction=loss_uses_sum_reduction))
+                loss_uses_sum_reduction=loss_uses_sum_reduction,
+                weak_learner_type=weak_learner_type))
         fc_name_idx += 1
 
       # Create ensemble stats variables.
@@ -898,7 +921,7 @@ class GradientBoostedDecisionTreeModel(object):
 
       reset_ops = []
       for handler in handlers:
-        reset_ops.append(handler.make_splits(stamp_token, next_stamp_token, 0))
+        reset_ops.append(handler.reset(stamp_token, next_stamp_token))
       if self._center_bias:
         reset_ops.append(
             bias_stats_accumulator.flush(stamp_token, next_stamp_token))
@@ -1044,6 +1067,12 @@ class GradientBoostedDecisionTreeModel(object):
         # Grow the ensemble given the current candidates.
         sizes = array_ops.unstack(split_sizes)
         partition_ids_list = list(array_ops.split(partition_ids, sizes, axis=0))
+        # When using the oblivious decision tree as weak learner, it produces
+        # one gain and one split per handler and not number of partitions.
+        if self._learner_config.weak_learner_type == (
+            learner_pb2.LearnerConfig.OBLIVIOUS_DECISION_TREE):
+          sizes = len(training_state.handlers)
+
         gains_list = list(array_ops.split(gains, sizes, axis=0))
         split_info_list = list(array_ops.split(split_infos, sizes, axis=0))
         return training_ops.grow_tree_ensemble(
@@ -1057,7 +1086,8 @@ class GradientBoostedDecisionTreeModel(object):
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
             center_bias=self._center_bias,
-            max_tree_depth=self._max_tree_depth)
+            max_tree_depth=self._max_tree_depth,
+            weak_learner_type=self._learner_config.weak_learner_type)
 
       def _grow_ensemble_not_ready_fn():
         # Don't grow the ensemble, just update the stamp.
@@ -1072,7 +1102,8 @@ class GradientBoostedDecisionTreeModel(object):
             learner_config=self._learner_config_serialized,
             dropout_seed=dropout_seed,
             center_bias=self._center_bias,
-            max_tree_depth=self._max_tree_depth)
+            max_tree_depth=self._max_tree_depth,
+            weak_learner_type=self._learner_config.weak_learner_type)
 
       def _grow_ensemble_fn():
         # Conditionally grow an ensemble depending on whether the splits

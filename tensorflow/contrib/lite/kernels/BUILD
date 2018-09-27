@@ -6,7 +6,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_android")
 
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
@@ -66,7 +66,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:arena_planner",
-        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
@@ -82,7 +82,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":op_macros",
-        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "@gemmlowp",
     ],
 )
@@ -93,7 +93,7 @@ cc_library(
         "activation_functor.h",
     ],
     deps = [
-        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -113,9 +113,9 @@ cc_library(
         "kernel_util.h",
     ],
     deps = [
-        "//tensorflow/contrib/lite:builtin_op_data",
-        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels/internal:round",
+        "//tensorflow/contrib/lite/kernels/internal:types",
     ],
 )
 
@@ -147,7 +147,16 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "builtin_ops",
+    name = "padding",
+    srcs = [],
+    hdrs = ["padding.h"],
+    deps = [
+        "//tensorflow/contrib/lite/c:c_api_internal",
+    ],
+)
+
+cc_library(
+    name = "builtin_op_kernels",
     srcs = [
         "activations.cc",
         "add.cc",
@@ -172,10 +181,12 @@ cc_library(
         "expand_dims.cc",
         "fake_quant.cc",
         "floor.cc",
+        "floor_div.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
         "l2norm.cc",
+        "layer_norm_lstm.cc",
         "local_response_norm.cc",
         "logical.cc",
         "lsh_projection.cc",
@@ -190,7 +201,7 @@ cc_library(
         "pooling.cc",
         "pow.cc",
         "reduce.cc",
-        "register.cc",
+        "relu1.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "select.cc",
@@ -211,31 +222,46 @@ cc_library(
         "transpose_conv.cc",
         "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
+        "unpack.cc",
+        "zeros_like.cc",
     ],
     hdrs = [
-        "padding.h",
-        "register.h",
     ],
-    copts = tflite_copts() + EXTRA_EIGEN_COPTS,
+    copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
+    visibility = ["//visibility:private"],
     deps = [
         ":activation_functor",
         ":eigen_support",
         ":kernel_util",
         ":op_macros",
-        "//tensorflow/contrib/lite:builtin_op_data",
+        ":padding",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
+        "//tensorflow/contrib/lite:util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/kernels/internal:audio_utils",
         "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
         "//tensorflow/contrib/lite/kernels/internal:optimized_base",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
-        "//tensorflow/contrib/lite/kernels/internal:reference",
         "//tensorflow/contrib/lite/kernels/internal:reference_base",
+        "//tensorflow/contrib/lite/kernels/internal:tensor",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "builtin_ops",
+    srcs = ["register.cc"],
+    hdrs = ["register.h"],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:util",
+        "//tensorflow/contrib/lite/c:c_api_internal",
     ],
 )
 
@@ -277,6 +303,23 @@ tf_cc_test(
     name = "detection_postprocess_test",
     size = "small",
     srcs = ["detection_postprocess_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "relu1_test",
+    size = "small",
+    srcs = ["relu1_test.cc"],
     tags = [
         "no_oss",
         "tflite_not_portable_ios",
@@ -466,6 +509,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -725,8 +769,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -742,8 +786,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -901,6 +945,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "layer_norm_lstm_test",
+    size = "small",
+    srcs = ["layer_norm_lstm_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
     name = "lstm_test",
     size = "small",
     srcs = ["lstm_test.cc"],
@@ -998,8 +1056,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1101,8 +1159,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1118,8 +1176,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1135,8 +1193,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1152,8 +1210,8 @@ tf_cc_test(
     ],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1166,8 +1224,8 @@ tf_cc_test(
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
-        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
@@ -1190,6 +1248,48 @@ tf_cc_test(
     name = "logical_test",
     size = "small",
     srcs = ["logical_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unpack_test",
+    size = "small",
+    srcs = ["unpack_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "floor_div_test",
+    size = "small",
+    srcs = ["floor_div_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "zeros_like_test",
+    size = "small",
+    srcs = ["zeros_like_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

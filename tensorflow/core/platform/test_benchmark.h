@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Simple benchmarking facility.
-#ifndef TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
-#define TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
+#define TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 
 #include <utility>
 #include <vector>
@@ -115,4 +115,4 @@ void UseRealTime();
 }  // namespace testing
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_TEST_BENCHMARK_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_

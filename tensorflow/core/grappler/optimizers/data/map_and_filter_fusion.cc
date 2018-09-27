@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -41,19 +42,18 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
   fused_node.set_op("MapDataset");
   fused_node.add_input(map_node.input(0));
 
-  auto copy_attribute = [](const string& attribute_name, const NodeDef& from,
-                           NodeDef* to) {
-    (*to->mutable_attr())[attribute_name] = from.attr().at(attribute_name);
-  };
-
   auto attr = map_node.attr().at("f");
   attr.mutable_func()->set_name(fused_function.signature().name());
   (*fused_node.mutable_attr())["f"] = std::move(attr);
 
-  copy_attribute("Targuments", map_node, &fused_node);
+  graph_utils::CopyAttribute("Targuments", map_node, &fused_node);
 
   for (auto key : {"output_shapes", "output_types"})
-    copy_attribute(key, map_node, &fused_node);
+    graph_utils::CopyAttribute(key, map_node, &fused_node);
+
+  if (const auto* attr =
+          gtl::FindOrNull(map_node.attr(), "use_inter_op_parallelism"))
+    (*fused_node.mutable_attr())["use_inter_op_parallelism"] = *attr;
 
   // Add the predicate output attributes.
   (*fused_node.mutable_attr())["output_types"]
@@ -116,22 +116,25 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto& fun = filter_node->attr().at("predicate");
     const FunctionDef* filter_func = function_library.Find(fun.func().name());
     if (!fusion_utils::CanCompose(map_func->signature(),
-                                  filter_func->signature()))
+                                  filter_func->signature())) {
+      VLOG(1) << "Can't fuse map and filter because the output signature of "
+                 "the map function does not match the input signature of the "
+                 "filter function\n";
       return nullptr;
+    }
     return fusion_utils::FuseFunctions(
         *map_func, *filter_func, "fused_map_and_filter_function",
         fusion_utils::CombineSignature, fusion_utils::ComposeInput,
-        fusion_utils::CombineOutput, output->mutable_library());
+        fusion_utils::CombineOutput, fusion_utils::MergeNodes,
+        output->mutable_library());
   };
 
   for (const NodeDef& node : sorted_old_graph.node()) {
     const NodeDef* filter_node = get_filter_node(node);
     if (!filter_node) continue;
 
-    GraphView::InputPort input_port =
-        graph.GetInputPort(filter_node->name(), 0);
     const NodeDef* map_node =
-        get_map_node(*graph.GetRegularFanin(input_port).node);
+        get_map_node(*graph_utils::GetInputNode(*filter_node, graph));
     if (!map_node) continue;
 
     const auto* fused_function = make_fused_function(map_node, filter_node);

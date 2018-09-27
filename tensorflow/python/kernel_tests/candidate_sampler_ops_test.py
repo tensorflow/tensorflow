@@ -38,7 +38,7 @@ class RangeSamplerOpsTest(test.TestCase):
   TRUE_LABELS = [[1, 2], [0, 4], [3, 3]]
 
   def testTrueCandidates(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       indices = constant_op.constant([0, 0, 1, 1, 2, 2])
       true_candidates_vec = constant_op.constant([1, 2, 0, 4, 3, 3])
       true_candidates_matrix = array_ops.reshape(
@@ -50,7 +50,7 @@ class RangeSamplerOpsTest(test.TestCase):
     self.assertAllEqual(true_candidates_val, self.TRUE_LABELS)
 
   def testSampledCandidates(self):
-    with self.test_session():
+    with self.cached_session():
       true_classes = constant_op.constant(
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
       sampled_candidates, _, _ = candidate_sampling_ops.all_candidate_sampler(
@@ -62,7 +62,7 @@ class RangeSamplerOpsTest(test.TestCase):
     self.assertEqual(sampled_candidates.get_shape(), [self.NUM_SAMPLED])
 
   def testTrueLogExpectedCount(self):
-    with self.test_session():
+    with self.cached_session():
       true_classes = constant_op.constant(
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
       _, true_expected_count, _ = candidate_sampling_ops.all_candidate_sampler(
@@ -77,7 +77,7 @@ class RangeSamplerOpsTest(test.TestCase):
                      [self.BATCH_SIZE, self.NUM_TRUE])
 
   def testSampledLogExpectedCount(self):
-    with self.test_session():
+    with self.cached_session():
       true_classes = constant_op.constant(
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
       _, _, sampled_expected_count = candidate_sampling_ops.all_candidate_sampler(  # pylint: disable=line-too-long
@@ -90,7 +90,7 @@ class RangeSamplerOpsTest(test.TestCase):
     self.assertEqual(sampled_log_expected_count.get_shape(), [self.NUM_SAMPLED])
 
   def testAccidentalHits(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       true_classes = constant_op.constant(
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
       sampled_candidates, _, _ = candidate_sampling_ops.all_candidate_sampler(
@@ -109,7 +109,7 @@ class RangeSamplerOpsTest(test.TestCase):
   def testSeed(self):
 
     def draw(seed):
-      with self.test_session():
+      with self.cached_session():
         true_classes = constant_op.constant(
             [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
         sampled, _, _ = candidate_sampling_ops.log_uniform_candidate_sampler(

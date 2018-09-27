@@ -72,7 +72,8 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
 // that CASE is not defined...hence the above construction
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ", value.dtype());
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(value.dtype()));
   }
   return Status::OK();
 }
@@ -149,7 +150,8 @@ Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
     CASE(int64)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported data type: ", v.dtype());
+      return errors::InvalidArgument("Unsupported data type: ",
+                                     DataTypeString(v.dtype()));
   }
   return Status::OK();
 }
@@ -169,7 +171,8 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
     CASE(int64)
 #undef CASE
     default:
-      return errors::InvalidArgument("Unsupported dtype: ", x.dtype());
+      return errors::InvalidArgument("Unsupported dtype: ",
+                                     DataTypeString(x.dtype()));
   }
   return Status::OK();
 }

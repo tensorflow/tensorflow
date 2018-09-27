@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/test_util.h"
+#include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {
 namespace {
@@ -42,11 +43,15 @@ void RunSoftmaxFloatReference(const uint8* input_data,
 
   // Reference data generated via Dequant of input into float, and then applying
   // float Softmax.
-  reference_ops::Dequantize(
-      input_data, ToRuntimeDims(shape_common), input_offset, input_scale,
-      reference_dequant_data.data(), ToRuntimeDims(shape_common));
-  optimized_ops::Softmax(reference_dequant_data.data(), shape_common, beta,
-                         reference_output_float_data.data(), shape_common);
+  DequantizationParams dq_params;
+  dq_params.zero_point = input_offset;
+  dq_params.scale = input_scale;
+  reference_ops::Dequantize(dq_params, shape_common, input_data, shape_common,
+                            reference_dequant_data.data());
+  SoftmaxParams sm_params;
+  sm_params.beta = beta;
+  optimized_ops::Softmax(sm_params, shape_common, reference_dequant_data.data(),
+                         shape_common, reference_output_float_data.data());
   // Work with quantized scaling for Softmax, under which 256 represents 1, but
   // we limit this to 255.
   for (int i = 0; i < ref_buffer_size; i++) {
@@ -115,12 +120,14 @@ void RunOneSoftmaxTest(const uint8* input_data,
   const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
                                                      input_beta_left_shift);
 
-  optimized_ops::Softmax(input_data, shape_common, input_beta_multiplier,
-                         input_beta_left_shift, diff_min,
-                         optimized_softmax_output.data(), shape_common);
-  reference_ops::Softmax(input_data, shape_common, input_beta_multiplier,
-                         input_beta_left_shift, diff_min,
-                         reference_quant_softmax_output.data(), shape_common);
+  SoftmaxParams params;
+  params.input_multiplier = input_beta_multiplier;
+  params.input_left_shift = input_beta_left_shift;
+  params.diff_min = diff_min;
+  optimized_ops::Softmax(params, shape_common, input_data, shape_common,
+                         optimized_softmax_output.data());
+  reference_ops::Softmax(params, shape_common, input_data, shape_common,
+                         reference_quant_softmax_output.data());
 
   CheckOutputData(optimized_softmax_output.data(),
                   reference_float_softmax_output.data(), shape_common,

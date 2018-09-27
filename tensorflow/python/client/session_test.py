@@ -49,6 +49,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+# Import gradients to resolve circular imports
+from tensorflow.python.ops import gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -58,6 +60,12 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -297,6 +305,82 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(42.0, res[3])
       self.assertEqual(None, res[2])
       self.assertEqual(44.0, res[1])
+
+  def testFetchAttrs(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class SampleAttr(object):
+      field1 = attr.ib()
+      field2 = attr.ib()
+
+    val1 = np.array([1.2, 3.4, 5.6])
+    val2 = np.array([[1, 2], [4, 3]])
+    val3 = np.array([10, 20, 30])
+
+    t1 = constant_op.constant(val1)
+    t2 = constant_op.constant(val2)
+
+    sample = SampleAttr(t1, t2)
+    with session.Session() as sess:
+      result = sess.run(sample)
+      self.assertIsInstance(result, SampleAttr)
+      self.assertAllEqual(val1, result.field1)
+      self.assertAllEqual(val2, result.field2)
+
+      result = sess.run(sample, feed_dict={sample.field1: val3})
+      self.assertIsInstance(result, SampleAttr)
+      self.assertAllEqual(val3, result.field1)
+      self.assertAllEqual(val2, result.field2)
+
+  def testFetchNestedAttrs(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class SampleAttr(object):
+      field0 = attr.ib()
+      field1 = attr.ib()
+
+    v1 = 10
+    v2 = 20
+    v3 = np.float32(1.2)
+    v4 = np.float32(3.4)
+    v5 = np.float64(100.001)
+    v6 = np.float64(-23.451)
+    arr1 = np.array([1.2, 6.7, 3.4])
+    arr2 = np.array([7, 11, 3])
+    sample = SampleAttr(
+        SampleAttr(
+            SampleAttr(constant_op.constant(v1), constant_op.constant(v2)),
+            SampleAttr(constant_op.constant(arr1), constant_op.constant(arr2))),
+        {'A': SampleAttr(constant_op.constant(v3), constant_op.constant(v4)),
+         'B': [SampleAttr(constant_op.constant(v5), constant_op.constant(v6))]})
+
+    with session.Session() as sess:
+      result = sess.run(sample)
+      self.assertIsInstance(result, SampleAttr)
+      self.assertIsInstance(result.field0, SampleAttr)
+      self.assertIsInstance(result.field0.field0, SampleAttr)
+      self.assertIsInstance(result.field0.field1, SampleAttr)
+      self.assertIsInstance(result.field0.field1.field0, np.ndarray)
+      self.assertAllEqual(arr1, result.field0.field1.field0)
+      self.assertIsInstance(result.field0.field1.field1, np.ndarray)
+      self.assertAllEqual(arr2, result.field0.field1.field1)
+      self.assertIsInstance(result.field1, dict)
+      self.assertIn('A', result.field1)
+      self.assertIn('B', result.field1)
+      self.assertIsInstance(result.field1['A'], SampleAttr)
+      self.assertAllEqual(
+          [v3, v4],
+          [result.field1['A'].field0, result.field1['A'].field1])
+      self.assertIsInstance(result.field1['B'], list)
+      self.assertEqual(1, len(result.field1['B']))
+      self.assertIsInstance(result.field1['B'][0], SampleAttr)
+      self.assertAllEqual(
+          [v5, v6],
+          [result.field1['B'][0].field0, result.field1['B'][0].field1])
 
   def testFetchNestingEmptyOneLevel(self):
     with session.Session() as sess:
@@ -1760,7 +1844,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       session.register_session_run_conversion_functions(SquaredTensor, fetch_fn,
                                                         feed_fn1, feed_fn2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       np1 = np.array([1.0, 1.5, 2.0, 2.5])
       np2 = np.array([3.0, 3.5, 4.0, 4.5])
       squared_tensor = SquaredTensor(np2)
@@ -1920,7 +2004,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       pass
 
   def testAutoConvertAndCheckData(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)
       with self.assertRaisesRegexp(
           TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):

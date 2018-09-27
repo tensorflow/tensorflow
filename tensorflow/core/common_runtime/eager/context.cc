@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -24,39 +26,61 @@ namespace {
 
 bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
   bool val;
-  if (ReadBoolFromEnvVar(env_var_name, default_val, &val).ok()) {
+  if (tensorflow::ReadBoolFromEnvVar(env_var_name, default_val, &val).ok()) {
     return val;
   }
   return default_val;
+}
+
+std::unique_ptr<thread::ThreadPool> EagerThreadPool(
+    const SessionOptions& opts) {
+  SessionOptions opts_copy(opts);
+  if (opts_copy.config.inter_op_parallelism_threads() == 0) {
+    // Eager defaults to a single thread when no threads are specified.
+    opts_copy.config.set_inter_op_parallelism_threads(1);
+  }
+
+  return std::unique_ptr<thread::ThreadPool>(
+      NewThreadPoolFromSessionOptions(opts_copy));
 }
 
 }  // namespace
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
-                           bool async, std::unique_ptr<DeviceMgr> device_mgr,
+                           bool async,
+                           std::unique_ptr<const DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
+    : EagerContext(opts, default_policy, async, device_mgr.release(),
+                   /*device_mgr_owned*/ true, rendezvous) {}
+
+EagerContext::EagerContext(const SessionOptions& opts,
+                           ContextDevicePlacementPolicy default_policy,
+                           bool async, const DeviceMgr* device_mgr,
+                           bool device_mgr_owned, Rendezvous* rendezvous)
     : policy_(default_policy),
-      local_device_manager_(std::move(device_mgr)),
-      local_unowned_device_manager_(nullptr),
-      devices_(local_device_manager_->ListDevices()),
+      devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
-      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
+      thread_pool_(EagerThreadPool(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
-          local_device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION,
-          &func_lib_def_, {}, thread_pool_.get())),
+          device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
+          thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
+      num_active_steps_(0),
       async_default_(async),
+      log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
       use_send_tensor_rpc_(false) {
-  InitDeviceMapAndAsync();
-  if (opts.config.inter_op_parallelism_threads() > 0) {
-    runner_ = [this](std::function<void()> closure) {
-      this->thread_pool_->Schedule(closure);
-    };
+  if (device_mgr_owned) {
+    local_device_manager_.reset(device_mgr);
+    local_unowned_device_manager_ = nullptr;
   } else {
-    runner_ = [](std::function<void()> closure) { closure(); };
+    local_unowned_device_manager_ = device_mgr;
   }
+  InitDeviceMapAndAsync();
+  runner_ = [this](std::function<void()> closure) {
+    this->thread_pool_->Schedule(std::move(closure));
+  };
 }
 
 void EagerContext::InitDeviceMapAndAsync() {
@@ -76,6 +100,12 @@ void EagerContext::InitDeviceMapAndAsync() {
       }
     }
   }
+
+  DeviceSet ds;
+  for (Device* d : devices_) {
+    ds.AddDevice(d);
+  }
+  prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
 }
 
 bool EagerContext::Async() const {
@@ -161,6 +191,13 @@ EagerContext::~EagerContext() {
     server_.release();
   }
 
+  {
+    mutex_lock l(keep_alive_thread_shutdown_mu_);
+    shutting_down_ = true;
+    keep_alive_thread_cv_.notify_all();
+  }
+  keep_alive_thread_.reset();
+
   CloseRemoteContexts();
 #endif
 
@@ -192,6 +229,35 @@ Status EagerContext::FindDeviceByName(const string& name, Device** result) {
   }
   *result = it->second;
   return Status::OK();
+}
+
+void EagerContext::StartStep() {
+  mutex_lock ml(metadata_mu_);
+  num_active_steps_++;
+  if (step_container_ == nullptr) {
+    step_container_.reset(
+        new ScopedStepContainer(0, [this](const string& name) {
+          for (Device* device : devices_) {
+            device->resource_manager()->Cleanup(name).IgnoreError();
+          }
+        }));
+  }
+}
+
+void EagerContext::EndStep() {
+  mutex_lock ml(metadata_mu_);
+  num_active_steps_--;
+  if (num_active_steps_ == 0) {
+    step_container_.reset();
+  }
+}
+
+ScopedStepContainer* EagerContext::StepContainer() {
+  if (num_active_steps_.load() == 0) {
+    return nullptr;
+  }
+  mutex_lock ml(metadata_mu_);
+  return step_container_.get();
 }
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
@@ -303,7 +369,9 @@ void EagerContext::InitializeRemote(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const gtl::FlatMap<string, uint64>& remote_contexts, Rendezvous* r,
-    DeviceMgr* local_device_mgr) {
+    DeviceMgr* local_device_mgr, int keep_alive_secs) {
+  mutex_lock l(remote_state_mu_);
+
   if (!remote_contexts_.empty()) {
     CloseRemoteContexts();
   }
@@ -345,6 +413,54 @@ void EagerContext::InitializeRemote(
   InitDeviceMapAndAsync();
 
   ClearCaches();
+
+  keep_alive_secs_ = keep_alive_secs;
+
+  sleep_for_secs_ = std::max(1, keep_alive_secs_ / 2);
+
+  // Only schedule a single closure.
+  if (keep_alive_thread_ == nullptr) {
+    keep_alive_thread_.reset(
+        env_->StartThread({}, "EagerKeepAliveThread", [this]() {
+          while (true) {
+            {
+              {
+                mutex_lock l(keep_alive_thread_shutdown_mu_);
+                keep_alive_thread_cv_.wait_for(
+                    l, std::chrono::seconds(sleep_for_secs_));
+
+                if (shutting_down_) {
+                  return;
+                }
+              }
+              {
+                mutex_lock l(remote_state_mu_);
+                if (keep_alive_secs_ > 0) {
+                  {
+                    for (const auto& worker_and_context_id : remote_contexts_) {
+                      auto* client = remote_eager_workers_->GetClient(
+                          worker_and_context_id.first);
+
+                      eager::KeepAliveRequest* request =
+                          new eager::KeepAliveRequest;
+                      eager::KeepAliveResponse* response =
+                          new eager::KeepAliveResponse;
+
+                      request->set_context_id(worker_and_context_id.second);
+                      client->KeepAliveAsync(
+                          request, response,
+                          [request, response](const Status& s) {
+                            delete request;
+                            delete response;
+                          });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }));
+  }
 }
 #endif
 

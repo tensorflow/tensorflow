@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -54,6 +55,14 @@ void RunResourceCtor(ResourceHandle* p, size_t n) {
 
 void RunResourceDtor(ResourceHandle* p, size_t n) {
   for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+}
+
+void Allocator::RunVariantCtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
+}
+
+void Allocator::RunVariantDtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
 }
 
 // If true, cpu allocator collects more stats.
@@ -187,7 +196,7 @@ class CPUAllocatorFactory : public AllocatorFactory {
   class CPUSubAllocator : public SubAllocator {
    public:
     explicit CPUSubAllocator(CPUAllocator* cpu_allocator)
-        : cpu_allocator_(cpu_allocator) {}
+        : SubAllocator({}, {}), cpu_allocator_(cpu_allocator) {}
 
     void* Alloc(size_t alignment, size_t num_bytes) override {
       return cpu_allocator_->AllocateRaw(alignment, num_bytes);
@@ -212,5 +221,23 @@ Allocator* cpu_allocator() {
     cpu_alloc = new TrackingAllocator(cpu_alloc, true);
   }
   return cpu_alloc;
+}
+
+SubAllocator::SubAllocator(const std::vector<Visitor>& alloc_visitors,
+                           const std::vector<Visitor>& free_visitors)
+    : alloc_visitors_(alloc_visitors), free_visitors_(free_visitors) {}
+
+void SubAllocator::VisitAlloc(void* ptr, int index, size_t num_bytes) {
+  for (const auto& v : alloc_visitors_) {
+    v(ptr, index, num_bytes);
+  }
+}
+
+void SubAllocator::VisitFree(void* ptr, int index, size_t num_bytes) {
+  // Although we don't guarantee any order of visitor application, strive
+  // to apply free visitors in reverse order of alloc visitors.
+  for (int i = free_visitors_.size() - 1; i >= 0; --i) {
+    free_visitors_[i](ptr, index, num_bytes);
+  }
 }
 }  // namespace tensorflow

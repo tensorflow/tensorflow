@@ -36,22 +36,19 @@ class OutfeedBuffer {
   OutfeedBuffer(int64 length) : length_(length) {}
 
   // Waits for the device transfer to be finished.
-  std::unique_ptr<Literal> WaitUntilAvailable() {
-    done_.WaitForNotification();
-    return std::move(destination_);
-  }
+  void WaitUntilAvailable() { done_.WaitForNotification(); }
 
   int64 length() const { return length_; }
-  void set_destination(std::unique_ptr<Literal> destination) {
+  void set_destination(std::unique_ptr<MutableBorrowingLiteral> destination) {
     destination_ = std::move(destination);
   }
-  Literal* destination() { return destination_.get(); }
+  MutableBorrowingLiteral* destination() { return destination_.get(); }
 
   // Callback to signal that this buffer is consumed.
   void Done() { done_.Notify(); }
 
  private:
-  std::unique_ptr<Literal> destination_;
+  std::unique_ptr<MutableBorrowingLiteral> destination_;
   const int64 length_;
   tensorflow::Notification done_;
 };

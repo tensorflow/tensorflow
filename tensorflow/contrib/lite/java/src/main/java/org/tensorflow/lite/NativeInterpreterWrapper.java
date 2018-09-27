@@ -23,7 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A wrapper wraps native interpreter and controls model execution.
+ * An internal wrapper that wraps native interpreter and controls model execution.
  *
  * <p><b>WARNING:</b> Resources consumed by the {@code NativeInterpreterWrapper} object must be
  * explicitly freed by invoking the {@link #close()} method when the {@code
@@ -32,36 +32,32 @@ import java.util.Map;
 final class NativeInterpreterWrapper implements AutoCloseable {
 
   NativeInterpreterWrapper(String modelPath) {
-    this(modelPath, /* numThreads= */ -1);
+    this(modelPath, /* options= */ null);
   }
 
-  NativeInterpreterWrapper(String modelPath, int numThreads) {
+  NativeInterpreterWrapper(String modelPath, Interpreter.Options options) {
+    if (options == null) {
+      options = new Interpreter.Options();
+    }
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModel(modelPath, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     isMemoryAllocated = true;
     inputTensors = new Tensor[getInputCount(interpreterHandle)];
     outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+    if (options.allowFp16PrecisionForFp32) {
+      setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
+    }
   }
 
-  /**
-   * Initializes a {@code NativeInterpreterWrapper} with a {@code ByteBuffer}. The ByteBuffer should
-   * not be modified after the construction of a {@code NativeInterpreterWrapper}. The {@code
-   * ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a direct
-   * {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
-   */
   NativeInterpreterWrapper(ByteBuffer byteBuffer) {
-    this(byteBuffer, /* numThreads= */ -1);
+    this(byteBuffer, /* options= */ null);
   }
 
-  /**
-   * Initializes a {@code NativeInterpreterWrapper} with a {@code ByteBuffer} and specifies the
-   * number of inference threads. The ByteBuffer should not be modified after the construction of a
-   * {@code NativeInterpreterWrapper}. The {@code ByteBuffer} can be either a {@code
-   * MappedByteBuffer} that memory-maps a model file, or a direct {@code ByteBuffer} of
-   * nativeOrder() that contains the bytes content of a model.
-   */
-  NativeInterpreterWrapper(ByteBuffer buffer, int numThreads) {
+  NativeInterpreterWrapper(ByteBuffer buffer, Interpreter.Options options) {
+    if (options == null) {
+      options = new Interpreter.Options();
+    }
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
             && (!buffer.isDirect() || buffer.order() != ByteOrder.nativeOrder()))) {
@@ -72,10 +68,16 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     modelByteBuffer = buffer;
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
-    interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
+    interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     isMemoryAllocated = true;
     inputTensors = new Tensor[getInputCount(interpreterHandle)];
     outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+    if (options.useNNAPI) {
+      setUseNNAPI(options.useNNAPI);
+    }
+    if (options.allowFp16PrecisionForFp32) {
+      setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
+    }
   }
 
   /** Releases resources associated with this {@code NativeInterpreterWrapper}. */
@@ -114,12 +116,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       }
     }
 
-    if (!isMemoryAllocated) {
+    boolean needsAllocation = !isMemoryAllocated;
+    if (needsAllocation) {
       allocateTensors(interpreterHandle, errorHandle);
       isMemoryAllocated = true;
-      // Allocation can trigger dynamic resizing of output tensors, so clear the
-      // output tensor cache.
-      Arrays.fill(outputTensors, null);
     }
 
     for (int i = 0; i < inputs.length; ++i) {
@@ -130,6 +130,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     run(interpreterHandle, errorHandle);
     long inferenceDurationNanoseconds = System.nanoTime() - inferenceStartNanos;
 
+    // Allocation can trigger dynamic resizing of output tensors, so refresh all output shapes.
+    if (needsAllocation) {
+      for (int i = 0; i < outputTensors.length; ++i) {
+        if (outputTensors[i] != null) {
+          outputTensors[i].refreshShape();
+        }
+      }
+    }
     for (Map.Entry<Integer, Object> output : outputs.entrySet()) {
       getOutputTensor(output.getKey()).copyTo(output.getValue());
     }
@@ -144,8 +152,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   void resizeInput(int idx, int[] dims) {
     if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
       isMemoryAllocated = false;
-      // Resizing will invalidate the Tensor's shape, so invalidate the Tensor handle.
-      inputTensors[idx] = null;
+      if (inputTensors[idx] != null) {
+        inputTensors[idx].refreshShape();
+      }
     }
   }
 
@@ -154,6 +163,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   void setUseNNAPI(boolean useNNAPI) {
     useNNAPI(interpreterHandle, useNNAPI);
+  }
+
+  void setAllowFp16PrecisionForFp32(boolean allow) {
+    allowFp16PrecisionForFp32(interpreterHandle, allow);
   }
 
   void setNumThreads(int numThreads) {
@@ -230,6 +243,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return getOutputQuantizationScale(interpreterHandle, index);
   }
 
+  /** Gets the number of input tensors. */
+  int getInputTensorCount() {
+    return inputTensors.length;
+  }
+
   /**
    * Gets the input {@link Tensor} for the provided input index.
    *
@@ -245,6 +263,11 @@ final class NativeInterpreterWrapper implements AutoCloseable {
           inputTensors[index] = Tensor.fromHandle(getInputTensor(interpreterHandle, index));
     }
     return inputTensor;
+  }
+
+  /** Gets the number of output tensors. */
+  int getOutputTensorCount() {
+    return inputTensors.length;
   }
 
   /**
@@ -309,6 +332,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void useNNAPI(long interpreterHandle, boolean state);
 
   private static native void numThreads(long interpreterHandle, int numThreads);
+
+  private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
 
   private static native long createErrorReporter(int size);
 

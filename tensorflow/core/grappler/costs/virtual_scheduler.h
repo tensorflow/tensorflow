@@ -114,6 +114,7 @@ struct DeviceState {
 
   DeviceState() {
     device_costs = Costs::ZeroCosts();
+    device_costs.num_ops_total = 0;
     memory_usage = 0;
     max_memory_usage = 0;
   }

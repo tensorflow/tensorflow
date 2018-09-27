@@ -105,7 +105,6 @@ _UNARY_OPS = [
     'Square',
     'Reciprocal',
     'Neg',
-    'Sort',
     'Erf',
     'Erfc',
     'ErfInv',
@@ -1110,7 +1109,7 @@ class ComputationBuilder(object):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
     return self._client.DotGeneral(lhs, rhs, dimension_numbers)
 
-  def Conv(self, lhs, rhs, window_strides, padding):
+  def Conv(self, lhs, rhs, window_strides, padding, feature_group_count=1):
     """Enqueues a Conv operation onto the computation.
 
     Args:
@@ -1118,6 +1117,7 @@ class ComputationBuilder(object):
       rhs: LocalOp for the rank N+2 array of kernel weights.
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
+      feature_group_count: number of feature groups for grouped convolution.
 
     Returns: a LocalOp representing the Conv operation.
     """
@@ -1126,10 +1126,11 @@ class ComputationBuilder(object):
         self.GetShape(rhs).dimensions()[2:], window_strides)
     dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
     return self._client.ConvGeneralDilated(lhs, rhs, window_strides, pads, (),
-                                           (), dimension_numbers)
+                                           (), dimension_numbers,
+                                           feature_group_count)
 
   def ConvWithGeneralPadding(self, lhs, rhs, window_strides, padding,
-                             lhs_dilation, rhs_dilation):
+                             lhs_dilation, rhs_dilation, feature_group_count=1):
     """Enqueues a ConvWithGeneralPadding operation onto the computation.
 
     Args:
@@ -1139,6 +1140,7 @@ class ComputationBuilder(object):
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of dilation factors.
       rhs_dilation: length-N array-like of dilation factors.
+      feature_group_count: number of feature groups for grouped convolution.
 
     Returns:
       A ComputationdataHandle representing the added ConvWithGeneralPadding op.
@@ -1146,7 +1148,8 @@ class ComputationBuilder(object):
     dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
     return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                            lhs_dilation, rhs_dilation,
-                                           dimension_numbers)
+                                           dimension_numbers,
+                                           feature_group_count)
 
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
@@ -1164,7 +1167,8 @@ class ComputationBuilder(object):
     return dimension_numbers
 
   def ConvGeneralDilated(self, lhs, rhs, window_strides, padding, lhs_dilation,
-                         rhs_dilation, dimension_numbers):
+                         rhs_dilation, dimension_numbers,
+                         feature_group_count=1):
     """Enqueues a ConvGeneralDilated operation onto the computation.
 
     Args:
@@ -1191,6 +1195,7 @@ class ComputationBuilder(object):
         labels appear in the rhs_spec string, so that window_strides[0] is
         matched with the dimension corresponding to the first character
         appearing in rhs_spec that is not 'I' or 'O'.
+      feature_group_count: number of feature groups for grouped convolution.
 
     Returns: a LocalOp representing the ConvGenralDilated operation.
     """
@@ -1216,7 +1221,16 @@ class ComputationBuilder(object):
                  key=lambda i: rhs_spec.index(out_spec[i])))
     return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
                                            lhs_dilation, rhs_dilation,
-                                           dimension_numbers)
+                                           dimension_numbers,
+                                           feature_group_count)
+
+  def Sort(self, operand, dimension=-1):
+    """Enqueues a sort operation onto the computation."""
+    return self._client.Sort(operand, dimension)
+
+  def SortKeyVal(self, keys, values, dimension=-1):
+    """Enqueues a key-value sort operation onto the computation."""
+    return self._client.SortKeyVal(keys, values, dimension)
 
 
 def _forward_methods_to_local_builder():

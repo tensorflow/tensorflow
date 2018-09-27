@@ -32,14 +32,18 @@ class DelegateData {
   // The EagerContext that is required for execution of Eager Ops.
   tensorflow::EagerContext* GetEagerContext() { return eager_context_.get(); }
 
-  // Map from TF Lite tensor index to TensorFlow tensor.
-  BufferMap* GetBufferMap() { return &buffer_map_; }
+  // Map from TF Lite tensor index to TensorFlow tensor for a given context.
+  BufferMap* GetBufferMap(const TfLiteContext* context) {
+    return &buffer_map_[context];
+  }
 
  private:
   explicit DelegateData(tensorflow::EagerContext* eager_context);
 
   std::unique_ptr<tensorflow::EagerContext> eager_context_;
-  BufferMap buffer_map_;
+  // TODO(b/112439500): Clean up stale BufferMap instances after adding the
+  // necessary cleanup hook from a TfLiteContext to a TfLiteDelegate.
+  std::unordered_map<const TfLiteContext*, BufferMap> buffer_map_;
 };
 
 }  // namespace eager

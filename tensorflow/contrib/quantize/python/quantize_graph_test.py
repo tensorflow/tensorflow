@@ -20,11 +20,14 @@ from __future__ import print_function
 
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import quantize_graph
+from tensorflow.python import training
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import template
 from tensorflow.python.platform import googletest
 
 
@@ -144,6 +147,19 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
         const_value = str(op.get_attr('value'))
         self.assertTrue(('int64_val: %i' % quant_delay) in const_value)
     self.assertTrue(quant_delay_found)
+
+  def testTrainingOpsCheck(self):
+    self._RunTestOverTrainingRewrites(self._TestTrainingOpsCheck)
+
+  def _TestTrainingOpsCheck(self, rewrite_fn):
+    with ops.Graph().as_default():
+      output = self._ConvLayer()
+      output_scalar = math_ops.reduce_sum(output)
+      loss = math_ops.square(output_scalar - 1)
+      opt = training.gradient_descent.GradientDescentOptimizer(0.0001)
+      opt.minimize(loss)
+      with self.assertRaisesRegexp(ValueError, 'Training op found in graph'):
+        rewrite_fn()
 
   def testWeightBits(self):
     self._RunTestOverExperimentalRewrites(self._TestWeightBits)
@@ -290,6 +306,42 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
 
     # No ops should be inserted or removed.
     self.assertEqual(op_names_before_rewrite, op_names_after_rewrite)
+
+  def testWithSharedWeights(self):
+
+    self._RunTestOverAllRewrites(self._TestWithSharedWeights)
+    self._RunTestOverTrainingRewrites(self._TestRewriteWithSharedWeights)
+
+  def _TestRewriteWithSharedWeights(self, rewrite_fn, quant_delay=1):
+    self._TestWithSharedWeights(rewrite_fn, quant_delay)
+
+  def _TestWithSharedWeights(self, rewrite_fn, quant_delay=None):
+    with ops.Graph().as_default() as g:
+      conv = template.make_template('shared_weights_conv', self._ConvLayer)
+      conv()
+      conv()
+      if quant_delay is None:
+        rewrite_fn()
+      else:
+        rewrite_fn(quant_delay=quant_delay)
+
+    conv_ops = [op for op in g.get_operations() if op.type == 'Conv2D']
+    weights_quants = [
+        op for op in g.get_operations()
+        if 'weights_quant' in op.name and op.type == 'FakeQuantWithMinMaxVars'
+    ]
+    # Check that the shared weights variable is not quantized multiple times
+    self.assertTrue(len(weights_quants) == 1)
+    weights_quant_tensor = weights_quants[0].outputs[0]
+    if quant_delay:
+      delayed_weights_quants = [
+          op for op in g.get_operations()
+          if 'weights_quant' in op.name and op.type == 'Merge'
+      ]
+      self.assertTrue(len(delayed_weights_quants) == 1)
+      weights_quant_tensor = delayed_weights_quants[0].outputs[0]
+    # Check that the Conv2D operations get the quantized weights
+    self.assertTrue(all(weights_quant_tensor in op.inputs for op in conv_ops))
 
   def _ConvLayer(
       self, input_tensor=None, scope='test', pre_activation_bypass=False,

@@ -2045,6 +2045,11 @@ class Stream {
   // negative effects on performance.
   Stream &ThenDoHostCallback(std::function<void()> callback);
 
+  // Entrains onto the stream a callback to the host (from the device).
+  // Behaves as ThenDoHostCallback above, but returns a Status instead of void.
+  // This overload should be preferred if the callback could fail.
+  Stream &ThenDoHostCallbackWithStatus(std::function<port::Status()> callback);
+
   // Returns the StreamExecutor (parent object) associated with this stream.
   StreamExecutor *parent() const {
     CHECK(parent_ != nullptr);

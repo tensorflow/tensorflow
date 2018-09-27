@@ -23,6 +23,9 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#ifdef TFLITE_EXTENDED
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#endif  // TFLITE_EXTENDED
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/op_resolver.h"
@@ -229,6 +232,46 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
   return total_input_bytes;
 }
 
+void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
+  auto interpreter_inputs = interpreter->inputs();
+  // Set the values of the input tensors.
+  for (int j = 0; j < inputs.size(); ++j) {
+    const InputLayerInfo& input = inputs[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter->tensor(i);
+    std::vector<int> sizes = input.shape;
+
+    // TODO(ahentz): below we ignore the O-th dimension (number of batches).
+    if (t->type == kTfLiteFloat32) {
+      FillRandomValue<float>(
+          interpreter->typed_tensor<float>(i),
+          std::vector<int>(sizes.begin() + 1, sizes.end()),
+          []() { return static_cast<float>(rand()) / RAND_MAX - 0.5f; });
+    } else if (t->type == kTfLiteInt32) {
+      // TODO(yunluli): This is currently only used for handling embedding input
+      // for speech models. Generalize if necessary.
+      FillRandomValue<int32_t>(
+          interpreter->typed_tensor<int32_t>(i),
+          std::vector<int32_t>(sizes.begin() + 1, sizes.end()),
+          []() { return static_cast<int32_t>(rand()) % 100; });
+    } else if (t->type == kTfLiteUInt8) {
+      FillRandomValue<uint8_t>(
+          interpreter->typed_tensor<uint8_t>(i),
+          std::vector<int>(sizes.begin() + 1, sizes.end()),
+          []() { return static_cast<uint8_t>(rand()) % 255; });
+    } else if (t->type == kTfLiteString) {
+      tflite::DynamicBuffer buffer;
+      FillRandomString(&buffer, sizes, []() {
+        return "we're have some friends over saturday to hang out in the yard";
+      });
+      buffer.WriteToTensor(interpreter->tensor(i));
+    } else {
+      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+                        << " of type " << t->type;
+    }
+  }
+}
+
 void BenchmarkTfLiteModel::Init() {
   std::string graph = params_.Get<std::string>("graph");
   model = tflite::FlatBufferModel::BuildFromFile(graph.c_str());
@@ -261,6 +304,16 @@ void BenchmarkTfLiteModel::Init() {
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 
   interpreter->UseNNAPI(use_nnapi);
+
+#ifdef TFLITE_EXTENDED
+  TFLITE_LOG(INFO) << "Instantiating Eager Delegate";
+  delegate_ = EagerDelegate::Create();
+  if (delegate_) {
+    interpreter->ModifyGraphWithDelegate(delegate_.get(),
+                                         /*allow_dynamic_tensors=*/true);
+  }
+#endif  // TFLITE_EXTENDED
+
   auto interpreter_inputs = interpreter->inputs();
 
   if (!inputs.empty()) {
@@ -291,36 +344,6 @@ void BenchmarkTfLiteModel::Init() {
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
-  }
-
-  // Set the values of the input tensors.
-  for (int j = 0; j < inputs.size(); ++j) {
-    const InputLayerInfo& input = inputs[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter->tensor(i);
-    std::vector<int> sizes = input.shape;
-
-    // TODO(ahentz): below we ignore the O-th dimension (number of batches).
-    if (t->type == kTfLiteFloat32) {
-      FillRandomValue<float>(
-          interpreter->typed_tensor<float>(i),
-          std::vector<int>(sizes.begin() + 1, sizes.end()),
-          []() { return static_cast<float>(rand()) / RAND_MAX - 0.5f; });
-    } else if (t->type == kTfLiteUInt8) {
-      FillRandomValue<uint8_t>(
-          interpreter->typed_tensor<uint8_t>(i),
-          std::vector<int>(sizes.begin() + 1, sizes.end()),
-          []() { return static_cast<uint8_t>(rand()) % 255; });
-    } else if (t->type == kTfLiteString) {
-      tflite::DynamicBuffer buffer;
-      FillRandomString(&buffer, sizes, []() {
-        return "we're have some friends over saturday to hang out in the yard";
-      });
-      buffer.WriteToTensor(interpreter->tensor(i));
-    } else {
-      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
-                        << " of type " << t->type;
-    }
   }
 }
 

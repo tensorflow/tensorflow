@@ -23,11 +23,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/experimental_implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/optimizers/pin_to_host_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -71,6 +74,16 @@ bool IsRunOnceOptimizer(const string& name) {
          name == "loop_optimizer";
 }
 
+// Check if the graphdef contains nodes that indicate TPU execution.
+bool IsTPUGraphDef(const GraphDef& def) {
+  for (auto node : def.node()) {
+    if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -93,6 +106,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("scoped_allocator",
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
+  MK_OPT("small_op", new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -102,60 +116,63 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (!cfg_.disable_model_pruning()) {
-    optimizers->emplace_back(new ModelPruner());
+    optimizers->push_back(MakeUnique<ModelPruner>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new FunctionOptimizer(cfg_.function_optimization()));
+    optimizers->push_back(
+        MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
-    optimizers->emplace_back(new DebugStripper());
+    optimizers->push_back(MakeUnique<DebugStripper>());
   }
   if (cfg_.constant_folding() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new ConstantFolding(cfg_.constant_folding(), cpu_device_));
+    optimizers->push_back(
+        MakeUnique<ConstantFolding>(cfg_.constant_folding(), cpu_device_));
   }
   if (cfg_.shape_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(new ShapeOptimizer());
+    optimizers->push_back(MakeUnique<ShapeOptimizer>());
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->emplace_back(new Remapper(cfg_.remapping()));
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  }
+  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
+    optimizers->push_back(
+        MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
+    optimizers->push_back(
+        MakeUnique<LoopOptimizer>(cfg_.loop_optimization(), cpu_device_));
   }
   if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
-    optimizers->emplace_back(
-        new DependencyOptimizer(cfg_.dependency_optimization()));
+    optimizers->push_back(
+        MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
   }
   if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->emplace_back(new LayoutOptimizer());
+    optimizers->push_back(MakeUnique<LayoutOptimizer>());
   }
   if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
-      optimizers->emplace_back(
+      optimizers->push_back(
           // Use the default target node name prefix "gradients/"
-          new MemoryOptimizer(cfg_.memory_optimization()));
+          MakeUnique<MemoryOptimizer>(cfg_.memory_optimization()));
     } else {
-      optimizers->emplace_back(
-          new MemoryOptimizer(cfg_.memory_optimization(),
-                              cfg_.memory_optimizer_target_node_name_scope()));
+      optimizers->push_back(MakeUnique<MemoryOptimizer>(
+          cfg_.memory_optimization(),
+          cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
   if (cfg_.auto_parallel().enable()) {
-    optimizers->emplace_back(
-        new AutoParallel(cfg_.auto_parallel().num_replicas()));
+    optimizers->push_back(
+        MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
   if (cfg_.scoped_allocator_optimization()) {
-    optimizers->emplace_back(new ScopedAllocatorOptimizer(
+    optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
-  return Status::OK();
+  return InitializeCustomGraphOptimizers(optimizers);
 }
 
 Status MetaOptimizer::InitializeOptimizersByName(
@@ -179,15 +196,40 @@ Status MetaOptimizer::InitializeOptimizersByName(
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
+  return InitializeCustomGraphOptimizers(optimizers);
+}
+
+Status MetaOptimizer::InitializeCustomGraphOptimizers(
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
-    auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
-        optimizer_config.name());
+    // Initialize the ExperimentalImplementationSelector here instead of
+    // CustomizeOptimizer registry, due the static link issue in TensorRT for
+    // double registry.
+    // TODO(laigd): Remove this hack and change it back to use the registry once
+    // the duplicate static import issue is fixed.
+    std::unique_ptr<CustomGraphOptimizer> custom_optimizer;
+    if (optimizer_config.name() == "ExperimentalImplementationSelector") {
+      custom_optimizer.reset(new ExperimentalImplementationSelector());
+    } else {
+      custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
+          optimizer_config.name());
+    }
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();
       TF_RETURN_IF_ERROR(custom_optimizer->Init(&optimizer_config));
       optimizers->push_back(std::move(custom_optimizer));
     } else {
+      // If there are no custom optimizers with given name, try to initalize a
+      // default optimizer. This way, custom configurable optimizers can be
+      // mixed with default optimizers in any order.
+      auto optimizer = MakeNewOptimizer(optimizer_config.name());
+      if (optimizer) {
+        VLOG(2) << "Registered default graph optimizer: "
+                << optimizer_config.name();
+        optimizers->push_back(std::move(optimizer));
+        continue;
+      }
       VLOG(2) << "Can't register an optimizer by name: "
               << optimizer_config.name();
     }
@@ -207,7 +249,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   }
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  if (cfg_.optimizers().empty() && cfg_.custom_optimizers().empty()) {
+  if (cfg_.optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
@@ -325,10 +367,25 @@ Status MetaOptimizer::RunOptimizer(
 
 Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                GraphDef* optimized_graph) {
+  VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
   // 1. Optimize main graph
   TF_RETURN_IF_ERROR(OptimizeGraph(cluster, item, optimized_graph));
+  VLOG(1) << "Optimized main graph.";
+
+  // Skip optimizing functions if this is a TPU graph. Currently, Grappler
+  // passes do not handle TPU functions correctly in a variety of ways (Note
+  // that due to the pre-placement TPU graph rewriting passes, the TPU-related
+  // ops are encapsulated away into functions). For example, TPU graphs contain
+  // TPUReplicateMetadata node that carries relevant TPU metadata and Grappler
+  // passes could prune that away. Grappler passes could also cause issues
+  // around shape inference. Since the desired and existing behavior is to not
+  // optimize TPU functions with Grappler, this check preserves that.
+  if (IsTPUGraphDef(*optimized_graph)) {
+    VLOG(2) << "Skipping optimizing funcs for TPU graphs";
+    return Status::OK();
+  }
 
   // 2. Optimize function library
   FunctionLibraryDefinition flib(OpRegistry::Global(),
@@ -360,7 +417,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Make a GrapplerItem from a FunctionDef.
       GrapplerFunctionItem func_item;
-      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(func, flib, &func_item));
+      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
+          func, flib, item.graph.versions().producer(), &func_item));
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -382,8 +440,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       TF_RETURN_IF_ERROR(MakeFunctionDef(func_item, flib, &optimized_func));
 
       // Replace optimized function with a new FunctionDef.
-      TF_RETURN_IF_ERROR(flib.RemoveFunction(func_name));
-      TF_RETURN_IF_ERROR(flib.AddFunctionDef(optimized_func));
+      TF_RETURN_IF_ERROR(flib.ReplaceFunction(func_name, optimized_func));
     }
 
     // If optimized at least one function, update the graph library.
@@ -392,7 +449,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
 
-  VLOG(3) << "Optimized " << optimized_funcs.size()
+  VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
   return Status::OK();
@@ -426,6 +483,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
          cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+         cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
          !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -34,8 +35,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer_stage.h"
-#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -275,7 +276,7 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
     for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
         auto input = output->input(i);
-        string name = ParseNodeName(input, &position);
+        StringPiece name = ParseNodeNameAsStringPiece(input, &position);
         if (name == node.name() && /*control input*/ position < 0) {
           return true;
         }
@@ -1120,11 +1121,8 @@ class RemoveIdentityTranspose : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
     NodeDef* tail = node;
-    // TODO(rmlarsen): Enable after debugging breakage in Bayesflow.
-    if (ctx().opt_level == RewriterConfig::AGGRESSIVE) {
-      tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
-                                      *ctx().nodes_to_preserve);
-    }
+    tail = GetTailOfIdempotentChain(*tail, *ctx().node_map,
+                                    *ctx().nodes_to_preserve);
     NodeDef* first_transpose;
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &first_transpose));
 
@@ -1327,38 +1325,26 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    const string node_name = node->name();
     NodeDef* x;
     NodeDef* y;
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     bool updated = false;
-    if (IsAdd(*node)) {
-      if (IsNeg(*x)) {
-        // (-a) + b = b - a
-        node->set_op("Sub");
-        node->mutable_input()->SwapElements(0, 1);
-        node->set_input(1, x->input(0));
-        node->add_input(AsControlDependency(x->name()));
-        ctx().node_map->AddOutput(NodeName(x->input(0)), node_name);
-        updated = true;
-      } else if (IsNeg(*y)) {
-        // a + (-b) = a - b
-        node->set_op("Sub");
-        node->set_input(1, y->input(0));
-        node->add_input(AsControlDependency(y->name()));
-        ctx().node_map->AddOutput(NodeName(y->input(0)), node_name);
-        updated = true;
-      }
-    } else if (IsSub(*node)) {
-      if (IsNeg(*y)) {
-        // a - (-b) = a + b
-        node->set_op("Add");
-        node->set_input(1, y->input(0));
-        node->add_input(AsControlDependency(y->name()));
-        ctx().node_map->AddOutput(NodeName(y->input(0)), node_name);
-        updated = true;
-      }
+    if (IsNeg(*y)) {
+      // a - (-b) = a + b or  a + (-b) = a - b
+      ForwardControlDependencies(node, {y});
+      ctx().node_map->UpdateInput(node->name(), node->input(1), y->input(0));
+      node->set_op(IsAdd(*node) ? "Sub" : "Add");
+      node->set_input(1, y->input(0));
+      updated = true;
+    } else if (IsAdd(*node) && IsNeg(*x)) {
+      // (-a) + b = b - a
+      ForwardControlDependencies(node, {x});
+      ctx().node_map->UpdateInput(node->name(), node->input(0), x->input(0));
+      node->set_op("Sub");
+      node->mutable_input()->SwapElements(0, 1);
+      node->set_input(1, x->input(0));
+      updated = true;
     }
     if (updated) {
       AddToOptimizationQueue(node);
@@ -1582,7 +1568,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       for (NodeDef* output : outputs) {
         if (IsControlInput(output->input(0))) continue;
         int port;
-        const string node_name = ParseNodeName(output->input(0), &port);
+        const StringPiece node_name =
+            ParseNodeNameAsStringPiece(output->input(0), &port);
         if (node_name == node.name()) {
           tails->insert(ChainLink(output, port));
         } else {
@@ -1632,7 +1619,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
           int port;
-          const string node_name = ParseNodeName(new_tail->input(0), &port);
+          const StringPiece node_name =
+              ParseNodeNameAsStringPiece(new_tail->input(0), &port);
           if (node_name != tail->name()) {
             return Status::OK();
           }
@@ -2381,26 +2369,24 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    const auto& p = ctx().graph_properties->GetInputProperties(node->name())[1];
-    for (int i = 0; i < p.shape().dim_size(); ++i) {
-      if (p.shape().dim(i).size() < 0) {
+    const auto& pow_props =
+        ctx().graph_properties->GetInputProperties(node->name())[1];
+    for (int i = 0; i < pow_props.shape().dim_size(); ++i) {
+      if (pow_props.shape().dim(i).size() < 0) {
         // skip if p is is not fully defined.
         return Status::OK();
       }
     }
-    if (TensorShape::IsValid(p.shape()) && p.has_value()) {
-      Tensor pow(p.dtype(), p.shape());
-      if (!pow.FromProto(p.value())) {
+    if (TensorShape::IsValid(pow_props.shape()) && pow_props.has_value()) {
+      Tensor pow(pow_props.dtype(), pow_props.shape());
+      if (!pow.FromProto(pow_props.value())) {
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       p.value().DebugString());
+                                       pow_props.value().DebugString());
       }
 
       complex128 prev, curr;
       for (int i = 0; i < pow.NumElements(); ++i) {
-        if (!GetElementUnexhaustive(pow, i,
-                                    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE,
-                                     DT_COMPLEX64, DT_COMPLEX128},
-                                    &curr)) {
+        if (!GetElementUnexhaustive(pow, i, {pow_props.dtype()}, &curr)) {
           // input data type is not supported by Pow. Skip.
           return Status::OK();
         }
@@ -2413,12 +2399,19 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
       NodeDef *x, *y;
       TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
       TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
+      const auto& value_props =
+          ctx().graph_properties->GetInputProperties(node->name())[0];
+      const TensorShapeProto& output_shape =
+          ctx().graph_properties->GetOutputProperties(node->name())[0].shape();
       if (curr == complex128(2, 0)) {
         node->set_op("Square");
         node->set_input(1, AsControlDependency(y->name()));
         AddToOptimizationQueue(node);
         AddToOptimizationQueue(y);
-      } else if (curr == complex128(1, 0)) {
+      } else if (curr == complex128(1, 0) &&
+                 ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
+        // Pow could be used to broadcast, so make sure the shapes of the two
+        // arguments are identical before replacing Pow with Identity.
         node->set_op("Identity");
         node->set_input(1, AsControlDependency(y->name()));
         AddToOptimizationQueue(node);
@@ -2428,20 +2421,20 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         node->set_input(1, AsControlDependency(y->name()));
         AddToOptimizationQueue(node);
         AddToOptimizationQueue(y);
-      } else if (curr == complex128(0, 0)) {
-        const auto& b =
-            ctx().graph_properties->GetInputProperties(node->name())[0];
-        for (int i = 0; i < b.shape().dim_size(); ++i) {
-          if (b.shape().dim(i).size() < 0) {
+      } else if (curr == complex128(0, 0) &&
+                 ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
+        for (int i = 0; i < value_props.shape().dim_size(); ++i) {
+          if (value_props.shape().dim(i).size() < 0) {
             // skip if b is is not fully defined.
             return Status::OK();
           }
         }
-        if (TensorShape::IsValid(b.shape()) && b.has_value()) {
-          Tensor base(b.dtype(), b.shape());
-          if (!base.FromProto(b.value())) {
+        if (TensorShape::IsValid(value_props.shape()) &&
+            value_props.has_value()) {
+          Tensor base(value_props.dtype(), value_props.shape());
+          if (!base.FromProto(value_props.value())) {
             return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                           b.value().DebugString());
+                                           value_props.value().DebugString());
           }
           node->set_op("Const");
           Tensor c(base.dtype(), base.shape());
@@ -2599,12 +2592,10 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
   ~ConvertExpm1Stage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    if (!IsSub(*node))
-      return false;
+    if (!IsSub(*node)) return false;
 
     NodeDef* input;
-    if (!GetInputNode(node->input(0), &input).ok())
-      return false;
+    if (!GetInputNode(node->input(0), &input).ok()) return false;
 
     return IsExp(*input);
   }
@@ -2624,10 +2615,8 @@ class ConvertExpm1Stage : public ArithmeticOptimizerStage {
       return Status::OK();
     }
 
-    const auto& t =
-        ctx().graph_properties->GetInputProperties(exp->name())[0];
-    const auto& c =
-        ctx().graph_properties->GetInputProperties(node->name())[1];
+    const auto& t = ctx().graph_properties->GetInputProperties(exp->name())[0];
+    const auto& c = ctx().graph_properties->GetInputProperties(node->name())[1];
     for (int k = 0; k < c.shape().dim_size(); ++k) {
       // Skip if c shape is not fully determined.
       if (c.shape().dim(k).size() < 0) {
@@ -2702,22 +2691,37 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
     // Optimize only if:
+    // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
-    if (IsElementWiseMonotonic(*inner_function) &&
-        (NumNonControlOutputs(*inner_function, *ctx().node_map) == 1)) {
+    bool is_non_decreasing = false;
+    if (!IsInPreserveSet(*inner_function) &&
+        IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
-      inner_function->set_input(0, reduction_node->name());
-      UpdateConsumersAvoidingLoop(inner_function, reduction_node->name());
       reduction_node->set_input(0, inner_input->name());
-      UpdateConsumersAvoidingLoop(reduction_node, inner_function->name());
+      ctx().node_map->UpdateInput(reduction_node->name(),
+                                  inner_function->name(), inner_input->name());
+      inner_function->set_input(0, reduction_node->name());
+      UpdateConsumers(reduction_node, inner_function->name());
+      ctx().node_map->UpdateInput(inner_function->name(), inner_input->name(),
+                                  reduction_node->name());
+      if (!is_non_decreasing) {
+        // Flip Min<->Max if the function is non-increasing, e.g.
+        // Max(Neg(x)) = Neg(Min(x)).
+        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        reduction_node->set_op(opposite);
+      }
+      AddToOptimizationQueue(reduction_node);
+      AddToOptimizationQueue(inner_function);
+      AddToOptimizationQueue(inner_input);
     }
     return Status::OK();
   }
 
-  void UpdateConsumersAvoidingLoop(NodeDef* node, const string& new_input) {
+  void UpdateConsumers(NodeDef* node, const string& new_input) {
     const string& node_name = node->name();
     const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
@@ -2927,8 +2931,8 @@ uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
 
   for (const auto& input : node.input()) {
     int pos;
-    string node_name = ParseNodeName(input, &pos);
-    h = Hash64CombineUnordered(Hash64(node_name), h);
+    const StringPiece node_name = ParseNodeNameAsStringPiece(input, &pos);
+    h = Hash64CombineUnordered(Hash64(node_name.data(), node_name.size()), h);
     h = Hash64CombineUnordered(std::hash<int>()(pos), h);
   }
   for (const auto& attr : node.attr()) {
@@ -3040,6 +3044,13 @@ void ArithmeticOptimizer::DedupComputations() {
     return;
   }
   std::set<int> duplicates;
+  // Populate feed_inplace_op;
+  std::unordered_set<NodeDef*> feeds_inplace_op;
+  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
+    if (FeedsInPlaceOp(graph_view, optimized_graph_->node(i))) {
+      feeds_inplace_op.insert(optimized_graph_->mutable_node(i));
+    }
+  }
   do {
     stop = true;
     UniqueNodes nodes;
@@ -3048,19 +3059,19 @@ void ArithmeticOptimizer::DedupComputations() {
         continue;
       }
       NodeDef* node = optimized_graph_->mutable_node(i);
-      if (!CanDedup(*node)) {
+      if (!CanDedup(*node) ||
+          feeds_inplace_op.find(node) != feeds_inplace_op.end()) {
         continue;
       }
       NodeDef* rep = nodes.FindOrAddRepresentative(node);
       if (rep == node) {
         continue;
       }
-      // If either node feeds an inplace op, deduping them may cause data races.
-      // For example: If we dedup nodes initializing two independent inplace
-      // accumulations, they will write to the same buffer, clobbering each
-      // other's results.
-      if (FeedsInPlaceOp(graph_view, *rep) ||
-          FeedsInPlaceOp(graph_view, *node)) {
+      // If either node or rep feeds an inplace op, deduping them may cause data
+      // races. For example: If we dedup nodes initializing two independent
+      // inplace accumulations, they will write to the same buffer, clobbering
+      // each other's results.
+      if (feeds_inplace_op.find(rep) != feeds_inplace_op.end()) {
         continue;
       }
       VLOG(3) << "Remove duplicated node: node=" << node->name()
@@ -3068,20 +3079,20 @@ void ArithmeticOptimizer::DedupComputations() {
       const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
-          string* name = fanout->mutable_input(i);
-          int position;
-          const string nodename = ParseNodeName(*name, &position);
-          if (nodename == node->name()) {
-            // Update name in-place.
-            if (position > 0) {
-              *name = StrCat(rep->name(), ":", position);
-            } else if (position == 0) {
-              *name = rep->name();
-            } else {
-              *name = StrCat("^", rep->name());
-            }
-            node_map_->AddOutput(rep->name(), fanout->name());
+          string* fanout_input = fanout->mutable_input(i);
+          const int position =
+              NodePositionIfSameNode(*fanout_input, node->name());
+          // Update name in-place.
+          if (position < -1) {
+            continue;
+          } else if (position > 0) {
+            *fanout_input = StrCat(rep->name(), ":", position);
+          } else if (position == 0) {
+            *fanout_input = rep->name();
+          } else {
+            *fanout_input = StrCat("^", rep->name());
           }
+          node_map_->AddOutput(rep->name(), fanout->name());
         }
       }
       duplicates.insert(i);

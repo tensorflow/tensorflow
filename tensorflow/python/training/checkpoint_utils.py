@@ -29,7 +29,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
@@ -180,10 +180,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
     ValueError: If missing variables in current graph.
   """
-  if distribute_lib.get_cross_tower_context():
+  if distribution_strategy_context.get_cross_tower_context():
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
-    distribute_lib.get_tower_context().merge_call(
+    distribution_strategy_context.get_tower_context().merge_call(
         _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
 
 

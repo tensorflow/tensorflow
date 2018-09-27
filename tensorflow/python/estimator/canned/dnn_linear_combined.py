@@ -27,14 +27,15 @@ from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import linear
 from tensorflow.python.estimator.canned import optimizers
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -142,6 +143,9 @@ def _dnn_linear_combined_model_fn(features,
           max_partitions=num_ps_replicas,
           min_slice_size=64 << 20))
 
+  shared_state_manager = feature_column_v2.maybe_create_shared_state_manager(
+      list(linear_feature_columns) + list(dnn_feature_columns))
+
   # Build DNN Logits.
   dnn_parent_scope = 'dnn'
 
@@ -161,16 +165,17 @@ def _dnn_linear_combined_model_fn(features,
     with variable_scope.variable_scope(
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
-        partitioner=dnn_partitioner):
-
+        partitioner=dnn_partitioner) as scope:
+      dnn_absolute_scope = scope.name
       dnn_logit_fn = dnn._dnn_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           hidden_units=dnn_hidden_units,
           feature_columns=dnn_feature_columns,
           activation_fn=dnn_activation_fn,
           dropout=dnn_dropout,
+          batch_norm=batch_norm,
           input_layer_partitioner=input_layer_partitioner,
-          batch_norm=batch_norm)
+          shared_state_manager=shared_state_manager)
       dnn_logits = dnn_logit_fn(features=features, mode=mode)
 
   linear_parent_scope = 'linear'
@@ -186,6 +191,7 @@ def _dnn_linear_combined_model_fn(features,
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as scope:
+      linear_absolute_scope = scope.name
       logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
           feature_columns=linear_feature_columns,
@@ -211,18 +217,18 @@ def _dnn_linear_combined_model_fn(features,
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=dnn_parent_scope)))
+                  scope=dnn_absolute_scope)))
     if linear_logits is not None:
       train_ops.append(
           linear_optimizer.minimize(
               loss,
               var_list=ops.get_collection(
                   ops.GraphKeys.TRAINABLE_VARIABLES,
-                  scope=linear_parent_scope)))
+                  scope=linear_absolute_scope)))
 
     train_op = control_flow_ops.group(*train_ops)
     with ops.control_dependencies([train_op]):
-      return distribute_lib.increment_var(global_step)
+      return state_ops.assign_add(global_step, 1).op
 
   return head.create_estimator_spec(
       features=features,
@@ -388,7 +394,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
         normalization, which can be useful for bag-of-words features.  For more
-        details, see @{tf.feature_column.linear_model$linear_model}.
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -586,7 +592,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         if a categorical column is multivalent.  One of "mean", "sqrtn", and
         "sum" -- these are effectively different ways to do example-level
         normalization, which can be useful for bag-of-words features.  For more
-        details, see @{tf.feature_column.linear_model$linear_model}.
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are

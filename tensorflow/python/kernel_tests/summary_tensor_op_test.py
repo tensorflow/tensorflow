@@ -42,7 +42,7 @@ class SummaryOpsTest(test.TestCase):
     self.assertTrue(np.array_equal(actual, expected))
 
   def testTags(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       c = constant_op.constant(1)
       s1 = summary_ops.tensor_summary("s1", c)
       with ops.name_scope("foo"):
@@ -65,7 +65,7 @@ class SummaryOpsTest(test.TestCase):
     self.assertEqual(v4.tag, "foo/zod/TensorSummary")
 
   def testScalarSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(10.0)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -76,7 +76,7 @@ class SummaryOpsTest(test.TestCase):
 
   def testStringSummary(self):
     s = six.b("foobar")
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(s)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -86,7 +86,7 @@ class SummaryOpsTest(test.TestCase):
     self._AssertNumpyEq(n, s)
 
   def testManyScalarSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = array_ops.ones([5, 5, 5])
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -96,7 +96,7 @@ class SummaryOpsTest(test.TestCase):
 
   def testManyStringSummary(self):
     strings = [[six.b("foo bar"), six.b("baz")], [six.b("zoink"), six.b("zod")]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(strings)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -106,7 +106,7 @@ class SummaryOpsTest(test.TestCase):
 
   def testManyBools(self):
     bools = [True, True, True, False, False, False]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(bools)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -116,7 +116,7 @@ class SummaryOpsTest(test.TestCase):
     self._AssertNumpyEq(n, bools)
 
   def testSummaryDescriptionAndDisplayName(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       def get_description(summary_op):
         summ_str = sess.run(summary_op)

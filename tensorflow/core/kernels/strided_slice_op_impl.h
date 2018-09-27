@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_STRIDED_SLICE_OP_IMPL_H_
-#define TENSORFLOW_KERNELS_STRIDED_SLICE_OP_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_IMPL_H_
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
@@ -313,4 +313,4 @@ DECLARE_FOR_N_SYCL(int64);
 }  // end namespace tensorflow
 
 #endif  // END STRIDED_SLICE_INSTANTIATE_DIM
-#endif  // TENSORFLOW_KERNELS_SLICE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_STRIDED_SLICE_OP_IMPL_H_

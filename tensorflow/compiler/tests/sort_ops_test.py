@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class XlaSortOpTest(xla_test.XLATestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -48,10 +48,6 @@ class XlaSortOpTest(xla_test.XLATestCase):
         self.assertAllClose(v, result, rtol=1e-3)
 
   def testSort(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     supported_types = set([dtypes.bfloat16.as_numpy_dtype, np.float32])
     for dtype in supported_types.intersection(self.numeric_types):
       x = np.arange(101, dtype=dtype)
@@ -60,10 +56,6 @@ class XlaSortOpTest(xla_test.XLATestCase):
           xla.sort, [x], expected=[np.arange(101, dtype=dtype)])
 
   def testTopK(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
     for dtype in supported_types.intersection(self.numeric_types):
@@ -89,10 +81,6 @@ class XlaSortOpTest(xla_test.XLATestCase):
               expected=[x[indices].astype(dtype), indices])
 
   def testTopK2D(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
     for dtype in supported_types.intersection(self.numeric_types):
@@ -122,16 +110,12 @@ class XlaSortOpTest(xla_test.XLATestCase):
 
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     # Only bfloat16 is implemented.
     bfloat16 = dtypes.bfloat16.as_numpy_dtype
     if bfloat16 not in self.numeric_types:
       return
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.bfloat16)
       with self.test_scope():
         topk = nn_ops.top_k(p, k=4)
@@ -144,16 +128,12 @@ class XlaSortOpTest(xla_test.XLATestCase):
 
   def testTopKInfinities(self):
     """Tests that positive and negative infinity sort correctly."""
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     # Only bfloat16 is implemented.
     bfloat16 = dtypes.bfloat16.as_numpy_dtype
     if bfloat16 not in self.numeric_types:
       return
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       p = array_ops.placeholder(dtypes.bfloat16)
       with self.test_scope():
         topk = nn_ops.top_k(p, k=6)

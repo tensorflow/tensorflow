@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
@@ -186,7 +186,7 @@ StatusOr<se::blas::AlgorithmType> DoGemmAutotune(
   }
 
   return InternalError(
-      "Unable to autotune cuBLAS gemm on stream %p; none of the %zu algorithms "
+      "Unable to autotune cuBLAS gemm on stream %p; none of the %u algorithms "
       "ran successfully",
       stream, algorithms.size());
 }

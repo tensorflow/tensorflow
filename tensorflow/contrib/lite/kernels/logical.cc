@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -86,14 +86,14 @@ TfLiteStatus LogicalImpl(TfLiteContext* context, TfLiteNode* node,
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   if (data->requires_broadcast) {
-    reference_ops::BroadcastLogical(
-        GetTensorData<bool>(input1), GetTensorDims(input1),
-        GetTensorData<bool>(input2), GetTensorDims(input2),
-        GetTensorData<bool>(output), GetTensorDims(output), func);
+    reference_ops::BroadcastLogical4DSlow(
+        GetTensorShape(input1), GetTensorData<bool>(input1),
+        GetTensorShape(input2), GetTensorData<bool>(input2),
+        GetTensorShape(output), GetTensorData<bool>(output), func);
   } else {
-    reference_ops::Logical(GetTensorData<bool>(input1), GetTensorDims(input1),
-                           GetTensorData<bool>(input2), GetTensorDims(input2),
-                           GetTensorData<bool>(output), GetTensorDims(output),
+    reference_ops::Logical(GetTensorShape(input1), GetTensorData<bool>(input1),
+                           GetTensorShape(input2), GetTensorData<bool>(input2),
+                           GetTensorShape(output), GetTensorData<bool>(output),
                            func);
   }
 

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include <gmock/gmock.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
 
 namespace tflite {
@@ -72,7 +72,7 @@ TEST(uKernels, SymmetricQuantizeFloatsTest) {
   static float input[kVectorSize] = {-640, -635.0, -630, 10.0,  2.0,
                                      -5.0, -10.0,  0.0,  1000.0};
 
-  int8 output[kVectorSize];
+  int8_t output[kVectorSize];
   float min, max, scaling_factor;
   SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
                           &scaling_factor);
@@ -89,7 +89,7 @@ TEST(uKernels, SymmetricQuantizeFloatsAllZerosTest) {
   constexpr int kVectorSize = 9;
   static float input[kVectorSize] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-  int8 output[kVectorSize];
+  int8_t output[kVectorSize];
   float min, max, scaling_factor;
   SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
                           &scaling_factor);
@@ -105,7 +105,7 @@ TEST(uKernels, SymmetricQuantizeFloatsAllAlmostZeroTest) {
   static float input[kVectorSize] = {-1e-5, 3e-5, -7e-6, -9e-5, 1e-6,
                                      4e-5,  9e-6, 2e-4,  0};
 
-  int8 output[kVectorSize];
+  int8_t output[kVectorSize];
   float min, max, scaling_factor;
   SymmetricQuantizeFloats(input, kVectorSize, output, &min, &max,
                           &scaling_factor);
@@ -143,6 +143,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateTest) {
                                                -1., 3., 7., 3., 23., 3.})));
 }
 
+#ifdef __ANDROID__
 TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   // Note we use 29 columns as this exercises all the neon kernel: the
   // 16-block SIMD code, the 8-block postamble, and the leftover postamble.
@@ -166,13 +167,13 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
       -13.13, 14.14, -15.15, 16.16, -17.17, 18.18, -19.19, 20.2, -21.21, 22.22,
       -23.23, 24.24, -25.25, 26.26, -27.27, 28.28, 0};
 
-  int8* a_int8_data = reinterpret_cast<int8*>(
+  int8_t* a_int8_data = reinterpret_cast<int8_t*>(
       aligned_malloc(a_rows * a_cols, kWeightsPerUint32));
   float a_min, a_max;
   float scaling_factor_a;
   SymmetricQuantizeFloats(a_float_data, a_rows * a_cols, a_int8_data, &a_min,
                           &a_max, &scaling_factor_a);
-  const int8 expected_a_int8_data[] = {
+  const int8_t expected_a_int8_data[] = {
       /* 1st row */
       5,
       10,
@@ -363,7 +364,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
   };
 
   // Quantized values of B:
-  int8 b_int8_data[b_rows * b_cols * batches];
+  int8_t b_int8_data[b_rows * b_cols * batches];
   float b_min, b_max;
   float scaling_factor_b[batches];
   SymmetricQuantizeFloats(b_float_data, b_rows * b_cols, b_int8_data, &b_min,
@@ -372,7 +373,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
                           &b_int8_data[b_rows * b_cols], &b_min, &b_max,
                           &scaling_factor_b[1]);
 
-  const int8 expected_b_int8_data[] = {
+  const int8_t expected_b_int8_data[] = {
       /* batch 1 */
       127,
       -127,
@@ -465,6 +466,7 @@ TEST(uKernels, MatrixBatchVectorMultiplyAccumulateSymmetricQuantizedTest) {
 
   aligned_free(a_int8_data);
 }
+#endif  // __ANDROID__
 
 TEST(uKernels, VectorVectorCwiseProductTest) {
   constexpr int kVectorSize = 10;
@@ -492,6 +494,16 @@ TEST(uKernels, VectorVectorCwiseProductAccumulateTest) {
   EXPECT_THAT(output,
               ElementsAreArray(ArrayFloatNear(
                   {1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45})));
+}
+
+TEST(uKernels, VectorBatchVectorAddTest) {
+  constexpr int kVectorSize = 3;
+  constexpr int kBatchSize = 2;
+  static float input[kVectorSize] = {0.0, -0.5, 1.0};
+  std::vector<float> output = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
+  VectorBatchVectorAdd(input, kVectorSize, kBatchSize, output.data());
+  EXPECT_THAT(output,
+              testing::ElementsAreArray({1.0, 1.5, 4.0, 4.0, 4.5, 7.0}));
 }
 
 TEST(uKernels, VectorBatchVectorAssignTest) {
@@ -553,6 +565,120 @@ TEST(uKernels, ZeroVectorTest) {
               ElementsAreArray(ArrayFloatNear({0.0, 0.0, 0.0, 0.0, 0.0})));
 }
 
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {
+  constexpr int kVectorSize = 29;
+  constexpr int kBatchSize = 4;
+  static float input[kVectorSize] = {
+      1.1,   2.2,   3.3,   4.4,   5.5,   6.6,   7.7,   8.8,   9.9,   10.1,
+      11.11, 12.12, 13.13, 14.14, 15.15, 16.16, 17.17, 18.18, 19.19, 20.2,
+      21.21, 22.22, 23.23, 24.24, 25.25, 26.26, 27.27, 28.28, 0};
+  std::vector<float> output = {
+      /* batch 0 */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 17.17, 18.18, 19.19, 20.2, 21.21, 22.22, 23.23,
+      24.24, 25.25, 26.26, 27.27, 28.28, 0,
+      /* batch 1 */
+      -1.1, -2.2, -3.3, -4.4, -5.5, -6.6, -7.7, -8.8, -9.9, -10.1, -11.11,
+      -12.12, -13.13, -14.14, -15.15, -16.16, -17.17, -18.18, -19.19, -20.2,
+      -21.21, -22.22, -23.23, -24.24, -25.25, -26.26, -27.27, -28.28, 0,
+      /* batch 2 */
+      1.1, -2.2, 3.3, -4.4, 5.5, -6.6, 7.7, -8.8, 9.9, -10.1, 11.11, -12.12,
+      13.13, -14.14, 15.15, -16.16, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22,
+      23.23, -24.24, 25.25, -26.26, 27.27, -28.28, 0,
+      /* batch 3 */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, -17.17, 18.18, -19.19, 20.2, -21.21, 22.22,
+      -23.23, 24.24, -25.25, 26.26, -27.27, 28.28, 0};
+  VectorBatchVectorCwiseProductAccumulate(input, kVectorSize, output.data(),
+                                          kBatchSize, output.data());
+
+  // Expect output = input * output + output.
+  const std::vector<float> expected_output = {
+      /* batch 0 */
+      2.310000, 7.040000, 14.190000, 23.760000, 35.750000, 50.159996, 66.989998,
+      86.240005, 107.909996, 112.110008, 134.542084, 159.014389, 185.526901,
+      214.079605, 244.672485, 277.305603, 311.978912, 348.692413, 387.446136,
+      428.240051, 471.074066, 515.948364, 562.862854, 611.817566, 662.812500,
+      715.847595, 770.922974, 828.038452, 0.000000,
+      /* batch 1 */
+      -2.310000, -7.040000, -14.190000, -23.760000, -35.750000, -50.159996,
+      -66.989998, -86.240005, -107.909996, -112.110008, -134.542084,
+      -159.014389, -185.526901, -214.079605, -244.672485, -277.305603,
+      -311.978912, -348.692413, -387.446136, -428.240051, -471.074066,
+      -515.948364, -562.862854, -611.817566, -662.812500, -715.847595,
+      -770.922974, -828.038452, 0.000000,
+      /* batch 2 */
+      2.310000, -7.040000, 14.190000, -23.760000, 35.750000, -50.159996,
+      66.989998, -86.240005, 107.909996, -112.110008, 134.542084, -159.014389,
+      185.526901, -214.079605, 244.672485, -277.305603, 311.978912, -348.692413,
+      387.446136, -428.240051, 471.074066, -515.948364, 562.862854, -611.817566,
+      662.812500, -715.847595, 770.922974, -828.038452, 0.000000,
+      /* batch 3 */
+      -2.310000, 7.040000, -14.190000, 23.760000, -35.750000, 50.159996,
+      -66.989998, 86.240005, -107.909996, 112.110008, -134.542084, 159.014389,
+      -185.526901, 214.079605, -244.672485, 277.305603, -311.978912, 348.692413,
+      -387.446136, 428.240051, -471.074066, 515.948364, -562.862854, 611.817566,
+      -662.812500, 715.847595, -770.922974, 828.038452, 0.000000};
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, VectorBatchVectorCwiseProductNoAccumulate) {
+  constexpr int kVectorSize = 29;
+  constexpr int kBatchSize = 4;
+  static float input[kVectorSize] = {
+      1.1,   2.2,   3.3,   4.4,   5.5,   6.6,   7.7,   8.8,   9.9,   10.1,
+      11.11, 12.12, 13.13, 14.14, 15.15, 16.16, 17.17, 18.18, 19.19, 20.2,
+      21.21, 22.22, 23.23, 24.24, 25.25, 26.26, 27.27, 28.28, 0};
+  std::vector<float> output = {
+      /* batch 0 */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 17.17, 18.18, 19.19, 20.2, 21.21, 22.22, 23.23,
+      24.24, 25.25, 26.26, 27.27, 28.28, 0,
+      /* batch 1 */
+      -1.1, -2.2, -3.3, -4.4, -5.5, -6.6, -7.7, -8.8, -9.9, -10.1, -11.11,
+      -12.12, -13.13, -14.14, -15.15, -16.16, -17.17, -18.18, -19.19, -20.2,
+      -21.21, -22.22, -23.23, -24.24, -25.25, -26.26, -27.27, -28.28, 0,
+      /* batch 2 */
+      1.1, -2.2, 3.3, -4.4, 5.5, -6.6, 7.7, -8.8, 9.9, -10.1, 11.11, -12.12,
+      13.13, -14.14, 15.15, -16.16, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22,
+      23.23, -24.24, 25.25, -26.26, 27.27, -28.28, 0,
+      /* batch 3 */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, -17.17, 18.18, -19.19, 20.2, -21.21, 22.22,
+      -23.23, 24.24, -25.25, 26.26, -27.27, 28.28, 0};
+  VectorBatchVectorCwiseProduct(input, kVectorSize, output.data(), kBatchSize,
+                                output.data());
+
+  // Expect output = input * output + output.
+  const std::vector<float> expected_output = {
+      /* batch 0 */
+      1.210000, 4.840000, 10.889999, 19.360001, 30.250000, 43.559998, 59.289997,
+      77.440002, 98.009995, 102.010010, 123.432091, 146.894394, 172.396896,
+      199.939606, 229.522491, 261.145599, 294.808899, 330.512421, 368.256134,
+      408.040039, 449.864075, 493.728363, 539.632874, 587.577576, 637.562500,
+      689.587585, 743.652954, 799.758423, 0.000000,
+      /* batch 1 */
+      -1.210000, -4.840000, -10.889999, -19.360001, -30.250000, -43.559998,
+      -59.289997, -77.440002, -98.009995, -102.010010, -123.432091, -146.894394,
+      -172.396896, -199.939606, -229.522491, -261.145599, -294.808899,
+      -330.512421, -368.256134, -408.040039, -449.864075, -493.728363,
+      -539.632874, -587.577576, -637.562500, -689.587585, -743.652954,
+      -799.758423, 0.000000,
+      /* batch 2 */
+      1.210000, -4.840000, 10.889999, -19.360001, 30.250000, -43.559998,
+      59.289997, -77.440002, 98.009995, -102.010010, 123.432091, -146.894394,
+      172.396896, -199.939606, 229.522491, -261.145599, 294.808899, -330.512421,
+      368.256134, -408.040039, 449.864075, -493.728363, 539.632874, -587.577576,
+      637.562500, -689.587585, 743.652954, -799.758423, 0.000000,
+      /* batch 3 */
+      -1.210000, 4.840000, -10.889999, 19.360001, -30.250000, 43.559998,
+      -59.289997, 77.440002, -98.009995, 102.010010, -123.432091, 146.894394,
+      -172.396896, 199.939606, -229.522491, 261.145599, -294.808899, 330.512421,
+      -368.256134, 408.040039, -449.864075, 493.728363, -539.632874, 587.577576,
+      -637.562500, 689.587585, -743.652954, 799.758423, 0.000000};
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
 TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
   constexpr int kVectorSize = 5;
   constexpr int kBatch = 2;
@@ -594,6 +720,86 @@ TEST(uKernels, ReductionSumVectorTest) {
   ReductionSumVector(input, result2.data(), kOutputVectorSize2,
                      kReductionSize2);
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
+}
+
+TEST(uKernels, MeanStddevNormalizationNoneZeroInput) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // None-zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      0.1, 0.2, 0.3, 0.4,  // batch 0
+      0.9, 1.0, 1.1, 1.2,  // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      -1.34164071, -0.447213531, 0.44721365,  1.34164071,  // batch 0
+      -1.34163153, -0.447210163, 0.447211236, 1.3416326,   // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, MeanStddevNormalizationAllZeroInput) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // Zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      0.0, 0.0, 0.0, 0.0,  // batch 0
+      0.0, 0.0, 0.0, 0.0,  // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      0.0, 0.0, 0.0, 0.0,  // batch 0
+      0.0, 0.0, 0.0, 0.0,  // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, MeanStddevNormalizationMixed) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // Mix of zero and non-zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      0.0, 0.0, 0.0, 0.0,  // batch 0
+      0.1, 0.2, 0.3, 0.4,  // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      0.0,         0.0,          0.0,        0.0,         // batch 0
+      -1.34164071, -0.447213531, 0.44721365, 1.34164071,  // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, MeanStddevNormalizationSmallValue) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 2;
+  constexpr float kNormalizationEpsilon = 1e-8;
+
+  // Mix of zero and non-zero input.
+  static float input[kVectorSize * kBatchSize] = {
+      3e-5, -7e-6, -9e-5, 1e-6,  // batch 0
+      4e-5, 9e-6,  2e-4,  0.0,   // batch 1
+  };
+  std::vector<float> output(kVectorSize * kBatchSize);
+  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
+                          kNormalizationEpsilon);
+  const std::vector<float> expected_output = {
+      1.04231524,   0.212946132,  -1.64753067, 0.392269224,   // batch 0
+      -0.275023013, -0.658201098, 1.70267045,  -0.769446373,  // batch 1
+  };
+  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
 }  // namespace tensor_utils

@@ -63,6 +63,25 @@ bool HardcodeMinMaxForL2Normalization(Model* model, Operator* op) {
   return true;
 }
 
+bool HardcodeInputMinMaxFromOutput(Model* model, Operator* op) {
+  auto& input = model->GetArray(op->inputs[0]);
+  if (input.minmax) {
+    const auto* minmax = input.minmax.get();
+    if (minmax) {
+      return false;
+    }
+  }
+  auto& output = model->GetArray(op->outputs[0]);
+  if (output.minmax) {
+    const auto* minmax = model->GetArray(op->outputs[0]).minmax.get();
+    if (minmax) {
+      input.GetOrCreateMinMax() = *minmax;
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
   // Do not early return if the output already has min/max:
   // we may still need to adjust the inputs min/max.
@@ -274,6 +293,19 @@ bool PropagateMinMaxAmongArrays(Model* model,
   return changed;
 }
 
+bool HardcodeMinMaxForReshape(Model* model, Operator* op) {
+  Array& input = model->GetArray(op->inputs[0]);
+  Array& output = model->GetArray(op->outputs[0]);
+
+  // If input and output both exist or do not exist, do nothing.
+  if ((!input.minmax && !output.minmax) || (input.minmax && output.minmax)) {
+    return false;
+  }
+
+  // Otherwise propagate info amongst the input and output array.
+  return PropagateMinMaxAmongArrays(model, {op->inputs[0], op->outputs[0]});
+}
+
 bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
   CHECK_EQ(op->inputs.size(), LstmCellOperator::NUM_INPUTS);
   CHECK_EQ(op->outputs.size(), LstmCellOperator::NUM_OUTPUTS);
@@ -353,6 +385,16 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForL2Normalization(model, op);
       break;
 
+    case OperatorType::kRelu:
+      // For any normalization other than batch norm, the quantizations ranges
+      // before and after relu are expected to be known. Having a quantization
+      // op before relu would reduce the number of bits of precision for the
+      // activation in half. So we deduce the range before relu from that after
+      // the relu. This would eliminate the need for two fake quantization nodes
+      // and would not reduce the bits of precision available for activation.
+      changed = HardcodeInputMinMaxFromOutput(model, op);
+      break;
+
     case OperatorType::kConcatenation:
       changed = HardcodeMinMaxForConcatenation(model, op);
       break;
@@ -370,7 +412,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
-    case OperatorType::kReshape:
+    case OperatorType::kExpandDims:
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:
@@ -413,6 +455,10 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
 
     case OperatorType::kLstmCell:
       changed = HardcodeMinMaxForLstmCell(model, op);
+      break;
+
+    case OperatorType::kReshape:
+      changed = HardcodeMinMaxForReshape(model, op);
       break;
 
     default:

@@ -38,7 +38,7 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       for _ in range(100):
         for i in range(10):
@@ -67,7 +67,7 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       freqs = np.zeros([num_datasets])
       for _ in range(num_samples):
         freqs[sess.run(next_element)] += 1
@@ -84,7 +84,7 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     # Use chi-squared test to assert that the observed distribution matches the
     # expected distribution. Based on the implementation in
     # "tensorflow/python/kernel_tests/multinomial_op_test.py".
-    for probs in [[.85, .05, .1], rand_probs]:
+    for probs in [[.85, .05, .1], rand_probs, [1.]]:
       probs = np.asarray(probs)
       classes = len(probs)
       freqs = self._testSampleFromDatasetsHelper(probs, classes, num_samples)
@@ -104,7 +104,7 @@ class DirectedInterleaveDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in choice_array:
         self.assertEqual(words[i], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):

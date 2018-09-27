@@ -124,6 +124,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     self._ui_type = ui_type
 
+  def _is_disk_usage_reset_each_run(self):
+    # The dumped tensors are all cleaned up after every Session.run
+    # in a command-line wrapper.
+    return True
+
   def _initialize_argparsers(self):
     self._argparsers = {}
     ap = argparse.ArgumentParser(

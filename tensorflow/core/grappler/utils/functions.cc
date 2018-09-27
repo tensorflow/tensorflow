@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -303,19 +304,22 @@ Status GrapplerFunctionItemInstantiation::GetArgType(
 }
 
 GrapplerFunctionItem::GrapplerFunctionItem(
-    const string& func_name, const AttrValueMap& func_attr,
-    const std::vector<InputArgExpansion>& input_arg_expansions,
-    const std::vector<OutputArgExpansion>& output_arg_expansions,
-    const std::vector<string>& keep_nodes, bool is_stateful,
-    GraphDef&& function_body)
-    : func_attr_(func_attr),
-      input_arg_expansions_(input_arg_expansions),
-      output_arg_expansions_(output_arg_expansions),
+    string func_name, string description, AttrValueMap func_attr,
+    std::vector<InputArgExpansion> input_arg_expansions,
+    std::vector<OutputArgExpansion> output_arg_expansions,
+    std::vector<string> keep_nodes, const int graph_def_version,
+    const bool is_stateful, GraphDef&& function_body)
+    : description_(std::move(description)),
+      func_attr_(std::move(func_attr)),
+      input_arg_expansions_(std::move(input_arg_expansions)),
+      output_arg_expansions_(std::move(output_arg_expansions)),
       is_stateful_(is_stateful) {
-  id = func_name;
-  keep_ops = keep_nodes;
-  // Swap the graph body.
-  graph.Swap(&function_body);
+  // Move assign GrapplerItem members.
+  keep_ops = std::move(keep_nodes);
+  id = std::move(func_name);
+  graph = std::move(function_body);
+
+  graph.mutable_versions()->set_producer(graph_def_version);
   // Fill the feed nodes with input placeholders.
   for (const InputArgExpansion& input_arg : input_arg_expansions_) {
     for (const string& placeholder : input_arg.placeholders) {
@@ -336,6 +340,8 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     }
   }
 }
+
+const string& GrapplerFunctionItem::description() const { return description_; }
 
 const std::vector<InputArgExpansion>& GrapplerFunctionItem::inputs() const {
   return input_arg_expansions_;
@@ -468,6 +474,7 @@ Status InstantiationBodyParameters(
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const AttrValueMap& func_instantiation_attr,
                                 const FunctionLibraryDefinition& flib,
+                                const int graph_def_version,
                                 GrapplerFunctionItem* item) {
   const OpDef& signature = func.signature();
 
@@ -589,16 +596,19 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   bool is_stateful = signature.is_stateful();
 
   *item = GrapplerFunctionItem(
-      /*func_name=*/signature.name(),
+      /*func_name=*/signature.name(), /*description=*/signature.description(),
       /*func_attr=*/AttrValueMap(func.attr().begin(), func.attr().end()),
-      inputs, outputs, keep_nodes, is_stateful, std::move(function_body));
+      std::move(inputs), std::move(outputs), std::move(keep_nodes),
+      graph_def_version, is_stateful, std::move(function_body));
   return Status::OK();
 }
 
 Status MakeGrapplerFunctionItem(const FunctionDef& func,
                                 const FunctionLibraryDefinition& flib,
+                                const int graph_def_version,
                                 GrapplerFunctionItem* item) {
-  return MakeGrapplerFunctionItem(func, AttrValueMap(), flib, item);
+  return MakeGrapplerFunctionItem(func, AttrValueMap(), flib, graph_def_version,
+                                  item);
 }
 
 // Register GrapplerFunctionItem input arg expansion and function body outputs
@@ -674,6 +684,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
                        const FunctionLibraryDefinition& flib,
                        FunctionDef* func) {
   func->mutable_signature()->set_name(item.id);
+  func->mutable_signature()->set_description(item.description());
   func->mutable_signature()->set_is_stateful(item.is_stateful());
 
   // Build a GrapplerFunctionConnectivity from inputs and new function body.

@@ -23,43 +23,41 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-# TODO(b/38416882): Properly export in the `tf.contrib.data` API when stable
-# or make private / remove.
 class StatsAggregator(object):
   """A stateful resource that aggregates statistics from one or more iterators.
 
   To record statistics, use one of the custom transformation functions defined
-  in this module when defining your @{tf.data.Dataset}. All statistics will be
+  in this module when defining your `tf.data.Dataset`. All statistics will be
   aggregated by the `StatsAggregator` that is associated with a particular
-  iterator (see below). For example, to record the total number of bytes
-  produced by iterating over a dataset:
+  iterator (see below). For example, to record the latency of producing each
+  element by iterating over a dataset:
 
   ```python
   dataset = ...
-  dataset = dataset.apply(stats_ops.bytes_produced_stats("total_bytes"))
+  dataset = dataset.apply(stats_ops.latency_stats("total_bytes"))
   ```
 
-  To associate a `StatsAggregator` with a @{tf.data.Iterator} object, use
+  To associate a `StatsAggregator` with a `tf.data.Dataset` object, use
   the following pattern:
 
   ```python
-  dataset = ...
-  iterator = dataset.make_one_shot_iterator()
   stats_aggregator = stats_ops.StatsAggregator()
-  set_op = stats_aggregator.subscribe(iterator)
+  dataset = ...
 
-  with tf.Session() as sess:
-    # Running `set_op` will associate `iterator` with `stats_aggregator`.
-    sess.run(set_op)
+  # Apply `set_stats_aggregator` to associate `dataset` with `stats_aggregator`.
+  dataset = dataset.apply(
+      tf.contrib.data.set_stats_aggregator(stats_aggregator))
+  iterator = dataset.make_one_shot_iterator()
   ```
 
   To get a protocol buffer summary of the currently aggregated statistics,
   use the `StatsAggregator.get_summary()` tensor. The easiest way to do this
-  is to add the returned tensor to the @{tf.GraphKeys.SUMMARIES} collection,
+  is to add the returned tensor to the `tf.GraphKeys.SUMMARIES` collection,
   so that the summaries will be included with any existing summaries.
 
   ```python
   stats_aggregator = stats_ops.StatsAggregator()
+  # ...
   stats_summary = stats_aggregator.get_summary()
   tf.add_to_collection(tf.GraphKeys.SUMMARIES, stats_summary)
   ```
@@ -73,23 +71,24 @@ class StatsAggregator(object):
     """Creates a `StatsAggregator`."""
     self._resource = gen_dataset_ops.stats_aggregator_handle()
 
+  # TODO(b/116314787): Update this/add support for V2 summary API.
   def get_summary(self):
-    """Returns a string @{tf.Tensor} that summarizes the aggregated statistics.
+    """Returns a string `tf.Tensor` that summarizes the aggregated statistics.
 
-    The returned tensor will contain a serialized @{tf.summary.Summary} protocol
+    The returned tensor will contain a serialized `tf.summary.Summary` protocol
     buffer, which can be used with the standard TensorBoard logging facilities.
 
     Returns:
-      A scalar string @{tf.Tensor} that summarizes the aggregated statistics.
+      A scalar string `tf.Tensor` that summarizes the aggregated statistics.
     """
     return gen_dataset_ops.stats_aggregator_summary(self._resource)
 
 
-class _SetStatsAggregatorDataset(dataset_ops.Dataset):
+class _SetStatsAggregatorDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and sets given stats_aggregator."""
 
   def __init__(self, input_dataset, stats_aggregator):
-    super(_SetStatsAggregatorDataset, self).__init__()
+    super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._stats_aggregator = stats_aggregator
 
@@ -112,17 +111,15 @@ class _SetStatsAggregatorDataset(dataset_ops.Dataset):
     return self._input_dataset.output_classes
 
 
-# TODO(b/38416882): Properly export in the `tf.contrib.data` API when stable
-# or make private / remove.
 def set_stats_aggregator(stats_aggregator):
-  """Set the given stats_aggregator for aggregating the input dataset stats.
+  """Set the given `stats_aggregator` for aggregating the input dataset stats.
 
   Args:
-    stats_aggregator: A `StatsAggregator` object.
+    stats_aggregator: A `tf.contrib.data.StatsAggregator` object.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -145,7 +142,7 @@ def bytes_produced_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -155,8 +152,6 @@ def bytes_produced_stats(tag):
   return _apply_fn
 
 
-# TODO(b/38416882): Properly export in the `tf.contrib.data` API when stable
-# or make private / remove.
 def latency_stats(tag):
   """Records the latency of producing each element of the input dataset.
 
@@ -169,7 +164,7 @@ def latency_stats(tag):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
 
   def _apply_fn(dataset):
@@ -178,34 +173,11 @@ def latency_stats(tag):
   return _apply_fn
 
 
-# TODO(b/38416882): Properly export in the `tf.contrib.data` API when stable
-# or make private / remove.
-def feature_stats(tag):
-  """Records the features stats from `Example` records of the input dataset.
-
-  To consume the statistics, associate a `StatsAggregator` with the output
-  dataset.
-
-  Args:
-    tag: String. All statistics recorded by the returned transformation will be
-      associated with the given `tag`.
-
-  Returns:
-    A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
-  """
-
-  def _apply_fn(dataset):
-    return _StatsDataset(dataset, gen_dataset_ops.feature_stats_dataset, tag)
-
-  return _apply_fn
-
-
-class _StatsDataset(dataset_ops.Dataset):
+class _StatsDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 
   def __init__(self, input_dataset, op_function, tag):
-    super(_StatsDataset, self).__init__()
+    super(_StatsDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._op_function = op_function
     self._tag = ops.convert_to_tensor(tag, dtype=dtypes.string)
