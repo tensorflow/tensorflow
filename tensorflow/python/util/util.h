@@ -56,6 +56,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is an instance of an attr.s decorated class.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is an instance of an attr.s decorated class.
+bool IsAttrs(PyObject* o);
+
 // Implements the same interface as tensorflow.util.nest._same_namedtuples
 // Returns Py_True iff the two namedtuples have the same name and fields.
 // Raises RuntimeError if `o1` or `o2` don't look like namedtuples (don't have
