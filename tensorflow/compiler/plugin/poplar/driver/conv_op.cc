@@ -19,6 +19,7 @@
 
 #include <poplin/Convolution.hpp>
 #include <popops/Reduce.hpp>
+#include <popops/ScaledAdd.hpp>
 
 #include <poplar/Engine.hpp>
 #include <poplar/Graph.hpp>
@@ -27,10 +28,10 @@ namespace xla {
 namespace poplarplugin {
 
 StatusOr<poplin::ConvParams> GetConvolutionParameters(
-    const HloInstruction* operands_inst,
-    const HloInstruction* parameters_inst) {
-  const Shape& input = operands_inst->operand(0)->shape();
-  const Shape& kernel = operands_inst->operand(1)->shape();
+    const HloInstruction* operands_inst, const HloInstruction* parameters_inst,
+    int64 input_index, int64 kernel_index) {
+  const Shape& input = operands_inst->operand(input_index)->shape();
+  const Shape& kernel = operands_inst->operand(kernel_index)->shape();
   const Shape& output = operands_inst->shape();
 
   const Window& window(parameters_inst->window());
@@ -241,8 +242,9 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
-                                    chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2,
+                             {chan_div[0], out.dim(0) / chan_div[0],
+                              chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});
@@ -268,7 +270,7 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 0, 1));
 
   poplar::program::Sequence prog;
 
@@ -307,7 +309,7 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 0, 1));
 
   poplar::program::Sequence prog;
 
@@ -346,7 +348,7 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
 
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 0, 1));
 
   poplar::program::Sequence prog;
 
@@ -378,6 +380,74 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
 
   TF_CHECK_OK(
       AddOutputTensor(graph, res, prog, tensor_map, inst, 0, out).status());
+
+  return prog;
+}
+
+StatusOr<poplar::program::Program> CreateConvScaledInplace(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  const HloInstruction* root = inst->to_apply()->root_instruction();
+  const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
+
+  poplar::program::Sequence prog;
+
+  // Find the weights tensor
+  poplar::Tensor w;
+  TF_ASSIGN_OR_RETURN(w, GetInplaceOutputTensor(graph, res, prog, inst,
+                                                output_shape, tensor_map));
+
+  // Find the input tensor
+  poplar::Tensor in;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 1));
+
+  // Find the deltas tensor
+  poplar::Tensor deltas;
+  TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 2));
+
+  poplin::ConvParams params;
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 1, 2));
+
+  TF_ASSIGN_OR_RETURN(in, ShuffleConvolutionInputToPoplar(conv, in));
+
+  TF_ASSIGN_OR_RETURN(deltas,
+                      ShuffleConvolutionWeightsToPoplar(conv, deltas, false));
+
+  deltas = AddGroupsDimensionToWeights(params, deltas, false);
+
+  auto conv_type = GetConvClassificationType(conv, res.annotations);
+
+  auto c_out = graph_caching_util::DoCachedConvolution(
+      graph, res, in, deltas, params, conv_type, false, prog,
+      GetDebugName(conv));
+
+  TF_ASSIGN_OR_RETURN(c_out, ShuffleConvolutionOutputToTensorflow(conv, c_out));
+
+  const auto* const_inst = root->operand(1)->operand(1)->operand(0);
+  CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
+
+  // Get the scalar multiplier
+  double mul;
+  TF_ASSIGN_OR_RETURN(mul, LiteralScalarDoubleToDouble(const_inst->literal()));
+
+  // Call the inplace op
+  switch (root->opcode()) {
+    case HloOpcode::kAdd: {
+      popops::scaledAddTo(graph, w, c_out, mul, prog, GetDebugName(inst));
+      break;
+    }
+    case HloOpcode::kSubtract: {
+      popops::scaledSubtractFrom(graph, w, c_out, mul, prog,
+                                 GetDebugName(inst));
+      break;
+    }
+    default: {
+      return xla::FailedPrecondition("Unsupported scaled inplace op: %s",
+                                     root->name().c_str());
+    }
+  }
+  TF_CHECK_OK(
+      AddOutputTensor(graph, res, prog, tensor_map, inst, 0, w).status());
 
   return prog;
 }

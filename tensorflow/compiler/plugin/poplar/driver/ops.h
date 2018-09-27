@@ -53,7 +53,8 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
 std::string GetDebugName(const HloInstruction*);
 
 StatusOr<poplin::ConvParams> GetConvolutionParameters(
-    const HloInstruction* operand_op, const HloInstruction* conv_op);
+    const HloInstruction* operand_op, const HloInstruction* conv_op,
+    int64 input_index, int64 kernel_index);
 
 StatusOr<poplar::Tensor> ShuffleConvolutionInputToTensorflow(
     const HloInstruction* inst, const poplar::Tensor& tensor);
@@ -146,6 +147,10 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     const xla::Shape& output, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateScaledInplace(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateConvScaledInplace(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 

@@ -192,17 +192,20 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      # Matches two convolutions
+      # Fwd and BackpropInput should be shared
+      # Weight transpose for BackpropInput should be present
+      # Both BackpropFilter should be shared
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'vs/conv1/Conv2D/convolution.*/Conv_1x1',
             'Copy_',
+            'vs/conv1/Conv2D/convolution.*/Conv_1x1',
             'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
-            'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/convolution.*/Conv_4x4',
-            'GradientDescent/update_vs/conv1/kernel/ResourceApplyGradientDescent/call*/AddTo',
-            'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/call*/AddTo',]
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/convolution.*/Conv_4x4',
+            'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/call*/AddTo',
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/call*/AddTo',]
+
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 if __name__ == "__main__":

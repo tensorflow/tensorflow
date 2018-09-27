@@ -48,10 +48,11 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       break;
     }
     case HloOpcode::kCall:
-      if (!IsPopOpsCall(inst, "scaled_inplace")) {
+      if (!IsPopOpsCall(inst, "scaled_inplace") &&
+          !IsPopOpsCall(inst, "conv_scaled_inplace")) {
         return;
       }
-    // Fall through since scaled_inplace calls have to pass all the same
+    // Fall through since inplace subgraphs have to pass all the same
     // criteria
     case HloOpcode::kAdd:
     case HloOpcode::kSubtract:

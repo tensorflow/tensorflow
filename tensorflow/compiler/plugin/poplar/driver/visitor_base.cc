@@ -78,6 +78,7 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"max_pool", CreatePoplibsWindowReduction},
     {"max_pool_grad", CreateBwdMaxPool},
     {"scaled_inplace", CreateScaledInplace},
+    {"conv_scaled_inplace", CreateConvScaledInplace},
     {"padding_reduce_window", CreatePaddingReduceWindow},
 };
 

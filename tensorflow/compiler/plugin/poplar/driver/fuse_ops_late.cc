@@ -45,6 +45,8 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"bias_apply", 0, true},
+    {"conv_scaled_inplace", 4, true},
+    {"conv_scaled_inplace", 4, true},
     {"scaled_inplace", 0, true},
     {"scaled_inplace", 0, true},
     {"padding_reduce_window", 0},
@@ -222,6 +224,26 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kReduce, true, 0, IsBiasReduce, {7, 6}},
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
      {HloOpcode::kParameter, false, 1, nullptr, {}}},
+
+    // Convolution followed by scaled add to - A = A + B * c
+    {{HloOpcode::kAdd, true, 0, nullptr, {5, 1}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
+     {HloOpcode::kConvolution, true, 0, nullptr, {6, 7}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}},
+     {HloOpcode::kParameter, false, 2, nullptr, {}}},
+
+    // Convolution followed by scaled subtract from - A = A - B * c
+    {{HloOpcode::kSubtract, true, 0, nullptr, {5, 1}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
+     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
+     {HloOpcode::kConvolution, true, 0, nullptr, {6, 7}},
+     {HloOpcode::kParameter, false, 0, nullptr, {}},
+     {HloOpcode::kParameter, false, 1, nullptr, {}},
+     {HloOpcode::kParameter, false, 2, nullptr, {}}},
 
     // Scaled add to - A = A + B * c
     {{HloOpcode::kAdd, true, 0, nullptr, {4, 1}},

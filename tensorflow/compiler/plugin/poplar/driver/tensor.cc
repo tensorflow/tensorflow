@@ -156,7 +156,8 @@ static StatusOr<poplar::Tensor> AddConvolutionInput(
     const HloInstruction* op_target, const HloInstruction* conv_target,
     CompilerResources& resources) {
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
+  TF_ASSIGN_OR_RETURN(params,
+                      GetConvolutionParameters(op_target, conv_target, 0, 1));
 
   auto name = StrCat(GetDebugName(inst), "_input");
   poplar::OptionFlags opts;
@@ -170,7 +171,8 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
     const HloInstruction* op_target, const HloInstruction* conv_target,
     CompilerResources& resources) {
   poplin::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(op_target, conv_target));
+  TF_ASSIGN_OR_RETURN(params,
+                      GetConvolutionParameters(op_target, conv_target, 0, 1));
 
   auto name = StrCat(GetDebugName(inst), "_weights");
   poplar::OptionFlags opts;

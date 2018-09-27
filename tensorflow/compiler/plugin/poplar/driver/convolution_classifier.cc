@@ -117,6 +117,8 @@ const HloInstruction* FindOperand(
 StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
   classification_.clear();
 
+  std::map<const HloInstruction*, std::pair<int, int>> operands;
+
   const int64 n_vars = module->config().resource_update_count();
   std::set<const HloInstruction*> variable_inputs(
       module->entry_computation()->parameter_instructions().end() -
@@ -129,10 +131,12 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
         switch (inst->opcode()) {
           case HloOpcode::kConvolution: {
             classification_[inst] = ConvClassificationType::INFERENCE;
+            operands[inst] = std::make_pair(0, 1);
             break;
           }
           case HloOpcode::kDot: {
             classification_[inst] = ConvClassificationType::INFERENCE;
+            operands[inst] = std::make_pair(0, 1);
             break;
           }
           case HloOpcode::kCall: {
@@ -141,6 +145,11 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
                 IsPopOpsCall(inst, "conv_with_reverse") ||
                 IsPopOpsCall(inst, "depthwise_filter")) {
               classification_[inst] = ConvClassificationType::INFERENCE;
+              operands[inst] = std::make_pair(0, 1);
+            }
+            if (IsPopOpsCall(inst, "conv_scaled_inplace")) {
+              classification_[inst] = ConvClassificationType::INFERENCE;
+              operands[inst] = std::make_pair(1, 2);
             }
             break;
           }
@@ -158,9 +167,10 @@ StatusOr<bool> ConvolutionClassifier::Run(HloModule* module) {
   ArgMap arg1_rev_map;
 
   for (auto it : classification_) {
-    const auto* arg0 = FindOperand(it.first->operand(0), call_graph);
+    const auto& args = operands.at(it.first);
+    const auto* arg0 = FindOperand(it.first->operand(args.first), call_graph);
     arg0_fwd_map.insert(std::make_pair(arg0, it.first));
-    const auto* arg1 = FindOperand(it.first->operand(1), call_graph);
+    const auto* arg1 = FindOperand(it.first->operand(args.second), call_graph);
     arg1_fwd_map.insert(std::make_pair(arg1, it.first));
     arg1_rev_map.insert(std::make_pair(it.first, arg1));
   }
