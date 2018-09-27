@@ -661,6 +661,10 @@ def split_compile_and_replicate(computation,
       # be less confusing to clients if they knowingly choose to use resource
       # variables.
       # Partitioned variables is not supported (b/112311320).
+      vscope = variable_scope.get_variable_scope()
+      saved_use_resource = vscope.use_resource
+      saved_custom_getter = vscope.custom_getter
+
       def custom_getter(getter, name, *args, **kwargs):
         """Variables on TPU have a few restrictions."""
         partitioner = kwargs["partitioner"]
@@ -671,12 +675,10 @@ def split_compile_and_replicate(computation,
               "`partitioner` that is {} for variable {}. "
               "Setting `partitioner` to `None`."
               .format(partitioner, name))
-        return getter(name, *args, **kwargs)
-
-      vscope = variable_scope.get_variable_scope()
-
-      saved_use_resource = vscope.use_resource
-      saved_custom_getter = vscope.custom_getter
+        if saved_custom_getter is None:
+          return getter(name, *args, **kwargs)
+        else:
+          return saved_custom_getter(getter, name, *args, **kwargs)
 
       vscope.set_use_resource(True)
       vscope.set_custom_getter(custom_getter)
