@@ -80,6 +80,7 @@ public:
   OtherType *getTFVariantType();
   OtherType *getTFComplex64Type();
   OtherType *getTFComplex128Type();
+  OtherType *getTFF32REFType();
 
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,

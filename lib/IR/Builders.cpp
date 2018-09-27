@@ -76,6 +76,8 @@ OtherType *Builder::getTFComplex128Type() {
   return Type::getTFComplex128(context);
 }
 
+OtherType *Builder::getTFF32REFType() { return Type::getTFF32REF(context); }
+
 OtherType *Builder::getTFStringType() { return Type::getTFString(context); }
 
 IntegerType *Builder::getIntegerType(unsigned width) {

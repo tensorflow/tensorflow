@@ -489,6 +489,9 @@ void ModulePrinter::printType(const Type *type) {
   case Type::Kind::TFComplex128:
     os << "tf_complex128";
     return;
+  case Type::Kind::TFF32REF:
+    os << "tf_f32ref";
+    return;
   case Type::Kind::TFString:
     os << "tf_string";
     return;
