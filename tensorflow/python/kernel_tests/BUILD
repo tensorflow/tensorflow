@@ -1097,6 +1097,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "unicode_script_op_test",
+    size = "small",
+    srcs = ["unicode_script_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
 cuda_py_test(
     name = "topk_op_test",
     size = "small",
