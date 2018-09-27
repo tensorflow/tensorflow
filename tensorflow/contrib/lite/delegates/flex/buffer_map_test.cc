@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/eager/buffer_map.h"
+#include "tensorflow/contrib/lite/delegates/flex/buffer_map.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
-namespace eager {
+namespace flex {
 namespace {
 
 using ::testing::ElementsAre;
@@ -164,7 +164,7 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
 }
 
 }  // namespace
-}  // namespace eager
+}  // namespace flex
 }  // namespace tflite
 
 int main(int argc, char** argv) {

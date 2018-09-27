@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/eager/util.h"
+#include "tensorflow/contrib/lite/delegates/flex/util.h"
 
 namespace tflite {
-namespace eager {
+namespace flex {
 
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
@@ -100,5 +100,5 @@ TfLiteType GetTensorFlowLiteType(TF_DataType type) {
   }
 }
 
-}  // namespace eager
+}  // namespace flex
 }  // namespace tflite
