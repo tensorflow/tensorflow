@@ -181,7 +181,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         int64 queue_size;
         TF_RETURN_IF_ERROR(
             reader->ReadScalar(full_name("queue_size"), &queue_size));
-        for (int i = static_cast<int>(queue_size - 1); i >= 0; --i) {
+        for (int i = 0; i < queue_size; i++) {
           string element;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
               full_name(strings::StrCat("queue_element_", i)), &element));
