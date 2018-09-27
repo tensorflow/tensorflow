@@ -50,18 +50,18 @@ class FromConstructor(test_util.TensorFlowTestCase):
 
     # `output_arrays` is not defined.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter(
+      lite.TFLiteConverter(
           None, None, [], input_arrays_with_shape=[('input', [3, 9])])
     self.assertEqual(message, str(error.exception))
 
     # `input_arrays_with_shape` is not defined.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter(None, [], None, output_arrays=['output'])
+      lite.TFLiteConverter(None, [], None, output_arrays=['output'])
     self.assertEqual(message, str(error.exception))
 
   # Tests valid constructors using a dummy value for the GraphDef.
   def testValidConstructor(self):
-    converter = lite.TocoConverter(
+    converter = lite.TFLiteConverter(
         None,
         None,
         None,
@@ -76,7 +76,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
         'The batch size cannot be set for this model. Please use '
         'input_shapes parameter.', str(error.exception))
 
-    converter = lite.TocoConverter(None, ['input_tensor'], ['output_tensor'])
+    converter = lite.TFLiteConverter(None, ['input_tensor'], ['output_tensor'])
     self.assertTrue(converter._has_valid_tensors())
 
 
@@ -89,7 +89,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -121,7 +122,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(
+    converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1, in_tensor_2], [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {
@@ -166,7 +167,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(
+    converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1, in_tensor_2], [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {'inputA': (0., 1.)}  # mean, std_dev
@@ -182,7 +183,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Test invalid shape. None after 1st dimension.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual('Provide an input shape for input array \'Placeholder\'.',
@@ -195,7 +197,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Test invalid shape. None after 1st dimension.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     with self.assertRaises(ValueError) as error:
       converter.convert()
     self.assertEqual(
@@ -210,7 +213,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -242,7 +246,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess.run(_global_variables_initializer())
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -272,7 +277,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     converter.output_format = lite_constants.GRAPHVIZ_DOT
     graphviz_output = converter.convert()
     self.assertTrue(graphviz_output)
@@ -285,7 +291,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     graphviz_dir = self.get_temp_dir()
     converter.dump_graphviz_dir = graphviz_dir
     tflite_model = converter.convert()
@@ -299,7 +306,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(num_items_graphviz)
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     graphviz_dir = self.get_temp_dir()
     converter.dump_graphviz_dir = graphviz_dir
     converter.dump_graphviz_video = True
@@ -317,7 +325,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     converter.inference_input_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     tflite_model = converter.convert()
@@ -347,7 +356,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     converter.inference_type = lite_constants.QUANTIZED_UINT8
     converter.quantized_input_stats = {'Placeholder': (0., 1.)}  # mean, std_dev
     converter.default_ranges_stats = (0, 6)  # min, max
@@ -387,13 +397,13 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert float model.
-    float_converter = lite.TocoConverter.from_session(sess, [in_tensor_1],
-                                                      [out_tensor])
+    float_converter = lite.TFLiteConverter.from_session(sess, [in_tensor_1],
+                                                        [out_tensor])
     float_tflite = float_converter.convert()
     self.assertTrue(float_tflite)
 
     # Convert quantized weights model.
-    quantized_converter = lite.TocoConverter.from_session(
+    quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
     quantized_converter.post_training_quantize = True
     quantized_tflite = quantized_converter.convert()
@@ -409,7 +419,8 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     sess = session.Session()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
     converter.converter_mode = lite.ConverterMode.TOCO_EXTENDED_ALL
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -423,6 +434,22 @@ class FromSessionTest(test_util.TensorFlowTestCase):
         'Regular TensorFlow ops are not supported by this interpreter. Make '
         'sure you invoke the Eager delegate before inference.',
         str(error.exception))
+
+  def testFloatTocoConverter(self):
+    """Tests deprecated test TocoConverter."""
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    out_tensor = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_session(sess, [in_tensor], [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure the interpreter is able to load.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
 
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
@@ -439,8 +466,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     sess.close()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
-                                                     ['Placeholder'], ['add'])
+    converter = lite.TFLiteConverter.from_frozen_graph(graph_def_file,
+                                                       ['Placeholder'], ['add'])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -474,7 +501,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     sess.close()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_frozen_graph(
+    converter = lite.TFLiteConverter.from_frozen_graph(
         graph_def_file, ['Placeholder'], ['add'],
         input_shapes={'Placeholder': [1, 16, 16, 3]})
     tflite_model = converter.convert()
@@ -503,8 +530,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
     # Ensure the graph with variables cannot be converted.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
-                                           ['add'])
+      lite.TFLiteConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
+                                             ['add'])
     self.assertEqual('Please freeze the graph using freeze_graph.py.',
                      str(error.exception))
 
@@ -520,8 +547,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     sess.close()
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
-                                                     ['Placeholder'], ['add'])
+    converter = lite.TFLiteConverter.from_frozen_graph(graph_def_file,
+                                                       ['Placeholder'], ['add'])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -545,8 +572,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testInvalidFileNotFound(self):
     with self.assertRaises(IOError) as error:
-      lite.TocoConverter.from_frozen_graph('invalid_file', ['Placeholder'],
-                                           ['add'])
+      lite.TFLiteConverter.from_frozen_graph('invalid_file', ['Placeholder'],
+                                             ['add'])
     self.assertEqual('File \'invalid_file\' does not exist.',
                      str(error.exception))
 
@@ -558,8 +585,8 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
     # Attempts to convert the invalid model.
     with self.assertRaises(IOError) as error:
-      lite.TocoConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
-                                           ['add'])
+      lite.TFLiteConverter.from_frozen_graph(graph_def_file, ['Placeholder'],
+                                             ['add'])
     self.assertEqual(
         'Unable to parse input file \'{}\'.'.format(graph_def_file),
         str(error.exception))
@@ -580,7 +607,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     # Tests the object detection model that cannot be loaded in TensorFlow.
     self._initObjectDetectionArgs()
 
-    converter = lite.TocoConverter.from_frozen_graph(
+    converter = lite.TFLiteConverter.from_frozen_graph(
         self._graph_def_file, self._input_arrays, self._output_arrays,
         self._input_shapes)
     converter.allow_custom_ops = True
@@ -621,7 +648,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
     # Missing `input_shapes`.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_frozen_graph(
+      lite.TFLiteConverter.from_frozen_graph(
           self._graph_def_file, self._input_arrays, self._output_arrays)
     self.assertEqual('input_shapes must be defined for this model.',
                      str(error.exception))
@@ -632,7 +659,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
     # `input_shapes` does not contain the names in `input_arrays`.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_frozen_graph(
+      lite.TFLiteConverter.from_frozen_graph(
           self._graph_def_file,
           self._input_arrays,
           self._output_arrays,
@@ -640,6 +667,27 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     self.assertEqual(
         'input_shapes must contain a value for each item in input_array.',
         str(error.exception))
+
+  def testFloatTocoConverter(self):
+    in_tensor = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    _ = in_tensor + in_tensor
+    sess = session.Session()
+
+    # Write graph to file.
+    graph_def_file = os.path.join(self.get_temp_dir(), 'model.pb')
+    write_graph(sess.graph_def, '', graph_def_file, False)
+    sess.close()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_frozen_graph(graph_def_file,
+                                                     ['Placeholder'], ['add'])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure the model is able to load.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
 
 class FromSavedModelTest(test_util.TensorFlowTestCase):
@@ -663,7 +711,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
 
     # Convert model and ensure model is not None.
-    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -693,7 +741,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     """Test a SavedModel, with None in input tensor's shape."""
     saved_model_dir = self._createSavedModel(shape=[None, 16, 16, 3])
 
-    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -724,7 +772,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     """Test a SavedModel ordering of input arrays."""
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
 
-    converter = lite.TocoConverter.from_saved_model(
+    converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir, input_arrays=['inputB', 'inputA'])
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
@@ -757,7 +805,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
 
     # Check case where input shape is given.
-    converter = lite.TocoConverter.from_saved_model(
+    converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir,
         input_arrays=['inputA'],
         input_shapes={'inputA': [1, 16, 16, 3]})
@@ -766,11 +814,24 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     self.assertTrue(tflite_model)
 
     # Check case where input shape is None.
-    converter = lite.TocoConverter.from_saved_model(
+    converter = lite.TFLiteConverter.from_saved_model(
         saved_model_dir, input_arrays=['inputA'], input_shapes={'inputA': None})
 
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
+
+  def testSimpleModelTocoConverter(self):
+    """Test a SavedModel with deprecated TocoConverter."""
+    saved_model_dir = self._createSavedModel(shape=[1, 16, 16, 3])
+
+    # Convert model and ensure model is not None.
+    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure the model is able to load.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
 
 class FromKerasFile(test_util.TensorFlowTestCase):
@@ -805,7 +866,7 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     """Test a Sequential tf.keras model with default inputs."""
     keras_file = self._getSequentialModel()
 
-    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -845,13 +906,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
     # Invalid input array raises error.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_keras_model_file(
+      lite.TFLiteConverter.from_keras_model_file(
           keras_file, input_arrays=['invalid-input'])
     self.assertEqual("Invalid tensors 'invalid-input' were found.",
                      str(error.exception))
 
     # Valid input array.
-    converter = lite.TocoConverter.from_keras_model_file(
+    converter = lite.TFLiteConverter.from_keras_model_file(
         keras_file, input_arrays=['dense_input'])
     tflite_model = converter.convert()
     os.remove(keras_file)
@@ -863,13 +924,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
     # Passing in shape of invalid input array has no impact as long as all input
     # arrays have a shape.
-    converter = lite.TocoConverter.from_keras_model_file(
+    converter = lite.TFLiteConverter.from_keras_model_file(
         keras_file, input_shapes={'invalid-input': [2, 3]})
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
     # Passing in shape of valid input array.
-    converter = lite.TocoConverter.from_keras_model_file(
+    converter = lite.TFLiteConverter.from_keras_model_file(
         keras_file, input_shapes={'dense_input': [2, 3]})
     tflite_model = converter.convert()
     os.remove(keras_file)
@@ -890,13 +951,13 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
     # Invalid output array raises error.
     with self.assertRaises(ValueError) as error:
-      lite.TocoConverter.from_keras_model_file(
+      lite.TFLiteConverter.from_keras_model_file(
           keras_file, output_arrays=['invalid-output'])
     self.assertEqual("Invalid tensors 'invalid-output' were found.",
                      str(error.exception))
 
     # Valid output array.
-    converter = lite.TocoConverter.from_keras_model_file(
+    converter = lite.TFLiteConverter.from_keras_model_file(
         keras_file, output_arrays=['time_distributed/Reshape_1'])
     tflite_model = converter.convert()
     os.remove(keras_file)
@@ -926,7 +987,7 @@ class FromKerasFile(test_util.TensorFlowTestCase):
         os.close(fd)
 
     # Convert to TFLite model.
-    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -991,7 +1052,7 @@ class FromKerasFile(test_util.TensorFlowTestCase):
         os.close(fd)
 
     # Convert to TFLite model.
-    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -1052,7 +1113,7 @@ class FromKerasFile(test_util.TensorFlowTestCase):
         os.close(fd)
 
     # Convert to TFLite model.
-    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    converter = lite.TFLiteConverter.from_keras_model_file(keras_file)
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 
@@ -1085,6 +1146,18 @@ class FromKerasFile(test_util.TensorFlowTestCase):
 
     np.testing.assert_almost_equal(tflite_result, keras_result, 5)
     os.remove(keras_file)
+
+  def testSequentialModelTocoConverter(self):
+    """Test a Sequential tf.keras model with deprecated TocoConverter."""
+    keras_file = self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(keras_file)
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Ensure the model is able to load.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
 
 
 if __name__ == '__main__':
