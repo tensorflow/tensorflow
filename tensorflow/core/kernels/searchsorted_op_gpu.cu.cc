@@ -64,14 +64,15 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    const gpuStream_t& stream = GetGpuStream(context);
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
     GpuLaunchConfig config =
-        GetGpuLaunchConfig(values.size(), context->eigen_gpu_device());
+        GetGpuLaunchConfig(values.size(), device);
 
-    UpperBoundKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, stream>>>(
-            sorted_inputs.data(), batch_size, num_inputs, num_values,
-            values.data(), output->data());
+    GPU_LAUNCH_KERNEL(UpperBoundKernel<T>,
+           dim3(config.block_count), dim3(config.thread_per_block), 0,
+           device.stream(),
+           sorted_inputs.data(), batch_size, num_inputs, num_values,
+           values.data(), output->data());
 
     return Status::OK();
   }
@@ -84,14 +85,15 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    const gpuStream_t& stream = GetGpuStream(context);
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
     GpuLaunchConfig config =
-        GetGpuLaunchConfig(values.size(), context->eigen_gpu_device());
+        GetGpuLaunchConfig(values.size(), device);
 
-    LowerBoundKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, stream>>>(
-            sorted_inputs.data(), batch_size, num_inputs, num_values,
-            values.data(), output->data());
+    GPU_LAUNCH_KERNEL(LowerBoundKernel<T>,
+           dim3(config.block_count), dim3(config.thread_per_block), 0,
+           device.stream(),
+           sorted_inputs.data(), batch_size, num_inputs, num_values,
+           values.data(), output->data());
 
     return Status::OK();
   }
