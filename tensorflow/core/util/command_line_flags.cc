@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
