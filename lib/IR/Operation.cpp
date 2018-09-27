@@ -226,6 +226,58 @@ void OpState::emitNote(const Twine &message) const {
 // Op Trait implementations
 //===----------------------------------------------------------------------===//
 
+bool OpTrait::impl::verifyZeroOperands(const Operation *op) {
+  if (op->getNumOperands() != 0)
+    return op->emitOpError("requires zero operands");
+  return false;
+}
+
+bool OpTrait::impl::verifyOneOperand(const Operation *op) {
+  if (op->getNumOperands() != 1)
+    return op->emitOpError("requires a single operand");
+  return false;
+}
+
+bool OpTrait::impl::verifyNOperands(const Operation *op, unsigned numOperands) {
+  if (op->getNumOperands() != numOperands)
+    return op->emitOpError("expected " + Twine(numOperands) + " operands");
+  return false;
+}
+
+bool OpTrait::impl::verifyAtLeastNOperands(const Operation *op,
+                                           unsigned numOperands) {
+  if (op->getNumOperands() < numOperands)
+    return op->emitOpError("expected " + Twine(numOperands) +
+                           " or more operands");
+  return false;
+}
+
+bool OpTrait::impl::verifyZeroResult(const Operation *op) {
+  if (op->getNumResults() != 0)
+    return op->emitOpError("requires zero results");
+  return false;
+}
+
+bool OpTrait::impl::verifyOneResult(const Operation *op) {
+  if (op->getNumResults() != 1)
+    return op->emitOpError("requires one result");
+  return false;
+}
+
+bool OpTrait::impl::verifyNResults(const Operation *op, unsigned numOperands) {
+  if (op->getNumResults() != numOperands)
+    return op->emitOpError("expected " + Twine(numOperands) + " results");
+  return false;
+}
+
+bool OpTrait::impl::verifyAtLeastNResults(const Operation *op,
+                                          unsigned numOperands) {
+  if (op->getNumResults() < numOperands)
+    return op->emitOpError("expected " + Twine(numOperands) +
+                           " or more results");
+  return false;
+}
+
 bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
   auto *type = op->getResult(0)->getType();
   for (unsigned i = 1, e = op->getNumResults(); i < e; ++i) {

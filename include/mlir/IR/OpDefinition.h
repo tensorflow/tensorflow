@@ -214,6 +214,23 @@ public:
 
 namespace OpTrait {
 
+// These functions are out-of-line implementations of the methods in the
+// corresponding trait classes.  This avoids them being template
+// instantiated/duplicated.
+namespace impl {
+bool verifyZeroOperands(const Operation *op);
+bool verifyOneOperand(const Operation *op);
+bool verifyNOperands(const Operation *op, unsigned numOperands);
+bool verifyAtLeastNOperands(const Operation *op, unsigned numOperands);
+bool verifyZeroResult(const Operation *op);
+bool verifyOneResult(const Operation *op);
+bool verifyNResults(const Operation *op, unsigned numOperands);
+bool verifyAtLeastNResults(const Operation *op, unsigned numOperands);
+bool verifySameOperandsAndResult(const Operation *op);
+bool verifyResultsAreFloatLike(const Operation *op);
+bool verifyResultsAreIntegerLike(const Operation *op);
+} // namespace impl
+
 /// Helper class for implementing traits.  Clients are not expected to interact
 /// with this directly, so its members are all protected.
 template <typename ConcreteType, template <typename> class TraitType>
@@ -245,9 +262,7 @@ template <typename ConcreteType>
 class ZeroOperands : public TraitBase<ConcreteType, ZeroOperands> {
 public:
   static bool verifyTrait(const Operation *op) {
-    if (op->getNumOperands() != 0)
-      return op->emitOpError("requires zero operands");
-    return false;
+    return impl::verifyZeroOperands(op);
   }
 
 private:
@@ -272,9 +287,7 @@ public:
   }
 
   static bool verifyTrait(const Operation *op) {
-    if (op->getNumOperands() != 1)
-      return op->emitOpError("requires a single operand");
-    return false;
+    return impl::verifyOneOperand(op);
   }
 };
 
@@ -301,9 +314,7 @@ public:
     }
 
     static bool verifyTrait(const Operation *op) {
-      if (op->getNumOperands() != N)
-        return op->emitOpError("expected " + Twine(N) + " operands");
-      return false;
+      return impl::verifyNOperands(op, N);
     }
   };
 };
@@ -358,9 +369,7 @@ public:
     }
 
     static bool verifyTrait(const Operation *op) {
-      if (op->getNumOperands() < N)
-        return op->emitOpError("expected " + Twine(N) + " or more operands");
-      return false;
+      return impl::verifyAtLeastNOperands(op, N);
     }
   };
 };
@@ -414,10 +423,8 @@ public:
 template <typename ConcreteType>
 class ZeroResult : public TraitBase<ConcreteType, ZeroResult> {
 public:
-  static const char *verifyTrait(const Operation *op) {
-    if (op->getNumResults() != 0)
-      return "requires zero results.";
-    return nullptr;
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyZeroResult(op);
   }
 };
 
@@ -433,10 +440,8 @@ public:
 
   Type *getType() const { return getResult()->getType(); }
 
-  static const char *verifyTrait(const Operation *op) {
-    if (op->getNumResults() != 1)
-      return "requires one result";
-    return nullptr;
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyOneResult(op);
   }
 
   /// This hook implements a constant folder for this operation.  If the
@@ -469,9 +474,7 @@ public:
     Type *getType(unsigned i) const { return getResult(i)->getType(); }
 
     static bool verifyTrait(const Operation *op) {
-      if (op->getNumResults() != N)
-        return op->emitOpError("expected " + Twine(N) + " results");
-      return false;
+      return impl::verifyNResults(op, N);
     }
   };
 };
@@ -497,9 +500,7 @@ public:
     Type *getType(unsigned i) const { return getResult(i)->getType(); }
 
     static bool verifyTrait(const Operation *op) {
-      if (op->getNumResults() < N)
-        return op->emitOpError("expected " + Twine(N) + " or more results");
-      return false;
+      return impl::verifyAtLeastNResults(op, N);
     }
   };
 };
@@ -523,15 +524,6 @@ public:
     this->getOperation()->setResult(i, value);
   }
 };
-
-// These functions are out-of-line implementations of the methods in the
-// corresponding trait classes.  This avoids them being template
-// instantiated/duplicated.
-namespace impl {
-bool verifySameOperandsAndResult(const Operation *op);
-bool verifyResultsAreFloatLike(const Operation *op);
-bool verifyResultsAreIntegerLike(const Operation *op);
-} // namespace impl
 
 /// This class provides verification for ops that are known to have the same
 /// operand and result type.
