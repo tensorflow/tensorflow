@@ -183,6 +183,8 @@ class HasKwargsTest(test.TestCase):
 
     wrapped_fn = functools.partial(fn_has_kwargs, test_arg=123)
     self.assertTrue(function_utils.has_kwargs(wrapped_fn))
+    some_kwargs = dict(x=1, y=2, z=3)
+    self.assertEqual(wrapped_fn(**some_kwargs), some_kwargs)
 
     def fn_has_no_kwargs(x, test_arg):
       if test_arg != expected_test_arg:
@@ -191,6 +193,8 @@ class HasKwargsTest(test.TestCase):
 
     wrapped_fn = functools.partial(fn_has_no_kwargs, test_arg=123)
     self.assertFalse(function_utils.has_kwargs(wrapped_fn))
+    some_arg = 1
+    self.assertEqual(wrapped_fn(some_arg), some_arg)
 
   def test_double_partial(self):
     expected_test_arg1 = 123
@@ -205,6 +209,8 @@ class HasKwargsTest(test.TestCase):
     double_wrapped_fn = functools.partial(wrapped_fn, test_arg1=123)
 
     self.assertTrue(function_utils.has_kwargs(double_wrapped_fn))
+    some_kwargs = dict(x=1, y=2, z=3)
+    self.assertEqual(double_wrapped_fn(**some_kwargs), some_kwargs)
 
     def fn_has_no_kwargs(x, test_arg1, test_arg2):
       if test_arg1 != expected_test_arg1 or test_arg2 != expected_test_arg2:
@@ -215,6 +221,8 @@ class HasKwargsTest(test.TestCase):
     double_wrapped_fn = functools.partial(wrapped_fn, test_arg1=123)
 
     self.assertFalse(function_utils.has_kwargs(double_wrapped_fn))
+    some_arg = 1
+    self.assertEqual(double_wrapped_fn(some_arg), some_arg)
 
   def test_raises_type_error(self):
     with self.assertRaisesRegexp(
