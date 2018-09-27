@@ -1004,6 +1004,18 @@ ENTRY CustomCall {
 
 )"
 },
+// CustomCall with opaque value.
+{
+"CustomCallWithOpaque",
+R"(HloModule custom_call
+
+ENTRY CustomCall {
+  constant = f32[1]{0} constant({12345})
+  ROOT custom-call = f32[1,2,3]{0,2,1} custom-call(constant), custom_call_target="foo\"bar", opaque="this string is opaque"
+}
+
+)"
+},
 // Variables with non-default names
 {
 "NonDefaultNames",
