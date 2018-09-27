@@ -143,6 +143,8 @@ struct NodeItem {
   bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
   bool is_merge : 1;             // True iff IsMerge(node)
   bool is_enter : 1;             // True iff IsEnter(node)
+  bool is_constant_enter : 1;    // True iff IsEnter(node) and
+                                 // node->GetAttr("is_constant") == true.
   bool is_exit : 1;              // True iff IsExit(node)
   bool is_control_trigger : 1;   // True iff IsControlTrigger(node)
   bool is_sink : 1;              // True iff IsSink(node)
@@ -626,6 +628,14 @@ Status ExecutorImpl::Initialize() {
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
     item->is_enter = IsEnter(n);
+    if (item->is_enter) {
+      bool is_constant_enter;
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(n->attrs(), "is_constant", &is_constant_enter));
+      item->is_constant_enter = is_constant_enter;
+    } else {
+      item->is_constant_enter = false;
+    }
     item->is_exit = IsExit(n);
     item->is_control_trigger = IsControlTrigger(n);
     item->is_sink = IsSink(n);
@@ -1228,6 +1238,9 @@ class ExecutorState {
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
+  const tracing::TraceCollector* const trace_collector_;
+  const tracing::EventCollector* const event_collector_;
+
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
@@ -1236,6 +1249,7 @@ class ExecutorState {
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
   bool sync_on_finish_;
+  const bool trace_using_annotations_;
 
   // Owned.
 
@@ -1350,12 +1364,16 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
+      trace_collector_(tracing::GetTraceCollector()),
+      event_collector_(
+          tracing::GetEventCollector(tracing::EventCategory::kCompute)),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
       impl_(impl),
       cancellation_manager_(args.cancellation_manager),
       runner_(args.runner),
       sync_on_finish_(args.sync_on_finish),
+      trace_using_annotations_(impl->params_.device->TraceUsingAnnotations()),
       num_outstanding_ops_(0) {
   // We start the entire execution in iteration 0 of the root frame
   // so let us create the root frame and the state for iteration 0.
@@ -1541,6 +1559,32 @@ struct ExecutorState::AsyncState {
   }
 };
 
+// Returns true if `item` might be traced by the given trace and event
+// collectors. Returns false only if `item` definitely will not be traced.
+bool MightTrace(const NodeItem& item,
+                const tracing::TraceCollector* trace_collector,
+                const tracing::EventCollector* event_collector,
+                bool using_annotations) {
+  // Tracing will only be enabled if either `event_collector` is non null,
+  // or `trace_collector` is non-null and enabled for this particular kernel.
+  // Although `tracing::ScopedActivity`,
+  // `tracing::ScopedAnnotation`, and `tracing::ScopedRegion` check subsets of
+  // these properties internally in their constructors, the cost of passing the
+  // necessary arguments to them can be significant, so we avoid constructing
+  // them in the common case (when we know they will not be used).
+  if (event_collector != nullptr) {
+    return true;
+  }
+  if (trace_collector) {
+    if (using_annotations) {
+      return trace_collector->IsEnabledForAnnotations();
+    } else {
+      return trace_collector->IsEnabledForActivities(item.kernel_is_expensive);
+    }
+  }
+  return false;
+}
+
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   const GraphView& gview = impl_->gview_;
   TaggedNodeSeq ready;
@@ -1575,6 +1619,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;
+
   EntryVector outputs;
   bool completed = false;
   inline_ready.push_back(tagged_node);
@@ -1711,7 +1756,32 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
-        device->Compute(CHECK_NOTNULL(op_kernel), &ctx);
+
+        if (TF_PREDICT_FALSE(MightTrace(item, trace_collector_,
+                                        event_collector_,
+                                        trace_using_annotations_))) {
+          const string& op_name = op_kernel->name();
+          tracing::ScopedRegion region(tracing::EventCategory::kCompute,
+                                       op_name);
+          if (trace_using_annotations_) {
+            // The OpKernel may create child activities (such as GPU kernel
+            // launches), so use a `ScopedAnnotation` to relate these activities
+            // in the trace.
+            tracing::ScopedAnnotation activity(op_name,
+                                               op_kernel->type_string());
+            device->Compute(op_kernel, &ctx);
+          } else {
+            // Use the cheaper `ScopedActivity` to trace just the OpKernel
+            // execution.
+            tracing::ScopedActivity activity(op_name, op_kernel->type_string(),
+                                             item.kernel_is_expensive);
+            device->Compute(op_kernel, &ctx);
+          }
+        } else {
+          // In the common case, avoid creating any tracing objects.
+          device->Compute(op_kernel, &ctx);
+        }
+
         nodestats::SetOpEnd(stats);
         s = ProcessOutputs(item, &ctx, &outputs, stats);
         if (s.ok() && impl_->device_record_tensor_accesses_) {
@@ -1988,15 +2058,12 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     is_frame_done = input_frame->DecrementOutstandingOpsLocked(
         &impl_->gview_, input_iter, ready);
   } else if (item->is_enter) {
-    bool is_constant;
-    const Status s = GetNodeAttr(node->attrs(), "is_constant", &is_constant);
-    DCHECK(s.ok()) << s;
     FindOrCreateChildFrame(input_frame, input_iter, node, &output_frame);
     output_iter = 0;
     {
       const NodeItem* item = impl_->gview_.node(node->id());
       mutex_lock l(output_frame->mu);
-      if (is_constant) {
+      if (item->is_constant_enter) {
         // Propagate to all active iterations if this is a loop invariant.
         output_frame->AddLoopInv(item, (*outputs)[0], ready);
       } else {

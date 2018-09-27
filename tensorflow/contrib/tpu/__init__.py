@@ -55,6 +55,7 @@
 
 @@TPUDistributionStrategy
 @@keras_to_tpu_model
+@@AsyncCheckpointSaverHook
 """
 
 from __future__ import absolute_import

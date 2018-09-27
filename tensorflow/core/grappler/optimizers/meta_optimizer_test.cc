@@ -71,6 +71,17 @@ class TestGraphOptimizer : public TestOptimizer {
 
 REGISTER_GRAPH_OPTIMIZER(TestGraphOptimizer);
 
+class TestOptimizerWithParams : public TestOptimizer {
+ public:
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    CHECK(config != nullptr);
+    return Status::OK();
+  }
+};
+
+REGISTER_GRAPH_OPTIMIZER(TestOptimizerWithParams);
+
 class MetaOptimizerTest : public GrapplerTest {};
 
 TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
@@ -82,6 +93,25 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   RewriterConfig rewriter_config;
   rewriter_config.add_optimizers("TestOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, rewriter_config);
+  GraphDef output;
+  const Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_TRUE(TestOptimizer::IsOptimized());
+}
+
+TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  TestOptimizer::SetOptimized(false);
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers("TestOptimizerWithParams");
+  auto* custom_config = rewriter_config.add_custom_optimizers();
+  custom_config->set_name("TestOptimizerWithParams");
+  (*custom_config->mutable_parameter_map())["foo"] = AttrValue();
 
   MetaOptimizer optimizer(nullptr, rewriter_config);
   GraphDef output;

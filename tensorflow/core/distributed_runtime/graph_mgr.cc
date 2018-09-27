@@ -475,10 +475,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
                             delete step_container;
                           });
   Executor::Args args;
-  {
-    mutex_lock l(mu_);
-    args.step_id = ++next_id_;
-  }
+  args.step_id = step_id;
   args.rendezvous = rendezvous;
   args.collective_executor = ce_handle ? ce_handle->get() : nullptr;
   args.cancellation_manager = cancellation_manager;

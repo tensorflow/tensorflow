@@ -107,6 +107,7 @@ bool IsSameInput(const string& name1, const string& name2);
 string NodeName(const string& name);
 
 // Get the trailing position number ":{digits}" (if any) of a node name.
+// Returns -1 for control inputs.
 int NodePosition(const string& name);
 
 inline StringPiece ParseNodeNameAsStringPiece(const string& name,
@@ -141,6 +142,11 @@ inline StringPiece ParseNodeNameAsStringPiece(const string& name,
 inline string ParseNodeName(const string& name, int* position) {
   return string(ParseNodeNameAsStringPiece(name, position));
 }
+
+// Returns NodePosition(input_name) if NodeName(input_name) == node_name.
+// Otherwise returns -2;
+// REQUIRES: inputs_name.size() > 0 && node_name.size() > 0.
+int NodePositionIfSameNode(const string& input_name, const string& node_name);
 
 // Add a prefix to a node name with a custom delimiter.
 string AddPrefixToNodeName(const string& name, const string& prefix,

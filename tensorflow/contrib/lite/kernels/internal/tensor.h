@@ -56,20 +56,20 @@ class VectorOfTensors {
     int num_tensors = tensor_list.size;
 
     all_data_.reserve(num_tensors);
-    all_dims_.reserve(num_tensors);
-    all_dims_ptr_.reserve(num_tensors);
+    all_shape_.reserve(num_tensors);
+    all_shape_ptr_.reserve(num_tensors);
 
     for (int i = 0; i < num_tensors; ++i) {
       TfLiteTensor* t = &context.tensors[tensor_list.data[i]];
       all_data_.push_back(GetTensorData<T>(t));
-      all_dims_.push_back(GetTensorDims(t));
+      all_shape_.push_back(GetTensorShape(t));
     }
 
     // Taking the pointer from inside a std::vector is only OK if the vector is
-    // never modified, so we populate all_dims in the previous loop and then we
+    // never modified, so we populate all_shape in the previous loop and then we
     // are free to grab iterators here.
     for (int i = 0; i < num_tensors; ++i) {
-      all_dims_ptr_.push_back(&all_dims_[i]);
+      all_shape_ptr_.push_back(&all_shape_[i]);
     }
   }
   // Return a pointer to the data pointers of all tensors in the list. For
@@ -78,16 +78,16 @@ class VectorOfTensors {
   //   f[0][1] is the second element of the first tensor.
   T* const* data() const { return all_data_.data(); }
 
-  // Return a pointer the dim pointers of all tensors in the list. For
+  // Return a pointer the shape pointers of all tensors in the list. For
   // example:
-  //   const Dims<4>* const* d = v.dims();
+  //   const RuntimeShape* const* d = v.dims();
   //   dims[1] are the dimensions of the second tensor in the list.
-  const Dims<4>* const* dims() const { return all_dims_ptr_.data(); }
+  const RuntimeShape* const* shapes() const { return all_shape_ptr_.data(); }
 
  private:
   std::vector<T*> all_data_;
-  std::vector<Dims<4>> all_dims_;
-  std::vector<Dims<4>*> all_dims_ptr_;
+  std::vector<RuntimeShape> all_shape_;
+  std::vector<RuntimeShape*> all_shape_ptr_;
 };
 
 // A list of quantized tensors in a format that can be used by kernels like

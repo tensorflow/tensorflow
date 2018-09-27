@@ -40,13 +40,13 @@ def _parse_set(values):
 
 
 def _get_toco_converter(flags):
-  """Makes a TocoConverter object based on the flags provided.
+  """Makes a TFLiteConverter object based on the flags provided.
 
   Args:
     flags: argparse.Namespace object containing TFLite flags.
 
   Returns:
-    TocoConverter object.
+    TFLiteConverter object.
 
   Raises:
     ValueError: Invalid flags.
@@ -68,17 +68,17 @@ def _get_toco_converter(flags):
       "output_arrays": output_arrays
   }
 
-  # Create TocoConverter.
+  # Create TFLiteConverter.
   if flags.graph_def_file:
-    converter_fn = lite.TocoConverter.from_frozen_graph
+    converter_fn = lite.TFLiteConverter.from_frozen_graph
     converter_kwargs["graph_def_file"] = flags.graph_def_file
   elif flags.saved_model_dir:
-    converter_fn = lite.TocoConverter.from_saved_model
+    converter_fn = lite.TFLiteConverter.from_saved_model
     converter_kwargs["saved_model_dir"] = flags.saved_model_dir
     converter_kwargs["tag_set"] = _parse_set(flags.saved_model_tag_set)
     converter_kwargs["signature_key"] = flags.saved_model_signature_key
   elif flags.keras_model_file:
-    converter_fn = lite.TocoConverter.from_keras_model_file
+    converter_fn = lite.TFLiteConverter.from_keras_model_file
     converter_kwargs["model_file"] = flags.keras_model_file
   else:
     raise ValueError("--graph_def_file, --saved_model_dir, or "

@@ -36,6 +36,27 @@ cc_library(
 )
 
 py_library(
+    name = "async_checkpoint",
+    srcs = ["python/tpu/async_checkpoint.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/error_handling.py",
@@ -46,6 +67,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":async_checkpoint",
         ":tpu_lib",
         "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/compiler/xla/python_api:xla_shape",
@@ -81,6 +103,9 @@ tf_gen_op_libs(
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -100,6 +125,8 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
         "//tensorflow/core:lib_proto_parsing",
     ],
 )
@@ -351,7 +378,7 @@ tf_py_test(
 
 tf_py_test(
     name = "topology_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/tpu/topology_test.py"],
     additional_deps = [
         ":tpu",

@@ -25,6 +25,7 @@ import types
 import numpy as np
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -125,6 +126,18 @@ def _update_docstring(old_str, append_str):
             + "\n".join(old_str_lines[final_args_ix:]))
   else:
     return old_str + "\n\n" + append_str
+
+
+def _convert_to_tensor(value, name=None, preferred_dtype=None):
+  """Converts to tensor avoiding an eager bug that loses float precision."""
+  # TODO(b/116672045): Remove this function.
+  if (context.executing_eagerly() and preferred_dtype is not None and
+      (preferred_dtype.is_integer or preferred_dtype.is_bool)):
+    v = ops.convert_to_tensor(value, name=name)
+    if v.dtype.is_floating:
+      return v
+  return ops.convert_to_tensor(
+      value, name=name, preferred_dtype=preferred_dtype)
 
 
 class _DistributionMeta(abc.ABCMeta):
@@ -741,7 +754,8 @@ class Distribution(_BaseDistribution):
 
   def _call_log_prob(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._log_prob(value, **kwargs)
       except NotImplementedError as original_exception:
@@ -769,7 +783,8 @@ class Distribution(_BaseDistribution):
 
   def _call_prob(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._prob(value, **kwargs)
       except NotImplementedError as original_exception:
@@ -797,7 +812,8 @@ class Distribution(_BaseDistribution):
 
   def _call_log_cdf(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._log_cdf(value, **kwargs)
       except NotImplementedError as original_exception:
@@ -835,7 +851,8 @@ class Distribution(_BaseDistribution):
 
   def _call_cdf(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._cdf(value, **kwargs)
       except NotImplementedError as original_exception:
@@ -870,7 +887,8 @@ class Distribution(_BaseDistribution):
 
   def _call_log_survival_function(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._log_survival_function(value, **kwargs)
       except NotImplementedError as original_exception:
@@ -909,7 +927,8 @@ class Distribution(_BaseDistribution):
 
   def _call_survival_function(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._survival_function(value, **kwargs)
       except NotImplementedError as original_exception:
@@ -963,7 +982,8 @@ class Distribution(_BaseDistribution):
 
   def _call_quantile(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       return self._quantile(value, **kwargs)
 
   def quantile(self, value, name="quantile"):

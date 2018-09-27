@@ -157,8 +157,8 @@ inline void Conv(const Eigen::ThreadPoolDevice& device, const float* input_data,
                output_width);
 
   optimized_ops::AddBiasAndEvalActivationFunction(
-      bias_data, bias_dims, output_data, output_dims, output_activation_min,
-      output_activation_max);
+      output_activation_min, output_activation_max, DimsToShape(bias_dims),
+      bias_data, DimsToShape(output_dims), output_data);
 }
 
 }  // namespace multithreaded_ops

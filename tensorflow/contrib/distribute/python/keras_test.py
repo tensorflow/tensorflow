@@ -205,6 +205,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     keras_model = simple_functional_model()
     keras_model.compile(
         loss='categorical_crossentropy',
+        metrics=[keras.metrics.CategoricalAccuracy()],
         optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
     config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
                                       model_dir=self._base_dir,
@@ -229,6 +230,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     keras_model = simple_sequential_model()
     keras_model.compile(
         loss='categorical_crossentropy',
+        metrics=[keras.metrics.CategoricalAccuracy()],
         optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01))
     config = run_config_lib.RunConfig(tf_random_seed=_RANDOM_SEED,
                                       model_dir=self._base_dir,
@@ -364,7 +366,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
       strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
                                                      '/device:GPU:0'])
       model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
@@ -399,7 +401,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
       model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
 
       inputs = np.zeros((10, 3), dtype=np.float32)
@@ -432,7 +434,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
       strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
                                                      '/device:CPU:0'])
       model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
@@ -468,7 +470,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
-      metrics = ['mae']
+      metrics = ['mae', keras.metrics.CategoricalAccuracy()]
       model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
 
       inputs = np.zeros((10, 3), dtype=np.float32)
@@ -483,32 +485,6 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       # Test with validation data
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=dataset, validation_steps=2)
-
-  def test_raise_error_for_stateful_metrics(self):
-
-    class ExampleStatefulMetric(keras.layers.Layer):
-
-      def __init__(self, name='true_positives', **kwargs):
-        super(ExampleStatefulMetric, self).__init__(name=name, **kwargs)
-        self.stateful = True
-
-      def __call__(self, y_true, y_pred):
-        return y_pred - y_true
-
-    with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
-
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      loss = 'mse'
-      metrics = ['mae', ExampleStatefulMetric()]
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
-                                                     '/device:GPU:0'])
-      with self.assertRaisesRegexp(
-          NotImplementedError, 'Stateful metrics are not supported with '
-                               'DistributionStrategy.'):
-        model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
 
   def test_unsupported_features(self):
     with self.cached_session():
@@ -635,6 +611,29 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
                                    'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
+  @combinations.generate(combinations.combine(
+      distribution=[combinations.tpu_strategy_one_step],
+      mode=['graph']))
+  def test_dataset_input_shape_fully_defined(self, distribution):
+    with self.cached_session():
+      x = keras.layers.Input(shape=(3,), name='input')
+      y = keras.layers.Dense(4, name='dense')(x)
+      model = keras.Model(x, y)
+
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss, distribute=distribution)
+
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      targets = np.zeros((10, 4), dtype=np.float32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      # Input shapes are not fully known. Batch dimension is unknown as we are
+      # not using the drop_remainder argument.
+      dataset = dataset.repeat(100).batch(10)
+
+      with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
+        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
+
   def test_learning_phase_value(self):
     # TODO(anjalisridhar): Modify this test to use Lambdas since we can compare
     # meaningful values. Currently we don't pass the learning phase if the
@@ -726,6 +725,36 @@ class NormalizationLayerWithDistributionStrategyTest(
 
 class CorrectnessWithDistributionStrategyTest(test.TestCase,
                                               parameterized.TestCase):
+
+  @combinations.generate(all_combinations())
+  def test_metric_correctness(self, distribution):
+    with self.cached_session():
+      keras.backend.set_image_data_format('channels_last')
+      num_samples = 10000
+
+      x_train = np.random.randint(0, 2, num_samples)
+      x_train = np.reshape(x_train, (num_samples, 1))
+      y_train = x_train
+      x_train = x_train.astype('float32')
+      y_train = y_train.astype('float32')
+
+      # Create identity model.
+      model = keras.Sequential()
+      model.add(
+          keras.layers.Dense(1, input_shape=(1,), kernel_initializer='ones'))
+      model.compile(
+          loss=keras.losses.mean_squared_error,
+          optimizer=gradient_descent.GradientDescentOptimizer(0.5),
+          metrics=[keras.metrics.BinaryAccuracy()],
+          distribute=distribution)
+
+      batch_size = 64
+      batch_size //= distribution.num_towers
+      train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
+      train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
+
+      history = model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
+      self.assertEqual(history.history['binary_accuracy'], [1.0])
 
   @combinations.generate(all_combinations())
   def test_correctness(self, distribution):

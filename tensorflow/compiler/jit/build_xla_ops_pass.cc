@@ -55,7 +55,6 @@ static Status BuildXlaCompileNode(
 }
 
 static Status BuildXlaRunNode(const string& nodename, const string& device_name,
-                              const DataTypeVector& constant_dtypes,
                               const DataTypeVector& arg_dtypes,
                               const DataTypeVector& result_dtypes, Graph* graph,
                               Node** node) {
@@ -63,7 +62,6 @@ static Status BuildXlaRunNode(const string& nodename, const string& device_name,
   def.set_name(graph->NewName(nodename));
   def.set_op("_XlaRun");
   def.set_device(device_name);
-  AddNodeAttr("Tconstants", constant_dtypes, &def);
   AddNodeAttr("Targs", arg_dtypes, &def);
   AddNodeAttr("Tresults", result_dtypes, &def);
 
@@ -98,12 +96,14 @@ static Status GetXlaAttrs(Node* node, int* num_constant_args,
   return Status::OK();
 }
 
-static void CopyIncomingEdges(Graph* g, Node* old_node, Node* new_node) {
+static void CopyIncomingEdges(Graph* g, Node* old_node, Node* new_node,
+                              int prefix_to_ignore) {
   for (const Edge* edge : old_node->in_edges()) {
     if (edge->IsControlEdge()) {
       g->AddControlEdge(edge->src(), new_node);
-    } else {
-      g->AddEdge(edge->src(), edge->src_output(), new_node, edge->dst_input());
+    } else if (edge->dst_input() >= prefix_to_ignore) {
+      g->AddEdge(edge->src(), edge->src_output(), new_node,
+                 edge->dst_input() - prefix_to_ignore);
     }
   }
 }
@@ -145,17 +145,19 @@ static Status ReplaceNodeWithXlaCompileAndRun(Graph* g, Node* n) {
   }
 
   TF_RETURN_IF_ERROR(BuildXlaRunNode(n->name(), n->requested_device(),
-                                     const_dtypes, arg_dtypes_with_resources,
+                                     arg_dtypes_with_resources,
                                      n->output_types(), g, &run_node));
 
   compile_node->set_assigned_device_name(n->assigned_device_name());
   run_node->set_assigned_device_name(n->assigned_device_name());
 
-  CopyIncomingEdges(g, /*old_node=*/n, /*new_node=*/compile_node);
-  CopyIncomingEdges(g, /*old_node=*/n, /*new_node=*/run_node);
+  CopyIncomingEdges(g, /*old_node=*/n, /*new_node=*/compile_node,
+                    /*prefix_to_ignore=*/0);
+  CopyIncomingEdges(g, /*old_node=*/n, /*new_node=*/run_node,
+                    /*prefix_to_ignore=*/num_constant_args);
 
   // The compilation_key output.
-  g->AddEdge(compile_node, 0, run_node, n->num_inputs());
+  g->AddEdge(compile_node, 0, run_node, n->num_inputs() - num_constant_args);
 
   MoveOutgoingEdges(g, /*old_node=*/n, /*new_node=*/run_node);
   g->RemoveNode(n);

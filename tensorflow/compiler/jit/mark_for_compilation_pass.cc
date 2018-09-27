@@ -982,6 +982,11 @@ Status MarkForCompilationPass::RunImpl(
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
 
+  if (flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("before_mark_for_compilation", **options.graph,
+                                options.flib_def);
+  }
+
   // Mark clusters for compilation that:
   // * are placed on a device that requires compilation (an XlaDevice),
   // * are explicitly marked for compilation (_XlaCompile=true), or

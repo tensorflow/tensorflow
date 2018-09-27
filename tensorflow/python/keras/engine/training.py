@@ -383,27 +383,31 @@ class Model(Network):
     """
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
-    if distribute and not isinstance(
-        optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
-      raise NotImplementedError('Only TF native optimizers are supported with '
-                                'DistributionStrategy.')
-    if distribute and context.executing_eagerly():
-      raise NotImplementedError('DistributionStrategy is not supported in '
-                                'Eager mode.')
-    if distribute and sample_weight_mode:
-      raise NotImplementedError('sample_weight_mode is not supported with '
-                                'DistributionStrategy.')
-    if distribute and weighted_metrics:
-      raise NotImplementedError('weighted_metrics is not supported with '
-                                'DistributionStrategy.')
-    if distribute and target_tensors:
-      raise ValueError('target_tensors is not supported with '
-                       'DistributionStrategy.')
+    if distribute:
+      if not isinstance(
+          optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+        raise NotImplementedError(
+            'optimizer must be an instance of '
+            'tf.train.Optimizer, not a %s' % type(optimizer))
+      if context.executing_eagerly():
+        raise NotImplementedError('DistributionStrategy is not supported '
+                                  'when eager execution is enabled.')
+      if sample_weight_mode:
+        raise NotImplementedError('sample_weight_mode is not supported with '
+                                  'DistributionStrategy.')
+      if weighted_metrics:
+        raise NotImplementedError('weighted_metrics is not supported with '
+                                  'DistributionStrategy.')
+      if target_tensors:
+        raise ValueError('target_tensors is not supported with '
+                         'DistributionStrategy.')
 
     loss = loss or {}
     if context.executing_eagerly() and not isinstance(
         optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
-      raise ValueError('Only TF native optimizers are supported in Eager mode.')
+      raise ValueError(
+          'optimizer must be an instance of tf.train.Optimizer, not '
+          'a %s' % type(optimizer))
 
     self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
@@ -642,12 +646,6 @@ class Model(Network):
         targets=self.targets,
         skip_target_indices=skip_target_indices,
         sample_weights=self.sample_weights)
-
-    # If using distribution strategy and stateful_metrics, raise an error
-    # since we currently don't support stateful metrics.
-    if self._distribution_strategy is not None and self.stateful_metric_names:
-      raise NotImplementedError('Stateful metrics are not supported with '
-                                'DistributionStrategy.')
 
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
@@ -1517,7 +1515,8 @@ class Model(Network):
     if self._distribution_strategy:
       distributed_training_utils.validate_callbacks(callbacks)
 
-      distributed_training_utils.validate_inputs(x, y)
+      distributed_training_utils.validate_inputs(
+          x, y, self._distribution_strategy)
 
       first_x_value = nest.flatten(x)[0]
       if not steps_per_epoch and isinstance(first_x_value, np.ndarray):
@@ -1559,7 +1558,8 @@ class Model(Network):
 
       # Validate and standardize validation data.
       if self._distribution_strategy:
-        distributed_training_utils.validate_inputs(val_x, val_y)
+        distributed_training_utils.validate_inputs(
+            val_x, val_y, self._distribution_strategy)
         first_valx_value = nest.flatten(val_x)[0]
         if not validation_steps and isinstance(first_valx_value, np.ndarray):
           validation_steps = distributed_training_utils.get_input_batch_params(
@@ -1733,7 +1733,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_inputs(x, y)
+      distributed_training_utils.validate_inputs(
+          x, y, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
@@ -1848,7 +1849,8 @@ class Model(Network):
       # `MirroredStrategy`.
       if hasattr(self._distribution_strategy, '_prefetch_on_device'):
         self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
-      distributed_training_utils.validate_inputs(x, None)
+      distributed_training_utils.validate_inputs(
+          x, None, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(

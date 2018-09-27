@@ -2168,3 +2168,21 @@ xla_test(
         "//tensorflow/core:lib",
     ],
 )
+
+tf_cc_test(
+    name = "multiple_devices_on_host_test",
+    srcs = ["multiple_devices_on_host_test.cc"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/synchronization",
+    ],
+)

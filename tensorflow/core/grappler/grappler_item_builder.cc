@@ -192,9 +192,13 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string feed_name = NodeName(feed_node);
     new_item->feed.emplace_back(feed_name, Tensor());
   }
+  for (const auto& fetch_node : cfg.fetch_nodes) {
+    new_item->fetch.emplace_back(NodeName(fetch_node));
+  }
 
-  // Attempt to detect the fetch node(s).
-  if (meta_graph.collection_def().count("train_op") > 0) {
+  // Attempt to detect the fetch node(s) if they were not set explicitly.
+  if (new_item->fetch.empty() &&
+      meta_graph.collection_def().count("train_op") > 0) {
     const CollectionDef& nodes = meta_graph.collection_def().at("train_op");
     if (nodes.has_node_list()) {
       for (const auto& node : nodes.node_list().value()) {

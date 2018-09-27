@@ -736,4 +736,209 @@ HeapSimulator::Result LazyBestFitHeap::Finish() {
   return result_;
 }
 
+void GlobalDecreasingSizeBestFitHeap::Alloc(const BufferValue* buffer,
+                                            int64 size) {
+  // Degenerate case: 0-sized buffers are always allocated at offset 0.
+  if (size == 0) {
+    result_.chunk_map.emplace(buffer, Chunk{0, 0});
+    return;
+  }
+  auto emplace_result = buffer_intervals_.emplace(
+      buffer, BufferInterval{buffer, size, current_time_, -1});
+  DCHECK(emplace_result.second);
+  ++current_time_;
+}
+
+void GlobalDecreasingSizeBestFitHeap::Free(const BufferValue* buffer,
+                                           int64 size) {
+  // Degenerate case: 0-sized buffers are always allocated at offset 0.
+  if (size == 0) {
+    return;
+  }
+  BufferInterval& buffer_interval = FindOrDie(buffer_intervals_, buffer);
+  DCHECK_EQ(buffer_interval.buffer, buffer);
+  DCHECK_EQ(buffer_interval.size, size);
+  DCHECK_EQ(buffer_interval.end, -1);
+  buffer_interval.end = current_time_;
+  ++current_time_;
+}
+
+namespace {
+
+// Node in BufferIntervalTree that stores the alloc and free times of a buffer,
+// and the chunk assigned to it.
+struct BufferIntervalTreeNode {
+  // Alloc time.
+  int64 start;
+  // Free time.
+  int64 end;
+  // Maximum free time of all nodes in the subtree where this node is the root.
+  int64 subtree_end;
+  // Allocated chunk for the buffer.
+  HeapSimulator::Chunk chunk;
+  // Left child.
+  BufferIntervalTreeNode* left;
+  // Right child.
+  BufferIntervalTreeNode* right;
+};
+
+// An interval tree that can query buffers overlapping in time.
+class BufferIntervalTree {
+ public:
+  explicit BufferIntervalTree(int capacity) : node_storage_(capacity) {}
+
+  using Chunk = HeapSimulator::Chunk;
+
+  // Adds a buffer to the interval tree, with the time interval and allocated
+  // chunk specified.
+  void Add(int64 start, int64 end, const Chunk& chunk) {
+    int index = node_count_;
+    DCHECK_LT(index, node_storage_.size());
+    ++node_count_;
+
+    node_storage_[index] =
+        BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr};
+
+    if (index == 0) {
+      // This is root.
+      return;
+    }
+
+    BufferIntervalTreeNode* parent = &node_storage_[0];
+    while (true) {
+      parent->subtree_end = std::max(parent->subtree_end, end);
+      if (parent->start > start) {
+        if (parent->left == nullptr) {
+          parent->left = &node_storage_[index];
+          return;
+        }
+        parent = parent->left;
+      } else {
+        if (parent->right == nullptr) {
+          parent->right = &node_storage_[index];
+          return;
+        }
+        parent = parent->right;
+      }
+    }
+  }
+
+  // Returns vector of allocated chunks that overlap with the given time
+  // interval.
+  std::vector<Chunk> ChunksOverlappingInTime(int64 start, int64 end) {
+    std::vector<Chunk> result;
+    if (node_count_ == 0) {
+      return result;
+    }
+    std::vector<BufferIntervalTreeNode*> visiting_stack;
+    visiting_stack.push_back(&node_storage_[0]);
+    while (!visiting_stack.empty()) {
+      BufferIntervalTreeNode* top = visiting_stack.back();
+      visiting_stack.pop_back();
+      if (start > top->subtree_end) {
+        continue;
+      }
+      if (top->left != nullptr) {
+        visiting_stack.push_back(top->left);
+      }
+      if (top->start <= end && top->end >= start) {
+        result.push_back(top->chunk);
+      }
+      if (end < top->start) {
+        continue;
+      }
+      if (top->right != nullptr) {
+        visiting_stack.push_back(top->right);
+      }
+    }
+    return result;
+  }
+
+ private:
+  int64 node_count_ = 0;
+  std::vector<BufferIntervalTreeNode> node_storage_;
+};
+
+}  // namespace
+
+HeapSimulator::Result GlobalDecreasingSizeBestFitHeap::Finish() {
+  std::vector<BufferInterval> sorted_buffer_intervals;
+  for (auto& entry : buffer_intervals_) {
+    sorted_buffer_intervals.push_back(entry.second);
+  }
+  std::sort(sorted_buffer_intervals.begin(), sorted_buffer_intervals.end(),
+            [](const BufferInterval& x, const BufferInterval& y) {
+              if (x.size != y.size) {
+                return x.size > y.size;
+              }
+              if (x.end - x.start != y.end - y.start) {
+                return x.end - x.start > y.end - y.start;
+              }
+              return x.buffer->id() < y.buffer->id();
+            });
+
+  BufferIntervalTree interval_tree(sorted_buffer_intervals.size());
+  for (auto& buffer_interval : sorted_buffer_intervals) {
+    auto chunks_overlapping_in_time = interval_tree.ChunksOverlappingInTime(
+        buffer_interval.start, buffer_interval.end);
+    std::sort(
+        chunks_overlapping_in_time.begin(), chunks_overlapping_in_time.end(),
+        [](const Chunk& x, const Chunk& y) { return x.offset < y.offset; });
+
+    // Find the minimum free chunk that can hold this buffer.
+    Chunk min_fit_chunk{-1, INT64_MAX};
+    auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
+      if (free_size < buffer_interval.size) {
+        return;
+      }
+
+      if (free_size < min_fit_chunk.size) {
+        min_fit_chunk = {free_offset, free_size};
+      }
+    };
+
+    int64 offset = 0;
+    for (auto& chunk : chunks_overlapping_in_time) {
+      if (offset < chunk.offset) {
+        use_free_chunk_if_smaller(offset, chunk.offset - offset);
+      }
+      offset =
+          std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
+    }
+    use_free_chunk_if_smaller(offset, result_.heap_size - offset);
+
+    if (min_fit_chunk.offset == -1) {
+      // Increase the heap size to fit in the last free chunk.
+      result_.heap_size = offset + buffer_interval.size;
+      min_fit_chunk = {offset, buffer_interval.size};
+    }
+
+    min_fit_chunk.size = buffer_interval.size;
+    const auto emplace_result =
+        result_.chunk_map.emplace(buffer_interval.buffer, min_fit_chunk);
+    DCHECK(emplace_result.second);
+
+    interval_tree.Add(buffer_interval.start, buffer_interval.end,
+                      min_fit_chunk);
+  }
+  return result_;
+}
+
+HeapSimulator::Result ChooseBestHeapAlgorithm::Finish() {
+  DCHECK(!algorithms_.empty());
+  std::vector<Result> results(algorithms_.size());
+  int64 min_size = INT64_MAX;
+  int min_size_index = -1;
+  for (int i = 0; i < algorithms_.size(); ++i) {
+    results[i] = algorithms_[i]->Finish();
+    if (results[i].heap_size < min_size) {
+      min_size = results[i].heap_size;
+      min_size_index = i;
+    }
+  }
+
+  DCHECK_GE(min_size_index, 0);
+  return results[min_size_index];
+}
+
 }  // namespace xla

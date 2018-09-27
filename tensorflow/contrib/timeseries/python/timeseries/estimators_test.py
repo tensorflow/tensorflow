@@ -226,5 +226,40 @@ class TimeSeriesRegressorTest(test.TestCase):
                 input_pipeline.NumpyReader(numpy_data)),
             steps=1)
 
+  def test_ar_lstm_regressor(self):
+    dtype = dtypes.float32
+    model_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    exogenous_feature_columns = (
+        feature_column.numeric_column("exogenous"),
+    )
+    estimator = estimators.LSTMAutoRegressor(
+        periodicities=10,
+        input_window_size=10,
+        output_window_size=6,
+        model_dir=model_dir,
+        num_features=1,
+        extra_feature_columns=exogenous_feature_columns,
+        num_units=10,
+        config=_SeedRunConfig())
+    times = numpy.arange(20, dtype=numpy.int64)
+    values = numpy.arange(20, dtype=dtype.as_numpy_dtype)
+    exogenous = numpy.arange(20, dtype=dtype.as_numpy_dtype)
+    features = {
+        feature_keys.TrainEvalFeatures.TIMES: times,
+        feature_keys.TrainEvalFeatures.VALUES: values,
+        "exogenous": exogenous
+    }
+    train_input_fn = input_pipeline.RandomWindowInputFn(
+        input_pipeline.NumpyReader(features), shuffle_seed=2, num_threads=1,
+        batch_size=16, window_size=16)
+    eval_input_fn = input_pipeline.RandomWindowInputFn(
+        input_pipeline.NumpyReader(features), shuffle_seed=3, num_threads=1,
+        batch_size=16, window_size=16)
+    estimator.train(input_fn=train_input_fn, steps=1)
+    evaluation = estimator.evaluate(
+        input_fn=eval_input_fn, steps=1)
+    self.assertAllEqual(evaluation["loss"], evaluation["average_loss"])
+    self.assertAllEqual([], evaluation["loss"].shape)
+
 if __name__ == "__main__":
   test.main()

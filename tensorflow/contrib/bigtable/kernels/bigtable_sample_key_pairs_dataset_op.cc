@@ -38,6 +38,7 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     OP_REQUIRES(ctx, prefix.empty() || start_key.empty(),
                 errors::InvalidArgument(

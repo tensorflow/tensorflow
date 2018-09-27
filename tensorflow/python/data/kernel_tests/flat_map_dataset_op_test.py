@@ -22,6 +22,7 @@ import random
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -30,7 +31,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 
-class FlatMapDatasetTest(test.TestCase):
+class FlatMapDatasetTest(test_base.DatasetTestBase):
 
   # pylint: disable=g-long-lambda
   def testFlatMapDataset(self):

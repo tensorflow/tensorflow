@@ -10187,6 +10187,59 @@ op {
   }
 }
 op {
+  name: "ExtractVolumePatches"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "patches"
+    type_attr: "T"
+  }
+  attr {
+    name: "ksizes"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 5
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
   name: "FFT"
   input_arg {
     name: "input"
@@ -11406,6 +11459,12 @@ op {
     default_value {
       s: "NHWC"
     }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
   }
   attr {
     name: "is_training"
@@ -11478,6 +11537,12 @@ op {
     type: "string"
     default_value {
       s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
     }
   }
   attr {
@@ -11563,6 +11628,12 @@ op {
     default_value {
       s: "NHWC"
     }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
+    }
   }
   attr {
     name: "is_training"
@@ -11646,6 +11717,12 @@ op {
     type: "string"
     default_value {
       s: "NHWC"
+    }
+    allowed_values {
+      list {
+        s: "NHWC"
+        s: "NCHW"
+      }
     }
   }
   attr {
@@ -16810,6 +16887,134 @@ op {
     }
   }
   is_commutative: true
+}
+op {
+  name: "MultiDeviceIterator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "devices"
+    type: "list(string)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorFromStringHandle"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorGetNextFromShard"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "shard_num"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "incarnation_id"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorInit"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "max_buffer_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "incarnation_id"
+    type: DT_INT64
+  }
+  is_stateful: true
+}
+op {
+  name: "MultiDeviceIteratorToStringHandle"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  is_stateful: true
 }
 op {
   name: "Multinomial"
@@ -28533,18 +28738,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -28568,18 +28765,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -28599,18 +28788,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -28634,18 +28815,10 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
       }
     }
   }
@@ -32862,6 +33035,19 @@ op {
     name: "output"
     type: DT_INT32
   }
+  attr {
+    name: "unit"
+    type: "string"
+    default_value {
+      s: "BYTE"
+    }
+    allowed_values {
+      list {
+        s: "BYTE"
+        s: "UTF8_CHAR"
+      }
+    }
+  }
 }
 op {
   name: "StringSplit"
@@ -35463,6 +35649,17 @@ op {
   }
 }
 op {
+  name: "UnicodeScript"
+  input_arg {
+    name: "input"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+}
+op {
   name: "UniformCandidateSampler"
   input_arg {
     name: "true_classes"
@@ -36573,6 +36770,62 @@ op {
     type: "type"
   }
   is_stateful: true
+}
+op {
+  name: "Xdivy"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "Xlogy"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
 }
 op {
   name: "ZerosLike"

@@ -518,6 +518,7 @@ cc_library(
         ":loop_optimizer",
         ":memory_optimizer",
         ":model_pruner",
+        ":pin_to_host_optimizer",
         ":remapper",
         ":scoped_allocator_optimizer",
         ":shape_optimizer",
@@ -880,6 +881,44 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
+    name = "pin_to_host_optimizer",
+    srcs = ["pin_to_host_optimizer.cc"],
+    hdrs = [
+        "pin_to_host_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:symbolic_shapes",
+        "//tensorflow/core/grappler/utils:topological_sort",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "pin_to_host_optimizer_test",
+    srcs = ["pin_to_host_optimizer_test.cc"],
+    deps = [
+        ":pin_to_host_optimizer",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],
 )

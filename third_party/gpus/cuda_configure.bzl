@@ -48,6 +48,7 @@ _DEFAULT_CUDA_COMPUTE_CAPABILITIES = ["3.5", "5.2"]
 CUDA_LIB_PATHS = [
     "lib64/",
     "lib64/stubs/",
+    "lib/powerpc64le-linux-gnu/",
     "lib/x86_64-linux-gnu/",
     "lib/x64/",
     "lib/",
@@ -70,6 +71,7 @@ CUPTI_HEADER_PATHS = [
 # the other CUDA libraries but rather in a special extras/CUPTI directory.
 CUPTI_LIB_PATHS = [
     "extras/CUPTI/lib64/",
+    "lib/powerpc64le-linux-gnu/",
     "lib/x86_64-linux-gnu/",
     "lib64/",
     "extras/CUPTI/libx64/",
