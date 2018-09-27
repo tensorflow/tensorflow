@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -486,6 +487,76 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
       with self.cached_session(use_gpu=True):
         tf_result = math_ops.div_no_nan(nums, divs).eval()
         self.assertAllEqual(tf_result, np_result)
+
+
+class XlogyTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXlogyNoZero(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.1, 0.2, 3.5], [-2., -5., 30.]], dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [3.1, 4., 2.]], dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        xlogy = self.evaluate(math_ops.xlogy(x, y))
+        xtimeslogy = self.evaluate(x * math_ops.log(y))
+        self.assertAllClose(xlogy, xtimeslogy)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXlogyWithZero(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(np.zeros((2, 3)), dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [0., 1., 2.]], dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        xlogy_tf_np = self.evaluate(math_ops.xlogy(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y))
+        self.assertAllClose(xlogy_tf_np, zeros_np)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXlogyWithZeroBroadcast(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.], [1.]], dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [0., 1., 2.]], dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        xlogy_tf_np = self.evaluate(math_ops.xlogy(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y[0]))
+        xtimes_logy = self.evaluate(math_ops.log(y[1]))
+        self.assertAllClose(zeros_np, xlogy_tf_np[0])
+        self.assertAllClose(xtimes_logy, xlogy_tf_np[1])
+
+
+class XdivyTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXdivyNoZero(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.1, 0.2, 3.5], [-2., -5., 30.]], dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [3.1, 4., 2.]], dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        xdivy = self.evaluate(math_ops.xdivy(x, y))
+        x_over_y = self.evaluate(x / y)
+        self.assertAllClose(xdivy, x_over_y)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXdivyWithZero(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(np.zeros((2, 3)), dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [0., 1., 2.]], dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        xdivy_tf_np = self.evaluate(math_ops.xdivy(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y))
+        self.assertAllClose(xdivy_tf_np, zeros_np)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testXdivyWithZeroBroadcast(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.], [1.]], dtype=dtype)
+      y = constant_op.constant([[0.1, 0.2, 3.5], [0., 1., 2.]], dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        xdivy_tf_np = self.evaluate(math_ops.xdivy(x, y))
+        zeros_np = self.evaluate(array_ops.zeros_like(y[0]))
+        x_over_y = self.evaluate(1 / y[1])
+        self.assertAllClose(zeros_np, xdivy_tf_np[0])
+        self.assertAllClose(x_over_y, xdivy_tf_np[1])
 
 
 if __name__ == "__main__":
