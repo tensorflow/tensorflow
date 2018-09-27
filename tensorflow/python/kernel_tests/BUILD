@@ -3257,8 +3257,7 @@ tf_py_test(
     tags = ["no_gpu"],  # TODO(b/111656070)
 )
 
-# TODO(b/116053459): Replace with cuda_py_test.
-tf_py_test(
+cuda_py_test(
     name = "while_v2_test",
     size = "medium",
     srcs = ["while_v2_test.py"],
@@ -3278,5 +3277,4 @@ tf_py_test(
         "//tensorflow/python:while_v2",
     ],
     grpc_enabled = True,
-    tags = ["no_gpu"],  # TODO(b/116053459)
 )
