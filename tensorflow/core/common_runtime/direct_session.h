@@ -247,6 +247,9 @@ class DirectSession : public Session {
                                    ExecutorsAndKeys* executors_and_keys,
                                    RunMetadata* run_metadata);
 
+  // Returns whether inter-op execution uses a global pool.
+  bool ShouldUseRunHandlerPool() const;
+
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
