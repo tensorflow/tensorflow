@@ -290,7 +290,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(self.evaluate(read), [[2]])
 
   def testUseResource(self):
-    v = variables.Variable(1.0, use_resource=True)
+    v = variables.VariableV1(1.0, use_resource=True)
     self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
 
   def testEagerNoUseResource(self):

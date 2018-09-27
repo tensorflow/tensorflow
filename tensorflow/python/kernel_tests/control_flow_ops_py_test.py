@@ -130,7 +130,7 @@ class ControlFlowTest(test.TestCase):
 
   def testRefIdentity(self):
     with self.cached_session():
-      v = variables.Variable(7)
+      v = variables.VariableV1(7)
 
       v = control_flow_ops._Identity(v)
       op = state_ops.assign(v, 9)
@@ -142,7 +142,7 @@ class ControlFlowTest(test.TestCase):
 
   def testRefEnter(self):
     with self.cached_session():
-      v = variables.Variable(7)
+      v = variables.VariableV1(7)
 
       enter_v = control_flow_ops._Enter(v, "foo_1", is_constant=True)
       nine = constant_op.constant(9)
@@ -155,7 +155,7 @@ class ControlFlowTest(test.TestCase):
 
   def testRefSwitch(self):
     with self.cached_session():
-      v = variables.Variable(7)
+      v = variables.VariableV1(7)
 
       p = constant_op.constant(True)
       v1 = control_flow_ops._SwitchRefOrTensor(v._ref(), p)  # pylint: disable=protected-access
@@ -796,7 +796,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileWithRefs_1(self):
     with self.cached_session() as sess:
-      x = variables.Variable(0)._ref()  # pylint: disable=protected-access
+      x = variables.VariableV1(0)._ref()  # pylint: disable=protected-access
       i = constant_op.constant(0)
       c = lambda i, x: math_ops.less(i, 100)
 
@@ -2317,7 +2317,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileWithRefsWithGradients_1(self):
     with self.cached_session() as sess:
-      x = variables.Variable(0.)._ref()  # pylint: disable=protected-access
+      x = variables.VariableV1(0.)._ref()  # pylint: disable=protected-access
       i = constant_op.constant(0)
       c = lambda i, x: math_ops.less(i, 10)
 
@@ -2329,7 +2329,7 @@ class ControlFlowTest(test.TestCase):
 
       r = control_flow_ops.while_loop(c, body, [i, x], parallel_iterations=5)
 
-      grad_ys = [variables.Variable(73)._ref()]  # pylint: disable=protected-access
+      grad_ys = [variables.VariableV1(73)._ref()]  # pylint: disable=protected-access
       grad = gradients_impl.gradients([r[1]], [x], grad_ys=grad_ys)
 
       variables.global_variables_initializer().run()
@@ -2779,7 +2779,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWithOpsDependencies(self):
     with self.cached_session() as sess:
-      v = variables.Variable(0.0)
+      v = variables.VariableV1(0.0)
       c = constant_op.constant(10)
 
       # Fetching v directly will result in an uninitialized error
@@ -2802,7 +2802,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWithTensorDependencies(self):
     with self.cached_session():
-      v = variables.Variable(0.0)
+      v = variables.VariableV1(0.0)
       c1 = constant_op.constant(10)
       c2 = constant_op.constant(20)
 
@@ -2828,7 +2828,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWithIndexedSlicesDependencies(self):
     with self.cached_session():
-      v = variables.Variable(
+      v = variables.VariableV1(
           np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(np.float32))
       v_at_1 = ops.IndexedSlices(v, constant_op.constant([1]))
       gather_v_at_1 = array_ops.gather(v_at_1.values, v_at_1.indices)
@@ -2851,18 +2851,18 @@ class ControlFlowTest(test.TestCase):
     with ops.Graph().as_default():
       # device set on tensor => same device on dep.
       with ops.device("/job:ps"):
-        vd = variables.Variable([0.0])
+        vd = variables.VariableV1([0.0])
       with_vd_dep = control_flow_ops.with_dependencies([vd.initializer], vd)
       self.assertTrue("/job:ps" in with_vd_dep.device)
 
       # No device set on tensor => no device on dep.
-      vnod = variables.Variable([0.0])
+      vnod = variables.VariableV1([0.0])
       with_vnod_dep = control_flow_ops.with_dependencies([vnod.initializer],
                                                          vnod)
       self.assertDeviceEqual(None, with_vnod_dep.device)
 
       # device set on tensor, default device on graph => default device on dep.
-      vdef = variables.Variable([0.0], name="vdef")
+      vdef = variables.VariableV1([0.0], name="vdef")
       with ops.device("/job:worker/device:GPU:1"):
         with_vdef_dep = control_flow_ops.with_dependencies([vdef.initializer],
                                                            vdef)
@@ -2872,8 +2872,8 @@ class ControlFlowTest(test.TestCase):
 
   def testGroup(self):
     with self.cached_session() as sess:
-      v1 = variables.Variable([0.0])
-      v2 = variables.Variable([1.0])
+      v1 = variables.VariableV1([0.0])
+      v2 = variables.VariableV1([1.0])
 
       # Group init1 and init2 and run.
       init = control_flow_ops.group(v1.initializer, v2.initializer)
@@ -2955,29 +2955,29 @@ class ControlFlowTest(test.TestCase):
     p1 = array_ops.placeholder(dtypes.float32)
     p2 = array_ops.placeholder(dtypes.float32)
     p3 = array_ops.placeholder(dtypes.float32)
-    v1 = variables.Variable(p1, validate_shape=False)
-    v2 = variables.Variable(p2, validate_shape=False)
-    v3 = variables.Variable(p3, validate_shape=False)
+    v1 = variables.VariableV1(p1, validate_shape=False)
+    v2 = variables.VariableV1(p2, validate_shape=False)
+    v3 = variables.VariableV1(p3, validate_shape=False)
     self.assertIs(None, v1.get_shape().ndims)
     s = control_flow_ops.ref_select(index, [v1, v2, v3])
     self.assertIs(None, s.get_shape().ndims)
 
     # All inputs known but different.
-    v1 = variables.Variable([[1, 2]])
-    v2 = variables.Variable([[2], [1]])
+    v1 = variables.VariableV1([[1, 2]])
+    v2 = variables.VariableV1([[2], [1]])
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertIs(None, s.get_shape().ndims)
 
     # All inputs known and same.
-    v1 = variables.Variable([[1, 2]])
-    v2 = variables.Variable([[1, 2]])
+    v1 = variables.VariableV1([[1, 2]])
+    v2 = variables.VariableV1([[1, 2]])
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual([1, 2], s.get_shape())
 
     # Possibly the same but not guaranteed.
-    v1 = variables.Variable([[1., 2.]])
+    v1 = variables.VariableV1([[1., 2.]])
     p2 = array_ops.placeholder(dtypes.float32, shape=[None, 2])
-    v2 = variables.Variable(p2, validate_shape=False)
+    v2 = variables.VariableV1(p2, validate_shape=False)
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual(None, s.get_shape())
 
@@ -3160,11 +3160,11 @@ class TupleTest(test.TestCase):
   def testTensors(self):
     for v1_first in [True, False]:
       with self.cached_session():
-        v1 = variables.Variable([1.0])
+        v1 = variables.VariableV1([1.0])
         add1 = math_ops.add(
             control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             2.0)
-        v2 = variables.Variable([10.0])
+        v2 = variables.VariableV1([10.0])
         add2 = math_ops.add(
             control_flow_ops.with_dependencies([v2.initializer], v2._ref()),  # pylint: disable=protected-access
             20.0)
@@ -3190,14 +3190,14 @@ class TupleTest(test.TestCase):
   def testIndexedSlices(self):
     for v1_first in [True, False]:
       with self.cached_session():
-        v1 = variables.Variable(
+        v1 = variables.VariableV1(
             np.array([[0.0, 1.0], [10.0, 11.0], [20.0, 21.0]]).astype(
                 np.float32))
         v1_at_1 = ops.IndexedSlices(
             control_flow_ops.with_dependencies([v1.initializer], v1._ref()),  # pylint: disable=protected-access
             constant_op.constant([1]))
 
-        v2 = variables.Variable(
+        v2 = variables.VariableV1(
             np.array([[0.1, 1.1], [10.1, 11.1], [20.1, 21.1]]).astype(
                 np.float32))
         v2_at_1 = ops.IndexedSlices(
@@ -3229,7 +3229,7 @@ class TupleTest(test.TestCase):
 
   def testAcceptTensorsAsControlInputs(self):
     with self.cached_session():
-      var = variables.Variable(0)
+      var = variables.VariableV1(0)
       assign = state_ops.assign(var, 1)
       t, = control_flow_ops.tuple(
           [constant_op.constant(0)], control_inputs=[assign])

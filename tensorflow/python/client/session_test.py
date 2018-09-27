@@ -1022,7 +1022,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[1, 2], name='b')
-      v = variables.Variable(a, a.dtype)
+      v = variables.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
       assign_a_to_v.eval()
