@@ -30,6 +30,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/nccl:nccl_py",
+        "//tensorflow/contrib/rccl:rccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
