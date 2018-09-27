@@ -151,8 +151,15 @@ class InstructionFusion : public HloModulePass {
 
   // Whether or not we can fuse producer into consumer on all paths
   // from the producer to the consumer where nodes are HLOs and edges are uses.
-  bool CanFuseOnAllPaths(HloInstruction* producer, HloInstruction* consumer,
-                         const HloInstructionSet& do_not_fuse);
+  //
+  // A map from <producer, consumer> to a bool is required as the result cache
+  // to store and query the results of calls to this function, in order to avoid
+  // repeated computations.
+  bool CanFuseOnAllPaths(
+      HloInstruction* producer, HloInstruction* consumer,
+      const HloInstructionSet& do_not_fuse,
+      tensorflow::gtl::FlatMap<std::pair<HloInstruction*, HloInstruction*>,
+                               bool>* result_cache);
 
   // Computes the set of nodes that we do not want to fuse into any of their
   // consumers based on a global analysis of the HLO graph.
