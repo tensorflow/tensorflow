@@ -143,8 +143,8 @@ message RewriterConfig {
   // not configurable (in contrast to memory optimization passes through the
   // meta-optimizer) and act only on manual op annotations.
   //
-  // Custom registered optimizers will be run after the base optimizers, in
-  // the order that they are specified.
+  // Custom optimizers (see custom_optimizers) that are not part of this
+  // schedule will be run after - in the order that they were specified.
   repeated string optimizers = 100;
 
   // Message to describe custom graph optimizer and its parameters
