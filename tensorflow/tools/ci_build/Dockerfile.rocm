@@ -78,7 +78,7 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Workadround : build HIP from source using fork that holds roc-1.9.x with HIP PR 692
 RUN cd $HOME && git clone -b roc-1.9.x-reinit https://github.com/whchung/HIP.git
-RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make -j$(nproc) && dpkg -i *.deb
+RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make -j$(nproc) package && dpkg -i *.deb
 
 # Install RCCL
 RUN cd ~ && \
