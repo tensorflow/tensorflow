@@ -344,7 +344,7 @@ class _MultiStepStopAtStepHook(session_run_hook.SessionRunHook):
       raise ValueError("steps_per_run should be greater than 0")
     self._num_steps = num_steps
     self._last_step = last_step
-    self._steps_per_run = steps_per_run
+    self._steps_per_run_initial_value = steps_per_run
 
   def begin(self):
     self._global_step_tensor = training_util.get_global_step()
@@ -353,7 +353,8 @@ class _MultiStepStopAtStepHook(session_run_hook.SessionRunHook):
     self._steps_per_run_variable = get_or_create_steps_per_run_variable()
 
   def _update_steps_per_run_variable(self, global_step, session):
-    steps = min(self._last_step - global_step, self._steps_per_run)
+    steps = min(self._last_step - global_step,
+                self._steps_per_run_initial_value)
     self._steps_per_run_variable.load(steps, session=session)
 
   def after_create_session(self, session, coord):
