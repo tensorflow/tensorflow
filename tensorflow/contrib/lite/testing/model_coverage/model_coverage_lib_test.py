@@ -123,7 +123,7 @@ class EvaluateKerasModel(test.TestCase):
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(
-        keras_file, converter_mode=lite.ConverterMode.TOCO_EXTENDED)
+        keras_file, converter_mode=lite.ConverterMode.TOCO_FLEX)
 
 
 if __name__ == '__main__':

@@ -67,12 +67,12 @@ class ConverterMode(enum.Enum):
   # Convert model using TOCO such that only unsupported operations are
   # represented as TensorFlow ops.
   # WARNING: Experimental interface, subject to change.
-  TOCO_EXTENDED = "TOCO_EXTENDED"
+  TOCO_FLEX = "TOCO_FLEX"
 
   # Convert model using TOCO such that all operations are represented as
   # TensorFlow ops.
   # WARNING: Experimental interface, subject to change.
-  TOCO_EXTENDED_ALL = "TOCO_EXTENDED_ALL"
+  TOCO_FLEX_ALL = "TOCO_FLEX_ALL"
 
   def __str__(self):
     return self.value
@@ -240,9 +240,9 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
-  if converter_mode == ConverterMode.TOCO_EXTENDED:
+  if converter_mode == ConverterMode.TOCO_FLEX:
     toco.allow_flex_ops = True
-  elif converter_mode == ConverterMode.TOCO_EXTENDED_ALL:
+  elif converter_mode == ConverterMode.TOCO_FLEX_ALL:
     toco.allow_flex_ops = True
     toco.force_flex_ops = True
 

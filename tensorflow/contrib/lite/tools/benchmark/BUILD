@@ -40,7 +40,7 @@ cc_binary(
     srcs = [
         "benchmark_main.cc",
     ],
-    copts = common_copts + ["-DTFLITE_EXTENDED"],
+    copts = common_copts + ["-DTFLITE_FLEX"],
     linkopts = tflite_linkopts() + select({
         "//tensorflow:android": [
             "-pie",  # Android 5.0 and later supports only PIE
@@ -117,7 +117,7 @@ cc_library(
         "logging.h",
     ],
     hdrs = ["benchmark_tflite_model.h"],
-    copts = common_copts + ["-DTFLITE_EXTENDED"],
+    copts = common_copts + ["-DTFLITE_FLEX"],
     deps = [
         ":benchmark_model_lib",
         ":logging",
