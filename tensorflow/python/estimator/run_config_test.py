@@ -1196,8 +1196,9 @@ class RunConfigSessionConfigTest(test.TestCase):
         }
     }
     run_config = _create_run_config_with_cluster_spec(tf_config)
-    self._assert_equal_session_config(run_config.session_config,
-                                      ['/job:ps', '/job:worker', '/job:master'])
+    self._assert_equal_session_config(
+      run_config.session_config,
+      ['/job:ps', '/job:worker', '/job:chief', '/job:master'])
 
   def test_evaluator_session_config(self):
     tf_config = {
