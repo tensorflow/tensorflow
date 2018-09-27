@@ -403,7 +403,7 @@ bb0:
   "foo"(%x) : (i32) -> ()    // expected-error {{operand #0 does not dominate this use}}
   br bb1
 bb1:
-  %x = "bar"() : () -> i32    // expected-error {{operand defined here}}
+  %x = "bar"() : () -> i32    // expected-note {{operand defined here}}
   return
 }
 

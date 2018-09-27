@@ -209,6 +209,18 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
   return OptSuccess;
 }
 
+/// Given a diagnostic kind, return a human readable string for it.
+static StringRef getDiagnosticKindString(MLIRContext::DiagnosticKind kind) {
+  switch (kind) {
+  case MLIRContext::DiagnosticKind::Note:
+    return "note";
+  case MLIRContext::DiagnosticKind::Warning:
+    return "warning";
+  case MLIRContext::DiagnosticKind::Error:
+    return "error";
+  }
+}
+
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
 static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
@@ -245,14 +257,16 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // then we succeed.
   auto result = OptSuccess;
 
-  // Record the expected error's position, substring and whether it was seen.
-  struct ExpectedError {
+  // Record the expected diagnostic's position, substring and whether it was
+  // seen.
+  struct ExpectedDiag {
+    MLIRContext::DiagnosticKind kind;
     unsigned lineNo;
     StringRef substring;
     SMLoc fileLoc;
     bool matched = false;
   };
-  SmallVector<ExpectedError, 2> expectedErrors;
+  SmallVector<ExpectedDiag, 2> expectedDiags;
 
   // Error checker that verifies reported error was expected.
   auto checker = [&](Location *location, StringRef message,
@@ -263,12 +277,31 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
       column = fileLoc->getColumn();
     }
 
+    // If we find something that is close then emit a more specific error.
+    ExpectedDiag *nearMiss = nullptr;
+
     // If this was an expected error, remember that we saw it and return.
-    for (auto &e : expectedErrors) {
+    for (auto &e : expectedDiags) {
       if (line == e.lineNo && message.contains(e.substring)) {
-        e.matched = true;
-        return;
+        if (e.kind == kind) {
+          e.matched = true;
+          return;
+        }
+
+        // If this only differs based on the diagnostic kind, then consider it
+        // to be a near miss.
+        nearMiss = &e;
       }
+    }
+
+    // If there was a near miss, emit a specific diagnostic.
+    if (nearMiss) {
+      sourceMgr.PrintMessage(nearMiss->fileLoc, SourceMgr::DK_Error,
+                             "'" + getDiagnosticKindString(kind) +
+                                 "' diagnostic emitted when expecting a '" +
+                                 getDiagnosticKindString(nearMiss->kind) + "'");
+      result = OptFailure;
+      return;
     }
 
     // If this error wasn't expected, produce an error out of mlir-opt saying
@@ -282,27 +315,39 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   // Scan the file for expected-* designators and register a callback for the
   // error handler.
   // Extract the expected errors from the file.
-  llvm::Regex expected("expected-error *(@[+-][0-9]+)? *{{(.*)}}");
+  llvm::Regex expected(
+      "expected-(error|note|warning) *(@[+-][0-9]+)? *{{(.*)}}");
   SmallVector<StringRef, 100> lines;
   buffer.getBuffer().split(lines, '\n');
   for (unsigned lineNo = 0, e = lines.size(); lineNo < e; ++lineNo) {
     SmallVector<StringRef, 3> matches;
     if (expected.match(lines[lineNo], &matches)) {
-      // Point to the start of expected-error.
-      SMLoc errorStart = SMLoc::getFromPointer(matches[0].data());
-      ExpectedError expErr{lineNo + 1, matches[2], errorStart, false};
-      auto offsetMatch = matches[1];
+      // Point to the start of expected-*.
+      SMLoc expectedStart = SMLoc::getFromPointer(matches[0].data());
+
+      MLIRContext::DiagnosticKind kind;
+      if (matches[1] == "error")
+        kind = MLIRContext::DiagnosticKind::Error;
+      else if (matches[1] == "warning")
+        kind = MLIRContext::DiagnosticKind::Warning;
+      else {
+        assert(matches[1] == "note");
+        kind = MLIRContext::DiagnosticKind::Note;
+      }
+
+      ExpectedDiag record{kind, lineNo + 1, matches[3], expectedStart, false};
+      auto offsetMatch = matches[2];
       if (!offsetMatch.empty()) {
         int offset;
         // Get the integer value without the @ and +/- prefix.
         if (!offsetMatch.drop_front(2).getAsInteger(0, offset)) {
           if (offsetMatch[1] == '+')
-            expErr.lineNo += offset;
+            record.lineNo += offset;
           else
-            expErr.lineNo -= offset;
+            record.lineNo -= offset;
         }
       }
-      expectedErrors.push_back(expErr);
+      expectedDiags.push_back(record);
     }
   }
 
@@ -315,14 +360,16 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   performActions(sourceMgr, &context);
 
   // Verify that all expected errors were seen.
-  for (auto &err : expectedErrors) {
+  for (auto &err : expectedDiags) {
     if (!err.matched) {
       SMRange range(err.fileLoc,
                     SMLoc::getFromPointer(err.fileLoc.getPointer() +
                                           err.substring.size()));
-      sourceMgr.PrintMessage(
-          err.fileLoc, SourceMgr::DK_Error,
-          "expected error \"" + err.substring + "\" was not produced", range);
+      auto kind = getDiagnosticKindString(err.kind);
+      sourceMgr.PrintMessage(err.fileLoc, SourceMgr::DK_Error,
+                             "expected " + kind + " \"" + err.substring +
+                                 "\" was not produced",
+                             range);
       result = OptFailure;
     }
   }
