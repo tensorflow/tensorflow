@@ -12,23 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
+#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/delegates/flex/test_util.h"
+#include "tensorflow/contrib/lite/delegates/eager/test_util.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 namespace {
 
 using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 
-class DelegateTest : public testing::FlexModelTest {
+class DelegateTest : public testing::EagerModelTest {
  public:
   DelegateTest() {
-    delegate_ = FlexDelegate::Create();
+    delegate_ = EagerDelegate::Create();
     interpreter_.reset(new Interpreter(&error_reporter_));
   }
 
@@ -46,7 +46,7 @@ class DelegateTest : public testing::FlexModelTest {
   }
 
  private:
-  std::unique_ptr<FlexDelegate> delegate_;
+  std::unique_ptr<EagerDelegate> delegate_;
 };
 
 TEST_F(DelegateTest, FullGraph) {
@@ -236,7 +236,7 @@ TEST_F(DelegateTest, MultipleInterpretersSameDelegate) {
 }
 
 }  // namespace
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite
 
 int main(int argc, char** argv) {

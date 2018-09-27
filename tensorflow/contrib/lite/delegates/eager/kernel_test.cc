@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/flex/kernel.h"
+#include "tensorflow/contrib/lite/delegates/eager/kernel.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/delegates/flex/delegate_data.h"
-#include "tensorflow/contrib/lite/delegates/flex/test_util.h"
+#include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
+#include "tensorflow/contrib/lite/delegates/eager/test_util.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 namespace {
 
 using ::testing::ContainsRegex;
@@ -31,12 +31,12 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
   TfLiteIntArray* size_and_nodes =
       ConvertVectorToTfLiteIntArray(supported_nodes);
   TF_LITE_ENSURE_STATUS(context->ReplaceSubgraphsWithDelegateKernels(
-      context, flex::GetKernel(), size_and_nodes, delegate));
+      context, eager::GetKernel(), size_and_nodes, delegate));
   TfLiteIntArrayFree(size_and_nodes);
   return kTfLiteOk;
 }
 
-class KernelTest : public testing::FlexModelTest {
+class KernelTest : public testing::EagerModelTest {
  public:
   KernelTest() {
     CHECK(DelegateData::Create(&delegate_data_).ok());
@@ -167,7 +167,7 @@ TEST_F(KernelTest, WrongSetOfNodes) {
 
   ASSERT_FALSE(Invoke());
   ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("Invalid NodeDef in Flex op"));
+              ContainsRegex("Invalid NodeDef in Eager op"));
 }
 
 TEST_F(KernelTest, MixedGraph) {
@@ -220,7 +220,7 @@ TEST_F(KernelTest, SplitGraph) {
 }
 
 }  // namespace
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite
 
 int main(int argc, char** argv) {

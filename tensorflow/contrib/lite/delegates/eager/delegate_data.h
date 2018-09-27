@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
-#define TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_DATA_H_
+#define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_DATA_H_
 
-#include "tensorflow/contrib/lite/delegates/flex/buffer_map.h"
+#include "tensorflow/contrib/lite/delegates/eager/buffer_map.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 
-// Data kept by the Flex delegate for the lifetime of an Interpreter.
+// Data kept by the Eager delegate for the lifetime of an Interpreter.
 class DelegateData {
  public:
   // Create a new DelegateData, initialized with a newly-created EagerContext.
@@ -29,7 +29,7 @@ class DelegateData {
 
   ~DelegateData();
 
-  // The EagerContext that is required for execution of Flex Ops.
+  // The EagerContext that is required for execution of Eager Ops.
   tensorflow::EagerContext* GetEagerContext() { return eager_context_.get(); }
 
   // Map from TF Lite tensor index to TensorFlow tensor for a given context.
@@ -46,7 +46,7 @@ class DelegateData {
   std::unordered_map<const TfLiteContext*, BufferMap> buffer_map_;
 };
 
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_DATA_H_

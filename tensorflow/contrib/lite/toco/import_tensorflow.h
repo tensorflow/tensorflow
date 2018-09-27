@@ -30,7 +30,7 @@ struct TensorFlowImportFlags {
 
   // Do not recognize any op and import all ops as
   // `TensorFlowUnsupportedOperator`. This is used to populated with the
-  // `force_flex_ops` flag.
+  // `force_eager_ops` flag.
   bool import_all_ops_as_unsupported = false;
 };
 

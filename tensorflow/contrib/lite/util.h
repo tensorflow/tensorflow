@@ -26,15 +26,15 @@ limitations under the License.
 
 namespace tflite {
 
-// The prefix of Flex op custom code.
+// The prefix of Eager op custom code.
 // This will be matched agains the `custom_code` field in `OperatorCode`
 // Flatbuffer Table.
 // WARNING: This is an experimental API and subject to change.
-constexpr char kFlexCustomCodePrefix[] = "Flex";
+constexpr char kEagerCustomCodePrefix[] = "Eager";
 
 // Checks whether the prefix of the custom name indicates the operation is an
-// Flex operation.
-bool IsFlexOp(const char* custom_name);
+// Eager operation.
+bool IsEagerOp(const char* custom_name);
 
 // Converts a `std::vector` to a `TfLiteIntArray`. The caller takes ownership
 // of the returned pointer.

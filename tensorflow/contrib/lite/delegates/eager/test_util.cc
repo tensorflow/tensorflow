@@ -13,24 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/lite/delegates/flex/test_util.h"
+#include "tensorflow/contrib/lite/delegates/eager/test_util.h"
 
 #include "absl/memory/memory.h"
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/contrib/lite/string.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 namespace testing {
 
-bool FlexModelTest::Invoke() { return interpreter_->Invoke() == kTfLiteOk; }
+bool EagerModelTest::Invoke() { return interpreter_->Invoke() == kTfLiteOk; }
 
-void FlexModelTest::SetShape(int tensor_index, const std::vector<int>& values) {
+void EagerModelTest::SetShape(int tensor_index,
+                              const std::vector<int>& values) {
   ASSERT_EQ(interpreter_->ResizeInputTensor(tensor_index, values), kTfLiteOk);
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 }
 
-std::vector<int> FlexModelTest::GetShape(int tensor_index) {
+std::vector<int> EagerModelTest::GetShape(int tensor_index) {
   std::vector<int> result;
   auto* dims = interpreter_->tensor(tensor_index)->dims;
   result.reserve(dims->size);
@@ -40,13 +41,13 @@ std::vector<int> FlexModelTest::GetShape(int tensor_index) {
   return result;
 }
 
-TfLiteType FlexModelTest::GetType(int tensor_index) {
+TfLiteType EagerModelTest::GetType(int tensor_index) {
   return interpreter_->tensor(tensor_index)->type;
 }
 
-void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
-                               const std::vector<int>& outputs, TfLiteType type,
-                               const std::vector<int>& dims) {
+void EagerModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
+                                const std::vector<int>& outputs,
+                                TfLiteType type, const std::vector<int>& dims) {
   interpreter_->AddTensors(num_tensors);
   for (int i = 0; i < num_tensors; ++i) {
     TfLiteQuantizationParams quant;
@@ -65,8 +66,8 @@ void FlexModelTest::AddTensors(int num_tensors, const std::vector<int>& inputs,
   CHECK_EQ(interpreter_->SetOutputs(outputs), kTfLiteOk);
 }
 
-void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
-                                   const std::vector<int>& outputs) {
+void EagerModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
+                                    const std::vector<int>& outputs) {
   static TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.builtin_code = BuiltinOperator_MUL;
   reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
@@ -89,8 +90,8 @@ void FlexModelTest::AddTfLiteMulOp(const std::vector<int>& inputs,
            kTfLiteOk);
 }
 
-void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
-                            const std::vector<int>& outputs) {
+void EagerModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
+                             const std::vector<int>& outputs) {
   auto attr = [](const string& key, const string& value) {
     return " attr{ key: '" + key + "' value {" + value + "}}";
   };
@@ -106,28 +107,28 @@ void FlexModelTest::AddTfOp(TfOpType op, const std::vector<int>& inputs,
   if (op == kUnpack) {
     string attributes =
         type_attribute + attr("num", "i: 2") + attr("axis", "i: 0");
-    AddTfOp("FlexUnpack", "Unpack", attributes, inputs, outputs);
+    AddTfOp("EagerUnpack", "Unpack", attributes, inputs, outputs);
   } else if (op == kIdentity) {
     string attributes = type_attribute;
-    AddTfOp("FlexIdentity", "Identity", attributes, inputs, outputs);
+    AddTfOp("EagerIdentity", "Identity", attributes, inputs, outputs);
   } else if (op == kAdd) {
     string attributes = type_attribute;
-    AddTfOp("FlexAdd", "Add", attributes, inputs, outputs);
+    AddTfOp("EagerAdd", "Add", attributes, inputs, outputs);
   } else if (op == kMul) {
     string attributes = type_attribute;
-    AddTfOp("FlexMul", "Mul", attributes, inputs, outputs);
+    AddTfOp("EagerMul", "Mul", attributes, inputs, outputs);
   } else if (op == kNonExistent) {
     AddTfOp("NonExistentOp", "NonExistentOp", "", inputs, outputs);
   } else if (op == kIncompatibleNodeDef) {
     // "Cast" op is created without attributes - making it incompatible.
-    AddTfOp("FlexCast", "Cast", "", inputs, outputs);
+    AddTfOp("EagerCast", "Cast", "", inputs, outputs);
   }
 }
 
-void FlexModelTest::AddTfOp(const char* tflite_name, const string& tf_name,
-                            const string& nodedef_str,
-                            const std::vector<int>& inputs,
-                            const std::vector<int>& outputs) {
+void EagerModelTest::AddTfOp(const char* tflite_name, const string& tf_name,
+                             const string& nodedef_str,
+                             const std::vector<int>& inputs,
+                             const std::vector<int>& outputs) {
   static TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
   reg.builtin_code = BuiltinOperator_CUSTOM;
   reg.custom_name = tflite_name;
@@ -153,5 +154,5 @@ void FlexModelTest::AddTfOp(const char* tflite_name, const string& tf_name,
 }
 
 }  // namespace testing
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite

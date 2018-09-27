@@ -190,16 +190,16 @@ message TocoFlags {
   // (at the cost of accuracy).
   optional bool post_training_quantize = 26 [default = false];
 
-  // When enabled, unsupported ops will be converted to TFLite Flex ops.
+  // When enabled, unsupported ops will be converted to TFLite Eager ops.
   // TODO(ycling): Consider to rename the following 2 flags and don't call it
-  // "Flex".
-  // `allow_flex_ops` should always be used with `allow_custom_ops`.
+  // "Eager".
+  // `allow_eager_ops` should always be used with `allow_custom_ops`.
   // WARNING: Experimental interface, subject to change
-  optional bool allow_flex_ops = 27 [default = false];
+  optional bool allow_eager_ops = 27 [default = false];
 
-  // When enabled, all TensorFlow ops will be converted to TFLite Flex
-  // ops directly. This will force `allow_flex_ops` to true.
-  // `force_flex_ops` should always be used with `allow_flex_ops`.
+  // When enabled, all TensorFlow ops will be converted to TFLite Eager
+  // ops directly. This will force `allow_eager_ops` to true.
+  // `force_eager_ops` should always be used with `allow_eager_ops`.
   // WARNING: Experimental interface, subject to change
-  optional bool force_flex_ops = 28 [default = false];
+  optional bool force_eager_ops = 28 [default = false];
 }

@@ -164,7 +164,7 @@ cc_library(
         ":test_runner",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite/delegates/flex:delegate",
+        "//tensorflow/contrib/lite/delegates/eager:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )

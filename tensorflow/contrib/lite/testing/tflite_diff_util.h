@@ -45,7 +45,7 @@ struct DiffOptions {
   // second pass does multiple inferences back to back.
   int num_runs_per_pass;
   // Path to the delegate library to be loaded in order to execute ops. Must be
-  // `{"", FLEX}`.
+  // `{"", EAGER}`.
   string delegate;
 };
 

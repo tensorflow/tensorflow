@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/delegates/flex/delegate_data.h"
+#include "tensorflow/contrib/lite/delegates/eager/delegate_data.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
-namespace flex {
+namespace eager {
 tensorflow::Status DelegateData::Create(std::unique_ptr<DelegateData>* data) {
   std::vector<tensorflow::Device*> devices;
 
@@ -43,5 +43,5 @@ DelegateData::DelegateData(tensorflow::EagerContext* eager_context)
 
 DelegateData::~DelegateData() {}
 
-}  // namespace flex
+}  // namespace eager
 }  // namespace tflite
