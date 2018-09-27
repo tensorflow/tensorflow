@@ -18,7 +18,6 @@ load(
     "tf_gpu_cc_test",
     "tf_kernel_library",
 )
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 
 tf_custom_op_py_library(
@@ -41,12 +40,12 @@ tf_custom_op_py_library(
 
 tf_kernel_library(
     name = "rccl_kernels",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "kernels/rccl_manager.cc",
         "kernels/rccl_manager.h",
         "kernels/rccl_ops.cc",
         "kernels/rccl_rewrite.cc",
-    ],
+    ]),
     deps = if_rocm_is_configured([
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:core_cpu_lib",
@@ -57,13 +56,13 @@ tf_kernel_library(
 
 tf_custom_op_library(
     name = "python/ops/_rccl_ops.so",
-    srcs = [
+    srcs = if_rocm_is_configured([
         "kernels/rccl_manager.cc",
         "kernels/rccl_manager.h",
         "kernels/rccl_ops.cc",
         "kernels/rccl_rewrite.cc",
         "ops/rccl_ops.cc",
-    ],
+    ]),
     deps = if_rocm_is_configured([
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:core_cpu_lib",
@@ -107,14 +106,11 @@ gpu_py_test(
 tf_gpu_cc_test(
     name = "rccl_manager_test",
     size = "medium",
-    srcs = if_rocm(
-        [
-            "kernels/rccl_manager.cc",
-            "kernels/rccl_manager.h",
-            "kernels/rccl_manager_test.cc",
-        ],
-        [],
-    ),
+    srcs = if_rocm_is_configured([
+        "kernels/rccl_manager.cc",
+        "kernels/rccl_manager.h",
+        "kernels/rccl_manager_test.cc",
+    ]),
     # Disabled on jenkins until errors finding nvmlShutdown are found.
     tags = [
         "manual",
@@ -123,12 +119,11 @@ tf_gpu_cc_test(
         "noguitar",
         "notap",
     ],
-    deps =
-        [
-            "//tensorflow/core:test",
-            "//tensorflow/core:test_main",
-            "//tensorflow/core:testlib",
-            "@local_config_rocm//rocm:rccl",
-        ],
+    deps = if_rocm_is_configured([
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@local_config_rocm//rocm:rccl",
+    ]),
 )
 
