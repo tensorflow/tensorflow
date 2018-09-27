@@ -343,13 +343,14 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   return data
 
 
-@deprecation.deprecated(None, "Use `lite.TocoConverter` instead.")
+@deprecation.deprecated(None, "Use `lite.TFLiteConverter` instead.")
 def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
-  """"Convert a model using TOCO.
+  """Convert a model using TOCO.
 
   Typically this function is used to convert from TensorFlow GraphDef to TFLite.
   Conversion can be customized by providing arguments that are forwarded to
-  `build_toco_convert_protos` (see documentation for details).
+  `build_toco_convert_protos` (see documentation for details). This function has
+  been deprecated. Please use `lite.TFLiteConverter` instead.
 
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),

@@ -707,14 +707,11 @@ cc_library(
 cc_library(
     name = "feature_util",
     srcs = ["example/feature_util.cc"],
-    hdrs = [
-        "example/feature_util.h",
-        "platform/types.h",
-    ],
+    hdrs = ["example/feature_util.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":core_stringpiece",
-        ":platform_protobuf",
+        ":lib_proto_parsing",
         ":protos_all_cc",
     ],
 )
@@ -1057,7 +1054,6 @@ tf_gen_op_libs(
         "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
-        "resource_variable_ops",
         "rpc_ops",
         "scoped_allocator_ops",
         "sdca_ops",
@@ -1097,6 +1093,14 @@ tf_gen_op_libs(
 tf_gen_op_libs(
     op_lib_names = ["debug_ops"],
     deps = ["//tensorflow/core/kernels:debug_ops"],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "resource_variable_ops",
+    ],
+    deps = [":lib"],
 )
 
 # And one for all user ops
@@ -2554,6 +2558,7 @@ tf_cuda_library(
             "**/*test*",
             "**/*main.cc",
             "example/example_parser_configuration.*",
+            "example/feature_util.cc",
             "util/reporter.cc",
             "framework/fake_input.*",
             "framework/op_gen_lib.*",
@@ -2583,6 +2588,7 @@ tf_cuda_library(
         ],
     }),
     deps = [
+        ":feature_util",
         ":lib",
         ":lib_internal",
         ":protos_all_proto_text",

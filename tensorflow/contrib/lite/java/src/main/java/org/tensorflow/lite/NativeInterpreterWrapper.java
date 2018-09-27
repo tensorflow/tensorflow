@@ -45,6 +45,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     isMemoryAllocated = true;
     inputTensors = new Tensor[getInputCount(interpreterHandle)];
     outputTensors = new Tensor[getOutputCount(interpreterHandle)];
+    if (options.allowFp16PrecisionForFp32) {
+      setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
+    }
   }
 
   NativeInterpreterWrapper(ByteBuffer byteBuffer) {
@@ -71,6 +74,9 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     outputTensors = new Tensor[getOutputCount(interpreterHandle)];
     if (options.useNNAPI) {
       setUseNNAPI(options.useNNAPI);
+    }
+    if (options.allowFp16PrecisionForFp32) {
+      setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
     }
   }
 
@@ -157,6 +163,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   void setUseNNAPI(boolean useNNAPI) {
     useNNAPI(interpreterHandle, useNNAPI);
+  }
+
+  void setAllowFp16PrecisionForFp32(boolean allow) {
+    allowFp16PrecisionForFp32(interpreterHandle, allow);
   }
 
   void setNumThreads(int numThreads) {
@@ -322,6 +332,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void useNNAPI(long interpreterHandle, boolean state);
 
   private static native void numThreads(long interpreterHandle, int numThreads);
+
+  private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
 
   private static native long createErrorReporter(int size);
 

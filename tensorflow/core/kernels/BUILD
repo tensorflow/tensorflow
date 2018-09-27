@@ -2028,8 +2028,8 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:resource_variable_ops_op_lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -5254,6 +5254,8 @@ filegroup(
         "cwise_op_squared_difference.cc",
         "cwise_op_sub.cc",
         "cwise_op_tanh.cc",
+        "cwise_op_xlogy.cc",
+        "cwise_op_xdivy.cc",
         "data_format_ops.cc",
         "decode_wav_op.cc",
         "deep_conv2d.cc",
