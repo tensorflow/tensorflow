@@ -301,7 +301,7 @@ bool TfLiteDriver::CheckResults() {
 }
 
 void TfLiteDriver::ResetLSTMStateTensors() {
-  interpreter_->ResetVariableTensorsToZero();
+  interpreter_->ResetVariableTensors();
 }
 
 }  // namespace testing
