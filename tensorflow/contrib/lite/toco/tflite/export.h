@@ -26,7 +26,7 @@ namespace tflite {
 // The parameters for exporting a TFLite model.
 struct ExportParams {
   bool allow_custom_ops = false;
-  bool allow_eager_ops = false;
+  bool allow_flex_ops = false;
   bool quantize_weights = false;
 };
 
@@ -121,7 +121,7 @@ void LoadTensorsMap(const Model& model, TensorsMap* tensors_map);
 void LoadOperatorsMap(
     const Model& model, OperatorsMap* operators_map,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_eager_ops);
+    bool allow_flex_ops);
 
 }  // namespace details
 }  // namespace tflite

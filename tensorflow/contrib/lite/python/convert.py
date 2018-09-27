@@ -241,10 +241,10 @@ def build_toco_convert_protos(input_tensors,
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
   if converter_mode == ConverterMode.TOCO_EXTENDED:
-    toco.allow_eager_ops = True
+    toco.allow_flex_ops = True
   elif converter_mode == ConverterMode.TOCO_EXTENDED_ALL:
-    toco.allow_eager_ops = True
-    toco.force_eager_ops = True
+    toco.allow_flex_ops = True
+    toco.force_flex_ops = True
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges

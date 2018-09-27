@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #ifdef TFLITE_EXTENDED
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #endif  // TFLITE_EXTENDED
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -306,8 +306,8 @@ void BenchmarkTfLiteModel::Init() {
   interpreter->UseNNAPI(use_nnapi);
 
 #ifdef TFLITE_EXTENDED
-  TFLITE_LOG(INFO) << "Instantiating Eager Delegate";
-  delegate_ = EagerDelegate::Create();
+  TFLITE_LOG(INFO) << "Instantiating Flex Delegate";
+  delegate_ = FlexDelegate::Create();
   if (delegate_) {
     interpreter->ModifyGraphWithDelegate(delegate_.get(),
                                          /*allow_dynamic_tensors=*/true);
