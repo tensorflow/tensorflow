@@ -701,9 +701,9 @@ py_test(
 )
 
 py_test(
-    name = "cache_conv_test",
+    name = "cache_graph_test",
     size = "medium",
-    srcs = ["tests/cache_conv_test.py"],
+    srcs = ["tests/cache_graph_test.py"],
     deps = [
         ":ipu_ops",
         "//tensorflow/compiler/tests:xla_test",
@@ -751,7 +751,7 @@ test_suite(
         "casts_elimination_test",
         "update_op_dependencies_test",
         "fuse_wide_const_test",
-        "cache_conv_test",
+        "cache_graph_test",
     ],
 )
 
@@ -787,7 +787,7 @@ test_suite(
         "casts_elimination_test",
         "update_op_dependencies_test",
         "fuse_wide_const_test",
-        "cache_conv_test",
+        "cache_graph_test",
     ],
 )
 
