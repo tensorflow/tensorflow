@@ -647,12 +647,6 @@ class Model(Network):
         skip_target_indices=skip_target_indices,
         sample_weights=self.sample_weights)
 
-    # If using distribution strategy and stateful_metrics, raise an error
-    # since we currently don't support stateful metrics.
-    if self._distribution_strategy is not None and self.stateful_metric_names:
-      raise NotImplementedError('Stateful metrics are not supported with '
-                                'DistributionStrategy.')
-
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
 
