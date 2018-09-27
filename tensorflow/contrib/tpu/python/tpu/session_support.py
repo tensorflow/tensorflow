@@ -44,20 +44,24 @@ class CoordinatorShutdownException(Exception):
 def _make_heartbeat_op(session, device, request_ph):
   """Return a heartbeat op or None if heartbeats are not supported by device."""
   try:
-    with ops.device(device):
-      heartbeat_op = tpu_ops.worker_heartbeat(request_ph)
-      request = event_pb2.WorkerHeartbeatRequest()
-      options = config_pb2.RunOptions(timeout_in_ms=5000)
-      session.run(
-          heartbeat_op,
-          feed_dict={request_ph: request.SerializeToString()},
-          options=options)
-      return heartbeat_op
+    # Test if we can connect in a isolated graph + session
+    with ops.Graph().as_default():
+      with session_lib.Session(target=session.sess_str) as temp_session:
+        with ops.device(device):
+          heartbeat_op = tpu_ops.worker_heartbeat('')
+          options = config_pb2.RunOptions(timeout_in_ms=5000)
+          temp_session.run(heartbeat_op, options=options)
   except errors.InvalidArgumentError as _:
+    logging.warning('Error running heartbeat on %s', device)
     return None
   except errors.DeadlineExceededError as _:
     logging.warning('Timeout connecting to %s when testing heartbeat', device)
     return None
+
+  # If we successfully connected and pinged the worker, go ahead and construct
+  # the operation.
+  with ops.device(device):
+    return tpu_ops.worker_heartbeat(request_ph)
 
 
 class WorkerHeartbeatManager(object):
@@ -171,7 +175,7 @@ class WorkerHeartbeatManager(object):
 def all_worker_devices(session):
   """Return a list of devices for each worker in the system."""
   devices = session.list_devices()
-  return [device.name for device in devices if 'CPU' in device.name]
+  return [device.name for device in devices if ':CPU:' in device.name]
 
 
 class WatchdogManager(threading.Thread):
