@@ -27,7 +27,7 @@ limitations under the License.
 #ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
 #endif
-#if defined(TFLITE_EXTENDED)
+#if defined(TFLITE_FLEX)
 #include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #endif
 #include "tensorflow/contrib/lite/version.h"
@@ -450,7 +450,7 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
   (**interpreter).SetVariables(std::move(variables));
 
-#if defined(TFLITE_EXTENDED)
+#if defined(TFLITE_FLEX)
   if (auto delegate = FlexDelegate::Create()) {
     (**interpreter)
         .ModifyGraphWithDelegate(std::move(delegate),

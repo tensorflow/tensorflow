@@ -412,7 +412,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertTrue(len(quantized_tflite) < len(float_tflite))
 
-  def testExtendedMode(self):
+  def testFlexMode(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
     out_tensor = in_tensor + in_tensor
@@ -421,7 +421,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
                                                   [out_tensor])
-    converter.converter_mode = lite.ConverterMode.TOCO_EXTENDED_ALL
+    converter.converter_mode = lite.ConverterMode.TOCO_FLEX_ALL
     tflite_model = converter.convert()
     self.assertTrue(tflite_model)
 

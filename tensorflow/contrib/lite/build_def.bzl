@@ -301,7 +301,7 @@ def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
     # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-extended", ""]
+    return ["toco-flex", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -335,7 +335,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_extended"
+        flags = "--ignore_toco_errors --run_with_flex"
         kwargs["tags"].append("skip_already_failing")
         kwargs["tags"].append("no_oss")
         kwargs["tags"].append("notap")
