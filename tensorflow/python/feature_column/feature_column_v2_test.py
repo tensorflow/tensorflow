@@ -177,6 +177,22 @@ class LazyColumnTest(test.TestCase):
         TypeError, '"key" must be either a "str" or "FeatureColumn".'):
       transformation_cache.get(NotAFeatureColumn(), None)
 
+  def test_expand_dim_rank_1_sparse_tensor_empty_batch(self):
+    # empty 1-D sparse tensor:
+    transformation_cache = FeatureTransformationCache(
+        features={
+            'a':
+                sparse_tensor.SparseTensor(
+                    indices=np.reshape(np.array([], dtype=np.int64), (0, 1)),
+                    dense_shape=[0],
+                    values=np.array([]))
+        })
+    with self.cached_session():
+      spv = transformation_cache.get('a', None).eval()
+      self.assertAllEqual(np.array([0, 1], dtype=np.int64), spv.dense_shape)
+      self.assertAllEqual(
+          np.reshape(np.array([], dtype=np.int64), (0, 2)), spv.indices)
+
 
 class NumericColumnTest(test.TestCase):
 
