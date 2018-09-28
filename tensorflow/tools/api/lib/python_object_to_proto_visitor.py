@@ -47,9 +47,9 @@ def _SanitizedArgSpec(obj):
     string, a string representation of the argspec.
   """
   output_string = ''
-  unsanitized_arg_spec = tf_inspect.getfullargspec(obj)
+  unsanitized_arg_spec = tf_inspect.getargspec(obj)
 
-  for clean_attr in ('args', 'varargs', 'varkw'):
+  for clean_attr in ('args', 'varargs', 'keywords'):
     output_string += '%s=%s, ' % (clean_attr,
                                   getattr(unsanitized_arg_spec, clean_attr))
 

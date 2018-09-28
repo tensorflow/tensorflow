@@ -892,14 +892,14 @@ class _VariableStore(object):
         if shape and shape.is_fully_defined():
           init_val = lambda: initializer(  # pylint: disable=g-long-lambda
               shape.as_list(), dtype=dtype, partition_info=partition_info)
-        elif not tf_inspect.getfullargspec(initializer).args:
+        elif not tf_inspect.getargspec(initializer).args:
           init_val = initializer
         else:
           raise ValueError("You can only pass an initializer function that "
                            "expects no arguments to its callable when the "
                            "shape is not fully defined. The given initializer "
                            "function expects the following args %s" %
-                           tf_inspect.getfullargspec(initializer).args)
+                           tf_inspect.getargspec(initializer).args)
         variable_dtype = dtype.base_dtype
 
     # Create the variable.

@@ -83,7 +83,7 @@ class TfContextlibTest(test.TestCase):
     self.assertFalse(isinstance(target, tf_decorator.TFDecorator))
 
   def testGetArgSpecReturnsWrappedArgSpec(self):
-    argspec = tf_inspect.getfullargspec(test_params_and_defaults)
+    argspec = tf_inspect.getargspec(test_params_and_defaults)
     self.assertEqual(['a', 'b', 'c', 'd'], argspec.args)
     self.assertEqual((2, True, 'hello'), argspec.defaults)
 

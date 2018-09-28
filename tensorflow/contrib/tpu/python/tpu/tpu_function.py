@@ -80,7 +80,7 @@ def check_function_argument_count(func, input_arity, infeed_queue):
   number_of_arguments_needed = input_arity
   if infeed_queue is not None:
     number_of_arguments_needed += infeed_queue.number_of_tuple_elements
-  arg_spec = tf_inspect.getfullargspec(func)
+  arg_spec = tf_inspect.getargspec(func)
   number_of_args = len(arg_spec.args)
   if arg_spec.defaults is None:
     number_of_defaults = 0

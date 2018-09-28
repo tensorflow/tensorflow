@@ -102,7 +102,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   layer.set_weights(weights)
 
   # test and instantiation from weights
-  if 'weights' in tf_inspect.getfullargspec(layer_cls.__init__):
+  if 'weights' in tf_inspect.getargspec(layer_cls.__init__):
     kwargs['weights'] = weights
     layer = layer_cls(**kwargs)
 
