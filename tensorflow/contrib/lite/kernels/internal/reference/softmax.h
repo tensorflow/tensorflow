@@ -57,16 +57,6 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
-                    float beta, float* output_data,
-                    const RuntimeShape& output_shape) {
-  SoftmaxParams params;
-  params.beta = beta;
-  Softmax(params, input_shape, input_data, output_shape, output_data);
-}
-
 inline void Softmax(const SoftmaxParams& params,
                     const RuntimeShape& input_shape, const uint8* input_data,
                     const RuntimeShape& output_shape, uint8* output_data) {
@@ -149,19 +139,6 @@ inline void Softmax(const SoftmaxParams& params,
       }
     }
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy
-inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
-                    int32 input_beta_multiplier, int32 input_beta_left_shift,
-                    int diff_min, uint8* output_data,
-                    const RuntimeShape& output_shape) {
-  SoftmaxParams params;
-  params.input_multiplier = input_beta_multiplier;
-  params.input_left_shift = input_beta_left_shift;
-  params.diff_min = diff_min;
-  Softmax(params, input_shape, input_data, output_shape, output_data);
 }
 
 // Performs softmax along the input of size (input_size * batch_size).
