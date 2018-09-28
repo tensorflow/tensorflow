@@ -272,8 +272,9 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("DirectedInterleaveDataset").Device(DEVICE_CPU),
-                        DirectedInterleaveDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalDirectedInterleaveDataset").Device(DEVICE_CPU),
+    DirectedInterleaveDatasetOp);
 
 }  // namespace
 }  // namespace data

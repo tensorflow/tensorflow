@@ -17,12 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
@@ -97,7 +96,7 @@ class _AssertNextDataset(dataset_ops.UnaryDataset):
         transformations, dtype=dtypes.string, name="transformations")
 
   def _as_variant_tensor(self):
-    return contrib_gen_dataset_ops.assert_next_dataset(
+    return gen_experimental_dataset_ops.experimental_assert_next_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._transformations,
         **dataset_ops.flat_structure(self))

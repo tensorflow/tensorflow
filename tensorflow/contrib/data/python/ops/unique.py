@@ -17,10 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import gen_experimental_dataset_ops
 
 
 def unique():
@@ -61,7 +60,7 @@ class _UniqueDataset(dataset_ops.UnaryDataset):
           "`tf.int32`, `tf.int64`, or `tf.string` component.")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.unique_dataset(
+    return gen_experimental_dataset_ops.experimental_unique_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))
 

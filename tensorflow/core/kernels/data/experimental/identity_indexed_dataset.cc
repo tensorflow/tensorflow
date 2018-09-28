@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/data/kernels/indexed_dataset.h"
+#include "tensorflow/core/kernels/data/experimental/indexed_dataset.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -147,8 +147,9 @@ class IdentityIndexedDatasetOp : public IndexedDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("IdentityIndexedDataset").Device(DEVICE_CPU),
-                        IdentityIndexedDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalIdentityIndexedDataset").Device(DEVICE_CPU),
+    IdentityIndexedDatasetOp);
 
 }  // namespace
 }  // namespace data

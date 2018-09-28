@@ -199,8 +199,9 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
             HANDLE_TYPE(DT_INT64);
             HANDLE_TYPE(DT_STRING);
             default:
-              LOG(FATAL) << "UniqueDataset unhandled data type: "
-                         << DataTypeString(lhs.dtype());
+              DCHECK(false) << "UniqueDataset unhandled data type: "
+                            << DataTypeString(lhs.dtype());
+              return false;
           }
         }
       };
@@ -215,7 +216,7 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("UniqueDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("ExperimentalUniqueDataset").Device(DEVICE_CPU),
                         UniqueDatasetOp);
 
 }  // namespace

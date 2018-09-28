@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/data/kernels/indexed_dataset.h"
+#include "tensorflow/core/kernels/data/experimental/indexed_dataset.h"
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -361,12 +361,14 @@ class IndexedDatasetGet : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("MaterializedIndexDatasetHandle").Device(DEVICE_CPU),
+    Name("ExperimentalMaterializedIndexDatasetHandle").Device(DEVICE_CPU),
     MaterializedHandleOp);
-REGISTER_KERNEL_BUILDER(Name("IndexedDatasetMaterialize").Device(DEVICE_CPU),
-                        MaterializeDatasetOp);
-REGISTER_KERNEL_BUILDER(Name("IndexedDatasetGet").Device(DEVICE_CPU),
-                        IndexedDatasetGet);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalIndexedDatasetMaterialize").Device(DEVICE_CPU),
+    MaterializeDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalIndexedDatasetGet").Device(DEVICE_CPU),
+    IndexedDatasetGet);
 
 }  // namespace
 }  // namespace data

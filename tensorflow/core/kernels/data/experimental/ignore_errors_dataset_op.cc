@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 namespace data {
@@ -133,8 +132,9 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("IgnoreErrorsDataset").Device(DEVICE_CPU),
-                        IgnoreErrorsDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalIgnoreErrorsDataset").Device(DEVICE_CPU),
+    IgnoreErrorsDatasetOp);
 
 }  // namespace
 }  // namespace data

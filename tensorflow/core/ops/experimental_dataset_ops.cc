@@ -17,24 +17,16 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("DirectedInterleaveDataset")
+REGISTER_OP("ExperimentalDirectedInterleaveDataset")
     .Input("selector_input_dataset: variant")
     .Input("data_input_datasets: N * variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("N: int >= 1")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-A substitute for `InterleaveDataset` on a fixed list of `N` datasets.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-selector_input_dataset: A dataset of scalar `DT_INT64` elements that determines
-  which of the `N` data inputs should produce the next output element.
-data_input_datasets: `N` datasets with the same type that will be interleaved
-  according to the values of `selector_input_dataset`.
-)doc");
-
-REGISTER_OP("CSVDataset")
+REGISTER_OP("ExperimentalCSVDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
@@ -76,35 +68,26 @@ REGISTER_OP("CSVDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("IgnoreErrorsDataset")
+REGISTER_OP("ExperimentalIgnoreErrorsDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("UniqueDataset")
+REGISTER_OP("ExperimentalUniqueDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Creates a dataset that contains the unique elements of `input_dataset`.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("IteratorGetDevice")
+REGISTER_OP("ExperimentalIteratorGetDevice")
     .Input("resource: resource")
     .Output("device: string")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Returns the name of the device on which `resource` has been placed.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("FunctionBufferingResource")
+REGISTER_OP("ExperimentalFunctionBufferingResource")
     .Input("string_arg: string")
     .Input("target_device: string")
     .Output("resource: resource")
@@ -113,77 +96,36 @@ REGISTER_OP("FunctionBufferingResource")
     .Attr("f: func")
     .Attr("buffer_size: int")
     .Attr("output_types: list(type)")
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-Creates a resource that fills up a buffer by making function calls.
+    .SetShapeFn(shape_inference::UnknownShape);
 
-string_arg: String argument to the function call.
-target_device: Target device to execute the function on.
-resource: Handle to the resource created.
-f: Function to be executed.
-buffer_size: Size of the buffer.
-container: If non-empty, this resource is placed in the given container.
-  Otherwise, a default container is used.
-shared_name: If non-empty, this resource will be shared under the given name
-  across multiple sessions.
-output_types: The type list for the return values.
-)doc");
-
-REGISTER_OP("FunctionBufferingResourceGetNext")
+REGISTER_OP("ExperimentalFunctionBufferingResourceGetNext")
     .Input("function_buffer_resource: resource")
     .Attr("output_types: list(type)")
     .Output("output: output_types")
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-Gets the next element from a FunctionBufferingResource.
+    .SetShapeFn(shape_inference::UnknownShape);
 
-function_buffer_resource: The FunctionBufferingResource handle.
-output: A list of return values.
-output_types: The type list for the return values.
-)doc");
-
-REGISTER_OP("FunctionBufferingResourceReset")
+REGISTER_OP("ExperimentalFunctionBufferingResourceReset")
     .Input("function_buffer_resource: resource")
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-Resets the FunctionBufferingResource.
+    .SetShapeFn(shape_inference::UnknownShape);
 
-function_buffer_resource: The FunctionBufferingResource handle.
-)doc");
-
-REGISTER_OP("ThreadPoolDataset")
+REGISTER_OP("ExperimentalThreadPoolDataset")
     .Input("input_dataset: variant")
     .Input("thread_pool: resource")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+    .SetShapeFn(shape_inference::ScalarShape);
 
-handle: A resource produced by the ThreadPoolHandle op.
-)doc");
-
-REGISTER_OP("ThreadPoolHandle")
+REGISTER_OP("ExperimentalThreadPoolHandle")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Attr("num_threads: int")
     .Attr("max_intra_op_parallelism: int = 1")
     .Attr("display_name: string")
     .Attr("container: string = ''")
-    .Attr("shared_name: string = ''")
-    .Doc(R"doc(
-Creates a custom thread pool with the given number of threads.
+    .Attr("shared_name: string = ''");
 
-handle: A resource that can be consumed by one or more ThreadPoolDataset ops.
-num_threads: The number of threads in the thread pool.
-max_intra_op_parallelism: The maximum degree of parallelism to use within
-  operations that execute on this threadpool.
-display_name: A human-readable name for the threads that may be visible in
-  some visualizations.
-)doc");
-
-REGISTER_OP("AssertNextDataset")
+REGISTER_OP("ExperimentalAssertNextDataset")
     .Input("input_dataset: variant")
     .Input("transformations: string")
     .Output("handle: variant")
@@ -196,7 +138,7 @@ REGISTER_OP("AssertNextDataset")
       return shape_inference::ScalarShape(c);
     });
 
-REGISTER_OP("LMDBDataset")
+REGISTER_OP("ExperimentalLMDBDataset")
     .Input("filenames: string")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
@@ -204,5 +146,62 @@ REGISTER_OP("LMDBDataset")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ExperimentalIdentityIndexedDataset")
+    .Input("size: uint64")
+    .Output("handle: variant")
+    .SetIsStateful()
+    .SetShapeFn(
+        shape_inference::ScalarShape);  // TODO(saeta): check input shapes.
+
+///////////////////////////////////////////////////////////////////////////////
+//     IndexedDataset Internals
+///////////////////////////////////////////////////////////////////////////////
+
+// Creates the handle.
+REGISTER_OP("ExperimentalMaterializedIndexDatasetHandle")
+    .Output("handle: resource")
+    .Attr("container: string")
+    .Attr("shared_name: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Actually materialize the materialize handle.
+REGISTER_OP("ExperimentalIndexedDatasetMaterialize")
+    .Input("dataset: variant")
+    .Input("materialized: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
+
+namespace {
+
+Status GetShapeFn(shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle unused;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+  std::vector<PartialTensorShape> output_shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  if (output_shapes.size() != c->num_outputs()) {
+    return errors::InvalidArgument(
+        "`output_shapes` must be the same length as `output_types` (",
+        output_shapes.size(), " vs. ", c->num_outputs());
+  }
+  for (size_t i = 0; i < output_shapes.size(); ++i) {
+    shape_inference::ShapeHandle output_shape_handle;
+    TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+        output_shapes[i], &output_shape_handle));
+    c->set_output(static_cast<int>(i), output_shape_handle);
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+REGISTER_OP("ExperimentalIndexedDatasetGet")
+    .Input("materialized: resource")
+    .Input("index: uint64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(GetShapeFn);
 
 }  // namespace tensorflow

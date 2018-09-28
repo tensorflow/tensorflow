@@ -852,7 +852,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 };  // class CSVDatasetOp
 
 // Register the kernel implementation for CSVDataset.
-REGISTER_KERNEL_BUILDER(Name("CSVDataset").Device(DEVICE_CPU), CSVDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ExperimentalCSVDataset").Device(DEVICE_CPU),
+                        CSVDatasetOp);
 
 }  // namespace
 }  // namespace data

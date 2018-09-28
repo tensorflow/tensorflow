@@ -338,20 +338,20 @@ class FunctionBufferResourceHandleOp : public OpKernel {
   DataTypeVector output_types_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResource")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResource")
                             .Device(DEVICE_CPU)
                             .HostMemory("resource")
                             .HostMemory("string_arg")
                             .HostMemory("target_device"),
                         FunctionBufferResourceHandleOp);
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResource")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResource")
                             .Device(DEVICE_GPU)
                             .HostMemory("resource")
                             .HostMemory("string_arg")
                             .HostMemory("target_device"),
                         FunctionBufferResourceHandleOp);
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResource")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResource")
                             .Device(DEVICE_SYCL)
                             .HostMemory("resource")
                             .HostMemory("string_arg")
@@ -403,16 +403,16 @@ class FunctionBufferingResourceGetNextOp : public AsyncOpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResourceGetNext")
                             .Device(DEVICE_CPU)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceGetNextOp);
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResourceGetNext")
                             .Device(DEVICE_GPU)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceGetNextOp);
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceGetNext")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResourceGetNext")
                             .Device(DEVICE_SYCL)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceGetNextOp);
@@ -440,16 +440,16 @@ class FunctionBufferingResourceResetOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResourceReset")
                             .Device(DEVICE_CPU)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceResetOp);
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResourceReset")
                             .Device(DEVICE_GPU)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceResetOp);
 #if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("FunctionBufferingResourceReset")
+REGISTER_KERNEL_BUILDER(Name("ExperimentalFunctionBufferingResourceReset")
                             .Device(DEVICE_SYCL)
                             .HostMemory("function_buffer_resource"),
                         FunctionBufferingResourceResetOp);
@@ -473,8 +473,9 @@ class IteratorGetDeviceOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("IteratorGetDevice").Device(DEVICE_CPU),
-                        IteratorGetDeviceOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalIteratorGetDevice").Device(DEVICE_CPU),
+    IteratorGetDeviceOp);
 
 }  // namespace
 }  // namespace data
