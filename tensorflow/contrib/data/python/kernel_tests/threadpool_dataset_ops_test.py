@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import threadpool
 from tensorflow.contrib.data.python.ops import unique
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -31,7 +32,8 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class OverrideThreadpoolDatasetTest(test.TestCase, parameterized.TestCase):
+class OverrideThreadpoolDatasetTest(test_base.DatasetTestBase,
+                                    parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("1", 1, None),

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.contrib.data.python.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
@@ -242,7 +243,7 @@ class ReadBatchFeaturesTest(
         self.assertEqual(32, shape[0])
 
 
-class MakeCsvDatasetTest(test.TestCase):
+class MakeCsvDatasetTest(test_base.DatasetTestBase):
 
   def _make_csv_dataset(self, filenames, batch_size, num_epochs=1, **kwargs):
     return readers.make_csv_dataset(

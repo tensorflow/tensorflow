@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -26,7 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class NoopEliminationTest(test.TestCase):
+class NoopEliminationTest(test_base.DatasetTestBase):
 
   def testNoopElimination(self):
     a = constant_op.constant(1, dtype=dtypes.int64)

@@ -25,6 +25,7 @@ import zlib
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.framework import constant_op
@@ -32,11 +33,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class FixedLengthRecordDatasetTestBase(test.TestCase):
+class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing FixedLengthRecordDataset."""
 
   def setUp(self):
@@ -63,7 +63,7 @@ class FixedLengthRecordDatasetTestBase(test.TestCase):
     return filenames
 
 
-class ReadBatchFeaturesTestBase(test.TestCase):
+class ReadBatchFeaturesTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing `make_batched_feature_dataset`."""
 
   def setUp(self):
@@ -273,7 +273,7 @@ class ReadBatchFeaturesTestBase(test.TestCase):
         self.assertAllEqual(expected_batch[i], actual_batch[i])
 
 
-class TextLineDatasetTestBase(test.TestCase):
+class TextLineDatasetTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing TextLineDataset."""
 
   def _lineText(self, f, l):
@@ -313,7 +313,7 @@ class TextLineDatasetTestBase(test.TestCase):
     return filenames
 
 
-class TFRecordDatasetTestBase(test.TestCase):
+class TFRecordDatasetTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing TFRecordDataset."""
 
   def setUp(self):
