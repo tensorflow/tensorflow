@@ -106,6 +106,11 @@ class StatsAccumulator(saver.BaseSaverBuilder.SaveableObject):
                                         saver_name + "hessians"),
     ]
 
+    if name.endswith('/'):
+        # tensorflow.python.framework.importer.import_graph_def
+        # will fix name when the name indicates a name scope, it will cause error when restoring
+        # saveable collections
+        name = name[:-1]
     super(StatsAccumulator, self).__init__(self._resource_handle, specs, name)
     resources.register_resource(self._resource_handle, create_op,
                                 is_initialized_op)
