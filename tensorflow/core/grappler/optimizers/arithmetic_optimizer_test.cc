@@ -581,7 +581,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimple) {
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   EXPECT_EQ("^x", new_const->input(0));
-  EXPECT_EQ(std::string("\0\0\0@", 4),
+  EXPECT_EQ(string("\0\0\0@", 4),
             new_const->attr().at("value").tensor().tensor_content());
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
@@ -625,7 +625,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsSimpleWithControlDep) {
   const NodeDef* new_const = node_map.GetNode(optimized_const_name);
   ASSERT_NE(new_const, nullptr);
   EXPECT_EQ("^x", new_const->input(0));
-  EXPECT_EQ(std::string("\0\0\0@", 4),
+  EXPECT_EQ(string("\0\0\0@", 4),
             new_const->attr().at("value").tensor().tensor_content());
 
   const NodeDef* new_mul = node_map.GetNode(optimized_mul_name);
@@ -2353,9 +2353,14 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
   Output sub_negx_y = ops::Sub(s.WithOpName("Sub_negx_y"), neg_x, y);
   Output sub_x_negy = ops::Sub(s.WithOpName("Sub_x_negy"), x, neg_y);
   Output sub_negx_negy = ops::Sub(s.WithOpName("Sub_negx_negy"), neg_x, neg_y);
-  auto add_all = ops::AddN(s.WithOpName("add_all"),
-                           {add_x_y, add_negx_y, add_x_negy, add_negx_negy,
-                            sub_x_y, sub_negx_y, sub_x_negy, sub_negx_negy});
+  Output neg_x_with_dep = ops::Neg(
+      s.WithOpName("Neg_x_with_dep").WithControlDependencies({add_x_y}), x);
+  Output add_negx_with_dep_y =
+      ops::Add(s.WithOpName("Add_negx_with_dep_y"), neg_x_with_dep, y);
+  auto add_all =
+      ops::AddN(s.WithOpName("add_all"),
+                {add_x_y, add_negx_y, add_x_negy, add_negx_negy, sub_x_y,
+                 sub_negx_y, sub_x_negy, sub_negx_negy, add_negx_with_dep_y});
 
   GrapplerItem item;
   item.fetch = {"add_all"};
@@ -2370,7 +2375,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyRemoveNegation(&optimizer);
-  OptimizeAndPrune(&optimizer, &item, &output);
+  OptimizeTwice(&optimizer, &item, &output);
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
@@ -2379,42 +2384,43 @@ TEST_F(ArithmeticOptimizerTest, RemoveNegation) {
     if (node.name() == "Add_negx_y") {
       ++found;
       EXPECT_EQ("Sub", node.op());
-      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("y", node.input(0));
       EXPECT_EQ("x", node.input(1));
-      EXPECT_EQ("^Neg_x", node.input(2));
     } else if (node.name() == "Add_x_negy") {
       ++found;
       EXPECT_EQ("Sub", node.op());
-      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("y", node.input(1));
-      EXPECT_EQ("^Neg_y", node.input(2));
     } else if (node.name() == "Add_negx_negy") {
       ++found;
       EXPECT_EQ("Sub", node.op());
-      EXPECT_EQ(3, node.input_size());
-      EXPECT_EQ("Neg_y", node.input(0));
-      EXPECT_EQ("x", node.input(1));
-      EXPECT_EQ("^Neg_x", node.input(2));
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("Neg_x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
     } else if (node.name() == "Sub_x_negy") {
       ++found;
       EXPECT_EQ("Add", node.op());
-      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("y", node.input(1));
-      EXPECT_EQ("^Neg_y", node.input(2));
     } else if (node.name() == "Sub_negx_negy") {
       ++found;
       EXPECT_EQ("Sub", node.op());
-      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("y", node.input(0));
       EXPECT_EQ("x", node.input(1));
-      EXPECT_EQ("^Neg_y", node.input(2));
-      EXPECT_EQ("^Neg_x", node.input(3));
+    } else if (node.name() == "Add_negx_with_dep_y") {
+      ++found;
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+      EXPECT_EQ("^Add_x_y", node.input(2));
     }
   }
-  EXPECT_EQ(5, found);
+  EXPECT_EQ(6, found);
 
   auto tensors = EvaluateNodes(output, item.fetch, feed);
   EXPECT_EQ(1, tensors.size());
@@ -2468,6 +2474,9 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   auto y_Point5 = ops::Const(s.WithOpName("y_.5"), {-0.5f, -0.5f}, {1, 2});
   auto y_1 = ops::Const(s.WithOpName("y_1"), {-1.0f, -1.0f}, {1, 2});
   auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  auto z = ops::Const(s.WithOpName("z"), {42.0f}, {});
+  auto ones = ops::Const(s.WithOpName("ones"), {1.0f, 1.0f, 1.0f}, {1, 3});
+  auto zeros = ops::Const(s.WithOpName("zeros"), {0.0f, 0.0f, 0.0f}, {1, 3});
   Output out2 = ops::Pow(s.WithOpName("out2"), x, y2);
   Output out1 = ops::Pow(s.WithOpName("out1"), x, y1);
   Output outPoint5 = ops::Pow(s.WithOpName("out.5"), x, yPoint5);
@@ -2475,21 +2484,24 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   Output out_Point5 = ops::Pow(s.WithOpName("out_.5"), x, y_Point5);
   Output out_1 = ops::Pow(s.WithOpName("out_1"), x, y_1);
   Output out = ops::Pow(s.WithOpName("out"), x, y);
+  Output out_bcast1 = ops::Pow(s.WithOpName("out_bcast1"), z, ones);
+  Output out_bcast2 = ops::Pow(s.WithOpName("out_bcast2"), z, zeros);
 
   GrapplerItem item;
-  item.fetch = {"out2", "out1", "out.5", "out0", "out_.5", "out_1", "out"};
+  item.fetch = {"out2",  "out1", "out.5",      "out0",      "out_.5",
+                "out_1", "out",  "out_bcast1", "out_bcast2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  EXPECT_EQ(7, tensors_expected.size());
+  EXPECT_EQ(9, tensors_expected.size());
 
   GraphDef got;
   ArithmeticOptimizer optimizer;
   EnableOnlyConvertPow(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &got);
   auto tensors = EvaluateNodes(got, item.fetch);
-  EXPECT_EQ(7, tensors.size());
+  EXPECT_EQ(9, tensors.size());
 
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < tensors.size(); ++i) {
     EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
     test::ExpectTensorNear<float>(tensors[i], tensors_expected[i], 1e-6);
   }
@@ -2503,6 +2515,9 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   AddNode("y_.5", "Const", {}, {}, &want);
   AddNode("y_1", "Const", {}, {}, &want);
   AddNode("y", "Const", {}, {}, &want);
+  AddNode("z", "Const", {}, {}, &want);
+  AddNode("ones", "Const", {}, {}, &want);
+  AddNode("zeros", "Const", {}, {}, &want);
   AddNode("out2", "Square", {"x", AsControlDependency("y2")}, {}, &want);
   AddNode("out1", "Identity", {"x", AsControlDependency("y1")}, {}, &want);
   AddNode("out.5", "Sqrt", {"x", AsControlDependency("y.5")}, {}, &want);
@@ -2511,6 +2526,8 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   AddNode("out_.5", "Rsqrt", {"x", AsControlDependency("y_.5")}, {}, &want);
   AddNode("out_1", "Reciprocal", {"x", AsControlDependency("y_1")}, {}, &want);
   AddNode("out", "Pow", {"x", "y"}, {}, &want);
+  AddNode("out_bcast1", "Pow", {"z", "ones"}, {}, &want);
+  AddNode("out_bcast2", "Pow", {"z", "zeros"}, {}, &want);
 
   CompareGraphs(want, got);
 }

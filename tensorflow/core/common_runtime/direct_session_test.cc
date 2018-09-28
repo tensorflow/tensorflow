@@ -1255,7 +1255,7 @@ TEST(DirectSessionTest, RunHandleTest) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
-  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
   string_handle.flat<string>().setConstant(resource_handle.name());
 
@@ -1308,7 +1308,7 @@ TEST(DirectSessionTest, RunHandleTest_Callable) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
-  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
   string_handle.flat<string>().setConstant(resource_handle.name());
 

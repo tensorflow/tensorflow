@@ -234,6 +234,7 @@ def create_file_writer(logdir,
   """
   if logdir is None:
     return SummaryWriter(None, None)
+  logdir = str(logdir)
   with ops.device("cpu:0"):
     if max_queue is None:
       max_queue = constant_op.constant(10)

@@ -80,11 +80,12 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
 
   // Set `f` and `Targuments` attributes.
   for (auto key : {"f", "Targuments"}) {
-    (*new_node.mutable_attr())[key] = map_node.attr().at(key);
+    graph_utils::CopyAttribute(key, map_node, &new_node);
   }
+
   // Set `output_types` and `output_shapes` attributes.
   for (auto key : {"output_shapes", "output_types"}) {
-    (*new_node.mutable_attr())[key] = batch_node.attr().at(key);
+    graph_utils::CopyAttribute(key, batch_node, &new_node);
   }
   return new_node;
 }

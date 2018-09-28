@@ -27,8 +27,8 @@ limitations under the License.
 #ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
 #endif
-#if defined(TFLITE_EXTENDED)
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#if defined(TFLITE_FLEX)
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #endif
 #include "tensorflow/contrib/lite/version.h"
 
@@ -177,12 +177,24 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
 namespace {
 template <class T>
 std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
+  // Initialize shape of tensors with null shape. Empty vectors are converted
+  // to nullptr for models that are constructed via flatbuffers::Pack.
+  if (flat_array == nullptr) {
+    return {};
+  }
   std::vector<int> ret(flat_array->Length());
   for (int i = 0; i < flat_array->Length(); i++) {
     ret[i] = flat_array->Get(i);
   }
   return ret;
 }
+
+// Used to determine how the op data parsing function creates its working space.
+class MallocDataAllocator : public BuiltinDataAllocator {
+ public:
+  void* Allocate(size_t size) override { return malloc(size); }
+  void Deallocate(void* data) override { free(data); }
+};
 
 }  // namespace
 
@@ -229,8 +241,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
           op->custom_options()->size(), nullptr, registration);
     } else {
       void* builtin_data = nullptr;
-      TF_LITE_ENSURE_STATUS(
-          ParseOpData(op, op_type, error_reporter_, &builtin_data));
+      MallocDataAllocator malloc_allocator;
+      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
+                                        &malloc_allocator, &builtin_data));
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
@@ -437,8 +450,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
   (**interpreter).SetVariables(std::move(variables));
 
-#if defined(TFLITE_EXTENDED)
-  if (auto delegate = EagerDelegate::Create()) {
+#if defined(TFLITE_FLEX)
+  if (auto delegate = FlexDelegate::Create()) {
     (**interpreter)
         .ModifyGraphWithDelegate(std::move(delegate),
                                  /*allow_dynamic_tensors=*/true);

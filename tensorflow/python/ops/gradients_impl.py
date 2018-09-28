@@ -184,7 +184,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
       between_op_list.append(op)
       # Clear the boolean so we won't add the inputs again.
       reached_ops.remove(op)
-      for inp in _Inputs(op, xs):
+      for inp in _NonEagerInputs(op, xs):
         queue.append(inp.op)
   # X in between_ops iff X is on a path of zero or more backpropagatable tensors
   # between from_ops and to_ops
@@ -196,7 +196,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
   # Initialize pending count for between ops.
   pending_count = collections.defaultdict(int)
   for op in between_op_list:
-    for x in _Inputs(op, xs):
+    for x in _NonEagerInputs(op, xs):
       if x.op in between_ops:
         pending_count[x.op] += 1
 
@@ -260,6 +260,12 @@ def _DefaultGradYs(grad_ys,
               "Gradient type %s generated for complex-valued "
               "tensor %s with type %s must be real" % (dtypes.as_dtype(
                   grad_y.dtype).name, y, dtypes.as_dtype(y.dtype).name))
+      elif y.dtype == dtypes.variant:
+        if grad_y.dtype != dtypes.variant:
+          raise TypeError(
+              "Gradient type %s generated for variant "
+              "tensor %s with type %s must be variant" % (dtypes.as_dtype(
+                  grad_y.dtype).name, y, dtypes.as_dtype(y.dtype).name))
       else:
         raise TypeError(
             "Tensor %s with type %s must be numeric "
@@ -298,7 +304,7 @@ def _IsBackpropagatable(tensor):
   if _IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
-  return dtype.base_dtype in (dtypes.bfloat16, dtypes.resource, dtypes.variant)
+  return dtype.base_dtype in (dtypes.bfloat16, dtypes.variant)
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -341,7 +347,7 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count, xs):
   stop_ops = set()
   for op in from_ops:
     is_stop_op = True
-    for inp in _Inputs(op, xs):
+    for inp in _NonEagerInputs(op, xs):
       if pending_count[inp.op] > 0:
         is_stop_op = False
         break
@@ -365,10 +371,10 @@ def _IsPartitionedCall(op):
   return op.type == "PartitionedCall" or op.type == "StatefulPartitionedCall"
 
 
-def _SymGrad(op, out_grads, xs):
+def _SymGrad(op, out_grads):
   """Backprop through a function call node op given its outputs' gradients."""
-  f_in = [x for x in _Inputs(op, xs)] + out_grads
-  f_types = [x.dtype for x in _Inputs(op, xs)]
+  f_in = [x for x in op.inputs] + out_grads
+  f_types = [x.dtype for x in op.inputs]
   f = attr_value_pb2.NameAttrList()
   if _IsPartitionedCall(op):
     f.name = op.get_attr("f").name
@@ -435,7 +441,7 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
     if curr_op in from_ops:
       target_op = curr_op
       break
-    queue.extend(t.op for t in _Inputs(curr_op, xs))
+    queue.extend(t.op for t in _NonEagerInputs(curr_op, xs))
   assert target_op
   raise ValueError(
       "Cannot compute gradient inside while loop with respect to op '%s'. "
@@ -468,7 +474,8 @@ def _MaybeCaptured(t):
     A tensor, potentially from a different Graph/_function.FuncGraph.
   """
   # pylint: disable=protected-access
-  if _IsFunction(t.op.graph) and t.op.type == "Placeholder":
+  if (not isinstance(t, ops.EagerTensor) and
+      _IsFunction(t.op.graph) and t.op.type == "Placeholder"):
     for input_t, placeholder_t in _Captures(t.op.graph).items():
       if t == placeholder_t:
         return _MaybeCaptured(input_t)
@@ -478,8 +485,11 @@ def _MaybeCaptured(t):
 
 # TODO(skyewm): plumbing xs through everywhere is ugly, consider making
 # _GradientsHelper a class with xs as a member variable.
-def _Inputs(op, xs):
+def _NonEagerInputs(op, xs):
   """Returns the inputs of op, crossing closure boundaries where necessary.
+
+  Does not return any captured EagerTensors, i.e., the number of tensors
+  returned may be less than than the actual number of inputs.
 
   Args:
     op: Operation
@@ -491,12 +501,19 @@ def _Inputs(op, xs):
     captured inputs.
   """
   if _IsFunction(op.graph):  # pylint: disable=protected-access
-    # If we're differentiating w.r.t. `t`, do not attempt to traverse through it
-    # to a captured value. The algorithm needs to "see" `t` in this case, even
-    # if it's a function input for a captured value, whereas usually we'd like
-    # to traverse through these closures as if the captured value was the direct
-    # input to op.
-    return [t if (t in xs) else _MaybeCaptured(t) for t in op.inputs]
+    inputs = []
+    for t in op.inputs:
+      # If we're differentiating w.r.t. `t`, do not attempt to traverse through
+      # it to a captured value. The algorithm needs to "see" `t` in this case,
+      # even if it's a function input for a captured value, whereas usually we'd
+      # like to traverse through these closures as if the captured value was the
+      # direct input to op.
+      if t not in xs:
+        t = _MaybeCaptured(t)
+        # Skip captured eager inputs.
+        if isinstance(t, ops.EagerTensor): continue
+      inputs.append(t)
+    return inputs
   else:
     return op.inputs
 
@@ -799,7 +816,7 @@ def _GradientsHelper(ys,
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
                 in_grads = _MaybeCompile(grad_scope, op, func_call,
-                                         lambda: _SymGrad(op, out_grads, xs))
+                                         lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len([x for x in in_grads
@@ -814,8 +831,9 @@ def _GradientsHelper(ys,
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagate a list of None backwards.
-          in_grads = [None] * len(_Inputs(op, xs))
-        for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs), in_grads)):
+          in_grads = [None] * len(_NonEagerInputs(op, xs))
+        for i, (t_in, in_grad) in enumerate(zip(_NonEagerInputs(op, xs),
+                                                in_grads)):
           if in_grad is not None:
             if (isinstance(in_grad, ops.Tensor) and
                 t_in.dtype != dtypes.resource):
@@ -856,7 +874,7 @@ def _HasAnyNotNoneGrads(grads, op):
 def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
                                   xs):
   """Update pending count for the inputs of op and enqueue ready ops."""
-  for x in _Inputs(op, xs):
+  for x in _NonEagerInputs(op, xs):
     pending_count[x.op] -= 1
     ready = (pending_count[x.op] == 0)
     if loop_state and not ready:

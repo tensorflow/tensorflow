@@ -97,13 +97,11 @@ std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
       << "Computation should have progran shape.";
   auto program_shape = computation.proto().program_shape();
 
-  // Create and run a program which produces a tuple with one element per
-  // parameter, then return the tuple's constituent buffers.
-  std::vector<Shape> param_shapes(program_shape.parameters().begin(),
-                                  program_shape.parameters().end());
-  auto fake_input_tuple =
-      MakeFakeDataOrDie(ShapeUtil::MakeTupleShape(param_shapes), client);
-  return client->DeconstructTuple(*fake_input_tuple).ValueOrDie();
+  std::vector<std::unique_ptr<GlobalData>> results;
+  for (const Shape& shape : program_shape.parameters()) {
+    results.push_back(MakeFakeDataOrDie(shape, client));
+  }
+  return results;
 }
 
 }  // namespace xla

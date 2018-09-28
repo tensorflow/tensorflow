@@ -41,6 +41,16 @@ limitations under the License.
 
 // Set true for greater intelligibility of debug mode log messages.
 #define READABLE_KEYS false
+// RingReduce algorithm exchanges chunks of tensor between devices.  The chunk
+// size depends on the number of subdivisions specified in the algorithm.  If
+// the user does not specify the number of subdivisions, we infer the number
+// dynamically so that the resulting chunk size does not exceed
+// kMaxChunkSizeBytes, empirically set at 4 MiB.
+constexpr size_t kMaxChunkSizeBytes = (4 * 1024 * 1024);
+// kMaxSubdivsPerDev is used to give an upper bound on the number of
+// subdivisions dynamically generated.  A reasonable value would be a small
+// multiple of the number of NICs adjacent to each device.
+constexpr int kMaxSubdivsPerDevice = 2;
 
 namespace tensorflow {
 namespace {
@@ -92,7 +102,62 @@ RingReducer::RingReducer()
 
 RingReducer::~RingReducer() { group_size_tensor_ready_.WaitForNotification(); }
 
+Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
+  if (col_params->instance.shape.num_elements() == 0) {
+    return errors::Internal("shape in CollectiveParams should be non-empty");
+  }
+  const int kAvgDevPerTask =
+      col_params->group.group_size / col_params->group.num_tasks;
+  const int kMaxNumSubdivs = kMaxSubdivsPerDevice * kAvgDevPerTask;
+  if (kMaxNumSubdivs <= 0) {
+    return errors::Internal("Unexpected kMaxNumSubdivs ", kMaxNumSubdivs,
+                            " in RingReducer");
+  }
+  // NOTE(ayushd): If no subdiv_offsets have been specified, dynamically add
+  // as many offsets as needed so that the size of tensor chunks <=
+  // kMaxChunkSizeBytes.  Empirically, chunks that are too small or too large
+  // lead to worse performance.
+  int num_subdivs = 0;
+  const size_t tensor_size = col_params->instance.shape.num_elements() *
+                             DataTypeSize(col_params->instance.data_type);
+  size_t chunk_size;
+  do {
+    ++num_subdivs;
+    int num_chunks = col_params->group.group_size * num_subdivs;
+    chunk_size = tensor_size / num_chunks;
+    VLOG(2) << "num_subdivs " << num_subdivs << " num_chunks " << num_chunks
+            << " chunk_size " << chunk_size;
+  } while (chunk_size > kMaxChunkSizeBytes && num_subdivs < kMaxNumSubdivs);
+  if (num_subdivs <= 0) {
+    return errors::Internal("Unexpected num_subdivs ", num_subdivs,
+                            " in RingReducer");
+  }
+
+  int subdiv_stride = kAvgDevPerTask / num_subdivs;
+  if (subdiv_stride == 0) subdiv_stride = 1;
+  col_params->instance.impl_details.subdiv_offsets.reserve(num_subdivs);
+  for (int sdi = 0; sdi < num_subdivs; ++sdi) {
+    int subdiv_offset = subdiv_stride * sdi;
+    if (sdi % 2 == 1) subdiv_offset *= -1;
+    col_params->instance.impl_details.subdiv_offsets.push_back(subdiv_offset);
+  }
+
+  if (VLOG_IS_ON(2)) {
+    string subdiv_buf;
+    for (const int subdiv_offset :
+         col_params->instance.impl_details.subdiv_offsets) {
+      strings::StrAppend(&subdiv_buf, " ", subdiv_offset);
+    }
+    VLOG(2) << "Dynamically generated " << num_subdivs
+            << " subdiv_offsets:" << subdiv_buf << " tensor_size "
+            << tensor_size << " chunk_size " << chunk_size;
+  }
+
+  return Status::OK();
+}
+
 Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
+  // TODO(b/113171733): change CHECKs to return errors.
   CHECK_EQ(col_params->instance.type, REDUCTION_COLLECTIVE);
   CHECK_EQ(col_params->instance.impl_details.collective_name, "RingReduce");
   const string& device_name =
@@ -123,12 +188,11 @@ Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
   dev_per_task.push_back(dev_count);
   CHECK_EQ(col_params->group.num_tasks, dev_per_task.size());
 
-  // Generate a ring permutation for each requested offset.
   if (col_params->instance.impl_details.subdiv_offsets.empty()) {
-    return errors::Internal(
-        "Subdiv offsets should be non-empty for ring reducer, size=",
-        col_params->instance.impl_details.subdiv_offsets.size());
+    TF_RETURN_IF_ERROR(GenerateSubdivsInCollectiveParams(col_params));
   }
+
+  // Generate a ring permutation for requested offset.
   VLOG(2) << "Setting up perms for col_params " << col_params
           << " subdiv_permutations "
           << &col_params->instance.impl_details.subdiv_permutations;
@@ -646,7 +710,8 @@ bool RingReducer::RunAsyncParts() {
         case RF_SEND:
           --send_pending_count;
           break;
-        default: {}  // Ignore any other actions
+        default: {
+        }  // Ignore any other actions
       }
     }
   }

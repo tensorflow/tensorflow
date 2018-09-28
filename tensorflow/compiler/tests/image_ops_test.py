@@ -605,10 +605,6 @@ class ResizeBilinearTest(xla_test.XLATestCase):
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
   def testNMS128From1024(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       num_boxes = 1024
       boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
@@ -644,10 +640,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
         self.assertEqual(indices_tf.size, max_output_size)
 
   def testNMS3From6Boxes(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       # Three boxes are selected based on IOU.
       boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
@@ -693,10 +685,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
 
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
                     [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
@@ -736,6 +724,49 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
         self.assertEqual(num_valid, 2)
         self.assertAllClose(indices_tf[:num_valid], [3, 0])
 
+  def testNMS3Then1WithScoreMaxThresh(self):
+    # Three boxes are selected based on IOU.
+    # One is filtered out by score threshold.
+    # One is filtered out by max_output_size.
+
+    with compat.forward_compatibility_horizon(2018, 8, 8):
+      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+      boxes_np = np.array(boxes_data, dtype=np.float32)
+
+      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+      scores_np = np.array(scores_data, dtype=np.float32)
+      max_output_size = 1
+      iou_threshold_np = np.array(0.5, dtype=np.float32)
+      score_threshold_np = np.array(0.4, dtype=np.float32)
+
+      with self.cached_session() as sess:
+        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                              iou_threshold_np.shape)
+        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                                score_threshold_np.shape)
+        with self.test_scope():
+          selected_indices = image_ops.non_max_suppression_padded(
+              boxes=boxes,
+              scores=scores,
+              max_output_size=max_output_size,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold,
+              pad_to_max_output_size=True)
+        inputs_feed = {
+            boxes: boxes_np,
+            scores: scores_np,
+            iou_threshold: iou_threshold_np,
+            score_threshold: score_threshold_np
+        }
+        (indices_tf, num_valid) = sess.run(
+            selected_indices, feed_dict=inputs_feed)
+
+        self.assertEqual(indices_tf.size, max_output_size)
+        self.assertEqual(num_valid, 1)
+        self.assertAllClose(indices_tf[:num_valid], [3])
 
 if __name__ == "__main__":
   test.main()

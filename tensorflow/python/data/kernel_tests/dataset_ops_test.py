@@ -19,11 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
 
-class DatasetOpsTest(test.TestCase):
+class DatasetOpsTest(test_base.DatasetTestBase):
 
   def testAsSerializedGraph(self):
     dataset = dataset_ops.Dataset.range(10)

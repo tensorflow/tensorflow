@@ -1322,6 +1322,57 @@ class TestGeneratorMethods(test.TestCase):
                         workers=0,
                         use_multiprocessing=False)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_generator_input_to_fit_eval_predict(self):
+    val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    def custom_generator():
+      while True:
+        yield np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    inputs = keras.layers.Input(shape=(10,))
+    x = keras.layers.Dense(10, activation='relu')(inputs)
+    outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+    model = keras.Model(inputs, outputs)
+
+    model.compile(RMSPropOptimizer(0.001), 'binary_crossentropy')
+    model.fit(
+        custom_generator(),
+        steps_per_epoch=2,
+        validation_data=val_data,
+        epochs=2)
+    model.evaluate(custom_generator(), steps=2)
+    model.predict(custom_generator(), steps=2)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequence_input_to_fit_eval_predict(self):
+    val_data = np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+    class CustomSequence(keras.utils.Sequence):
+
+      def __getitem__(self, idx):
+        return np.ones([10, 10], np.float32), np.ones([10, 1], np.float32)
+
+      def __len__(self):
+        return 2
+
+    inputs = keras.layers.Input(shape=(10,))
+    x = keras.layers.Dense(10, activation='relu')(inputs)
+    outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+    model = keras.Model(inputs, outputs)
+
+    model.compile(RMSPropOptimizer(0.001), 'binary_crossentropy')
+    model.fit(CustomSequence(), validation_data=val_data, epochs=2)
+    model.evaluate(CustomSequence())
+    model.predict(CustomSequence())
+
+    with self.assertRaisesRegexp(ValueError, '`y` argument is not supported'):
+      model.fit(CustomSequence(), y=np.ones([10, 1]))
+
+    with self.assertRaisesRegexp(ValueError,
+                                 '`sample_weight` argument is not supported'):
+      model.fit(CustomSequence(), sample_weight=np.ones([10, 1]))
+
 
 class TestTrainingUtils(test.TestCase):
 
@@ -2205,7 +2256,26 @@ class TestTrainingWithMetrics(test.TestCase):
         'dense_binary_accuracy', 'dropout_mean_squared_error',
         'dropout_binary_accuracy'
     ]
+    reference_stateful_metric_names = [
+        'dense_binary_accuracy', 'dropout_binary_accuracy'
+    ]
     self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
+
+    # Verify that model metric names are not altered during training.
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+    self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness(self):

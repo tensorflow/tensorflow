@@ -1057,6 +1057,7 @@ Status VerifySendsAndRecvs(const HloModule& module) {
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
+  TF_RET_CHECK(!module->name().empty());
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 

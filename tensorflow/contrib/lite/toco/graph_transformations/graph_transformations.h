@@ -133,7 +133,6 @@ DECLARE_GRAPH_TRANSFORMATION(MergeLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeReshapeIntoPrecedingTranspose)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyRelu1)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyPRelu)
-DECLARE_GRAPH_TRANSFORMATION(IdentifyDilatedConv)
 DECLARE_GRAPH_TRANSFORMATION(MakeInitialDequantizeOperator)
 DECLARE_GRAPH_TRANSFORMATION(MoveBinaryOperatorBeforeReshape)
 DECLARE_GRAPH_TRANSFORMATION(PropagateActivationFunctionIntoConstants)
@@ -264,6 +263,17 @@ class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
  private:
   bool allow_nudging_weights_ = false;
   bool has_default_ranges_flag_ = false;
+};
+
+class IdentifyDilatedConv : public GraphTransformation {
+ public:
+  bool Run(Model* model, std::size_t op_index) override;
+  const char* Name() const override { return "IdentifyDilatedConv"; }
+  bool identify_depthwise_conv() const { return identify_depthwise_conv_; }
+  void set_identify_depthwise_conv(bool val) { identify_depthwise_conv_ = val; }
+
+ private:
+  bool identify_depthwise_conv_ = true;
 };
 
 #undef DECLARE_GRAPH_TRANSFORMATION

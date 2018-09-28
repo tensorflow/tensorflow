@@ -72,12 +72,13 @@ py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
     ],
 )
@@ -138,12 +139,11 @@ py_test(
     name = "indexed_dataset_ops_test",
     srcs = ["indexed_dataset_ops_test.py"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:contrib_op_loader",
-        "//tensorflow/contrib/data/python/ops:gen_dataset_ops",
         "//tensorflow/contrib/data/python/ops:indexed_dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -189,7 +189,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -276,6 +275,7 @@ py_test(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
@@ -324,12 +324,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = [
-        "manual",
-        "no_oss",
-        "no_windows_gpu",
-        "notap",
-    ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(

@@ -1017,7 +1017,7 @@ class EstimatorGetVariablesTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='one')
+      variables.VariableV1(1., name='one')
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
@@ -1033,8 +1033,8 @@ class EstimatorGetVariablesTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='one')
-      variables.Variable(3., name='three')
+      variables.VariableV1(1., name='one')
+      variables.VariableV1(3., name='three')
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
@@ -1178,13 +1178,13 @@ class EstimatorEvaluateTest(test.TestCase):
     def _model_fn(features, labels, mode, params):
       del features, labels, params
       mean = metrics_module.Mean()
-      mean.update_state(variables.Variable(2.) + 1)
+      mean.update_state(variables.VariableV1(2.) + 1)
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(1.),
           eval_metric_ops={
               'mean1': mean,
-              'mean2': metrics_lib.mean(variables.Variable(2.) + 1)
+              'mean2': metrics_lib.mean(variables.VariableV1(2.) + 1)
           })
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -1332,7 +1332,7 @@ class EstimatorEvaluateTest(test.TestCase):
 
     def _model_fn_with_incremental_loss(features, labels, mode):
       _, _ = features, labels
-      local_weight = variables.Variable(
+      local_weight = variables.VariableV1(
           0., name='local_weight', collections=[ops.GraphKeys.LOCAL_VARIABLES])
       # Loss will be 2, 4, 6, ...
       loss = 2 * state_ops.assign_add(local_weight, 1.)
@@ -1385,7 +1385,7 @@ class EstimatorEvaluateTest(test.TestCase):
     def _get_model_fn(val=1):
       def _model_fn(features, labels, mode):
         del features, labels  # unused
-        variables.Variable(val, name='weight')
+        variables.VariableV1(val, name='weight')
         return model_fn_lib.EstimatorSpec(
             mode=mode,
             predictions=constant_op.constant([[1.]]),
@@ -1409,7 +1409,7 @@ class EstimatorEvaluateTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
@@ -1603,7 +1603,7 @@ class EstimatorPredictTest(test.TestCase):
   def test_no_checkpoint_uses_init(self):
     def _model_fn(features, labels, mode, params, config):
       del features, labels, params, config
-      x = variables.Variable([[3.]], name='x')
+      x = variables.VariableV1([[3.]], name='x')
       return model_fn_lib.EstimatorSpec(mode, predictions=math_ops.add(x, 1.))
     est = estimator.Estimator(model_fn=_model_fn)
     # Expected prediction value is 1 + the value of the Variable that is newly
@@ -1614,7 +1614,7 @@ class EstimatorPredictTest(test.TestCase):
     def _make_model_fn(x):
       def _variable_creating_and_export_model_fn(features, labels, mode):
         _, _ = features, labels
-        x_var = variables.Variable([[x]], name='x')
+        x_var = variables.VariableV1([[x]], name='x')
         return model_fn_lib.EstimatorSpec(
             mode,
             predictions=math_ops.add(x_var, 1.),
@@ -1936,7 +1936,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      v = variables.Variable([[16.]], name='weight')
+      v = variables.VariableV1([[16.]], name='weight')
       prediction = v * 2
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -1953,7 +1953,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      v = variables.Variable([[16.]], name='weight')
+      v = variables.VariableV1([[16.]], name='weight')
       prediction = v * 2
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -1974,7 +1974,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
@@ -2029,7 +2029,7 @@ class EstimatorPredictTest(test.TestCase):
 
 def _model_fn_for_export_tests(features, labels, mode):
   _, _ = features, labels
-  variables.Variable(1., name='weight')
+  variables.VariableV1(1., name='weight')
   scores = constant_op.constant([3.])
   classes = constant_op.constant(['wumpus'])
   update_global_step = state_ops.assign_add(training.get_global_step(), 1)
@@ -2052,11 +2052,11 @@ def _x_y_input_fn():
 
 def _model_fn_with_x_y(features, labels, mode):
   _ = labels
-  variables.Variable(1., name='weight')
+  variables.VariableV1(1., name='weight')
   scores = constant_op.constant([3.])
   classes = constant_op.constant(['wumpus'])
   if mode == model_fn_lib.ModeKeys.PREDICT:
-    variables.Variable(36., name='name_collision')
+    variables.VariableV1(36., name='name_collision')
     return model_fn_lib.EstimatorSpec(
         mode,
         predictions=constant_op.constant(10.),
@@ -2076,8 +2076,8 @@ def _model_fn_with_x_y(features, labels, mode):
             metrics_lib.mean(
                 features['x'] - features['y'], name='{}mean'.format(prefix))
     }
-    variables.Variable(1., name='later_var')
-    variables.Variable(3., name='name_collision')
+    variables.VariableV1(1., name='later_var')
+    variables.VariableV1(3., name='name_collision')
     return model_fn_lib.EstimatorSpec(
         mode,
         predictions=multiplied,
@@ -2411,9 +2411,9 @@ class EstimatorExportTest(test.TestCase):
     def _model_fn_with_predict_only_vars(features, labels, mode):
       _, _ = features, labels
       if mode == model_fn_lib.ModeKeys.PREDICT:
-        variables.Variable(1., name='only_in_predict')
+        variables.VariableV1(1., name='only_in_predict')
       else:
-        variables.Variable(1., name='otherwise')
+        variables.VariableV1(1., name='otherwise')
 
       prediction = constant_op.constant(1.)
       return model_fn_lib.EstimatorSpec(
@@ -2684,7 +2684,7 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       self.mock_saver = get_mock_saver()
       scores = constant_op.constant([3.])
       return model_fn_lib.EstimatorSpec(
@@ -2717,7 +2717,7 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
 
       scores = constant_op.constant([3.])
       if mode == model_fn_lib.ModeKeys.PREDICT:
@@ -2762,8 +2762,8 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      my_int = variables.Variable(1, name='my_int',
-                                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      my_int = variables.VariableV1(1, name='my_int',
+                                    collections=[ops.GraphKeys.LOCAL_VARIABLES])
       _ = training.get_or_create_steps_per_run_variable()
       scores = constant_op.constant([3.])
       with ops.control_dependencies([
@@ -2808,8 +2808,8 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      my_int = variables.Variable(1, name='my_int',
-                                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      my_int = variables.VariableV1(1, name='my_int',
+                                    collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scores = constant_op.constant([3.])
       with ops.control_dependencies([
           variables.local_variables_initializer(),
@@ -3038,7 +3038,7 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       return model_fn_lib.EstimatorSpec(
           mode,
           predictions=constant_op.constant(10.),
@@ -3081,7 +3081,7 @@ class EstimatorHookOrderingTest(test.TestCase):
       """A graph that generates NaN's for testing."""
       del features, labels
 
-      global_step = variables.Variable(
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, name='global_step')
       inc_global_step = state_ops.assign_add(global_step, 1)
       nan_const = constant_op.constant(np.nan, dtype=dtypes.float32)

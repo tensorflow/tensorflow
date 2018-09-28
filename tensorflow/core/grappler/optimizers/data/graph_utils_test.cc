@@ -24,6 +24,18 @@ namespace grappler {
 namespace graph_utils {
 namespace {
 
+TEST(GraphUtilsTest, GetFirstElementIndexWithPredicate) {
+  std::vector<int> vec({1, 2, 3, 4, 5, 6});
+  auto result = GetFirstElementIndexWithPredicate(
+      [](int elem) { return elem % 3 == 0; }, vec);
+
+  EXPECT_EQ(result, 2);
+
+  result = GetFirstElementIndexWithPredicate(
+      [](int elem) { return elem % 7 == 0; }, vec);
+  EXPECT_EQ(result, -1);
+}
+
 TEST(GraphUtilsTest, AddScalarConstNodeBool) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
@@ -112,20 +124,6 @@ TEST(GraphUtilsTest, ContainsGraphFunctionWithName) {
       ContainsGraphFunctionWithName(new_function->signature().name(), library));
 }
 
-TEST(GraphUtilsTest, ContainsFunctionNodeWithName) {
-  FunctionDef function = test::function::XTimesTwo();
-  EXPECT_FALSE(ContainsFunctionNodeWithName(
-      "weird_name_that_should_not_be_there", function));
-  EXPECT_TRUE(ContainsFunctionNodeWithName("two", function));
-}
-
-TEST(GraphUtilsTest, ContainsFunctionNodeWithOp) {
-  FunctionDef function = test::function::XTimesTwo();
-  EXPECT_FALSE(ContainsFunctionNodeWithOp("weird_op_that_should_not_be_there",
-                                          function));
-  EXPECT_TRUE(ContainsFunctionNodeWithOp("Mul", function));
-}
-
 TEST(GraphUtilsTest, ContainsNodeWithOp) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);
@@ -148,22 +146,6 @@ TEST(GraphUtilsTest, FindGraphNodeWithName) {
 
   graph.DeleteNodes({"A"});
   EXPECT_EQ(FindGraphNodeWithName("A", *graph.GetGraph()), -1);
-}
-
-TEST(GraphUtilsTest, FindFunctionNodeWithName) {
-  FunctionDef function = test::function::XTimesTwo();
-  EXPECT_EQ(
-      FindFunctionNodeWithName("weird_name_that_should_not_be_there", function),
-      -1);
-  EXPECT_NE(FindFunctionNodeWithName("two", function), -1);
-}
-
-TEST(GraphUtilsTest, FindFunctionNodeWithOp) {
-  FunctionDef function = test::function::XTimesTwo();
-  EXPECT_EQ(
-      FindFunctionNodeWithOp("weird_op_that_should_not_be_there", function),
-      -1);
-  EXPECT_NE(FindFunctionNodeWithOp("Mul", function), -1);
 }
 
 TEST(GraphUtilsTest, FindGraphFunctionWithName) {
@@ -225,21 +207,6 @@ TEST(GraphUtilsTest, SetUniqueGraphNodeName) {
   EXPECT_NE(node2->name(), node3->name());
 }
 
-TEST(GraphUtilsTest, SetUniqueFunctionNodeName) {
-  FunctionDef function = test::function::XTimesTwo();
-  NodeDef node;
-  SetUniqueFunctionNodeName("abc", &function, &node);
-  for (const NodeDef& function_node : function.node_def()) {
-    EXPECT_NE(node.name(), function_node.name());
-  }
-  auto* new_node = function.add_node_def();
-  *new_node = node;
-
-  NodeDef other;
-  SetUniqueFunctionNodeName("abc", &function, &other);
-  EXPECT_NE(other.name(), new_node->name());
-}
-
 TEST(GraphUtilsTest, SetUniqueGraphFunctionName) {
   FunctionDefLibrary library;
   FunctionDef* new_function = library.add_function();
@@ -249,43 +216,6 @@ TEST(GraphUtilsTest, SetUniqueGraphFunctionName) {
   SetUniqueGraphFunctionName("new_function", &library, other_function);
   EXPECT_NE(new_function->signature().name(),
             other_function->signature().name());
-}
-
-TEST(GraphUtilsTest, AddNodeToFunctionDef) {
-  FunctionDef func;
-  const char* op_name = "xxx";
-  AddNode(op_name, op_name, {}, {}, &func);
-
-  const NodeDef& node1 = func.node_def(FindFunctionNodeWithName("xxx", func));
-  EXPECT_EQ(node1.op(), op_name);
-  EXPECT_EQ(node1.input_size(), 0);
-  EXPECT_EQ(node1.attr_size(), 0);
-
-  const std::vector<string> inputs({"input1", "input2"});
-  AddNode("", op_name, inputs, {}, &func);
-  const NodeDef& node2 =
-      func.node_def(FindFunctionNodeWithName("xxx/_2", func));
-  EXPECT_EQ(node2.op(), op_name);
-  EXPECT_EQ(node2.attr_size(), 0);
-  EXPECT_EQ(node2.input_size(), inputs.size());
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    EXPECT_EQ(node2.input(i), inputs[i]);
-  }
-
-  AttrValue a1, a2;
-  a1.set_type(DT_INT32);
-  a2.set_type(DT_INT64);
-  const std::vector<std::pair<string, AttrValue>> attrs(
-      {{"attr1", a1}, {"attr2", a2}});
-  AddNode("", op_name, {}, attrs, &func);
-  const NodeDef& node3 =
-      func.node_def(FindFunctionNodeWithName("xxx/_3", func));
-  EXPECT_EQ(node3.op(), op_name);
-  EXPECT_EQ(node3.input_size(), 0);
-  EXPECT_EQ(node3.attr_size(), attrs.size());
-  for (size_t i = 0; i < attrs.size(); ++i) {
-    EXPECT_EQ(attrs[i].second.type(), node3.attr().at(attrs[i].first).type());
-  }
 }
 
 TEST(GraphUtilsTest, GetInputNode) {

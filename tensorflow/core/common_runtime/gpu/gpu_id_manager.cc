@@ -26,26 +26,27 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-// Manages the map between TfGpuId and CUDA GPU id.
-class TfToCudaGpuIdMap {
+// Manages the map between TfGpuId and platform GPU id.
+class TfToPlatformGpuIdMap {
  public:
-  static TfToCudaGpuIdMap* singleton() {
-    static auto* id_map = new TfToCudaGpuIdMap;
+  static TfToPlatformGpuIdMap* singleton() {
+    static auto* id_map = new TfToPlatformGpuIdMap;
     return id_map;
   }
 
-  Status Insert(TfGpuId tf_gpu_id, CudaGpuId cuda_gpu_id) LOCKS_EXCLUDED(mu_) {
+  Status Insert(TfGpuId tf_gpu_id, PlatformGpuId platform_gpu_id)
+      LOCKS_EXCLUDED(mu_) {
     std::pair<IdMapType::iterator, bool> result;
     {
       mutex_lock lock(mu_);
-      result = id_map_.insert({tf_gpu_id.value(), cuda_gpu_id.value()});
+      result = id_map_.insert({tf_gpu_id.value(), platform_gpu_id.value()});
     }
-    if (!result.second && cuda_gpu_id.value() != result.first->second) {
+    if (!result.second && platform_gpu_id.value() != result.first->second) {
       return errors::AlreadyExists(
           "TensorFlow device (GPU:", tf_gpu_id.value(),
           ") is being mapped to "
           "multiple CUDA devices (",
-          cuda_gpu_id.value(), " now, and ", result.first->second,
+          platform_gpu_id.value(), " now, and ", result.first->second,
           " previously), which is not supported. "
           "This may be the result of providing different GPU configurations "
           "(ConfigProto.gpu_options, for example different visible_device_list)"
@@ -56,17 +57,17 @@ class TfToCudaGpuIdMap {
     return Status::OK();
   }
 
-  bool Find(TfGpuId tf_gpu_id, CudaGpuId* cuda_gpu_id) const
+  bool Find(TfGpuId tf_gpu_id, PlatformGpuId* platform_gpu_id) const
       LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     auto result = id_map_.find(tf_gpu_id.value());
     if (result == id_map_.end()) return false;
-    *cuda_gpu_id = result->second;
+    *platform_gpu_id = result->second;
     return true;
   }
 
  private:
-  TfToCudaGpuIdMap() = default;
+  TfToPlatformGpuIdMap() = default;
 
   void TestOnlyReset() LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
@@ -78,17 +79,18 @@ class TfToCudaGpuIdMap {
   IdMapType id_map_ GUARDED_BY(mu_);
 
   friend class ::tensorflow::GpuIdManager;
-  TF_DISALLOW_COPY_AND_ASSIGN(TfToCudaGpuIdMap);
+  TF_DISALLOW_COPY_AND_ASSIGN(TfToPlatformGpuIdMap);
 };
 }  // namespace
 
-Status GpuIdManager::InsertTfCudaGpuIdPair(TfGpuId tf_gpu_id,
-                                           CudaGpuId cuda_gpu_id) {
-  return TfToCudaGpuIdMap::singleton()->Insert(tf_gpu_id, cuda_gpu_id);
+Status GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId tf_gpu_id,
+                                               PlatformGpuId platform_gpu_id) {
+  return TfToPlatformGpuIdMap::singleton()->Insert(tf_gpu_id, platform_gpu_id);
 }
 
-Status GpuIdManager::TfToCudaGpuId(TfGpuId tf_gpu_id, CudaGpuId* cuda_gpu_id) {
-  if (TfToCudaGpuIdMap::singleton()->Find(tf_gpu_id, cuda_gpu_id)) {
+Status GpuIdManager::TfToPlatformGpuId(TfGpuId tf_gpu_id,
+                                       PlatformGpuId* platform_gpu_id) {
+  if (TfToPlatformGpuIdMap::singleton()->Find(tf_gpu_id, platform_gpu_id)) {
     return Status::OK();
   }
   return errors::NotFound("TensorFlow device GPU:", tf_gpu_id.value(),
@@ -96,7 +98,7 @@ Status GpuIdManager::TfToCudaGpuId(TfGpuId tf_gpu_id, CudaGpuId* cuda_gpu_id) {
 }
 
 void GpuIdManager::TestOnlyReset() {
-  TfToCudaGpuIdMap::singleton()->TestOnlyReset();
+  TfToPlatformGpuIdMap::singleton()->TestOnlyReset();
 }
 
 }  // namespace tensorflow

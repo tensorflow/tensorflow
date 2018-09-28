@@ -3015,37 +3015,48 @@ TEST_F(ConstantFoldingTest, TrivialPack) {
   auto stack =
       ops::Stack(scope.WithOpName("stack").WithControlDependencies({y}), {x},
                  ops::Stack::Axis(1));
+  auto stack_no_axis = ops::Stack(scope.WithOpName("stack_no_axis"), {x});
 
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
-  item.fetch.push_back("stack");
+  item.fetch = {"stack", "stack_no_axis"};
 
   ConstantFolding optimizer(nullptr /* cpu_device */);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ(7, output.node_size());
+  int found = 0;
   for (const auto& node : output.node()) {
     if (node.name() == "stack") {
-      EXPECT_EQ("stack", node.name());
       EXPECT_EQ("ExpandDims", node.op());
       EXPECT_EQ(3, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("ConstantFolding/stack_const_axis", node.input(1));
       EXPECT_EQ("^y", node.input(2));
+      ++found;
+    } else if (node.name() == "stack_no_axis") {
+      EXPECT_EQ("ExpandDims", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("ConstantFolding/stack_no_axis_const_axis", node.input(1));
+      ++found;
     } else if (node.name() == "ConstantFolding/stack_const_axis") {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("^x", node.input(0));
+      ++found;
     }
   }
+  EXPECT_EQ(found, 3);
 
-  std::vector<string> fetch = {"stack"};
+  std::vector<string> fetch = {"stack", "stack_no_axis"};
   auto tensors_expected = EvaluateNodes(item.graph, fetch);
   auto tensors = EvaluateNodes(output, fetch);
-  EXPECT_EQ(1, tensors_expected.size());
-  EXPECT_EQ(1, tensors.size());
+  EXPECT_EQ(2, tensors_expected.size());
+  EXPECT_EQ(2, tensors.size());
   EXPECT_EQ(tensors_expected[0].shape(), tensors[0].shape());
+  EXPECT_EQ(tensors_expected[1].shape(), tensors[1].shape());
 }
 
 // The test does not evalute the optimized and original graphs to check if their

@@ -41,7 +41,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import metrics
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -329,7 +328,7 @@ class Estimator(object):
                                  run_config.TaskType.PS):
       raise ValueError(
           'Train has been called wrong configuration. Please use '
-          'tf.estimator.train_and_evaluate which calls propper API according '
+          'tf.estimator.train_and_evaluate which calls proper API according '
           'to given configuration. Current configuration: {}.'.format(
               self.config))
 
@@ -475,11 +474,31 @@ class Estimator(object):
           return _evaluate()
 
   def _convert_eval_steps_to_hooks(self, steps):
+    """Create hooks to run correct number of steps in evaluation.
+
+    Args:
+      steps: number of steps to run during evaluation.
+
+    Raises:
+      ValueError: if steps is less than or equal to zero.
+
+    Returns:
+      List of hooks to be passed to the estimator.
+    """
     if steps is None:
       return []
 
     if steps <= 0:
       raise ValueError('Must specify steps > 0, given: {}'.format(steps))
+
+    # The hooks are declared as private in evaluation.py discourage the use
+    # by other libraries or open source users. This should be the only usage
+    # of the estimator evaluation hooks.
+    if self._eval_distribution:
+      steps_per_run = getattr(self._eval_distribution, 'steps_per_run', 1)
+      if steps_per_run > 1:
+        return [evaluation._MultiStepStopAfterNEvalsHook(  # pylint: disable=protected-access
+            num_evals=steps, steps_per_run=steps_per_run)]
     return [evaluation._StopAfterNEvalsHook(num_evals=steps)]  # pylint: disable=protected-access
 
   def predict(self,
@@ -489,6 +508,10 @@ class Estimator(object):
               checkpoint_path=None,
               yield_single_examples=True):
     """Yields predictions for given features.
+
+    Please note that interleaving two predict outputs does not work. See:
+    [issue/20506](
+    https://github.com/tensorflow/tensorflow/issues/20506#issuecomment-422208517)
 
     Args:
       input_fn: A function that constructs the features. Prediction continues
@@ -611,7 +634,7 @@ class Estimator(object):
     # pylint: disable=line-too-long,g-doc-args,g-doc-return-or-yield
     """Exports inference graph as a `SavedModel` into the given dir.
 
-    Note that `export_to_savedmodel` will be renamed to `export_to_saved_model`
+    Note that `export_to_savedmodel` will be renamed to `export_saved_model`
     in TensorFlow 2.0. At that time, `export_to_savedmodel` without the
     additional underscore will be available only through tf.compat.v1.
 
@@ -696,7 +719,7 @@ class Estimator(object):
     """
     # pylint: enable=line-too-long
     # TODO(b/111442174): `export_to_savedmodel` will be renamed to
-    # `export_to_saved_model` in TensorFlow 2.0. This function is a wrapper
+    # `export_saved_model` in TensorFlow 2.0. This function is a wrapper
     # while staging the new version; do not add any logic here.
     return self.export_savedmodel(
         export_dir_base,
@@ -1471,6 +1494,7 @@ class Estimator(object):
         self._eval_distribution.__class__.__name__ == 'TPUStrategy')
 
     if is_tpu_strategy:
+      steps_per_run_variable = training.get_or_create_steps_per_run_variable()
       def step_fn(ctx, features, labels=None):
         """Runs one step of the eval computation and captures outputs."""
         estimator_spec = self._eval_distribution.call_for_each_tower(
@@ -1487,7 +1511,7 @@ class Estimator(object):
 
       # TODO(priyag): Fix eval step hook to account for steps_per_run.
       ctx = self._eval_distribution.run_steps_on_dataset(
-          step_fn, iterator, iterations=self._eval_distribution.steps_per_run)
+          step_fn, iterator, iterations=steps_per_run_variable)
       update_op = ctx.run_op
       eval_dict = ctx.non_tensor_outputs['eval_dict']
       grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
@@ -1653,7 +1677,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
   def _unwrap_and_concat(value):
     value = nest.flatten(distribution.unwrap(value))
     if len(value) != 1:
-      return array_ops.concat(value)
+      return array_ops.concat(value, 0)
     return value[0]
 
   ready_op = distribution.call_for_each_tower(
@@ -1788,18 +1812,9 @@ def _extract_metric_update_ops(eval_dict, distribution=None):
   value_ops = {}
   # Sort metrics lexicographically so graph is identical every time.
   for name, value in sorted(six.iteritems(eval_dict)):
-    if isinstance(value, metrics.Metric):
-      metric_result = value.result()
-      # We expect only one update op for every metric when there is no
-      # distribution strategy.
-      metric_update = value.updates if distribution else value.updates[0]
-    else:
-      metric_result = value[0]
-      metric_update = value[1]
-
-    value_ops[name] = metric_result
+    value_ops[name] = value[0]
     update_ops.append(
-        distribution.group(metric_update) if distribution else metric_update)
+        distribution.group(value[1]) if distribution else value[1])
 
   update_op = control_flow_ops.group(*update_ops) if update_ops else None
   return update_op, value_ops

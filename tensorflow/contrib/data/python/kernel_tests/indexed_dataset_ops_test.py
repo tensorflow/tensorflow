@@ -19,29 +19,29 @@ from __future__ import print_function
 
 import unittest
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import indexed_dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import test
 
 
 class IndexedDatasetOpsTest(test.TestCase):
 
   def testLowLevelIndexedDatasetOps(self):
-    identity = gen_dataset_ops.identity_indexed_dataset(
+    identity = ged_ops.experimental_identity_indexed_dataset(
         ops.convert_to_tensor(16, dtype=dtypes.uint64))
-    handle = gen_dataset_ops.materialized_index_dataset_handle(
+    handle = ged_ops.experimental_materialized_index_dataset_handle(
         container="",
         shared_name="",
         output_types=[dtypes.uint64],
         output_shapes=[[]])
-    materialize = gen_dataset_ops.indexed_dataset_materialize(identity, handle)
+    materialize = ged_ops.experimental_indexed_dataset_materialize(
+        identity, handle)
     index = array_ops.placeholder(dtypes.uint64)
-    get_op = gen_dataset_ops.indexed_dataset_get(
+    get_op = ged_ops.experimental_indexed_dataset_get(
         handle, index, output_types=[dtypes.uint64], output_shapes=[[]])
 
     with self.cached_session() as sess:

@@ -132,6 +132,7 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    col_params_.instance.shape = c->input(0).shape();
     // Allocate output on the first pass through this function.  This must be
     // done immediately, while we're still in the executor thread.  Otherwise
     // the memory is not guaranteed to be unused by any concurrently executing
@@ -171,7 +172,7 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &shape_));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
     col_params_.is_source = true;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -195,13 +196,14 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
     if (c->mutable_output(0) == nullptr) {
       // Allocate the output tensor, trying to reuse the input.
       Tensor* output = nullptr;
-      OP_REQUIRES_OK_ASYNC(
-          c, c->forward_input_or_allocate_output({0}, 0, shape_, &output),
-          done);
+      OP_REQUIRES_OK_ASYNC(c,
+                           c->forward_input_or_allocate_output(
+                               {0}, 0, col_params_.instance.shape, &output),
+                           done);
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
     OP_REQUIRES_ASYNC(
-        c, shape_.IsSameSize(c->input(0).shape()),
+        c, col_params_.instance.shape.IsSameSize(c->input(0).shape()),
         errors::Internal("Declared shape of op ", col_params_.name,
                          " does not match shape of input"),
         done);
@@ -214,8 +216,6 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
   }
 
  private:
-  TensorShape shape_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastSendOpKernel);
 };
 
@@ -234,7 +234,7 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &shape_));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
     col_params_.is_source = false;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -258,7 +258,8 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
     if (c->mutable_output(0) == nullptr) {
       // No input, so must allocate output.
       Tensor* output = nullptr;
-      OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape_, &output), done);
+      OP_REQUIRES_OK_ASYNC(
+          c, c->allocate_output(0, col_params_.instance.shape, &output), done);
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
 
@@ -270,8 +271,6 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
   }
 
  private:
-  TensorShape shape_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastRecvOpKernel);
 };
 

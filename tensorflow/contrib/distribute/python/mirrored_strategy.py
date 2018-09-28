@@ -480,7 +480,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           self._prefetch_on_device)
     else:
       return values.PerDeviceDataset(
-          self._call_dataset_fn(dataset_fn), self._devices,
+          self._call_dataset_fn(dataset_fn),
+          self._devices,
           self._prefetch_on_device)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.

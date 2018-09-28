@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import warnings
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
@@ -31,9 +29,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gen_dataset_ops as core_gen_dataset_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import resource_variable_ops
 
 
@@ -65,7 +63,7 @@ def function_buffering_resource(string_arg,
   """
   if shared_name is None:
     shared_name = ""
-  return gen_dataset_ops.function_buffering_resource(
+  return ged_ops.experimental_function_buffering_resource(
       string_arg=string_arg,
       target_device=target_device,
       shared_name=shared_name,
@@ -79,14 +77,14 @@ def function_buffering_resource(string_arg,
 def function_buffering_resource_get_next(function_buffer_resource,
                                          output_types,
                                          name=None):
-  return gen_dataset_ops.function_buffering_resource_get_next(
+  return ged_ops.experimental_function_buffering_resource_get_next(
       function_buffer_resource=function_buffer_resource,
       output_types=output_types,
       name=name)
 
 
 def function_buffering_resource_reset(function_buffer_resource, name=None):
-  return gen_dataset_ops.function_buffering_resource_reset(
+  return ged_ops.experimental_function_buffering_resource_reset(
       function_buffer_resource=function_buffer_resource, name=name)
 
 
@@ -137,7 +135,7 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    iterator_device = gen_dataset_ops.iterator_get_device(
+    iterator_device = ged_ops.experimental_iterator_get_device(
         self._input_iterator._iterator_resource)
 
     with ops.device(device):
@@ -163,10 +161,11 @@ class _PrefetchToDeviceIterator(object):
     if self._get_next_call_count > iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE)
 
-    flat_ret = gen_dataset_ops.function_buffering_resource_get_next(
+    flat_ret = ged_ops.experimental_function_buffering_resource_get_next(
         self._buffering_resource,
-        output_types=nest.flatten(sparse.as_dense_types(
-            self.output_types, self.output_classes)), name=name)
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        name=name)
 
     ret = sparse.deserialize_sparse_tensors(
         nest.pack_sequence_as(self.output_types, flat_ret),
@@ -220,7 +219,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
                buffer_size):
     with ops.device("/device:CPU:0"):
       super(_PrefetchToDeviceEagerIterator, self).__init__(input_dataset)
-      input_iterator_handle = core_gen_dataset_ops.iterator_to_string_handle(
+      input_iterator_handle = gen_dataset_ops.iterator_to_string_handle(
           self._resource)
 
     self._device = device
@@ -239,7 +238,8 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
       self._buffering_resource = function_buffering_resource(
           f=_prefetch_fn,
           output_types=self._flat_output_types,
-          target_device=gen_dataset_ops.iterator_get_device(self._resource),
+          target_device=ged_ops.experimental_iterator_get_device(
+              self._resource),
           string_arg=input_iterator_handle,
           buffer_size=buffer_size,
           shared_name=iterator_ops._generate_shared_name(
@@ -253,7 +253,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
     # TODO(b/77291417): Fix
     with context.execution_mode(context.SYNC):
       with ops.device(self._device):
-        ret = gen_dataset_ops.function_buffering_resource_get_next(
+        ret = ged_ops.experimental_function_buffering_resource_get_next(
             function_buffer_resource=self._buffering_resource,
             output_types=self._flat_output_types)
       return sparse.deserialize_sparse_tensors(
@@ -262,10 +262,11 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
 # pylint: enable=protected-access
 
 
-class _PrefetchToDeviceDataset(dataset_ops.Dataset):
+class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
   """A `Dataset` whose iterator prefetches elements to another device."""
 
   def __init__(self, input_dataset, device, buffer_size):
+    super(_PrefetchToDeviceDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._device = device
     self._buffer_size = buffer_size if buffer_size is not None else 1
@@ -374,7 +375,7 @@ def copy_to_device(target_device, source_device="/cpu:0"):
 # TODO(rohanj): Use the _input_hostmem attr on the RemoteCall ops to indicate
 # all inputs to the Op are in host memory, thereby avoiding some unnecessary
 # Sends and Recvs.
-class _CopyToDeviceDataset(dataset_ops.Dataset):
+class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that copies elements to another device."""
 
   def __init__(self, input_dataset, target_device, source_device="/cpu:0"):
@@ -385,6 +386,7 @@ class _CopyToDeviceDataset(dataset_ops.Dataset):
       target_device: The name of the device to which elements would be copied.
       source_device: Device where input_dataset would be placed.
     """
+    super(_CopyToDeviceDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._target_device = target_device
     spec = framework_device.DeviceSpec().from_string(self._target_device)
@@ -408,12 +410,12 @@ class _CopyToDeviceDataset(dataset_ops.Dataset):
       """
       # pylint: disable=protected-access
       ds_variant = self._input_dataset._as_variant_tensor()
-      resource = core_gen_dataset_ops.anonymous_iterator(
+      resource = gen_dataset_ops.anonymous_iterator(
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       with ops.control_dependencies(
-          [core_gen_dataset_ops.make_iterator(ds_variant, resource)]):
-        return core_gen_dataset_ops.iterator_to_string_handle(resource)
+          [gen_dataset_ops.make_iterator(ds_variant, resource)]):
+        return gen_dataset_ops.iterator_to_string_handle(resource)
 
     @function.Defun()
     def _remote_init_func():
@@ -462,7 +464,7 @@ class _CopyToDeviceDataset(dataset_ops.Dataset):
       Returns:
         Tensor constant 0
       """
-      iterator_resource = core_gen_dataset_ops.iterator_from_string_handle_v2(
+      iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
           string_handle,
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
@@ -503,7 +505,7 @@ class _CopyToDeviceDataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     with ops.device(self._target_device):
-      return core_gen_dataset_ops.generator_dataset(
+      return gen_dataset_ops.generator_dataset(
           self._init_captured_args,
           self._next_captured_args,
           self._finalize_captured_args,
@@ -524,187 +526,3 @@ class _CopyToDeviceDataset(dataset_ops.Dataset):
   @property
   def output_classes(self):
     return self._input_dataset.output_classes
-
-
-class _PerDeviceGenerator(dataset_ops.Dataset):
-  """A `dummy` generator dataset."""
-
-  def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
-               source_device, target_device, output_shapes, output_types,
-               output_classes):
-    self._target_device = target_device
-    self._output_types = output_types
-    self._output_shapes = output_shapes
-    self._output_classes = output_classes
-    self._flat_output_shapes = nest.flatten(
-        sparse.as_dense_shapes(self._output_shapes, self._output_classes))
-    self._flat_output_types = nest.flatten(
-        sparse.as_dense_types(self._output_types, self._output_classes))
-
-    multi_device_iterator_string_handle = (
-        gen_dataset_ops.multi_device_iterator_to_string_handle(
-            multi_device_iterator_resource))
-
-    @function.Defun()
-    def _init_func():
-      return multi_device_iterator_string_handle
-
-    @function.Defun()
-    def _remote_init_func():
-      return functional_ops.remote_call(
-          target=source_device,
-          args=_init_func.captured_inputs,
-          Tout=[dtypes.string],
-          f=_init_func)
-
-    self._init_func = _remote_init_func
-    self._init_captured_args = _remote_init_func.captured_inputs
-
-    @function.Defun(dtypes.string)
-    def _next_func(string_handle):
-      multi_device_iterator = (
-          gen_dataset_ops.multi_device_iterator_from_string_handle(
-              string_handle=string_handle,
-              output_types=self._flat_output_types,
-              output_shapes=self._flat_output_shapes))
-      return gen_dataset_ops.multi_device_iterator_get_next_from_shard(
-          multi_device_iterator=multi_device_iterator,
-          shard_num=shard_num,
-          incarnation_id=incarnation_id,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
-
-    @function.Defun(dtypes.string)
-    def _remote_next_func(string_handle):
-      return functional_ops.remote_call(
-          target=source_device,
-          args=[string_handle] + _next_func.captured_inputs,
-          Tout=self._flat_output_types,
-          f=_next_func)
-
-    self._next_func = _remote_next_func
-    self._next_captured_args = _remote_next_func.captured_inputs
-
-    @function.Defun(dtypes.string)
-    def _finalize_func(unused_string_handle):
-      return array_ops.constant(0, dtypes.int64)
-
-    @function.Defun(dtypes.string)
-    def _remote_finalize_func(string_handle):
-      return functional_ops.remote_call(
-          target=source_device,
-          args=[string_handle] + _finalize_func.captured_inputs,
-          Tout=[dtypes.int64],
-          f=_finalize_func)
-
-    self._finalize_func = _remote_finalize_func
-    self._finalize_captured_args = _remote_finalize_func.captured_inputs
-
-  def _as_variant_tensor(self):
-    with ops.device(self._target_device):
-      return core_gen_dataset_ops.generator_dataset(
-          self._init_captured_args,
-          self._next_captured_args,
-          self._finalize_captured_args,
-          init_func=self._init_func,
-          next_func=self._next_func,
-          finalize_func=self._finalize_func,
-          output_types=self._flat_output_types,
-          output_shapes=self._flat_output_shapes)
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-
-class MultiDeviceIterator(object):
-  """An iterator over multiple devices."""
-
-  def __init__(self,
-               dataset,
-               devices,
-               max_buffer_size=1,
-               prefetch_buffer_size=1,
-               source_device="/cpu:0"):
-    """Constructs a MultiDeviceIterator.
-
-    Args:
-      dataset: The input dataset to be iterated over.
-      devices: The list of devices to fetch data to.
-      max_buffer_size: Maximum size of the host side per device buffer to keep.
-      prefetch_buffer_size: if > 1, then we setup a buffer on each device
-        to prefetch into.
-      source_device: The host device to place the `dataset` on.
-    """
-    self._dataset = dataset
-    self._devices = devices
-    self._source_device = source_device
-    self._source_device_tensor = ops.convert_to_tensor(source_device)
-
-    self._flat_output_shapes = nest.flatten(
-        sparse.as_dense_shapes(self._dataset.output_shapes,
-                               self._dataset.output_classes))
-    self._flat_output_types = nest.flatten(
-        sparse.as_dense_types(self._dataset.output_types,
-                              self._dataset.output_classes))
-
-    # Create the MultiDeviceIterator.
-    with ops.device(self._source_device):
-      self._multi_device_iterator_resource = (
-          gen_dataset_ops.multi_device_iterator(
-              devices=self._devices,
-              shared_name="",
-              container="",
-              output_types=self._flat_output_types,
-              output_shapes=self._flat_output_shapes))
-
-      # The incarnation ID is used to ensure consistency between the per-device
-      # iterators and the multi-device iterator.
-      self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(
-          self._dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          self._multi_device_iterator_resource,
-          max_buffer_size=max_buffer_size)
-
-    # TODO(rohanj): Explore the possibility of the MultiDeviceIterator to
-    # initialize the device side of the pipeline. This would allow the
-    # MultiDeviceIterator to choose, for example, to move some transformations
-    # into the device side from its input. It might be useful in rewriting.
-    # Create the per device iterators.
-    self._device_iterators = []
-    i = 0
-    for device in self._devices:
-      ds = _PerDeviceGenerator(
-          i, self._multi_device_iterator_resource, self._incarnation_id,
-          self._source_device_tensor, device, self._dataset.output_shapes,
-          self._dataset.output_types, self._dataset.output_classes)
-      if prefetch_buffer_size > 0:
-        ds = ds.prefetch(prefetch_buffer_size)
-      with ops.device(device):
-        self._device_iterators.append(ds.make_initializable_iterator())
-      i += 1
-
-    device_iterator_initializers = [
-        iterator.initializer for iterator in self._device_iterators
-    ]
-    self._initializer = control_flow_ops.group(*device_iterator_initializers)
-
-  def get_next(self):
-    result = []
-    i = 0
-    for device in self._devices:
-      with ops.device(device):
-        result.append(self._device_iterators[i].get_next())
-      i += 1
-    return result
-
-  @property
-  def initializer(self):
-    return self._initializer

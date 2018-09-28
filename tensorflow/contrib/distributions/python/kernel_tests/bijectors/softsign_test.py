@@ -93,12 +93,12 @@ class SoftsignBijectorTest(test.TestCase):
             bijector.inverse_log_det_jacobian(y, event_ndims=1)))
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Softsign(validate_args=True)
       assert_scalar_congruency(bijector, lower_x=-20., upper_x=20.)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Softsign(validate_args=True)
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = np.linspace(-0.99, 0.99, 100).astype(np.float32)

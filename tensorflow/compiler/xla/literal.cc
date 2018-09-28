@@ -1351,17 +1351,8 @@ StatusOr<Literal> LiteralBase::BitcastConvert(
   return ConvertSwitch(*this, primitive_dest_type, /*bitcast=*/true);
 }
 
-StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape,
-                                              bool round_f32_to_bf16) const {
+StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
   if (!ShapeUtil::IsTuple(dest_shape)) {
-    if (round_f32_to_bf16 && shape().element_type() == F32 &&
-        dest_shape.element_type() == BF16) {
-      auto converter = [](float src) {
-        return tensorflow::bfloat16::round_to_bfloat16(src);
-      };
-      return ConvertBetweenNativeTypesWithConverter<float, bfloat16>(*this,
-                                                                     converter);
-    }
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;
@@ -1769,6 +1760,10 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
       break;
+    case S8:
+      proto->set_s8s(static_cast<const signed char*>(data<int8>().data()),
+                     element_count());
+      break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8>().data()),
                      element_count());
@@ -1859,6 +1854,11 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
       break;
+    case S8: {
+      auto s8_data = data<int8>();
+      TF_RET_CHECK(proto.s8s().size() == s8_data.size());
+      std::copy(proto.s8s().begin(), proto.s8s().end(), s8_data.begin());
+    } break;
     case U8: {
       auto u8_data = data<uint8>();
       TF_RET_CHECK(proto.u8s().size() == u8_data.size());

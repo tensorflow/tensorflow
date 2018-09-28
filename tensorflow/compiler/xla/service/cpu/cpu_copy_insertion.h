@@ -30,7 +30,7 @@ namespace xla {
 //
 // TODO(b/62548313): Remove this when buffer assignment is smarter
 // (module-scoped).
-class CpuCopyInsertion : public HloPassInterface {
+class CpuCopyInsertion : public HloModulePass {
  public:
   absl::string_view name() const override { return "copy-insertion"; }
 

@@ -85,9 +85,9 @@ class AssignOpTest(test.TestCase):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
   def testAssignNonStrictShapeChecking(self):
-    with self.test_session():
+    with self.cached_session():
       data = array_ops.fill([1024, 1024], 0)
-      p = variables.Variable([1])
+      p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
       self.assertAllEqual(p.eval(), data.eval())
@@ -99,15 +99,15 @@ class AssignOpTest(test.TestCase):
       self.assertAllEqual(p.eval(), data2.eval())
 
   def testInitRequiredAssignAdd(self):
-    with self.test_session():
-      p = variables.Variable(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    with self.cached_session():
+      p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
       a = state_ops.assign_add(p, array_ops.fill([1024, 1024], 0))
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
 
   def testInitRequiredAssignSub(self):
-    with self.test_session():
-      p = variables.Variable(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    with self.cached_session():
+      p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
       a = state_ops.assign_sub(p, array_ops.fill([1024, 1024], 0))
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
