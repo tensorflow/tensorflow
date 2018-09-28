@@ -268,6 +268,7 @@ ForStmt *ForStmt::create(Location *location, ArrayRef<MLValue *> lbOperands,
          "lower bound operand count does not match the affine map");
   assert(ubOperands.size() == ubMap->getNumInputs() &&
          "upper bound operand count does not match the affine map");
+  assert(step > 0 && "step has to be a positive integer constant");
 
   unsigned numOperands = lbOperands.size() + ubOperands.size();
   ForStmt *stmt =

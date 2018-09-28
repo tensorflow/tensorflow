@@ -191,6 +191,12 @@ mlfunc @nonconstant_step(%1 : i32) {
 
 // -----
 
+mlfunc @for_negative_stride() {
+  for %i = 1 to 10 step -1
+}        // expected-error {{step has to be a positive integer}}
+
+// -----
+
 mlfunc @non_statement() {
   asd   // expected-error {{custom op 'asd' is unknown}}
 }

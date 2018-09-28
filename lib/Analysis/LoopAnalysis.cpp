@@ -66,13 +66,12 @@ AffineExpr *mlir::getTripCountExpr(const ForStmt &forStmt) {
 
     auto *cExpr = dyn_cast<AffineConstantExpr>(loopSpanExpr);
     if (!cExpr)
-      return AffineBinaryOpExpr::getCeilDiv(loopSpanExpr, std::abs(step),
-                                            context);
+      return AffineBinaryOpExpr::getCeilDiv(loopSpanExpr, step, context);
     loopSpan = cExpr->getValue();
   }
 
   // 0 iteration loops.
-  if ((loopSpan < 0 && step >= 1) || (loopSpan > 0 && step <= -1))
+  if (loopSpan < 0)
     return 0;
 
   return AffineConstantExpr::get(

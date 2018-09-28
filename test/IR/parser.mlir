@@ -214,8 +214,8 @@ mlfunc @loop_bounds(%N : affineint) {
   %s = "foo"(%N) : (affineint) -> affineint
   // CHECK: for %i0 = %0 to %arg0
   for %i = %s to %N {
-    // CHECK: for %i1 = #map1(%i0) to 0 step -1
-    for %j = %i to 0 step -1 {
+    // CHECK: for %i1 = #map1(%i0) to 0
+    for %j = %i to 0 step 1 {
        // CHECK: %1 = affine_apply #map{{.*}}(%i0, %i1)[%0]
        %w = affine_apply(d0, d1)[s0] -> (d0+d1, s0+1) (%i, %j) [%s]
        // CHECK: for %i2 = #map{{.*}}(%1#0, %i0)[%arg0] to #map{{.*}}(%1#1, %i1)[%0] {

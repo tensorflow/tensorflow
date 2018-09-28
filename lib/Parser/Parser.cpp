@@ -2277,6 +2277,13 @@ ParseResult MLFunctionParser::parseForStmt() {
   if (consumeIf(Token::kw_step) && parseIntConstant(step))
     return ParseFailure;
 
+  // The loop step is a positive integer constant. Since affineint is of int64_t
+  // type, we restrict step to be in the set of positive integers that int64_t
+  // can represent.
+  if (step < 1) {
+    return emitError("step has to be a positive integer");
+  }
+
   // Create for statement.
   ForStmt *forStmt =
       builder.createFor(getEncodedSourceLocation(loc), lbOperands, lbMap,
