@@ -185,7 +185,13 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenGetRNNLayerParamSize)                      \
   __macro(miopenGetRNNLayerBiasOffset)                     \
   __macro(miopenGetRNNLayerBiasSize)                       \
-  __macro(miopenGetRNNParamsDescriptor)
+  __macro(miopenGetRNNParamsDescriptor)			   \
+  __macro(miopenCreateActivationDescriptor)		   \
+  __macro(miopenSetActivationDescriptor)		   \
+  __macro(miopenGetActivationDescriptor)		   \
+  __macro(miopenDestroyActivationDescriptor)
+  
+
 
 // clang-format on
 
@@ -590,6 +596,76 @@ class ScopedNormalizeDescriptor {
   miopenLRNDescriptor_t handle_;  // Owned.
 
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedNormalizeDescriptor);
+};
+
+// Turns a activation mode into a miopen activation mode descriptor with a scope around it
+class ScopedActivationDescriptor {
+public:
+  ScopedActivationDescriptor(ROCMExecutor* parent, dnn::ActivationMode activation_mode)
+    : parent_(parent)
+    , handle_(nullptr) {
+
+    miopenStatus_t status = wrap::miopenCreateActivationDescriptor(parent_, &handle_);
+    if (status != miopenStatusSuccess) {
+      
+      LOG(FATAL) << "call to miopenCreateActivationDescriptor failed: " << ToString(status);
+    }
+    else {
+      
+      miopenActivationMode_t miopen_activation_mode = miopenActivationPASTHRU;
+      double alpha = 0;
+      double beta = 0;
+      double gamma = 0;
+
+      switch (activation_mode) {
+
+      case dnn::ActivationMode::kNone:
+	miopen_activation_mode = miopenActivationPASTHRU;
+	break;
+
+      case dnn::ActivationMode::kSigmoid:
+	miopen_activation_mode = miopenActivationLOGISTIC;
+	break;
+
+      case dnn::ActivationMode::kRelu:
+	miopen_activation_mode = miopenActivationRELU;
+	break;
+
+      case dnn::ActivationMode::kRelu6:
+	miopen_activation_mode = miopenActivationRELU;
+	alpha = 6.0;
+	break;
+
+      case dnn::ActivationMode::kTanh:
+	miopen_activation_mode = miopenActivationTANH;
+	break;
+
+      default:
+	LOG(FATAL) << "Activation mode (" << dnn::ActivationModeString(activation_mode) << ") not yet implemented";
+	break;
+      }
+
+      status = wrap::miopenSetActivationDescriptor(parent_, handle_, miopen_activation_mode, alpha, beta, gamma);
+      if (status != miopenStatusSuccess) {
+	LOG(FATAL) << "call to miopenSetActivationDescriptor failed: " << ToString(status);
+      }
+    }
+  }
+
+  ~ScopedActivationDescriptor() {
+    miopenStatus_t status = wrap::miopenDestroyActivationDescriptor(parent_, handle_);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "call to miopenDestroyActivationDescriptor failed: " << ToString(status);
+    }
+  }
+
+  miopenActivationDescriptor_t handle() const { return handle_; }
+
+private:
+  ROCMExecutor* parent_;         // Parent executor. Not owned.
+  miopenActivationDescriptor_t handle_;  // Owned.
+
+  SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivationDescriptor);
 };
 
 namespace {
