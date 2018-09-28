@@ -144,7 +144,7 @@ class Estimator(object):
           * `labels`: This is the second item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
                  single `tf.Tensor` or `dict` of same (for multi-head models).
-                 If mode is @{tf.estimator.ModeKeys.PREDICT}, `labels=None` will
+                 If mode is `tf.estimator.ModeKeys.PREDICT`, `labels=None` will
                  be passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
                  `labels=None`.
@@ -803,9 +803,9 @@ class Estimator(object):
     those features and labels, and restores the given checkpoint
     (or, lacking that, the most recent checkpoint) into the graph.
     Only one of the modes is used for saving variables to the `SavedModel`
-    (order of preference: @{tf.estimator.ModeKeys#TRAIN$TRAIN},
-    @{tf.estimator.ModeKeys#EVAL$EVAL}, then
-    @{tf.estimator.ModeKeys#PREDICT$PREDICT}), such that up to three
+    (order of preference: `tf.estimator.ModeKeys.TRAIN`,
+    `tf.estimator.ModeKeys.EVAL`, then
+    `tf.estimator.ModeKeys.PREDICT`), such that up to three
     `tf.MetaGraphDefs` are saved with a single set of variables in a single
     `SavedModel` directory.
 
@@ -1101,7 +1101,7 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection @{tf.GraphKeys#GLOBAL_STEP$GLOBAL_STEP}.
+    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
 
     Args:
       graph: The graph in which to create the global step tensor.
