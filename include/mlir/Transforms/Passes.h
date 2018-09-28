@@ -47,6 +47,10 @@ MLFunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 /// Creates an affine expression simplification pass.
 FunctionPass *createSimplifyAffineExprPass();
 
+/// Creates a pass to pipeline explicit movement of data across levels of the
+/// memory hierarchy.
+MLFunctionPass *createPipelineDataTransferPass();
+
 /// Replaces all ML functions in the module with equivalent CFG functions.
 /// Function references are appropriately patched to refer to the newly
 /// generated CFG functions.

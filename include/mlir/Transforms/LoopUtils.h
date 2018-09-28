@@ -33,6 +33,15 @@ class ForStmt;
 class MLFunction;
 class MLFuncBuilder;
 
+// Values that can be used to signal success/failure. This can be implicitly
+// converted to/from boolean values, with false representing success and true
+// failure.
+struct LLVM_NODISCARD UtilResult {
+  enum ResultEnum { Success, Failure } value;
+  UtilResult(ResultEnum v) : value(v) {}
+  operator bool() const { return value == Failure; }
+};
+
 /// Unrolls this for statement completely if the trip count is known to be
 /// constant. Returns false otherwise.
 bool loopUnrollFull(ForStmt *forStmt);
@@ -71,6 +80,16 @@ AffineMap *getCleanupLoopLowerBound(const ForStmt &forStmt,
 AffineMap *getUnrolledLoopUpperBound(const ForStmt &forStmt,
                                      unsigned unrollFactor,
                                      MLFuncBuilder *builder);
+
+/// Skew the statements in the body of a 'for' statement with the specified
+/// statement-wise delays.
+UtilResult stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
+                        bool unrollPrologueEpilogue = false);
+
+/// Checks if SSA dominance would be violated if a for stmt's child statements
+/// are shifted by the specified delays.
+bool checkDominancePreservationOnShift(const ForStmt &forStmt,
+                                       ArrayRef<uint64_t> delays);
 
 } // end namespace mlir
 

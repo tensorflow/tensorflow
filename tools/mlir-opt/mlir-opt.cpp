@@ -70,6 +70,7 @@ enum Passes {
   ConvertToCFG,
   LoopUnroll,
   LoopUnrollAndJam,
+  PipelineDataTransfer,
   PrintCFGGraph,
   SimplifyAffineExpr,
   TFRaiseControlFlow,
@@ -85,6 +86,9 @@ static cl::list<Passes> passList(
                clEnumValN(LoopUnroll, "loop-unroll", "Unroll loops"),
                clEnumValN(LoopUnrollAndJam, "loop-unroll-jam",
                           "Unroll and jam loops"),
+               clEnumValN(PipelineDataTransfer, "pipeline-data-transfer",
+                          "Pipeline non-blocking data transfers between"
+                          "explicitly managed levels of the memory hierarchy"),
                clEnumValN(PrintCFGGraph, "print-cfg-graph",
                           "Print CFG graph per function"),
                clEnumValN(SimplifyAffineExpr, "simplify-affine-expr",
@@ -178,6 +182,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       break;
     case LoopUnrollAndJam:
       pass = createLoopUnrollAndJamPass();
+      break;
+    case PipelineDataTransfer:
+      pass = createPipelineDataTransferPass();
       break;
     case PrintCFGGraph:
       pass = createPrintCFGGraphPass();

@@ -350,6 +350,15 @@ void ForStmt::setConstantUpperBound(int64_t value) {
   setUpperBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
+ForStmt::operand_range ForStmt::getLowerBoundOperands() {
+  return {operand_begin(),
+          operand_begin() + getLowerBoundMap()->getNumInputs()};
+}
+
+ForStmt::operand_range ForStmt::getUpperBoundOperands() {
+  return {operand_begin() + getLowerBoundMap()->getNumInputs(), operand_end()};
+}
+
 bool ForStmt::matchingBoundOperandList() const {
   if (lbMap->getNumDims() != ubMap->getNumDims() ||
       lbMap->getNumSymbols() != ubMap->getNumSymbols())

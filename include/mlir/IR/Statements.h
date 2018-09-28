@@ -311,8 +311,14 @@ public:
   const StmtOperand &getStmtOperand(unsigned idx) const {
     return getStmtOperands()[idx];
   }
+
   // TODO: provide iterators for the lower and upper bound operands
   // if the current access via getLowerBound(), getUpperBound() is too slow.
+
+  /// Returns operands for the lower bound map.
+  operand_range getLowerBoundOperands();
+  /// Returns operands for the upper bound map.
+  operand_range getUpperBoundOperands();
 
   //===--------------------------------------------------------------------===//
   // Other

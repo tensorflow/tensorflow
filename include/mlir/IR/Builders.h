@@ -140,6 +140,16 @@ public:
   // One symbol identity map: ()[s] -> (s).
   AffineMap *getSymbolIdentityMap();
 
+  /// Returns a map that shifts its (single) input dimension by 'shift'.
+  /// (d0) -> (d0 + shift)
+  AffineMap *getSingleDimShiftAffineMap(int64_t shift);
+
+  /// Returns an affine map that is a translation (shift) of all result
+  /// expressions in 'map' by 'shift'.
+  /// Eg: input: (d0, d1)[s0] -> (d0, d1 + s0), shift = 2
+  ///   returns:    (d0, d1)[s0] -> (d0 + 2, d1 + s0 + 2)
+  AffineMap *getShiftedAffineMap(AffineMap *map, int64_t shift);
+
   // Integer set.
   IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
                             ArrayRef<AffineExpr *> constraints,

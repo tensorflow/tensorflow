@@ -251,7 +251,7 @@ AffineExpr *Builder::getAddMulPureAffineExpr(unsigned numDims,
     expr = AffineBinaryOpExpr::getAdd(expr, term, context);
   }
   // Constant term.
-  unsigned constTerm = coeffs[coeffs.size() - 1];
+  int64_t constTerm = coeffs[coeffs.size() - 1];
   if (constTerm != 0)
     expr = AffineBinaryOpExpr::getAdd(expr, constTerm, context);
   return expr;
@@ -276,6 +276,22 @@ AffineMap *Builder::getDimIdentityMap() {
 AffineMap *Builder::getSymbolIdentityMap() {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/1, getSymbolExpr(0), {},
                         context);
+}
+
+AffineMap *Builder::getSingleDimShiftAffineMap(int64_t shift) {
+  // expr = 1*d0 + shift.
+  auto *expr = getAddMulPureAffineExpr(1, 0, {1, shift});
+  return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, expr, {}, context);
+}
+
+AffineMap *Builder::getShiftedAffineMap(AffineMap *map, int64_t shift) {
+  SmallVector<AffineExpr *, 4> shiftedResults;
+  shiftedResults.reserve(map->getNumResults());
+  for (auto *resultExpr : map->getResults()) {
+    shiftedResults.push_back(getAddExpr(resultExpr, shift));
+  }
+  return AffineMap::get(map->getNumDims(), map->getNumSymbols(), shiftedResults,
+                        map->getRangeSizes(), context);
 }
 
 //===----------------------------------------------------------------------===//
