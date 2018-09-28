@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -3394,7 +3395,7 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     return new_h, new_state
 
 NTMControllerState = collections.namedtuple('NTMControllerState',
-      ('controller_state', 'read_vector_list', 'w_list', 'M'))
+      ('controller_state', 'read_vector_list', 'w_list', 'M', 'time'))
 
 class NTMCell(rnn_cell_impl.LayerRNNCell):
   """Neural Turing Machine Cell with RNN controller.
@@ -3473,7 +3474,8 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
         for _ in range(self.read_head_num)],
       w_list=[self.memory_size
         for _ in range(self.read_head_num + self.write_head_num)],
-      M=tensor_shape.TensorShape([self.memory_size * self.memory_vector_dim]))
+      M=tensor_shape.TensorShape([self.memory_size * self.memory_vector_dim]),
+      time=tensor_shape.TensorShape([]))
 
   @property
   def output_size(self):
@@ -3487,31 +3489,63 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
       else:
         self.output_dim = inputs_shape[1].value
 
+    def create_linear_initializer(input_size, dtype=dtypes.float32):
+      stddev = 1.0 / math.sqrt(input_size)
+      return init_ops.truncated_normal_initializer(stddev=stddev, dtype=dtype)
+
     self._params_kernel = self.add_variable(
         'parameters_kernel',
-        shape=[self.controller.output_size, self.total_parameter_num])
+        shape=[self.controller.output_size, self.total_parameter_num],
+        initializer=create_linear_initializer(self.controller.output_size))
 
     self._params_bias = self.add_variable(
         'parameters_bias',
         shape=[self.total_parameter_num],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
 
     self._output_kernel = self.add_variable(
         'output_kernel',
         shape=[self.controller.output_size +
-          self.memory_vector_dim * self.read_head_num, self.output_dim])
+          self.memory_vector_dim * self.read_head_num, self.output_dim],
+        initializer=create_linear_initializer(
+          self.controller.output_size +
+          self.memory_vector_dim * self.read_head_num))
 
     self._output_bias = self.add_variable(
         'output_bias',
         shape=[self.output_dim],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=init_ops.constant_initializer(0.0, dtype=self.dtype))
+
+    self._init_read_vectors = [self.add_variable(
+        'initial_read_vector_%d' % i,
+        shape=[1, self.memory_vector_dim],
+        initializer=initializers.xavier_initializer())
+        for i in range(self.read_head_num)]
+
+    self._init_address_weights = [self.add_variable(
+        'initial_address_weights_%d' % i,
+        shape=[1, self.memory_size],
+        initializer=initializers.xavier_initializer())
+        for i in range(self.read_head_num + self.write_head_num)]
 
     self.built = True
 
   def call(self, x, prev_state):
     # Addressing Mechanisms (Sec 3.3)
 
-    prev_read_vector_list = prev_state.read_vector_list
+    prev_read_vector_list = control_flow_ops.cond(
+      math_ops.equal(prev_state.time, 0),
+      lambda: [self._expand(
+        math_ops.tanh(
+          array_ops.squeeze(
+            math_ops.matmul(
+              array_ops.ones([1, 1]),
+              self._init_read_vectors[i]))),
+        dim=0, N=x.get_shape()[0])
+        for i in range(self.read_head_num)],
+      lambda: prev_state.read_vector_list)
+    if self.read_head_num == 1:
+      prev_read_vector_list = [prev_read_vector_list]
 
     controller_input = array_ops.concat([x] + prev_read_vector_list, axis=1)
     with vs.variable_scope('controller', reuse=self.reuse):
@@ -3531,7 +3565,19 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
       2 * self.write_head_num,
       axis=1)
 
-    prev_w_list = prev_state.w_list
+    prev_w_list = control_flow_ops.cond(
+      math_ops.equal(prev_state.time, 0),
+      lambda: [self._expand(
+        nn_ops.softmax(array_ops.squeeze(
+            math_ops.matmul(
+              array_ops.ones([1, 1]),
+              self._init_address_weights[i]))),
+        dim=0, N=x.get_shape()[0])
+        for i in range(self.read_head_num + self.write_head_num)],
+      lambda: prev_state.w_list)
+    if (self.read_head_num + self.write_head_num) == 1:
+      prev_w_list = [prev_w_list]
+
     prev_M = prev_state.M
     w_list = []
     for i, head_parameter in enumerate(head_parameter_list):
@@ -3542,7 +3588,7 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
         self.memory_vector_dim + 2 + (self.shift_range * 2 + 1)])
       gamma = nn_ops.softplus(head_parameter[:, -1]) + 1
       with vs.variable_scope('addressing_head_%d' % i):
-        w = self.addressing(k, beta, g, s, gamma, prev_M, prev_w_list[i])
+        w = self._addressing(k, beta, g, s, gamma, prev_M, prev_w_list[i])
       w_list.append(w)
 
     # Reading (Sec 3.1)
@@ -3571,14 +3617,17 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
       array_ops.concat([controller_output] + read_vector_list, axis=1),
       self._output_kernel)
     output = nn_ops.bias_add(output, self._output_bias)
-    output = clip_ops.clip_by_value(output,
-      -self.clip_value, self.clip_value)
+    output = clip_ops.clip_by_value(output, -self.clip_value, self.clip_value)
 
     return output, NTMControllerState(
       controller_state=controller_state, read_vector_list=read_vector_list,
-      w_list=w_list, M=M)
+      w_list=w_list, M=M, time=prev_state.time+1)
 
-  def addressing(self, k, beta, g, s, gamma, prev_M, prev_w):
+  def _expand(self, x, dim, N):
+    return array_ops.concat(
+      [array_ops.expand_dims(x, dim) for _ in range(N)], axis=dim)
+
+  def _addressing(self, k, beta, g, s, gamma, prev_M, prev_w):
     # Sec 3.3.1 Focusing by Content
 
     k = array_ops.expand_dims(k, axis=2)
@@ -3626,33 +3675,16 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
     return w
 
   def zero_state(self, batch_size, dtype):
-    self._init_read_vectors = [self.add_variable(
-        'initial_read_vector_%d' % i,
-        shape=[self.memory_vector_dim])
-        for i in range(self.read_head_num)]
-
-    self._init_address_weights = [self.add_variable(
-        'initial_address_weights_%d' % i,
-        shape=[self.memory_size])
-        for i in range(self.read_head_num + self.write_head_num)]
-
-    def expand(x, dim, N):
-      return array_ops.concat(
-        [array_ops.expand_dims(x, dim) for _ in range(N)], axis=dim)
-    
     with vs.variable_scope('init', reuse=self.reuse):
-      read_vector_list = [expand(
-        math_ops.tanh(self._init_read_vectors[i]),
-        dim=0, N=batch_size)
-        for i in range(self.read_head_num)]
+      read_vector_list = [array_ops.zeros([batch_size, self.memory_vector_dim])
+        for _ in range(self.read_head_num)]
 
-      w_list = [expand(
-          nn_ops.softmax(self._init_address_weights[i]), dim=0, N=batch_size)
-        for i in range(self.read_head_num + self.write_head_num)]
+      w_list = [array_ops.zeros([batch_size, self.memory_size])
+        for _ in range(self.read_head_num + self.write_head_num)]
 
       controller_init_state = self.controller.zero_state(batch_size, dtype)
 
-      M = expand(vs.get_variable('init_M',
+      M = self._expand(vs.get_variable('init_M',
               [self.memory_size, self.memory_vector_dim],
               initializer=init_ops.constant_initializer(1e-6)),
             dim=0, N=batch_size)
@@ -3661,4 +3693,5 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
         controller_state=controller_init_state,
         read_vector_list=read_vector_list,
         w_list=w_list,
-        M=M)
+        M=M,
+        time=0)
