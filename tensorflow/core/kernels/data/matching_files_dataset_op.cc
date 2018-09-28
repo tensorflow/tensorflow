@@ -33,7 +33,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class MatchingFilesDatasetOp : public DatasetOpKernel {
@@ -48,7 +48,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
     std::vector<string> pattern_strs;
     pattern_strs.reserve(num_patterns);
 
-    for (int i = 0; i < num_patterns; ++i) {
+    for (int i = 0; i < num_patterns; i++) {
       pattern_strs.push_back(patterns(i));
     }
 
