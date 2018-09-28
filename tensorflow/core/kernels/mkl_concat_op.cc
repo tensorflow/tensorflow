@@ -776,7 +776,8 @@ class MklConcatOp : public OpKernel {
       if (are_all_mkl_inputs)
          concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
 
-      auto concat_pd = concat::primitive_desc(dst_md, concat_dim, srcs_pd);
+      auto concat_pd = concat::primitive_desc(concat_dim, srcs_pd);
+      auto dst_pd = concat_pd.dst_primitive_desc();
 
       MklDnnShape dnn_shape_dst;
       TensorShape tf_shape_dst;
