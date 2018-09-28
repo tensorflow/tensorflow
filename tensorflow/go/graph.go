@@ -153,7 +153,7 @@ func (g *Graph) Operations() []Operation {
 // added to a graph to compute the gradients.
 func (g *Graph) AddGradients(prefix string, y []Output, x []Output, dx []Output) ([]Output, error) {
 	var (
-		cprefix = C.CString(prefix)
+		cprefix *C.char
 
 		cy  = make([]C.TF_Output, len(y))
 		cx  = make([]C.TF_Output, len(x))
@@ -189,11 +189,12 @@ func (g *Graph) AddGradients(prefix string, y []Output, x []Output, dx []Output)
 	}
 
 	// If prefix is "", the C.TF_AddGradientsWithPrefix need cprefix to be nil but not ""
-	if len(prefix) == 0 {
-		C.TF_AddGradientsWithPrefix(g.c, nil, pcy, C.int(len(y)), pcx, C.int(len(x)), pcdx, status.c, pcdy)
-	} else {
-		C.TF_AddGradientsWithPrefix(g.c, cprefix, pcy, C.int(len(y)), pcx, C.int(len(x)), pcdx, status.c, pcdy)
+	if len(prefix) != 0 {
+		cprefix = C.CString(prefix)
+		defer C.free(unsafe.Pointer(cprefix))
 	}
+
+	C.TF_AddGradientsWithPrefix(g.c, cprefix, pcy, C.int(len(y)), pcx, C.int(len(x)), pcdx, status.c, pcdy)
 
 	if err := status.Err(); err != nil {
 		return nil, err
