@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -576,11 +577,9 @@ class XlaBuilder {
              absl::Span<const XlaOp> operands);
 
   // Enqueues a custom call instruction onto the computation.
-  // During code generation, a call instruction is emitted which targets a
-  // symbol with the name |call_target_name|.  The |operands| are passed to the
-  // call instruction.  |shape| is the resultant shape.
   XlaOp CustomCall(const string& call_target_name,
-                   absl::Span<const XlaOp> operands, const Shape& shape);
+                   absl::Span<const XlaOp> operands, const Shape& shape,
+                   const string& opaque);
 
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
@@ -955,6 +954,8 @@ class XlaBuilder {
                             HloInstructionProto* instr);
 
   StatusOr<const HloInstructionProto*> LookUpInstruction(const XlaOp& op) const;
+  StatusOr<const HloInstructionProto*> LookUpInstructionByHandle(
+      int64 handle) const;
 
   // Internal helper method that does the building for an arbitrary unary op.
   XlaOp UnaryOp(HloOpcode unop, const XlaOp& operand);
@@ -1023,6 +1024,10 @@ class XlaBuilder {
 
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
+
+  // A map from XlaOp::Handle to the index in the instructions_ vector where the
+  // instruction is held.
+  tensorflow::gtl::FlatMap<int64, int64> handle_to_index_;
 
   // The embedded computations used by this computation. Each computation was
   // the entry computation of some XlaComputation, the key is the unique id of
@@ -1188,7 +1193,8 @@ class XlaBuilder {
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands);
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                          absl::Span<const XlaOp> operands, const Shape& shape);
+                          absl::Span<const XlaOp> operands, const Shape& shape,
+                          const string& opaque);
   friend XlaOp Complex(const XlaOp& real, const XlaOp& imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(const XlaOp& operand);
@@ -1710,12 +1716,17 @@ XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands);
 
-// Enqueues a custom call instruction onto the computation.
-// During code generation, a call instruction is emitted which targets a
-// symbol with the name |call_target_name|.  The |operands| are passed to the
-// call instruction.  |shape| is the resultant shape.
+// Enqueues a custom call instruction onto the computation. A custom call
+// invokes code external to XLA. The |operands| are passed to the external code,
+// and the external code is expected to produce a result of the given
+// |shape|. The exact mechanism is backend-specific. For example, in the CPU
+// backend, a call instruction is emitted which targets a symbol with the name
+// |call_target_name|.  |call_target_name| and |opaque| can arbitrary strings,
+// but |call_target_name| should be short as it may be used in labels. |opaque|
+// can encode arbitrarily large amounts of information.
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 absl::Span<const XlaOp> operands, const Shape& shape);
+                 absl::Span<const XlaOp> operands, const Shape& shape,
+                 const string& opaque = "");
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one

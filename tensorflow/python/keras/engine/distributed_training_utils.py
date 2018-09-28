@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.client import session as session_module
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
@@ -293,12 +294,14 @@ def configure_and_create_session(distribution_strategy):
   K.set_session(session)
 
 
-def validate_inputs(x, y):
+def validate_inputs(x, y, distribution_strategy):
   """Validate inputs when using DistributionStrategy.
 
   Args:
     x: Model Inputs.
     y: Model Targets.
+    distribution_strategy: The DistributionStrategy with which the model is
+      compiled.
 
   Raises:
     ValueError: if input is not a Dataset or a numpy array.
@@ -318,6 +321,17 @@ def validate_inputs(x, y):
     raise ValueError('DistributionStrategy does not support inputs of type '
                      'Iterator. You must pass a Dataset object or a numpy '
                      'array as input.')
+
+  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+    for i in [x, y]:
+      if isinstance(i, dataset_ops.Dataset):
+        shapes = nest.flatten(i.output_shapes)
+        if any([not s.is_fully_defined() for s in shapes]):
+          raise ValueError(
+              'Using TPUs currently requires fully defined shapes. Either use '
+              'set_shape() on the input tensors or use '
+              'dataset.batch(..., drop_remainder=True).'
+              'Found unknown shape {} in input {}.'.format(s, i))
 
 
 def get_input_batch_params(first_x_value, batch_size, current_strategy):

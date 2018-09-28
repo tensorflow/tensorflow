@@ -45,17 +45,21 @@ def InLabels(labels, substr):
   return any([substr in x for x in labels])
 
 
-def XlaLaunchOpCount(labels):
-  """Count how many XlaLaunch labels are present."""
-  return sum("XlaLaunch(" in x for x in labels)
-
-
 class DenseLayerTest(test.TestCase):
+
+  def countXlaOps(self, labels):
+    """Count how many XlaCompile/XlaRun labels are present."""
+    xla_compile_count = sum("XlaCompile(" in x for x in labels)
+    xla_run_count = sum("XlaRun(" in x for x in labels)
+    self.assertEqual(xla_compile_count, xla_run_count)
+    return xla_run_count
+
 
   def testDenseLayerAutoJit(self):
     """Tests dense layer compilation in auto-jit mode.
 
-    Dense layer should be compiled into a single XlaLaunch op in auto-jit mode.
+    Dense layer should be compiled into a single XlaCompile/XlaRun op pair in
+    auto-jit mode.
     """
 
     os.environ["TF_XLA_FLAGS"] = (
@@ -77,14 +81,14 @@ class DenseLayerTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
     labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(1, XlaLaunchOpCount(labels))
+    self.assertEqual(1, self.countXlaOps(labels))
     self.assertFalse(InLabels(labels, "MatMult"))
 
   def testDenseLayerJitScopeDefinedShape(self):
     """Tests that the dense layer node is properly compiled in jit scope.
 
     Dense layer with static shape input tensor should be compiled into a single
-    XlaLaunch op by XLA.
+    XlaCompile/XlaRun op pair by XLA.
     """
 
     with self.cached_session() as sess:
@@ -101,7 +105,7 @@ class DenseLayerTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
     labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(1, XlaLaunchOpCount(labels))
+    self.assertEqual(1, self.countXlaOps(labels))
     # No need to check whether ListDiff is compiled or not because ListDiff op
     # is not used when input tensor shape is fully defined.
 
@@ -111,7 +115,8 @@ class DenseLayerTest(test.TestCase):
     Dense layer uses shape op to get shape of input tensor if its shape is not
     fully defined. XLA does not cluster shape op with other operators. But in
     experimental_jit_scope, XLA is forced to compile shape op into its own
-    cluster, causing dense layer to be split into TWO XlaLaunch ops.
+    cluster, causing dense layer to be split into TWO XlaCompile/XlaRun op
+    pairs.
     """
 
     with self.cached_session() as sess:
@@ -128,7 +133,7 @@ class DenseLayerTest(test.TestCase):
               trace_level=config_pb2.RunOptions.FULL_TRACE))
 
     labels = GetRunMetadataLabels(run_metadata)
-    self.assertEqual(2, XlaLaunchOpCount(labels))
+    self.assertEqual(2, self.countXlaOps(labels))
     self.assertFalse(InLabels(labels, "MatMult"))
 
 

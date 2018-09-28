@@ -125,7 +125,6 @@ Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
 Status TensorHandle::NumDims(int* num_dims) {
   if (IsRemote()) {
     TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
-    CHECK(remote_shape_ != nullptr);
     *num_dims = remote_shape_->dims();
   } else {
     TF_RETURN_IF_ERROR(WaitReady());
@@ -148,6 +147,21 @@ Status TensorHandle::Dim(int dim_index, int64* dim) {
     DCHECK(dim != nullptr);
 
     *dim = tensor_.dim_size(dim_index);
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::NumElements(int64* num_elements) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    *num_elements = remote_shape_->num_elements();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    DCHECK(num_elements != nullptr);
+
+    *num_elements = tensor_.NumElements();
   }
 
   return Status::OK();

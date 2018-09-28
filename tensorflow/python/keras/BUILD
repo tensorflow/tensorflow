@@ -337,11 +337,6 @@ py_test(
     size = "large",
     srcs = ["layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "noasan",  # times out b/63678675
-        "notsan",
-    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -386,12 +381,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "embeddings_test",
     size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],

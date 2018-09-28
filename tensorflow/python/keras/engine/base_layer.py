@@ -1972,7 +1972,9 @@ def make_variable(name,
   if use_resource is None:
     use_resource = True
 
-  v = tf_variables.Variable(
+  # TODO(apassos,rohanj) figure out how to remove collections from here so we
+  # can remove the V1.
+  v = tf_variables.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,

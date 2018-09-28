@@ -63,6 +63,7 @@ class HloModule {
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
   explicit HloModule(const string& name, const HloModuleConfig& config);
+  virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -87,6 +88,7 @@ class HloModule {
       const std::unordered_map<HloComputation*, HloComputation*>& replacements);
 
   const string& name() const { return name_; }
+  void set_name(string name) { name_ = std::move(name); }
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
@@ -253,9 +255,9 @@ class HloModule {
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
-      bool uniquify_names);
+      bool uniquify_identifiers);
 
-  const string name_;
+  string name_;
   HloModuleConfig config_;
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;

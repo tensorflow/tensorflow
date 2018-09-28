@@ -36,7 +36,27 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.estimator import run_config
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+
+
+ASSIGNED_PORTS = set()
+lock = threading.Lock()
+
+
+def pick_unused_port():
+  """Returns an unused and unassigned local port."""
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+
+  global ASSIGNED_PORTS
+  with lock:
+    while True:
+      port = portpicker.pick_unused_port()
+      if port > 10000 and port not in ASSIGNED_PORTS:
+        ASSIGNED_PORTS.add(port)
+        logging.info('Using local port %r', port)
+        return port
 
 
 def _create_cluster(num_workers,
@@ -49,8 +69,8 @@ def _create_cluster(num_workers,
   """Creates and starts local servers and returns the cluster_spec dict."""
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
-  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
-  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
+  worker_ports = [pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [pick_unused_port() for _ in range(num_ps)]
 
   cluster_dict = {}
   if num_workers > 0:
@@ -58,9 +78,9 @@ def _create_cluster(num_workers,
   if num_ps > 0:
     cluster_dict['ps'] = ['localhost:%s' % port for port in ps_ports]
   if has_eval:
-    cluster_dict['evaluator'] = ['localhost:%s' % portpicker.pick_unused_port()]
+    cluster_dict['evaluator'] = ['localhost:%s' % pick_unused_port()]
   if has_chief:
-    cluster_dict['chief'] = ['localhost:%s' % portpicker.pick_unused_port()]
+    cluster_dict['chief'] = ['localhost:%s' % pick_unused_port()]
 
   cs = server_lib.ClusterSpec(cluster_dict)
 
@@ -139,9 +159,34 @@ def create_in_process_cluster(num_workers,
       num_workers,
       num_ps=num_ps,
       has_chief=has_chief,
+      has_eval=has_eval,
       worker_config=worker_config,
       ps_config=ps_config,
       protocol='grpc')
+
+
+def create_cluster_spec(has_chief=False,
+                        num_workers=1,
+                        num_ps=0,
+                        has_eval=False):
+  """Create a cluster spec with tasks with unused local ports."""
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+
+  cluster_spec = {}
+  if has_chief:
+    cluster_spec['chief'] = ['localhost:%s' % pick_unused_port()]
+  if num_workers:
+    cluster_spec['worker'] = [
+        'localhost:%s' % pick_unused_port() for _ in range(num_workers)
+    ]
+  if num_ps:
+    cluster_spec['ps'] = [
+        'localhost:%s' % pick_unused_port() for _ in range(num_ps)
+    ]
+  if has_eval:
+    cluster_spec['evaluator'] = ['localhost:%s' % pick_unused_port()]
+  return cluster_spec
 
 
 class MultiWorkerTestBase(test.TestCase):

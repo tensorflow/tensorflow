@@ -42,13 +42,14 @@ using xla::ShapedBuffer;
 }  // anonymous namespace
 
 std::map<int, OptionalTensor> SnapshotResourceVariables(
-    OpKernelContext* ctx, const std::vector<int>& variables) {
+    OpKernelContext* ctx, absl::Span<const int> variables) {
   std::map<int, OptionalTensor> snapshot;
   for (int i : variables) {
     Var* variable = nullptr;
     ResourceHandle handle = HandleFromInput(ctx, i);
     OptionalTensor& tensor = snapshot[i];
     if (LookupResource(ctx, handle, &variable).ok()) {
+      core::ScopedUnref scoped_unref(variable);
       tf_shared_lock lock(*variable->mu());
       tensor.name = handle.name();
       tensor.present = true;
@@ -133,7 +134,8 @@ XlaComputationLaunchContext::XlaComputationLaunchContext(
 
 void XlaComputationLaunchContext::PopulateInputs(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
-    const std::map<int, OptionalTensor>& variables) {
+    const std::map<int, OptionalTensor>& variables,
+    int missing_ctx_input_prefix) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   // Build ShapedBuffers that point directly to the Tensor buffers.
@@ -145,12 +147,13 @@ void XlaComputationLaunchContext::PopulateInputs(
   const Tensor* t;
   for (int i = 0; i < kernel->xla_input_shapes.size(); ++i) {
     int arg_num = kernel->input_mapping[i];
+    DCHECK_GE(arg_num, missing_ctx_input_prefix);
     const xla::Shape& shape = kernel->xla_input_shapes[i];
     if (variables.count(arg_num)) {
       t = &(variables.at(arg_num).value);
       CHECK(t);
     } else {
-      t = &(ctx->input(arg_num));
+      t = &(ctx->input(arg_num - missing_ctx_input_prefix));
     }
 
     if (use_multiple_streams_) {
@@ -187,7 +190,7 @@ void XlaComputationLaunchContext::PopulateInputs(
 
 Status XlaComputationLaunchContext::PopulateOutputs(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
-    ScopedShapedBuffer output) {
+    ScopedShapedBuffer output, int missing_ctx_input_prefix) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
@@ -275,6 +278,8 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       VLOG(2) << "Retval " << i << " shape " << shape.DebugString() << " type "
               << DataTypeString(type);
       if (type == DT_RESOURCE) {
+        TF_RET_CHECK(kernel->outputs[i].input_index >= 0)
+            << "Invalid input for outputs " << i;
         ctx->set_output(i, ctx->input(kernel->outputs[i].input_index));
       } else {
         se::DeviceMemoryBase buffer = output.buffer({output_num});
@@ -313,7 +318,8 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   for (int i = 0; i < kernel->resource_updates.size(); ++i) {
     Allocator* allocator = ctx->device()->GetAllocator({});
     const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
-    if (write.input_index < 0 || write.input_index >= ctx->num_inputs()) {
+    int actual_input_index = write.input_index - missing_ctx_input_prefix;
+    if (actual_input_index < 0 || actual_input_index >= ctx->num_inputs()) {
       return errors::Internal("Invalid input index for variable write.");
     }
 
@@ -323,7 +329,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor,
     // not a Tensor.
     TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
-        ctx, HandleFromInput(ctx, write.input_index), &variable,
+        ctx, HandleFromInput(ctx, actual_input_index), &variable,
         [&write](Var** ptr) {
           *ptr = new Var(write.type);
           return Status::OK();

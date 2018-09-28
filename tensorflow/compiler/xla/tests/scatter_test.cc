@@ -507,6 +507,36 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, OutOfBoundsUpdateWindow) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNd_OobUpdateWindow
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[1,2] parameter(1)
+  updates = s32[1,2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32>({{{-10, 10}, {-40, 40}}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 XLA_TEST_F(ScatterTest, OneScalarIndex) {
   const char* hlo_text = R"(
 HloModule OneScalarIndex

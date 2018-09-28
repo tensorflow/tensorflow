@@ -247,7 +247,7 @@ def _default_getter(name, shape, dtype, initializer=None,
       def initial_value():
         return initializer(
             shape_object.as_list(), dtype=dtype, partition_info=partition_info)
-    return variables.Variable(
+    return variables.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,

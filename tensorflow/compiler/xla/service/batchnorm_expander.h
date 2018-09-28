@@ -26,7 +26,7 @@ namespace xla {
 // A pass which rewrites batch norm operations into more operations. Breaking a
 // big operation into smaller operations helps leverage our generic fusion
 // logic.
-class BatchNormExpander : public HloPassInterface {
+class BatchNormExpander : public HloModulePass {
  public:
   // When use_fusion is set, a multi-output fusion node is created.
   BatchNormExpander(bool rewrite_training_op = false,

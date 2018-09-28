@@ -102,9 +102,9 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
         0.0,
         (radius - standard_ops.reduce_sum(multipliers)) / standard_ops.maximum(
             1.0, standard_ops.reduce_sum(inactive)))
-    multipliers += scale * inactive
+    multipliers = multipliers + (scale * inactive)
     new_inactive = standard_ops.cast(multipliers > 0, multipliers.dtype)
-    multipliers *= new_inactive
+    multipliers = multipliers * new_inactive
     return (iteration, multipliers, new_inactive, inactive)
 
   iteration = standard_ops.constant(0)

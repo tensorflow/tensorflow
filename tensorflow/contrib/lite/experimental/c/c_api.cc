@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/experimental/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
@@ -25,6 +26,26 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+
+namespace {
+class CallbackErrorReporter : public tflite::ErrorReporter {
+ public:
+  using ErrorCallback = void (*)(void* user_data, const char* format,
+                                 va_list args);
+
+  CallbackErrorReporter(ErrorCallback callback, void* user_data)
+      : callback_(callback), user_data_(user_data) {}
+
+  int Report(const char* format, va_list args) override {
+    callback_(user_data_, format, args);
+    return 0;
+  }
+
+ private:
+  ErrorCallback callback_;
+  void* user_data_;
+};
+}  // namespace
 
 // LINT.IfChange
 
@@ -56,14 +77,38 @@ void TFL_InterpreterOptionsSetNumThreads(TFL_InterpreterOptions* options,
   options->num_threads = num_threads;
 }
 
+TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetErrorReporter(
+    TFL_InterpreterOptions* options,
+    void (*reporter)(void* user_data, const char* format, va_list args),
+    void* user_data) {
+  options->error_reporter = reporter;
+  options->error_reporter_user_data = user_data;
+}
+
 TFL_Interpreter* TFL_NewInterpreter(
     const TFL_Model* model, const TFL_InterpreterOptions* optional_options) {
   if (!model || !model->impl) {
     return nullptr;
   }
 
+  std::unique_ptr<tflite::ErrorReporter> optional_error_reporter;
+  if (optional_options && optional_options->error_reporter != nullptr) {
+    optional_error_reporter.reset(
+        new CallbackErrorReporter(optional_options->error_reporter,
+                                  optional_options->error_reporter_user_data));
+  }
+
+  // TODO(b/111881878): Allow use of C API without pulling in all builtin ops.
   tflite::ops::builtin::BuiltinOpResolver resolver;
-  tflite::InterpreterBuilder builder(*model->impl, resolver);
+  if (optional_options) {
+    resolver.AddAll(optional_options->op_resolver);
+  }
+  tflite::ErrorReporter* error_reporter = optional_error_reporter
+                                              ? optional_error_reporter.get()
+                                              : tflite::DefaultErrorReporter();
+  tflite::InterpreterBuilder builder(model->impl->GetModel(), resolver,
+                                     error_reporter);
+
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (builder(&interpreter) != kTfLiteOk) {
     return nullptr;
@@ -76,7 +121,8 @@ TFL_Interpreter* TFL_NewInterpreter(
     }
   }
 
-  return new TFL_Interpreter{model->impl, std::move(interpreter)};
+  return new TFL_Interpreter{model->impl, std::move(optional_error_reporter),
+                             std::move(interpreter)};
 }
 
 void TFL_DeleteInterpreter(TFL_Interpreter* interpreter) { delete interpreter; }

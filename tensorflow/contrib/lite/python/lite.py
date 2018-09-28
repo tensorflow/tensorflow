@@ -17,6 +17,7 @@
 EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@TocoConverter
+@@TFLiteConverter
 @@toco_convert
 @@toco_convert_protos
 @@Interpreter
@@ -40,6 +41,7 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
 from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
+from tensorflow.contrib.lite.python.convert import ConverterMode
 from tensorflow.contrib.lite.python.convert import tensor_name as _tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -61,9 +63,10 @@ from tensorflow.python.framework.importer import import_graph_def as _import_gra
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
+from tensorflow.python.util import deprecation as _deprecation
 
 
-class TocoConverter(object):
+class TFLiteConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 
   This is used to convert from a TensorFlow GraphDef or SavedModel into either a
@@ -113,27 +116,29 @@ class TocoConverter(object):
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
+    converter_mode: Experimental flag, subject to change. ConverterMode
+      indicating which converter to use. (default ConverterMode.DEFAULT)
 
   Example usage:
 
     ```python
     # Converting a GraphDef from session.
-    converter = lite.TocoConverter.from_session(sess, in_tensors, out_tensors)
+    converter = lite.TFLiteConverter.from_session(sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a GraphDef from file.
-    converter = lite.TocoConverter.from_frozen_graph(
+    converter = lite.TFLiteConverter.from_frozen_graph(
       graph_def_file, input_arrays, output_arrays)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a SavedModel.
-    converter = lite.TocoConverter.from_saved_model(saved_model_dir)
+    converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
 
     # Converting a tf.keras model.
-    converter = lite.TocoConverter.from_keras_model_file(keras_model)
+    converter = lite.TFLiteConverter.from_keras_model_file(keras_model)
     tflite_model = converter.convert()
     ```
   """
@@ -144,10 +149,9 @@ class TocoConverter(object):
                output_tensors,
                input_arrays_with_shape=None,
                output_arrays=None):
-    """Constructor for TocoConverter.
+    """Constructor for TFLiteConverter.
 
     Args:
-
       graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
         `foo.get_shape()` and `foo.dtype`.
@@ -155,8 +159,8 @@ class TocoConverter(object):
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
         (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
-        into TensorFlow and when `input_tensors` and `output_tensors` are None.
-        (default None)
+          into TensorFlow and when `input_tensors` and `output_tensors` are
+          None. (default None)
       output_arrays: List of output tensors to freeze graph with. Use only when
         graph cannot be loaded into TensorFlow and when `input_tensors` and
         `output_tensors` are None. (default None)
@@ -179,6 +183,7 @@ class TocoConverter(object):
     self.post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
+    self.converter_mode = ConverterMode.DEFAULT
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -191,7 +196,7 @@ class TocoConverter(object):
 
   @classmethod
   def from_session(cls, sess, input_tensors, output_tensors):
-    """Creates a TocoConverter class from a TensorFlow Session.
+    """Creates a TFLiteConverter class from a TensorFlow Session.
 
     Args:
       sess: TensorFlow Session.
@@ -200,7 +205,7 @@ class TocoConverter(object):
       output_tensors: List of output tensors (only .name is used from this).
 
     Returns:
-      TocoConverter class.
+      TFLiteConverter class.
     """
     graph_def = _freeze_graph(sess, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
@@ -211,7 +216,7 @@ class TocoConverter(object):
                         input_arrays,
                         output_arrays,
                         input_shapes=None):
-    """Creates a TocoConverter class from a file containing a frozen GraphDef.
+    """Creates a TFLiteConverter class from a file containing a frozen GraphDef.
 
     Args:
       graph_def_file: Full filepath of file containing frozen GraphDef.
@@ -220,10 +225,10 @@ class TocoConverter(object):
       input_shapes: Dict of strings representing input tensor names to list of
         integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
         Automatically determined when input shapes is None (e.g., {"foo" :
-        None}). (default None)
+          None}). (default None)
 
     Returns:
-      TocoConverter class.
+      TFLiteConverter class.
 
     Raises:
       IOError:
@@ -306,7 +311,7 @@ class TocoConverter(object):
                        output_arrays=None,
                        tag_set=None,
                        signature_key=None):
-    """Creates a TocoConverter class from a SavedModel.
+    """Creates a TFLiteConverter class from a SavedModel.
 
     Args:
       saved_model_dir: SavedModel directory to convert.
@@ -315,7 +320,7 @@ class TocoConverter(object):
       input_shapes: Dict of strings representing input tensor names to list of
         integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
         Automatically determined when input shapes is None (e.g., {"foo" :
-        None}). (default None)
+          None}). (default None)
       output_arrays: List of output tensors to freeze graph with. Uses output
         arrays from SignatureDef when none are provided. (default None)
       tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
@@ -324,7 +329,7 @@ class TocoConverter(object):
         (default DEFAULT_SERVING_SIGNATURE_DEF_KEY)
 
     Returns:
-      TocoConverter class.
+      TFLiteConverter class.
     """
     if tag_set is None:
       tag_set = set([_tag_constants.SERVING])
@@ -342,7 +347,7 @@ class TocoConverter(object):
                             input_arrays=None,
                             input_shapes=None,
                             output_arrays=None):
-    """Creates a TocoConverter class from a tf.keras model file.
+    """Creates a TFLiteConverter class from a tf.keras model file.
 
     Args:
       model_file: Full filepath of HDF5 file containing the tf.keras model.
@@ -351,12 +356,12 @@ class TocoConverter(object):
       input_shapes: Dict of strings representing input tensor names to list of
         integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
         Automatically determined when input shapes is None (e.g., {"foo" :
-        None}). (default None)
+          None}). (default None)
       output_arrays: List of output tensors to freeze graph with. Uses output
         arrays from SignatureDef when none are provided. (default None)
 
     Returns:
-      TocoConverter class.
+      TFLiteConverter class.
     """
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
@@ -389,6 +394,7 @@ class TocoConverter(object):
       ValueError:
         Input shape is not specified.
         None value for dimension in input_tensor.
+        ConverterMode option is unsupported for the model.
     """
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
@@ -439,12 +445,18 @@ class TocoConverter(object):
 
     # Converts model.
     if self._has_valid_tensors():
+      converter_kwargs["converter_mode"] = self.converter_mode
       result = _toco_convert_impl(
           input_data=self._graph_def,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
+      # Graphs without valid tensors cannot be loaded into tf.Session since they
+      # contain TFLite operation(s) that cannot be resolved in TensorFlow.
+      if self.converter_mode != ConverterMode.DEFAULT:
+        raise ValueError("This model can only be converted with the default "
+                         "converter.")
       result = _toco_convert_graph_def(
           input_data=self._graph_def,
           input_arrays_with_shape=self._input_arrays_with_shape,
@@ -489,6 +501,59 @@ class TocoConverter(object):
       shape = tensor.get_shape().as_list()
       shape[0] = batch_size
       tensor.set_shape(shape)
+
+
+class TocoConverter(object):
+  """Convert a TensorFlow model into `output_format` using TOCO.
+
+  This class has been deprecated. Please use `lite.TFLiteConverter` instead.
+  """
+
+  @classmethod
+  @_deprecation.deprecated(None,
+                           "Use `lite.TFLiteConverter.from_session` instead.")
+  def from_session(cls, sess, input_tensors, output_tensors):
+    """Creates a TocoConverter class from a TensorFlow Session."""
+    return TFLiteConverter.from_session(sess, input_tensors, output_tensors)
+
+  @classmethod
+  @_deprecation.deprecated(
+      None, "Use `lite.TFLiteConverter.from_frozen_graph` instead.")
+  def from_frozen_graph(cls,
+                        graph_def_file,
+                        input_arrays,
+                        output_arrays,
+                        input_shapes=None):
+    """Creates a TocoConverter class from a file containing a frozen graph."""
+    return TFLiteConverter.from_frozen_graph(graph_def_file, input_arrays,
+                                             output_arrays, input_shapes)
+
+  @classmethod
+  @_deprecation.deprecated(
+      None, "Use `lite.TFLiteConverter.from_saved_model` instead.")
+  def from_saved_model(cls,
+                       saved_model_dir,
+                       input_arrays=None,
+                       input_shapes=None,
+                       output_arrays=None,
+                       tag_set=None,
+                       signature_key=None):
+    """Creates a TocoConverter class from a SavedModel."""
+    return TFLiteConverter.from_saved_model(saved_model_dir, input_arrays,
+                                            input_shapes, output_arrays,
+                                            tag_set, signature_key)
+
+  @classmethod
+  @_deprecation.deprecated(
+      None, "Use `lite.TFLiteConverter.from_keras_model_file` instead.")
+  def from_keras_model_file(cls,
+                            model_file,
+                            input_arrays=None,
+                            input_shapes=None,
+                            output_arrays=None):
+    """Creates a TocoConverter class from a tf.keras model file."""
+    return TFLiteConverter.from_keras_model_file(model_file, input_arrays,
+                                                 input_shapes, output_arrays)
 
 
 def _is_frozen_graph(sess):

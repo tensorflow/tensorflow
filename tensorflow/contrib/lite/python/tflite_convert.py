@@ -40,13 +40,13 @@ def _parse_set(values):
 
 
 def _get_toco_converter(flags):
-  """Makes a TocoConverter object based on the flags provided.
+  """Makes a TFLiteConverter object based on the flags provided.
 
   Args:
     flags: argparse.Namespace object containing TFLite flags.
 
   Returns:
-    TocoConverter object.
+    TFLiteConverter object.
 
   Raises:
     ValueError: Invalid flags.
@@ -68,17 +68,17 @@ def _get_toco_converter(flags):
       "output_arrays": output_arrays
   }
 
-  # Create TocoConverter.
+  # Create TFLiteConverter.
   if flags.graph_def_file:
-    converter_fn = lite.TocoConverter.from_frozen_graph
+    converter_fn = lite.TFLiteConverter.from_frozen_graph
     converter_kwargs["graph_def_file"] = flags.graph_def_file
   elif flags.saved_model_dir:
-    converter_fn = lite.TocoConverter.from_saved_model
+    converter_fn = lite.TFLiteConverter.from_saved_model
     converter_kwargs["saved_model_dir"] = flags.saved_model_dir
     converter_kwargs["tag_set"] = _parse_set(flags.saved_model_tag_set)
     converter_kwargs["signature_key"] = flags.saved_model_signature_key
   elif flags.keras_model_file:
-    converter_fn = lite.TocoConverter.from_keras_model_file
+    converter_fn = lite.TFLiteConverter.from_keras_model_file
     converter_kwargs["model_file"] = flags.keras_model_file
   else:
     raise ValueError("--graph_def_file, --saved_model_dir, or "
@@ -140,8 +140,11 @@ def _convert_model(flags):
   if flags.change_concat_input_ranges:
     converter.change_concat_input_ranges = (
         flags.change_concat_input_ranges == "TRUE")
+
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
+  if flags.converter_mode:
+    converter.converter_mode = flags.converter_mode
 
   if flags.post_training_quantize:
     converter.post_training_quantize = flags.post_training_quantize
@@ -363,6 +366,8 @@ def run_main(_):
       help=("Boolean to change behavior of min/max ranges for inputs and "
             "outputs of the concat operator for quantized models. Changes the "
             "ranges of concat operator overlap when true. (default False)"))
+
+  # Permitted ops flags.
   parser.add_argument(
       "--allow_custom_ops",
       action="store_true",
@@ -371,6 +376,12 @@ def run_main(_):
             "created for any op that is unknown. The developer will need to "
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
+  parser.add_argument(
+      "--converter_mode",
+      type=lite.ConverterMode,
+      choices=list(lite.ConverterMode),
+      help=("Experimental flag, subject to change. ConverterMode indicating "
+            "which converter to use. (default ConverterMode.DEFAULT)"))
 
   # Logging flags.
   parser.add_argument(

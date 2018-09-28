@@ -1042,12 +1042,12 @@ Status GraphConstructor::Convert() {
   }
 
   if (processed < node_defs_.size()) {
-    LOG(WARNING) << "IN " << __func__ << (node_defs_.size() - processed)
+    LOG(WARNING) << "IN " << __func__ << " " << (node_defs_.size() - processed)
                  << " NODES IN A CYCLE";
     for (int64 i = 0; i < node_defs_.size(); i++) {
       if (pending_count_[i] != 0) {
         LOG(WARNING) << "PENDING: " << SummarizeNodeDef(*node_defs_[i])
-                     << "WITH PENDING COUNT = " << pending_count_[i];
+                     << " WITH PENDING COUNT = " << pending_count_[i];
       }
     }
     return errors::InvalidArgument(node_defs_.size() - processed,
@@ -1162,7 +1162,9 @@ Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
     const NodeDef* node_def = node_defs_[pair->second.gdef_index];
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def->op(), &op_def));
-    if (key.second >= op_def->output_arg_size()) {
+    int num_outputs;
+    TF_RETURN_IF_ERROR(NumOutputsForNode(*node_def, *op_def, &num_outputs));
+    if (key.second >= num_outputs) {
       // key's index out of bounds
       missing_unused_input_map_keys_->push_back(key);
     }

@@ -333,6 +333,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1638,6 +1639,15 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "experimental_dataset_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
@@ -1998,6 +2008,29 @@ py_library(
 )
 
 py_library(
+    name = "while_v2",
+    srcs = [
+        "ops/while_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":cond_v2_impl",
+        ":constant_op",
+        ":control_flow_util",
+        ":framework_ops",
+        ":function_def_to_graph",
+        ":functional_ops_gen",
+        ":gradients_impl",
+        ":list_ops",
+        ":tensor_shape",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_library(
     name = "cond_v2_impl",
     srcs = [
         "ops/cond_v2_impl.py",
@@ -2301,6 +2334,8 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":logging_ops_gen",
+        ":platform",
+        ":string_ops",
         ":util",
     ],
 )
@@ -3058,6 +3093,7 @@ cuda_py_test(
         ":functional_ops",
         ":gradients",
         ":layers",
+        ":list_ops",
         ":math_grad",
         ":math_ops",
         ":nn_grad",
@@ -3089,7 +3125,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "image_grad_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops/image_grad_test.py"],
     additional_deps = [
         ":client_testlib",
@@ -3737,6 +3773,19 @@ cuda_py_tests(
     ],
 )
 
+cc_library(
+    name = "session_ref",
+    srcs = ["client/session_ref.cc"],
+    hdrs = ["client/session_ref.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:master_proto_cc",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:replay_log_proto_cc",
+    ],
+)
+
 tf_cuda_library(
     name = "tf_session_helper",
     srcs = ["client/tf_session_helper.cc"],
@@ -3747,6 +3796,7 @@ tf_cuda_library(
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":safe_ptr",
+        ":session_ref",
         ":test_ops_kernels",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
@@ -3759,7 +3809,6 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_ref",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],

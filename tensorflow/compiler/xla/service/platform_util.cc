@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -217,9 +218,12 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
   if (platform->id() == se::host::kHostPlatformId) {
     // On host "devices", StreamExecutor exports a device for each hardware
     // thread. Because we parallelize a single computation across threads, it
-    // doesn't make sense to expose these as separate devices, so fix the number
-    // of devices to one.
-    device_count = 1;
+    // doesn't make sense to expose these as separate devices, so by default we
+    // fix the number of devices to one.  However we do let the user override
+    // this behavior to help run tests on the host that run models in parallel
+    // across multiple devices.
+    device_count = legacy_flags::GetDebugOptionsFromFlags()
+                       .xla_force_host_platform_device_count();
   }
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
   VLOG(1) << "Initializing devices";

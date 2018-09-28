@@ -2142,8 +2142,8 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
     def function_with_variables():
       with ops.init_scope():
-        v = resource_variable_ops.ResourceVariable(3)
-      return v.assign_add(1)
+        self.v = resource_variable_ops.ResourceVariable(3)
+      return self.v.assign_add(1)
 
     with context.eager_mode():
       # Each invocation of function_with_variables recreates a variable.
@@ -2188,13 +2188,13 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
     def inner_function():
       with ops.init_scope():
-        v = resource_variable_ops.ResourceVariable(1)
-      return v.assign_add(2)
+        self.v = resource_variable_ops.ResourceVariable(1)
+      return self.v.assign_add(2)
 
     def outer_function(inner=None):
       with ops.init_scope():
-        v0 = resource_variable_ops.ResourceVariable(0)
-      return v0.assign_add(1) + inner()
+        self.v0 = resource_variable_ops.ResourceVariable(0)
+      return self.v0.assign_add(1) + inner()
 
     with context.eager_mode():
       # Each invocation of outer_function recreates variables.

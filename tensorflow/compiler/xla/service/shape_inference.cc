@@ -1665,10 +1665,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (input_features != kernel_input_features * feature_group_count) {
     return InvalidArgument(
         "Expected LHS feature dimension (value %d) to match RHS "
-        "input feature dimension * feature_group_count (value %d); "
+        "input feature dimension * feature_group_count (value %d * %d = %d); "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_features, kernel_input_features * feature_group_count,
+        input_features, kernel_input_features, feature_group_count,
+        kernel_input_features * feature_group_count,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }

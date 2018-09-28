@@ -42,7 +42,7 @@ class CheckpointInputPipelineHookTest(test.TestCase):
     del config
     global_step = training_util.get_or_create_global_step()
     update_global_step_op = global_step.assign_add(1)
-    latest_feature = variables.Variable(
+    latest_feature = variables.VariableV1(
         0, name='latest_feature', dtype=dtypes.int64)
     store_latest_feature_op = latest_feature.assign(features)
     ops.add_to_collection('my_vars', global_step)

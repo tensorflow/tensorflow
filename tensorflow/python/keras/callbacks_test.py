@@ -30,6 +30,7 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
@@ -63,7 +64,7 @@ class KerasCallbacksTest(test.TestCase):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
 
       temp_dir = self.get_temp_dir()
@@ -226,7 +227,7 @@ class KerasCallbacksTest(test.TestCase):
           mode='unknown')
 
   def test_EarlyStopping(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(123)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -265,7 +266,7 @@ class KerasCallbacksTest(test.TestCase):
             verbose=0)
 
   def test_EarlyStopping_reuse(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       patience = 3
       data = np.random.random((100, 1))
@@ -287,7 +288,7 @@ class KerasCallbacksTest(test.TestCase):
       assert len(hist.epoch) >= patience
 
   def test_EarlyStopping_with_baseline(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       baseline = 0.5
       (data, labels), _ = testing_utils.get_test_data(
@@ -321,7 +322,7 @@ class KerasCallbacksTest(test.TestCase):
     monitor.on_epoch_end(0, logs={'loss': 0.})
 
   def test_LearningRateScheduler(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -368,7 +369,7 @@ class KerasCallbacksTest(test.TestCase):
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -470,7 +471,7 @@ class KerasCallbacksTest(test.TestCase):
     self.assertEqual(reduce_on_plateau.min_delta, 1e-13)
 
   def test_CSVLogger(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
@@ -549,7 +550,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       fp = os.path.join(tmpdir, 'test.csv')
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -601,7 +602,7 @@ class KerasCallbacksTest(test.TestCase):
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -666,7 +667,7 @@ class KerasCallbacksTest(test.TestCase):
         i %= max_batch_index
 
     # case: Sequential
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
@@ -743,7 +744,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       filepath = os.path.join(tmpdir, 'logs')
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -815,7 +816,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       filepath = os.path.join(tmpdir, 'logs')
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -925,7 +926,7 @@ class KerasCallbacksTest(test.TestCase):
     y_test = keras.utils.to_categorical(y_test)
     y_train = keras.utils.to_categorical(y_train)
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
@@ -969,7 +970,7 @@ class KerasCallbacksTest(test.TestCase):
       while True:
         yield x, y
 
-    with self.test_session():
+    with self.cached_session():
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=10, num_classes=10, input_dim=100)
       model.compile(
@@ -1011,7 +1012,7 @@ class KerasCallbacksTest(test.TestCase):
       os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
   def test_LambdaCallback(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1055,7 +1056,7 @@ class KerasCallbacksTest(test.TestCase):
       assert not t.is_alive()
 
   def test_TensorBoard_with_ReduceLROnPlateau(self):
-    with self.test_session():
+    with self.cached_session():
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
@@ -1194,7 +1195,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
-    with self.test_session():
+    with self.cached_session():
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
           test_samples=TEST_SAMPLES,
@@ -1222,6 +1223,45 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
+  def test_fit_generator_with_callback(self):
+
+    class TestCallback(keras.callbacks.Callback):
+      def set_model(self, model):
+        # Check the model operations for the optimizer operations that
+        # the _make_train_function adds under a named scope for the
+        # optimizer. This ensurs the full model is populated before the
+        # set_model callback is called.
+        optimizer_name_scope = 'training/' + model.optimizer.__class__.__name__
+        graph_def = ops.get_default_graph().as_graph_def()
+        for node in graph_def.node:
+          if node.name.startswith(optimizer_name_scope):
+            return
+        raise RuntimeError('The optimizer operations are not present in the '
+                           'model graph when the Callback.set_model function '
+                           'is called')
+    np.random.seed(1337)
+
+    def generator():
+      x = np.random.randn(10, 100).astype(np.float32)
+      y = np.random.randn(10, 10).astype(np.float32)
+      while True:
+        yield x, y
+
+    with self.cached_session():
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=10, num_classes=10, input_dim=100)
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit_generator(
+          generator(),
+          steps_per_epoch=2,
+          epochs=1,
+          validation_data=generator(),
+          validation_steps=2,
+          callbacks=[TestCallback()],
+          verbose=0)
 
 if __name__ == '__main__':
   test.main()

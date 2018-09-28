@@ -158,7 +158,7 @@ class ShapeOpsTest(test.TestCase):
   # Disabled because it takes too long to run, but manually verified
   # as passing at time of writing.
   def _test64BitOutput(self):
-    with self.test_session():
+    with self.cached_session():
       inp = array_ops.zeros([2**31])
       num_elements = array_ops.size_internal(
           inp, optimize=False, out_type=dtypes.int64)
@@ -166,7 +166,7 @@ class ShapeOpsTest(test.TestCase):
 
     # Too large for tf.int32 output.
     with self.assertRaises(errors_impl.InvalidArgumentError):
-      with self.test_session():
+      with self.cached_session():
         inp = array_ops.zeros([2**31])
         num_elements = array_ops.size_internal(
             inp, optimize=False, out_type=dtypes.int32)
@@ -228,7 +228,7 @@ class ShapeOpsTest(test.TestCase):
     self._compareExpandDimsAll(choice([2, 3, 5]), -4)
 
   def testExpandDimsErrors(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaises(ValueError, array_ops.expand_dims,
                         np.zeros([2, 3, 5]), -5)
       self.assertRaises(ValueError, array_ops.expand_dims,
@@ -239,7 +239,7 @@ class ShapeOpsTest(test.TestCase):
                         [False, True, True], 4)
 
   def testExpandDimsGradient(self):
-    with self.test_session():
+    with self.cached_session():
       inp = constant_op.constant(
           np.random.rand(4, 2).astype("f"), dtype=dtypes.float32)
       squeezed = array_ops.expand_dims(inp, 1)
@@ -249,7 +249,7 @@ class ShapeOpsTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   def testExpandDimsScalar(self):
-    with self.test_session():
+    with self.cached_session():
       inp = constant_op.constant(7)
       self.assertAllEqual([7], array_ops.expand_dims(inp, 0).eval())
       self.assertAllEqual([7], array_ops.expand_dims(inp, -1).eval())
@@ -375,7 +375,7 @@ class ShapeOpsTest(test.TestCase):
                           np.zeros([1, 2, 1]), [2, 3])
 
   def testSqueezeGradient(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = array_ops.reshape(inp, [4, 1, 2])
       squeezed = array_ops.squeeze(a, [])
@@ -385,7 +385,7 @@ class ShapeOpsTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   def testSqueezeGradientWithSqueezeDims(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = array_ops.reshape(inp, [4, 1, 2, 1])
       squeezed = array_ops.squeeze(a, [1])
@@ -395,7 +395,7 @@ class ShapeOpsTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   def testSqueezeWithUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       a = array_ops.placeholder(dtypes.float32, shape=[2, None])
 
       squeezed = array_ops.squeeze(a, [1])
@@ -433,7 +433,7 @@ class TileTest(test.TestCase):
       self.assertTrue((result == np.tile(inp, (1, 4))).all())
 
   def testIdentityTileAndGrad(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 1).astype(np.float32)
       a = constant_op.constant(inp)
       tiled = array_ops.tile(a, [1, 1])
@@ -443,7 +443,7 @@ class TileTest(test.TestCase):
     self.assertTrue((result == np.tile(inp, (1, 1))).all())
 
   def testEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(2, 3).astype(np.float32)
       a = constant_op.constant(inp)
       tiled = array_ops.tile(a, [5, 0])
@@ -453,7 +453,7 @@ class TileTest(test.TestCase):
 
   def testUnknownInputShape(self):
     """Importing can call _TileShape without shape of <multiples> known."""
-    with self.test_session():
+    with self.cached_session():
       inp = array_ops.placeholder(dtypes.float32)  # unknown shape
       multiples = constant_op.constant([1, 2, 3, 4], dtype=np.int32)
       tiled = array_ops.tile(inp, multiples)
@@ -503,7 +503,7 @@ class TileTest(test.TestCase):
       self.assertAllEqual(result, np.tile(inp, (1, 4)))
 
   def testInvalidDim(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 1).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.ravel(order="C")],
@@ -546,7 +546,7 @@ class TileTest(test.TestCase):
       self._RunAndVerifyResult(10, use_gpu=True)
 
   def testGradientSimpleReduction(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 1).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 1], dtype=dtypes.float32)
@@ -561,7 +561,7 @@ class TileTest(test.TestCase):
     self.assertAllClose(np.sum(grad_inp, axis=1).reshape(4, 1), result, 1e-3)
 
   def testGradientStridedReduction(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 2], dtype=dtypes.float32)
@@ -634,7 +634,7 @@ class TileTest(test.TestCase):
     self._RunAndVerifyGradientResult([2, 1, 3, 3, 2], [1, 3, 3, 1, 2])
 
   def testGradientStridedReductionGC(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 2], dtype=dtypes.float32)
@@ -647,7 +647,7 @@ class TileTest(test.TestCase):
                                   dtype=dtypes.float32)
     outputs = array_ops.gather(array_ops.tile(inputs, [3]),
                                [1, 5, 9, 3, 7, 2, 2, 2])
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(
           inputs, inputs.get_shape().as_list(),
           outputs, outputs.get_shape().as_list())
@@ -659,7 +659,7 @@ class TileTest(test.TestCase):
     inputs = array_ops.reshape(inputs, [-1, 1, 1])
     outputs = array_ops.gather(array_ops.tile(inputs, [3, 4, 2]),
                                [1, 5, 9, 3, 7, 2, 2, 2])
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(
           inputs, inputs.get_shape().as_list(),
           outputs, outputs.get_shape().as_list())

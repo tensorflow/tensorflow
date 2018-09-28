@@ -30,7 +30,8 @@ namespace gpu {
 
 namespace {
 bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
-  CHECK_EQ(conv.custom_call_target(), kCudnnConvForwardCallTarget);
+  CHECK(conv.custom_call_target() == kCudnnConvForwardCallTarget ||
+        conv.custom_call_target() == kCudnnConvBiasActivationForwardCallTarget);
   return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
          !window_util::HasDilation(conv.window());
@@ -161,12 +162,14 @@ bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
 
   // The conv CustomCall returns a tuple (conv_result, scratch_buffer).  Extract
   // out the shape of conv_result.
-  Shape old_conv_shape = conv->shape().tuple_shapes(0);
-
   VLOG(1) << "Canonicalizing forward conv";
-  auto new_conv = CreateCudnnConvForward(
-      old_conv_shape, new_input, new_kernel, new_conv_window,
-      conv->convolution_dimension_numbers(), conv->feature_group_count());
+  std::vector<HloInstruction*> operands(conv->operands().begin(),
+                                        conv->operands().end());
+  operands[0] = new_input;
+  operands[1] = new_kernel;
+  auto new_conv = conv->parent()->AddInstruction(
+      conv->CloneWithNewOperands(conv->shape(), operands));
+  new_conv->set_window(new_conv_window);
   VLOG(1) << "Replacing:\n  " << conv->ToString() << "\nwith:\n  "
           << new_conv->ToString();
   TF_CHECK_OK(conv->parent()->ReplaceInstruction(conv, new_conv));
@@ -242,10 +245,10 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
 
   // The shape of the backward_conv CustomCall is a tuple (conv_result,
   // scratch_buffer).  Extract out the shape of conv_result.
-  Shape backward_conv_shape = backward_conv->shape().tuple_shapes(0);
-  HloInstruction* new_backward_conv = CreateCudnnConvBackwardFilter(
-      backward_conv_shape, padded_input, output, new_backward_conv_window,
-      backward_conv_dnums, backward_conv->feature_group_count());
+  HloInstruction* new_backward_conv =
+      computation->AddInstruction(backward_conv->CloneWithNewOperands(
+          backward_conv->shape(), {padded_input, output}));
+  new_backward_conv->set_window(new_backward_conv_window);
 
   VLOG(1) << "Canonicalizing backward filter conv";
   VLOG(1) << "Replacing:\n  " << backward_conv->ToString() << "\nwith:\n  "
@@ -308,9 +311,12 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   HloInstruction* output = backward_conv->mutable_operand(0);
   HloInstruction* filter = backward_conv->mutable_operand(1);
 
-  HloInstruction* new_backward_conv_call = CreateCudnnConvBackwardInput(
-      new_backward_conv_shape, output, filter, new_backward_conv_window,
-      backward_conv_dnums, backward_conv->feature_group_count());
+  HloInstruction* new_backward_conv_call =
+      computation->AddInstruction(backward_conv->CloneWithNewOperands(
+          ShapeUtil::MakeTupleShape(
+              {new_backward_conv_shape, ShapeUtil::MakeShape(U8, {0})}),
+          {output, filter}));
+  new_backward_conv_call->set_window(new_backward_conv_window);
 
   // The CustomCall created above returns a tuple (conv_result, scratch_memory).
   // Extract out the two elements.
@@ -380,7 +386,8 @@ StatusOr<bool> PadInsertion::RunOnComputation(HloComputation* computation) {
   }
   for (HloInstruction* instruction : convs) {
     const auto& target = instruction->custom_call_target();
-    if (target == kCudnnConvForwardCallTarget) {
+    if (target == kCudnnConvForwardCallTarget ||
+        target == kCudnnConvBiasActivationForwardCallTarget) {
       changed |= CanonicalizeForwardConvolution(instruction);
     } else if (target == kCudnnConvBackwardFilterCallTarget) {
       changed |= CanonicalizeBackwardFilterConvolution(instruction);

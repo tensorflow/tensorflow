@@ -163,8 +163,8 @@ class TestStateSaverWithCounters(TestStateSaver):
 
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
-    self._num_state_calls = variables_lib.Variable(0)
-    self._num_save_state_calls = variables_lib.Variable(0)
+    self._num_state_calls = variables_lib.VariableV1(0)
+    self._num_save_state_calls = variables_lib.VariableV1(0)
 
   def state(self, name):
     with ops_lib.control_dependencies(

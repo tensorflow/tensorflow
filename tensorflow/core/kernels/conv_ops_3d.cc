@@ -386,7 +386,8 @@ struct LaunchConvOp<GPUDevice, T> {
     // filter: [x, y, z, in, out]
     // t_filter: [out, in, x, y, z]
     functor::TransformFilter<GPUDevice, T, int, 5>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 5>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter.tensor<T, 5>()),
         To32Bit(transformed_filter.tensor<T, 5>()));
 
     Tensor transformed_output;
@@ -434,10 +435,16 @@ struct LaunchConvOp<GPUDevice, T> {
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmDesc> algorithms;
-      CHECK(stream->parent()->GetConvolveAlgorithms(
-          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-              stream->parent()),
-          &algorithms));
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetConvolveAlgorithms(
+                      conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+                          stream->parent()),
+                      &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because cuDNN failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
@@ -514,7 +521,8 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                           \
   template <>                                                         \
   void TransformFilter<GPUDevice, T, int, 5>::operator()(             \
-      const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,       \
+      typename TTypes<T, 5, int>::ConstTensor in,                     \
       typename TTypes<T, 5, int>::Tensor out);                        \
   template <>                                                         \
   void ReverseTransformFilter<GPUDevice, T, 5>::operator()(           \

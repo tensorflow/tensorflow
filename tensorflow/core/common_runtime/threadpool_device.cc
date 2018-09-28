@@ -113,8 +113,11 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
+#ifdef ENABLE_MKL
 REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+#endif  // ENABLE_MKL
+
 }  // namespace
-#endif
+#endif  // INTEL_MKL
 
 }  // namespace tensorflow
