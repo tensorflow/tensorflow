@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 from tensorflow.contrib.data.python.ops import writers
 from tensorflow.python.data.ops import dataset_ops
@@ -52,6 +53,7 @@ class TFRecordWriterTest(test.TestCase):
     for i in range(self._num_records):
       writer.write(self._record(i))
     writer.close()
+    sys.stdout.flush()
     return filename
 
   def _inputFilename(self):
