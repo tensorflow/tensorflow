@@ -66,7 +66,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
     "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
-    "//tensorflow/contrib/data/python/kernel_tests:test_utils",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",

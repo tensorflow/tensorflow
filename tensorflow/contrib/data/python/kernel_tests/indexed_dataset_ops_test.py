@@ -20,6 +20,7 @@ from __future__ import print_function
 import unittest
 
 from tensorflow.contrib.data.python.ops import indexed_dataset_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -28,7 +29,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.platform import test
 
 
-class IndexedDatasetOpsTest(test.TestCase):
+class IndexedDatasetOpsTest(test_base.DatasetTestBase):
 
   def testLowLevelIndexedDatasetOps(self):
     identity = ged_ops.experimental_identity_indexed_dataset(

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -31,7 +32,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
-class WindowDatasetTest(test.TestCase, parameterized.TestCase):
+class WindowDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _structuredDataset(self, structure, shape, dtype):
     if structure is None:

@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,7 +32,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 
 
-class HoistRandomUniformTest(test.TestCase, parameterized.TestCase):
+class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @staticmethod
   def map_functions():

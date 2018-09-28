@@ -30,6 +30,7 @@ import numpy as np
 from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import readers
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -43,37 +44,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CsvDatasetOpTest(test.TestCase):
-
-  def _get_next(self, dataset):
-    # Returns a no argument function whose result is fed to self.evaluate to
-    # yield the next element
-    it = dataset.make_one_shot_iterator()
-    if context.executing_eagerly():
-      return it.get_next
-    else:
-      get_next = it.get_next()
-      return lambda: get_next
-
-  def _assert_datasets_equal(self, ds1, ds2):
-    assert ds1.output_shapes == ds2.output_shapes, ('output_shapes differ: %s, '
-                                                    '%s') % (ds1.output_shapes,
-                                                             ds2.output_shapes)
-    assert ds1.output_types == ds2.output_types
-    assert ds1.output_classes == ds2.output_classes
-    next1 = self._get_next(ds1)
-    next2 = self._get_next(ds2)
-    # Run through datasets and check that outputs match, or errors match.
-    while True:
-      try:
-        op1 = self.evaluate(next1())
-      except (errors.OutOfRangeError, ValueError) as e:
-        # If op1 throws an exception, check that op2 throws same exception.
-        with self.assertRaises(type(e)):
-          self.evaluate(next2())
-        break
-      op2 = self.evaluate(next2())
-      self.assertAllEqual(op1, op2)
+class CsvDatasetOpTest(test_base.DatasetTestBase):
 
   def _setup_files(self, inputs, linebreak='\n', compression_type=None):
     filenames = []
@@ -108,7 +79,7 @@ class CsvDatasetOpTest(test.TestCase):
     """Checks that CsvDataset is equiv to TextLineDataset->map(decode_csv)."""
     dataset_actual, dataset_expected = self._make_test_datasets(
         inputs, **kwargs)
-    self._assert_datasets_equal(dataset_actual, dataset_expected)
+    self.assertDatasetsEqual(dataset_actual, dataset_expected)
 
   def _verify_output_or_err(self,
                             dataset,
@@ -116,7 +87,7 @@ class CsvDatasetOpTest(test.TestCase):
                             expected_err_re=None):
     if expected_err_re is None:
       # Verify that output is expected, without errors
-      nxt = self._get_next(dataset)
+      nxt = self.getNext(dataset)
       expected_output = [[
           v.encode('utf-8') if isinstance(v, str) else v for v in op
       ] for op in expected_output]
@@ -128,7 +99,7 @@ class CsvDatasetOpTest(test.TestCase):
     else:
       # Verify that OpError is produced as expected
       with self.assertRaisesOpError(expected_err_re):
-        nxt = self._get_next(dataset)
+        nxt = self.getNext(dataset)
         while True:
           try:
             self.evaluate(nxt())
@@ -354,7 +325,7 @@ class CsvDatasetOpTest(test.TestCase):
     inputs = [['1,,3,4', '5,6,,8']]
     ds_actual, ds_expected = self._make_test_datasets(
         inputs, record_defaults=record_defaults)
-    self._assert_datasets_equal(
+    self.assertDatasetsEqual(
         ds_actual.repeat(5).prefetch(1),
         ds_expected.repeat(5).prefetch(1))
 
@@ -377,7 +348,7 @@ class CsvDatasetOpTest(test.TestCase):
 
     ds = readers.make_csv_dataset(
         file_path, batch_size=1, shuffle=False, num_epochs=1)
-    nxt = self._get_next(ds)
+    nxt = self.getNext(ds)
 
     result = list(self.evaluate(nxt()).values())
 
