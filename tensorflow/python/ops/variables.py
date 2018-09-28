@@ -2401,7 +2401,8 @@ class PartitionedVariable(object):
     partition_axes = self._partition_axes()
     if len(partition_axes) > 1:
       raise NotImplementedError(
-          "Multi-axis partition assign_fn is not supported "
+          "Cannot do assign action along more than one dimension: %s.  "
+          "Multi-axis partition assign action is not supported "
           % str(partition_axes))
     partition_ix = partition_axes[0]
     size_splits_list = [
@@ -2409,7 +2410,7 @@ class PartitionedVariable(object):
     value_list = array_ops.split(
         value, size_splits_list, axis=partition_ix)
     op_list = [
-        assign_fn(var, value_list[idx], idx) \
+        assign_fn(var, value_list[idx], idx)
         for idx, var in enumerate(self._variable_list)]
     return op_list
 
