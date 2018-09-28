@@ -134,7 +134,7 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
         math_ops.cast(self._epsilon_t, grad.dtype.base_dtype),
         grad, use_locking=self._use_locking)
 
-  def _apply_sparse_shared(self, grad, var, indices, scatter_op_wrapper):
+  def _apply_sparse_shared(self, grad, var, indices):
     beta1_power = self._get_beta_accumulators()
     beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
@@ -146,29 +146,28 @@ class AdaMaxOptimizer(adam.AdamOptimizer):
     m_slice = array_ops.gather(m, indices)
     m_t_slice = m_slice * beta1_t + grad * (1 - beta1_t)
     with ops.control_dependencies([m_t_slice]):
-      m_t = scatter_op_wrapper.update(m, indices, m_t_slice)
+      m_t = m.scatter_update(ops.IndexedSlices(m_t_slice, indices),
+                             use_locking=self._use_locking)
     # u_t = max(beta2 * u, abs(g_t))
     v = self.get_slot(var, "v")
     v_slice = array_ops.gather(v, indices)
     v_t_slice = math_ops.maximum(v_slice * beta2_t, math_ops.abs(grad))
     with ops.control_dependencies([v_t_slice]):
-      v_t = scatter_op_wrapper.update(v, indices, v_t_slice)
+      v_t = v.scatter_update(ops.IndexedSlices(v_t_slice, indices),
+                             use_locking=self._use_locking)
     # theta_t = theta - lr / (1 - beta1^t) * m_t / u_t
     var_slice = -lr_t / (1 - beta1_power) * (m_t_slice /
                                              (v_t_slice + epsilon_t))
     with ops.control_dependencies([var_slice]):
-      var_update = scatter_op_wrapper.add(var, indices, var_slice)
+      var_update = var.scatter_add(ops.IndexedSlices(var_slice, indices),
+                                   use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def _apply_sparse(self, grad, var):
-    return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
-        adam.AdamOptimizer._ScatterOpWrapper(self._use_locking))
+    return self._apply_sparse_shared(grad.values, var, grad.indices)
 
   def _resource_apply_sparse(self, grad, var, indices):
-    return self._apply_sparse_shared(
-        grad, var, indices,
-        adam.AdamOptimizer._ResourceScatterOpWrapper())
+    return self._apply_sparse_shared(grad, var, indices)
 
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
