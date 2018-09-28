@@ -5170,8 +5170,8 @@ class WeightedCategoricalColumnTest(test.TestCase):
             key='ids', num_buckets=3),
         weight_feature_key='values')
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(
-          ValueError, r'Dimensions.*are not compatible'):
+      with self.assertRaisesRegexp(ValueError,
+                                   r'Dimensions.*are not compatible'):
         model = fc.LinearModel((column,))
         model({
             'ids':
