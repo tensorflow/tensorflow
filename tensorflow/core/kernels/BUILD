@@ -1197,8 +1197,10 @@ tf_cc_test(
 
 tf_cc_test(
     name = "example_parsing_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["example_parsing_ops_test.cc"],
+    shard_count = 4,
+    tags = ["optonly"],
     deps = [
         ":example_parsing_ops",
         ":ops_testutil",
