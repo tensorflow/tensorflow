@@ -115,6 +115,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  if (cfg_.disable_meta_optimizer()) {
+    return Status::OK();
+  }
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
@@ -489,6 +492,9 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
+  if (cfg.disable_meta_optimizer()) {
+    return false;
+  }
   return !cfg.disable_model_pruning() ||
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() != RewriterConfig::OFF ||
