@@ -814,7 +814,8 @@ class MultiWorkerDataset(object):
   eager mode.
   """
 
-  def __init__(self, dataset_fn, worker_device_map, prefetch_on_device=None):
+  def __init__(self, dataset_fn, worker_device_map, prefetch_on_device=None,
+               auto_shard=False):
     """Initialize the MultiWorkerDataset object.
 
     Args:
@@ -822,6 +823,7 @@ class MultiWorkerDataset(object):
       worker_device_map: a dict mapping from each worker to a list of devices
         that belong to this worker.
       prefetch_on_device: whether to prefetch to devices.
+      auto_shard: whether to auto-shard the dataset.
     """
     self._worker_device_map = worker_device_map
     self._datasets = {}
@@ -831,8 +833,9 @@ class MultiWorkerDataset(object):
         six.iteritems(worker_device_map)):
       with ops.device(worker):
         worker_input = dataset_fn()
-        worker_input = input_ops.auto_shard_dataset(
-            worker_input, len(worker_device_map), i)
+        if auto_shard:
+          worker_input = input_ops.auto_shard_dataset(
+              worker_input, len(worker_device_map), i)
         self._datasets[worker] = PerDeviceDataset(
             worker_input,
             worker_devices,
