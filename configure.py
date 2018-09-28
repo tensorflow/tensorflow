@@ -1504,6 +1504,7 @@ def main():
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+    environ_cp['TF_ENABLE_XLA'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1515,7 +1516,7 @@ def main():
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                False, 'xla')
+                True, 'xla')
 
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
@@ -1624,4 +1625,3 @@ def main():
 
 if __name__ == '__main__':
   main()
-
