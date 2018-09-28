@@ -86,11 +86,10 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
   def _test_metric(self, distribution, dataset_fn, metric_fn, expected_fn):
     with ops.Graph().as_default(), distribution.scope():
       iterator = distribution.distribute_dataset(
-          dataset_fn).make_initializable_iterator()
+          dataset_fn).make_one_shot_iterator()
       value, update = distribution.call_for_each_tower(
           metric_fn, iterator.get_next())
       update = distribution.group(update)
-      self.evaluate(iterator.initializer)
       self.evaluate(variables.local_variables_initializer())
       # TODO(josh11b): Once we switch to using a global batch size for input,
       # replace "distribution.num_towers" with "1".
