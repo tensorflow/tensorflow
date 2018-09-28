@@ -230,7 +230,7 @@ def accepts(*types):
 
   def check_accepts(f):
     """Check the types."""
-    spec = tf_inspect.getfullargspec(f)
+    spec = tf_inspect.getargspec(f)
 
     num_function_arguments = len(spec.args)
     if len(types) != num_function_arguments:

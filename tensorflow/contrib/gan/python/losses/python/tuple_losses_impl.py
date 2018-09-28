@@ -101,7 +101,7 @@ def _args_to_gan_model(loss_fn):
   """
   # Match arguments in `loss_fn` to elements of `namedtuple`.
   # TODO(joelshor): Properly handle `varargs` and `keywords`.
-  argspec = tf_inspect.getfullargspec(loss_fn)
+  argspec = tf_inspect.getargspec(loss_fn)
   defaults = argspec.defaults or []
 
   required_args = set(argspec.args[:-len(defaults)])
