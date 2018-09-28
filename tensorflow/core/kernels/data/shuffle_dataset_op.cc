@@ -30,7 +30,7 @@ namespace {
 
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
