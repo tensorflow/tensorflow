@@ -3918,6 +3918,106 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   return true;
 }
 
+template <typename T>
+bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
+    Stream* stream,
+    int miopen_type,  // Actually miopenDataType_t.
+    const dnn::BatchDescriptor& conv_input_descriptor, const DeviceMemory<T>& conv_input_data,
+    const dnn::FilterDescriptor& filter_descriptor, const DeviceMemory<T>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& bias_descriptor, const DeviceMemory<T>& bias_data,
+    dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
+    dnn::ProfileResult* output_profile_result) {
+  
+  ScopedTensorDescriptor conv_input_nd{parent_, conv_input_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedTensorDescriptor bias_nd{parent_, bias_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedTensorDescriptor output_nd{parent_, output_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedConvolutionDescriptor conv{parent_, convolution_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedFilterDescriptor filter{parent_, filter_descriptor, conv_input_descriptor,
+      static_cast<miopenDataType_t>(miopen_type)};
+
+  ScopedActivationDescriptor activation_desc{parent_, activation_mode};
+
+  ScopedFusionPlanConvolutionBiasActivation fusion_plan{parent_, ToHandle(dnn_handle_),
+      conv_input_nd.handle(), filter.handle(), conv.handle(),
+      bias_nd.handle(), activation_desc.handle()};
+
+  const bool is_profiling = output_profile_result != nullptr;
+
+  std::unique_ptr<ROCMTimer> timer;
+  if (is_profiling) {
+    timer.reset(new ROCMTimer(parent_));
+    timer->Init();
+    timer->Start(AsROCMStream(stream));
+  }
+  
+  miopenStatus_t status = miopenStatusSuccess;
+
+  if (status == miopenStatusSuccess) {
+    fusion_plan.SetConvolutionArgs(filter_data.opaque());
+  }
+
+  if (status == miopenStatusSuccess) {
+    status = fusion_plan.SetBiasArgs(bias_data.opaque());
+  }
+
+  if (status == miopenStatusSuccess) {
+    status = fusion_plan.SetActivationArgs(activation_desc.handle());
+  }
+
+  if (status == miopenStatusSuccess) {
+    status = fusion_plan.Execute(conv_input_nd.handle(), conv_input_data.opaque(), output_nd.handle(), output_data->opaque());
+  }
+
+  if (is_profiling) {
+    timer->Stop(AsROCMStream(stream));
+    if (status == miopenStatusSuccess) {
+      output_profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+    }
+    timer->Destroy();
+  }
+
+  if (status != miopenStatusSuccess) {
+    // Silently return when we are profiling.
+    if (!is_profiling) {
+      LOG(FATAL) << "failed to enqueue fused-convolution on stream: " << ToString(status);
+      return false;
+    }
+  }
+
+  return true;
+}
+  
+bool MIOpenSupport::DoFusedConvolutionBiasActivation(
+    Stream* stream,
+    const dnn::BatchDescriptor& conv_input_descriptor, const DeviceMemory<float>& conv_input_data,
+    const dnn::FilterDescriptor& filter_descriptor, const DeviceMemory<float>& filter_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& bias_descriptor, const DeviceMemory<float>& bias_data,
+    dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
+    dnn::ProfileResult* output_profile_result) {
+
+  return DoFusedConvolutionBiasActivationImpl<float>
+    (stream, miopenFloat,
+     conv_input_descriptor, conv_input_data,
+     filter_descriptor, filter_data,
+     convolution_descriptor,
+     bias_descriptor, bias_data,
+     activation_mode,
+     output_descriptor, output_data,
+     output_profile_result);
+}
+  
 }  // namespace rocm
 
 namespace gpu = ::stream_executor;

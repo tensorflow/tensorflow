@@ -2002,6 +2002,18 @@ class Stream {
                                dnn::ToDataType<OutElemT>(), output_data);
   }
 
+  // Routines to do fused operations
+
+  // Fused Convolution+Bias+Activation (float)
+  Stream &ThenFusedConvolveBiasActivation(
+      const dnn::BatchDescriptor &conv_input_descriptor, const DeviceMemory<float> &conv_input_data,
+      const dnn::FilterDescriptor &filter_descriptor, const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &bias_descriptor, const DeviceMemory<float> &bias_data,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output_data);
+  
+
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.

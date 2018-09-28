@@ -5465,6 +5465,41 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
+
+Stream &Stream::ThenFusedConvolveBiasActivation(
+    const dnn::BatchDescriptor &conv_input_descriptor, const DeviceMemory<float> &conv_input_data,
+    const dnn::FilterDescriptor &filter_descriptor, const DeviceMemory<float> &filter_data,
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    const dnn::BatchDescriptor &bias_descriptor, const DeviceMemory<float> &bias_data,
+    dnn::ActivationMode activation_mode,
+    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output_data) {
+
+  VLOG_CALL(PARAM(conv_input_descriptor), PARAM(conv_input_data),
+	    PARAM(filter_descriptor), PARAM(filter_data),
+	    PARAM(convolution_descriptor),
+	    PARAM(bias_descriptor), PARAM(bias_data),
+	    PARAM(activation_mode),
+	    PARAM(output_descriptor), PARAM(output_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoFusedConvolutionBiasActivation(
+	  this, conv_input_descriptor, conv_input_data,
+	  filter_descriptor, filter_data,
+	  convolution_descriptor,
+	  bias_descriptor, bias_data,
+	  activation_mode,
+	  output_descriptor, output_data,
+	  /*output_profile_result=*/nullptr));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+
+  return *this;
+}
+  
+  
 port::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 

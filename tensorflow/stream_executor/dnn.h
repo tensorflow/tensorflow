@@ -2318,6 +2318,45 @@ class DnnSupport {
     return false;
   }
 
+
+
+  // Enqueues a fused convolution+bias+activation operation onto the stream.
+  //
+  // Arguments (all borrowed):
+  //
+  //  stream: borrowed pointer to the stream that the 'fusion' operation should be enqueued onto.
+  //
+  //  conv_input_descriptor: dimensions of the convolution input layer.
+  //  conv_input_data: device memory which contains the convolution input.
+  //
+  //  filter_descriptor: dimensions of the convolution filter.
+  //  filter_data: device memory which contains the convolution filter weights.
+  //
+  //  convolution_descriptor: stride of the convolution filter.
+  //
+  //  bias_descriptor: dimensions of the bias layer
+  //  biases: device memory region containing biases to add to the convolution output
+  //
+  //  activation_mode: Type of activation to perform.
+  //
+  //  output_descriptor: dimensions of the output layer.
+  //  output_data: device memory region in which to place the fusion result.
+  //
+  //  output_profile_result: the output profile result for this call.
+  //         The profiling is only enabled when this is not nullptr.
+  //
+  virtual bool DoFusedConvolutionBiasActivation(
+	Stream* stream,
+	const dnn::BatchDescriptor& conv_input_descriptor, const DeviceMemory<float>& conv_input_data,
+	const dnn::FilterDescriptor& filter_descriptor, const DeviceMemory<float>& filter_data,
+	const dnn::ConvolutionDescriptor& convolution_descriptor,
+	const dnn::BatchDescriptor& bias_descriptor, const DeviceMemory<float>& bias_data,
+	dnn::ActivationMode activation_mode,
+	const dnn::BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
+	dnn::ProfileResult* output_profile_result) {
+    return false;
+  }
+  
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
 };

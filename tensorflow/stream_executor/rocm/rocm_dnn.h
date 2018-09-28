@@ -630,6 +630,18 @@ class MIOpenSupport : public dnn::DnnSupport {
                          dnn::DataType output_type, float scale,
                          DeviceMemoryBase* output_data) override;
 
+  
+  bool DoFusedConvolutionBiasActivation(
+      Stream* stream,
+      const dnn::BatchDescriptor& conv_input_descriptor, const DeviceMemory<float>& conv_input_data,
+      const dnn::FilterDescriptor& filter_descriptor, const DeviceMemory<float>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor, const DeviceMemory<float>& bias_data,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor, DeviceMemory<float>* output_data,
+      dnn::ProfileResult* output_profile_result) override;
+
+  
   ROCMExecutor* GetParentExecutor() { return parent_; }
 
  private:
@@ -778,6 +790,20 @@ class MIOpenSupport : public dnn::DnnSupport {
                          DeviceMemory<uint8>* reserve_space_data,
                          ScratchAllocator* workspace_allocator);
 
+  
+  template <typename T>
+  bool DoFusedConvolutionBiasActivationImpl(
+      Stream* stream,
+      int miopen_type,  // Actually miopenDataType_t.
+      const dnn::BatchDescriptor& conv_input_descriptor, const DeviceMemory<T>& conv_input_data,
+      const dnn::FilterDescriptor& filter_descriptor, const DeviceMemory<T>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& bias_descriptor, const DeviceMemory<T>& bias_data,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
+      dnn::ProfileResult* output_profile_result);
+
+  
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };
 
