@@ -92,47 +92,6 @@ Status FunctionalizeControlFlowForFunction(
   });
   const FunctionBody* body = flr->GetFunctionBody(handle);
 
-  // If any node has associated functions, functionalize them first.
-  // Gather nodes with associated functions first, because rewriting those nodes
-  // might involve node deletion/addition. Avoid modifying nodes while iterating
-  // it.
-  std::vector<std::pair<Node*, std::vector<AssociatedFunctionInfo>>>
-      nodes_to_associated_functions;
-  for (auto* n : body->graph->nodes()) {
-    auto associated_functions = GetAssociatedFunctions(*n, flr);
-    if (!associated_functions.empty()) {
-      nodes_to_associated_functions.push_back({n, associated_functions});
-    }
-  }
-  for (auto iter : nodes_to_associated_functions) {
-    Node* n = iter.first;
-    auto associated_functions = iter.second;
-    for (auto& associated_function : associated_functions) {
-      string name = associated_function.func_name();
-      string canonicalized_name =
-          Canonicalize(name, AttrSlice(&associated_function.attrs()));
-      auto iter = canonicalized_name_to_new_name->find(canonicalized_name);
-      string new_name;
-      if (iter != canonicalized_name_to_new_name->end()) {
-        // If we already functionalized this function, skip functionalization
-        // but still rewrite the node.
-        new_name = iter->second;
-      } else {
-        new_name = fld->UniqueFunctionName(absl::StrCat(name, "_f15n_"));
-        TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
-            name, new_name, associated_function.attrs(), fld, flr,
-            canonicalized_name_to_new_name));
-        (*canonicalized_name_to_new_name)[canonicalized_name] = new_name;
-      }
-      // Notice that if "n" is a function call, RewriteAssociatedFunction() will
-      // delete it and create a new node instead, making "n" an invalid pointer.
-      // That's fine because in that case, associated_functions will only have
-      // one member and the loop will only run once.
-      TF_RETURN_IF_ERROR(RewriteAssociatedFunction(
-          body->graph, n, fld, associated_function, new_name));
-    }
-  }
-
   // Call graph optimizer. The most important optimization we need is constant
   // folding, which will replace ops like Shape/BroadcastGradientArgs with
   // constant shape input. Without this optimization, those ops might become
@@ -165,6 +124,59 @@ Status FunctionalizeControlFlowForFunction(
                      /*device=*/nullptr, &optimized_graph,
                      /*shape_map=*/nullptr, /*cse_consider_fn=*/nullptr,
                      cf_consider_fn);
+  if (VLOG_IS_ON(4)) {
+    dump_graph::DumpGraphToFile(
+        absl::StrCat("functionalize_control_flow_after_opt_", func_name),
+        *optimized_graph, fld);
+  }
+
+  // If any node has associated functions, functionalize them first.
+  // Gather nodes with associated functions first, because rewriting those nodes
+  // might involve node deletion/addition. Avoid modifying nodes while iterating
+  // it.
+  std::vector<std::pair<Node*, std::vector<AssociatedFunctionInfo>>>
+      nodes_to_associated_functions;
+  for (auto* n : optimized_graph->nodes()) {
+    auto associated_functions = GetAssociatedFunctions(*n, flr);
+    if (!associated_functions.empty()) {
+      nodes_to_associated_functions.push_back({n, associated_functions});
+    }
+  }
+  for (auto iter : nodes_to_associated_functions) {
+    Node* n = iter.first;
+    auto associated_functions = iter.second;
+    for (auto& associated_function : associated_functions) {
+      string name = associated_function.func_name();
+      string canonicalized_name =
+          Canonicalize(name, AttrSlice(&associated_function.attrs()));
+      auto iter = canonicalized_name_to_new_name->find(canonicalized_name);
+      string new_name;
+      if (iter != canonicalized_name_to_new_name->end()) {
+        // If we already functionalized this function, skip functionalization
+        // but still rewrite the node.
+        new_name = iter->second;
+      } else {
+        if (associated_function.type() ==
+            AssociatedFunctionInfo::AssociatedFunctionType::kSymbolicGradient) {
+          // For SymbolicGradient, `name` is always "SymbolicGradient",
+          // which is not very informative. Use node name instead.
+          new_name = fld->UniqueFunctionName(absl::StrCat(n->name(), "_f15n_"));
+        } else {
+          new_name = fld->UniqueFunctionName(absl::StrCat(name, "_f15n_"));
+        }
+        TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
+            name, new_name, associated_function.attrs(), fld, flr,
+            canonicalized_name_to_new_name));
+        (*canonicalized_name_to_new_name)[canonicalized_name] = new_name;
+      }
+      // Notice that if "n" is a function call, RewriteAssociatedFunction() will
+      // delete it and create a new node instead, making "n" an invalid pointer.
+      // That's fine because in that case, associated_functions will only have
+      // one member and the loop will only run once.
+      TF_RETURN_IF_ERROR(RewriteAssociatedFunction(
+          optimized_graph.get(), n, fld, associated_function, new_name));
+    }
+  }
 
   // Functionalize the function body.
   if (VLOG_IS_ON(4)) {
