@@ -44,10 +44,15 @@ PyRecordReader* PyRecordReader::New(const string& filename, uint64 start_offset,
   uint64 file_size;
   // for some cloud file system (gcs). For empty files, we can still get error
   // messages form read, we use file size to hijack the actual reader.
-  Status s = Env::Default()->GetFileSize(filename, &file_size);
-  if (file_size == 0) {
-    Set_TF_Status_from_Status(out_status, errors::OutOfRange("eof"));
+  Status s1 = Env::Default()->GetFileSize(filename, &file_size);
+  if (!s1.ok()) {
+    Set_TF_Status_from_Status(out_status, s1);
     return nullptr;
+  } else {
+    if (file_size == 0) {
+      Set_TF_Status_from_Status(out_status, errors::OutOfRange("eof"));
+      return nullptr;
+    }
   }
   PyRecordReader* reader = new PyRecordReader;
   reader->offset_ = start_offset;
