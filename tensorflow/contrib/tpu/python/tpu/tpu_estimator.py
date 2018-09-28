@@ -404,12 +404,17 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     self._feed_error = None
     self._finished = False
+    self._should_initialize_tpu = True
 
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
-    self._init_ops = [tpu.initialize_system(job=self._master_job)]
-    self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
+    if self._should_initialize_tpu:
+      self._init_ops = [tpu.initialize_system(job=self._master_job)]
+      self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
+    else:
+      self._init_ops = []
+      self._finalize_ops = []
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
     self._init_ops.extend(summary_writer_init_ops)
