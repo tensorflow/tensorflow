@@ -1511,12 +1511,8 @@ def batch_dot(x, y, axes=None):
       out = math_ops.reduce_sum(
           math_ops.multiply(array_ops.transpose(x, [1, 0]), y), axes[1])
   else:
-    if axes is not None:
-      adj_x = None if axes[0] == ndim(x) - 1 else True
-      adj_y = True if axes[1] == ndim(y) - 1 else None
-    else:
-      adj_x = None
-      adj_y = None
+    adj_x = None if axes[0] == ndim(x) - 1 else True
+    adj_y = True if axes[1] == ndim(y) - 1 else None
     out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
   if diff:
     if x_ndim > y_ndim:
