@@ -2017,6 +2017,7 @@ py_library(
         ":array_ops",
         ":cond_v2_impl",
         ":constant_op",
+        ":control_flow_ops",
         ":control_flow_util",
         ":framework_ops",
         ":function_def_to_graph",

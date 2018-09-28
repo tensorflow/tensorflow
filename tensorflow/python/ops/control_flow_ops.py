@@ -60,8 +60,17 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
 
+# The while_v2 module.
+_while_v2 = None
 
 ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+# Note: Setting this to True is not sufficient to switch to the v2 while_loop.
+# Users must also import the while_v2 module to set the _while_v2 module
+# variable above. We do this to avoid a circular dependency:
+# control_flow_ops -> while_v2 -> gradients_impl -> control_flow_ops
+# A ValueError is raised in tf.while_loop if this is set to True and the
+# `_while_v2` module is not set.
+ENABLE_WHILE_V2 = os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -3211,6 +3220,13 @@ def while_loop(cond,
   ```
 
   """
+  if ENABLE_WHILE_V2 and not context.executing_eagerly():
+    if not _while_v2:
+      raise ValueError("The while_v2 module is not set. Did you forget to "
+                       "import tensorflow.python.ops."
+                       "while_v2?")
+    return _while_v2.while_loop(cond, body, loop_vars, name)
+
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")
