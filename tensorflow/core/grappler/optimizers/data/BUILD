@@ -124,10 +124,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:mutable_graph_view",
-        "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
     ] + tf_protos_all(),
 )
@@ -523,6 +523,7 @@ cc_library(
         ":function_utils",
         ":graph_utils",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -538,6 +539,7 @@ tf_cc_test(
     srcs = ["vectorization_utils_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_utils",
         ":function_utils",
         ":vectorization_utils",
         "//tensorflow/core:framework",
@@ -547,7 +549,10 @@ tf_cc_test(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        # For ops we need registered
+        "//tensorflow/core/kernels/data:dataset_ops",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),
 )

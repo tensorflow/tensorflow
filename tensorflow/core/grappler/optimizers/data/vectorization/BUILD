@@ -9,13 +9,14 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
 VECTORIZER_DEPS = [
     ":vectorizer_registry",
-    "//tensorflow/core/grappler/optimizers/data:function_utils",
+    "//tensorflow/core/grappler/optimizers/data:graph_utils",
 ] + tf_protos_all()
 
 cc_library(
     name = "vectorizer",
     hdrs = ["vectorizer.h"],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
     ] + tf_protos_all(),
 )
