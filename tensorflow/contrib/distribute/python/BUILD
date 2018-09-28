@@ -453,7 +453,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "estimator_training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
         ":combinations",
