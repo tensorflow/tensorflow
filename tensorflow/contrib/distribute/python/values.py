@@ -708,10 +708,8 @@ class PerDeviceDataset(object):
       dataset,
       devices,
       prefetch_on_device=None,
-      source_device="/cpu:0",
   ):
     self._devices = devices
-    self._source_device = source_device if source_device is not None else "/cpu:0"
 
     # Default to using prefetching in graph mode, unless specified.
     # TODO(rohanj): Enable prefetching in eager mode.
@@ -750,7 +748,7 @@ class PerDeviceDataset(object):
                        "Please use `make_one_shot_iterator` instead.")
     if self._prefetch_on_device:
       dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-          self._dataset, self._devices, source_device=self._source_device)
+          self._dataset, self._devices)
     else:
       dataset_iterator = self._dataset.make_initializable_iterator()
     return PerDeviceDataIterator(
@@ -838,7 +836,6 @@ class MultiWorkerDataset(object):
         self._datasets[worker] = PerDeviceDataset(
             worker_input,
             worker_devices,
-            source_device=worker,
             prefetch_on_device=prefetch_on_device)
 
   def make_one_shot_iterator(self):
