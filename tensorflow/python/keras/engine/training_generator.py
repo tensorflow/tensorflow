@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras.utils.data_utils import OrderedEnqueuer
@@ -48,6 +49,10 @@ def fit_generator(model,
   epoch = initial_epoch
 
   do_validation = bool(validation_data)
+  if not context.executing_eagerly():
+    model._make_train_function()
+    if do_validation:
+      model._make_test_function()
 
   is_sequence = isinstance(generator, Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
@@ -233,6 +238,9 @@ def evaluate_generator(model,
                        use_multiprocessing=False,
                        verbose=0):
   """See docstring for `Model.evaluate_generator`."""
+  if not context.executing_eagerly():
+    model._make_test_function()
+
   if hasattr(model, 'metrics'):
     for m in model.stateful_metric_functions:
       m.reset_states()
@@ -342,6 +350,9 @@ def predict_generator(model,
                       use_multiprocessing=False,
                       verbose=0):
   """See docstring for `Model.predict_generator`."""
+  if not context.executing_eagerly():
+    model._make_test_function()
+
   steps_done = 0
   wait_time = 0.01
   all_outs = []
