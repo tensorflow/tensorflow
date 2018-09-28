@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 // TODO(prazek): Filter already has a logic of filtering by the given tensor,
 // but it must return both components.  We could introduce kernel like

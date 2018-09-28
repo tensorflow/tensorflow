@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
