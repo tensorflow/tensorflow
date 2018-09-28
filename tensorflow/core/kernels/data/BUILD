@@ -765,6 +765,7 @@ tf_kernel_library(
         ":window_dataset_op",
         ":writer_ops",
         ":zip_dataset_op",
+        "//tensorflow/core/kernels/data/experimental:dataset_kernels",
     ],
 )
 

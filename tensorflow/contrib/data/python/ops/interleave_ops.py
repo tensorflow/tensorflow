@@ -18,8 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import stateless
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -28,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 
@@ -167,10 +166,12 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return gen_dataset_ops.directed_interleave_dataset(
-        self._selector_input._as_variant_tensor(),
-        [data_input._as_variant_tensor() for data_input in self._data_inputs],
-        **dataset_ops.flat_structure(self))
+    return (
+        gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
+            self._selector_input._as_variant_tensor(), [
+                data_input._as_variant_tensor()
+                for data_input in self._data_inputs
+            ], **dataset_ops.flat_structure(self)))
     # pylint: enable=protected-access
 
   def _inputs(self):

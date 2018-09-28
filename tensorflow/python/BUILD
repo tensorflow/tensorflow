@@ -1639,6 +1639,15 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "experimental_dataset_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )

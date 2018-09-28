@@ -19,14 +19,13 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
 class MaterializedIndexedDataset(object):
@@ -57,7 +56,7 @@ class MaterializedIndexedDataset(object):
       A tensor containing the values corresponding to `index`.
     """
     # TODO(saeta): nest.pack_sequence_as(...)
-    return gen_dataset_ops.indexed_dataset_get(
+    return ged_ops.experimental_indexed_dataset_get(
         self._materialized_resource,
         index,
         output_types=nest.flatten(
@@ -90,16 +89,18 @@ class IndexedDataset(dataset_ops.Dataset):
       container = ""
     if shared_name is None:
       shared_name = ""
-    materialized_resource = gen_dataset_ops.materialized_index_dataset_handle(
-        container=container,
-        shared_name=shared_name,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_types(self.output_shapes, self.output_classes)))
+    materialized_resource = (
+        ged_ops.experimental_materialized_index_dataset_handle(
+            container=container,
+            shared_name=shared_name,
+            output_types=nest.flatten(
+                sparse.as_dense_types(self.output_types, self.output_classes)),
+            output_shapes=nest.flatten(
+                sparse.as_dense_types(self.output_shapes,
+                                      self.output_classes))))
 
     with ops.colocate_with(materialized_resource):
-      materializer = gen_dataset_ops.indexed_dataset_materialize(
+      materializer = ged_ops.experimental_indexed_dataset_materialize(
           self._as_variant_tensor(), materialized_resource)
     return MaterializedIndexedDataset(materialized_resource, materializer,
                                       self.output_classes, self.output_types,
@@ -170,7 +171,7 @@ class IdentityIndexedDataset(IndexedDataset):
     return tensor_shape.scalar()
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.identity_indexed_dataset(self._size)
+    return ged_ops.experimental_identity_indexed_dataset(self._size)
 
   def _inputs(self):
     return []

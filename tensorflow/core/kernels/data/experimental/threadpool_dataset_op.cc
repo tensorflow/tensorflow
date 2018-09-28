@@ -209,10 +209,11 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("ThreadPoolHandle").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("ExperimentalThreadPoolHandle").Device(DEVICE_CPU),
                         ThreadPoolHandleOp);
-REGISTER_KERNEL_BUILDER(Name("ThreadPoolDataset").Device(DEVICE_CPU),
-                        ThreadPoolDatasetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalThreadPoolDataset").Device(DEVICE_CPU),
+    ThreadPoolDatasetOp);
 
 }  // namespace
 }  // namespace data
