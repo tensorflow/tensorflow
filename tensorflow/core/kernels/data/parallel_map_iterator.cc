@@ -27,6 +27,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+// TODO(b/116852688): Make coordination between the performance model and this
+// transformation more robust.
 class ParallelMapIterator : public DatasetBaseIterator {
  public:
   explicit ParallelMapIterator(
