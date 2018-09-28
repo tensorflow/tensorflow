@@ -482,8 +482,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       return values.PerDeviceDataset(
           self._call_dataset_fn(dataset_fn),
           self._devices,
-          self._prefetch_on_device,
-          source_device=device_util.resolve("/device:CPU:0"))
+          self._prefetch_on_device)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
