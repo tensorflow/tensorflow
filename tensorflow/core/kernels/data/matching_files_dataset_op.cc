@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 
 namespace tensorflow {
 namespace data {
@@ -238,27 +239,36 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             }
           }
 
-          std::map<string, Status> children_dir_status;
+          std::vector<Status> children_dir_status;
+          children_dir_status.resize(children.size());
+
           // This IsDirectory call can be expensive for some FS. Parallelizing
           // it.
-          ForEach(
-              ctx, 0, children.size(),
-              [fs, &cur_dir, &children, &fixed_prefix,
-               &children_dir_status](int i) {
-                const string child_path = io::JoinPath(cur_dir, children[i]);
-                // In case the child_path doesn't start with the fixed_prefix,
-                // then we don't need to explore this path.
-                if (!str_util::StartsWith(child_path, fixed_prefix)) {
-                  children_dir_status[child_path] = Status(
-                      tensorflow::error::CANCELLED, "Operation not needed");
-                } else {
-                  children_dir_status[child_path] = fs->IsDirectory(child_path);
-                }
-              });
+          auto is_directory_fn = [fs, &cur_dir, &children, &fixed_prefix,
+              &children_dir_status](int i) {
+            const string child_path = io::JoinPath(cur_dir, children[i]);
+            // In case the child_path doesn't start with the fixed_prefix, then
+            // we don't need to explore this path.
+            if (!str_util::StartsWith(child_path, fixed_prefix)) {
+              children_dir_status[i] = Status(
+                  tensorflow::error::CANCELLED, "Operation not needed");
+            } else {
+              children_dir_status[i] = fs->IsDirectory(child_path);
+            }
+          };
 
-          for (const auto& child : children) {
-            const string child_dir_path = io::JoinPath(cur_dir, child);
-            const Status child_dir_status = children_dir_status[child];
+          BlockingCounter counter(children.size());
+          for (int i = 0; i < children.size(); i++) {
+            (*ctx->runner())([&is_directory_fn, &counter, i] {
+              is_directory_fn(i);
+              counter.DecrementCount();
+            });
+          }
+          counter.Wait();
+
+          for (int i = 0; i < children.size(); i++) {
+            const string child_dir_path = io::JoinPath(cur_dir, children[i]);
+            const Status child_dir_status = children_dir_status[i];
             // If the IsDirectory call was cancelled we bail.
             if (child_dir_status.code() == tensorflow::error::CANCELLED) {
               continue;
@@ -277,13 +287,6 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           }
         }
         return ret;
-      }
-
-      static void ForEach(IteratorContext* ctx, int first, int last,
-                          const std::function<void(int)>& f) {
-        for (int i = first; i < last; i++) {
-          (*ctx->runner())([f, i] { std::bind(f, i); });
-        }
       }
 
       mutex mu_;
