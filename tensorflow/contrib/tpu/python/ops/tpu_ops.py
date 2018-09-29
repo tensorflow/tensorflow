@@ -200,6 +200,33 @@ if platform.system() != "Windows":
     return gen_tpu_ops.infeed_dequeue_tuple(dtypes, shapes, name=name)
   # pylint: enable=redefined-outer-name
 
+  # pylint: disable=protected-access
+  def send_tpu_embedding_gradients(inputs,
+                                   config,
+                                   learning_rates=None,
+                                   name=None):
+    """A placeholder op for feeding per-sample gradients to the embedding layer.
+
+    Args:
+      inputs: A TensorList of gradients with which to update embedding tables.
+        Contains one tensor per embedding table in the model.
+      config: Serialized TPUEmbeddingConfiguration proto.
+      learning_rates: A TensorList of float32 scalars, one for each embedding
+        table, containing the learning rates for each table when dynamic
+        learning rate is enabled through the OptimizationParameters in
+        TPUEmbeddingConfiguration. When the learning rate is constant, the list
+        should be empty (optional).
+      name: A name for the operation (optional).
+
+    Returns:
+      A SendTPUEmbeddingGradients operation.
+    """
+    if learning_rates is None:
+      learning_rates = []
+    return gen_tpu_ops._send_tpu_embedding_gradients(
+        inputs=inputs, learning_rates=learning_rates, config=config, name=name)
+
+
 else:
   # We have already built the appropriate libraries into the binary via CMake
   # if we have built contrib, so we don't need this
