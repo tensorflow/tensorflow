@@ -349,11 +349,7 @@ class PerDeviceDatasetTest(test.TestCase):
   def _test_iterator_no_prefetch(self, devices, dataset, expected_values):
     per_device_dataset = values.PerDeviceDataset(
         dataset, devices, prefetch_on_device=False)
-    if context.executing_eagerly():
-      iterator = per_device_dataset.make_one_shot_iterator()
-    else:
-      iterator = per_device_dataset.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
+    iterator = per_device_dataset.make_one_shot_iterator()
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
@@ -370,14 +366,21 @@ class PerDeviceDatasetTest(test.TestCase):
     if not context.executing_eagerly():
       per_device_dataset = values.PerDeviceDataset(
           dataset, devices, prefetch_on_device=True)
-      iterator = per_device_dataset.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
+      iterator = per_device_dataset.make_one_shot_iterator()
 
+      # With prefetching, we cannot guarantee which input ends up on which
+      # device, so we verify that the complete set seen on all devices is
+      # correct, and equal numbers are distributed to each device.
+      combined_actual = []
+      combined_expected = []
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = self.evaluate(
-            [values.select_device(d, next_element) for d in devices])
-        self.assertEqual(expected_value, computed_value)
+        combined_actual.extend(
+            self.evaluate(
+                [values.select_device(d, next_element) for d in devices]))
+        combined_expected.extend(expected_value)
+
+      self.assertEqual(set(combined_expected), set(combined_actual))
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()

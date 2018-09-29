@@ -471,6 +471,9 @@ py_library(
     srcs = ["test_base.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/util:nest",
     ],
 )
 

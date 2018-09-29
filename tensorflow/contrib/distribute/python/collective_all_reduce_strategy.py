@@ -216,7 +216,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     """Configures the object.
 
     Args:
-      session_config: a @{tf.ConfigProto}
+      session_config: a `tf.ConfigProto`
       cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
         cluster configurations.
       task_type: the current task type, such as "worker".

@@ -22,6 +22,7 @@ import threading
 from tensorflow.contrib.data.python.ops import prefetching_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compat import compat
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -35,7 +36,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
 
-class PrefetchingKernelsOpsTest(test.TestCase):
+class PrefetchingKernelsOpsTest(test_base.DatasetTestBase):
 
   def setUp(self):
     self._event = threading.Event()
@@ -244,7 +245,7 @@ class PrefetchingKernelsOpsTest(test.TestCase):
       sess.run(destroy_op)
 
 
-class PrefetchToDeviceTest(test.TestCase):
+class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
   def testPrefetchToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
@@ -445,7 +446,7 @@ class PrefetchToDeviceTest(test.TestCase):
         sess.run(next_element)
 
 
-class CopyToDeviceTest(test.TestCase):
+class CopyToDeviceTest(test_base.DatasetTestBase):
 
   def testCopyToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)

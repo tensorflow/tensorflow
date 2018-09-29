@@ -118,16 +118,14 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
-        return Status::OK();
+        return errors::Unimplemented(dataset()->DebugString(),
+                                     " does not support checkpointing");
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        return errors::Unimplemented(dataset()->DebugString(),
+                                     " does not support checkpointing");
       }
 
      private:

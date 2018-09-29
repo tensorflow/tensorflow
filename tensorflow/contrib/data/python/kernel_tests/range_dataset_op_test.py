@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops import counter
 from tensorflow.contrib.data.python.ops import enumerate_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
 
-class RangeDatasetTest(test.TestCase):
+class RangeDatasetTest(test_base.DatasetTestBase):
 
   def testEnumerateDataset(self):
     components = (["a", "b"], [1, 2], [37.0, 38])

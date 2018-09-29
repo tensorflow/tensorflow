@@ -19,8 +19,6 @@ from __future__ import print_function
 
 import warnings
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
@@ -32,7 +30,8 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
-from tensorflow.python.ops import gen_dataset_ops as core_gen_dataset_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import resource_variable_ops
 
 
@@ -64,7 +63,7 @@ def function_buffering_resource(string_arg,
   """
   if shared_name is None:
     shared_name = ""
-  return gen_dataset_ops.function_buffering_resource(
+  return ged_ops.experimental_function_buffering_resource(
       string_arg=string_arg,
       target_device=target_device,
       shared_name=shared_name,
@@ -78,14 +77,14 @@ def function_buffering_resource(string_arg,
 def function_buffering_resource_get_next(function_buffer_resource,
                                          output_types,
                                          name=None):
-  return gen_dataset_ops.function_buffering_resource_get_next(
+  return ged_ops.experimental_function_buffering_resource_get_next(
       function_buffer_resource=function_buffer_resource,
       output_types=output_types,
       name=name)
 
 
 def function_buffering_resource_reset(function_buffer_resource, name=None):
-  return gen_dataset_ops.function_buffering_resource_reset(
+  return ged_ops.experimental_function_buffering_resource_reset(
       function_buffer_resource=function_buffer_resource, name=name)
 
 
@@ -136,7 +135,7 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    iterator_device = gen_dataset_ops.iterator_get_device(
+    iterator_device = ged_ops.experimental_iterator_get_device(
         self._input_iterator._iterator_resource)
 
     with ops.device(device):
@@ -162,10 +161,11 @@ class _PrefetchToDeviceIterator(object):
     if self._get_next_call_count > iterator_ops.GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(iterator_ops.GET_NEXT_CALL_WARNING_MESSAGE)
 
-    flat_ret = gen_dataset_ops.function_buffering_resource_get_next(
+    flat_ret = ged_ops.experimental_function_buffering_resource_get_next(
         self._buffering_resource,
-        output_types=nest.flatten(sparse.as_dense_types(
-            self.output_types, self.output_classes)), name=name)
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)),
+        name=name)
 
     ret = sparse.deserialize_sparse_tensors(
         nest.pack_sequence_as(self.output_types, flat_ret),
@@ -219,7 +219,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
                buffer_size):
     with ops.device("/device:CPU:0"):
       super(_PrefetchToDeviceEagerIterator, self).__init__(input_dataset)
-      input_iterator_handle = core_gen_dataset_ops.iterator_to_string_handle(
+      input_iterator_handle = gen_dataset_ops.iterator_to_string_handle(
           self._resource)
 
     self._device = device
@@ -238,7 +238,8 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
       self._buffering_resource = function_buffering_resource(
           f=_prefetch_fn,
           output_types=self._flat_output_types,
-          target_device=gen_dataset_ops.iterator_get_device(self._resource),
+          target_device=ged_ops.experimental_iterator_get_device(
+              self._resource),
           string_arg=input_iterator_handle,
           buffer_size=buffer_size,
           shared_name=iterator_ops._generate_shared_name(
@@ -252,7 +253,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
     # TODO(b/77291417): Fix
     with context.execution_mode(context.SYNC):
       with ops.device(self._device):
-        ret = gen_dataset_ops.function_buffering_resource_get_next(
+        ret = ged_ops.experimental_function_buffering_resource_get_next(
             function_buffer_resource=self._buffering_resource,
             output_types=self._flat_output_types)
       return sparse.deserialize_sparse_tensors(
@@ -409,12 +410,12 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
       """
       # pylint: disable=protected-access
       ds_variant = self._input_dataset._as_variant_tensor()
-      resource = core_gen_dataset_ops.anonymous_iterator(
+      resource = gen_dataset_ops.anonymous_iterator(
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       with ops.control_dependencies(
-          [core_gen_dataset_ops.make_iterator(ds_variant, resource)]):
-        return core_gen_dataset_ops.iterator_to_string_handle(resource)
+          [gen_dataset_ops.make_iterator(ds_variant, resource)]):
+        return gen_dataset_ops.iterator_to_string_handle(resource)
 
     @function.Defun()
     def _remote_init_func():
@@ -463,7 +464,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
       Returns:
         Tensor constant 0
       """
-      iterator_resource = core_gen_dataset_ops.iterator_from_string_handle_v2(
+      iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
           string_handle,
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
@@ -504,7 +505,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
 
   def _as_variant_tensor(self):
     with ops.device(self._target_device):
-      return core_gen_dataset_ops.generator_dataset(
+      return gen_dataset_ops.generator_dataset(
           self._init_captured_args,
           self._next_captured_args,
           self._finalize_captured_args,

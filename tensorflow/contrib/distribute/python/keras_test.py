@@ -173,13 +173,42 @@ def batch_wrapper(dataset, batch_size, distribution):
     return dataset.batch(batch_size)
 
 
-def all_combinations():
+def get_model():
+  x = keras.layers.Input(shape=(3,), name='input')
+  y = keras.layers.Dense(4, name='dense')(x)
+  model = keras.Model(x, y)
+  return model
+
+
+def get_dataset(distribution):
+  inputs = np.zeros((10, 3), dtype=np.float32)
+  targets = np.zeros((10, 4), dtype=np.float32)
+  dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+  dataset = dataset.repeat(100)
+  dataset = batch_wrapper(dataset, 10, distribution)
+  return dataset
+
+
+strategies = [combinations.default_strategy,
+              combinations.one_device_strategy,
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.mirrored_strategy_with_two_gpus,
+              combinations.tpu_strategy_one_step]
+
+
+def strategy_combinations():
   return combinations.combine(
-      distribution=[combinations.default_strategy,
-                    combinations.one_device_strategy,
-                    combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus,
-                    combinations.tpu_strategy_one_step],
+      distribution=strategies,
+      mode=['graph'])
+
+
+def strategy_and_optimizer_combinations():
+  return combinations.combine(
+      distribution=strategies,
+      optimizer=[combinations.adagrad_optimizer_v1_fn,
+                 combinations.adam_optimizer_v1_fn,
+                 combinations.gradient_descent_optimizer_v1_fn,
+                 combinations.rmsprop_optimizer_v1_fn],
       mode=['graph'])
 
 
@@ -360,9 +389,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
   def test_calling_model_with_numpy_arrays(self):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
@@ -392,23 +419,17 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       # with batch_size
       model.predict(inputs, batch_size=8)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(strategy_combinations())
   def test_calling_model_on_same_dataset(self, distribution):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae', keras.metrics.CategoricalAccuracy()]
       model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
-      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-      dataset = dataset.repeat(100)
-      dataset = batch_wrapper(dataset, 10, distribution)
+      dataset = get_dataset(distribution)
 
       # Call fit with validation data
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
@@ -461,23 +482,17 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
       model.fit(dataset_dict, epochs=1, steps_per_epoch=2, verbose=1)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(strategy_combinations())
   def test_fit_eval_and_predict_methods_on_dataset(self, distribution):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
       metrics = ['mae', keras.metrics.CategoricalAccuracy()]
       model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
-      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-      dataset = dataset.repeat(100)
-      dataset = batch_wrapper(dataset, 10, distribution)
+      dataset = get_dataset(distribution)
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
       model.evaluate(dataset, steps=2, verbose=1)
@@ -486,11 +501,23 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 validation_data=dataset, validation_steps=2)
 
+  @combinations.generate(strategy_and_optimizer_combinations())
+  def test_fit_eval_and_predict_with_optimizer(self, distribution, optimizer):
+    with self.cached_session():
+      model = get_model()
+
+      loss = 'mse'
+      model.compile(optimizer(), loss, distribute=distribution)
+
+      dataset = get_dataset(distribution)
+
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+      model.evaluate(dataset, steps=2, verbose=1)
+      model.predict(dataset, steps=2)
+
   def test_unsupported_features(self):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
@@ -500,11 +527,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
       model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
-      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-      dataset = dataset.repeat(100)
-      dataset = dataset.batch(10)
+      dataset = get_dataset(strategy)
 
       # Test with validation split
       with self.assertRaisesRegexp(
@@ -541,9 +564,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
   def test_calling_with_unsupported_predefined_callbacks(self):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.001)
       loss = 'mse'
@@ -552,11 +573,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
                                                      '/device:GPU:0'])
       model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
-      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-      dataset = dataset.repeat(100)
-      dataset = dataset.batch(10)
+      dataset = get_dataset(strategy)
 
       def schedule(_):
         return 0.001
@@ -580,9 +597,7 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
 
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
@@ -616,17 +631,13 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       mode=['graph']))
   def test_dataset_input_shape_fully_defined(self, distribution):
     with self.cached_session():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      model = get_model()
 
       optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       model.compile(optimizer, loss, distribute=distribution)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
-      targets = np.zeros((10, 4), dtype=np.float32)
-      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = get_dataset(distribution)
       # Input shapes are not fully known. Batch dimension is unknown as we are
       # not using the drop_remainder argument.
       dataset = dataset.repeat(100).batch(10)
@@ -698,7 +709,7 @@ class LossMaskingWithDistributionStrategyTest(test.TestCase):
 class NormalizationLayerWithDistributionStrategyTest(
     test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(strategy_combinations())
   def test_batchnorm_correctness(self, distribution):
     with self.cached_session():
       model = keras.models.Sequential()
@@ -726,7 +737,7 @@ class NormalizationLayerWithDistributionStrategyTest(
 class CorrectnessWithDistributionStrategyTest(test.TestCase,
                                               parameterized.TestCase):
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(strategy_combinations())
   def test_metric_correctness(self, distribution):
     with self.cached_session():
       keras.backend.set_image_data_format('channels_last')
@@ -756,7 +767,7 @@ class CorrectnessWithDistributionStrategyTest(test.TestCase,
       history = model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
       self.assertEqual(history.history['binary_accuracy'], [1.0])
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(strategy_combinations())
   def test_correctness(self, distribution):
     with self.cached_session():
       keras.backend.set_image_data_format('channels_last')

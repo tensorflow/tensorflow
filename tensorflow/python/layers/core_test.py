@@ -197,7 +197,8 @@ class DenseTest(test.TestCase):
     _ = dense(inputs)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(dense.losses, loss_keys)
+    self.evaluate([v.initializer for v in dense.variables])
+    self.assertAllEqual(self.evaluate(dense.losses), self.evaluate(loss_keys))
 
   def testKernelRegularizerWithReuse(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
@@ -218,7 +219,8 @@ class DenseTest(test.TestCase):
     _ = dense(inputs)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(dense.losses, loss_keys)
+    self.evaluate([v.initializer for v in dense.variables])
+    self.assertAllEqual(self.evaluate(dense.losses), self.evaluate(loss_keys))
 
   def testFunctionalDense(self):
     with self.cached_session():
