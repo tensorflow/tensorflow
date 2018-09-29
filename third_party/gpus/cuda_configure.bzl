@@ -1107,8 +1107,8 @@ def symlink_genrule_for_dir(
             # $(@D) will include the full path to the file.
             dest = "$(@D)/" + dest_dir + dest_files[i] if len(dest_files) != 1 else "$(@D)/" + dest_files[i]
 
-            # On Windows, symlink is not supported, so we just copy all the files.
-            cmd = "cp -f" if _is_windows(repository_ctx) else "ln -s"
+            # Copy the headers to create a sandboxable setup.
+            cmd = "cp -f"
             command.append(cmd + ' "%s" "%s"' % (src_files[i], dest))
             outs.append('        "' + dest_dir + dest_files[i] + '",')
     genrule = _genrule(
@@ -1334,27 +1334,14 @@ def _create_local_cuda_repository(repository_ctx):
         cuda_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
         cuda_defines["%{host_compiler_warnings}"] = ""
 
-        # TODO(klimek): We currently need to inject "/" as builtin directory path
-        # to disable bazel's dependency checks.
-        # The problem is that:
-        # - the python rules symlink the python headers into the bazel root
-        # - the rules use 'includes' in the BUILD file to redirect includes of the
-        #   python headers through those paths
-        # - bazel currently uses -isystem for include paths specified via 'includes'
-        # - gcc follows symlinks when resolving files via -isystem paths, and puts
-        #   the resolved paths into the .d file, which makes the dependency check
-        #   fail for bazel
-        # There are multiple possible ways to solve this:
-        # 1. make bazel not use -isystem for paths specified via 'includes'
-        # 2. cp the headers instead of symlinking them
-        #
-        # Once this is fixed, the right builtin directory path is:
-        # (host_compiler_includes +
-        #    "\n  cxx_builtin_include_directory: \"%s\"" % cuda_include_path)
-        # The cuda directory needs to be passed, as there is currently no rule
-        # providing the cuda headers in the same way the python headers are
-        # provided.
-        cuda_defines["%{host_compiler_includes}"] = "\n  cxx_builtin_include_directory: \"/\""
+        # nvcc has the system include paths built in and will automatically
+        # search them; we cannot work around that, so we add the relevant cuda
+        # system paths to the allowed compiler specific include paths.
+        cuda_defines["%{host_compiler_includes}"] = (
+            host_compiler_includes + "\n" +
+            _cuda_include_path(repository_ctx, cuda_config) +
+            "\n  cxx_builtin_include_directory: \"%s\"" % cupti_header_dir +
+            "\n  cxx_builtin_include_directory: \"%s\"" % cudnn_header_dir)
         nvcc_path = str(repository_ctx.path("%s/bin/nvcc%s" %
                                             (
                                                 cuda_config.cuda_toolkit_path,
