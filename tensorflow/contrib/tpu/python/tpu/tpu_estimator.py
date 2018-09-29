@@ -426,10 +426,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def _run_infeed(self, queue_ctx, session):
     logging.info('Starting infeed thread controller.')
     if self._initial_infeed_sleep_secs:
-      logging.info('%s thread sleeping for %d seconds.', self._name,
+      logging.info('Infeed thread sleeping for %d seconds.',
                    self._initial_infeed_sleep_secs)
       time.sleep(self._initial_infeed_sleep_secs)
-      logging.info('%s thread starting after sleep', self._name)
+      logging.info('Infeed thread starting after sleep')
 
     with self._rendezvous.catch_errors(source='infeed', session=session):
       if self._run_infeed_loop_on_coordinator:
