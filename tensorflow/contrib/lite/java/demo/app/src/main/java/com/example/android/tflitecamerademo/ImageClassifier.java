@@ -112,8 +112,6 @@ public abstract class ImageClassifier {
 
   /** Classifies a frame from the preview stream. */
   void classifyFrame(Bitmap bitmap, SpannableStringBuilder builder) {
-    printTopKLabels(builder);
-
     if (tflite == null) {
       Log.e(TAG, "Image classifier has not been initialized; Skipped.");
       builder.append(new SpannableString("Uninitialized Classifier."));
@@ -129,6 +127,7 @@ public abstract class ImageClassifier {
     applyFilter();
 
     // Print the results.
+    printTopKLabels(builder);
     long duration = endTime - startTime;
     SpannableString span = new SpannableString(duration + " ms");
     span.setSpan(new ForegroundColorSpan(android.graphics.Color.LTGRAY), 0, span.length(), 0);
