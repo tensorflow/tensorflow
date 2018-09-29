@@ -2624,7 +2624,7 @@ class MapDataset(UnaryDataset):
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
     wrapped_func = StructuredFunctionWrapper(
-      map_func, "Dataset.map()", input_dataset)
+        map_func, "Dataset.map()", input_dataset)
     self._output_classes = wrapped_func.output_classes
     self._output_shapes = wrapped_func.output_shapes
     self._output_types = wrapped_func.output_types
@@ -2633,11 +2633,11 @@ class MapDataset(UnaryDataset):
   def _as_variant_tensor(self):
     input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
     return gen_dataset_ops.map_dataset(
-      input_t,
-      self._map_func.captured_inputs,
-      f=self._map_func,
-      use_inter_op_parallelism=self._use_inter_op_parallelism,
-      **flat_structure(self))
+        input_t,
+        self._map_func.captured_inputs,
+        f=self._map_func,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        **flat_structure(self))
 
   @property
   def output_classes(self):
@@ -2658,7 +2658,7 @@ class MatchingFilesDataset(Dataset):
   def __init__(self, patterns):
     super(MatchingFilesDataset, self).__init__()
     self._patterns = ops.convert_to_tensor(
-      patterns, dtype=dtypes.string, name="patterns")
+        patterns, dtype=dtypes.string, name="patterns")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.matching_files_dataset(self._patterns)
