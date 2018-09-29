@@ -468,6 +468,10 @@ class Estimator(object):
 
       with ops.Graph().as_default():
         if self._eval_distribution:
+          # We want to create the iterations variable outside the distribution
+          # scope as that is just stored on the host and mainly used to drive
+          # the loop and doesn't need to be a Mirrored/Device variable.
+          training.get_or_create_steps_per_run_variable()
           with self._eval_distribution.scope():
             return _evaluate()
         else:

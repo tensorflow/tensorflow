@@ -78,7 +78,7 @@ class ReplicatedVariable(object):
     if tpu_context is None:
       return self._primary_var.handle
 
-    return tpu_context.get_replicated_var_handle(self)
+    return tpu_context.get_replicated_var_handle(self._name, self._vars)
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
