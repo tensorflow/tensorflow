@@ -336,7 +336,7 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keepdims=True)
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=axis, keepdims=True)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
