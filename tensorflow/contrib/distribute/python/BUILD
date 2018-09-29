@@ -22,6 +22,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":input_ops",
+        ":prefetching_ops_v2",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
@@ -29,7 +30,6 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
@@ -644,6 +644,32 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
+    ],
+)
+
+py_library(
+    name = "prefetching_ops_v2",
+    srcs = ["prefetching_ops_v2.py"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+cuda_py_test(
+    name = "prefetching_ops_v2_test",
+    srcs = ["prefetching_ops_v2_test.py"],
+    additional_deps = [
+        ":prefetching_ops_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 

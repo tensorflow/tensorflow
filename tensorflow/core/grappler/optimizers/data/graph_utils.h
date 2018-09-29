@@ -116,8 +116,8 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 // is unique across the graph.
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 
-// Sets the node name using the `prefix` name as a prefix while guaranteeing the
-// name is unique across the graph.
+// Sets the function name using the `prefix` name as a prefix while guaranteeing
+// the name is unique across the function library.
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function);
 

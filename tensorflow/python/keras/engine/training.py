@@ -851,7 +851,8 @@ class Model(Network):
     # able to clone a Dataset on multiple workers we can remove this lambda.
     result = self._distribution_strategy.distribute_dataset(lambda: x)
     iterator = result.make_initializable_iterator()
-    K.get_session().run(iterator.initializer)
+    with self._distribution_strategy.scope():
+      K.get_session().run(iterator.initializer)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)

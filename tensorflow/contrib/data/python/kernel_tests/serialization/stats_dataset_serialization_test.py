@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.contrib.data.python.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -89,6 +90,16 @@ class StatsDatasetSerializationTest(
     self.run_core_tests(
         lambda: self._build_dataset_multiple_tags(num_outputs, tag1, tag2),
         None, num_outputs)
+
+  def _build_dataset_stats_aggregator(self):
+    stats_aggregator = stats_ops.StatsAggregator()
+    return dataset_ops.Dataset.range(10).apply(
+        stats_ops.set_stats_aggregator(stats_aggregator))
+
+  def test_set_stats_aggregator_not_support_checkpointing(self):
+    with self.assertRaisesRegexp(errors.UnimplementedError,
+                                 "does not support checkpointing"):
+      self.run_core_tests(self._build_dataset_stats_aggregator, None, 10)
 
 
 if __name__ == "__main__":

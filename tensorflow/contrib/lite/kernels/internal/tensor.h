@@ -37,10 +37,6 @@ inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
              : nullptr;
 }
 
-inline Dims<4> GetTensorDims(std::vector<int32_t> data) {
-  return GetTensorDims(data.data(), data.size());
-}
-
 inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
   return RuntimeShape(data.size(), data.data());
 }

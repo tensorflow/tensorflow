@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import get_single_element
 from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -30,7 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class GetSingleElementTest(test.TestCase, parameterized.TestCase):
+class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("Zero", 0, 1),

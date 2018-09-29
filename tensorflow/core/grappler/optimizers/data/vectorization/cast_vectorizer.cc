@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization/vectorizer_registry.h"
 
 namespace tensorflow {
@@ -23,26 +23,21 @@ namespace vectorization_utils {
 
 class CastVectorizer : public Vectorizer {
  public:
-  Status Vectorize(const NodeDef& node, gtl::ArraySlice<string> inputs,
-                   FunctionDef* outer_scope,
-                   std::map<string, string>* conversion_map) override {
-    if (inputs.size() != 1) {
+  Status Vectorize(const Node& node, Graph* outer_scope,
+                   std::vector<Port>* input_ports,
+                   std::vector<Port>* output_ports) override {
+    Status s;
+    if (node.num_inputs() != 1) {
       return errors::Internal("Cast op should only have one input.");
     }
 
-    // Add new Cast node
-    NodeDef* new_cast_node = outer_scope->add_node_def();
-    *new_cast_node = node;
-    new_cast_node->clear_name();
-    function_utils::SetUniqueFunctionNodeName(
-        strings::StrCat("vectorized/", node.name()), outer_scope,
-        new_cast_node);
-    new_cast_node->set_input(0, inputs[0]);
+    // Add new Cast node with the same op and attrs as the original node
+    auto new_cast_node = outer_scope->AddNode(node.def(), &s);
+    TF_RETURN_IF_ERROR(s);
 
-    // Add the output mapping to conversion map
-    (*conversion_map)[strings::StrCat(node.name(), ":y:0")] =
-        strings::StrCat(new_cast_node->name(), ":y:0");
-
+    // Add input and output mappings
+    input_ports->push_back({new_cast_node, 0});
+    output_ports->push_back({new_cast_node, 0});
     return Status::OK();
   }
 };

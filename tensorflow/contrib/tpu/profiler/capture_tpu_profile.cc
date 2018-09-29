@@ -156,8 +156,7 @@ bool NewSession(const string& service_addr,
           channel_args));
   NewProfileSessionResponse new_session_response;
   TF_QCHECK_OK(FromGrpcStatus(
-      stub->NewSession(&context, new_session_request, &new_session_response)))
-      << new_session_response.error_message();
+      stub->NewSession(&context, new_session_request, &new_session_response)));
 
   std::cout << "Profile session succeed for host(s):"
             << str_util::Join(hostnames, ",") << std::endl;

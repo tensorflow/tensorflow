@@ -1488,11 +1488,7 @@ def main():
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_AWS'] = '0'
-    environ_cp['TF_NEED_GCP'] = '0'
-    environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
-    environ_cp['TF_NEED_KAFKA'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
@@ -1508,6 +1504,7 @@ def main():
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+    environ_cp['TF_ENABLE_XLA'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1516,18 +1513,8 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
-  set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
-                'with_jemalloc', True)
-  set_build_var(environ_cp, 'TF_NEED_GCP', 'Google Cloud Platform',
-                'with_gcp_support', True, 'gcp')
-  set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
-                'with_hdfs_support', True, 'hdfs')
-  set_build_var(environ_cp, 'TF_NEED_AWS', 'Amazon AWS Platform',
-                'with_aws_support', True, 'aws')
-  set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
-                'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                False, 'xla')
+                True, 'xla')
 
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
@@ -1636,4 +1623,3 @@ def main():
 
 if __name__ == '__main__':
   main()
-

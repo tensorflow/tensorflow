@@ -66,8 +66,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
     "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
-    "//tensorflow/contrib/data/python/kernel_tests:test_utils",
-    "//tensorflow/contrib/data/python/ops:contrib_op_loader",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",
@@ -169,27 +167,11 @@ filegroup(
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + select({
-        "//tensorflow:with_aws_support": [
-            "@aws//:LICENSE",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_gcp_support": [
-            "@com_github_googleapis_googleapis//:LICENSE",
-            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-        ],
-        "//conditions:default": [],
-    }) + select({
         "//tensorflow:with_jemalloc_linux_x86_64": [
             "@jemalloc//:COPYING",
         ],
         "//tensorflow:with_jemalloc_linux_ppc64le": [
             "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_kafka_support": [
-            "@kafka//:LICENSE",
         ],
         "//conditions:default": [],
     }) + select({
@@ -215,7 +197,16 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
-    ]) + tf_additional_license_deps(),
+    ]) + tf_additional_license_deps() + select({
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "@aws//:LICENSE",
+            "@com_github_googleapis_googleapis//:LICENSE",
+            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
+            "@kafka//:LICENSE",
+        ],
+    }),
 )
 
 sh_binary(
