@@ -80,6 +80,36 @@ def pairwise_distance(feature, squared=False):
   pairwise_distances = math_ops.multiply(pairwise_distances, mask_offdiagonals)
   return pairwise_distances
 
+def pairwise_distance_cosine(feature, squared=True):
+  """Computes the pairwise distance matrix using the cosine distance.
+
+  output[i, j] = 1 - tf.matmul(feature[i, :], feature[j, :]) /
+                        (tf.norm(feature[i, :]) * tf.norm(feature[j, :]))
+
+  Args:
+    feature: 2-D Tensor of size [number of data, feature dimension].
+    squared: Unused argument - only for compatibility with pairwise_distance
+
+  Returns:
+    pairwise_distances: 2-D Tensor of size [number of data, number of data].
+  """
+
+  # normalize feature tensor
+  epsilon = 1e-12
+  square_sum = math_ops.reduce_sum(math_ops.square(feature), 1, keepdims=True)
+  feature_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
+  normalized = math_ops.multiply(feature, feature_inv_norm)
+
+  prod = math_ops.matmul(normalized, array_ops.transpose(normalized))
+
+  pairwise_distances = 1. - prod
+
+  num_data = array_ops.shape(feature)[0]
+  # Explicitly set diagonals to zero.
+  mask_offdiagonals = array_ops.ones_like(pairwise_distances) - array_ops.diag(
+      array_ops.ones([num_data]))
+  pairwise_distances = math_ops.multiply(pairwise_distances, mask_offdiagonals)
+  return pairwise_distances
 
 def contrastive_loss(labels, embeddings_anchor, embeddings_positive,
                      margin=1.0):
@@ -154,7 +184,8 @@ def masked_minimum(data, mask, dim=1):
   return masked_minimums
 
 
-def triplet_semihard_loss(labels, embeddings, margin=1.0):
+def triplet_semihard_loss(labels, embeddings, margin=1.0,
+                          pairwise_dist_fn=pairwise_distance):
   """Computes the triplet loss with semi-hard negative mining.
 
   The loss encourages the positive distances (between a pair of embeddings with
@@ -170,6 +201,8 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0):
     embeddings: 2-D float `Tensor` of embedding vectors. Embeddings should
       be l2 normalized.
     margin: Float, margin term in the loss definition.
+    pairwise_dist_fn: Function to use to compute the pairwise distance.
+      Default is Euclidean pairwise distance.
 
   Returns:
     triplet_loss: tf.float32 scalar.
@@ -180,7 +213,7 @@ def triplet_semihard_loss(labels, embeddings, margin=1.0):
   labels = array_ops.reshape(labels, [lshape[0], 1])
 
   # Build pairwise squared distance matrix.
-  pdist_matrix = pairwise_distance(embeddings, squared=True)
+  pdist_matrix = pairwise_dist_fn(embeddings, squared=True)
   # Build pairwise binary adjacency matrix.
   adjacency = math_ops.equal(labels, array_ops.transpose(labels))
   # Invert so we can select negatives only.
@@ -404,7 +437,7 @@ def npairs_loss_multilabel(sparse_labels, embeddings_anchor,
     return l2loss + xent_loss
 
 
-def lifted_struct_loss(labels, embeddings, margin=1.0):
+def lifted_struct_loss(labels, embeddings, margin=1.0, pairwise_dist_fn=pairwise_distance):
   """Computes the lifted structured loss.
 
   The loss encourages the positive distances (between a pair of embeddings
@@ -419,6 +452,8 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
     embeddings: 2-D float `Tensor` of embedding vectors. Embeddings should not
       be l2 normalized.
     margin: Float, margin term in the loss definition.
+    pairwise_dist_fn: Function to use to compute the pairwise distance.
+      Default is Euclidean pairwise distance.
 
   Returns:
     lifted_loss: tf.float32 scalar.
@@ -429,8 +464,7 @@ def lifted_struct_loss(labels, embeddings, margin=1.0):
   labels = array_ops.reshape(labels, [lshape[0], 1])
 
   # Build pairwise squared distance matrix.
-  pairwise_distances = pairwise_distance(embeddings)
-
+  pairwise_distances = pairwise_dist_fn(embeddings)
   # Build pairwise binary adjacency matrix.
   adjacency = math_ops.equal(labels, array_ops.transpose(labels))
   # Invert so we can select negatives only.
@@ -942,6 +976,7 @@ def compute_gt_cluster_score(pairwise_distances, labels):
 def cluster_loss(labels,
                  embeddings,
                  margin_multiplier,
+                 pairwise_dist_fn=pairwise_distance,
                  enable_pam_finetuning=True,
                  margin_type='nmi',
                  print_losses=False):
@@ -960,6 +995,8 @@ def cluster_loss(labels,
       [batch size, embedding dimension]. Embeddings should be l2 normalized.
     margin_multiplier: float32 scalar. multiplier on the structured margin term
       See section 3.2 of paper for discussion.
+    pairwise_dist_fn: Function to use to compute the pairwise distance.
+      Default is Euclidean pairwise distance.
     enable_pam_finetuning: Boolean, Whether to run local pam refinement.
       See section 3.4 of paper for discussion.
     margin_type: Type of structured margin to use. See section 3.2 of
@@ -975,7 +1012,8 @@ def cluster_loss(labels,
   """
   if not HAS_SKLEARN:
     raise ImportError('Cluster loss depends on sklearn.')
-  pairwise_distances = pairwise_distance(embeddings)
+  pairwise_distances = pairwise_dist_fn(embeddings)
+
   labels = array_ops.squeeze(labels)
   all_ids = math_ops.range(array_ops.shape(embeddings)[0])
 
