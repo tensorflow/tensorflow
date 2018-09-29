@@ -50,7 +50,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #ifdef INTEL_MKL
-  // Eearly return when MKL is disabled
+  // Early return when MKL is disabled
   if (DisableMKL())
     return;
 #ifdef _OPENMP
@@ -118,7 +118,7 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
 };
 
 #ifdef ENABLE_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200), MklCPUAllocatorFactory);
 #endif  // ENABLE_MKL
 
 }  // namespace
