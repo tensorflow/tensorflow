@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/util/util.h"
 #include "tensorflow/core/platform/numa.h"
 
 #ifndef INTEL_MKL_DNN_ONLY
@@ -164,12 +163,6 @@ class MklCPUAllocator : public Allocator {
   }
 
   Status Initialize() {
-    if (DisableMKL()) {
-        VLOG(1) << "TF-MKL: Disabling pool allocator";
-        tf_disable_pool_allocator_flag_ = true;
-        return Status::OK();
-    }
-
     VLOG(2) << "MklCPUAllocator: In MklCPUAllocator";
 
     // Set upper bound on memory allocation to physical RAM available on the
@@ -224,10 +217,6 @@ class MklCPUAllocator : public Allocator {
   inline string Name() override { return kName; }
 
   inline void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    if (tf_disable_pool_allocator_flag_) {
-      return port::AlignedMalloc(num_bytes, alignment);
-    }
-
     // If the allocation size is less than threshold, call small allocator,
     // otherwise call large-size allocator (BFC). We found that BFC allocator
     // does not deliver good performance for small allocations when
@@ -238,10 +227,6 @@ class MklCPUAllocator : public Allocator {
   }
 
   inline void DeallocateRaw(void* ptr) override {
-    if (tf_disable_pool_allocator_flag_) {
-      port::AlignedFree(ptr);
-      return;
-    }
     // Check if ptr is for "small" allocation. If it is, then call Free
     // directly. Otherwise, call BFC to handle free.
     if (small_size_allocator_->IsSmallSizeAllocation(ptr)) {
@@ -252,30 +237,26 @@ class MklCPUAllocator : public Allocator {
   }
 
   void GetStats(AllocatorStats* stats) override {
-    if (!tf_disable_pool_allocator_flag_) {
-      AllocatorStats l_stats, s_stats;
-      small_size_allocator_->GetStats(&s_stats);
-      large_size_allocator_->GetStats(&l_stats);
+    AllocatorStats l_stats, s_stats;
+    small_size_allocator_->GetStats(&s_stats);
+    large_size_allocator_->GetStats(&l_stats);
 
-      // Combine statistics from small-size and large-size allocator.
-      stats->num_allocs = l_stats.num_allocs + s_stats.num_allocs;
-      stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
-      stats->max_bytes_in_use =
-          l_stats.max_bytes_in_use + s_stats.max_bytes_in_use;
+    // Combine statistics from small-size and large-size allocator.
+    stats->num_allocs = l_stats.num_allocs + s_stats.num_allocs;
+    stats->bytes_in_use = l_stats.bytes_in_use + s_stats.bytes_in_use;
+    stats->max_bytes_in_use =
+        l_stats.max_bytes_in_use + s_stats.max_bytes_in_use;
 
-      // Since small-size allocations go to MklSmallSizeAllocator,
-      // max_alloc_size from large_size_allocator would be the maximum
-      // size allocated by MklCPUAllocator.
-      stats->max_alloc_size = l_stats.max_alloc_size;
-      stats->bytes_limit = std::max(s_stats.bytes_limit, l_stats.bytes_limit);
-    }
+    // Since small-size allocations go to MklSmallSizeAllocator,
+    // max_alloc_size from large_size_allocator would be the maximum
+    // size allocated by MklCPUAllocator.
+    stats->max_alloc_size = l_stats.max_alloc_size;
+    stats->bytes_limit = std::max(s_stats.bytes_limit, l_stats.bytes_limit);
   }
 
   void ClearStats() override {
-    if (!tf_disable_pool_allocator_flag_) {
-      small_size_allocator_->ClearStats();
-      large_size_allocator_->ClearStats();
-    }
+    small_size_allocator_->ClearStats();
+    large_size_allocator_->ClearStats();
   }
 
  private:
@@ -314,7 +295,6 @@ class MklCPUAllocator : public Allocator {
   // The alignment that we need for the allocations
   static constexpr const size_t kAlignment = 64;
 
-  bool tf_disable_pool_allocator_flag_ = false;
   Allocator* large_size_allocator_;              // owned by this class
   MklSmallSizeAllocator* small_size_allocator_;  // owned by this class.
 
