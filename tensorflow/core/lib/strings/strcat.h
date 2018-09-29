@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 
+#include <complex>
 #include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -231,6 +232,10 @@ inline void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
   internal::AppendPieces(dest,
                          {a.Piece(), b.Piece(), c.Piece(), d.Piece(), e.Piece(),
                           static_cast<const AlphaNum &>(args).Piece()...});
+}
+template <class T>
+inline void StrAppend(string *dest, const std::complex<T> &a) {
+  StrAppend(dest, a.real(), "+", a.imag(), "j");
 }
 
 }  // namespace strings
