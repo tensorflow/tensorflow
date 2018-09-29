@@ -46,7 +46,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
       open(os.path.join(self.tmp_dir, filename), 'a').close()
 
   def testEmptyDirectory(self):
-    """Test the matchingfiles dataset with an empty directory"""
+    """Test the MatchingFiles dataset with an empty directory"""
 
     dataset = MatchingFilesDataset(os.path.join(self.tmp_dir, '*'))
     with self.cached_session() as sess:
@@ -55,7 +55,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         sess.run(next_element)
 
   def testSimpleDirectory(self):
-    """Test the matchingfiles dataset with a simple directory"""
+    """Test the MatchingFiles dataset with a simple directory"""
 
     filenames = ['a', 'b', 'c']
     self._touchTempFiles(filenames)
@@ -76,7 +76,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         sess.run(next_element)
 
   def testFileSuffixes(self):
-    """Test the matchingfiles dataset using the suffixes of filename"""
+    """Test the MatchingFiles dataset using the suffixes of filename"""
 
     filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
     self._touchTempFiles(filenames)
@@ -96,7 +96,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         sess.run(next_element)
 
   def testFileMiddles(self):
-    """Test the matchingfiles dataset using the middles of filename"""
+    """Test the MatchingFiles dataset using the middles of filename"""
 
     filenames = ['a.txt', 'b.py', 'c.pyc']
     self._touchTempFiles(filenames)
@@ -116,7 +116,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
         sess.run(next_element)
 
   def testNestedDirectories(self):
-    """Test the matchingfiles dataset with nested directories"""
+    """Test the MatchingFiles dataset with nested directories"""
 
     filenames = []
     width = 8
