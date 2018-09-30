@@ -3393,8 +3393,6 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
 
-_BIAS_VARIABLE_NAME = "bias"
-_WEIGHTS_VARIABLE_NAME = "kernel"
 
 class MLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Mulitiplicative LSTM Cell (MLSTM)
@@ -3469,41 +3467,41 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
     input_depth = inputs_shape[1].value
     h_depth = self._num_units
     self._wx_kernel = self.add_variable(
-        "wx/%s" % _WEIGHTS_VARIABLE_NAME,
+        "wx/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
         shape=[input_depth, 4 * h_depth],
         initializer=self._kernel_initializer)
     self._wh_kernel = self.add_variable(
-        "wh/%s" % _WEIGHTS_VARIABLE_NAME,
+        "wh/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
         shape=[h_depth, 4 * h_depth],
         initializer=self._kernel_initializer)
     self._wmx_kernel = self.add_variable(
-        "wmx/%s" % _WEIGHTS_VARIABLE_NAME,
+        "wmx/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
         shape=[input_depth, h_depth],
         initializer=self._kernel_initializer)
     self._wmh_kernel = self.add_variable(
-        "wmh/%s" % _WEIGHTS_VARIABLE_NAME,
+        "wmh/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
         shape=[h_depth, h_depth],
         initializer=self._kernel_initializer)
     self.bias = self.add_variable(
-        "b/%s" % _BIAS_VARIABLE_NAME,
+        "b/%s" % rnn_cell_impl._BIAS_VARIABLE_NAME,
         shape=[4 * h_depth],
         initializer=self._bias_initializer)
 
     if self._weight_normalization is True:
       self._gx_kernel = self.add_variable(
-          "gx/%s" % _WEIGHTS_VARIABLE_NAME,
+          "gx/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
           shape=[4 * h_depth],
           initializer=self._kernel_initializer)
       self._gh_kernel = self.add_variable(
-          "gh/%s" % _WEIGHTS_VARIABLE_NAME,
+          "gh/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
           shape=[4 * h_depth],
           initializer=self._kernel_initializer)
       self._gmx_kernel = self.add_variable(
-          "gmx/%s" % _WEIGHTS_VARIABLE_NAME,
+          "gmx/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
           shape=[h_depth],
           initializer=self._kernel_initializer)
       self._gmh_kernel = self.add_variable(
-          "gmh/%s" % _WEIGHTS_VARIABLE_NAME,
+          "gmh/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
           shape=[h_depth],
           initializer=self._kernel_initializer)
       self._wx_kernel = (nn_impl.l2_normalize(self._wx_kernel, axis=0)
