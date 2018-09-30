@@ -59,7 +59,7 @@ string SliceDebugString(const TensorShape& shape, const int64 flat);
 // disable MKL in runtime
 #ifdef INTEL_MKL
 bool DisableMKL();
-#endif
+#endif  // INTEL_MKL
 
 }  // namespace tensorflow
 
