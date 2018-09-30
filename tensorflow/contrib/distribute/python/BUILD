@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
