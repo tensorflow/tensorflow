@@ -1857,7 +1857,6 @@ bool OpGradientDoesntRequireInputIndices(
           {"Relu6", {true, {}}},
           {"Elu", {true, {}}},
           {"Selu", {true, {}}},
-          {"SparseSoftmaxCrossEntropyWithLogits", {true, {}}},
           {"Neg", {true, {}}},
           {"Inv", {true, {}}},
           {"Reciprocal", {true, {}}},
@@ -1875,6 +1874,7 @@ bool OpGradientDoesntRequireInputIndices(
 
           // Ops that don't require a subset of inputs.
           {"FusedBatchNorm", {false, {2}}},
+          {"SparseSoftmaxCrossEntropyWithLogits", {false, {1}}},
       });
 
   auto it = m->find(op_name);
