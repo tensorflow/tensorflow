@@ -139,5 +139,5 @@ bool DisableMKL() {
   }
   return status == MKL_OFF ? true : false;
 }
-#endif
+#endif  // INTEL_MKL
 }  // namespace tensorflow
