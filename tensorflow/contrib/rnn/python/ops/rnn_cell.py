@@ -3465,11 +3465,11 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
 
   @tf_utils.shape_type_conversion
   def build(self, inputs_shape):
-    if inputs_shape[1].value is None:
+    if inputs_shape[1] is None:
       raise ValueError("Expected inputs.shape[1] to be known, saw shape: %s"
                        % inputs_shape)
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape[1]
     h_depth = self._num_units
     self._wx_kernel = self.add_variable(
         "wx/%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
