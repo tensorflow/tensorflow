@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 
 namespace tensorflow {
 namespace data {
@@ -50,8 +50,6 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       pattern_strs.push_back(patterns(i));
     }
 
-    // keep the elements in the ascending order
-    std::sort(pattern_strs.begin(), pattern_strs.end());
     *output = new Dataset(ctx, std::move(pattern_strs));
   }
 
@@ -109,32 +107,39 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           // All the elements in the heap will be the matched filename or the
           // potential directory.
           if (!filepath_queue_.empty()) {
-            string cur_file = filepath_queue_.top();
+            string current_file = filepath_queue_.top();
             filepath_queue_.pop();
 
             // We can also use isDectory() here. But IsDirectory call can be
             // expensive for some FS.
-            if (ctx->env()->MatchPath(cur_file, current_pattern_)) {
+            if (ctx->env()->MatchPath(current_file, current_pattern_)) {
               Tensor filepath_tensor(ctx->allocator({}), DT_STRING, {});
-              filepath_tensor.scalar<string>()() = cur_file;
+              filepath_tensor.scalar<string>()() = current_file;
               out_tensors->emplace_back(std::move(filepath_tensor));
               *end_of_sequence = false;
               return Status::OK();
             }
 
-            // In this case, cur_file is a directory. Then create a sub-pattern
-            // to continue the search.
-            size_t pos = current_pattern_.find_first_of("*?[\\");
-            size_t len = current_pattern_.size() - pos;
-            string cur_pattern_suffix = current_pattern_.substr(pos, len);
-            string sub_pattern =
-                strings::StrCat(cur_file, "/", cur_pattern_suffix);
-            Status s = UpdateIterator(ctx, sub_pattern);
+            // In this case, current_file is a directory. Then continue the
+            // search.
+            const string& current_dir = current_file;
+            Status s = UpdateIterator(ctx, current_dir, current_pattern_);
             ret.Update(s);
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
-            Status s = UpdateIterator(ctx, current_pattern_);
+            string fixed_prefix = current_pattern_.substr(
+                0, current_pattern_.find_first_of("*?[\\"));
+            string current_dir(io::Dirname(fixed_prefix));
+
+            // If dir is empty then we need to fix up fixed_prefix and
+            // current_pattern_ to include . as the top level directory.
+            if (current_dir.empty()) {
+              current_dir = ".";
+              current_pattern_ = io::JoinPath(current_dir, current_pattern_);
+            }
+
+            Status s = UpdateIterator(ctx, current_dir, current_pattern_);
             ret.Update(s);
             ++current_pattern_index_;
           }
@@ -156,13 +161,17 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         if (!filepath_queue_.empty()) {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("queue_size"),
                                                  filepath_queue_.size()));
-          for (int i = 0; i < filepath_queue_.size(); ++i) {
+          int i = 0;
+          while (!filepath_queue_.empty()) {
             TF_RETURN_IF_ERROR(writer->WriteScalar(
                 full_name(strings::StrCat("queue_element_", i)),
                 filepath_queue_.top()));
             filepath_queue_.pop();
+            i++;
           }
         }
+
+        return Status::OK();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -176,32 +185,27 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_pattern"),
                                               &current_pattern_));
 
-        int64 queue_size;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name("queue_size"), &queue_size));
-        for (int i = 0; i < queue_size; i++) {
-          string element;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(strings::StrCat("queue_element_", i)), &element));
-          filepath_queue_.push(element);
+        if (reader->Contains(full_name("queue_size"))) {
+          int64 queue_size;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("queue_size"), &queue_size));
+          for (int i = 0; i < queue_size; i++) {
+            string element;
+            TF_RETURN_IF_ERROR(reader->ReadScalar(
+                full_name(strings::StrCat("queue_element_", i)), &element));
+            filepath_queue_.push(element);
+          }
         }
+
         return Status::OK();
       }
 
      private:
-      Status UpdateIterator(IteratorContext* ctx, const string& pattern)
+      Status UpdateIterator(IteratorContext* ctx, const string& dir,
+                            const string& eval_pattern)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
-        string eval_pattern = pattern;
-        string dir(io::Dirname(fixed_prefix));
-
-        // If dir is empty then we need to fix up fixed_prefix and eval_pattern
-        // to include . as the top level directory.
-        if (dir.empty()) {
-          dir = ".";
-          fixed_prefix = io::JoinPath(dir, fixed_prefix);
-          eval_pattern = io::JoinPath(dir, pattern);
-        }
+        string fixed_prefix =
+            eval_pattern.substr(0, eval_pattern.find_first_of("*?[\\"));
 
         FileSystem* fs;
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSystemForFile(dir, &fs));
@@ -215,21 +219,21 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
         // DFS to find the first element in the iterator.
         while (!filepath_queue_.empty()) {
-          string cur_dir = filepath_queue_.top();
+          string current_dir = filepath_queue_.top();
           filepath_queue_.pop();
           std::vector<string> children;
-          Status s = fs->GetChildren(cur_dir, &children);
+          Status s = fs->GetChildren(current_dir, &children);
           ret.Update(s);
 
-          // If cur_dir has no children, there will two possible situations: 1)
-          // the cur_dir is an empty dir; 2) the cur_dir is actual a file
-          // instead of a director. For the first one, continue to search the
-          // heap. For the second one, if the file matches the pattern, add
+          // If current_dir has no children, there will two possible situations:
+          // 1) the current_dir is an empty dir; 2) the current_dir is actual a
+          // file instead of a director. For the first one, continue to search
+          // the heap. For the second one, if the file matches the pattern, add
           // it to the heap and finish the search; otherwise, continue the next
           // search.
           if (children.empty()) {
-            if (ctx->env()->MatchPath(cur_dir, eval_pattern)) {
-              filepath_queue_.push(cur_dir);
+            if (ctx->env()->MatchPath(current_dir, eval_pattern)) {
+              filepath_queue_.push(current_dir);
               return ret;
             } else {
               continue;
@@ -241,14 +245,14 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
           // This IsDirectory call can be expensive for some FS. Parallelizing
           // it.
-          auto is_directory_fn = [fs, &cur_dir, &children, &fixed_prefix,
-              &children_dir_status](int i) {
-            const string child_path = io::JoinPath(cur_dir, children[i]);
+          auto is_directory_fn = [fs, &current_dir, &children, &fixed_prefix,
+                                  &children_dir_status](int i) {
+            const string child_path = io::JoinPath(current_dir, children[i]);
             // In case the child_path doesn't start with the fixed_prefix, then
             // we don't need to explore this path.
             if (!str_util::StartsWith(child_path, fixed_prefix)) {
-              children_dir_status[i] = Status(
-                  tensorflow::error::CANCELLED, "Operation not needed");
+              children_dir_status[i] =
+                  Status(tensorflow::error::CANCELLED, "Operation not needed");
             } else {
               children_dir_status[i] = fs->IsDirectory(child_path);
             }
@@ -264,7 +268,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           counter.Wait();
 
           for (int i = 0; i < children.size(); i++) {
-            const string child_dir_path = io::JoinPath(cur_dir, children[i]);
+            const string child_dir_path =
+                io::JoinPath(current_dir, children[i]);
             const Status child_dir_status = children_dir_status[i];
             // If the IsDirectory call was cancelled we bail.
             if (child_dir_status.code() == tensorflow::error::CANCELLED) {
@@ -287,7 +292,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       }
 
       mutex mu_;
-      std::priority_queue<string, std::vector<string>, std::less<string>>
+      std::priority_queue<string, std::vector<string>, std::greater<string>>
           filepath_queue_ GUARDED_BY(mu_);
       size_t current_pattern_index_ GUARDED_BY(mu_) = 0;
       string current_pattern_ GUARDED_BY(mu_);
