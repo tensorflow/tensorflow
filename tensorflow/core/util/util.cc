@@ -122,11 +122,7 @@ string SliceDebugString(const TensorShape& shape, const int64 flat) {
 
 #ifdef INTEL_MKL
 bool DisableMKL() {
-  enum MklStatus {
-    MKL_DEFAULT = 0,
-    MKL_ON = 1,
-    MKL_OFF = 2
-  };
+  enum MklStatus { MKL_DEFAULT = 0, MKL_ON = 1, MKL_OFF = 2 };
   static MklStatus status = MKL_DEFAULT;
   if (status == MKL_DEFAULT) {
     char* tf_disable_mkl = getenv("TF_DISABLE_MKL");
@@ -139,5 +135,5 @@ bool DisableMKL() {
   }
   return status == MKL_OFF ? true : false;
 }
-#endif
+#endif  // INTEL_MKL
 }  // namespace tensorflow
