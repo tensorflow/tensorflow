@@ -156,7 +156,7 @@ class MatchingFilesDatasetBenchmark(test.Benchmark):
 
   def benchmarkNestedDirectories(self):
     tmp_dir = tempfile.mkdtemp()
-    width = 1000
+    width = 500
     depth = 10
     for i in range(width):
       for j in range(depth):
