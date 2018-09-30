@@ -42,6 +42,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.keras.utils import tf_utils
 
 
 def _get_concat_variable(name, shape, dtype, num_shards):
@@ -3462,6 +3463,7 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
   def output_size(self):
     return self._num_units
 
+  @tf_utils.shape_type_conversion
   def build(self, inputs_shape):
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[1] to be known, saw shape: %s"
