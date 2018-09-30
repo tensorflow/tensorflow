@@ -3433,8 +3433,10 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
-      kernel_initializer: (optional) The initializer to use for the weights
-      bias_initializer: (optional) The initializer to use for the bias.
+      kernel_initializer: (optional) The initializer to use for the weights,
+      default is glorot_uniform_initializer().
+      bias_initializer: (optional) The initializer to use for the bias, default 
+      is glorot_uniform_initializer().
       weight_normalization: When set to True, weight normalization is applied to
       the model weights (but not the biases). Default: True
     """
