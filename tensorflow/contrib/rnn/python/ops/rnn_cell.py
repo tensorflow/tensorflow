@@ -3435,7 +3435,7 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
         cases.
       kernel_initializer: (optional) The initializer to use for the weights,
       default is glorot_uniform_initializer().
-      bias_initializer: (optional) The initializer to use for the bias, default 
+      bias_initializer: (optional) The initializer to use for the bias, default
       is glorot_uniform_initializer().
       weight_normalization: When set to True, weight normalization is applied to
       the model weights (but not the biases). Default: True
@@ -3464,7 +3464,7 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
 
   def build(self, inputs_shape):
     if inputs_shape[1].value is None:
-      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+      raise ValueError("Expected inputs.shape[1] to be known, saw shape: %s"
                        % inputs_shape)
 
     input_depth = inputs_shape[1].value
