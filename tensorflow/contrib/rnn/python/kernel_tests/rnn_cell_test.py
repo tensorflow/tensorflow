@@ -1702,7 +1702,39 @@ class MLSTMCellTest(test.TestCase):
     return actual_state_c, actual_state_h
 
   def testMLSTMCellWithoutNorm(self):
-    """"""
+    """Check the states of the MLSTMCell with weight_normalization=False
+
+    The following code calculates a forward pass of the MLSTM Cell with
+    weight_normalization=False in numpy, this is equivalent to a forward
+    pass using the MLSTM Cell:
+
+    def sigmoid(x):
+        return 1.0/(1.0 + np.exp(-x))
+
+    x = np.array([[1., 1.]])
+    c0 = 0.1 * np.asarray([[0, 1]])
+    h0 = 0.1 * np.asarray([[2, 3]])
+
+    # all weights and biases are 0.5
+    b = 0.5
+    w = np.asarray([[0.5,0.5],[0.5,0.5]])
+
+    m = x.dot(w) * h0.dot(w)
+
+    h = x.dot(w) + m.dot(w)+ b
+    i = x.dot(w) + m.dot(w)+ b
+    o = x.dot(w) + m.dot(w)+ b
+    f = x.dot(w) + m.dot(w)+ b
+
+    h = np.tanh(h)
+    i = sigmoid(i)
+    o = sigmoid(o)
+    f = sigmoid(f)
+
+    c_new = (f*c0) + (i*h)
+    h_new = np.tanh(c_new) * o
+
+    """
 
     def cell():
       return contrib_rnn_cell.MLSTMCell(2,weight_normalization=False)
@@ -1717,10 +1749,47 @@ class MLSTMCellTest(test.TestCase):
 
 
   def testMLSTMCellWithNorm(self):
-    """"""
+    """Check the states of the MLSTMCell with weight_normalization=True
+
+      The following code calculates a forward pass of the MLSTM Cell with
+      weight_normalization=True in numpy, this is equivalent to a forward
+      pass using the MLSTM Cell:
+
+      def sigmoid(x):
+          return 1.0/(1.0 + np.exp(-x))
+
+      x = np.array([[1., 1.]])
+      c0 = 0.1 * np.asarray([[0, 1]])
+      h0 = 0.1 * np.asarray([[2, 3]])
+
+      weight_normalization=True
+      w = np.asarray([[0.5,0.5],[0.5,0.5]])
+      b = 0.5
+
+      if weight_normalization is True:
+        g = np.asarray([0.5,0.5])
+        n = np.linalg.norm(w, axis=0)
+        w = (w/n) * g
+
+      m = x.dot(w) * h0.dot(w)
+
+      h = x.dot(w) + m.dot(w)+ b
+      i = x.dot(w) + m.dot(w)+ b
+      o = x.dot(w) + m.dot(w)+ b
+      f = x.dot(w) + m.dot(w)+ b
+
+      h = np.tanh(h)
+      i = sigmoid(i)
+      o = sigmoid(o)
+      f = sigmoid(f)
+
+      c_new = (f*c0) + (i*h)
+      h_new = np.tanh(c_new) * o
+
+    """
 
     def cell():
-      return contrib_rnn_cell.MLSTMCell(2,weight_normalization=True)
+      return contrib_rnn_cell.MLSTMCell(2, weight_normalization=True)
 
     actual_c, actual_h = self._cell_output(cell)
 
