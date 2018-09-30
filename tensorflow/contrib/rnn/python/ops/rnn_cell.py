@@ -3417,7 +3417,8 @@ class MLSTMCell(rnn_cell_impl.LayerRNNCell):
                bias_initializer=None,
                weight_normalization=True,
                reuse=None,
-               name=None):
+               name=None
+               **kwargs):
 
     """Initialize the Mulitiplicative LSTM (MLSTM) cell.
 
