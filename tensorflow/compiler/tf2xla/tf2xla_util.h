@@ -65,21 +65,33 @@ uint32 GetXLARandomSeed();
 class AssociatedFunctionInfo {
  public:
   enum AssociatedFunctionType {
-    kFunctionCallNode = 0,
-    kFunctionAttr = 1,
+    kFunctionAttr = 0,
+    kFunctionCallNode = 1,
+    kSymbolicGradient = 2,
   };
 
-  // The node is a function call.
-  AssociatedFunctionInfo(const string& func_name, const AttrValueMap& attrs)
-      : type_(kFunctionCallNode), func_name_(func_name), attrs_(attrs) {}
-
   // The function is an attr of the node.
-  AssociatedFunctionInfo(const string& func_name, const AttrValueMap& attrs,
-                         const string& attr_name)
-      : type_(kFunctionAttr),
-        func_name_(func_name),
-        attrs_(attrs),
-        attr_name_(attr_name) {}
+  static AssociatedFunctionInfo FunctionAttr(const string& func_name,
+                                             const AttrValueMap& attrs,
+                                             const string& attr_name) {
+    return AssociatedFunctionInfo(kFunctionAttr, func_name, attrs, attr_name);
+  }
+
+  // The node is a function call.
+  static AssociatedFunctionInfo FunctionCall(const string& func_name,
+                                             const AttrValueMap& attrs) {
+    // attr_name will not be used in this case.
+    return AssociatedFunctionInfo(kFunctionCallNode, func_name, attrs,
+                                  /*attr_name=*/"");
+  }
+
+  // The node is a SymbolicGradient op.
+  static AssociatedFunctionInfo SymbolicGradient(const string& func_name,
+                                                 const AttrValueMap& attrs) {
+    // attr_name will not be used in this case.
+    return AssociatedFunctionInfo(kSymbolicGradient, func_name, attrs,
+                                  /*attr_name=*/"");
+  }
 
   AssociatedFunctionType type() const { return type_; }
 
@@ -90,6 +102,13 @@ class AssociatedFunctionInfo {
   const AttrValueMap& attrs() const { return attrs_; }
 
  private:
+  AssociatedFunctionInfo(AssociatedFunctionType type, const string& func_name,
+                         const AttrValueMap& attrs, const string& attr_name)
+      : type_(type),
+        func_name_(func_name),
+        attrs_(attrs),
+        attr_name_(attr_name) {}
+
   // Available for all instances.
   AssociatedFunctionType type_;
   string func_name_;
@@ -105,14 +124,18 @@ bool HasAssociatedFunction(const NodeDef& node_def,
 
 // Gets functions associated with the node. Current cases:
 // 1. For function call node, its function name;
-// 2. For nodes like XlaWhile/XlaIf, all their function attributes.
+// 2. For SymbolicGradient op, returned func_name will be "SymbolicGradient",
+//    and returned attrs will be this node's attributes;
+// 3. For nodes like XlaWhile/XlaIf, all their function attributes.
 std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
     const Node& node, FunctionLibraryRuntime* flr);
 
 // Changes associated functions for the node. Current cases:
 // 1. For function call node, creates a new node with the new function name and
 //    remove the old node;
-// 2. For nodes like XlaWhile/XlaIf, modify their function attributes.
+// 2. For SymbolicGradient op, add or replace GradientDef in
+//    FunctionLibraryDefinition;
+// 3. For nodes like XlaWhile/XlaIf, modify their function attributes.
 Status RewriteAssociatedFunction(
     Graph* graph, Node* node, FunctionLibraryDefinition* fld,
     const AssociatedFunctionInfo& associated_function,

@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.contrib.data.python.ops import parsing_ops as contrib_parsing_ops
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
@@ -72,7 +73,7 @@ def _compare_output_to_expected(tester, dict_tensors, expected_tensors,
     i += 1
 
 
-class ParseExampleTest(test.TestCase):
+class ParseExampleTest(test_base.DatasetTestBase):
 
   def _test(self,
             input_tensor,

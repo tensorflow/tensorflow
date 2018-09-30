@@ -198,7 +198,7 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
               : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
 
       tf_import_flags.import_all_ops_as_unsupported =
-          toco_flags.force_eager_ops();
+          toco_flags.force_flex_ops();
 
       model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
                                        input_file_contents);
@@ -409,9 +409,9 @@ void Export(const TocoFlags& toco_flags, const Model& model,
     case TFLITE: {
       toco::tflite::ExportParams params;
 
-      // Always allow custom ops when eager ops are allowed.
-      if (toco_flags.force_eager_ops() || toco_flags.allow_eager_ops()) {
-        params.allow_eager_ops = true;
+      // Always allow custom ops when flex ops are allowed.
+      if (toco_flags.force_flex_ops() || toco_flags.allow_flex_ops()) {
+        params.allow_flex_ops = true;
         params.allow_custom_ops = true;
       } else if (allow_custom_ops) {
         params.allow_custom_ops = true;

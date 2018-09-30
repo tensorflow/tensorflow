@@ -18,12 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
-class AssertNextDatasetTest(test.TestCase):
+class AssertNextDatasetTest(test_base.DatasetTestBase):
 
   def testAssertNext(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(

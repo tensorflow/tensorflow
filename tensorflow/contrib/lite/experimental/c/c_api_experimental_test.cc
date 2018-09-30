@@ -44,7 +44,7 @@ TEST(CApiExperimentalSimple, Smoke) {
   TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
   ASSERT_NE(interpreter, nullptr);
   ASSERT_EQ(TFL_InterpreterAllocateTensors(interpreter), kTfLiteOk);
-  EXPECT_EQ(TFL_InterpreterResetVariableTensorsToZero(interpreter), kTfLiteOk);
+  EXPECT_EQ(TFL_InterpreterResetVariableTensors(interpreter), kTfLiteOk);
   EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteOk);
 
   TFL_DeleteInterpreter(interpreter);

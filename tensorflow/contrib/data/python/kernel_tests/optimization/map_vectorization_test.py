@@ -22,9 +22,9 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import test_utils
 from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
+class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _get_test_datasets(self,
                          base_dataset,
@@ -85,7 +85,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
                                                            [3, 4]]).repeat(5)
     unoptimized, optimized = self._get_test_datasets(base_dataset, map_fn,
                                                      num_parallel_calls)
-    self._assert_datasets_equal(unoptimized, optimized)
+    self.assertDatasetsEqual(unoptimized, optimized)
 
   def testOptimizationBadMapFn(self):
     # Test map functions that give an error
@@ -112,7 +112,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     # TODO(rachelim): when this optimization works, turn on expect_optimized
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_equal(optimized, unoptimized)
+    self.assertDatasetsEqual(optimized, unoptimized)
 
   def testOptimizationIgnoreStateful(self):
 
@@ -124,7 +124,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
                                                            [3, 4]]).repeat(5)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_raise_same_error(
+    self.assertDatasetsRaiseSameError(
         unoptimized, optimized, errors.InvalidArgumentError,
         [("OneShotIterator", "OneShotIterator_1", 1),
          ("IteratorGetNext", "IteratorGetNext_1", 1)])
@@ -138,7 +138,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(3, drop_remainder=False)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_equal(unoptimized, optimized)
+    self.assertDatasetsEqual(unoptimized, optimized)
 
   def testOptimizationIgnoreRaggedMap(self):
     # Don't optimize when the output of the map fn shapes are unknown.
@@ -148,7 +148,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_raise_same_error(
+    self.assertDatasetsRaiseSameError(
         unoptimized, optimized, errors.InvalidArgumentError,
         [("OneShotIterator", "OneShotIterator_1", 1),
          ("IteratorGetNext", "IteratorGetNext_1", 1)])

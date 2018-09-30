@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 import re
+import six
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -31,6 +32,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers
 from tensorflow.python.ops import check_ops
@@ -214,25 +216,40 @@ def _convert_keras_metrics_to_estimator(model):
   if not getattr(model, 'metrics', None):
     return None
 
-  # TODO(psv/fchollet): support stateful metrics
   eval_metric_ops = {}
+
+  def get_metric_name(metric):
+    if isinstance(metric, metrics.Metric):
+      return metric.name
+    if callable(metric):
+      return metric.__name__
+    assert isinstance(metric, six.string_types)
+    return metric
+
   # When each metric maps to an output
   if isinstance(model.metrics, dict):
     for i, output_name in enumerate(model.metrics.keys()):
-      metric_name = model.metrics[output_name]
-      if callable(metric_name):
-        metric_name = metric_name.__name__
+      # `metric` is the user given metric value in `compile`. This can be
+      # metric name (`acc`), metric function (binary_accuracy) or a metric
+      # object (BinaryAccuracy()).
+      metric = model.metrics[output_name]
+      metric_name = get_metric_name(metric)
       # When some outputs use the same metric
       if list(model.metrics.values()).count(metric_name) > 1:
         metric_name += '_' + output_name
-      eval_metric_ops[metric_name] = metrics_module.mean(
-          model.metrics_tensors[i - len(model.metrics)])
+      if isinstance(metric, metrics.Metric):
+        eval_metric_ops[metric_name] = metric
+      else:
+        eval_metric_ops[metric_name] = metrics_module.mean(
+            model.metrics_tensors[i - len(model.metrics)])
   else:
-    for i, metric_name in enumerate(model.metrics):
-      if callable(metric_name):
-        metric_name = metric_name.__name__
-      eval_metric_ops[metric_name] = metrics_module.mean(
-          model.metrics_tensors[i])
+    for i, metric in enumerate(model.metrics):
+      metric_name = get_metric_name(metric)
+      if isinstance(metric, metrics.Metric):
+        eval_metric_ops[metric_name] = metric
+      else:
+        eval_metric_ops[metric_name] = metrics_module.mean(
+            model.metrics_tensors[i])
   return eval_metric_ops
 
 

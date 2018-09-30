@@ -149,6 +149,7 @@ load(
     "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -238,7 +239,6 @@ tf_proto_library(
     srcs = [],
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
     js_api_version = 2,
     protodeps = [
         ":protos_all_proto",
@@ -1038,6 +1038,7 @@ tf_gen_op_libs(
         "dataset_ops",
         "decode_proto_ops",
         "encode_proto_ops",
+        "experimental_dataset_ops",
         "function_ops",
         "functional_ops",
         "image_ops",
@@ -1168,6 +1169,7 @@ cc_library(
         ":dataset_ops_op_lib",
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
+        ":experimental_dataset_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":image_ops_op_lib",
@@ -1367,6 +1369,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_slice_op",
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_transpose_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
@@ -2381,7 +2384,6 @@ tf_proto_library(
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
     js_api_version = 2,
     provide_cc_alias = True,
 )
@@ -2402,7 +2404,6 @@ tf_proto_library(
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
     js_api_version = 2,
     protodeps = [
         ":error_codes_proto",
@@ -2482,6 +2483,8 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
     "framework/resource_var.h",
+    "framework/run_handler.h",
+    "framework/run_handler_util.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -2968,6 +2971,7 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":device_tracer",
         ":framework",
+        ":framework_internal",
         ":graph",
         ":lib",
         ":lib_internal",
@@ -3005,7 +3009,7 @@ tf_cuda_library(
         "platform/device_tracer.h",
     ],
     copts = tf_copts(),
-    cuda_deps = tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps(),
+    cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
     visibility = ["//visibility:private"],
     deps = [
         ":core_cpu_internal",
@@ -3827,6 +3831,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_slice_op",
         "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
@@ -4108,6 +4113,19 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_run_handler_util_test",
+    size = "small",
+    srcs = ["framework/run_handler_util_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":framework_internal",
         ":lib",
         ":test",
         ":test_main",

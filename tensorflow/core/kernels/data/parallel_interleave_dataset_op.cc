@@ -1084,6 +1084,9 @@ REGISTER_KERNEL_BUILDER(Name("ParallelInterleaveDataset").Device(DEVICE_CPU),
 // The above design choices were made with automated optimizations in mind,
 // isolating the degree of parallelism as the single tunable knob of this
 // implementation.
+//
+// TODO(b/116852688): Make coordination between the performance model and this
+// transformation more robust.
 class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
  public:
   explicit ParallelInterleaveDatasetV2Op(OpKernelConstruction* ctx)

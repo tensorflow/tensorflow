@@ -103,6 +103,9 @@ tf_gen_op_libs(
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -122,12 +125,17 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/contrib/tpu/utils:tpu_embedding_output_layout_utils",
         "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
 tf_gen_op_wrapper_py(
     name = "tpu_ops",
+    hidden = [
+        "SendTPUEmbeddingGradients",
+    ],
     deps = [
         ":cross_replica_ops_op_lib",
         ":heartbeat_ops_op_lib",
@@ -247,7 +255,10 @@ py_library(
         ":tpu_py",
         "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
+        "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_output_layout_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",

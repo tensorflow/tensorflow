@@ -8,6 +8,7 @@ android_binary(
     srcs = [
         "OvicBenchmarkerActivity.java",
     ],
+    aapt_version = "aapt",
     assets = [
         "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
         "//tensorflow/contrib/lite/java/ovic/src/testdata:labels.txt",

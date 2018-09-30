@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -47,7 +48,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
 
-class MapDatasetTest(test.TestCase, parameterized.TestCase):
+class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _buildMapDataset(self, components, count):
     def _map_fn(x, y, z):
@@ -573,11 +574,6 @@ class MapDatasetTest(test.TestCase, parameterized.TestCase):
         self.assertEqual((i, 37.0), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSparse(self):
 

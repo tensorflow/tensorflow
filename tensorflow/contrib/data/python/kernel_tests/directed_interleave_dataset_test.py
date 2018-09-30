@@ -20,13 +20,14 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import interleave_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import test
 
 
-class DirectedInterleaveDatasetTest(test.TestCase):
+class DirectedInterleaveDatasetTest(test_base.DatasetTestBase):
 
   def testBasic(self):
     selector_dataset = dataset_ops.Dataset.range(10).repeat(100)

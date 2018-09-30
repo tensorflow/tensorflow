@@ -37,6 +37,7 @@ py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 py_test(

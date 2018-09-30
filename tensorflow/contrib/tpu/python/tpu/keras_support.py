@@ -325,18 +325,6 @@ def _replicated_optimizer(opt):
     return KerasCrossShardOptimizer(opt)
 
 
-def _clone_metrics(metrics):
-  """Returns a copy of metrics. A copy is created for stateful metrics."""
-  if metrics is None:
-    return None
-  with variable_scope.variable_scope(
-      'metrics', reuse=variable_scope.AUTO_REUSE):
-    return [
-        m.__class__.from_config(m.get_config()) if isinstance(
-            m, metrics_module.Metric) else m for m in metrics
-    ]
-
-
 def _clone_optimizer(optimizer, config=None):
   """Returns a cloned optimizer with the provided optimizer.config or config."""
   if not isinstance(optimizer, keras_optimizers.Optimizer):
@@ -963,14 +951,24 @@ class TPUFunction(object):
                   optimizer=_replicated_optimizer(self._cloned_optimizer),
                   loss=self.model.loss,
                   loss_weights=self.model.loss_weights,
-                  metrics=_clone_metrics(self.model.metrics),
-                  weighted_metrics=_clone_metrics(self.model.weighted_metrics),
+                  metrics=metrics_module.clone_metrics(self.model.metrics),
+                  weighted_metrics=metrics_module.clone_metrics(
+                      self.model.weighted_metrics),
                   target_tensors=tpu_targets,
               )
 
       # Compute our outfeed depending on the execution mode
       if is_training:
-        self._cloned_model._make_train_function()
+        if not isinstance(self._cloned_optimizer, keras_optimizers.TFOptimizer):
+          # For Keras optimizer, we try to place the variable weights on the TPU
+          # device. Keras creates optimizer variables (e.g. momentum values for
+          # the Momentum optimizer) when _make_train_function is invoked.
+          with keras_tpu_variables.replicated_variable_for_optimizer(
+              self._tpu_assignment.num_towers):
+            self._cloned_model._make_train_function()
+        else:
+          self._cloned_model._make_train_function()
+
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
             for tensor in self._cloned_model.train_function.outputs
@@ -1364,13 +1362,9 @@ class KerasTPUModel(models.Model):
       raise ValueError('target_tensors is not supported for TPU execution.')
 
     self._cpu_model.compile(
-        _clone_optimizer(optimizer),
-        loss,
-        _clone_metrics(metrics),
-        loss_weights,
-        sample_weight_mode,
-        _clone_metrics(weighted_metrics),
-        target_tensors,
+        _clone_optimizer(optimizer), loss,
+        metrics_module.clone_metrics(metrics), loss_weights, sample_weight_mode,
+        metrics_module.clone_metrics(weighted_metrics), target_tensors,
         **kwargs)
 
     super(KerasTPUModel, self).compile(optimizer, loss, metrics, loss_weights,
@@ -2126,10 +2120,10 @@ def tpu_model(model, strategy=None):
     cpu_model.compile(
         _clone_optimizer(model.optimizer, optimizer_config),
         model.loss,
-        _clone_metrics(model.metrics),
+        metrics_module.clone_metrics(model.metrics),
         model.loss_weights,
         model.sample_weight_mode,
-        _clone_metrics(model.weighted_metrics),
+        metrics_module.clone_metrics(model.weighted_metrics),
     )
 
   if model_weights:

@@ -86,21 +86,19 @@ FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
   // efficient vectorization with VectorizeMapDefun.
   FunctionDef* vectorized_func =
       CreateMapDefunWrapper(map_node, orig_func, library);
-  NodeDef* map_defun_node = vectorized_func->mutable_node_def()->Mutable(0);
-  DCHECK_EQ(map_defun_node->op(), "MapDefun");
+  const NodeDef& map_defun_node = vectorized_func->node_def(0);
+  DCHECK_EQ(map_defun_node.op(), "MapDefun");
 
-  // Create a copy of the original function so that we can mutate it, and
-  // attach that to the map defun node.
-  FunctionDef* map_defun_fn = library->add_function();
-  *map_defun_fn = orig_func;
-  graph_utils::SetUniqueGraphFunctionName(orig_func.signature().name(), library,
-                                          map_defun_fn);
-  (*map_defun_node->mutable_attr())["f"].mutable_func()->set_name(
-      map_defun_fn->signature().name());
+  // TODO(b/116285210): Unreferenced functions should get cleaned up later
+  FunctionDef* result;
+  Status s = vectorization_utils::VectorizeMapDefun(
+      *vectorized_func, map_defun_node, library, &result);
 
-  vectorization_utils::VectorizeMapDefun(vectorized_func, map_defun_fn,
-                                         map_defun_node);
-  return vectorized_func;
+  if (!s.ok()) {
+    LOG(ERROR) << "VectorizeMapDefun failed: " << s;
+    return vectorized_func;
+  }
+  return result;
 }
 
 bool IsOutputShapesFullyDefined(const NodeDef& node) {

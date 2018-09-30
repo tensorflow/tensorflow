@@ -647,12 +647,6 @@ class Model(Network):
         skip_target_indices=skip_target_indices,
         sample_weights=self.sample_weights)
 
-    # If using distribution strategy and stateful_metrics, raise an error
-    # since we currently don't support stateful metrics.
-    if self._distribution_strategy is not None and self.stateful_metric_names:
-      raise NotImplementedError('Stateful metrics are not supported with '
-                                'DistributionStrategy.')
-
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
 
@@ -857,7 +851,8 @@ class Model(Network):
     # able to clone a Dataset on multiple workers we can remove this lambda.
     result = self._distribution_strategy.distribute_dataset(lambda: x)
     iterator = result.make_initializable_iterator()
-    K.get_session().run(iterator.initializer)
+    with self._distribution_strategy.scope():
+      K.get_session().run(iterator.initializer)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)

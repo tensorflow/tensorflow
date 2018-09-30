@@ -377,6 +377,11 @@ py_test(
     size = "large",
     srcs = ["python/training/shampoo_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "noasan",  # b/116875897
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",

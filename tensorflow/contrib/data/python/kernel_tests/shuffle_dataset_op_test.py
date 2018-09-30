@@ -20,13 +20,14 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import shuffle_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-class ShuffleAndRepeatTest(test.TestCase):
+class ShuffleAndRepeatTest(test_base.DatasetTestBase):
 
   def _build_ds(self, seed, count=5, num_elements=20):
     return dataset_ops.Dataset.range(num_elements).apply(

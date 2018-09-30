@@ -50,16 +50,16 @@ namespace {
 details::OperatorKey GetOperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_eager_ops) {
+    bool allow_flex_ops) {
   string custom_code;
   if (op.type == OperatorType::kUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
         static_cast<const TensorFlowUnsupportedOperator&>(op);
 
-    // TODO(b/113715895): When `allow_eager_ops` is on, for now there's no way
+    // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
     // to populate a regular custom op. We need to find a way to fix this.
-    if (allow_eager_ops) {
-      custom_code = string(::tflite::kEagerCustomCodePrefix) +
+    if (allow_flex_ops) {
+      custom_code = string(::tflite::kFlexCustomCodePrefix) +
                     unsupported_op.tensorflow_op;
     } else {
       custom_code = unsupported_op.tensorflow_op;
@@ -101,11 +101,11 @@ void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
 void LoadOperatorsMap(
     const Model& model, OperatorsMap* operators_map,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
-    bool allow_eager_ops) {
+    bool allow_flex_ops) {
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(GetOperatorKey(*op, ops_by_type, allow_eager_ops));
+    keys.insert(GetOperatorKey(*op, ops_by_type, allow_flex_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -216,7 +216,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
 
   for (const auto& op : model.operators) {
     const details::OperatorKey operator_key =
-        GetOperatorKey(*op, ops_by_type, params.allow_eager_ops);
+        GetOperatorKey(*op, ops_by_type, params.allow_flex_ops);
     int op_index = operators_map.at(operator_key);
     int op_version = operator_key.version;
 
@@ -281,7 +281,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     }
 
     int op_index = operators_map.at(
-        GetOperatorKey(*op, ops_by_type, params.allow_eager_ops));
+        GetOperatorKey(*op, ops_by_type, params.allow_flex_ops));
 
     auto tflite_op_it = ops_by_type.find(op->type);
     BaseOperator* tflite_op = tflite_op_it == ops_by_type.end()
@@ -334,7 +334,7 @@ Offset<Vector<Offset<Buffer>>> ExportBuffers(
 
 void Export(const Model& model, string* output_file_contents,
             const ExportParams& params) {
-  const auto ops_by_type = BuildOperatorByTypeMap(params.allow_eager_ops);
+  const auto ops_by_type = BuildOperatorByTypeMap(params.allow_flex_ops);
   Export(model, output_file_contents, params, ops_by_type);
 }
 
@@ -349,7 +349,7 @@ void Export(
 
   details::OperatorsMap operators_map;
   details::LoadOperatorsMap(model, &operators_map, ops_by_type,
-                            params.allow_eager_ops);
+                            params.allow_flex_ops);
 
   std::vector<const Array*> buffers_to_write;
   Array empty_array;

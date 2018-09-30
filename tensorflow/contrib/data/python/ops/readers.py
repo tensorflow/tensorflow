@@ -23,7 +23,6 @@ import csv
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.contrib.data.python.ops import parsing_ops
@@ -38,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
@@ -629,7 +629,7 @@ class CsvDataset(dataset_ops.DatasetSource):
 
   def _as_variant_tensor(self):
     # Constructs graph node for the dataset op.
-    return contrib_gen_dataset_ops.csv_dataset(
+    return gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
@@ -1013,7 +1013,7 @@ class LMDBDataset(dataset_ops.DatasetSource):
         filenames, dtype=dtypes.string, name="filenames")
 
   def _as_variant_tensor(self):
-    return contrib_gen_dataset_ops.lmdb_dataset(
+    return gen_experimental_dataset_ops.experimental_lmdb_dataset(
         self._filenames,
         output_types=nest.flatten(self.output_types),
         output_shapes=nest.flatten(self.output_shapes))

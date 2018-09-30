@@ -192,6 +192,19 @@ int IsMappingHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is an instance of attrs-decorated class.
+// Returns 0 otherwise.
+int IsAttrsHelper(PyObject* o) {
+  Safe_PyObjectPtr cls(PyObject_GetAttrString(o, "__class__"));
+  if (cls) {
+    return PyObject_HasAttrString(cls.get(), "__attrs_attrs__");
+  } else {
+    // PyObject_GetAttrString returns null on error
+    PyErr_Clear();
+    return 0;
+  }
+}
+
 // Returns 1 if `o` is considered a sequence for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -206,6 +219,7 @@ int IsSequenceHelper(PyObject* o) {
   });
   // We treat dicts and other mappings as special cases of sequences.
   if (IsMappingHelper(o)) return true;
+  if (IsAttrsHelper(o)) return true;
   if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {
     LOG(WARNING) << "Sets are not currently considered sequences, "
                     "but this may change in the future, "
@@ -354,6 +368,38 @@ class SparseTensorValueIterator : public ValueIterator {
   Safe_PyObjectPtr tensor_;
 };
 
+class AttrsValueIterator : public ValueIterator {
+ public:
+  explicit AttrsValueIterator(PyObject* nested) : nested_(nested) {
+    Py_INCREF(nested);
+    cls_.reset(PyObject_GetAttrString(nested_.get(), "__class__"));
+    if (cls_) {
+      attrs_.reset(PyObject_GetAttrString(cls_.get(), "__attrs_attrs__"));
+      if (attrs_) {
+        iter_.reset(PyObject_GetIter(attrs_.get()));
+      }
+    }
+    if (!iter_ || PyErr_Occurred()) invalidate();
+  }
+
+  Safe_PyObjectPtr next() override {
+    Safe_PyObjectPtr result;
+    Safe_PyObjectPtr item(PyIter_Next(iter_.get()));
+    if (item) {
+      Safe_PyObjectPtr name(PyObject_GetAttrString(item.get(), "name"));
+      result.reset(PyObject_GetAttr(nested_.get(), name.get()));
+    }
+
+    return result;
+  }
+
+ private:
+  Safe_PyObjectPtr nested_;
+  Safe_PyObjectPtr cls_;
+  Safe_PyObjectPtr attrs_;
+  Safe_PyObjectPtr iter_;
+};
+
 bool IsSparseTensorValueType(PyObject* o) {
   if (TF_PREDICT_FALSE(SparseTensorValueType == nullptr)) {
     return false;
@@ -372,6 +418,8 @@ ValueIteratorPtr GetValueIterator(PyObject* nested) {
     return absl::make_unique<DictValueIterator>(nested);
   } else if (IsMappingHelper(nested)) {
     return absl::make_unique<MappingValueIterator>(nested);
+  } else if (IsAttrsHelper(nested)) {
+    return absl::make_unique<AttrsValueIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -383,6 +431,8 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
     return absl::make_unique<DictValueIterator>(nested);
   } else if (IsMappingHelper(nested)) {
     return absl::make_unique<MappingValueIterator>(nested);
+  } else if (IsAttrsHelper(nested)) {
+    return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
     return absl::make_unique<SparseTensorValueIterator>(nested);
   } else {
@@ -639,6 +689,7 @@ void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class) {
 
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
+bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 
 PyObject* Flatten(PyObject* nested) {
   PyObject* list = PyList_New(0);

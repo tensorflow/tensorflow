@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ======================================
-
 """Hook for asynchronous checkpointing.
 
 This hook dispatches checkpoint writing operations in a separate thread to
@@ -28,18 +27,16 @@ import threading
 import time
 
 from tensorflow.core.util.event_pb2 import SessionLog
-
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import basic_session_run_hooks
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
 
 
-class AsyncCheckpointSaverHook(session_run_hook.SessionRunHook):
+class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
   """Saves checkpoints every N steps or seconds."""
 
   def __init__(self,
@@ -67,7 +64,7 @@ class AsyncCheckpointSaverHook(session_run_hook.SessionRunHook):
       ValueError: One of `save_steps` or `save_secs` should be set.
       ValueError: At most one of `saver` or `scaffold` should be set.
     """
-    logging.info("Create CheckpointSaverHook.")
+    logging.info("Create AsyncCheckpointSaverHook.")
     if saver is not None and scaffold is not None:
       raise ValueError("You cannot provide both saver and scaffold.")
     self._saver = saver
@@ -144,6 +141,10 @@ class AsyncCheckpointSaverHook(session_run_hook.SessionRunHook):
   def _save(self, session, step, asynchronous=True):
     """Saves the latest checkpoint, returns should_stop."""
 
+    # Skip saving on step 0
+    if step == 0:
+      return
+
     def _save_fn():
       """Run the saver process."""
       logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
@@ -162,7 +163,6 @@ class AsyncCheckpointSaverHook(session_run_hook.SessionRunHook):
                    end_time - start_time)
       logging.info("Checkpoint finished for %d into %s.", step, self._save_path)
 
-    logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
     for l in self._listeners:
       l.before_save(session, step)
 

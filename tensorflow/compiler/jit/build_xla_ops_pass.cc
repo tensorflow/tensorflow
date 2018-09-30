@@ -112,16 +112,9 @@ static void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
   std::vector<const Edge*> out_edges(old_node->out_edges().begin(),
                                      old_node->out_edges().end());
   for (const Edge* edge : out_edges) {
-    Node* dst = edge->dst();
-    int src_output = edge->src_output();
-    int dst_input = edge->dst_input();
+    // TODO(sanjoy): This does not update NodeDef inputs.
+    g->AddEdge(new_node, edge->src_output(), edge->dst(), edge->dst_input());
     g->RemoveEdge(edge);
-
-    if (edge->IsControlEdge()) {
-      g->AddControlEdge(new_node, dst);
-    } else {
-      g->AddEdge(new_node, src_output, dst, dst_input);
-    }
   }
 }
 

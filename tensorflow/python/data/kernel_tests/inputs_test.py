@@ -19,6 +19,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
@@ -27,7 +28,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.platform import test
 
 
-class InputsTest(test.TestCase, parameterized.TestCase):
+class InputsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @staticmethod
   def make_apply_fn(dataset):

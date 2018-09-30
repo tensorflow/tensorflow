@@ -244,4 +244,9 @@ REGISTER_OP("Substr")
       return shape_inference::BroadcastBinaryOpShapeFn(c);
     });
 
+REGISTER_OP("UnicodeScript")
+    .Input("input: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 }  // namespace tensorflow
