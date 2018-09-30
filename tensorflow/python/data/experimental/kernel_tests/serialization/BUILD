@@ -333,6 +333,18 @@ py_test(
 )
 
 py_test(
+    name = "matching_files_dataset_serialization_test",
+    size = "small",
+    srcs = ["matching_files_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "optimize_dataset_serialization_test",
     size = "small",
     srcs = ["optimize_dataset_serialization_test.py"],
