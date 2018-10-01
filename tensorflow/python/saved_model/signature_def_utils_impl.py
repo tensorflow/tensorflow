@@ -24,10 +24,14 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('saved_model.signature_def_utils.build_signature_def')
+@tf_export('saved_model.build_signature_def',
+           'saved_model.signature_def_utils.build_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.build_signature_def')
 def build_signature_def(inputs=None, outputs=None, method_name=None):
   """Utility function to build a SignatureDef protocol buffer.
 
@@ -53,7 +57,10 @@ def build_signature_def(inputs=None, outputs=None, method_name=None):
   return signature_def
 
 
-@tf_export('saved_model.signature_def_utils.regression_signature_def')
+@tf_export('saved_model.regression_signature_def',
+           'saved_model.signature_def_utils.regression_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.regression_signature_def')
 def regression_signature_def(examples, predictions):
   """Creates regression signature from given examples and predictions.
 
@@ -95,7 +102,10 @@ def regression_signature_def(examples, predictions):
   return signature_def
 
 
-@tf_export('saved_model.signature_def_utils.classification_signature_def')
+@tf_export('saved_model.classification_signature_def',
+           'saved_model.signature_def_utils.classification_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.classification_signature_def')
 def classification_signature_def(examples, classes, scores):
   """Creates classification signature from given examples and predictions.
 
@@ -148,7 +158,10 @@ def classification_signature_def(examples, classes, scores):
   return signature_def
 
 
-@tf_export('saved_model.signature_def_utils.predict_signature_def')
+@tf_export('saved_model.predict_signature_def',
+           'saved_model.signature_def_utils.predict_signature_def')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.predict_signature_def')
 def predict_signature_def(inputs, outputs):
   """Creates prediction signature from given inputs and outputs.
 
@@ -239,7 +252,10 @@ def _supervised_signature_def(
   return signature_def
 
 
-@tf_export('saved_model.signature_def_utils.is_valid_signature')
+@tf_export('saved_model.is_valid_signature',
+           'saved_model.signature_def_utils.is_valid_signature')
+@deprecation.deprecated_endpoints(
+    'saved_model.signature_def_utils.is_valid_signature')
 def is_valid_signature(signature_def):
   """Determine whether a SignatureDef can be served by TensorFlow Serving."""
   if signature_def is None:
@@ -313,4 +329,3 @@ def _is_valid_classification_signature(signature_def):
     return False
 
   return True
-

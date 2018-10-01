@@ -106,7 +106,7 @@ def _summarize_eager(tensor, summarize=None):
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
-@tf_export("Assert")
+@tf_export("debugging.Assert", "Assert")
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.

@@ -310,8 +310,9 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-@tf_export("reduce_join")
-def reduce_join(inputs, axis=None,
+@tf_export("strings.reduce_join", "reduce_join")
+@deprecation.deprecated_endpoints("reduce_join")
+def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
                 separator="",
                 name=None,
@@ -329,6 +330,8 @@ def reduce_join(inputs, axis=None,
 
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
     gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
+reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
+                                                  "tf.strings.reduce_join(")
 
 
 # This wrapper provides backwards compatibility for code that predates the

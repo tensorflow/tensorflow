@@ -457,6 +457,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "random"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "random_normal_initializer"
     mtype: "<type \'type\'>"
   }
@@ -1607,6 +1611,10 @@ tf_module {
   member_method {
     name: "rint"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "roll"
+    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "round"
