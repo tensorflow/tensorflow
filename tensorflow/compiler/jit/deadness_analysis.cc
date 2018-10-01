@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -420,15 +421,15 @@ class PredicateFactory {
     }
   };
 
-  gtl::FlatMap<SignatureForAndOr, std::unique_ptr<Predicate>,
-               HashSignatureForAndOr>
+  absl::flat_hash_map<SignatureForAndOr, std::unique_ptr<Predicate>,
+                      HashSignatureForAndOr>
       interned_and_or_instances_;
-  gtl::FlatMap<SignatureForNot, std::unique_ptr<Predicate>>
+  absl::flat_hash_map<SignatureForNot, std::unique_ptr<Predicate>>
       interned_not_instances_;
-  gtl::FlatMap<SignatureForAndRec, std::unique_ptr<Predicate>>
+  absl::flat_hash_map<SignatureForAndRec, std::unique_ptr<Predicate>>
       interned_and_rec_instances_;
-  gtl::FlatMap<SignatureForSymbol, std::unique_ptr<Predicate>,
-               HashSignatureForSymbol>
+  absl::flat_hash_map<SignatureForSymbol, std::unique_ptr<Predicate>,
+                      HashSignatureForSymbol>
       interned_symbol_instances_;
 };
 
@@ -572,7 +573,8 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status PopulateWithReversePostOrder(absl::Span<Node* const> rpo);
   bool HasInputsWithMismatchingDeadness(const Node& node) override;
   void Print() const override;
-  gtl::FlatMap<TensorId, string, TensorId::Hasher> PredicateMapAsString() const;
+  absl::flat_hash_map<TensorId, string, TensorId::Hasher> PredicateMapAsString()
+      const;
 
  private:
   enum class EdgeKind { kDataAndControl, kDataOnly, kControlOnly };
@@ -614,7 +616,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status HandleNode(Node* n, std::vector<bool>* should_revisit);
 
   const Graph& graph_;
-  gtl::FlatMap<TensorId, Predicate*, TensorId::Hasher> predicate_map_;
+  absl::flat_hash_map<TensorId, Predicate*, TensorId::Hasher> predicate_map_;
   PredicateFactory predicate_factory_;
   bool vlog_;
 };
@@ -977,9 +979,9 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
   return Status::OK();
 }
 
-gtl::FlatMap<TensorId, string, TensorId::Hasher>
+absl::flat_hash_map<TensorId, string, TensorId::Hasher>
 DeadnessAnalysisImpl::PredicateMapAsString() const {
-  gtl::FlatMap<TensorId, string, TensorId::Hasher> result;
+  absl::flat_hash_map<TensorId, string, TensorId::Hasher> result;
   std::vector<TensorId> tensor_ids;
   for (const auto& kv_pair : predicate_map_) {
     CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);

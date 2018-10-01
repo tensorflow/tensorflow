@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -148,7 +148,7 @@ class BufferAllocation {
 
   // Access to the logical buffers assigned to this allocation, and their
   // associated logical offsets and sizes.
-  const tensorflow::gtl::FlatMap<const LogicalBuffer*, OffsetSize>&
+  const absl::flat_hash_map<const LogicalBuffer*, OffsetSize>&
   assigned_buffers() const {
     return assigned_buffers_;
   }
@@ -323,7 +323,7 @@ class BufferAllocation {
 
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, OffsetSize> assigned_buffers_;
+  absl::flat_hash_map<const LogicalBuffer*, OffsetSize> assigned_buffers_;
 
   int64 fragmentation_bytes_ = 0;
   std::vector<HeapSimulatorTrace> heap_traces_;
@@ -500,7 +500,7 @@ class BufferAssignment {
   int64 temp_allocation_total_size_ = 0;
 
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferAllocation::Index>
+  absl::flat_hash_map<const LogicalBuffer*, BufferAllocation::Index>
       allocation_index_for_buffer_;
 
   const HloModule* module_;
@@ -557,8 +557,8 @@ class BufferAssigner {
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,
-      tensorflow::gtl::FlatMap<const HloComputation*,
-                               tensorflow::gtl::FlatSet<const LogicalBuffer*>>*
+      absl::flat_hash_map<const HloComputation*,
+                          tensorflow::gtl::FlatSet<const LogicalBuffer*>>*
           buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
@@ -568,9 +568,8 @@ class BufferAssigner {
   // 'run_whole_module_heap_simulation' is true, the heap simulation will be run
   // assuming all global computations are sequentially ordered.
   Status AssignBuffersWithSequentialOrdering(
-      const tensorflow::gtl::FlatMap<
-          const HloComputation*,
-          tensorflow::gtl::FlatSet<const LogicalBuffer*>>&
+      const absl::flat_hash_map<const HloComputation*,
+                                tensorflow::gtl::FlatSet<const LogicalBuffer*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment);
 
@@ -624,9 +623,9 @@ class BufferAssigner {
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
-  tensorflow::gtl::FlatMap<LogicalBuffer::Color,
-                           tensorflow::gtl::FlatSet<const LogicalBuffer*>,
-                           LogicalBuffer::Color::Hasher>
+  absl::flat_hash_map<LogicalBuffer::Color,
+                      tensorflow::gtl::FlatSet<const LogicalBuffer*>,
+                      LogicalBuffer::Color::Hasher>
   SplitBuffersByColor(
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers);
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
@@ -174,7 +174,7 @@ class HeapSimulatorTracker {
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
-    tensorflow::gtl::FlatMap<const HloInstruction*, int> reverse_position;
+    absl::flat_hash_map<const HloInstruction*, int> reverse_position;
     for (int i = 0; i < full_module_sequence.size(); ++i) {
       const HloInstruction* instruction = full_module_sequence[i];
       schedule.GetOrCreateSequence(instruction->parent())

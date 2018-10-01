@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -186,7 +187,7 @@ class BFloat16Propagation : public HloModulePass {
 
   // Mapping from each HloComputation to the number of callers to it in the
   // module. Populated at the beginning of this pass.
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> caller_counts_;
+  absl::flat_hash_map<const HloComputation*, int64> caller_counts_;
 
   // We first store the potential F32-to-BF16 changes to changes_to_bf16_, which
   // are subject to further adjustment, then finally applied to the HLOs. This
@@ -195,8 +196,7 @@ class BFloat16Propagation : public HloModulePass {
   //
   // For each HloInstruction, changes_to_bf16_ stores the affected buffers in
   // the output as a map from in-place pointers to subshapes to shape indices.
-  tensorflow::gtl::FlatMap<HloInstruction*,
-                           tensorflow::gtl::FlatMap<Shape*, ShapeIndex>>
+  absl::flat_hash_map<HloInstruction*, absl::flat_hash_map<Shape*, ShapeIndex>>
       changes_to_bf16_;
 
   // Whether the last processed HLO module has been changed by this pass.

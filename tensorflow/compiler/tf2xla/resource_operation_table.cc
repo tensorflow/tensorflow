@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 /*static*/ absl::string_view XlaResourceOpInfo::XlaResourceOpKindToString(
@@ -30,9 +30,9 @@ namespace tensorflow {
   }
 }
 
-static gtl::FlatMap<absl::string_view, XlaResourceOpInfo>*
+static absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>*
 CreateResourceOpInfoMap() {
-  auto* result = new gtl::FlatMap<absl::string_view, XlaResourceOpInfo>;
+  auto* result = new absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>;
 
   auto add = [&](absl::string_view op, XlaResourceOpKind op_kind,
                  XlaResourceKind resource_kind) {
@@ -103,15 +103,15 @@ CreateResourceOpInfoMap() {
   return result;
 }
 
-static const gtl::FlatMap<absl::string_view, XlaResourceOpInfo>&
+static const absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>&
 GetStaticResourceOpInfoMap() {
-  static gtl::FlatMap<absl::string_view, XlaResourceOpInfo>* op_info_map =
-      CreateResourceOpInfoMap();
+  static absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>*
+      op_info_map = CreateResourceOpInfoMap();
   return *op_info_map;
 }
 
 const XlaResourceOpInfo* GetResourceOpInfoForOp(absl::string_view op) {
-  const gtl::FlatMap<absl::string_view, XlaResourceOpInfo>& op_infos =
+  const absl::flat_hash_map<absl::string_view, XlaResourceOpInfo>& op_infos =
       GetStaticResourceOpInfoMap();
   auto it = op_infos.find(op);
   return it == op_infos.end() ? nullptr : &it->second;

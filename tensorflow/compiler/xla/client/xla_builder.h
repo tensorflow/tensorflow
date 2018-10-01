@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -1027,7 +1027,7 @@ class XlaBuilder {
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
-  tensorflow::gtl::FlatMap<int64, int64> handle_to_index_;
+  absl::flat_hash_map<int64, int64> handle_to_index_;
 
   // The embedded computations used by this computation. Each computation was
   // the entry computation of some XlaComputation, the key is the unique id of

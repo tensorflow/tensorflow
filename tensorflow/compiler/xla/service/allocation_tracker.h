@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -110,7 +111,7 @@ class AllocationTracker {
 
   // A map from device memory opaque value to allocation. One such map is
   // maintained per device ordinal.
-  using AllocationMap = tensorflow::gtl::FlatMap<const void*, Allocation>;
+  using AllocationMap = absl::flat_hash_map<const void*, Allocation>;
 
   tensorflow::mutex mutex_;
 
@@ -146,7 +147,7 @@ class AllocationTracker {
   // non-owning "view" into a tuple's sub-buffers.  The sub-buffers are then
   // free'd when both the view *and* the original tuple are Unregistered.  This
   // refcounting is managed in opaque_to_allocation_map_.
-  tensorflow::gtl::FlatMap<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
+  absl::flat_hash_map<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationTracker);

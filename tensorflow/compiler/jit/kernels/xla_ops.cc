@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -163,7 +164,7 @@ class XlaExecutableClosureStore {
  private:
   mutex mutex_;
   int64 key_counter_ GUARDED_BY(mutex_);
-  gtl::FlatMap<KeyT, XlaExecutableClosure> closures_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<KeyT, XlaExecutableClosure> closures_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExecutableClosureStore);
 };
