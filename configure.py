@@ -48,10 +48,9 @@ _SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
-_TF_WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
 _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
-_TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
-_TF_WORKSPACE = os.path.join(_TF_WORKSPACE_ROOT, 'WORKSPACE')
+_TF_WORKSPACE_ROOT = ''
+_TF_BAZELRC = ''
 
 if platform.machine() == 'ppc64le':
   _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/powerpc64le-linux-gnu/'
@@ -243,10 +242,10 @@ def setup_python(environ_cp):
     f.write('export PYTHON_BIN_PATH="%s"' % python_bin_path)
 
 
-def reset_tf_configure_bazelrc(workspace_path):
+def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
-  bazelrc_path = os.path.join(workspace_path, '.bazelrc')
+  bazelrc_path = os.path.join(_TF_WORKSPACE_ROOT, '.bazelrc')
 
   data = []
   if os.path.exists(bazelrc_path):
@@ -1469,13 +1468,19 @@ def config_info_line(name, help_text):
 
 
 def main():
+  global _TF_WORKSPACE_ROOT
+  global _TF_BAZELRC
+
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--workspace',
       type=str,
-      default=_TF_WORKSPACE_ROOT,
+      default=os.path.abspath(os.path.dirname(__file__)),
       help='The absolute path to your active Bazel workspace.')
   args = parser.parse_args()
+
+  _TF_WORKSPACE_ROOT = args.workspace
+  _TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
 
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -1483,7 +1488,7 @@ def main():
 
   check_bazel_version('0.15.0')
 
-  reset_tf_configure_bazelrc(args.workspace)
+  reset_tf_configure_bazelrc()
   cleanup_makefile()
   setup_python(environ_cp)
 
