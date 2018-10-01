@@ -11,6 +11,7 @@
   * Add multi-GPU DistributionStrategy support in tf.keras. Users can now use `fit`, `evaluate` and `predict` to distribute their model on multiple GPUs.
   * Add multi-worker DistributionStrategy and standalone client support in Estimator. See [README] (https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute) for more details.
 * Add C, C++, and Python functions for querying kernels
+* Minimum required CUDA compute capability set to 3.7 from 3.0
 
 ## Breaking Changes
 
