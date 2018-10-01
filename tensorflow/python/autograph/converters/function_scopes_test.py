@@ -12,51 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for for_canonicalization module."""
+"""Tests for function_scopes module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.converters import name_scopes
+from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-class FunctionNameScopeTransformer(converter_testing.TestCase):
+class FunctionBodyTransformerTest(converter_testing.TestCase):
 
   def test_basic(self):
 
     def test_fn(l):
-      """This should stay here."""
+      """Docstring."""
       a = 1
       l += a
       return l
 
-    with self.converted(test_fn, name_scopes, {}, ops.name_scope) as result:
+    with self.converted(test_fn, function_scopes, {}) as result:
       result_op = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', result_op.op.name)
-      self.assertEqual('This should stay here.', result.test_fn.__doc__)
+      self.assertEqual('Docstring.', result.test_fn.__doc__)
 
-  def test_long_docstring(self):
+  def test_multiline_docstring(self):
 
-    def test_fn(l):
-      """Multi-line docstring.
+    tf = None
 
-      Args:
-        l: A thing.
-      Returns:
-        l
+    def test_fn():
+      """First sentence.
+
+      Second sentence.
       """
-      return l + 1
+      return tf.constant(1)
 
-    with self.converted(test_fn, name_scopes, {}, ops.name_scope) as result:
-      result_op = result.test_fn(constant_op.constant(1))
+    with self.converted(test_fn, function_scopes, {},
+                        constant_op.constant) as result:
+      result_op = result.test_fn()
       self.assertIn('test_fn/', result_op.op.name)
-      self.assertIn('Multi-line docstring.', result.test_fn.__doc__)
-      self.assertIn('Returns:', result.test_fn.__doc__)
+      self.assertIn('First sentence.', result.test_fn.__doc__)
+      self.assertIn('Second sentence.', result.test_fn.__doc__)
 
   def test_nested_functions(self):
 
@@ -68,7 +68,7 @@ class FunctionNameScopeTransformer(converter_testing.TestCase):
       l += 1
       return l, inner_fn(l)
 
-    with self.converted(test_fn, name_scopes, {}, ops.name_scope) as result:
+    with self.converted(test_fn, function_scopes, {}, ops.name_scope) as result:
       first, second = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', first.op.name)
       self.assertNotIn('inner_fn', first.op.name)
@@ -88,7 +88,7 @@ class FunctionNameScopeTransformer(converter_testing.TestCase):
 
     ns = {'TestClass': TestClass}
     node, ctx = self.prepare(TestClass, ns, owner_type=TestClass)
-    node = name_scopes.transform(node, ctx)
+    node = function_scopes.transform(node, ctx)
 
     with self.compiled(node, {}, ops.name_scope) as result:
       first, second = result.TestClass().test_fn(constant_op.constant(1))
