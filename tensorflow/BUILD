@@ -225,6 +225,12 @@ config_setting(
 )
 
 config_setting(
+    name = "with_ignite_support",
+    define_values = {"with_ignite_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_cuda_support_windows_override",
     define_values = {"using_cuda_nvcc": "true"},
     values = {"cpu": "x64_windows"},

@@ -123,6 +123,11 @@ py_library(
             "//tensorflow/contrib/tensorrt:init_py",
             "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         ],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -184,5 +189,10 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
             "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
         ],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
     }),
 )
