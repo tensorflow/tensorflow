@@ -304,7 +304,8 @@ class GradientBoostedDecisionTreeModel(object):
                feature_columns=None,
                use_core_columns=False,
                output_leaf_index=False,
-               output_leaf_index_modes=None):
+               output_leaf_index_modes=None,
+               num_quantiles=100):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
     Args:
@@ -327,6 +328,7 @@ class GradientBoostedDecisionTreeModel(object):
       output_leaf_index_modes: A list of modes from (TRAIN, EVAL, INFER) which
         dictates when leaf indices will be outputted. By default, leaf indices
         are only outputted in INFER mode.
+      num_quantiles: Number of quantiles to build for numeric feature values.
 
     Raises:
       ValueError: if inputs are not valid.
@@ -399,13 +401,14 @@ class GradientBoostedDecisionTreeModel(object):
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
-    self._max_tree_depth = variables.Variable(
+    self._num_quantiles = num_quantiles
+    self._max_tree_depth = variables.VariableV1(
         initial_value=self._learner_config.constraints.max_tree_depth)
-    self._attempted_trees = variables.Variable(
+    self._attempted_trees = variables.VariableV1(
         initial_value=array_ops.zeros([], dtypes.int64),
         trainable=False,
         name="attempted_trees")
-    self._finalized_trees = variables.Variable(
+    self._finalized_trees = variables.VariableV1(
         initial_value=array_ops.zeros([], dtypes.int64),
         trainable=False,
         name="finalized_trees")
@@ -689,8 +692,8 @@ class GradientBoostedDecisionTreeModel(object):
     loss_uses_sum_reduction = constant_op.constant(loss_uses_sum_reduction)
     weak_learner_type = constant_op.constant(
         self._learner_config.weak_learner_type)
-    epsilon = 0.01
-    num_quantiles = 100
+    num_quantiles = self._num_quantiles
+    epsilon = 1.0 / num_quantiles
     strategy_tensor = constant_op.constant(strategy)
     with ops.device(self._get_replica_device_setter(worker_device)):
       # Create handlers for dense float columns
@@ -762,32 +765,33 @@ class GradientBoostedDecisionTreeModel(object):
                 hessian_shape=self._hessian_shape,
                 multiclass_strategy=strategy_tensor,
                 init_stamp_token=init_stamp_token,
-                loss_uses_sum_reduction=loss_uses_sum_reduction))
+                loss_uses_sum_reduction=loss_uses_sum_reduction,
+                weak_learner_type=weak_learner_type))
         fc_name_idx += 1
 
       # Create ensemble stats variables.
-      num_layer_examples = variables.Variable(
+      num_layer_examples = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="num_layer_examples",
           trainable=False)
-      num_layer_steps = variables.Variable(
+      num_layer_steps = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="num_layer_steps",
           trainable=False)
-      num_layers = variables.Variable(
+      num_layers = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="num_layers",
           trainable=False)
-      active_tree = variables.Variable(
+      active_tree = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="active_tree",
           trainable=False)
-      active_layer = variables.Variable(
+      active_layer = variables.VariableV1(
           initial_value=array_ops.zeros([], dtypes.int64),
           name="active_layer",
           trainable=False)
       # Variable that becomes false once bias centering is done.
-      continue_centering = variables.Variable(
+      continue_centering = variables.VariableV1(
           initial_value=self._center_bias,
           name="continue_centering",
           trainable=False)
@@ -1063,6 +1067,12 @@ class GradientBoostedDecisionTreeModel(object):
         # Grow the ensemble given the current candidates.
         sizes = array_ops.unstack(split_sizes)
         partition_ids_list = list(array_ops.split(partition_ids, sizes, axis=0))
+        # When using the oblivious decision tree as weak learner, it produces
+        # one gain and one split per handler and not number of partitions.
+        if self._learner_config.weak_learner_type == (
+            learner_pb2.LearnerConfig.OBLIVIOUS_DECISION_TREE):
+          sizes = len(training_state.handlers)
+
         gains_list = list(array_ops.split(gains, sizes, axis=0))
         split_info_list = list(array_ops.split(split_infos, sizes, axis=0))
         return training_ops.grow_tree_ensemble(

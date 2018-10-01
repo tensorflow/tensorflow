@@ -42,7 +42,7 @@ xla::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index) {
   const char* const kRetValOp = "_Retval";
   NodeDef ret_def;
   ret_def.set_op(kRetValOp);
-  ret_def.set_name(strings::StrCat(kRetValOp, index));
+  ret_def.set_name(absl::StrCat(kRetValOp, index));
   AddNodeAttr("T", type, &ret_def);
   AddNodeAttr("index", index, &ret_def);
   return AddNodeDefToGraph(ret_def, graph);

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops import counter
 from tensorflow.contrib.data.python.ops import enumerate_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,7 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
 
-class RangeDatasetTest(test.TestCase):
+class RangeDatasetTest(test_base.DatasetTestBase):
 
   def testEnumerateDataset(self):
     components = (["a", "b"], [1, 2], [37.0, 38])
@@ -43,7 +44,7 @@ class RangeDatasetTest(test.TestCase):
     self.assertEqual([tensor_shape.TensorShape([])] * 3,
                      [t.shape for t in get_next[1]])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       self.assertEqual((20, (b"a", 1, 37.0)), sess.run(get_next))
       self.assertEqual((21, (b"b", 2, 38.0)), sess.run(get_next))
@@ -63,7 +64,7 @@ class RangeDatasetTest(test.TestCase):
                          .make_one_shot_iterator())
     negative_get_next = negative_iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEqual(3, sess.run(get_next))
       self.assertEqual(3 + 4, sess.run(get_next))
       self.assertEqual(3 + 2 * 4, sess.run(get_next))

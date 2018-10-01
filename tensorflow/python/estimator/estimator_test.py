@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import glob
+import json
 import os
 import tempfile
 
@@ -43,6 +44,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.layers import layers
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -968,22 +970,124 @@ class EstimatorTrainTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'train_and_evaluate'):
       est.train(dummy_input_fn, steps=1)
 
+  def test_master_distributed_hooks(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.PS: ['localhost:1234'],
+            run_config.TaskType.WORKER: ['localhost:1235'],
+            run_config.TaskType.MASTER: ['localhost:1236']
+        },
+        'task': {
+            'type': run_config.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig())
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
+
+  def test_master_distributed_hooks_for_worker_0(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.PS: ['localhost:1234'],
+            run_config.TaskType.WORKER: ['localhost:1235'],
+            run_config.TaskType.MASTER: ['localhost:1236']
+        },
+        'task': {
+            'type': run_config.TaskType.WORKER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig())
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertTrue(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertTrue(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
+
+  def test_master_distributed_hooks_for_worker_nonzero(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.PS: ['localhost:1234'],
+            run_config.TaskType.WORKER: ['localhost:1235', 'localhost:1237'],
+            run_config.TaskType.MASTER: ['localhost:1236']
+        },
+        'task': {
+            'type': run_config.TaskType.WORKER,
+            'index': 1
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig())
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
+
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):
   _, _ = features, labels
-  metric_name = params.get('metric_name') or 'metric'
-  metric_value = params.get('metric_value') or 2.
   global_step = training.get_global_step()
   loss = constant_op.constant(1.)
+  metric_name_1 = params.get('metric_name') or 'metric'
+  metric_value_1 = params.get('metric_value') or 2.
+  metric_name_2 = params.get('metric_name_2') or 'metric2'
+  metric_value_2 = params.get('metric_value_2') or 2.
+
   metric_update_op = loss.op
   metric_tensor = control_flow_ops.with_dependencies(
-      [metric_update_op], constant_op.constant(metric_value))
+      [metric_update_op], constant_op.constant(metric_value_1))
+
+  mean = metrics_module.Mean()
+  mean.update_state(metric_value_2)
   return model_fn_lib.EstimatorSpec(
       mode,
       loss=loss,
       predictions={'predictions': constant_op.constant(1.)},
       train_op=state_ops.assign_add(global_step, 1),
-      eval_metric_ops={metric_name: (metric_tensor, metric_update_op)})
+      eval_metric_ops={
+          metric_name_1: (metric_tensor, metric_update_op),
+          metric_name_2: mean,
+      })
 
 
 class _StepCounterHook(session_run_hook.SessionRunHook):
@@ -1007,7 +1111,7 @@ class EstimatorGetVariablesTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='one')
+      variables.VariableV1(1., name='one')
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
@@ -1023,8 +1127,8 @@ class EstimatorGetVariablesTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='one')
-      variables.Variable(3., name='three')
+      variables.VariableV1(1., name='one')
+      variables.VariableV1(3., name='three')
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
@@ -1167,16 +1271,22 @@ class EstimatorEvaluateTest(test.TestCase):
   def test_no_checkpoint_uses_init(self):
     def _model_fn(features, labels, mode, params):
       del features, labels, params
+      mean = metrics_module.Mean()
+      mean.update_state(variables.VariableV1(2.) + 1)
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(1.),
-          eval_metric_ops={'metric': metrics_lib.mean(
-              variables.Variable(2.) + 1)})
+          eval_metric_ops={
+              'mean1': mean,
+              'mean2': metrics_lib.mean(variables.VariableV1(2.) + 1)
+          })
+
     est = estimator.Estimator(model_fn=_model_fn)
-    metrics = est.evaluate(dummy_input_fn, steps=1)
+    scores = est.evaluate(dummy_input_fn, steps=1)
     # Metric value here is set to 1 + the value of the Variable that is newly
     # initialized (since there is no checkpoint).
-    self.assertEqual(3., metrics['metric'])
+    self.assertEqual(3., scores['mean1'])
+    self.assertEqual(3., scores['mean2'])
 
   def test_no_checkpoint_uses_init_with_warm_starting(self):
     def _make_model_fn(x):
@@ -1184,14 +1294,24 @@ class EstimatorEvaluateTest(test.TestCase):
         _, _ = features, labels
         x_var = variable_scope.get_variable('x', initializer=x)
         global_step = training.get_global_step()
+        mean = metrics_module.Mean()
+        mean.update_state(x_var + 1)
         return model_fn_lib.EstimatorSpec(
             mode,
             predictions={'y': constant_op.constant(1.0)},
             loss=constant_op.constant(1.),
-            eval_metric_ops={'metric': metrics_lib.mean(x_var + 1)},
+            eval_metric_ops={
+                'mean1': mean,
+                'mean2': metrics_lib.mean(x_var + 1)
+            },
             train_op=state_ops.assign_add(global_step, 1),
-            export_outputs={'test': export_output.ClassificationOutput(
-                constant_op.constant([4.2]), constant_op.constant(['label']))})
+            export_outputs={
+                'test':
+                    export_output.ClassificationOutput(
+                        constant_op.constant([4.2]),
+                        constant_op.constant(['label']))
+            })
+
       return _variable_creating_and_export_model_fn
 
     first_est = estimator.Estimator(model_fn=_make_model_fn(42.))
@@ -1210,30 +1330,37 @@ class EstimatorEvaluateTest(test.TestCase):
     # or an exported SavedModel.
     est = estimator.Estimator(model_fn=_make_model_fn(52.),
                               warm_start_from=exported_path)
-    metrics = est.evaluate(dummy_input_fn, steps=1)
+    eval_metrics = est.evaluate(dummy_input_fn, steps=1)
     # Metric value here is set to 1 + the value of the Variable that is
     # warm-started from the SavedModel of the first model (42.), as opposed to
     # the initialization in the new model_fn (52.).
-    self.assertEqual(43., metrics['metric'])
+    self.assertEqual(43., eval_metrics['mean1'])
+    self.assertEqual(43., eval_metrics['mean2'])
 
     est = estimator.Estimator(model_fn=_make_model_fn(62.),
                               warm_start_from=first_est.model_dir)
-    metrics = est.evaluate(dummy_input_fn, steps=1)
+    eval_metrics = est.evaluate(dummy_input_fn, steps=1)
     # Metric value here is set to 1 + the value of the Variable that is
     # warm-started from a checkpoint of the first model (42.), as opposed to
     # the initialization in the new model_fn (52.).
-    self.assertEqual(43., metrics['metric'])
+    self.assertEqual(43., eval_metrics['mean1'])
+    self.assertEqual(43., eval_metrics['mean2'])
 
   def test_scores(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops,
         params={
             'metric_name': 'metric',
-            'metric_value': 2.})
+            'metric_value': 2.,
+            'metric_name_2': 'metric2',
+            'metric_value_2': 3.,
+        })
     est.train(dummy_input_fn, steps=5)
     scores = est.evaluate(dummy_input_fn, steps=1)
     self.assertIn('metric', scores)
     self.assertAlmostEqual(2., scores['metric'])
+    self.assertIn('metric2', scores)
+    self.assertAlmostEqual(3., scores['metric2'])
 
   def test_tuple_metrics(self):
     def _model_fn(features, labels, mode):
@@ -1284,8 +1411,12 @@ class EstimatorEvaluateTest(test.TestCase):
   def test_global_step_is_reported(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops,
-        params={'metric_name': 'metric',
-                'metric_value': 2.})
+        params={
+            'metric_name': 'metric',
+            'metric_value': 2.,
+            'metric_name_2': 'metric2',
+            'metric_value_2': 3.,
+        })
     est.train(dummy_input_fn, steps=5)
     scores = est.evaluate(dummy_input_fn, steps=1)
     self.assertIn('global_step', scores)
@@ -1295,7 +1426,7 @@ class EstimatorEvaluateTest(test.TestCase):
 
     def _model_fn_with_incremental_loss(features, labels, mode):
       _, _ = features, labels
-      local_weight = variables.Variable(
+      local_weight = variables.VariableV1(
           0., name='local_weight', collections=[ops.GraphKeys.LOCAL_VARIABLES])
       # Loss will be 2, 4, 6, ...
       loss = 2 * state_ops.assign_add(local_weight, 1.)
@@ -1328,7 +1459,10 @@ class EstimatorEvaluateTest(test.TestCase):
   def test_evaluate_from_checkpoint(self):
     params = {
         'metric_name': 'metric',
-        'metric_value': 2.}
+        'metric_value': 2.,
+        'metric_name_2': 'metric2',
+        'metric_value_2': 3.,
+    }
     est1 = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops,
         params=params)
@@ -1345,7 +1479,7 @@ class EstimatorEvaluateTest(test.TestCase):
     def _get_model_fn(val=1):
       def _model_fn(features, labels, mode):
         del features, labels  # unused
-        variables.Variable(val, name='weight')
+        variables.VariableV1(val, name='weight')
         return model_fn_lib.EstimatorSpec(
             mode=mode,
             predictions=constant_op.constant([[1.]]),
@@ -1369,7 +1503,7 @@ class EstimatorEvaluateTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
@@ -1563,7 +1697,7 @@ class EstimatorPredictTest(test.TestCase):
   def test_no_checkpoint_uses_init(self):
     def _model_fn(features, labels, mode, params, config):
       del features, labels, params, config
-      x = variables.Variable([[3.]], name='x')
+      x = variables.VariableV1([[3.]], name='x')
       return model_fn_lib.EstimatorSpec(mode, predictions=math_ops.add(x, 1.))
     est = estimator.Estimator(model_fn=_model_fn)
     # Expected prediction value is 1 + the value of the Variable that is newly
@@ -1574,7 +1708,7 @@ class EstimatorPredictTest(test.TestCase):
     def _make_model_fn(x):
       def _variable_creating_and_export_model_fn(features, labels, mode):
         _, _ = features, labels
-        x_var = variables.Variable([[x]], name='x')
+        x_var = variables.VariableV1([[x]], name='x')
         return model_fn_lib.EstimatorSpec(
             mode,
             predictions=math_ops.add(x_var, 1.),
@@ -1896,7 +2030,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      v = variables.Variable([[16.]], name='weight')
+      v = variables.VariableV1([[16.]], name='weight')
       prediction = v * 2
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -1913,7 +2047,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      v = variables.Variable([[16.]], name='weight')
+      v = variables.VariableV1([[16.]], name='weight')
       prediction = v * 2
       return model_fn_lib.EstimatorSpec(
           mode,
@@ -1934,7 +2068,7 @@ class EstimatorPredictTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       self.mock_saver = get_mock_saver()
       return model_fn_lib.EstimatorSpec(
           mode=mode,
@@ -1989,7 +2123,7 @@ class EstimatorPredictTest(test.TestCase):
 
 def _model_fn_for_export_tests(features, labels, mode):
   _, _ = features, labels
-  variables.Variable(1., name='weight')
+  variables.VariableV1(1., name='weight')
   scores = constant_op.constant([3.])
   classes = constant_op.constant(['wumpus'])
   update_global_step = state_ops.assign_add(training.get_global_step(), 1)
@@ -2012,11 +2146,11 @@ def _x_y_input_fn():
 
 def _model_fn_with_x_y(features, labels, mode):
   _ = labels
-  variables.Variable(1., name='weight')
+  variables.VariableV1(1., name='weight')
   scores = constant_op.constant([3.])
   classes = constant_op.constant(['wumpus'])
   if mode == model_fn_lib.ModeKeys.PREDICT:
-    variables.Variable(36., name='name_collision')
+    variables.VariableV1(36., name='name_collision')
     return model_fn_lib.EstimatorSpec(
         mode,
         predictions=constant_op.constant(10.),
@@ -2027,16 +2161,23 @@ def _model_fn_with_x_y(features, labels, mode):
 
     multiplied = math_ops.multiply(
         features['x'], features['y'], name='{}multiplied'.format(prefix))
-    metrics = {'mean': metrics_lib.mean(features['x'] - features['y'],
-                                        name='{}mean'.format(prefix))}
-    variables.Variable(1., name='later_var')
-    variables.Variable(3., name='name_collision')
+    mean = metrics_module.Mean(name='{}mean'.format(prefix))
+    mean.update_state(features['x'] - features['y'])
+    eval_metrics = {
+        'mean1':
+            mean,
+        'mean2':
+            metrics_lib.mean(
+                features['x'] - features['y'], name='{}mean'.format(prefix))
+    }
+    variables.VariableV1(1., name='later_var')
+    variables.VariableV1(3., name='name_collision')
     return model_fn_lib.EstimatorSpec(
         mode,
         predictions=multiplied,
         loss=constant_op.constant(1.),
         train_op=state_ops.assign_add(training.get_global_step(), 1),
-        eval_metric_ops=metrics)
+        eval_metric_ops=eval_metrics)
 
 
 def _model_fn_with_saveables_for_export_tests(features, labels, mode):
@@ -2364,9 +2505,9 @@ class EstimatorExportTest(test.TestCase):
     def _model_fn_with_predict_only_vars(features, labels, mode):
       _, _ = features, labels
       if mode == model_fn_lib.ModeKeys.PREDICT:
-        variables.Variable(1., name='only_in_predict')
+        variables.VariableV1(1., name='only_in_predict')
       else:
-        variables.Variable(1., name='otherwise')
+        variables.VariableV1(1., name='otherwise')
 
       prediction = constant_op.constant(1.)
       return model_fn_lib.EstimatorSpec(
@@ -2395,14 +2536,18 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       del features, labels  # Unused
-      metrics = {'metrics': (constant_op.constant([0]),
-                             control_flow_ops.no_op())}
+      metric_obj = metrics_module.Mean()
+      metric_obj.update_state(constant_op.constant([0]))
+      eval_metrics = {
+          'metrics1': (constant_op.constant([0]), control_flow_ops.no_op()),
+          'metrics2': metric_obj,
+      }
       return model_fn_lib.EstimatorSpec(
           mode,
           predictions=constant_op.constant(10.),
           loss=constant_op.constant(1.),
           train_op=state_ops.assign_add(training.get_global_step(), 1),
-          eval_metric_ops=metrics)
+          eval_metric_ops=eval_metrics)
 
     tmpdir = tempfile.mkdtemp()
     est = estimator.Estimator(model_fn=_model_fn)
@@ -2424,8 +2569,10 @@ class EstimatorExportTest(test.TestCase):
         meta_graph = loader.load(sess, [tag_constants.EVAL], export_dir)
         sig_outputs = meta_graph.signature_def[
             model_fn_lib.ModeKeys.EVAL].outputs
-        self.assertEqual(
-            sig_outputs['metrics/update_op'].name, 'metric_op_wrapper:0')
+        self.assertTrue(sig_outputs['metrics1/update_op'].name.startswith(
+            'metric_op_wrapper'))
+        self.assertTrue(sig_outputs['metrics2/update_op'].name.startswith(
+            'metric_op_wrapper'))
 
   def test_export_savedmodel_with_saveables_proto_roundtrip(self):
     tmpdir = tempfile.mkdtemp()
@@ -2631,7 +2778,7 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       self.mock_saver = get_mock_saver()
       scores = constant_op.constant([3.])
       return model_fn_lib.EstimatorSpec(
@@ -2664,7 +2811,7 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
 
       scores = constant_op.constant([3.])
       if mode == model_fn_lib.ModeKeys.PREDICT:
@@ -2709,8 +2856,8 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      my_int = variables.Variable(1, name='my_int',
-                                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      my_int = variables.VariableV1(1, name='my_int',
+                                    collections=[ops.GraphKeys.LOCAL_VARIABLES])
       _ = training.get_or_create_steps_per_run_variable()
       scores = constant_op.constant([3.])
       with ops.control_dependencies([
@@ -2755,8 +2902,8 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn_scaffold(features, labels, mode):
       _, _ = features, labels
-      my_int = variables.Variable(1, name='my_int',
-                                  collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      my_int = variables.VariableV1(1, name='my_int',
+                                    collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scores = constant_op.constant([3.])
       with ops.control_dependencies([
           variables.local_variables_initializer(),
@@ -2985,7 +3132,7 @@ class EstimatorExportTest(test.TestCase):
 
     def _model_fn(features, labels, mode):
       _, _ = features, labels
-      variables.Variable(1., name='weight')
+      variables.VariableV1(1., name='weight')
       return model_fn_lib.EstimatorSpec(
           mode,
           predictions=constant_op.constant(10.),
@@ -3028,7 +3175,7 @@ class EstimatorHookOrderingTest(test.TestCase):
       """A graph that generates NaN's for testing."""
       del features, labels
 
-      global_step = variables.Variable(
+      global_step = variables.VariableV1(
           0, dtype=dtypes.int64, name='global_step')
       inc_global_step = state_ops.assign_add(global_step, 1)
       nan_const = constant_op.constant(np.nan, dtype=dtypes.float32)
@@ -3080,9 +3227,13 @@ class EstimatorIntegrationTest(test.TestCase):
       loss = losses.mean_squared_error(labels, predictions)
       train_op = training.GradientDescentOptimizer(learning_rate=0.5).minimize(
           loss, training.get_global_step())
+      mean = metrics_module.Mean()
+      mean.update_state(loss)
       eval_metric_ops = {
-          'absolute_error': metrics_lib.mean_absolute_error(
-              labels, predictions)
+          'absolute_error':
+              metrics_lib.mean_absolute_error(labels, predictions),
+          'mean':
+              mean,
       }
 
       return model_fn_lib.EstimatorSpec(
@@ -3102,12 +3253,13 @@ class EstimatorIntegrationTest(test.TestCase):
         x={'x': data}, y=data, batch_size=50, num_epochs=None, shuffle=True)
     est.train(train_input_fn, steps=200)
 
-    # EVALUTE
+    # EVALUATE
     eval_input_fn = numpy_io.numpy_input_fn(
         x={'x': data}, y=data, batch_size=50, num_epochs=1, shuffle=True)
     scores = est.evaluate(eval_input_fn)
     self.assertEqual(200, scores['global_step'])
     self.assertGreater(0.1, scores['absolute_error'])
+    self.assertAlmostEqual(4.4e-14, scores['mean'], places=2)
 
     # PREDICT
     predict_input_fn = numpy_io.numpy_input_fn(

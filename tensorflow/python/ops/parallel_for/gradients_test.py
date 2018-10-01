@@ -32,6 +32,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import layers as tf_layers
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops as tf_control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -355,8 +357,32 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(answer, jacobian_pfor)
     self.run_and_assert_equal(answer, jacobian_while)
 
+  def test_jacobian_scan_shape(self):
+    # Shape x: [3, 4]
+    x = random_ops.random_uniform([3, 4])
+    elems = random_ops.random_uniform([6])
+    # Shape y: [6, 3, 4]
+    y = functional_ops.scan(lambda a, e: a + e, elems, initializer=x)
+    jacobian = gradients.jacobian(y, x)
+
+    expected_shape = [6, 3, 4, 3, 4]
+    self.assertAllEqual(expected_shape, jacobian.shape.as_list())
+
+  def test_jacobian_while_loop_shape(self):
+    # Shape x: [3, 4]
+    x = random_ops.random_uniform([3, 4])
+    _, y = tf_control_flow_ops.while_loop(lambda i, a: i > 5.,
+                                          lambda i, a: (i + 1, a + i),
+                                          (constant_op.constant(0.), x))
+    # Shape y: [2, 3]
+    y = y[:2, :3]
+    jacobian = gradients.jacobian(y, x)
+
+    expected_shape = [2, 3, 3, 4]
+    self.assertAllEqual(expected_shape, jacobian.shape.as_list())
+
   def test_jacobian_unknown_shape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32, shape=[None, None])
       y = math_ops.matmul(x, x, transpose_a=True)
       jacobian_pfor = gradients.jacobian(y, x, use_pfor=True)
@@ -381,7 +407,7 @@ class GradientsTest(test.TestCase):
       gradients.batch_jacobian(y, x, use_pfor=True)
 
   def test_batch_jacobian_bad_unknown_shapes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.concat([x, x], axis=0)
       jacobian = gradients.batch_jacobian(y, x)
@@ -402,7 +428,7 @@ class GradientsTest(test.TestCase):
     self.run_and_assert_equal(answer, batch_jacobian_while)
 
   def test_batch_jacobian_unknown_shape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = x * x
       batch_jacobian_pfor = gradients.batch_jacobian(y, x, use_pfor=True)

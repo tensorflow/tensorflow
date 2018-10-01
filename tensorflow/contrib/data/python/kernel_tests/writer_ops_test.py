@@ -20,6 +20,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.contrib.data.python.ops import writers
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
@@ -30,7 +31,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class TFRecordWriterTest(test.TestCase):
+class TFRecordWriterTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(TFRecordWriterTest, self).setUp()
@@ -61,7 +62,7 @@ class TFRecordWriterTest(test.TestCase):
     return os.path.join(self.get_temp_dir(), "tf_record.out.txt")
 
   def testWrite(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.writer, feed_dict={
               self.filename: self._createFile(),
@@ -71,7 +72,7 @@ class TFRecordWriterTest(test.TestCase):
 
   def testWriteZLIB(self):
     options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.ZLIB)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.writer,
           feed_dict={
@@ -84,7 +85,7 @@ class TFRecordWriterTest(test.TestCase):
 
   def testWriteGZIP(self):
     options = tf_record.TFRecordOptions(tf_record.TFRecordCompressionType.GZIP)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           self.writer,
           feed_dict={

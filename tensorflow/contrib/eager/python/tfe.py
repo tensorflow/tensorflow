@@ -74,6 +74,8 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@TensorSpec
 
+@@connect_to_remote_host
+
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
 @@DEVICE_PLACEMENT_SILENT
@@ -94,6 +96,7 @@ from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.network import Sequential
 from tensorflow.contrib.eager.python.network import save_network_checkpoint
 from tensorflow.contrib.eager.python.network import restore_network_checkpoint
+from tensorflow.contrib.eager.python.remote import connect_to_remote_host
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver

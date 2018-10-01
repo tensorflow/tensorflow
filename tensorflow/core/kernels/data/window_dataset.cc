@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class WindowDataset : public DatasetBase {
@@ -107,4 +108,5 @@ Status NewWindowDataset(std::vector<std::vector<Tensor>> elements,
   return Status::OK();
 }
 
+}  // namespace data
 }  // namespace tensorflow

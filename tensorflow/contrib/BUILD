@@ -20,13 +20,7 @@ py_library(
     ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = if_not_windows([
-        # TODO(aaroey): tensorrt dependency has to appear before tflite so the
-        # build can resolve its flatbuffers symbols within the tensorrt library.
-        # This is an issue with the tensorrt static library and will be fixed by
-        # the next tensorrt release, so fix the order here after that.
-        "//tensorflow/contrib/tensorrt:init_py",  # doesn't compile on windows
-    ]) + [
+    deps = [
         "//tensorflow/contrib/all_reduce",
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
@@ -66,7 +60,6 @@ py_library(
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
         "//tensorflow/contrib/libsvm",
-        "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
         "//tensorflow/contrib/lite/python:lite",
@@ -119,24 +112,18 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
-        "//tensorflow:with_kafka_support_windows_override": [],
-        "//tensorflow:with_kafka_support": [
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "//tensorflow/contrib/bigtable",
+            "//tensorflow/contrib/cloud:cloud_py",
+            "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
             "//tensorflow/contrib/kafka",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis",
+            "//tensorflow/contrib/tensorrt:init_py",
+            "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         ],
-        "//conditions:default": [],
-    }) + if_not_windows_cuda([
-        "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
-    ]) + if_not_windows([
-        "//tensorflow/contrib/bigtable",  # depends on bigtable
-        "//tensorflow/contrib/cloud:cloud_py",  # doesn't compile on Windows
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
-    ]),
+    }),
 )
 
 cc_library(
@@ -145,7 +132,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
-        "//tensorflow/contrib/data/kernels:dataset_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/hadoop:dataset_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
@@ -160,17 +146,13 @@ cc_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
     ]) + select({
-        "//tensorflow:with_kafka_support_windows_override": [],
-        "//tensorflow:with_kafka_support": [
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_kernels",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis:dataset_kernels",
+            "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
         ],
-        "//conditions:default": [],
     }),
 )
 
@@ -180,8 +162,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
-        "//tensorflow/contrib/data:dataset_ops_op_lib",
-        "//tensorflow/contrib/data:indexed_dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",
@@ -197,16 +177,12 @@ cc_library(
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",
     ] + select({
-        "//tensorflow:with_kafka_support_windows_override": [],
-        "//tensorflow:with_kafka_support": [
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
+            "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
         ],
-        "//conditions:default": [],
     }),
 )

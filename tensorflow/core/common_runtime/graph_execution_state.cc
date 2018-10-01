@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_execution_state.h"
 
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -560,6 +561,10 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::GrapplerItem item;
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
+    // TODO(b/114748242): Add a unit test to test this bug fix.
+    if (flib_def_) {
+      *item.graph.mutable_library() = flib_def_->ToProto();
+    }
 
     item.fetch.insert(item.fetch.end(),
                       options.callable_options.fetch().begin(),
@@ -581,7 +586,7 @@ Status GraphExecutionState::OptimizeGraph(
         if (id.second != 0) {
           return errors::InvalidArgument("Unsupported feed: ", feed);
         }
-        feeds.insert(id.first.ToString());
+        feeds.emplace(id.first);
       }
       for (const TensorConnection& tensor_connection :
            options.callable_options.tensor_connection()) {
@@ -590,7 +595,7 @@ Status GraphExecutionState::OptimizeGraph(
           return errors::InvalidArgument("Unsupported feed: ",
                                          tensor_connection.to_tensor());
         }
-        feeds.insert(id.first.ToString());
+        feeds.emplace(id.first);
       }
       for (const NodeDef& node : original_graph_def_.node()) {
         if (feeds.find(node.name()) == feeds.end()) {
@@ -727,12 +732,50 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
 
+  int64 collective_graph_key = options.collective_graph_key;
+  if (collective_graph_key == BuildGraphOptions::kNoCollectiveGraphKey) {
+    // BuildGraphOptions does not specify a collective_graph_key.  Check all
+    // nodes in the Graph and FunctionLibraryDefinition for collective ops and
+    // if found, initialize a collective_graph_key as a hash of the ordered set
+    // of instance keys.
+    std::set<int32> instance_key_set;
+    for (Node* node : optimized_graph->nodes()) {
+      if (node->IsCollective()) {
+        int32 instance_key;
+        TF_RETURN_IF_ERROR(
+            GetNodeAttr(node->attrs(), "instance_key", &instance_key));
+        instance_key_set.emplace(instance_key);
+      } else {
+        const FunctionDef* fdef = optimized_flib->Find(node->def().op());
+        if (fdef != nullptr) {
+          for (const NodeDef& ndef : fdef->node_def()) {
+            if (ndef.op() == "CollectiveReduce" ||
+                ndef.op() == "CollectiveBcastSend" ||
+                ndef.op() == "CollectiveBcastRecv") {
+              int32 instance_key;
+              TF_RETURN_IF_ERROR(
+                  GetNodeAttr(ndef, "instance_key", &instance_key));
+              instance_key_set.emplace(instance_key);
+            }
+          }
+        }
+      }
+    }
+    if (!instance_key_set.empty()) {
+      uint64 hash = 0x8774aa605c729c72ULL;
+      for (int32 instance_key : instance_key_set) {
+        hash = Hash64Combine(instance_key, hash);
+      }
+      collective_graph_key = hash;
+    }
+  }
+
   // Copy the extracted graph in order to make its node ids dense,
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   std::unique_ptr<ClientGraph> dense_copy(
       new ClientGraph(std::move(optimized_flib), rewrite_metadata.feed_types,
-                      rewrite_metadata.fetch_types));
+                      rewrite_metadata.fetch_types, collective_graph_key));
   CopyGraph(*optimized_graph, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.

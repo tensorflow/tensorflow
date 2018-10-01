@@ -14,12 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <deque>
 
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/parallel_map_iterator.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -86,11 +87,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                     "Expected len(dense_defaults) == len(dense_keys) but got: ",
                     dense_default_tensors.size(), " vs. ", dense_keys_.size()));
 
-    std::vector<Tensor> dense_defaults;
-    dense_defaults.reserve(dense_default_tensors.size());
-    for (const Tensor& dense_default_t : dense_default_tensors) {
-      dense_defaults.push_back(dense_default_t);
-    }
+    std::vector<Tensor> dense_defaults(dense_default_tensors.begin(),
+                                       dense_default_tensors.end());
 
     for (int d = 0; d < dense_keys_.size(); ++d) {
       const Tensor& def_value = dense_defaults[d];
@@ -166,8 +164,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
-          device_threadpool_(
-              ctx->device()->tensorflow_cpu_worker_threads()->workers),
           dense_defaults_(std::move(dense_defaults)),
           sparse_keys_(std::move(sparse_keys)),
           dense_keys_(std::move(dense_keys)),
@@ -190,6 +186,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                            std::vector<Tensor> input_element,
                            std::vector<Tensor>* result, StatusCallback done) {
         (*ctx->runner())([this, ctx, input_element, result, done]() {
+          thread::ThreadPool* device_threadpool =
+              ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
           for (Tensor t : input_element) {
             auto serialized_t = t.flat<string>();
@@ -205,7 +203,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             config.collect_feature_stats = true;
           }
           example::Result example_result;
-          Status s = FastParseExample(config, slice_vec, {}, device_threadpool_,
+          Status s = FastParseExample(config, slice_vec, {}, device_threadpool,
                                       &example_result);
           if (s.ok()) {
             (*result).resize(key_to_output_index_.size());
@@ -289,7 +287,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return "ParseExampleDatasetOp::Dataset";
     }
 
-    // TODO(b/111553342): Add/Check support for checkpointing.
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -339,7 +336,6 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
    private:
     const DatasetBase* const input_;
-    thread::ThreadPool* const device_threadpool_;
     const std::vector<Tensor> dense_defaults_;
     const std::vector<string> sparse_keys_;
     const std::vector<string> dense_keys_;
@@ -369,5 +365,5 @@ REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
                         ParseExampleDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

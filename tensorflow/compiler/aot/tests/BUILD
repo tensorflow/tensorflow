@@ -25,6 +25,7 @@ test_suite(
         ":test_graph_tfmatmul_test",
         ":test_graph_tfmatmulandadd_test",
         ":test_graph_tfsplits_test",
+        ":test_graph_tftop_k_test",
         ":tfcompile_test",
     ],
 )
@@ -42,6 +43,7 @@ py_binary(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:training",
@@ -66,8 +68,14 @@ genrule(
         "test_graph_tfmatmul.pb",
         "test_graph_tfmatmulandadd.pb",
         "test_graph_tfsplits.pb",
+        "test_graph_tftop_k.pb",
     ],
-    cmd = "$(location :make_test_graphs) --out_dir $(@D)",
+    # Set CUDA_VISIBLE_DEVICES='' to prevent the code we launch from using any
+    # GPUs which might be present.  This is important because builds may run
+    # concurrently with tests, and tests need to be able to assume that they
+    # have control of the full GPU.
+    cmd = "CUDA_VISIBLE_DEVICES='' " +
+          "$(location :make_test_graphs) --out_dir $(@D)",
     tags = ["manual"],
     tools = [":make_test_graphs"],
 )
@@ -187,6 +195,9 @@ tf_library(
     cpp_class = "MatMulAndAddCompWithProfiling",
     enable_xla_hlo_profiling = True,
     graph = "test_graph_tfmatmulandadd.pb",
+    tags = [
+        "manual",
+    ],
 )
 
 tf_library(
@@ -195,6 +206,17 @@ tf_library(
     config = "test_graph_tfsplits.config.pbtxt",
     cpp_class = "SplitsComp",
     graph = "test_graph_tfsplits.pb",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tftop_k",
+    testonly = 1,
+    config = "test_graph_tftop_k.config.pbtxt",
+    cpp_class = "TopKComp",
+    graph = "test_graph_tftop_k.pb",
     tags = [
         "manual",
     ],
@@ -218,11 +240,13 @@ tf_cc_test(
         ":test_graph_tfmatmulandadd",
         ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
+        ":test_graph_tftop_k",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
+        "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",

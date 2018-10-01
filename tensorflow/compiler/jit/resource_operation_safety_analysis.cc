@@ -165,7 +165,7 @@ bool IsEdgeSafe(XlaResourceOpKind from, XlaResourceOpKind to) {
 using ResourceOp = std::pair<int, XlaResourceOpKind>;
 
 string ResourceOpToString(const ResourceOp& resource_op) {
-  return strings::StrCat(
+  return absl::StrCat(
       resource_op.first, ": ",
       XlaResourceOpInfo::XlaResourceOpKindToString(resource_op.second));
 }
@@ -257,11 +257,11 @@ string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {
   std::vector<string> elements_debug_string;
   std::transform(resource_op_set.begin(), resource_op_set.end(),
                  std::back_inserter(elements_debug_string), ResourceOpToString);
-  return strings::StrCat("{", absl::StrJoin(elements_debug_string, ","), "}");
+  return absl::StrCat("{", absl::StrJoin(elements_debug_string, ","), "}");
 }
 
 string NodeToString(const Node& n, XlaResourceOpKind resource_op_kind) {
-  return strings::StrCat(
+  return absl::StrCat(
       "[", n.name(), ": ", n.type_string(), "(",
       XlaResourceOpInfo::XlaResourceOpKindToString(resource_op_kind), ")", "]");
 }

@@ -47,6 +47,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleAllToAll(HloInstruction* hlo) override;
+  Status HandleCollectivePermute(HloInstruction* hlo) override;
   Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   Status HandleInfeed(HloInstruction*) override;
   Status HandleOutfeed(HloInstruction*) override;
@@ -150,7 +151,7 @@ class ShapeVerifier : public DfsHloVisitor {
 
 // HLO pass that verifies invariants of HLO instructions for each computation in
 // the module.
-class HloVerifier : public HloPassInterface {
+class HloVerifier : public HloModulePass {
  public:
   using ShapeVerifierFactory = std::function<std::unique_ptr<ShapeVerifier>()>;
 

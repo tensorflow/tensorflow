@@ -17,13 +17,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace gpu {
-
-using tensorflow::gtl::ArraySlice;
 
 // We want the input/output feature counts of an f16 conv to be factors of 8,
 // because without this cudnn can't use tensor cores on the conv.
@@ -38,15 +37,32 @@ static constexpr int64 kDesiredNumFeaturesFactor = 8;
 // there's additional room for speedups.  Achieving those speedups without also
 // slowing other things down will likely require a more sophisticated heuristic,
 // possibly some form of auto-tuning.
-static constexpr double kMaxBytesTouchedIncrease = 1.2;
+//
+// This value should be >= 4/3, otherwise the "dims of size 3 padded up to 4"
+// special case inside PadShape won't fire.
+static constexpr double kMaxBytesTouchedIncrease = 1.35;
 
 // Pads the given dimensions in the given shape up to a multiple of
 // kDesiredNumFeaturesFactor.
-static Shape PadShape(Shape s, ArraySlice<int64> dims) {
+static Shape PadShape(Shape s, absl::Span<const int64> dims) {
   for (int64 dim : dims) {
     int64 dim_to_pad_size = s.dimensions(dim);
-    int64 new_dim_to_pad_size =
-        RoundUpToNearest(dim_to_pad_size, kDesiredNumFeaturesFactor);
+
+    // Round dim_to_pad_size up to the next multiple of
+    // kDesiredNumFeaturesFactor.
+    //
+    // Special case: dims of size 3 are rounded up to 4, not
+    // kDesiredNumFeaturesFactor.  Empirically (and on the advice of nvidia),
+    // this helps, but as of writing, it's not supported by anything in the
+    // cudnn docs.
+    int64 new_dim_to_pad_size;
+    if (dim_to_pad_size == 3) {
+      new_dim_to_pad_size = 4;
+    } else {
+      new_dim_to_pad_size =
+          RoundUpToNearest(dim_to_pad_size, kDesiredNumFeaturesFactor);
+    }
+
     s.set_dimensions(dim, new_dim_to_pad_size);
   }
   return s;
@@ -64,8 +80,8 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   HloComputation* comp = instr->parent();
 
   const Shape& shape = instr->shape();
-  auto* zero = comp->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::Zero(shape.element_type()).CloneToUnique()));
+  auto* zero = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
 
   PaddingConfig pad_config = MakeNoPaddingConfig(ShapeUtil::Rank(shape));
 
@@ -211,7 +227,11 @@ static std::vector<HloInstruction*> GetRelevantConvs(HloComputation* comp) {
   std::vector<HloInstruction*> convs;
   for (HloInstruction* instr : comp->instructions()) {
     if (IsCustomCallToDnnConvolution(*instr) &&
-        instr->operand(0)->shape().element_type() == F16) {
+        instr->operand(0)->shape().element_type() == F16 &&
+        // TODO(timshen): Disable for fused conv for now. Implement it if it's
+        // needed.
+        Cast<HloCustomCallInstruction>(instr)->custom_call_target() !=
+            kCudnnConvBiasActivationForwardCallTarget) {
       convs.push_back(instr);
     }
   }

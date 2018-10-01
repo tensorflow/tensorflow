@@ -64,6 +64,11 @@ cc_library(
 tf_cc_test(
     name = "tensor_bundle_test",
     srcs = ["tensor_bundle_test.cc"],
+    data = glob(["testdata/**"]),
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":tensor_bundle",
         "//tensorflow/core:framework",

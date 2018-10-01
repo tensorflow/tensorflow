@@ -51,7 +51,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "tensorflow/core/kernels/resource_variable_ops.h"
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -60,10 +62,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -72,6 +76,8 @@ limitations under the License.
 namespace tensorflow {
 
 REGISTER_RESOURCE_HANDLE_KERNEL(Var);
+REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp").Device(DEVICE_CPU),
+                        ResourceHandlesOp<Var>);
 
 ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
@@ -79,7 +85,7 @@ ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
 
 void ReadVariableOp::Compute(OpKernelContext* ctx) {
   Var* variable = nullptr;
-  ResourceHandle handle = HandleFromInput(ctx, 0);
+  const ResourceHandle& handle = HandleFromInput(ctx, 0);
   const auto status = LookupResource(ctx, handle, &variable);
   OP_REQUIRES(ctx, status.ok(),
               errors::FailedPrecondition(
@@ -101,13 +107,58 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, t);
 }
 
+ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
+  int n;
+  OP_REQUIRES_OK(c, c->GetAttr("N", &n));
+  OP_REQUIRES_OK(c, c->GetAttr("dtypes", &dtypes_));
+  OP_REQUIRES(c, n == dtypes_.size(),
+              errors::InvalidArgument(
+                  "Mismatched number of arguments to ReadVariablesOp (", n,
+                  " vs. ", dtypes_.size(), ")"));
+}
+
+void ReadVariablesOp::Compute(OpKernelContext* ctx) {
+  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables(
+      dtypes_.size());
+  std::vector<const ResourceHandle*> handles(dtypes_.size());
+  for (size_t i = 0; i < dtypes_.size(); ++i) {
+    handles[i] = &HandleFromInput(ctx, i);
+  }
+  const auto status = LookupResources(ctx, handles, &variables);
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Error while reading resource variable. This could mean that "
+                  "the variable was uninitialized. ",
+                  status.ToString()));
+
+  for (size_t i = 0; i < dtypes_.size(); ++i) {
+    // We're acquiring a reference to the underlying buffer while
+    // holding a shared lock to guarantee ordering of reads and
+    // writes.
+    tf_shared_lock ml(*variables[i]->mu());
+    const Tensor& t = *variables[i]->tensor();
+    OP_REQUIRES(ctx, dtypes_[i] == t.dtype(),
+                errors::InvalidArgument(
+                    "Trying to read variable ", handles[i]->name(),
+                    " from Container: ", handles[i]->container(),
+                    " with wrong dtype. Expected ", DataTypeString(dtypes_[i]),
+                    " got ", DataTypeString(t.dtype())));
+    ctx->set_output(i, t);
+  }
+}
+
 REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
+REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
+                        ReadVariablesOp);
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
     ReadVariableOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_ReadVariablesOp").Device(DEVICE_GPU).HostMemory("resources"),
+    ReadVariablesOp);
 
 #define REGISTER_GPU_KERNELS(type)                             \
   namespace functor {                                          \
@@ -122,11 +173,20 @@ REGISTER_KERNEL_BUILDER(
                               .HostMemory("resource")          \
                               .TypeConstraint<type>("dtype"),  \
                           ResourceHandleOp<Var>)
-
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resources")
+                            .TypeConstraint("dtypes",
+                                            {DT_INT64, DT_COMPLEX64,
+                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
+                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
+                        ResourceHandlesOp<Var>);
+
 #endif  // GOOGLE_CUDA
 
 template <typename T>

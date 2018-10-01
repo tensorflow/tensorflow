@@ -70,7 +70,7 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    data = [":interpreter_test_data"],
+    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -130,6 +130,7 @@ py_test(
     ],
     deps = [
         ":convert",
+        ":interpreter",
         ":op_hint",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -143,7 +144,7 @@ py_library(
     name = "convert_saved_model",
     srcs = ["convert_saved_model.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/contrib/lite:__subpackages__"],
     deps = [
         ":convert",
         "//tensorflow/contrib/saved_model:saved_model_py",

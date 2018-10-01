@@ -127,8 +127,8 @@ def cross_entropy(ref, other,
   where `F` denotes the support of the random variable `X ~ P`.
 
   Args:
-    ref: `tf.distributions.Distribution` instance.
-    other: `tf.distributions.Distribution` instance.
+    ref: `tfd.Distribution` instance.
+    other: `tfd.Distribution` instance.
     allow_nan_stats: Python `bool`, default `True`. When `True`,
       statistics (e.g., mean, mode, variance) use the value "`NaN`" to
       indicate the result is undefined. When `False`, an exception is raised

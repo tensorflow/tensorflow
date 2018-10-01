@@ -47,6 +47,27 @@ bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
         return instruction->IsElementwiseOnOperand(operand_index);
       });
 }
+
+string PrecisionConfigToString(const PrecisionConfig& precision_config) {
+  if (absl::c_all_of(precision_config.operand_precision(), [](int32 precision) {
+        return static_cast<PrecisionConfig::Precision>(precision) ==
+               PrecisionConfig::DEFAULT;
+      })) {
+    return "";
+  }
+
+  return StrCat(
+      "operand_precision={",
+      StrJoin(
+          precision_config.operand_precision(), ",",
+          [](string* out, int32 precision) {
+            CHECK(PrecisionConfig::Precision_IsValid(precision)) << precision;
+            StrAppend(out,
+                      PrecisionToString(
+                          static_cast<PrecisionConfig::Precision>(precision)));
+          }),
+      "}");
+}
 }  // namespace
 
 HloBatchNormInstruction::HloBatchNormInstruction(
@@ -91,8 +112,7 @@ HloBatchNormTrainingInstruction::HloBatchNormTrainingInstruction(
 
 std::unique_ptr<HloInstruction>
 HloBatchNormTrainingInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloBatchNormTrainingInstruction>(
@@ -113,8 +133,7 @@ HloBatchNormInferenceInstruction::HloBatchNormInferenceInstruction(
 
 std::unique_ptr<HloInstruction>
 HloBatchNormInferenceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 5);
   return absl::make_unique<HloBatchNormInferenceInstruction>(
@@ -135,8 +154,7 @@ HloBatchNormGradInstruction::HloBatchNormGradInstruction(
 
 std::unique_ptr<HloInstruction>
 HloBatchNormGradInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 5);
   return absl::make_unique<HloBatchNormGradInstruction>(
@@ -144,9 +162,9 @@ HloBatchNormGradInstruction::CloneWithNewOperandsImpl(
       new_operands[4], epsilon(), feature_index());
 }
 
-HloFftInstruction::HloFftInstruction(
-    const Shape& shape, HloInstruction* operand, FftType fft_type,
-    tensorflow::gtl::ArraySlice<int64> fft_length)
+HloFftInstruction::HloFftInstruction(const Shape& shape,
+                                     HloInstruction* operand, FftType fft_type,
+                                     absl::Span<const int64> fft_length)
     : HloInstruction(HloOpcode::kFft, shape), fft_type_(fft_type) {
   fft_length_.assign(fft_length.begin(), fft_length.end());
   AppendOperand(operand);
@@ -177,8 +195,7 @@ bool HloFftInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloFftInstruction>(shape, new_operands[0], fft_type_,
@@ -232,8 +249,7 @@ HloSendInstruction::HloSendInstruction(HloInstruction* operand,
 }
 
 std::unique_ptr<HloInstruction> HloSendInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloSendInstruction>(
@@ -250,8 +266,7 @@ HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand,
 
 std::unique_ptr<HloInstruction>
 HloSendDoneInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloSendDoneInstruction>(
@@ -271,8 +286,7 @@ HloRecvInstruction::HloRecvInstruction(const Shape& shape,
 }
 
 std::unique_ptr<HloInstruction> HloRecvInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloRecvInstruction>(
@@ -293,8 +307,7 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
 
 std::unique_ptr<HloInstruction>
 HloRecvDoneInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloRecvDoneInstruction>(
@@ -303,7 +316,7 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
 
 HloCollectiveInstruction::HloCollectiveInstruction(
     HloOpcode opcode, const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    absl::Span<HloInstruction* const> operands,
     const std::vector<ReplicaGroup>& replica_groups)
     : HloInstruction(opcode, shape), replica_groups_(replica_groups) {
   for (auto operand : operands) {
@@ -337,15 +350,14 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
     /*eq_computations*/) const {
   const auto& casted_other =
       static_cast<const HloCollectiveInstruction&>(other);
-  return ContainersEqual(replica_groups(), casted_other.replica_groups(),
-                         [](const ReplicaGroup& a, const ReplicaGroup& b) {
-                           return ContainersEqual(a.replica_ids(),
-                                                  b.replica_ids());
-                         });
+  return absl::c_equal(replica_groups(), casted_other.replica_groups(),
+                       [](const ReplicaGroup& a, const ReplicaGroup& b) {
+                         return absl::c_equal(a.replica_ids(), b.replica_ids());
+                       });
 }
 
 HloAllReduceInstruction::HloAllReduceInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
     const absl::optional<int64>& all_reduce_id)
@@ -393,8 +405,7 @@ bool HloAllReduceInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloAllReduceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
       shape, new_operands, to_apply(), replica_groups(),
@@ -402,23 +413,72 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     const std::vector<ReplicaGroup>& replica_groups)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
                                replica_groups) {}
 
 std::unique_ptr<HloInstruction>
 HloAllToAllInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllToAllInstruction>(shape, new_operands,
                                                    replica_groups());
 }
 
-HloReverseInstruction::HloReverseInstruction(
+HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> dimensions)
+    const std::vector<std::pair<int64, int64>>& source_target_pairs)
+    : HloInstruction(HloOpcode::kCollectivePermute, shape),
+      source_target_pairs_(source_target_pairs) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (const auto& pair : source_target_pairs()) {
+    auto* proto_pair = proto.add_source_target_pairs();
+    proto_pair->set_source(pair.first);
+    proto_pair->set_target(pair.second);
+  }
+  return proto;
+}
+
+std::vector<string>
+HloCollectivePermuteInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result;
+  std::vector<string> strs;
+  for (const auto& pair : source_target_pairs()) {
+    strs.push_back(StrCat("{", pair.first, ",", pair.second, "}"));
+  }
+  result.push_back(StrCat("source_target_pairs={", StrJoin(strs, ","), "}"));
+  return result;
+}
+
+bool HloCollectivePermuteInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloCollectivePermuteInstruction&>(other);
+  return absl::c_equal(source_target_pairs(),
+                       casted_other.source_target_pairs(),
+                       [](const std::pair<int64, int64>& a,
+                          const std::pair<int64, int64>& b) { return a == b; });
+}
+
+std::unique_ptr<HloInstruction>
+HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  return absl::make_unique<HloCollectivePermuteInstruction>(
+      shape, new_operands[0], source_target_pairs());
+}
+
+HloReverseInstruction::HloReverseInstruction(const Shape& shape,
+                                             HloInstruction* operand,
+                                             absl::Span<const int64> dimensions)
     : HloInstruction(HloOpcode::kReverse, shape),
       dimensions_(dimensions.begin(), dimensions.end()) {
   AppendOperand(operand);
@@ -446,8 +506,7 @@ bool HloReverseInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloReverseInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloReverseInstruction>(shape, new_operands[0],
@@ -455,7 +514,7 @@ std::unique_ptr<HloInstruction> HloReverseInstruction::CloneWithNewOperandsImpl(
 }
 
 HloConcatenateInstruction::HloConcatenateInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     int64 dimension)
     : HloInstruction(HloOpcode::kConcatenate, shape), dimensions_({dimension}) {
   for (auto operand : operands) {
@@ -487,16 +546,15 @@ bool HloConcatenateInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloConcatenateInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return absl::make_unique<HloConcatenateInstruction>(shape, new_operands,
                                                       dimensions(0));
 }
 
 HloReduceInstruction::HloReduceInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> args,
-    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+    const Shape& shape, absl::Span<HloInstruction* const> args,
+    absl::Span<const int64> dimensions_to_reduce,
     HloComputation* reduce_computation)
     : HloInstruction(HloOpcode::kReduce, shape),
       dimensions_(dimensions_to_reduce.begin(), dimensions_to_reduce.end()) {
@@ -531,10 +589,9 @@ bool HloReduceInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
+  CHECK_EQ(new_operands.size() % 2, 0);
   return absl::make_unique<HloReduceInstruction>(shape, new_operands,
                                                  dimensions(), to_apply());
 }
@@ -571,8 +628,7 @@ bool HloSortInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   HloInstruction* keys = new_operands[0];
   HloInstruction* values = new_operands.size() == 2 ? new_operands[1] : nullptr;
@@ -582,7 +638,7 @@ std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
 
 HloTransposeInstruction::HloTransposeInstruction(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> dimensions)
+    absl::Span<const int64> dimensions)
     : HloInstruction(HloOpcode::kTranspose, shape),
       dimensions_(dimensions.begin(), dimensions.end()) {
   CHECK_EQ(shape.dimensions().size(), dimensions.size());
@@ -626,8 +682,7 @@ bool HloTransposeInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloTransposeInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloTransposeInstruction>(shape, new_operands[0],
@@ -636,7 +691,7 @@ HloTransposeInstruction::CloneWithNewOperandsImpl(
 
 HloBroadcastInstruction::HloBroadcastInstruction(
     const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> broadcast_dimension)
+    absl::Span<const int64> broadcast_dimension)
     : HloInstruction(HloOpcode::kBroadcast, shape),
       dimensions_(broadcast_dimension.begin(), broadcast_dimension.end()) {
   AppendOperand(operand);
@@ -665,17 +720,16 @@ bool HloBroadcastInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloBroadcastInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloBroadcastInstruction>(shape, new_operands[0],
                                                     dimensions());
 }
 
-HloMapInstruction::HloMapInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* map_computation)
+HloMapInstruction::HloMapInstruction(const Shape& shape,
+                                     absl::Span<HloInstruction* const> operands,
+                                     HloComputation* map_computation)
     : HloInstruction(HloOpcode::kMap, shape) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -724,17 +778,16 @@ bool HloMapInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloMapInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return absl::make_unique<HloMapInstruction>(shape, new_operands, to_apply());
 }
 
-HloSliceInstruction::HloSliceInstruction(
-    const Shape& shape, HloInstruction* operand,
-    tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices,
-    tensorflow::gtl::ArraySlice<int64> strides)
+HloSliceInstruction::HloSliceInstruction(const Shape& shape,
+                                         HloInstruction* operand,
+                                         absl::Span<const int64> start_indices,
+                                         absl::Span<const int64> limit_indices,
+                                         absl::Span<const int64> strides)
     : HloInstruction(HloOpcode::kSlice, shape),
       slice_starts_(start_indices.begin(), start_indices.end()),
       slice_limits_(limit_indices.begin(), limit_indices.end()),
@@ -785,16 +838,15 @@ bool HloSliceInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloSliceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloSliceInstruction>(
       shape, new_operands[0], slice_starts_, slice_limits_, slice_strides_);
 }
 
-HloConstantInstruction::HloConstantInstruction(std::unique_ptr<Literal> literal)
-    : HloInstruction(HloOpcode::kConstant, CHECK_NOTNULL(literal)->shape()),
+HloConstantInstruction::HloConstantInstruction(Literal literal)
+    : HloInstruction(HloOpcode::kConstant, literal.shape()),
       literal_(std::move(literal)) {}
 
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
@@ -802,7 +854,7 @@ HloConstantInstruction::HloConstantInstruction(const Shape& shape)
 
 HloInstructionProto HloConstantInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  if (literal_ != nullptr) {
+  if (literal_.has_value()) {
     *proto.mutable_literal() = literal_->ToProto();
   }
   return proto;
@@ -824,7 +876,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
 
   if (!mutable_array_subshape->has_layout() ||
       !LayoutUtil::Equal(mutable_array_subshape->layout(), new_layout)) {
-    literal_ = literal_->Relayout(new_layout, shape_index);
+    *literal_ = literal_->Relayout(new_layout, shape_index);
     *mutable_array_subshape->mutable_layout() = new_layout;
   }
 }
@@ -839,10 +891,10 @@ bool HloConstantInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloConstantInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloConstantInstruction>(literal_->CloneToUnique());
+  CHECK(literal_.has_value());
+  return absl::make_unique<HloConstantInstruction>(literal_->Clone());
 }
 
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
@@ -850,7 +902,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
     CanonicalNameMap* canonical_name_map) const {
   string operands;
   // For constants, show the actual value in place of an empty operand list.
-  if (literal_ != nullptr &&
+  if (literal_.has_value() &&
       ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
@@ -885,7 +937,7 @@ HloTraceInstruction::HloTraceInstruction(const string& tag,
 
 HloInstructionProto HloTraceInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_literal() = literal_->ToProto();
+  *proto.mutable_literal() = literal_.ToProto();
   return proto;
 }
 
@@ -897,8 +949,7 @@ bool HloTraceInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloTraceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode());
 }
@@ -916,7 +967,7 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
 
 HloFusionInstruction::HloFusionInstruction(
     const Shape& shape, FusionKind fusion_kind,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    absl::Span<HloInstruction* const> operands,
     HloComputation* fusion_computation)
     : HloInstruction(HloOpcode::kFusion, shape), fusion_kind_(fusion_kind) {
   for (auto operand : operands) {
@@ -1152,7 +1203,7 @@ HloInstruction* HloFusionInstruction::FuseInstructionInternal(
 
 HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     HloInstruction* instruction_to_fuse, bool add_output) {
-  CHECK(instruction_to_fuse->IsFusable()) << instruction_to_fuse->ToString();
+  CHECK(instruction_to_fuse->IsFusible()) << instruction_to_fuse->ToString();
   VLOG(3) << "CloneAndFuseInternal:\n" << instruction_to_fuse->ToString();
   HloInstruction* clone = nullptr;
   if (called_computations().empty()) {
@@ -1323,8 +1374,7 @@ bool HloFusionInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   HloModule* module = context != nullptr ? context->module() : GetModule();
   HloComputation* new_fused_computation = nullptr;
@@ -1362,7 +1412,7 @@ Status HloFusionInstruction::DeduplicateFusionOperands() {
 
 HloRngInstruction::HloRngInstruction(
     const Shape& shape, RandomDistribution distribution,
-    tensorflow::gtl::ArraySlice<HloInstruction*> parameters)
+    absl::Span<HloInstruction* const> parameters)
     : HloInstruction(HloOpcode::kRng, shape), distribution_(distribution) {
   for (HloInstruction* param : parameters) {
     AppendOperand(param);
@@ -1393,8 +1443,7 @@ bool HloRngInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return absl::make_unique<HloRngInstruction>(shape, distribution_,
                                               new_operands);
@@ -1430,8 +1479,7 @@ bool HloParameterInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloParameterInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   return absl::make_unique<HloParameterInstruction>(parameter_number_, shape,
                                                     name());
@@ -1466,8 +1514,7 @@ bool HloGetTupleElementInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloGetTupleElementInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloGetTupleElementInstruction>(
@@ -1509,8 +1556,7 @@ bool HloReducePrecisionInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloReducePrecisionInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloReducePrecisionInstruction>(
@@ -1550,8 +1596,7 @@ bool HloInfeedInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloInfeedInstruction>(
@@ -1596,8 +1641,7 @@ bool HloOutfeedInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloOutfeedInstruction>(
@@ -1606,12 +1650,14 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
 
 HloConvolutionInstruction::HloConvolutionInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count)
+    int64 feature_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kConvolution, shape),
+      feature_group_count_(feature_group_count),
       window_(window),
       convolution_dimension_numbers_(dimension_numbers),
-      feature_group_count_(feature_group_count) {
+      precision_config_(precision_config) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
   }
@@ -1638,6 +1684,8 @@ HloInstructionProto HloConvolutionInstruction::ToProto() const {
   *proto.mutable_window() = window_;
   *proto.mutable_convolution_dimension_numbers() =
       convolution_dimension_numbers_;
+  proto.set_feature_group_count(feature_group_count_);
+  *proto.mutable_precision_config() = precision_config_;
   return proto;
 }
 
@@ -1649,7 +1697,15 @@ std::vector<string> HloConvolutionInstruction::ExtraAttributesToStringImpl(
   }
   extra.push_back(StrCat("dim_labels=", ConvolutionDimensionNumbersToString(
                                             convolution_dimension_numbers_)));
-  extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  if (feature_group_count_ != 1) {
+    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  }
+
+  string precision_config_string = PrecisionConfigToString(precision_config_);
+  if (!precision_config_string.empty()) {
+    extra.push_back(precision_config_string);
+  }
+
   return extra;
 }
 
@@ -1659,21 +1715,25 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
         eq_computations) const {
   const auto& casted_other =
       static_cast<const HloConvolutionInstruction&>(other);
+  if (feature_group_count_ != other.feature_group_count()) {
+    return false;
+  }
   return protobuf_util::ProtobufEquals(window(), casted_other.window()) &&
          protobuf_util::ProtobufEquals(
              convolution_dimension_numbers(),
-             casted_other.convolution_dimension_numbers());
+             casted_other.convolution_dimension_numbers()) &&
+         protobuf_util::ProtobufEquals(precision_config(),
+                                       casted_other.precision_config());
 }
 
 std::unique_ptr<HloInstruction>
 HloConvolutionInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], window(),
-      convolution_dimension_numbers_, feature_group_count_);
+      shape, new_operands[0], new_operands[1], feature_group_count_, window(),
+      convolution_dimension_numbers_, precision_config_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(
@@ -1712,8 +1772,7 @@ bool HloReduceWindowInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloReduceWindowInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloReduceWindowInstruction>(
@@ -1761,8 +1820,7 @@ bool HloSelectAndScatterInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloSelectAndScatterInstruction>(
@@ -1771,11 +1829,12 @@ HloSelectAndScatterInstruction::CloneWithNewOperandsImpl(
 }
 
 HloCustomCallInstruction::HloCustomCallInstruction(
-    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    absl::string_view custom_call_target)
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::string_view custom_call_target, absl::string_view opaque)
     : HloInstruction(HloOpcode::kCustomCall, shape),
-      custom_call_target_(custom_call_target.begin(),
-                          custom_call_target.end()) {
+      custom_call_target_(custom_call_target.begin(), custom_call_target.end()),
+      opaque_(opaque.begin(), opaque.end()),
+      feature_group_count_(1) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -1791,6 +1850,8 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
         *convolution_dimension_numbers_;
   }
   proto.set_custom_call_target(custom_call_target_);
+  proto.set_custom_call_opaque(opaque_);
+  proto.set_feature_group_count(feature_group_count_);
   return proto;
 }
 
@@ -1805,11 +1866,19 @@ std::vector<string> HloCustomCallInstruction::ExtraAttributesToStringImpl(
         "dim_labels=",
         ConvolutionDimensionNumbersToString(*convolution_dimension_numbers_)));
   }
+  if (feature_group_count_ != 1) {
+    extra.push_back(StrCat("feature_group_count=", feature_group_count_));
+  }
   // By contract, we print the custom call target even if
   // options.print_subcomputation_mode() == kOff, because the call target is not
   // an HloComputation.
   extra.push_back(
       StrCat("custom_call_target=\"", CEscape(custom_call_target_), "\""));
+  // If the opaque string becomes enormous we may want to reconsider printing
+  // this inline and consider other options.
+  if (!opaque_.empty()) {
+    extra.push_back(StrCat("opaque=\"", CEscape(opaque_), "\""));
+  }
   return extra;
 }
 
@@ -1832,22 +1901,26 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
            casted_other.convolution_dimension_numbers()))) {
     return false;
   }
-  return custom_call_target_ == casted_other.custom_call_target_;
+  if (feature_group_count_ != casted_other.feature_group_count_) {
+    return false;
+  }
+  return custom_call_target_ == casted_other.custom_call_target_ &&
+         opaque_ == casted_other.opaque_;
 }
 
 std::unique_ptr<HloInstruction>
 HloCustomCallInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   auto cloned = absl::make_unique<HloCustomCallInstruction>(
-      shape, new_operands, custom_call_target());
+      shape, new_operands, custom_call_target(), opaque());
   if (window_ != nullptr) {
     cloned->set_window(*window_);
   }
   if (convolution_dimension_numbers_ != nullptr) {
     cloned->set_convolution_dimension_numbers(*convolution_dimension_numbers_);
   }
+  cloned->set_feature_group_count(feature_group_count_);
   return std::move(cloned);
 }
 
@@ -1881,8 +1954,7 @@ bool HloPadInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloPadInstruction>(shape, new_operands[0],
@@ -1891,7 +1963,7 @@ std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
 
 HloDynamicSliceInstruction::HloDynamicSliceInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
-    tensorflow::gtl::ArraySlice<int64> slice_sizes)
+    absl::Span<const int64> slice_sizes)
     : HloInstruction(HloOpcode::kDynamicSlice, shape),
       dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
   AppendOperand(operand);
@@ -1921,8 +1993,7 @@ bool HloDynamicSliceInstruction::IdenticalSlowPath(
 
 std::unique_ptr<HloInstruction>
 HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloDynamicSliceInstruction>(
@@ -1932,7 +2003,7 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
 HloGatherInstruction::HloGatherInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     const GatherDimensionNumbers& gather_dim_numbers,
-    tensorflow::gtl::ArraySlice<int64> slice_sizes)
+    absl::Span<const int64> slice_sizes)
     : HloInstruction(HloOpcode::kGather, shape) {
   AppendOperand(operand);
   AppendOperand(start_indices);
@@ -1961,10 +2032,9 @@ string HloGatherInstruction::GatherDimensionNumbersToString() const {
 }
 
 /* static */ GatherDimensionNumbers HloGatherInstruction::MakeGatherDimNumbers(
-    tensorflow::gtl::ArraySlice<int64> offset_dims,
-    tensorflow::gtl::ArraySlice<int64> collapsed_slice_dims,
-    tensorflow::gtl::ArraySlice<int64> start_index_map,
-    int64 index_vector_dim) {
+    absl::Span<const int64> offset_dims,
+    absl::Span<const int64> collapsed_slice_dims,
+    absl::Span<const int64> start_index_map, int64 index_vector_dim) {
   GatherDimensionNumbers gather_dim_numbers;
   for (int64 output_window_dim : offset_dims) {
     gather_dim_numbers.add_offset_dims(output_window_dim);
@@ -2007,8 +2077,7 @@ bool HloGatherInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloGatherInstruction>(
@@ -2052,9 +2121,9 @@ string HloScatterInstruction::ScatterDimensionNumbersToString() const {
 
 /* static */ ScatterDimensionNumbers
 HloScatterInstruction::MakeScatterDimNumbers(
-    tensorflow::gtl::ArraySlice<int64> update_window_dims,
-    tensorflow::gtl::ArraySlice<int64> inserted_window_dims,
-    tensorflow::gtl::ArraySlice<int64> scatter_dims_to_operand_dims,
+    absl::Span<const int64> update_window_dims,
+    absl::Span<const int64> inserted_window_dims,
+    absl::Span<const int64> scatter_dims_to_operand_dims,
     int64 index_vector_dim) {
   ScatterDimensionNumbers scatter_dim_numbers;
   for (int64 update_window_dim : update_window_dims) {
@@ -2094,8 +2163,7 @@ bool HloScatterInstruction::IdenticalSlowPath(
 }
 
 std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
-    const Shape& shape,
-    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 3);
   return absl::make_unique<HloScatterInstruction>(
@@ -2103,4 +2171,142 @@ std::unique_ptr<HloInstruction> HloScatterInstruction::CloneWithNewOperandsImpl(
       scatter_dimension_numbers());
 }
 
+HloIotaInstruction::HloIotaInstruction(const Shape& shape, int64 iota_dimension)
+    : HloInstruction(HloOpcode::kIota, shape),
+      iota_dimension_(iota_dimension) {}
+
+HloInstructionProto HloIotaInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.add_dimensions(iota_dimension());
+  return proto;
+}
+
+std::vector<string> HloIotaInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("iota_dimension=", iota_dimension())};
+}
+
+bool HloIotaInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloIotaInstruction&>(other);
+  return iota_dimension() == casted_other.iota_dimension();
+}
+
+std::unique_ptr<HloInstruction> HloIotaInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  return absl::make_unique<HloIotaInstruction>(shape, iota_dimension());
+}
+
+HloDotInstruction::HloDotInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config)
+    : HloInstruction(HloOpcode::kDot, shape),
+      dot_dimension_numbers_(dimension_numbers),
+      precision_config_(precision_config) {
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+}
+
+HloInstructionProto HloDotInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto.mutable_precision_config() = precision_config_;
+  return proto;
+}
+
+std::vector<string> HloDotInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> extra = {DotDimensionNumbersToString()};
+
+  string precision_config_string = PrecisionConfigToString(precision_config_);
+  if (!precision_config_string.empty()) {
+    extra.push_back(precision_config_string);
+  }
+  return extra;
+}
+
+bool HloDotInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloDotInstruction&>(other);
+  return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
+                                       casted_other.dot_dimension_numbers()) &&
+         protobuf_util::ProtobufEquals(precision_config(),
+                                       casted_other.precision_config());
+}
+
+std::unique_ptr<HloInstruction> HloDotInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return absl::make_unique<HloDotInstruction>(
+      shape, new_operands[0], new_operands[1], dot_dimension_numbers_,
+      precision_config_);
+}
+
+string HloDotInstruction::DotDimensionNumbersToString() const {
+  std::vector<string> result;
+  const DotDimensionNumbers& dnums = dot_dimension_numbers_;
+  if (!dnums.lhs_batch_dimensions().empty()) {
+    result.push_back(StrCat("lhs_batch_dims={",
+                            StrJoin(dnums.lhs_batch_dimensions(), ","), "}"));
+  }
+  result.push_back(StrCat("lhs_contracting_dims={",
+                          StrJoin(dnums.lhs_contracting_dimensions(), ","),
+                          "}"));
+
+  if (!dnums.rhs_batch_dimensions().empty()) {
+    result.push_back(StrCat("rhs_batch_dims={",
+                            StrJoin(dnums.rhs_batch_dimensions(), ","), "}"));
+  }
+  result.push_back(StrCat("rhs_contracting_dims={",
+                          StrJoin(dnums.rhs_contracting_dimensions(), ","),
+                          "}"));
+
+  return StrJoin(result, ", ");
+}
+
+HloDomainInstruction::HloDomainInstruction(
+    const Shape& shape, HloInstruction* operand,
+    std::unique_ptr<DomainMetadata> operand_side_metadata,
+    std::unique_ptr<DomainMetadata> user_side_metadata)
+    : HloInstruction(HloOpcode::kDomain, shape),
+      operand_side_metadata_(std::move(operand_side_metadata)),
+      user_side_metadata_(std::move(user_side_metadata)) {
+  AppendOperand(operand);
+}
+
+std::vector<string> HloDomainInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
+    return {StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
+                   "\", entry=", user_side_metadata_->ToString(),
+                   ", exit=", operand_side_metadata_->ToString(), "}")};
+  }
+  return {};
+}
+
+bool HloDomainInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloDomainInstruction&>(other);
+  return operand_side_metadata().Matches(
+             casted_other.operand_side_metadata()) &&
+         user_side_metadata().Matches(casted_other.user_side_metadata());
+}
+
+std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloDomainInstruction>(
+      shape, new_operands[0], operand_side_metadata_->Clone(),
+      user_side_metadata_->Clone());
+}
 }  // namespace xla

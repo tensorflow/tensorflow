@@ -103,7 +103,8 @@ class RNNTest(test.TestCase):
                MinimalRNNCell(16, 8),
                MinimalRNNCell(32, 16)]
       layer = keras.layers.RNN(cells)
-      assert layer.cell.state_size == (32, 32, 16, 16, 8, 8)
+      self.assertEqual(layer.cell.state_size, (8, 8, 16, 16, 32, 32))
+      self.assertEqual(layer.cell.output_size, 32)
       y = layer(x)
       model = keras.models.Model(x, y)
       model.compile(optimizer='rmsprop', loss='mse')
@@ -529,7 +530,9 @@ class RNNTest(test.TestCase):
         y_np_2 = model.predict(x_np)
         self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
-  def test_stacked_rnn_dropout(self):
+  def DISABLED_test_stacked_rnn_dropout(self):
+    # Temporarily disabled test due an occasional Grappler segfault.
+    # See b/115523414
     cells = [keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1),
              keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1)]
     layer = keras.layers.RNN(cells)
@@ -549,6 +552,21 @@ class RNNTest(test.TestCase):
     embedding_dim = 4
     timesteps = 2
     layer = keras.layers.RNN(cells, return_state=True, return_sequences=True)
+    output_shape = layer.compute_output_shape((None, timesteps, embedding_dim))
+    expected_output_shape = [(None, timesteps, 6),
+                             (None, 3),
+                             (None, 3),
+                             (None, 6),
+                             (None, 6)]
+    self.assertEqual(
+        [tuple(o.as_list()) for o in output_shape],
+        expected_output_shape)
+
+    # Test reverse_state_order = True for stacked cell.
+    stacked_cell = keras.layers.StackedRNNCells(
+        cells, reverse_state_order=True)
+    layer = keras.layers.RNN(
+        stacked_cell, return_state=True, return_sequences=True)
     output_shape = layer.compute_output_shape((None, timesteps, embedding_dim))
     expected_output_shape = [(None, timesteps, 6),
                              (None, 6),

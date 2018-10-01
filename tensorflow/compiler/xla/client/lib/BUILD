@@ -113,7 +113,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

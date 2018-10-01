@@ -22,7 +22,6 @@ import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
@@ -510,7 +509,7 @@ class _WithSpaceToBatch(object):
 
     # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
-      if not result_converted.shape[1].value:
+      if not result_converted.shape[1].value and filter is not None:
         output_shape = result_converted.shape.as_list()
         output_shape[1] = filter.shape[-1]
         result_converted.set_shape(output_shape)
@@ -1586,7 +1585,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
   "Rectifier Nonlinearities Improve Neural Network Acoustic Models"
   AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013
-  http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
+  https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf
 
   Args:
     features: A `Tensor` representing preactivation values. Must be one of
@@ -1670,47 +1669,24 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   shape = logits.get_shape()
   is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
 
-  # TODO(phawkins): remove after 2018/8/27 and simplify this code.
-  softmax_accepts_r1_or_greater = compat.forward_compatible(2018, 8, 27)
-  reshape_required = (not softmax_accepts_r1_or_greater) and shape.ndims != 2
   if is_last_dim:
-    if reshape_required:
-      # If dim is the last dimension, simply reshape the logits to a matrix and
-      # apply the internal softmax.
-      input_shape = array_ops.shape(logits)
-      logits = _flatten_outer_dims(logits)
-      output = compute_op(logits)
-      output = array_ops.reshape(output, input_shape, name=name)
-      return output
     return compute_op(logits, name=name)
 
-  # If dim is not the last dimension, we have to do a reshape and transpose so
-  # that we can still perform softmax on its last dimension.
+  # If dim is not the last dimension, we have to do a transpose so that we can
+  # still perform softmax on its last dimension.
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
   dim_axis = dim % shape.ndims
   logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
-  shape_after_swap = array_ops.shape(logits)
 
-  if reshape_required:
-    # Reshape logits into a matrix.
-    logits = _flatten_outer_dims(logits)
-
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
-
-    # Transform back the output tensor.
-    output = array_ops.reshape(output, shape_after_swap)
-  else:
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
+  # Do the actual softmax on its last dimension.
+  output = compute_op(logits)
 
   output = _swap_axis(
       output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
-  # Make shape inference work since reshape and transpose may erase its static
-  # shape.
+  # Make shape inference work since transpose may erase its static shape.
   output.set_shape(shape)
 
   return output
@@ -2454,7 +2430,7 @@ def conv1d(value,
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
+    value: A 3D `Tensor`.  Must be of type `float16`, `float32`, or `float64`.
     filters: A 3D `Tensor`.  Must have the same type as `value`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.

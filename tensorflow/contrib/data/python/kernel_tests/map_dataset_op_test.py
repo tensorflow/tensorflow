@@ -29,6 +29,7 @@ from tensorflow.contrib.data.python.ops import error_ops
 from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -41,7 +42,7 @@ from tensorflow.python.util import compat
 _NUMPY_RANDOM_SEED = 42
 
 
-class MapDatasetTest(test.TestCase):
+class MapDatasetTest(test_base.DatasetTestBase):
 
   def testMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
@@ -54,7 +55,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for x in [1., 2., 3., 5.]:
         self.assertEqual(x, sess.run(get_next))
@@ -72,7 +73,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for x in [1., 2., 3., 5.]:
         self.assertEqual(x, sess.run(get_next))
@@ -99,7 +100,7 @@ class MapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # All of the files are present.
       sess.run(init_op)
       for filename in filenames:
@@ -209,7 +210,7 @@ class MapDatasetBenchmark(test.Benchmark):
             end = time.time()
             chained_deltas.append(end - start)
 
-        fused_dataset = dataset = dataset.apply(
+        fused_dataset = dataset.apply(
             batching.map_and_batch(
                 math_ops.matmul,
                 num_parallel_calls=num_calls,

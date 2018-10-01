@@ -207,7 +207,8 @@ class ConvTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DBiasRegularizer(self):
     height, width = 7, 9
@@ -217,7 +218,8 @@ class ConvTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DNoBias(self):
     height, width = 7, 9
@@ -445,7 +447,8 @@ class SeparableConv1DTest(test.TestCase):
     layer.apply(data)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv1DPointwiseRegularizer(self):
     length = 9
@@ -455,7 +458,8 @@ class SeparableConv1DTest(test.TestCase):
     layer.apply(data)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv1DBiasRegularizer(self):
     length = 9
@@ -465,7 +469,8 @@ class SeparableConv1DTest(test.TestCase):
     layer.apply(data)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv1DNoBias(self):
     length = 9
@@ -682,7 +687,8 @@ class SeparableConv2DTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv2DPointwiseRegularizer(self):
     height, width = 7, 9
@@ -692,7 +698,8 @@ class SeparableConv2DTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv2DBiasRegularizer(self):
     height, width = 7, 9
@@ -702,7 +709,8 @@ class SeparableConv2DTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv2DNoBias(self):
     height, width = 7, 9
@@ -839,7 +847,8 @@ class Conv2DTransposeTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DTransposeBiasRegularizer(self):
     height, width = 7, 9
@@ -849,7 +858,8 @@ class Conv2DTransposeTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DTransposeNoBias(self):
     height, width = 7, 9
@@ -1017,7 +1027,8 @@ class Conv3DTransposeTest(test.TestCase):
     layer.apply(volumes)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv3DTransposeBiasRegularizer(self):
     depth, height, width = 5, 7, 9
@@ -1027,7 +1038,8 @@ class Conv3DTransposeTest(test.TestCase):
     layer.apply(volumes)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv3DTransposeNoBias(self):
     depth, height, width = 5, 7, 9

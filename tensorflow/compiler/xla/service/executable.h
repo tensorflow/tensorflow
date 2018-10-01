@@ -18,7 +18,10 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -26,17 +29,32 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
+#include "tensorflow/compiler/xla/service/owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
+
+// ExecutionOutput encapsulates the output buffers of a execution and the
+// leftover buffers to be released by the caller.
+struct ExecutionOutput {
+  ExecutionOutput(ScopedShapedBuffer result,
+                  std::vector<OwningDeviceMemory> to_be_released)
+      : result(std::move(result)), to_be_released(std::move(to_be_released)) {}
+  ScopedShapedBuffer result;
+
+  // Leftover buffers for the caller to release. Elements in this list are
+  // donated input memory buffers that are not reused by XLA as outputs.
+  std::vector<OwningDeviceMemory> to_be_released;
+};
 
 // A given platform's compiler will produce an Executable -- this is a uniform
 // interface that is used for launching compiled programs across platforms.
@@ -63,25 +81,46 @@ class Executable {
   // Returns a shaped buffer containing the result of the computation.
   virtual StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
   virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) = 0;
+      absl::Span<const ShapedBuffer* const> arguments) = 0;
+
+  // Starts the given program executing on the given stream/executor.
+  //
+  // `arguments` are ShapeTree containing the input parameters. For each element
+  // in the shape tree, if the element holds the ownership of the memory, it is
+  // considered donated and XLA will potentially reuse it as output buffers. For
+  // all donated inputs, XLA is also responsible for freeing them.
+  //
+  // If an input is donated to XLA but is not reused as output, it is returned
+  // as an leftover buffer for the caller to release.
+  virtual StatusOr<ExecutionOutput> ExecuteOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
+      HloExecutionProfile* hlo_execution_profile) {
+    return Unimplemented(
+        "MaybeOwningDeviceMemory version of overload is not implemented ");
+  }
+
+  virtual StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments) {
+    return Unimplemented(
+        "MaybeOwningDeviceMemory version of overload is not implemented ");
+  }
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
   virtual StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
-      tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
-          run_options,
-      tensorflow::gtl::ArraySlice<
-          tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
-          arguments);
+      absl::Span<const ServiceExecutableRunOptions> run_options,
+      absl::Span<const absl::Span<const ShapedBuffer* const>> arguments);
 
   // Populates `hlo_execution_profile` from `executor`. This is implicit in any
   // Execute* API call that takes a hlo_execution_profile argument, but must be
@@ -97,7 +136,7 @@ class Executable {
   // given ExecutionProfile if non-null.
   StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
+      absl::Span<const ShapedBuffer* const> arguments);
 
   // Returns the ExecutionProfile from executing on the device. This includes
   // the number of cycles taken for the computation or the compilation time.

@@ -1,10 +1,6 @@
 path: "tensorflow"
 tf_module {
   member {
-    name: "AUTO_REUSE"
-    mtype: "<enum \'_ReuseMode\'>"
-  }
-  member {
     name: "AggregationMethod"
     mtype: "<type \'type\'>"
   }
@@ -61,10 +57,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "FixedLengthRecordReader"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GIT_VERSION"
     mtype: "<type \'str\'>"
   }
@@ -109,19 +101,11 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "IdentityReader"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "IndexedSlices"
     mtype: "<type \'type\'>"
   }
   member {
     name: "InteractiveSession"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "LMDBReader"
     mtype: "<type \'type\'>"
   }
   member {
@@ -177,10 +161,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "ReaderBase"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
   }
@@ -225,10 +205,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "TFRecordReader"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Tensor"
     mtype: "<type \'type\'>"
   }
@@ -245,10 +221,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "TextLineReader"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "VERSION"
     mtype: "<type \'str\'>"
   }
@@ -257,24 +229,12 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Variable"
-    mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
-  }
-  member {
     name: "VariableAggregation"
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
-    name: "VariableScope"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "VariableSynchronization"
     mtype: "<class \'enum.EnumMeta\'>"
-  }
-  member {
-    name: "WholeFileReader"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "app"
@@ -363,6 +323,14 @@ tf_module {
   member {
     name: "gfile"
     mtype: "<type \'module\'>"
+  }
+  member {
+    name: "glorot_normal_initializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "glorot_uniform_initializer"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "graph_util"
@@ -573,10 +541,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "variable_scope"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "variance_scaling_initializer"
     mtype: "<type \'type\'>"
   }
@@ -599,10 +563,6 @@ tf_module {
   member_method {
     name: "NotDifferentiable"
     argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "Print"
-    argspec: "args=[\'input_\', \'data\', \'message\', \'first_n\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "abs"
@@ -639,10 +599,6 @@ tf_module {
   member_method {
     name: "add_to_collections"
     argspec: "args=[\'names\', \'value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "all_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "angle"
@@ -755,10 +711,6 @@ tf_module {
   member_method {
     name: "assert_type"
     argspec: "args=[\'tensor\', \'tf_type\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "assert_variables_initialized"
-    argspec: "args=[\'var_list\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "atan"
@@ -1025,6 +977,10 @@ tf_module {
     argspec: "args=[\'input\', \'pad\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "ensure_shape"
+    argspec: "args=[\'x\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "equal"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1055,6 +1011,10 @@ tf_module {
   member_method {
     name: "extract_image_patches"
     argspec: "args=[\'images\', \'ksizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "extract_volume_patches"
+    argspec: "args=[\'input\', \'ksizes\', \'strides\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "eye"
@@ -1153,10 +1113,6 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "get_local_variable"
-    argspec: "args=[\'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'synchronization\', \'aggregation\', \'custom_getter\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'None\', \'None\', \'True\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\', \'None\'], "
-  }
-  member_method {
     name: "get_seed"
     argspec: "args=[\'op_seed\'], varargs=None, keywords=None, defaults=None"
   }
@@ -1169,32 +1125,8 @@ tf_module {
     argspec: "args=[\'handle\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "get_variable"
-    argspec: "args=[\'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\', \'constraint\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
-  }
-  member_method {
-    name: "get_variable_scope"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "global_norm"
     argspec: "args=[\'t_list\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "global_variables"
-    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "global_variables_initializer"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "glorot_normal_initializer"
-    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
-  }
-  member_method {
-    name: "glorot_uniform_initializer"
-    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "gradients"
@@ -1265,20 +1197,12 @@ tf_module {
     argspec: "args=[\'graph_def\', \'input_map\', \'return_elements\', \'name\', \'op_dict\', \'producer_op_list\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "init_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "initialize_all_tables"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
-  }
-  member_method {
-    name: "initialize_all_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "initialize_local_variables"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "initialize_variables"
-    argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'init\'], "
   }
   member_method {
     name: "invert_permutation"
@@ -1309,10 +1233,6 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "is_variable_initialized"
-    argspec: "args=[\'variable\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "lbeta"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1341,16 +1261,12 @@ tf_module {
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_library"
+    argspec: "args=[\'library_location\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "load_op_library"
     argspec: "args=[\'library_filename\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "local_variables"
-    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "local_variables_initializer"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "log"
@@ -1394,7 +1310,7 @@ tf_module {
   }
   member_method {
     name: "map_fn"
-    argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'True\', \'None\'], "
+    argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "matching_files"
@@ -1463,14 +1379,6 @@ tf_module {
   member_method {
     name: "mod"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "model_variables"
-    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "moving_average_variables"
-    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "multinomial"
@@ -1555,6 +1463,10 @@ tf_module {
   member_method {
     name: "pow"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "print"
+    argspec: "args=[], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "py_func"
@@ -1669,10 +1581,6 @@ tf_module {
     argspec: "args=[\'base_type\', \'conversion_func\', \'priority\'], varargs=None, keywords=None, defaults=[\'100\'], "
   }
   member_method {
-    name: "report_uninitialized_variables"
-    argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'report_uninitialized_variables\'], "
-  }
-  member_method {
     name: "required_space_to_batch_paddings"
     argspec: "args=[\'input_shape\', \'block_shape\', \'base_paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -1739,6 +1647,10 @@ tf_module {
   member_method {
     name: "scatter_nd"
     argspec: "args=[\'indices\', \'updates\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "searchsorted"
+    argspec: "args=[\'sorted_sequence\', \'values\', \'side\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'left\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "segment_max"
@@ -2077,10 +1989,6 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "trainable_variables"
-    argspec: "args=[\'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "transpose"
     argspec: "args=[\'a\', \'perm\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\', \'False\'], "
   }
@@ -2147,14 +2055,6 @@ tf_module {
   member_method {
     name: "variable_axis_size_partitioner"
     argspec: "args=[\'max_shard_bytes\', \'axis\', \'bytes_per_string_element\', \'max_shards\'], varargs=None, keywords=None, defaults=[\'0\', \'16\', \'None\'], "
-  }
-  member_method {
-    name: "variable_op_scope"
-    argspec: "args=[\'values\', \'name_or_scope\', \'default_name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'reuse\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "variables_initializer"
-    argspec: "args=[\'var_list\', \'name\'], varargs=None, keywords=None, defaults=[\'init\'], "
   }
   member_method {
     name: "verify_tensor_all_finite"

@@ -17,7 +17,6 @@ tf_proto_library(
     name = "generic_tree_model",
     srcs = ["generic_tree_model.proto"],
     cc_api_version = 2,
-    java_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

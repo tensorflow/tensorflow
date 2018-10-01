@@ -88,6 +88,10 @@ class XlaDevice : public LocalDevice {
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
   static Status GetMetadata(OpKernelContext* ctx, const Metadata** metadata);
 
+  // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
+  static Status GetMetadata(OpKernelConstruction* ctx,
+                            const Metadata** metadata);
+
   // Factory function. 'platform_name' is the name of the XLA platform.
   // 'device_name' is the name of the Tensorflow device to create.
   // 'jit_device_name' is the name of the corresponding JIT device.
@@ -147,6 +151,12 @@ class XlaDevice : public LocalDevice {
   // information for GPU and TPU devices.
   Status UseGpuDeviceInfo() LOCKS_EXCLUDED(mu_);
 
+  // Instructs this XlaDevice to return 'sync_on_completion' for
+  // RequiresSyncOnCompletion().
+  void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+
+  bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+
  private:
   xla::LocalClient* client() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
@@ -158,7 +168,10 @@ class XlaDevice : public LocalDevice {
   xla::StatusOr<XlaDeviceContext*> GetDeviceContextLocked()
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  mutex mu_;
+  static Status GetMetadataFromDevice(DeviceBase* device,
+                                      const XlaDevice::Metadata** metadata);
+
+  mutable mutex mu_;
   // The metadata of this XlaDevice.
   const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
@@ -200,6 +213,10 @@ class XlaDevice : public LocalDevice {
 
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+
+  // True if the device requires XlaDevice::Sync to be called on completion
+  // regardless of status.
+  bool sync_on_completion_ GUARDED_BY(mu_) = false;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

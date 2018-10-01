@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
@@ -96,8 +95,7 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
               _ComputeBatchNormCorrections(
                   context='',
                   match=match,
-                  freeze_batch_norm_delay=freeze_batch_norm_delay,
-                  fused_batch_norm=True))
+                  freeze_batch_norm_delay=freeze_batch_norm_delay))
         # The shape of depthwise weights is different, so we need to reshape the
         # multiplier_tensor to ensure that the scaled_weight_tensor has the
         # expected shape.
@@ -134,8 +132,8 @@ def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
       bias_add_tensor = math_ops.add(
           new_layer_tensor, bias_tensor, name='add_fold')
 
-      nodes_modified_count = graph_editor.reroute_ts(bias_add_tensor,
-                                                     match.output_tensor)
+      nodes_modified_count = common.RerouteTensor(bias_add_tensor,
+                                                  match.output_tensor)
       if nodes_modified_count == 0:
         raise ValueError('Folding batch norms failed, %s had no outputs.' %
                          match.output_tensor.name)
@@ -297,8 +295,7 @@ def _FindFusedBatchNorms(graph):
         batch_to_space_op=batch_to_space_op)
 
 
-def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
-                                 fused_batch_norm):
+def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay):
   """Computes batch norm correction params.
 
      Before batch normalization is frozen:
@@ -328,14 +325,14 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
       computation.
     freeze_batch_norm_delay: Delay in steps at which computation switches
       from regular batch norm to frozen mean and variance.
-    fused_batch_norm: Bool, true if fused batch norm is used.
+
 
   Returns:
     A tuple of correction_scale, correction_recip, correction_offset
   """
 
   g = ops.get_default_graph()
-  prefix = '' if not context else context + '/'
+  prefix = '' if not context else context
   with g.name_scope(prefix + 'batch_norm_correction'):
     recip_sigma_mv = math_ops.rsqrt(
         match.moving_variance_tensor + match.batch_epsilon)
@@ -370,8 +367,9 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
         lambda: match.bn_decay_mean_tensor,
         name='freeze_moving_mean')
 
-    graph_editor.reroute_ts(
-        [bn_decay_mean_out], [match.bn_decay_mean_tensor],
+    common.RerouteTensor(
+        bn_decay_mean_out,
+        match.bn_decay_mean_tensor,
         can_modify=bn_decay_mean_consumers)
 
     bn_decay_var_consumers = list(match.bn_decay_var_tensor.consumers())
@@ -380,8 +378,9 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
         lambda: bn_decay_zero,
         lambda: match.bn_decay_var_tensor,
         name='freeze_moving_var')
-    graph_editor.reroute_ts(
-        [bn_decay_var_out], [match.bn_decay_var_tensor],
+    common.RerouteTensor(
+        bn_decay_var_out,
+        match.bn_decay_var_tensor,
         can_modify=bn_decay_var_consumers)
 
     correction_recip = utils.smart_cond(
@@ -419,10 +418,11 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
         transpose_b=layer_op.get_attr('transpose_b'),
         name=new_layer_name)
   elif layer_op.type == 'DepthwiseConv2dNative':
+    # We don't copy dilation rate because we reuse the input SpaceToBatch
+    # and create our own BatchToSpace operation below.
     conv = nn.depthwise_conv2d(
         input_tensor,
         weight_tensor,
-        rate=layer_op.get_attr('dilations'),
         strides=layer_op.get_attr('strides'),
         padding=layer_op.get_attr('padding'),
         name=new_layer_name)
@@ -486,28 +486,41 @@ def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
 
     activation = common.GetEndpointActivationOp(graph, bn)
     if activation:
-      nodes_modified_count = graph_editor.reroute_ts([folded_op.outputs[0]],
-                                                     [original_op.outputs[0]],
-                                                     can_modify=[activation])
+      nodes_modified_count = common.RerouteTensor(
+          folded_op.outputs[0], original_op.outputs[0], can_modify=[activation])
       if nodes_modified_count != 1:
         raise ValueError('Unexpected inputs to op: %s' % activation.name)
       continue
 
     # Treat consumer ops in bypass modules differently since they have Add
     # operations instead of Relu* above.
-    add_bypass_ctx = re.search(r'^(.*)/([^/]+)', bn).group(1)
-    add_bypass = graph.get_operation_by_name(add_bypass_ctx + '/Add')
-    nodes_modified_count = graph_editor.reroute_ts([folded_op.outputs[0]],
-                                                   [original_op.outputs[0]],
-                                                   can_modify=[add_bypass])
+    # Changes to make sure that the correct scope is selected for the bypass add
+    # The rule here is that if the scope is of the form: str1/str2 for the
+    # batch norm,
+    # the bypass add is at scope str1. If bn is of scope just str1, then the
+    # bypass add is at scope ''.
+    # If there is no batch norm, then there is no bypass add.
+    add_bypass_ctx = ''
+    if bn:
+      try:
+        add_bypass_ctx = re.search(r'^(.*)/([^/]+)', bn).group(1)
+      except AttributeError:
+        add_bypass_ctx = ''
+
+    if add_bypass_ctx:
+      add_bypass_ctx = add_bypass_ctx + '/'
+
+    add_bypass = graph.get_operation_by_name(add_bypass_ctx + 'Add')
+    nodes_modified_count = common.RerouteTensor(
+        folded_op.outputs[0], original_op.outputs[0], can_modify=[add_bypass])
     if nodes_modified_count != 1:
       raise ValueError('Unexpected inputs to op: %s' % add_bypass.name)
 
 
 def _IsValidUnfusedBatchNorm(graph, context):
   """Checks that the output of the unfused batch norm has consumers."""
-  add_shift = graph.get_operation_by_name(
-      context + '/BatchNorm/batchnorm_1/add_1')
+  add_shift = graph.get_operation_by_name(context +
+                                          'BatchNorm/batchnorm_1/add_1')
   # Ensure that the output tensor of batch norm has consumers, otherwise this
   # is a dangling node and not a match.
   return bool(add_shift.outputs[0].consumers())
@@ -539,7 +552,8 @@ def _FindMatchingTensor(graph, match_pattern, scope):
     if op.name.endswith(match_pattern):
       split_name = op.name.split('/')
       num_matches = len(set(split_name) & split_context)
-      if num_matches > 0:
+
+      if num_matches > 0 or not scope:
         match_dict[op.name] = num_matches
   # match_dict contains matching op names from graph with values being
   # number of matches to scope. We pick the key with the most matches
@@ -598,21 +612,21 @@ def _GetBatchNormParams(graph, context, has_scaling):
   # op.name =  MobilenetV2/expanded_conv_3/depthwise/BatchNorm/moving_mean/read
   # will have 2 matches,scope with a different conv layer will have one match.
 
-  op_suffix_mean = '/BatchNorm/moments/Squeeze'
-  op_suffix_variance = '/BatchNorm/moments/Squeeze_1'
-  op_suffix_epsilon = '/BatchNorm/batchnorm_1/add/y'
-  op_suffix_bn_decay_mean = '/BatchNorm/AssignMovingAvg/decay'
-  op_suffix_bn_decay_var = '/BatchNorm/AssignMovingAvg_1/decay'
+  op_suffix_mean = 'BatchNorm/moments/Squeeze'
+  op_suffix_variance = 'BatchNorm/moments/Squeeze_1'
+  op_suffix_epsilon = 'BatchNorm/batchnorm_1/add/y'
+  op_suffix_bn_decay_mean = 'BatchNorm/AssignMovingAvg/decay'
+  op_suffix_bn_decay_var = 'BatchNorm/AssignMovingAvg_1/decay'
 
   if variable_scope.get_variable_scope().use_resource:
-    op_suffix_gamma = '/BatchNorm/gamma/Read/ReadVariableOp'
+    op_suffix_gamma = 'BatchNorm/gamma/Read/ReadVariableOp'
     op_suffix_moving_variance = (
-        '/BatchNorm/moving_variance/Read/ReadVariableOp')
-    op_suffix_moving_mean = ('/BatchNorm/moving_mean/Read/ReadVariableOp')
+        'BatchNorm/moving_variance/Read/ReadVariableOp')
+    op_suffix_moving_mean = ('BatchNorm/moving_mean/Read/ReadVariableOp')
   else:
-    op_suffix_gamma = '/BatchNorm/gamma'
-    op_suffix_moving_variance = '/BatchNorm/moving_variance/read'
-    op_suffix_moving_mean = '/BatchNorm/moving_mean/read'
+    op_suffix_gamma = 'BatchNorm/gamma'
+    op_suffix_moving_variance = 'BatchNorm/moving_variance/read'
+    op_suffix_moving_mean = 'BatchNorm/moving_mean/read'
   # Parse through list of ops to find relevant ops
 
   batch_mean_tensor = _FindMatchingTensor(graph, op_suffix_mean, context)
@@ -680,8 +694,7 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
       the folded graph (add_fold).
   """
   mul_scale_name = 'mul_1' if has_scaling else 'mul'
-  mul_scale = graph.get_operation_by_name(context +
-                                          '/BatchNorm/batchnorm_1/' +
+  mul_scale = graph.get_operation_by_name(context + 'BatchNorm/batchnorm_1/' +
                                           mul_scale_name)
   op_below = mul_scale.inputs[0].op
   # Skip over the BatchToSpace operation in the case of atrous convolutions.
@@ -698,8 +711,7 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
         _ComputeBatchNormCorrections(
             context=context,
             match=match,
-            freeze_batch_norm_delay=freeze_batch_norm_delay,
-            fused_batch_norm=False))
+            freeze_batch_norm_delay=freeze_batch_norm_delay))
   # Special handling for weights of depthwise convolution.
   if op_below.type == 'DepthwiseConv2dNative':
     new_shape = [
@@ -707,27 +719,27 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
         weights.get_shape().as_list()[3]
     ]
     scale_name = 'mul' if has_scaling else 'Rsqrt'
-    scale = graph.get_operation_by_name(
-        context + '/BatchNorm/batchnorm_1/' + scale_name)
+    scale = graph.get_operation_by_name(context + 'BatchNorm/batchnorm_1/' +
+                                        scale_name)
     scale = array_ops.reshape(scale.outputs[0], new_shape,
-                              context + '/scale_reshape')
+                              context + 'scale_reshape')
 
     if correction_scale is not None:
       correction_scale = array_ops.reshape(correction_scale, new_shape,
-                                           context + '/correction_reshape')
+                                           context + 'correction_reshape')
       with ops.device(mul_scale.device):
         weights = math_ops.multiply(correction_scale, weights,
-                                    context + '/correction_mult')
+                                    context + 'correction_mult')
 
-    mul_fold = _CloneOp(mul_scale, context + '/mul_fold', [(0, weights),
-                                                           (1, scale)])
+    mul_fold = _CloneOp(mul_scale, context + 'mul_fold', [(0, weights),
+                                                          (1, scale)])
   elif op_below.type in ['Conv2D', 'MatMul']:
 
     if correction_scale is not None:
       with ops.device(mul_scale.device):
         weights = math_ops.multiply(correction_scale, weights,
-                                    context + '/correction_mult')
-    mul_fold = _CloneOp(mul_scale, context + '/mul_fold', [(0, weights)])
+                                    context + 'correction_mult')
+    mul_fold = _CloneOp(mul_scale, context + 'mul_fold', [(0, weights)])
   else:
     raise ValueError('Cannot handle operation of type: %s' % op_below.type)
   _AssertShapesMatch('mul_fold', mul_fold.inputs[0], mul_fold.outputs[0])
@@ -735,8 +747,8 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
   conv_or_fc_folded = _CloneOp(op_below, op_below.name + '_Fold',
                                [(1, mul_fold.outputs[0])])
 
-  add_shift = graph.get_operation_by_name(
-      context + '/BatchNorm/batchnorm_1/add_1')
+  add_shift = graph.get_operation_by_name(context +
+                                          'BatchNorm/batchnorm_1/add_1')
 
   corrected_output = conv_or_fc_folded.outputs[0]
   # Copy the batch to space operation if we have a atrous convolution.
@@ -749,10 +761,10 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
   if correction_offset is not None:
     with ops.device(conv_or_fc_folded.device):
       corrected_output = math_ops.multiply(correction_recip, corrected_output,
-                                           context + '/post_conv_mul')
+                                           context + 'post_conv_mul')
       corrected_output = math_ops.add(corrected_output, (correction_offset),
-                                      context + '/correction_add')
-  add_fold = _CloneOp(add_shift, context + '/add_fold', [(0, corrected_output)])
+                                      context + 'correction_add')
+  add_fold = _CloneOp(add_shift, context + 'add_fold', [(0, corrected_output)])
   _AssertShapesMatch('add_fold', add_fold.inputs[0], add_fold.outputs[0])
   return add_shift, add_fold
 
@@ -931,7 +943,7 @@ def _HasScaling(graph, input_to_ops_map, bn):
   Returns:
     A boolean indicating whether this batch norm layer has scaling enabled.
   """
-  rsqrt_op = graph.get_operation_by_name(bn + '/BatchNorm/batchnorm_1/Rsqrt')
+  rsqrt_op = graph.get_operation_by_name(bn + 'BatchNorm/batchnorm_1/Rsqrt')
   rsqrt_consumers = input_to_ops_map.ConsumerOperations(rsqrt_op)
 
   return sum(1 for op in rsqrt_consumers if op.type == 'Mul') == 1

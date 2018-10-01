@@ -15,8 +15,8 @@ limitations under the License.
 #include <string.h>
 #include <vector>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -77,13 +77,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
 
-  auto zero_point = op_context.input->params.zero_point;
-  auto scale = op_context.input->params.scale;
-
-  optimized_ops::Dequantize(GetTensorData<uint8_t>(op_context.input),
-                            GetTensorDims(op_context.input), zero_point, scale,
-                            GetTensorData<float>(op_context.output),
-                            GetTensorDims(op_context.output));
+  tflite::DequantizationParams op_params;
+  op_params.zero_point = op_context.input->params.zero_point;
+  op_params.scale = op_context.input->params.scale;
+  optimized_ops::Dequantize(op_params, GetTensorShape(op_context.input),
+                            GetTensorData<uint8_t>(op_context.input),
+                            GetTensorShape(op_context.output),
+                            GetTensorData<float>(op_context.output));
 
   if (IsConstantTensor(op_context.input)) {
     op_data->float_dequantized_weights_initialized = true;

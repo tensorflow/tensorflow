@@ -235,19 +235,18 @@ def compute_cdf_from_histogram(values, value_range, **kwargs):
 def compute_cdf(values, value_range, **kwargs):
   """Returns the normalized cumulative distribution of the given values tensor.
 
-  Uses tf.while_loop to directly compute the cdf of the values. Number of bins
-  for histogram is fixed at _NBINS=255
+  Uses tf.while_loop to directly compute the cdf of the values.
 
   Args:
     values:  Numeric `Tensor`.
     value_range:  Shape [2] `Tensor` of same `dtype` as `values`
-    **kwargs: keyword arguments: name
+    **kwargs: keyword arguments: nbins, name
 
   Returns:
     A 1-D `Tensor` holding normalized cdf of values.
 
   """
-  nbins = _NBINS
+  nbins = kwargs.get('nbins', _NBINS)
   name = kwargs.get('name', None)
   with ops.name_scope(name, 'cdf', [values, value_range, nbins]):
     values = ops.convert_to_tensor(values, name='values')
@@ -281,7 +280,7 @@ def compute_cdf(values, value_range, **kwargs):
       cdf = math_ops.add(
           cdf,
           array_ops.one_hot(
-              loop_count, depth=_NBINS, on_value=temp, off_value=0.0))
+              loop_count, depth=nbins, on_value=temp, off_value=0.0))
       return [loop_count + 1, cdf]
 
     _, cdf = control_flow_ops.while_loop(

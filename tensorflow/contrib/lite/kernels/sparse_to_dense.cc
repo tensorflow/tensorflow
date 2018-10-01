@@ -19,8 +19,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -210,8 +210,9 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
                                                   &indices_vector));
   reference_ops::SparseToDense(indices_vector, GetTensorData<T>(values),
                                *GetTensorData<T>(default_value),
-                               GetTensorData<T>(output), GetTensorDims(output),
-                               value_is_scalar);
+                               value_is_scalar, GetTensorShape(output),
+                               GetTensorData<T>(output));
+
   return kTfLiteOk;
 }
 

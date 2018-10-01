@@ -84,6 +84,18 @@ py_binary(
 )
 
 py_binary(
+    name = "mnist_softmax_xla",
+    srcs = [
+        "mnist_softmax_xla.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
     name = "mnist_deep",
     srcs = [
         "mnist_deep.py",

@@ -134,19 +134,19 @@ def _get_default_head(params, weights_name, output_type, name=None):
           weight_column=weights_name,
           label_dimension=params.num_outputs,
           name=name,
-          loss_reduction=losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+          loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
     else:
       if params.num_classes == 2:
         return core_head_lib.binary_classification_head(
             weight_column=weights_name,
             name=name,
-            loss_reduction=losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+            loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
       else:
         return core_head_lib.multi_class_head(
             n_classes=params.num_classes,
             weight_column=weights_name,
             name=name,
-            loss_reduction=losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+            loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
 
 def get_model_fn(params,
                  graph_builder_class,
@@ -446,6 +446,10 @@ class TensorForestEstimator(estimator.Estimator):
     Returns:
       A `TensorForestEstimator` instance.
     """
+    # Override default number of trainers if config is provided.
+    if num_trainers == 1 and config is not None:
+      num_trainers = max(1, config.num_worker_replicas)
+
     super(TensorForestEstimator, self).__init__(
         model_fn=get_model_fn(
             params.fill(),
@@ -564,6 +568,10 @@ class MultiForestMultiHeadEstimator(estimator.Estimator):
                local_eval=False):
     """See TensorForestEstimator.__init__."""
     model_fns = []
+    # Override default number of trainers if config is provided.
+    if num_trainers == 1 and config is not None:
+      num_trainers = max(1, config.num_worker_replicas)
+
     for i in range(len(params_list)):
       params = params_list[i].fill()
       model_fns.append(
@@ -709,6 +717,11 @@ class CoreTensorForestEstimator(core_estimator.Estimator):
     Returns:
       A `TensorForestEstimator` instance.
     """
+    # Override default number of trainers if config is provided.
+    if num_trainers == 1 and config is not None:
+      num_trainers = max(1, config.num_worker_replicas)
+    if trainer_id == 0 and config is not None:
+      trainer_id = config.global_id_in_cluster
 
     super(CoreTensorForestEstimator, self).__init__(
         model_fn=get_model_fn(

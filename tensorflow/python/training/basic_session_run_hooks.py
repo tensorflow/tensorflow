@@ -344,7 +344,7 @@ class _MultiStepStopAtStepHook(session_run_hook.SessionRunHook):
       raise ValueError("steps_per_run should be greater than 0")
     self._num_steps = num_steps
     self._last_step = last_step
-    self._steps_per_run = steps_per_run
+    self._steps_per_run_initial_value = steps_per_run
 
   def begin(self):
     self._global_step_tensor = training_util.get_global_step()
@@ -353,7 +353,8 @@ class _MultiStepStopAtStepHook(session_run_hook.SessionRunHook):
     self._steps_per_run_variable = get_or_create_steps_per_run_variable()
 
   def _update_steps_per_run_variable(self, global_step, session):
-    steps = min(self._last_step - global_step, self._steps_per_run)
+    steps = min(self._last_step - global_step,
+                self._steps_per_run_initial_value)
     self._steps_per_run_variable.load(steps, session=session)
 
   def after_create_session(self, session, coord):
@@ -1025,7 +1026,7 @@ class ProfilerHook(session_run_hook.SessionRunHook):
 
   def before_run(self, run_context):
     self._request_summary = (
-        self._next_step is None or
+        self._next_step is not None and
         self._timer.should_trigger_for_step(self._next_step))
     requests = {"global_step": self._global_step_tensor}
     opts = (config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1035,6 +1036,10 @@ class ProfilerHook(session_run_hook.SessionRunHook):
 
   def after_run(self, run_context, run_values):
     stale_global_step = run_values.results["global_step"]
+    if self._next_step is None:
+      # Update the timer so that it does not activate until N steps or seconds
+      # have passed.
+      self._timer.update_last_triggered_step(stale_global_step)
     global_step = stale_global_step + 1
     if self._request_summary:
       global_step = run_context.session.run(self._global_step_tensor)

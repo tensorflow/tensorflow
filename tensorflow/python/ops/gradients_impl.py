@@ -31,7 +31,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
+from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -57,6 +57,10 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
+# This is to avoid a circular dependency (eager.function depends on
+# gradients_impl). This is set in eager/function.py.
+_function = None
 
 # This is to avoid a circular dependency with cond_v2_impl.
 cond_v2_impl._gradients_impl = sys.modules[__name__]  # pylint: disable=protected-access
@@ -121,7 +125,7 @@ def _MarkReachedOps(from_ops, reached_ops, func_graphs):
   Args:
     from_ops: list of Operations.
     reached_ops: set of Operations.
-    func_graphs: list of function._FuncGraphs. This method will traverse through
+    func_graphs: list of _function.FuncGraphs. This method will traverse through
       these functions if they capture from_ops or any reachable ops.
   """
   queue = collections.deque()
@@ -146,7 +150,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
     to_ops: list of Operations.
     from_ops: list of Operations.
     colocate_gradients_with_ops: Python bool.  See docstring of gradients().
-    func_graphs: list of function._FuncGraphs. This method will traverse through
+    func_graphs: list of _function.FuncGraphs. This method will traverse through
       these functions if they capture from_ops or any reachable ops. This is
       useful if to_ops occur in a function and from_ops are in an outer function
       or graph.
@@ -180,7 +184,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
       between_op_list.append(op)
       # Clear the boolean so we won't add the inputs again.
       reached_ops.remove(op)
-      for inp in _Inputs(op, xs):
+      for inp in _NonEagerInputs(op, xs):
         queue.append(inp.op)
   # X in between_ops iff X is on a path of zero or more backpropagatable tensors
   # between from_ops and to_ops
@@ -192,7 +196,7 @@ def _PendingCount(to_ops, from_ops, colocate_gradients_with_ops, func_graphs,
   # Initialize pending count for between ops.
   pending_count = collections.defaultdict(int)
   for op in between_op_list:
-    for x in _Inputs(op, xs):
+    for x in _NonEagerInputs(op, xs):
       if x.op in between_ops:
         pending_count[x.op] += 1
 
@@ -256,6 +260,12 @@ def _DefaultGradYs(grad_ys,
               "Gradient type %s generated for complex-valued "
               "tensor %s with type %s must be real" % (dtypes.as_dtype(
                   grad_y.dtype).name, y, dtypes.as_dtype(y.dtype).name))
+      elif y.dtype == dtypes.variant:
+        if grad_y.dtype != dtypes.variant:
+          raise TypeError(
+              "Gradient type %s generated for variant "
+              "tensor %s with type %s must be variant" % (dtypes.as_dtype(
+                  grad_y.dtype).name, y, dtypes.as_dtype(y.dtype).name))
       else:
         raise TypeError(
             "Tensor %s with type %s must be numeric "
@@ -294,7 +304,7 @@ def _IsBackpropagatable(tensor):
   if _IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
-  return dtype.base_dtype in (dtypes.bfloat16, dtypes.resource, dtypes.variant)
+  return dtype.base_dtype in (dtypes.bfloat16, dtypes.variant)
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -337,7 +347,7 @@ def _StopOps(from_ops, stop_gradient_ops, pending_count, xs):
   stop_ops = set()
   for op in from_ops:
     is_stop_op = True
-    for inp in _Inputs(op, xs):
+    for inp in _NonEagerInputs(op, xs):
       if pending_count[inp.op] > 0:
         is_stop_op = False
         break
@@ -361,10 +371,10 @@ def _IsPartitionedCall(op):
   return op.type == "PartitionedCall" or op.type == "StatefulPartitionedCall"
 
 
-def _SymGrad(op, out_grads, xs):
+def _SymGrad(op, out_grads):
   """Backprop through a function call node op given its outputs' gradients."""
-  f_in = [x for x in _Inputs(op, xs)] + out_grads
-  f_types = [x.dtype for x in _Inputs(op, xs)]
+  f_in = [x for x in op.inputs] + out_grads
+  f_types = [x.dtype for x in op.inputs]
   f = attr_value_pb2.NameAttrList()
   if _IsPartitionedCall(op):
     f.name = op.get_attr("f").name
@@ -431,7 +441,7 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
     if curr_op in from_ops:
       target_op = curr_op
       break
-    queue.extend(t.op for t in _Inputs(curr_op, xs))
+    queue.extend(t.op for t in _NonEagerInputs(curr_op, xs))
   assert target_op
   raise ValueError(
       "Cannot compute gradient inside while loop with respect to op '%s'. "
@@ -441,6 +451,19 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs):
       % target_op.name)
 
 
+def _IsFunction(graph):
+  return (isinstance(graph, _function.FuncGraph) or
+          isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
+
+
+def _Captures(func_graph):
+  if isinstance(func_graph, _function.FuncGraph):
+    return func_graph.captures
+  else:
+    assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
+    return func_graph._captured  # pylint: disable=protected-access
+
+
 def _MaybeCaptured(t):
   """If t is a captured value placeholder, returns the original captured value.
 
@@ -448,11 +471,12 @@ def _MaybeCaptured(t):
     t: Tensor
 
   Returns:
-    A tensor, potentially from a different Graph/function._FuncGraph.
+    A tensor, potentially from a different Graph/_function.FuncGraph.
   """
   # pylint: disable=protected-access
-  if isinstance(t.op.graph, function._FuncGraph) and t.op.type == "Placeholder":
-    for input_t, placeholder_t in t.op.graph._captured.items():
+  if (not isinstance(t, ops.EagerTensor) and
+      _IsFunction(t.op.graph) and t.op.type == "Placeholder"):
+    for input_t, placeholder_t in _Captures(t.op.graph).items():
       if t == placeholder_t:
         return _MaybeCaptured(input_t)
   # pylint: enable=protected-access
@@ -461,8 +485,11 @@ def _MaybeCaptured(t):
 
 # TODO(skyewm): plumbing xs through everywhere is ugly, consider making
 # _GradientsHelper a class with xs as a member variable.
-def _Inputs(op, xs):
+def _NonEagerInputs(op, xs):
   """Returns the inputs of op, crossing closure boundaries where necessary.
+
+  Does not return any captured EagerTensors, i.e., the number of tensors
+  returned may be less than than the actual number of inputs.
 
   Args:
     op: Operation
@@ -470,16 +497,23 @@ def _Inputs(op, xs):
 
   Returns:
     A list of tensors. The tensors may be from multiple
-    Graph/function._FuncGraphs if op is in a function._FuncGraph and has
+    Graph/_function.FuncGraphs if op is in a _function.FuncGraph and has
     captured inputs.
   """
-  if isinstance(op.graph, function._FuncGraph):  # pylint: disable=protected-access
-    # If we're differentiating w.r.t. `t`, do not attempt to traverse through it
-    # to a captured value. The algorithm needs to "see" `t` in this case, even
-    # if it's a function input for a captured value, whereas usually we'd like
-    # to traverse through these closures as if the captured value was the direct
-    # input to op.
-    return [t if (t in xs) else _MaybeCaptured(t) for t in op.inputs]
+  if _IsFunction(op.graph):  # pylint: disable=protected-access
+    inputs = []
+    for t in op.inputs:
+      # If we're differentiating w.r.t. `t`, do not attempt to traverse through
+      # it to a captured value. The algorithm needs to "see" `t` in this case,
+      # even if it's a function input for a captured value, whereas usually we'd
+      # like to traverse through these closures as if the captured value was the
+      # direct input to op.
+      if t not in xs:
+        t = _MaybeCaptured(t)
+        # Skip captured eager inputs.
+        if isinstance(t, ops.EagerTensor): continue
+      inputs.append(t)
+    return inputs
   else:
     return op.inputs
 
@@ -489,7 +523,7 @@ def _Consumers(t, func_graphs):
 
   Args:
     t: Tensor
-    func_graphs: a list of function._FuncGraphs that may have captured t.
+    func_graphs: a list of _function.FuncGraphs that may have captured t.
 
   Returns:
     A list of tensors. The tensors will be from the current graph and/or
@@ -497,7 +531,7 @@ def _Consumers(t, func_graphs):
   """
   consumers = t.consumers()
   for func in func_graphs:
-    for input_t, placeholder in func._captured.items():  # pylint: disable=protected-access
+    for input_t, placeholder in _Captures(func).items():
       if input_t == t:
         consumers.extend(_Consumers(placeholder, func_graphs))
   return consumers
@@ -616,9 +650,13 @@ def _GradientsHelper(ys,
   # ancestor graphs. This is necessary for correctly handling captured values.
   func_graphs = []
   curr_graph = src_graph
-  while isinstance(curr_graph, function._FuncGraph):  # pylint: disable=protected-access
+  while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
+    if isinstance(curr_graph, _function.FuncGraph):
+      curr_graph = curr_graph.outer_graph
+    else:
+      assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
+      curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
 
   ys = _AsList(ys)
   xs = _AsList(xs)
@@ -778,7 +816,7 @@ def _GradientsHelper(ys,
                 # For function call ops, we add a 'SymbolicGradient'
                 # node to the graph to compute gradients.
                 in_grads = _MaybeCompile(grad_scope, op, func_call,
-                                         lambda: _SymGrad(op, out_grads, xs))
+                                         lambda: _SymGrad(op, out_grads))
               in_grads = _AsList(in_grads)
               _VerifyGeneratedGradients(in_grads, op)
               if gate_gradients and len([x for x in in_grads
@@ -793,8 +831,9 @@ def _GradientsHelper(ys,
         else:
           # If no grad_fn is defined or none of out_grads is available,
           # just propagate a list of None backwards.
-          in_grads = [None] * len(_Inputs(op, xs))
-        for i, (t_in, in_grad) in enumerate(zip(_Inputs(op, xs), in_grads)):
+          in_grads = [None] * len(_NonEagerInputs(op, xs))
+        for i, (t_in, in_grad) in enumerate(zip(_NonEagerInputs(op, xs),
+                                                in_grads)):
           if in_grad is not None:
             if (isinstance(in_grad, ops.Tensor) and
                 t_in.dtype != dtypes.resource):
@@ -835,7 +874,7 @@ def _HasAnyNotNoneGrads(grads, op):
 def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
                                   xs):
   """Update pending count for the inputs of op and enqueue ready ops."""
-  for x in _Inputs(op, xs):
+  for x in _NonEagerInputs(op, xs):
     pending_count[x.op] -= 1
     ready = (pending_count[x.op] == 0)
     if loop_state and not ready:

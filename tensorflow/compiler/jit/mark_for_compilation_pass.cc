@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
 
@@ -366,10 +365,13 @@ bool IsXlaFusable(const NodeDef& node) {
   return elementwise_ops->count(node.op()) > 0;
 }
 
+// Nodes that XLA can compile are put in `candidates`.  Nodes put in
+// `isolated_nodes` must either be unclustered or be put in trivial single-node
+// clusters.
 Status FindCompilationCandidates(
     const Graph& graph, FunctionLibraryDefinition* flib_def, Env* env,
     const std::function<bool(const Node*, const DeviceType&)>& is_compilable_fn,
-    OrderedNodeSet* candidates) {
+    OrderedNodeSet* candidates, gtl::FlatSet<Node*>* isolated_nodes) {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env, TF_GRAPH_DEF_VERSION,
@@ -412,6 +414,8 @@ Status FindCompilationCandidates(
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceToDeviceType(node->assigned_device_name(), &device_type));
+    VLOG(4) << "Device type for " << node->name() << ": "
+            << device_type.type_string();
 
     if (is_compilable_fn && !is_compilable_fn(node, device_type)) {
       // is_compilable_fn has already logged the reason if it returned false.
@@ -440,19 +444,56 @@ Status FindCompilationCandidates(
               << node->type_string();
       continue;
     }
-    if (compile_time_const_nodes[node->id()] &&
-        !registration->requires_compilation) {
+    if (compile_time_const_nodes[node->id()]) {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(
-          OpRegistry::Global()->LookUpOpDef(node->type_string(), &op_def));
+          graph.op_registry()->LookUpOpDef(node->type_string(), &op_def));
       if (op_def->is_stateful()) {
-        // We need to be able to constant fold the nodes in
-        // compile_time_const_nodes given constant inputs (required by XLA) and
-        // therefore can't auto-cluster stateful ops since these can never be
-        // constant folded.
-        VLOG(2) << "Rejecting " << node->name()
-                << ": must-be-constant stateful op";
-        continue;
+        // It is easiest to demonstrate the problem we're trying to solve with
+        // an example.  Say we have this graph:
+        //
+        //   shape = RandomUniformInt();
+        //   reshape = Reshape(input, shape)
+        //
+        // Both RandomUniformInt and Reshape are compilable by XLA so, absent
+        // any other reason, we will try to put both shape and reshape in the
+        // same cluster.  However, since XLA only supports statically shaped
+        // values, it will expect to be able to constant fold `shape` to get a
+        // static shape for `reshape`.  This is a problem because side-effecting
+        // ops like RandomUniformInt() cannot be constant folded.  We fix this
+        // by putting `shape` and `reshape` in different clusters, which results
+        // in us recompiling `reshape`'s cluster for every new value of `shape`,
+        // making `reshape` statically sized within each compilation.  We
+        // simplify the solution even further by disallowing operations like
+        // `shape` from being part of *any* non-trivial cluster.  They're either
+        // not compiled by XLA altogether or, if assigned to an XLA_* device
+        // with "must compile" semantics, compiled into a trivial single-op
+        // cluster.  This approach leaves some room for improvement, and we can
+        // consider implementing a more aggressive data-flow-analysis based
+        // solution in the future if needed.
+        //
+        // One ugly problem we have to contend with: certain sets of ops *have*
+        // to be in the same cluster because values flowing between them have
+        // types that can't be live-in or live-out of a cluster.  These ops are:
+        //
+        //  - TensorArray ops operating on the same TensorArray instance.
+        //  - Stack ops operating on the same Stack instance.
+        //
+        // To work around this we avoid isolating these specific ops.  Because
+        // of this concession it is unsound to auto-cluster them because then
+        // we'd create clusters we could not compile (because we can't constant
+        // fold, say, a TensorArrayRead or a StackPopV2).  But we don't
+        // auto-cluster these operations today so we're good for now.
+        const XlaResourceOpInfo* op_info =
+            GetResourceOpInfoForOp(node->type_string());
+        bool is_tensor_array_or_stack_op =
+            op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
+        if (!is_tensor_array_or_stack_op) {
+          VLOG(2) << "Isolating " << node->name()
+                  << ": must-be-constant stateful op";
+          isolated_nodes->insert(node);
+          // Keep going and execute all the other checks.
+        }
       }
     }
     // We don't auto-cluster functional control flow nodes containing resource
@@ -617,7 +658,7 @@ Status MarkForCompilationPass::Run(
 }
 
 static string RatioToString(int numerator, int denominator) {
-  return strings::Printf("%d / %d (%.2f%%)", numerator, denominator,
+  return absl::StrFormat("%d / %d (%.2f%%)", numerator, denominator,
                          (100.0 * numerator) / denominator);
 }
 
@@ -626,14 +667,14 @@ static void VLogClusteringSummary(const Graph& g) {
     return;
   }
 
-  std::map<StringPiece, int> cluster_name_to_size;
-  std::map<StringPiece, std::map<StringPiece, int>>
+  std::map<absl::string_view, int> cluster_name_to_size;
+  std::map<absl::string_view, std::map<absl::string_view, int>>
       cluster_name_to_op_histogram;
-  std::map<StringPiece, int> unclustered_op_histogram;
+  std::map<absl::string_view, int> unclustered_op_histogram;
   int clustered_node_count = 0;
 
   for (Node* n : g.nodes()) {
-    absl::optional<StringPiece> cluster_name = GetXlaClusterForNode(*n);
+    absl::optional<absl::string_view> cluster_name = GetXlaClusterForNode(*n);
     if (cluster_name) {
       clustered_node_count++;
       cluster_name_to_size[*cluster_name]++;
@@ -650,7 +691,7 @@ static void VLogClusteringSummary(const Graph& g) {
           << RatioToString(clustered_node_count, g.num_nodes());
 
   for (const auto& cluster_name_size_pair : cluster_name_to_size) {
-    StringPiece cluster_name = cluster_name_size_pair.first;
+    absl::string_view cluster_name = cluster_name_size_pair.first;
     int size = cluster_name_size_pair.second;
     VLOG(2) << "  " << cluster_name << " "
             << RatioToString(size, g.num_nodes());
@@ -667,6 +708,85 @@ static void VLogClusteringSummary(const Graph& g) {
     for (const auto& pair : unclustered_op_histogram) {
       VLOG(3) << "  " << pair.first << ": " << pair.second << " instances";
     }
+  }
+
+  struct EdgeInfo {
+    absl::string_view node_name;
+    absl::optional<absl::string_view> cluster_name;
+
+    absl::string_view GetClusterName() const {
+      return cluster_name ? *cluster_name : "[none]";
+    }
+
+    std::pair<absl::string_view, absl::optional<absl::string_view>> AsPair()
+        const {
+      return {node_name, cluster_name};
+    }
+
+    bool operator<(const EdgeInfo& other) const {
+      return AsPair() < other.AsPair();
+    }
+  };
+
+  using EdgeInfoMap = std::map<absl::string_view, std::map<EdgeInfo, int64>>;
+
+  EdgeInfoMap incoming_edge_infos;
+  EdgeInfoMap outgoing_edge_infos;
+
+  std::set<absl::string_view> cluster_names_to_print;
+
+  for (const Edge* e : g.edges()) {
+    const Node* from = e->src();
+    absl::optional<absl::string_view> from_cluster_name =
+        GetXlaClusterForNode(*from);
+
+    const Node* to = e->dst();
+    absl::optional<absl::string_view> to_cluster_name =
+        GetXlaClusterForNode(*to);
+
+    if (to_cluster_name == from_cluster_name) {
+      continue;
+    }
+
+    if (to_cluster_name) {
+      incoming_edge_infos[*to_cluster_name]
+                         [EdgeInfo{from->name(), from_cluster_name}]++;
+      cluster_names_to_print.insert(*to_cluster_name);
+    }
+
+    if (from_cluster_name) {
+      outgoing_edge_infos[*from_cluster_name][{to->name(), to_cluster_name}]++;
+      cluster_names_to_print.insert(*from_cluster_name);
+    }
+  }
+
+  VLOG(2) << "*** Inter-Cluster edges:";
+  if (cluster_names_to_print.empty()) {
+    VLOG(2) << "   [none]";
+  }
+
+  auto print_edge_info_set_for_cluster = [&](absl::string_view cluster_name,
+                                             const EdgeInfoMap& edge_info_map,
+                                             absl::string_view desc) {
+    auto it = edge_info_map.find(cluster_name);
+    if (it != edge_info_map.end()) {
+      VLOG(2) << "  " << it->second.size() << " " << desc << " edges";
+      for (const auto& edge_info_count_pair : it->second) {
+        VLOG(2) << "   " << edge_info_count_pair.first.GetClusterName() << " "
+                << edge_info_count_pair.first.node_name << " # "
+                << edge_info_count_pair.second;
+      }
+    } else {
+      VLOG(2) << "  No " << desc << " edges.";
+    }
+  };
+
+  for (absl::string_view cluster_name : cluster_names_to_print) {
+    VLOG(2) << " ** Cluster " << cluster_name;
+    print_edge_info_set_for_cluster(cluster_name, incoming_edge_infos,
+                                    "incoming");
+    print_edge_info_set_for_cluster(cluster_name, outgoing_edge_infos,
+                                    "outgoing");
   }
 }
 
@@ -729,11 +849,12 @@ Status MarkForCompilationPass::RunImpl(
   Graph* graph = options.graph->get();
 
   OrderedNodeSet compilation_candidates;
+  gtl::FlatSet<Node*> isolated_nodes;
   TF_RETURN_IF_ERROR(FindCompilationCandidates(
       *graph, options.flib_def,
       (options.session_options != nullptr) ? options.session_options->env
                                            : Env::Default(),
-      is_compilable_fn, &compilation_candidates));
+      is_compilable_fn, &compilation_candidates, &isolated_nodes));
 
   if (compilation_candidates.empty()) {
     VLOG(2) << "No compilable candidates";
@@ -778,6 +899,11 @@ Status MarkForCompilationPass::RunImpl(
           "Found control flow node in clustering worklist: ",
           node_from->type_string());
     }
+
+    if (isolated_nodes.count(node_from)) {
+      continue;
+    }
+
     string from_scope;
     string to_scope;
     for (int to : cycles.Successors(from)) {
@@ -793,6 +919,9 @@ Status MarkForCompilationPass::RunImpl(
       }
       if (node_from->assigned_device_name() !=
           node_to->assigned_device_name()) {
+        continue;
+      }
+      if (isolated_nodes.count(node_to)) {
         continue;
       }
       // Look for an _XlaScope on both nodes.  If both nodes have a
@@ -853,6 +982,11 @@ Status MarkForCompilationPass::RunImpl(
   // Names for each cluster.
   std::unordered_map<int, string> cluster_names;
 
+  if (flags->tf_xla_clustering_debug) {
+    dump_graph::DumpGraphToFile("before_mark_for_compilation", **options.graph,
+                                options.flib_def);
+  }
+
   // Mark clusters for compilation that:
   // * are placed on a device that requires compilation (an XlaDevice),
   // * are explicitly marked for compilation (_XlaCompile=true), or
@@ -890,7 +1024,7 @@ Status MarkForCompilationPass::RunImpl(
       string& name = cluster_names[cluster];
 
       if (name.empty()) {
-        name = strings::StrCat("cluster_", cluster_sequence_num++);
+        name = absl::StrCat("cluster_", cluster_sequence_num++);
       }
       n->AddAttr(kXlaClusterAttr, name);
       VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;

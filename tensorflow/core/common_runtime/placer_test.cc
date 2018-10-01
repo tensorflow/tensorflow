@@ -800,11 +800,11 @@ TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
   }
 
   Status s = Place(&g);
-  EXPECT_TRUE(
-      str_util::StrContains(s.error_message(),
-                            "Cannot colocate nodes 'foo' and 'in' because no "
-                            "device type supports both of those nodes and the "
-                            "other nodes colocated with them"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Cannot colocate nodes {{colocation_node foo}} and "
+      "{{colocation_node in}} because no device type supports both of those "
+      "nodes and the other nodes colocated with them"));
 }
 
 TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
@@ -867,9 +867,9 @@ TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
   Status s = Place(&g);
   EXPECT_TRUE(str_util::StrContains(
       s.error_message(),
-      "Cannot colocate nodes 'var3' and 'assign3' because no "
-      "device type supports both of those nodes and the other "
-      "nodes colocated with them."));
+      "Cannot colocate nodes {{colocation_node var3}} and {{colocation_node "
+      "assign3}} because no device type supports both of those nodes and the "
+      "other nodes colocated with them."));
 }
 
 TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
@@ -1154,36 +1154,12 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
   }
 
   SessionOptions options;
-  options.config.mutable_experimental()->set_client_handles_error_formatting(
-      true);
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(s.error_message(),
-                                    "Cannot assign a device for operation 'in'"
-                                    "^^node:in:${defined_at}^^"));
-}
-
-// Test that the "Cannot assign a device" error message does not contain a
-// format tag when not it shouldn't
-TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementNoFormatTag) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    ops::SourceOp("TestDevice",
-                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  SessionOptions options;
-  options.config.mutable_experimental()->set_client_handles_error_formatting(
-      false);
-  Status s = Place(&g, &options);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(), "Cannot assign a device for operation 'in'"));
-  EXPECT_FALSE(str_util::StrContains(
-      s.error_message(), "'in' (defined at ^^node:in:${file}:${line}^^)"));
+                                    "Cannot assign a device for operation in"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "{{node in}}"));
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1289,8 +1265,9 @@ TEST_F(PlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(), "Cannot colocate nodes 'var' and 'assign'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Cannot colocate nodes {{colocation_node "
+                                    "var}} and {{colocation_node assign}}"));
 }
 
 // Test that a generator node follows its consumers (where there are several

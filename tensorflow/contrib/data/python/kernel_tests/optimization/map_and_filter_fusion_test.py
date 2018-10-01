@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -28,7 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
+class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @staticmethod
   def map_functions():
@@ -44,22 +45,22 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
     for i, fun1 in enumerate(functions):
       for j, fun2 in enumerate(functions):
         tests.append((
-            "test_{}_{}".format(i, j),
+            "Test{}{}".format(i, j),
             [fun1, fun2],
         ))
         for k, fun3 in enumerate(functions):
           tests.append((
-              "test_{}_{}_{}".format(i, j, k),
+              "Test{}{}{}".format(i, j, k),
               [fun1, fun2, fun3],
           ))
 
     swap = lambda x, n: (n, x)
     tests.append((
-        "swap1",
+        "Swap1",
         [lambda x: (x, 42), swap],
     ))
     tests.append((
-        "swap2",
+        "Swap2",
         [lambda x: (x, 42), swap, swap],
     ))
     return tuple(tests)
@@ -74,7 +75,7 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
     dataset = dataset.prefetch(0).apply(optimization.optimize(["map_fusion"]))
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for x in range(5):
         result = sess.run(get_next)
         r = x
@@ -109,13 +110,13 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
 
     for x, fun in enumerate(functions):
       for y, predicate in enumerate(filters):
-        tests.append(("mixed_{}_{}".format(x, y), fun, predicate))
+        tests.append(("Mixed{}{}".format(x, y), fun, predicate))
 
     # Multi output
-    tests.append(("multiOne", lambda x: (x, x),
+    tests.append(("Multi1", lambda x: (x, x),
                   lambda x, y: constant_op.constant(True)))
     tests.append(
-        ("multiTwo", lambda x: (x, 2),
+        ("Multi2", lambda x: (x, 2),
          lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)))
     return tuple(tests)
 
@@ -131,7 +132,7 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
   def _testMapAndFilter(self, dataset, function, predicate):
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for x in range(10):
         r = function(x)
         if isinstance(r, tuple):
@@ -160,6 +161,64 @@ class MapAndFilterFusionTest(test.TestCase, parameterized.TestCase):
                 optimization.optimize(["map_and_filter_fusion"]))
 
     self._testMapAndFilter(dataset, function, predicate)
+
+  @staticmethod
+  def filter_functions():
+    take_all = lambda x: constant_op.constant(True)
+    is_zero = lambda x: math_ops.equal(x, 0)
+    greater = lambda x: math_ops.greater(x + 5, 0)
+
+    tests = []
+    filters = [take_all, is_zero, greater]
+    identity = lambda x: x
+    for x, predicate_1 in enumerate(filters):
+      for y, predicate_2 in enumerate(filters):
+        tests.append(("Mixed{}{}".format(x, y), identity,
+                      [predicate_1, predicate_2]))
+        for z, predicate_3 in enumerate(filters):
+          tests.append(("Mixed{}{}{}".format(x, y, z), identity,
+                        [predicate_1, predicate_2, predicate_3]))
+
+    take_all_multiple = lambda x, y: constant_op.constant(True)
+    # Multi output
+    tests.append(("Multi1", lambda x: (x, x),
+                  [take_all_multiple, take_all_multiple]))
+    tests.append(("Multi2", lambda x: (x, 2), [
+        take_all_multiple,
+        lambda x, y: math_ops.equal(x * math_ops.cast(y, dtypes.int64), 0)
+    ]))
+    return tuple(tests)
+
+  @parameterized.named_parameters(*filter_functions.__func__())
+  def testFilterFusion(self, map_function, predicates):
+    dataset = dataset_ops.Dataset.range(5).apply(
+        optimization.assert_next(["Map", "Filter",
+                                  "Prefetch"])).map(map_function)
+    for predicate in predicates:
+      dataset = dataset.filter(predicate)
+
+    dataset = dataset.prefetch(0).apply(
+        optimization.optimize(["filter_fusion"]))
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+    with self.cached_session() as sess:
+      for x in range(5):
+        r = map_function(x)
+        filtered = False
+        for predicate in predicates:
+          if isinstance(r, tuple):
+            b = predicate(*r)  # Pass tuple as multiple arguments.
+          else:
+            b = predicate(r)
+          if not sess.run(b):
+            filtered = True
+            break
+
+        if not filtered:
+          result = sess.run(get_next)
+          self.assertAllEqual(r, result)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
 
 if __name__ == "__main__":

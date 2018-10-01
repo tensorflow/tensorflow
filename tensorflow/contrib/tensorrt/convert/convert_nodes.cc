@@ -693,8 +693,15 @@ class Converter {
       // TODO(jie): tf protobuf seems to be omitting the :0 suffix
       string output_name = node_def.name();
       if (i != 0) output_name = StrCat(output_name, ":", i);
+      // We need to check the name before setting it. For Identity op where the
+      // output is the input, if its input is one of the engine input, setting
+      // the name here will overwrite engine input bindings which will cause
+      // runtime error.
       if (output.is_tensor()) {
-        output.tensor()->setName(output_name.c_str());
+        const char* tensor_name = output.tensor()->getName();
+        if (tensor_name == nullptr || std::strlen(tensor_name) == 0) {
+          output.tensor()->setName(output_name.c_str());
+        }
       }
       VLOG(2) << "Adding out tensor " << output_name << ": "
               << output.DebugString();
@@ -779,12 +786,11 @@ class Converter {
       // skip control nodes
       if (input_name[0] == '^') continue;
       string name = input_name;
-      auto first = name.find_first_of(':');
-      // TODO(aaroey): why removing the colon but not the zero? A bug?
+      auto last = name.find_last_of(':');
       // TODO(aaroey): use TensorId
-      if (first != string::npos && first + 2 == name.size() &&
-          name[first + 1] == '0') {
-        name.erase(first);
+      if (last != string::npos && last + 2 == name.size() &&
+          name[last + 1] == '0') {
+        name.erase(last);
       }
 
       if (trt_tensors_.count(name)) {
@@ -2697,7 +2703,6 @@ tensorflow::Status ConvertGraphDefToEngine(
   TrtUniquePtrType<nvinfer1::IBuilder> builder(
       nvinfer1::createInferBuilder(*logger));
   builder->setMaxBatchSize(max_batch_size);
-  // TODO(aaroey): use the allocator to allocate the TRT workspace.
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
 #if NV_TENSORRT_MAJOR > 3
   builder->setGpuAllocator(allocator);

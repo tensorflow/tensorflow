@@ -44,7 +44,7 @@ namespace xla {
 //  Note that the reachability map is updated based on the original computation.
 //  This works because the reachability is monotonically increasing with
 //  instruction fusion.
-class MultiOutputFusion : public HloPassInterface {
+class MultiOutputFusion : public HloModulePass {
  public:
   MultiOutputFusion(int64 fuel) : fuel_(fuel) {}
 
@@ -92,7 +92,7 @@ class MultiOutputFusion : public HloPassInterface {
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
       HloInstruction* instr1, HloInstruction* instr2,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instrs_to_update,
+      absl::Span<HloInstruction* const> instrs_to_update,
       const std::function<bool(HloInstruction*)>& skip = nullptr);
 
   // Hook for multi-output fusion along producer-consumer edges.

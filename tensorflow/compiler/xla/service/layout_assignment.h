@@ -281,7 +281,7 @@ class ChannelLayoutConstraints {
 
 // HLO pass which assigns layouts to all instructions in the HLO module while
 // satisfying all necessary invariants and minimizing cost.
-class LayoutAssignment : public HloPassInterface {
+class LayoutAssignment : public HloModulePass {
  public:
   // entry_computation_layout is modified to populate a layout for the result in
   // the case that no particular layout is requested.
@@ -302,6 +302,11 @@ class LayoutAssignment : public HloPassInterface {
   // Assign layouts to the given module. Returns whether the module was changed
   // (any layouts were changed).
   StatusOr<bool> Run(HloModule* module) override;
+
+  // Returns true if the instruction requires that operands with the same rank
+  // as the output have to have the same layout as the output.
+  virtual bool InstructionRequiresInputLayoutEqualToOutputLayout(
+      const HloInstruction* instruction);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout

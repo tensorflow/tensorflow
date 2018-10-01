@@ -294,7 +294,9 @@ REGISTER_OP("LookupTableImportV2")
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
 
-      // TODO: Validate keys and values shape.
+      ShapeHandle keys;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &keys));
+      TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
       return Status::OK();
     });
 

@@ -31,17 +31,29 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_utils {
 
+// Returns the index of the first element in collection that fulfills predicate.
+// If no such element exists, returns -1.
+template <typename Predicate, typename Collection>
+int GetFirstElementIndexWithPredicate(const Predicate& predicate,
+                                      const Collection& collection) {
+  unsigned idx = 0;
+  for (auto&& element : collection) {
+    if (predicate(element)) {
+      return idx;
+    }
+    idx++;
+  }
+  return -1;
+}
+
 // Adds a node to the graph.
 NodeDef* AddNode(StringPiece name, StringPiece op,
                  const std::vector<string>& inputs,
                  const std::vector<std::pair<string, AttrValue>>& attributes,
                  MutableGraphView* graph);
 
-// Adds a node to a FunctionDef.
-NodeDef* AddNode(StringPiece name, StringPiece op,
-                 const std::vector<string>& inputs,
-                 const std::vector<std::pair<string, AttrValue>>& attributes,
-                 FunctionDef* fd);
+// Adds Placeholder node for given type.
+NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph);
 
 // Adds a Const node with the given value to the graph.
 template <typename T>
@@ -76,13 +88,6 @@ bool ContainsGraphNodeWithName(StringPiece name, const GraphDef& graph);
 bool ContainsGraphFunctionWithName(StringPiece name,
                                    const FunctionDefLibrary& library);
 
-// Checks whether the function contains a node with the given name.
-bool ContainsFunctionNodeWithName(StringPiece name,
-                                  const FunctionDef& function);
-
-// Checks whether the function contains a node with the given op.
-bool ContainsFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
-
 // Checks whether the graph contains a node with the given op.
 bool ContainsNodeWithOp(StringPiece op, const GraphDef& graph);
 
@@ -94,14 +99,6 @@ int FindGraphNodeWithName(StringPiece name, const GraphDef& graph);
 // does not exist.
 int FindGraphFunctionWithName(StringPiece name,
                               const FunctionDefLibrary& library);
-
-// Returns the index of the function node with the given name or -1 if the
-// function node does not exist.
-int FindFunctionNodeWithName(StringPiece name, const FunctionDef& function);
-
-// Returns the index of the function node with the given op or -1 if the
-// function node does not exist.
-int FindFunctionNodeWithOp(StringPiece op, const FunctionDef& function);
 
 // Returns the index of the first node with the given op or -1 if no such  node
 // exists.
@@ -119,15 +116,20 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 // is unique across the graph.
 void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph, NodeDef* node);
 
-// Sets the function node name using the `prefix` as a prefix while guaranteeing
-// the name is unique across the functions nodes.
-void SetUniqueFunctionNodeName(StringPiece prefix, FunctionDef* function,
-                               NodeDef* node);
-
-// Sets the node name using the `prefix` name as a prefix while guaranteeing the
-// name is unique across the graph.
+// Sets the function name using the `prefix` name as a prefix while guaranteeing
+// the name is unique across the function library.
 void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
                                 FunctionDef* function);
+
+// Copies attribute having name `attribute_name` from node `from` to node
+// `to_node`.
+void CopyAttribute(const string& attribute_name, const NodeDef& from,
+                   NodeDef* to_node);
+
+// Concatenates list attribute having name `attribute_name` from `first` and
+// `second` node, setting it to `to_node`.
+void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
+                         const NodeDef& second, NodeDef* to_node);
 
 }  // end namespace graph_utils
 }  // end namespace grappler

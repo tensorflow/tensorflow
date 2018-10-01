@@ -6,9 +6,9 @@ licenses(["notice"])  # Apache 2.0
 android_binary(
     name = "ovic_benchmarker_binary",
     srcs = [
-        "OvicBenchmarker.java",
         "OvicBenchmarkerActivity.java",
     ],
+    aapt_version = "aapt",
     assets = [
         "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
         "//tensorflow/contrib/lite/java/ovic/src/testdata:labels.txt",

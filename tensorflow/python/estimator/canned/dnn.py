@@ -24,7 +24,10 @@ from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
-from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.framework import ops
+from tensorflow.python.keras.engine import training
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import normalization
 from tensorflow.python.ops import init_ops
@@ -45,8 +48,14 @@ def _add_hidden_layer_summary(value, tag):
   summary.histogram('%s/activation' % tag, value)
 
 
-def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
-                          dropout, input_layer_partitioner, batch_norm):
+def _dnn_logit_fn_builder(units,
+                          hidden_units,
+                          feature_columns,
+                          activation_fn,
+                          dropout,
+                          input_layer_partitioner,
+                          batch_norm,
+                          shared_state_manager=None):
   """Function builder for a dnn logit_fn.
 
   Args:
@@ -60,6 +69,8 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
     batch_norm: Whether to use batch normalization after each hidden layer.
+    shared_state_manager: A SharedEmbeddingStateManager object to hold the
+      shared state for SharedEmbeddingColumn's.
 
   Returns:
     A logit_fn (see below).
@@ -85,50 +96,129 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
       A `Tensor` representing the logits, or a list of `Tensor`'s representing
       multiple logits in the MultiHead case.
     """
-    is_training = mode == model_fn.ModeKeys.TRAIN
-    with variable_scope.variable_scope(
-        'input_from_feature_columns',
-        values=tuple(six.itervalues(features)),
-        partitioner=input_layer_partitioner):
-      net = feature_column_lib.input_layer(
-          features=features, feature_columns=feature_columns)
+    dnn_model = _DNNModel(
+        units,
+        hidden_units,
+        feature_columns,
+        activation_fn,
+        dropout,
+        input_layer_partitioner,
+        batch_norm,
+        shared_state_manager,
+        name='dnn')
+    return dnn_model(features, mode)
+
+  return dnn_logit_fn
+
+
+def _get_previous_name_scope():
+  current_name_scope = ops.get_name_scope()
+  return current_name_scope.rsplit('/', 1)[0] + '/'
+
+
+class _DNNModel(training.Model):
+  """A DNN Model."""
+
+  def __init__(self,
+               units,
+               hidden_units,
+               feature_columns,
+               activation_fn,
+               dropout,
+               input_layer_partitioner,
+               batch_norm,
+               shared_state_manager,
+               name=None,
+               **kwargs):
+    super(_DNNModel, self).__init__(name=name, **kwargs)
+    if feature_column_v2.is_feature_column_v2(feature_columns):
+      self._input_layer = feature_column_v2.FeatureLayer(
+          feature_columns=feature_columns,
+          name='input_layer',
+          shared_state_manager=shared_state_manager)
+    else:
+      self._input_layer = feature_column.InputLayer(
+          feature_columns=feature_columns,
+          name='input_layer',
+          create_scope_now=False)
+
+    self._add_layer(self._input_layer, 'input_layer')
+
+    self._dropout = dropout
+    self._batch_norm = batch_norm
+
+    self._hidden_layers = []
+    self._dropout_layers = []
+    self._batch_norm_layers = []
+    self._hidden_layer_scope_names = []
     for layer_id, num_hidden_units in enumerate(hidden_units):
       with variable_scope.variable_scope(
-          'hiddenlayer_%d' % layer_id, values=(net,)) as hidden_layer_scope:
-        net = core_layers.dense(
-            net,
+          'hiddenlayer_%d' % layer_id) as hidden_layer_scope:
+        hidden_layer = core_layers.Dense(
             units=num_hidden_units,
             activation=activation_fn,
             kernel_initializer=init_ops.glorot_uniform_initializer(),
-            name=hidden_layer_scope)
-        if dropout is not None and is_training:
-          net = core_layers.dropout(net, rate=dropout, training=True)
-        if batch_norm:
-          # TODO(hjm): In future, if this becomes popular, we can enable
-          # customization of the batch normalization params by accepting a
-          # list of `BatchNormalization` instances as `batch_norm`.
-          net = normalization.batch_normalization(
-              net,
+            name=hidden_layer_scope,
+            _scope=hidden_layer_scope)
+        self._add_layer(hidden_layer, hidden_layer_scope.name)
+        self._hidden_layer_scope_names.append(hidden_layer_scope.name)
+        self._hidden_layers.append(hidden_layer)
+        if self._dropout is not None:
+          dropout_layer = core_layers.Dropout(rate=self._dropout)
+          self._add_layer(dropout_layer, dropout_layer.name)
+          self._dropout_layers.append(dropout_layer)
+        if self._batch_norm:
+          batch_norm_layer = normalization.BatchNormalization(
               # The default momentum 0.99 actually crashes on certain
               # problem, so here we use 0.999, which is the default of
               # tf.contrib.layers.batch_norm.
               momentum=0.999,
-              training=is_training,
-              name='batchnorm_%d' % layer_id)
-      _add_hidden_layer_summary(net, hidden_layer_scope.name)
+              trainable=True,
+              name='batchnorm_%d' % layer_id,
+              _scope='batchnorm_%d' % layer_id)
+          self._add_layer(batch_norm_layer, batch_norm_layer.name)
+          self._batch_norm_layers.append(batch_norm_layer)
 
-    with variable_scope.variable_scope('logits', values=(net,)) as logits_scope:
-      logits = core_layers.dense(
-          net,
+    with variable_scope.variable_scope('logits') as logits_scope:
+      self._logits_layer = core_layers.Dense(
           units=units,
           activation=None,
           kernel_initializer=init_ops.glorot_uniform_initializer(),
-          name=logits_scope)
-    _add_hidden_layer_summary(logits, logits_scope.name)
+          name=logits_scope,
+          _scope=logits_scope)
+      self._add_layer(self._logits_layer, logits_scope.name)
+      self._logits_scope_name = logits_scope.name
+    self._input_layer_partitioner = input_layer_partitioner
 
-    return logits
+  def call(self, features, mode):
+    is_training = mode == model_fn.ModeKeys.TRAIN
+    # The Keras training.Model adds a name_scope with the name of the model
+    # which modifies the constructed graph. Hence we add another name_scope
+    # here which is the one before the training.Model one was applied.
+    # TODO(rohanj): Remove this in TF 2.0 (b/116728605)
+    with ops.name_scope(name=_get_previous_name_scope()):
+      # TODO(rohanj): Remove dependence on variable scope for partitioning.
+      with variable_scope.variable_scope(
+          'input_from_feature_columns',
+          partitioner=self._input_layer_partitioner):
+        net = self._input_layer(features)
+      for i in range(len(self._hidden_layers)):
+        net = self._hidden_layers[i](net)
+        if self._dropout is not None and is_training:
+          net = self._dropout_layers[i](net, training=True)
+        if self._batch_norm:
+          net = self._batch_norm_layers[i](net, training=is_training)
+        _add_hidden_layer_summary(net, self._hidden_layer_scope_names[i])
 
-  return dnn_logit_fn
+      logits = self._logits_layer(net)
+      _add_hidden_layer_summary(logits, self._logits_scope_name)
+      return logits
+
+  def _add_layer(self, layer, layer_name):
+    # "Magic" required for keras.Model classes to track all the variables in
+    # a list of layers.Layer objects.
+    # TODO(ashankar): Figure out API so user code doesn't have to do this.
+    setattr(self, layer_name, layer)
 
 
 def _dnn_model_fn(features,
@@ -142,8 +232,9 @@ def _dnn_model_fn(features,
                   dropout=None,
                   input_layer_partitioner=None,
                   config=None,
-                  tpu_estimator_spec=False,
-                  batch_norm=False):
+                  use_tpu=False,
+                  batch_norm=False,
+                  shared_state_manager=None):
   """Deep Neural Net model_fn.
 
   Args:
@@ -164,9 +255,11 @@ def _dnn_model_fn(features,
     input_layer_partitioner: Partitioner for input layer. Defaults
       to `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
     config: `RunConfig` object to configure the runtime settings.
-    tpu_estimator_spec: Whether to return a `_TPUEstimatorSpec` or
-      or `model_fn.EstimatorSpec` instance.
+    use_tpu: Whether to make a DNN model able to run on TPU. Will make function
+      return a `_TPUEstimatorSpec` instance and disable variable partitioning.
     batch_norm: Whether to use batch normalization after each hidden layer.
+    shared_state_manager: A SharedEmbeddingStateManager object to hold the
+      shared state for SharedEmbeddingColumn's.
 
   Returns:
     An `EstimatorSpec` instance.
@@ -182,13 +275,15 @@ def _dnn_model_fn(features,
       optimizer, learning_rate=_LEARNING_RATE)
   num_ps_replicas = config.num_ps_replicas if config else 0
 
-  partitioner = partitioned_variables.min_max_variable_partitioner(
-      max_partitions=num_ps_replicas)
+  partitioner = (None if use_tpu else
+                 partitioned_variables.min_max_variable_partitioner(
+                     max_partitions=num_ps_replicas))
   with variable_scope.variable_scope(
       'dnn',
       values=tuple(six.itervalues(features)),
       partitioner=partitioner):
     input_layer_partitioner = input_layer_partitioner or (
+        None if use_tpu else
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas,
             min_slice_size=64 << 20))
@@ -200,10 +295,11 @@ def _dnn_model_fn(features,
         activation_fn=activation_fn,
         dropout=dropout,
         input_layer_partitioner=input_layer_partitioner,
-        batch_norm=batch_norm)
+        batch_norm=batch_norm,
+        shared_state_manager=shared_state_manager)
     logits = logit_fn(features=features, mode=mode)
 
-    if tpu_estimator_spec:
+    if use_tpu:
       return head._create_tpu_estimator_spec(  # pylint: disable=protected-access
           features=features,
           mode=mode,
@@ -368,6 +464,10 @@ class DNNClassifier(estimator.Estimator):
     """
     head = head_lib._binary_logistic_or_multi_class_head(  # pylint: disable=protected-access
         n_classes, weight_column, label_vocabulary, loss_reduction)
+
+    shared_state_manager = feature_column_v2.maybe_create_shared_state_manager(
+        feature_columns)
+
     def _model_fn(features, labels, mode, config):
       """Call the defined shared _dnn_model_fn."""
       return _dnn_model_fn(
@@ -382,7 +482,8 @@ class DNNClassifier(estimator.Estimator):
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config,
-          batch_norm=batch_norm)
+          batch_norm=batch_norm,
+          shared_state_manager=shared_state_manager)
 
     super(DNNClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
@@ -530,6 +631,10 @@ class DNNRegressor(estimator.Estimator):
       batch_norm: Whether to use batch normalization after each hidden layer.
     """
 
+    shared_state_manager = None
+    if feature_column_v2.is_feature_column_v2(feature_columns):
+      shared_state_manager = feature_column_v2.SharedEmbeddingStateManager()
+
     def _model_fn(features, labels, mode, config):
       """Call the defined shared _dnn_model_fn."""
       return _dnn_model_fn(
@@ -537,7 +642,8 @@ class DNNRegressor(estimator.Estimator):
           labels=labels,
           mode=mode,
           head=head_lib._regression_head(  # pylint: disable=protected-access
-              label_dimension=label_dimension, weight_column=weight_column,
+              label_dimension=label_dimension,
+              weight_column=weight_column,
               loss_reduction=loss_reduction),
           hidden_units=hidden_units,
           feature_columns=tuple(feature_columns or []),
@@ -546,7 +652,8 @@ class DNNRegressor(estimator.Estimator):
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config,
-          batch_norm=batch_norm)
+          batch_norm=batch_norm,
+          shared_state_manager=shared_state_manager)
 
     super(DNNRegressor, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,

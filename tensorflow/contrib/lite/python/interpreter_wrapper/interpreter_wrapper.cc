@@ -466,9 +466,9 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
                                   error_msg);
 }
 
-PyObject* InterpreterWrapper::ResetVariableTensorsToZero() {
+PyObject* InterpreterWrapper::ResetVariableTensors() {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_CHECK(interpreter_->ResetVariableTensorsToZero());
+  TFLITE_PY_CHECK(interpreter_->ResetVariableTensors());
   Py_RETURN_NONE;
 }
 

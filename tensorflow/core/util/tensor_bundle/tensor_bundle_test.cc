@@ -39,6 +39,11 @@ string Prefix(const string& prefix) {
   return strings::StrCat(testing::TmpDir(), "/", prefix);
 }
 
+string TestdataPrefix(const string& prefix) {
+  return strings::StrCat(testing::TensorFlowSrcRoot(),
+                         "/core/util/tensor_bundle/testdata/", prefix);
+}
+
 template <typename T>
 Tensor Constant(T v, TensorShape shape) {
   Tensor ret(DataTypeToEnum<T>::value, shape);
@@ -107,7 +112,7 @@ std::vector<string> AllTensorKeys(BundleReader* reader) {
   reader->Seek(kHeaderEntryKey);
   reader->Next();
   for (; reader->Valid(); reader->Next()) {
-    ret.push_back(std::string(reader->key()));
+    ret.emplace_back(reader->key());
   }
   return ret;
 }
@@ -458,7 +463,26 @@ TEST(TensorBundleTest, NonStandardShapes) {
   TestNonStandardShapes<qint8>();
 }
 
+TEST(TensorBundleTest, StringTensorsOldFormat) {
+  // Test string tensor bundle made with previous version of code that use
+  // varint32s to store string lengths (we now use varint64s).
+  BundleReader reader(Env::Default(), TestdataPrefix("old_string_tensors/foo"));
+  TF_ASSERT_OK(reader.status());
+  EXPECT_EQ(AllTensorKeys(&reader),
+            std::vector<string>({"floats", "scalar", "string_tensor", "strs"}));
+
+  Expect<string>(&reader, "string_tensor", Tensor(DT_STRING, TensorShape({1})));
+  Expect<string>(&reader, "scalar", test::AsTensor<string>({"hello"}));
+  Expect<string>(
+      &reader, "strs",
+      test::AsTensor<string>({"hello", "", "x01", string(1 << 10, 'c')}));
+  Expect<float>(&reader, "floats", Constant_2x3<float>(16.18));
+}
+
 TEST(TensorBundleTest, StringTensors) {
+  constexpr size_t kLongLength = static_cast<size_t>(UINT32_MAX) + 1;
+  Tensor long_string_tensor(DT_STRING, TensorShape({1}));
+
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));
     TF_EXPECT_OK(writer.Add("string_tensor",
@@ -467,6 +491,12 @@ TEST(TensorBundleTest, StringTensors) {
     TF_EXPECT_OK(writer.Add(
         "strs",
         test::AsTensor<string>({"hello", "", "x01", string(1 << 25, 'c')})));
+
+    // Requires a 64-bit length.
+    string* backing_string = long_string_tensor.flat<string>().data();
+    backing_string->assign(kLongLength, 'd');
+    TF_EXPECT_OK(writer.Add("long_scalar", long_string_tensor));
+
     // Mixes in some floats.
     TF_EXPECT_OK(writer.Add("floats", Constant_2x3<float>(16.18)));
     TF_ASSERT_OK(writer.Finish());
@@ -474,9 +504,9 @@ TEST(TensorBundleTest, StringTensors) {
   {
     BundleReader reader(Env::Default(), Prefix("foo"));
     TF_ASSERT_OK(reader.status());
-    EXPECT_EQ(
-        AllTensorKeys(&reader),
-        std::vector<string>({"floats", "scalar", "string_tensor", "strs"}));
+    EXPECT_EQ(AllTensorKeys(&reader),
+              std::vector<string>({"floats", "long_scalar", "scalar",
+                                   "string_tensor", "strs"}));
 
     Expect<string>(&reader, "string_tensor",
                    Tensor(DT_STRING, TensorShape({1})));
@@ -484,7 +514,35 @@ TEST(TensorBundleTest, StringTensors) {
     Expect<string>(
         &reader, "strs",
         test::AsTensor<string>({"hello", "", "x01", string(1 << 25, 'c')}));
+
     Expect<float>(&reader, "floats", Constant_2x3<float>(16.18));
+
+    // We don't use the Expect function so we can re-use the
+    // `long_string_tensor` buffer for reading out long_scalar to keep memory
+    // usage reasonable.
+    EXPECT_TRUE(reader.Contains("long_scalar"));
+    DataType dtype;
+    TensorShape shape;
+    TF_ASSERT_OK(reader.LookupDtypeAndShape("long_scalar", &dtype, &shape));
+    EXPECT_EQ(DT_STRING, dtype);
+    EXPECT_EQ(TensorShape({1}), shape);
+
+    // Zero-out the string so that we can be sure the new one is read in.
+    string* backing_string = long_string_tensor.flat<string>().data();
+    backing_string->assign("");
+
+    // Read long_scalar and check it contains kLongLength 'd's.
+    TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
+    ASSERT_EQ(backing_string, long_string_tensor.flat<string>().data());
+    EXPECT_EQ(kLongLength, backing_string->length());
+    for (char c : *backing_string) {
+      // Not using ASSERT_EQ('d', c) because this way is twice as fast due to
+      // compiler optimizations.
+      if (c != 'd') {
+        FAIL() << "long_scalar is not full of 'd's as expected.";
+        break;
+      }
+    }
   }
 }
 

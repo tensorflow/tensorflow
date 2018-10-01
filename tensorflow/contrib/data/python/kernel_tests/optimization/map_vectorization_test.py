@@ -22,9 +22,9 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import test_utils
 from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
+class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _get_test_datasets(self,
                          base_dataset,
@@ -85,7 +85,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
                                                            [3, 4]]).repeat(5)
     unoptimized, optimized = self._get_test_datasets(base_dataset, map_fn,
                                                      num_parallel_calls)
-    self._assert_datasets_equal(unoptimized, optimized)
+    self.assertDatasetsEqual(unoptimized, optimized)
 
   def testOptimizationBadMapFn(self):
     # Test map functions that give an error
@@ -112,7 +112,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     # TODO(rachelim): when this optimization works, turn on expect_optimized
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_equal(optimized, unoptimized)
+    self.assertDatasetsEqual(optimized, unoptimized)
 
   def testOptimizationIgnoreStateful(self):
 
@@ -122,15 +122,12 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
 
     base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
                                                            [3, 4]]).repeat(5)
-    _, optimized = self._get_test_datasets(
+    unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    nxt = optimized.make_one_shot_iterator().get_next()
-
-    # NOTE: Right now, it raises an error because we can't save datasets that
-    # are stateful, and we rely on this saving mechanism to optimize datasets,
-    # so stateful functions can't be optimized.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "[Ss]tateful"):
-      self.evaluate(nxt)
+    self.assertDatasetsRaiseSameError(
+        unoptimized, optimized, errors.InvalidArgumentError,
+        [("OneShotIterator", "OneShotIterator_1", 1),
+         ("IteratorGetNext", "IteratorGetNext_1", 1)])
 
   def testOptimizationIgnoreRagged(self):
     # Make sure we ignore inputs that might not be uniformly sized
@@ -141,7 +138,7 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(3, drop_remainder=False)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_equal(unoptimized, optimized)
+    self.assertDatasetsEqual(unoptimized, optimized)
 
   def testOptimizationIgnoreRaggedMap(self):
     # Don't optimize when the output of the map fn shapes are unknown.
@@ -151,8 +148,10 @@ class MapVectorizationTest(test_utils.DatasetTestBase, parameterized.TestCase):
     base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
     unoptimized, optimized = self._get_test_datasets(
         base_dataset, map_fn, expect_optimized=False)
-    self._assert_datasets_raise_same_error(unoptimized, optimized,
-                                           errors.InvalidArgumentError)
+    self.assertDatasetsRaiseSameError(
+        unoptimized, optimized, errors.InvalidArgumentError,
+        [("OneShotIterator", "OneShotIterator_1", 1),
+         ("IteratorGetNext", "IteratorGetNext_1", 1)])
 
 
 class MapVectorizationBenchmark(test.Benchmark):
@@ -173,16 +172,6 @@ class MapVectorizationBenchmark(test.Benchmark):
     median_time = np.median(deltas)
     self.report_benchmark(iters=num_iters, wall_time=median_time, name=name)
     return median_time
-
-  def benchmark_CheapFns(self):
-
-    input_sizes = [(10, 10, 3), (10, 100, 300)]
-    batch_size = 1000
-    for input_size in input_sizes:
-      input_dataset = dataset_ops.Dataset.from_tensor_slices(
-          (np.random.rand(*input_size), np.random.rand(*input_size))).repeat()
-      for map_fn, str_id in self._get_known_cheap_fns():
-        self._compare(input_dataset, map_fn, batch_size, input_size, str_id)
 
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
     num_elems = np.prod(input_size)
@@ -206,14 +195,28 @@ class MapVectorizationBenchmark(test.Benchmark):
           "Speedup: {}\n".format(batch_size, input_size, str_id,
                                  (unoptimized_time / optimized_time)))
 
-  def _get_known_cheap_fns(self):
-    return [
-        (lambda *args: [array_ops.identity(x) for x in args], "identity"),
-        (lambda *args: [x + 1 for x in args], "add_const"),
-        (lambda *args: args[0], "select"),
-        (lambda *args: [math_ops.cast(x, dtypes.float64) for x in args],
-         "cast"),
-    ]
+  # Known cheap functions
+  def benchmarkIdentity(self):
+    self._benchmark_helper(lambda *args: [array_ops.identity(x) for x in args],
+                           "identity")
+
+  def benchmarkAddConst(self):
+    self._benchmark_helper(lambda *args: [x + 1 for x in args], "add_const")
+
+  def benchmarkSelect(self):
+    self._benchmark_helper(lambda *args: args[0], "select")
+
+  def benchmarkCast(self):
+    self._benchmark_helper(
+        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
+
+  def _benchmark_helper(self, map_fn, str_id):
+    input_sizes = [(10, 10, 3), (10, 100, 300)]
+    batch_size = 1000
+    for input_size in input_sizes:
+      input_dataset = dataset_ops.Dataset.from_tensor_slices(
+          (np.random.rand(*input_size), np.random.rand(*input_size))).repeat()
+      self._compare(input_dataset, map_fn, batch_size, input_size, str_id)
 
 
 if __name__ == "__main__":

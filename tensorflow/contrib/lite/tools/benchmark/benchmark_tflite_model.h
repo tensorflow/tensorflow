@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#ifdef TFLITE_EXTENDED
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
-#endif  // TFLITE_EXTENDED
+#ifdef TFLITE_FLEX
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
+#endif  // TFLITE_FLEX
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/profiling/profile_summarizer.h"
 #include "tensorflow/contrib/lite/tools/benchmark/benchmark_model.h"
@@ -69,10 +69,13 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     std::vector<int> shape;
   };
 
+ protected:
+  void PrepareInputsAndOutputs() override;
+
  private:
-#ifdef TFLITE_EXTENDED
-  std::unique_ptr<EagerDelegate> delegate_;
-#endif  // TFLITE_EXTENDED
+#ifdef TFLITE_FLEX
+  std::unique_ptr<FlexDelegate> delegate_;
+#endif  // TFLITE_FLEX
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
   std::vector<InputLayerInfo> inputs;

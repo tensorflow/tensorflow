@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import get_single_element
 from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -30,7 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class GetSingleElementTest(test.TestCase, parameterized.TestCase):
+class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("Zero", 0, 1),
@@ -53,7 +54,7 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
         lambda x: (x * x, make_sparse(x))).take(take_t)
     element = get_single_element.get_single_element(dataset)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if error is None:
         dense_val, sparse_val = sess.run(
             element, feed_dict={
@@ -90,7 +91,7 @@ class GetSingleElementTest(test.TestCase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(stop_t)
     element = get_single_element.reduce_dataset(dataset, sum_reducer)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       value = sess.run(element, feed_dict={stop_t: stop})
       self.assertEqual(stop * (stop - 1) / 2, value)
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -96,7 +97,13 @@ class PartitionedCallOp : public AsyncOpKernel {
         OP_REQUIRES_ASYNC(ctx, fbody != nullptr,
                           errors::Internal("Could not find handle ", handle),
                           done);
+        // We need to pass global op_registry as default_registry when creating
+        // graph. So that graph optimization passes can lookup all possible ops
+        // by name.
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
+        FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
+        TF_CHECK_OK(
+                    graph.get()->AddFunctionLibrary(global_flib.ToProto()));
         CopyGraph(*fbody->graph, graph.get());
         OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
@@ -104,13 +111,6 @@ class PartitionedCallOp : public AsyncOpKernel {
         for (auto d : lib->device_mgr()->ListDevices()) {
           device_set.AddDevice(d);
         }
-        Placer placer(graph.get(), &device_set);
-        OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
-
-        std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
-        OP_REQUIRES_OK_ASYNC(
-            ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
-            done);
 
         // The FunctionLibraryRuntime's library cannot be mutated from within
         // an OpKernel, so functions are instantiated in an overlay library.
@@ -123,6 +123,47 @@ class PartitionedCallOp : public AsyncOpKernel {
         FunctionLibraryDefinition* overlay_lib =
             new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
         overlay_libs_.emplace(lib, overlay_lib);
+
+        GraphOptimizationPassOptions optimization_options;
+        // TODO(akshayka): Thread SessionOptions (if any) into this kernel, or
+        // make it possible to specify the relevant options via attributes.
+        SessionOptions session_options;
+        session_options.env = ctx->env();
+        optimization_options.session_options = &session_options;
+        optimization_options.graph = &graph;
+        optimization_options.flib_def = overlay_lib;
+        optimization_options.device_set = &device_set;
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::PRE_PLACEMENT, optimization_options),
+            done);
+        Placer placer(graph.get(), &device_set);
+        OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::POST_PLACEMENT, optimization_options),
+            done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
+                optimization_options),
+            done);
+
+        std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
+        OP_REQUIRES_OK_ASYNC(
+            ctx, PartitionHelper(device_set, std::move(graph), &subgraphs),
+            done);
+        optimization_options.graph = nullptr;
+        optimization_options.device_set = nullptr;
+        optimization_options.partition_graphs = &subgraphs;
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             OptimizationPassRegistry::Global()->RunGrouping(
+                                 OptimizationPassRegistry::POST_PARTITIONING,
+                                 optimization_options),
+                             done);
 
         auto handles = tensorflow::MakeUnique<gtl::FlatMap<string, FHandle>>();
         for (const auto& pair : subgraphs) {
@@ -175,7 +216,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         TF_RETURN_IF_ERROR(node->attrs().Find("T", &attr_value));
         DataType dtype = attr_value->type();
         if (dtype == DT_RESOURCE) {
-          ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
+          const ResourceHandle& handle = args[index].flat<ResourceHandle>()(0);
           node->set_assigned_device_name(handle.device());
         }
       }
@@ -215,9 +256,11 @@ class PartitionedCallOp : public AsyncOpKernel {
     VLOG(3) << "Partitioned function '" << func_.name() << "', yielding "
             << partitions.size() << " shards.";
 
-    const FunctionLibraryDefinition* flib_def = &graph->flib_def();
     for (const auto& partition : partitions) {
-      std::unique_ptr<Graph> subgraph(new Graph(flib_def));
+      std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
+      FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
+      TF_CHECK_OK(
+                subgraph.get()->AddFunctionLibrary(global_flib.ToProto()));
       GraphConstructorOptions opts;
       opts.allow_internal_ops = true;
       opts.expect_device_spec = true;

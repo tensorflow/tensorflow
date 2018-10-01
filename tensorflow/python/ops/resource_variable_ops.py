@@ -48,14 +48,14 @@ def get_resource_handle_data(graph_op):
   assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
-  handle_data = pywrap_tensorflow.GetResourceHandleShapeAndType(
+  handle_data = pywrap_tensorflow.GetHandleShapeAndType(
       graph_op.graph._c_graph, graph_op._as_tf_output())  # pylint: disable=protected-access
 
   return cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData.FromString(
       compat.as_bytes(handle_data))
 
 
-def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
+def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference."""
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
@@ -397,61 +397,33 @@ class ResourceVariable(variables.RefVariable):
           # When in eager mode use a uid for the shared_name, to prevent
           # accidental sharing.
           shared_name = "%s_%d" % (handle_name, ops.uid())
-        if init_from_fn:
-          # Use attr_scope and device(None) to simulate the behavior of
-          # colocate_with when the variable we want to colocate with doesn't
-          # yet exist.
-          if self._in_graph_mode:
-            attr = attr_value_pb2.AttrValue(
-                list=attr_value_pb2.AttrValue.ListValue(
-                    s=[compat.as_bytes("loc:@%s" % handle_name)]))
-            with ops.get_default_graph()._attr_scope({"_class": attr}):
-              with ops.name_scope("Initializer"), ops.device(None):
-                initial_value = ops.convert_to_tensor(
-                    initial_value(), name="initial_value", dtype=dtype)
-              self._handle = _eager_safe_variable_handle(
-                  shape=initial_value.get_shape(),
-                  dtype=initial_value.dtype.base_dtype,
-                  shared_name=shared_name,
-                  name=name,
-                  graph_mode=self._in_graph_mode)
-              self._shape = initial_value.get_shape()
-          else:
-            initial_value = initial_value()
-            with ops.name_scope("Initializer"):
-              initial_value = ops.convert_to_tensor(
-                  initial_value, name="initial_value", dtype=dtype)
-            self._handle = _eager_safe_variable_handle(
-                shape=initial_value.get_shape(),
-                dtype=initial_value.dtype.base_dtype,
-                shared_name=shared_name,
-                name=name,
-                graph_mode=False)
-            self._shape = initial_value.get_shape()
-        # pylint: enable=protected-access
-
-        # Or get the initial value from a Tensor or Python object.
-        else:
-          with ops.name_scope("Initializer"):
+        # Use attr_scope and device(None) to simulate the behavior of
+        # colocate_with when the variable we want to colocate with doesn't
+        # yet exist.
+        attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                s=[compat.as_bytes("loc:@%s" % handle_name)]))
+        with ops.get_default_graph()._attr_scope({"_class": attr}):
+          with ops.name_scope("Initializer"), ops.device(None):
             initial_value = ops.convert_to_tensor(
-                initial_value, name="initial_value", dtype=dtype)
-          # pylint: disable=protected-access
-          if (self._in_graph_mode and initial_value is not None and
-              initial_value.op._get_control_flow_context() is not None):
-            raise ValueError(
-                "Initializer for variable %s is from inside a control-flow "
-                "construct, such as a loop or conditional. When creating a "
-                "variable inside a loop or conditional, use a lambda as the "
-                "initializer." % name)
-          # pylint: enable=protected-access
-          self._handle = _eager_safe_variable_handle(
+                initial_value() if init_from_fn else initial_value,
+                name="initial_value", dtype=dtype)
+          self._handle = eager_safe_variable_handle(
               shape=initial_value.get_shape(),
               dtype=initial_value.dtype.base_dtype,
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
-          self._shape = initial_value.get_shape()
-
+        self._shape = initial_value.shape
+        # pylint: disable=protected-access
+        if (self._in_graph_mode and initial_value is not None and
+            initial_value.op._get_control_flow_context() is not None):
+          raise ValueError(
+              "Initializer for variable %s is from inside a control-flow "
+              "construct, such as a loop or conditional. When creating a "
+              "variable inside a loop or conditional, use a lambda as the "
+              "initializer." % name)
+        # pylint: enable=protected-access
         self._unique_id = shared_name
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
@@ -750,7 +722,7 @@ class ResourceVariable(variables.RefVariable):
 
   def _read_variable_op(self):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     result = gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
     if not context.executing_eagerly():
@@ -781,7 +753,7 @@ class ResourceVariable(variables.RefVariable):
     """Reads the value of this variable sparsely, using `gather`."""
     with ops.name_scope("Gather" if name is None else name) as name:
       if self.trainable:
-        tape.watch_variable(self)
+        tape.variable_accessed(self)
       value = gen_resource_variable_ops.resource_gather(
           self._handle, indices, dtype=self._dtype, name=name)
     return array_ops.identity(value)
@@ -949,12 +921,12 @@ class ResourceVariable(variables.RefVariable):
 
   def _lazy_read(self, op):
     if self.trainable:
-      tape.watch_variable(self)
+      tape.variable_accessed(self)
     return _UnreadVariable(
         handle=self._handle, dtype=self.dtype, shape=self._shape,
         in_graph_mode=self._in_graph_mode,
         deleter=self._handle_deleter if not self._in_graph_mode else None,
-        parent_op=op, parent_name=self._handle_name, unique_id=self._unique_id)
+        parent_op=op, unique_id=self._unique_id)
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     """Assigns a new value to this variable.
@@ -1293,8 +1265,7 @@ class _UnreadVariable(ResourceVariable):
   """
 
   def __init__(self, handle, dtype,  # pylint: disable=super-init-not-called
-               shape, in_graph_mode, deleter, parent_op, parent_name,
-               unique_id):
+               shape, in_graph_mode, deleter, parent_op, unique_id):
     # We do not call super init on purpose.
     self._trainable = False
     self._save_slice_info = None

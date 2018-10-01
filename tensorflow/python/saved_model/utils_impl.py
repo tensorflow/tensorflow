@@ -75,7 +75,7 @@ def get_tensor_from_tensor_info(tensor_info, graph=None, import_scope=None):
     KeyError: If `tensor_info` does not correspond to a tensor in `graph`.
     ValueError: If `tensor_info` is malformed.
   """
-  graph = graph if graph is not None else ops.get_default_graph()
+  graph = graph or ops.get_default_graph()
   def _get_tensor(name):
     return graph.get_tensor_by_name(
         ops.prepend_name_scope(name, import_scope=import_scope))

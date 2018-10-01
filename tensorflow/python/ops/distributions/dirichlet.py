@@ -104,10 +104,13 @@ class Dirichlet(distribution.Distribution):
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Create a single trivariate Dirichlet, with the 3rd class being three times
   # more frequent than the first. I.e., batch_shape=[], event_shape=[3].
   alpha = [1., 2, 3]
-  dist = tf.distributions.Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
 
   dist.sample([4, 5])  # shape: [4, 5, 3]
 
@@ -129,7 +132,7 @@ class Dirichlet(distribution.Distribution):
   # Create batch_shape=[2], event_shape=[3]:
   alpha = [[1., 2, 3],
            [4, 5, 6]]   # shape: [2, 3]
-  dist = tf.distributions.Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
 
   dist.sample([4, 5])  # shape: [4, 5, 2, 3]
 
@@ -144,7 +147,7 @@ class Dirichlet(distribution.Distribution):
 
   ```python
   alpha = tf.constant([1.0, 2.0, 3.0])
-  dist = tf.distributions.Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
   samples = dist.sample(5)  # Shape [5, 3]
   loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
   # Unbiased stochastic gradients of the loss function

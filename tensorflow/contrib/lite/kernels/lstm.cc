@@ -20,8 +20,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
@@ -893,18 +893,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       activation_out->type == kTfLiteFloat32 &&
       concat_temp->type == kTfLiteFloat32 &&
       activation_temp->type == kTfLiteFloat32) {
+    tflite::LstmCellParams op_params;
+    // Float LSTM cell does not need parameters to be set: leave untouched.
     optimized_ops::LstmCell(
+        op_params,
         // Inputs.
-        GetTensorData<float>(input), GetTensorDims(input),
-        GetTensorData<float>(prev_activation), GetTensorDims(prev_activation),
-        GetTensorData<float>(weights), GetTensorDims(weights),
-        GetTensorData<float>(bias), GetTensorDims(bias),
-        GetTensorData<float>(prev_state), GetTensorDims(prev_state),
+        GetTensorShape(input), GetTensorData<float>(input),
+        GetTensorShape(prev_activation), GetTensorData<float>(prev_activation),
+        GetTensorShape(weights), GetTensorData<float>(weights),
+        GetTensorShape(bias), GetTensorData<float>(bias),
+        GetTensorShape(prev_state), GetTensorData<float>(prev_state),
         // Outputs.
-        GetTensorData<float>(state_out), GetTensorDims(state_out),
-        GetTensorData<float>(activation_out), GetTensorDims(activation_out),
-        GetTensorData<float>(concat_temp), GetTensorDims(concat_temp),
-        GetTensorData<float>(activation_temp), GetTensorDims(activation_temp));
+        GetTensorShape(state_out), GetTensorData<float>(state_out),
+        GetTensorShape(activation_out), GetTensorData<float>(activation_out),
+        GetTensorShape(concat_temp), GetTensorData<float>(concat_temp),
+        GetTensorShape(activation_temp), GetTensorData<float>(activation_temp));
   } else if (input->type == kTfLiteUInt8 &&
              prev_activation->type == kTfLiteUInt8 &&
              weights->type == kTfLiteUInt8 && bias->type == kTfLiteInt32 &&
@@ -934,20 +937,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     int accum_shift;
     tflite::QuantizeMultiplier(real_accum_multiplier, &accum_multiplier,
                                &accum_shift);
+    tflite::LstmCellParams op_params;
+    op_params.weights_zero_point = weights->params.zero_point;
+    op_params.accum_multiplier = accum_multiplier;
+    op_params.accum_shift = accum_shift;
     optimized_ops::LstmCell<4>(
+        op_params,
         // Inputs.
-        GetTensorData<uint8_t>(input), GetTensorDims(input),
-        GetTensorData<uint8_t>(prev_activation), GetTensorDims(prev_activation),
-        GetTensorData<uint8_t>(weights), GetTensorDims(weights),
-        GetTensorData<int32_t>(bias), GetTensorDims(bias),
-        GetTensorData<int16_t>(prev_state), GetTensorDims(prev_state),
+        GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(prev_activation),
+        GetTensorData<uint8_t>(prev_activation), GetTensorShape(weights),
+        GetTensorData<uint8_t>(weights), GetTensorShape(bias),
+        GetTensorData<int32_t>(bias), GetTensorShape(prev_state),
+        GetTensorData<int16_t>(prev_state),
         // Outputs.
-        GetTensorData<int16_t>(state_out), GetTensorDims(state_out),
-        GetTensorData<uint8_t>(activation_out), GetTensorDims(activation_out),
-        GetTensorData<uint8_t>(concat_temp), GetTensorDims(concat_temp),
-        GetTensorData<int16_t>(activation_temp), GetTensorDims(activation_temp),
-        weights->params.zero_point, accum_multiplier, accum_shift,
-        gemm_context);
+        GetTensorShape(state_out), GetTensorData<int16_t>(state_out),
+        GetTensorShape(activation_out), GetTensorData<uint8_t>(activation_out),
+        GetTensorShape(concat_temp), GetTensorData<uint8_t>(concat_temp),
+        GetTensorShape(activation_temp),
+        GetTensorData<int16_t>(activation_temp), gemm_context);
   } else {
     context->ReportError(context,
                          "Unsupported combination of data types for LstmCell");

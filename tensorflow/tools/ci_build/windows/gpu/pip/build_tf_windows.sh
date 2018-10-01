@@ -57,8 +57,7 @@ PY_TEST_DIR="py_test_dir"
 
 SKIP_TEST=0
 RELEASE_BUILD=0
-TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/... \
-  //${PY_TEST_DIR}/tensorflow/contrib/... "
+TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
@@ -123,7 +122,7 @@ fi
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow_gpu-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow

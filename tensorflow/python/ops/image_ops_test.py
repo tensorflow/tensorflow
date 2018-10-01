@@ -2687,6 +2687,12 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
 
+  def testPreserveAspectRatioSquare(self):
+    x_shape = [299, 299, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
+
 
 class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
@@ -3656,6 +3662,47 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
+
+  def testDataTypes(self):
+    # Test case for GitHub issue 20199.
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    max_output_size_np = 3
+    iou_threshold_np = 0.5
+    # Note: There are multiple versions of non_max_suppression v2, v3, v4.
+    # gen_image_ops.non_max_suppression_v2:
+    for dtype in [np.float16, np.float32]:
+      with self.cached_session():
+        boxes = constant_op.constant(boxes_np, dtype=dtype)
+        scores = constant_op.constant(scores_np, dtype=dtype)
+        max_output_size = constant_op.constant(max_output_size_np)
+        iou_threshold = constant_op.constant(iou_threshold_np)
+        selected_indices = gen_image_ops.non_max_suppression_v2(
+            boxes, scores, max_output_size, iou_threshold).eval()
+        self.assertAllClose(selected_indices, [3, 0, 5])
+    # image_ops.non_max_suppression = gen_image_ops.non_max_suppression_v3.
+    for dtype in [np.float16, np.float32]:
+      with self.cached_session():
+        boxes = constant_op.constant(boxes_np, dtype=dtype)
+        scores = constant_op.constant(scores_np, dtype=dtype)
+        max_output_size = constant_op.constant(max_output_size_np)
+        iou_threshold = constant_op.constant(iou_threshold_np)
+        selected_indices = image_ops.non_max_suppression(
+            boxes, scores, max_output_size, iou_threshold).eval()
+        self.assertAllClose(selected_indices, [3, 0, 5])
+    # gen_image_ops.non_max_suppression_v4.
+    score_threshold = float('-inf')
+    for dtype in [np.float16, np.float32]:
+      with self.cached_session():
+        boxes = constant_op.constant(boxes_np, dtype=dtype)
+        scores = constant_op.constant(scores_np, dtype=dtype)
+        max_output_size = constant_op.constant(max_output_size_np)
+        iou_threshold = constant_op.constant(iou_threshold_np)
+        selected_indices, _ = gen_image_ops.non_max_suppression_v4(
+            boxes, scores, max_output_size, iou_threshold, score_threshold)
+        selected_indices = selected_indices.eval()
+        self.assertAllClose(selected_indices, [3, 0, 5])
 
 
 class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):

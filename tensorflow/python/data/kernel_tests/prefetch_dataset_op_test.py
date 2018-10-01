@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -26,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class PrefetchDatasetTest(test.TestCase, parameterized.TestCase):
+class PrefetchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.parameters((-1), (0), (5))
   def testBufferSize(self, buffer_size):
@@ -36,7 +37,7 @@ class PrefetchDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
       for m in range(10):
         self.assertEqual(m, sess.run(get_next))
@@ -51,7 +52,7 @@ class PrefetchDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "buffer_size"):
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
 
 
