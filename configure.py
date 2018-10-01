@@ -223,7 +223,7 @@ def setup_python(environ_cp):
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  python_major_version = get_python_major_version(python_bin_path)
+  _ = get_python_major_version(python_bin_path)
 
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows() or is_cygwin():
@@ -1041,7 +1041,7 @@ def set_tf_tensorrt_install_path(environ_cp):
     for lib_file in possible_files:
       if is_cuda_compatible(lib_file, cuda_ver, cudnn_ver):
         matches = nvinfer_pattern.search(lib_file)
-        if len(matches.groups()) == 0:
+        if not matches.groups():
           continue
         ver_str = matches.group(1)
         ver = convert_version_to_int(ver_str) if len(ver_str) else 0
@@ -1409,7 +1409,7 @@ def set_other_mpi_vars(environ_cp):
 
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
-  if syslibs and syslibs != '':
+  if syslibs:
     if ',' in syslibs:
       syslibs = ','.join(sorted(syslibs.split(',')))
     else:
@@ -1518,9 +1518,10 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
+  set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite',
+                'with_ignite_support', True, 'ignite')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 True, 'xla')
-
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
