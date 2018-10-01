@@ -69,6 +69,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "profiler/__init__.py",
     "python_io/__init__.py",
     "quantization/__init__.py",
+    "random/__init__.py",
     "resource_loader/__init__.py",
     "strings/__init__.py",
     "saved_model/__init__.py",

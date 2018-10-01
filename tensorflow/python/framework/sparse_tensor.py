@@ -33,7 +33,7 @@ _override_helper = ops._override_helper
 # pylint: enable=protected-access
 
 
-@tf_export("SparseTensor")
+@tf_export("sparse.SparseTensor", "SparseTensor")
 class SparseTensor(_TensorLike):
   """Represents a sparse tensor.
 
