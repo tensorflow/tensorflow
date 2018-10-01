@@ -1005,52 +1005,8 @@ def func_graph_from_py_func(name,
   return func_graph
 
 
-_TensorType = collections.namedtuple("_TensorType", ["dtype", "shape"])
-
-
-def _encode_arg(arg):
-  """A canonical representation for this argument, for use in a cache key."""
-
-  # `defun` uses dtypes and shapes instead of `Tensors` as cache keys. Dtypes
-  # are used because TensorFlow graphs are not parametric w.r.t. dtypes. Shapes
-  # are used for both performance reasons, as much TensorFlow code specializes
-  # on known shapes to produce slimmer graphs, and correctness, as some
-  # high-level APIs require shapes to be fully-known.
-  #
-  # TODO(akshayka): Add support for sparse tensors.
-  #
-  # pylint: disable=protected-access
-  if isinstance(arg, ops.Tensor):
-    return _TensorType(arg.dtype, arg._shape_tuple())
-  elif isinstance(arg, ops.IndexedSlices):
-    if arg.dense_shape is not None:
-      return tuple([
-          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
-          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
-          _TensorType(arg.dense_shape.dtype, arg.dense_shape._shape_tuple()),
-      ])
-    else:
-      return tuple([
-          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
-          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
-      ])
-  # pylint: enable=protected-access
-  elif isinstance(arg, (list, tuple)):
-    return tuple([_encode_arg(elem) for elem in arg])
-  elif isinstance(arg, dict):
-    return tuple(
-        (_encode_arg(key), _encode_arg(arg[key])) for key in sorted(arg))
-  else:
-    try:
-      # If possible, keep only a weak reference to Python objects. Weak
-      # references hash to the same value as the original object.
-      # TODO(allenl): Clean up dead functions and their cache keys if the cache
-      # gets large. Right now creating objects with a defunned method, calling
-      # the method, and losing a reference to the object in a loop will leak
-      # memory here.
-      return weakref.ref(arg)
-    except TypeError:
-      return arg
+pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
+pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -1120,6 +1076,8 @@ class PolymorphicFunction(object):
         offset + index: default
         for index, default in enumerate(fullargspec.defaults or [])
     }
+    self._default_values = fullargspec.defaults
+    self._default_values_start_index = offset
     if input_signature is None:
       self._input_signature = None
     else:
@@ -1180,7 +1138,7 @@ class PolymorphicFunction(object):
     """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      cache_key = tuple(_encode_arg(arg) for arg in inputs)
+      cache_key = pywrap_tensorflow.TFE_Py_EncodeArg(inputs)
     else:
       del args, kwargs
       cache_key = self._flat_input_signature
@@ -1203,7 +1161,7 @@ class PolymorphicFunction(object):
     colocation_stack = (() if executing_eagerly else
                         tuple(default_graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
 
-    return cache_key + (execution_context, device_functions, colocation_stack)
+    return (cache_key, execution_context, device_functions, colocation_stack)
 
   def _canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -1231,26 +1189,32 @@ class PolymorphicFunction(object):
     # Maps from index of arg to its corresponding value, according to `args`
     # and `kwargs`; seeded with the default values for the named args that
     # aren't in `args`.
-    arg_indices_to_values = {
-        index: default
-        for index, default in six.iteritems(self._arg_indices_to_default_values)
-        if index >= len(args)
-    }
-    consumed_args = []
-    for arg, value in six.iteritems(kwargs):
-      index = self._args_to_indices.get(arg, None)
-      if index is not None:
-        arg_indices_to_values[index] = value
-        consumed_args.append(arg)
-      elif self._input_signature is not None:
-        raise ValueError("Cannot define a TensorFlow function from a Python "
-                         "function with keyword arguments when "
-                         "input_signature is provided.")
-    for arg in consumed_args:
-      # After this loop, `kwargs` will only contain true keyword arguments, as
-      # opposed to named arguments called in a keyword-like fashion.
-      kwargs.pop(arg)
-    inputs = args + _deterministic_dict_values(arg_indices_to_values)
+    if not kwargs:
+      if self._default_values:
+        inputs = args + self._default_values[len(args) -
+                                             self._default_values_start_index:]
+      else:
+        inputs = args
+    else:
+      arg_indices_to_values = {
+          index: default for index, default in six.iteritems(
+              self._arg_indices_to_default_values) if index >= len(args)
+      }
+      consumed_args = []
+      for arg, value in six.iteritems(kwargs):
+        index = self._args_to_indices.get(arg, None)
+        if index is not None:
+          arg_indices_to_values[index] = value
+          consumed_args.append(arg)
+        elif self._input_signature is not None:
+          raise ValueError("Cannot define a TensorFlow function from a Python "
+                           "function with keyword arguments when "
+                           "input_signature is provided.")
+      for arg in consumed_args:
+        # After this loop, `kwargs` will only contain true keyword arguments, as
+        # opposed to named arguments called in a keyword-like fashion.
+        kwargs.pop(arg)
+      inputs = args + _deterministic_dict_values(arg_indices_to_values)
     flat_inputs = nest.flatten(inputs)
 
     # Check for NumPy arrays in arguments and convert them to Tensors.
