@@ -1,4 +1,4 @@
-/*Copyright 2018 Google LLC
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,17 +17,17 @@ package org.tensorflow.ovic;
 import java.util.ArrayList;
 
 /** Result class for inference run on a single image. */
-public class OvicSingleImageResult {
+public class OvicClassificationResult {
 
   /** Top K classes and probabilities. */
-  public ArrayList<String> topKClasses;
-  public ArrayList<Float> topKProbs;
-  public ArrayList<Integer> topKIndices;
+  public final ArrayList<String> topKClasses;
+  public final ArrayList<Float> topKProbs;
+  public final ArrayList<Integer> topKIndices;
 
   /** Latency (ms). */
   public Long latency;
 
-  OvicSingleImageResult() {
+  OvicClassificationResult() {
     topKClasses = new ArrayList<>();
     topKProbs = new ArrayList<>();
     topKIndices = new ArrayList<>();
