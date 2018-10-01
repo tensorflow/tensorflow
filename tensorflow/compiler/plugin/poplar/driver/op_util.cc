@@ -255,7 +255,7 @@ void PrintTensorMapping(const poplar::Graph& graph,
              << "\"num_elements\": " << tileElementCount << ", "
              << "\"element_size\": " << elementType << "}";
           first_tile = false;
-          totalElements += tileMemSize;
+          totalElements += tileElementCount;
         }
       }
       ss << "], "
