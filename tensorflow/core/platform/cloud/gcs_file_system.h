@@ -93,7 +93,7 @@ class GcsFileSystem : public FileSystem {
                 uint64 stat_cache_max_age, size_t stat_cache_max_entries,
                 uint64 matching_paths_cache_max_age,
                 size_t matching_paths_cache_max_entries,
-                int64 initial_retry_delay_usec, TimeoutConfig timeouts,
+                RetryConfig retry_config, TimeoutConfig timeouts,
                 const std::unordered_set<string>& allowed_locations,
                 std::pair<const string, const string>* additional_header);
 
@@ -332,7 +332,7 @@ class GcsFileSystem : public FileSystem {
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
 
   /// The initial delay for exponential backoffs when retrying failed calls.
-  const int64 initial_retry_delay_usec_ = 1000000L;
+  RetryConfig retry_config_;
 
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;
@@ -344,7 +344,8 @@ class GcsFileSystem : public FileSystem {
 class RetryingGcsFileSystem : public RetryingFileSystem<GcsFileSystem> {
  public:
   RetryingGcsFileSystem()
-      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem)) {}
+      : RetryingFileSystem(std::unique_ptr<GcsFileSystem>(new GcsFileSystem),
+                           RetryConfig(100000 /* init_delay_time_us */)) {}
 };
 
 }  // namespace tensorflow
