@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -413,6 +414,15 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   FunctionLibraryDefinition flib(OpRegistry::Global(),
                                  optimized_graph->library());
 
+  // Find functions for which we might need to compute a gradient at runtime.
+  gtl::FlatSet<string> differentiable_functions;
+  for (const NodeDef& node : optimized_graph->node()) {
+    if (IsSymbolicGradient(node)) {
+      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
+      if (f_attr) differentiable_functions.insert(f_attr->func().name());
+    }
+  }
+
   // Optimize each function only once.
   std::unordered_set<string> optimized_funcs;
   bool optimize_function_library = true;
@@ -428,6 +438,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Skip parametrized functions (function type or body is defined only at
       // function call time by caller node attributes).
+      // They should be specialized to their instantiation type parameters by
+      // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name;
@@ -441,6 +453,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       GrapplerFunctionItem func_item;
       TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
           func, flib, item.graph.versions().producer(), &func_item));
+
+      // If we need to compute the gradient of optimized function at runtime, we
+      // can't perform non-differentiable rewrites.
+      if (differentiable_functions.find(func_name) !=
+          differentiable_functions.end()) {
+        func_item.allowed_optimizations.non_differentiable_rewrites = false;
+      }
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;

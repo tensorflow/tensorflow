@@ -425,6 +425,10 @@ bool IsSwitch(const NodeDef& node) {
   return op == "Switch" || op == "RefSwitch";
 }
 
+bool IsSymbolicGradient(const NodeDef& node) {
+  return node.op() == "SymbolicGradient";
+}
+
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 
 bool IsTile(const NodeDef& node) { return node.op() == "Tile"; }
