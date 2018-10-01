@@ -748,6 +748,12 @@ Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
     graph_->set_versions(graph_in->versions());
   }
 
+  // TODO(b/116981129): Enhance how the device for the encapsulated subgraph is
+  // determined. In case of hard placement, ensure all the encapsulated nodes
+  // have the same requested device, which in turn will be the requested device
+  // for the entire encapsulated subgraph. In case of soft placement, use a
+  // deterministic approach to fill in the requested device. Handle co-location
+  // constraints similarly if they exist.
   if (device_.empty()) {
     device_ = node->assigned_device_name().empty()
                   ? node->requested_device()

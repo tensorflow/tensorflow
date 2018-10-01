@@ -297,7 +297,9 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
     // Target the XLA CPU/GPU backends.
     VLOG(2) << "Replacing with XlaLaunch";
+    VLOG(2) << "Device is " << launch->requested_device();
     def.set_op("XlaLaunch");
+    def.set_device(launch->requested_device());
     AddNodeAttr("Tconstants", DataTypeVector{}, &def);
     AddNodeAttr("Targs", arg_types, &def);
     AddNodeAttr("Nresources", num_variables, &def);
