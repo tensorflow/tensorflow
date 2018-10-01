@@ -25,12 +25,12 @@ import tempfile
 import numpy as np
 import six
 
-from tensorflow.contrib.data.python.ops import readers
 from tensorflow.contrib.estimator.python.estimator import head as head_lib
 from tensorflow.contrib.estimator.python.estimator import rnn
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column as seq_fc
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import parsing_utils

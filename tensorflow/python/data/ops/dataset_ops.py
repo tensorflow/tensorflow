@@ -889,8 +889,8 @@ class Dataset(object):
       will be padded out to the maximum length of all elements in that
       dimension.
 
-    See also `tf.contrib.data.dense_to_sparse_batch`, which combines elements
-    that may have different shapes into a `tf.SparseTensor`.
+    See also `tf.data.experimental.dense_to_sparse_batch`, which combines
+    elements that may have different shapes into a `tf.SparseTensor`.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
