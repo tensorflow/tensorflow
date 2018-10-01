@@ -1363,28 +1363,31 @@ void Encapsulator::Subgraph::GetOutsideCompilationSubgraphNames(
 
 Status Encapsulator::GetFunctionNameAttr(
     Node const* node, string* attr, string* outside_compilation_attr) const {
-  Status s = GetNodeAttr(node->attrs(), group_attribute_, attr);
-  if (s.code() == error::Code::NOT_FOUND) {
-    // Return empty attr if there's no group_attribute.
-    attr->clear();
-  } else {
-    TF_RETURN_IF_ERROR(s);
-  }
-  bool has_group_attr = s.ok();
-  s = GetNodeAttr(node->attrs(), outside_compilation_attribute_,
-                  outside_compilation_attr);
-  if (s.code() == error::Code::NOT_FOUND) {
-    // Return empty attr if there's no outside_compilation attribute.
-    outside_compilation_attr->clear();
-  } else {
-    TF_RETURN_IF_ERROR(s);
-    if (!has_group_attr) {
-      return errors::InvalidArgument(
-          "Node ", node->name(), " has ", outside_compilation_attribute_,
-          " attribute but no ", group_attribute_, " attribute.");
+  AttrSlice attrs = node->attrs();
+  attr->clear();
+  outside_compilation_attr->clear();
+  bool found_group_attribute = false;
+  bool found_outside_compilation_attribute = false;
+  for (const auto& node_attr : attrs) {
+    if (node_attr.first == group_attribute_) {
+      TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
+      *attr = node_attr.second.s();
+      found_group_attribute = true;
+    } else if (node_attr.first == outside_compilation_attribute_) {
+      TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
+      *outside_compilation_attr = node_attr.second.s();
+      found_outside_compilation_attribute = true;
     }
+    if (found_group_attribute && found_outside_compilation_attribute) break;
   }
-  return Status::OK();
+
+  if (found_outside_compilation_attribute && !found_group_attribute) {
+    return errors::InvalidArgument(
+        "Node ", node->name(), " has ", outside_compilation_attribute_,
+        " attribute but no ", group_attribute_, " attribute.");
+  } else {
+    return Status::OK();
+  }
 }
 
 bool IsInSubgraph(const string& func_id, const string& outside_compilation_id) {
