@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +33,7 @@ from tensorflow.python.ops import sparse_ops
 _STRUCTURE_CONVERSION_FUNCTION_REGISTRY = {}
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Structure(object):
   """Represents structural information, such as type and shape, about a value.
 
@@ -46,7 +49,6 @@ class Structure(object):
   and `tf.data.Dataset.output_classes`, and similar properties and arguments in
   the `tf.data.Iterator` and `Optional` classes.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def _flat_shapes(self):

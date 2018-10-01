@@ -1802,6 +1802,7 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
       keys=tuple(keys), hash_bucket_size=hash_bucket_size, hash_key=hash_key)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -1817,7 +1818,6 @@ class FeatureColumn(object):
 
   This class is an abstract class. Users should not create instances of this.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def name(self):
@@ -1890,8 +1890,6 @@ class DenseColumn(FeatureColumn):
   indicator_column.
   """
 
-  __metaclass__ = abc.ABCMeta
-
   @abc.abstractproperty
   def variable_shape(self):
     """`TensorShape` of `get_dense_tensor`, without batch dimension."""
@@ -1963,7 +1961,6 @@ class CategoricalColumn(FeatureColumn):
 
   A categorical feature typically handled with a `tf.SparseTensor` of IDs.
   """
-  __metaclass__ = abc.ABCMeta
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
       'IdWeightPair', ('id_tensor', 'weight_tensor'))
@@ -2046,8 +2043,6 @@ def _create_categorical_column_weighted_sum(
 
 class SequenceDenseColumn(FeatureColumn):
   """Represents dense sequence data."""
-
-  __metaclass__ = abc.ABCMeta
 
   TensorSequenceLengthPair = collections.namedtuple(  # pylint: disable=invalid-name
       'TensorSequenceLengthPair', ('dense_tensor', 'sequence_length'))
