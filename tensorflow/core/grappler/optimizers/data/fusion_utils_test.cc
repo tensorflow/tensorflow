@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -57,10 +58,10 @@ TEST(FusionUtilsTest, FuseFunctionsByComposition) {
   auto *function = graph.mutable_library()->add_function();
   *function = test::function::XTimesTwo();
 
-  auto *fused_function =
-      FuseFunctions(*parent_function, *function, "fused_maps",
-                    fusion_utils::ComposeSignature, fusion_utils::ComposeInput,
-                    fusion_utils::ComposeOutput, graph.mutable_library());
+  auto *fused_function = FuseFunctions(
+      *parent_function, *function, "fused_maps", fusion_utils::ComposeSignature,
+      fusion_utils::ComposeInput, fusion_utils::ComposeOutput,
+      fusion_utils::MergeNodes, graph.mutable_library());
 
   EXPECT_EQ(fused_function->signature().name(), "fused_maps");
   EXPECT_EQ(fused_function->signature().input_arg_size(), 1);
@@ -98,7 +99,8 @@ TEST(FusionUtilsTest, FuseFunctionWithPredicate) {
   auto *fused_function =
       FuseFunctions(*xtimes_two, *is_zero, "fused_map_and_filter_function",
                     fusion_utils::CombineSignature, fusion_utils::ComposeInput,
-                    fusion_utils::CombineOutput, graph.mutable_library());
+                    fusion_utils::CombineOutput, fusion_utils::MergeNodes,
+                    graph.mutable_library());
 
   EXPECT_EQ(fused_function->signature().name(),
             "fused_map_and_filter_function");
@@ -109,9 +111,9 @@ TEST(FusionUtilsTest, FuseFunctionWithPredicate) {
   CheckUniqueNames(*fused_function);
 
   ASSERT_TRUE(
-      graph_utils::ContainsFunctionNodeWithOp("Equal", *fused_function));
+      function_utils::ContainsFunctionNodeWithOp("Equal", *fused_function));
   const auto &equal_node = fused_function->node_def(
-      graph_utils::FindFunctionNodeWithOp("Equal", *fused_function));
+      function_utils::FindFunctionNodeWithOp("Equal", *fused_function));
 
   EXPECT_EQ(xtimes_two->signature().output_arg(0).name(),
             fused_function->signature().output_arg(0).name());
@@ -134,10 +136,10 @@ TEST(FusionUtilsTest, FuseSameFunctionWithExtraOutput) {
   auto *function = graph.mutable_library()->add_function();
   *function = test::function::XTimesTwo();
 
-  auto *fused_function =
-      FuseFunctions(*parent_function, *function, "fused_maps",
-                    fusion_utils::CombineSignature, fusion_utils::ComposeInput,
-                    fusion_utils::CombineOutput, graph.mutable_library());
+  auto *fused_function = FuseFunctions(
+      *parent_function, *function, "fused_maps", fusion_utils::CombineSignature,
+      fusion_utils::ComposeInput, fusion_utils::CombineOutput,
+      fusion_utils::MergeNodes, graph.mutable_library());
 
   EXPECT_EQ(fused_function->signature().input_arg_size(), 1);
   EXPECT_EQ(fused_function->signature().output_arg_size(), 2);
@@ -169,7 +171,8 @@ TEST(FusionUtilsTest, ZipFusion) {
 
   auto *fused_function =
       FuseFunctions(*function, *function, "zip_maps", zip_signature, zip_input,
-                    fusion_utils::CombineOutput, graph.mutable_library());
+                    fusion_utils::CombineOutput, fusion_utils::MergeNodes,
+                    graph.mutable_library());
 
   EXPECT_EQ(fused_function->signature().input_arg_size(), 2);
   EXPECT_EQ(fused_function->signature().output_arg_size(), 2);

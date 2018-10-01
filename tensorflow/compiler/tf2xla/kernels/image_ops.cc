@@ -355,6 +355,9 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     OP_REQUIRES(
         context, output_size >= 0,
         errors::InvalidArgument("Need output_size >= 0, got ", output_size));
+    OP_REQUIRES(context, output_size <= kint32max,
+                errors::InvalidArgument("Need output_size <= kint32Max, got ",
+                                        output_size));
     xla::XlaOp score_thresh = context->Input("score_threshold");
     xla::XlaOp iou_thresh = context->Input("iou_threshold");
 
@@ -439,12 +442,14 @@ class NonMaxSuppressionOp : public XlaOpKernel {
         xla::Broadcast(xla::ConstantR0<int32>(builder, 1), {num_boxes}),
         xla::Broadcast(xla::ConstantR0<int32>(builder, 0), {num_boxes}));
 
-    // num_valid is scalar.
-    xla::XlaOp num_valid = xla::Reduce(
+    // num_valid is scalar. Value should be bound by output_size.
+    xla::XlaOp num_valid_total = xla::Reduce(
         ones_included,
         /*init_value=*/xla::ConstantR0<int>(builder, 0),
         /*computation=*/CreateScalarAddComputation(xla::S32, builder),
         /*dimensions_to_reduce=*/{0});
+    xla::XlaOp num_valid =
+        xla::Min(num_valid_total, xla::ConstantR0<int32>(builder, output_size));
 
     xla::XlaOp output_tuple = TopK(scores_included, output_size);
     xla::XlaOp selected_indices = xla::GetTupleElement(output_tuple, 1);

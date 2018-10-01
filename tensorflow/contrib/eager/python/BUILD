@@ -14,6 +14,8 @@ py_library(
         ":datasets",
         ":metrics",
         ":network",
+        ":parameter_server",
+        ":remote",
         ":saver",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
@@ -92,6 +94,18 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
+    name = "parameter_server",
+    srcs = ["parameter_server.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -223,11 +237,25 @@ py_test(
     ],
 )
 
+py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
 py_test(
     name = "remote_test",
     srcs = ["remote_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":parameter_server",
+        ":remote",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

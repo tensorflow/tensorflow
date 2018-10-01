@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -131,6 +132,14 @@ Status HloModuleGroupMetadata::Build() {
   if (VLOG_IS_ON(4)) {
     DumpCollectedStats();
   }
+
+  for (HloModule* module : modules_) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+        TuplePointsToAnalysis::Run(module));
+    points_to_analyses_[module] = std::move(points_to_analysis);
+  }
+
   return Status::OK();
 }
 
@@ -163,7 +172,7 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
             ss << "  " << hlo->name() << std::endl;
           }
           ss << "has multiple instructions on the same device";
-          return FailedPrecondition("%s", ss.str().c_str());
+          return FailedPrecondition("%s", ss.str());
         }
       }
     }
@@ -383,22 +392,28 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   if (!ContainsKey(companion_set_index_, instruction1) &&
       !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
-        absl::make_unique<std::unordered_set<HloInstruction*>>());
+        absl::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
-    companion_set->insert(instruction1);
-    companion_set->insert(instruction2);
+    companion_set->push_back(instruction1);
+    companion_set->push_back(instruction2);
     companion_set_index_[instruction1] = companion_sets_.size() - 1;
     companion_set_index_[instruction2] = companion_sets_.size() - 1;
   } else if (!ContainsKey(companion_set_index_, instruction1)) {
-    companion_sets_[companion_set_index_[instruction2]]->insert(instruction1);
+    companion_sets_[companion_set_index_[instruction2]]->push_back(
+        instruction1);
     companion_set_index_[instruction1] = companion_set_index_[instruction2];
   } else if (!ContainsKey(companion_set_index_, instruction2)) {
-    companion_sets_[companion_set_index_[instruction1]]->insert(instruction2);
+    companion_sets_[companion_set_index_[instruction1]]->push_back(
+        instruction2);
     companion_set_index_[instruction2] = companion_set_index_[instruction1];
   } else if (companion_set_index_[instruction1] !=
              companion_set_index_[instruction2]) {
-    companion_sets_[companion_set_index_[instruction1]]->insert(
-        Companions(instruction2).begin(), Companions(instruction2).end());
+    // At any point while building the companion sets, each instruction belongs
+    // to at most 1 companion set, so the union of two companion sets is
+    // concatenating two disjoint sets.
+    absl::c_copy(Companions(instruction2),
+                 std::back_inserter(
+                     *companion_sets_[companion_set_index_[instruction1]]));
     int64 index_to_remove = companion_set_index_[instruction2];
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];
@@ -411,16 +426,16 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
 Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   for (const Channel& channel : channels_) {
     if (channel.send == nullptr) {
-      return FailedPrecondition("missing send for id : %lld", channel.id);
+      return FailedPrecondition("missing send for id : %d", channel.id);
     }
     if (channel.recv == nullptr) {
-      return FailedPrecondition("missing recv for id : %lld", channel.id);
+      return FailedPrecondition("missing recv for id : %d", channel.id);
     }
     if (channel.send_done == nullptr) {
-      return FailedPrecondition("missing send-done for id : %lld", channel.id);
+      return FailedPrecondition("missing send-done for id : %d", channel.id);
     }
     if (channel.recv_done == nullptr) {
-      return FailedPrecondition("missing recv-done for id : %lld", channel.id);
+      return FailedPrecondition("missing recv-done for id : %d", channel.id);
     }
   }
 
@@ -436,33 +451,33 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
     auto send_done_device = GetInstructionDevice(*channel.send_done);
     if (!send_device) {
       return FailedPrecondition("send instruction must have a device: %s",
-                                channel.send->ToString().c_str());
+                                channel.send->ToString());
     }
     if (!send_done_device) {
       return FailedPrecondition("send_done instruction must have a device: %s",
-                                channel.send_done->ToString().c_str());
+                                channel.send_done->ToString());
     }
     if (*send_device != *send_done_device) {
       return FailedPrecondition(
-          "send and send-done (channel=%lld) must be on the same device: %lld "
-          "vs. %lld",
+          "send and send-done (channel=%d) must be on the same device: %d "
+          "vs. %d",
           channel.id, *send_device, *send_done_device);
     }
     auto recv_device = GetInstructionDevice(*channel.recv);
     auto recv_done_device = GetInstructionDevice(*channel.recv_done);
     if (!recv_done_device) {
       return FailedPrecondition("recv_done instruction must have a device: %s",
-                                channel.recv_done->ToString().c_str());
+                                channel.recv_done->ToString());
     }
     if (*recv_device != *recv_done_device) {
       return FailedPrecondition(
-          "recv and recv-done (channel=%lld) must be on the same device: %lld "
-          "vs. %lld",
+          "recv and recv-done (channel=%d) must be on the same device: %d "
+          "vs. %d",
           channel.id, *recv_device, *recv_done_device);
     }
     if (*send_device == *recv_device) {
       return FailedPrecondition(
-          "send and recv (channel=%lld) must be on different devices: %lld",
+          "send and recv (channel=%d) must be on different devices: %d",
           channel.id, *send_device);
     }
   }
@@ -483,7 +498,7 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
         !CheckCompanionPathsCompatibility(
             path, GetCompanionsPath(channel.recv_done))) {
       return FailedPrecondition(
-          "Nest companion paths do not match for channel %lld", channel.id);
+          "Nest companion paths do not match for channel %d", channel.id);
     }
   }
   return Status::OK();

@@ -136,8 +136,8 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
 
   MPIRendezvousMgr* mgr =
       reinterpret_cast<MPIRendezvousMgr*>(this->rendezvous_mgr_);
-  mgr->QueueRequest(parsed.FullKey().ToString(), step_id_,
-                    std::move(request_call), rendezvous_call);
+  mgr->QueueRequest(string(parsed.FullKey()), step_id_, std::move(request_call),
+                    rendezvous_call);
 }
 
 MPIRemoteRendezvous::~MPIRemoteRendezvous() {}
@@ -258,7 +258,7 @@ void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
         std::function<MPISendTensorCall*()> res = std::bind(
             send_cb, status, send_args, recv_args, val, is_dead, mpi_send_call);
 
-        SendQueueEntry req(parsed.FullKey().ToString().c_str(), std::move(res));
+        SendQueueEntry req(string(parsed.FullKey()), std::move(res));
 
         this->QueueSendRequest(req);
 

@@ -20,13 +20,14 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import shuffle_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-class ShuffleAndRepeatTest(test.TestCase):
+class ShuffleAndRepeatTest(test_base.DatasetTestBase):
 
   def _build_ds(self, seed, count=5, num_elements=20):
     return dataset_ops.Dataset.range(num_elements).apply(
@@ -35,7 +36,7 @@ class ShuffleAndRepeatTest(test.TestCase):
   def _gen_outputs(self, ds_fn, num_outputs, verify_exhausted=True):
     get_next = ds_fn().make_one_shot_iterator().get_next()
     outputs = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for _ in range(num_outputs):
         outputs.append(sess.run(get_next))
       if verify_exhausted:

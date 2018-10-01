@@ -35,13 +35,13 @@ from tensorflow.python.training import device_util
 
 
 def check_destinations(destinations):
-  """Checks whether `destinations` is not None and not empty.
+  """Checks whether `destinations` is not empty.
 
   Args:
     destinations: a DistributedValues, Variable, string or a list of strings.
 
   Returns:
-    Boolean indicating whether `destinations` is not None and not empty.
+    Boolean which is True if `destinations` is not empty.
   """
   # Calling bool() on a ResourceVariable is not allowed.
   if isinstance(destinations, resource_variable_ops.ResourceVariable):
@@ -56,7 +56,7 @@ def validate_destinations(destinations):
        value_lib.AggregatingVariable, six.string_types, list)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, a device string, a list of device "
-                     "strings or None")
+                     "strings")
 
   if not check_destinations(destinations):
     raise ValueError("destinations can not be empty")
@@ -131,8 +131,7 @@ def _devices_match(left, right):
 
 
 def _all_devices_match(value_destination_pairs):
-  if not all([d is None or _devices_match(v, d)
-              for v, d in value_destination_pairs]):
+  if not all([_devices_match(v, d) for v, d in value_destination_pairs]):
     return False
   if not all([_devices_match(v, value_destination_pairs[0][0])
               for v, _ in value_destination_pairs[1:]]):
@@ -189,7 +188,7 @@ class CrossTowerOps(object):
   def __init__(self):
     pass
 
-  def reduce(self, aggregation, per_device_value, destinations=None):
+  def reduce(self, aggregation, per_device_value, destinations):
     """Reduce `per_device_value` to `destinations`.
 
     It runs the reduction operation defined by `aggregation` and put the
@@ -210,8 +209,7 @@ class CrossTowerOps(object):
     if not isinstance(per_device_value, value_lib.PerDevice):
       per_device_value = _make_tensor_into_per_device(per_device_value)
 
-    if destinations is not None:
-      validate_destinations(destinations)
+    validate_destinations(destinations)
     return self._reduce(aggregation, per_device_value, destinations)
 
   def batch_reduce(self, aggregation, value_destination_pairs):
@@ -224,9 +222,7 @@ class CrossTowerOps(object):
       aggregation: Indicates how a variable will be aggregated. Accepted values
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`.
       value_destination_pairs: a list or a tuple of tuples of PerDevice objects
-        (or tensors with device set if there is one tower) and destinations. If
-        a destination is None, then the destinations are set to match the
-        devices of the input PerDevice object.
+        (or tensors with device set if there is one tower) and destinations.
 
     Returns:
       a list of Mirrored objects.
@@ -242,8 +238,7 @@ class CrossTowerOps(object):
           value_destination_pairs)
 
     for _, d in value_destination_pairs:
-      if d is not None:
-        validate_destinations(d)
+      validate_destinations(d)
 
     return self._batch_reduce(aggregation, value_destination_pairs)
 
@@ -573,7 +568,7 @@ class AllReduceCrossTowerOps(CrossTowerOps):
   def _reduce(self, aggregation, per_device_value, destinations):
     contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
         per_device_value)
-    if ((destinations is None or _devices_match(per_device_value, destinations))
+    if (_devices_match(per_device_value, destinations)
         and not context.executing_eagerly()
         and not contains_indexed_slices):
       return self._batch_all_reduce(aggregation, [per_device_value])[0]
@@ -602,8 +597,10 @@ class AllReduceCrossTowerOps(CrossTowerOps):
                                     [v[0] for v in value_destination_pairs])
     else:
       if not all_devices_match:
-        logging.warning("Efficient batch_reduce is not supported if "
-                        "destinations are different.")
+        logging.log_first_n(logging.WARN,
+                            "Efficient batch_reduce is not supported if "
+                            "destinations are different.",
+                            10)
 
       return [
           self._reduce(aggregation, t, destinations=v)
@@ -782,7 +779,7 @@ class CollectiveAllReduce(CrossTowerOps):
   def __init__(self,
                num_workers=1,
                num_gpus_per_worker=0,
-               all_reduce_merge_scope=1,
+               all_reduce_merge_scope=32,
                collective_keys=None):
     """Initializes the object.
 
@@ -803,8 +800,15 @@ class CollectiveAllReduce(CrossTowerOps):
 
   # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
   def _reduce(self, aggregation, per_device_value, destinations):
+    if cross_tower_utils.contains_indexed_slices(per_device_value):
+      raise ValueError(
+          "`IndexSlices` is not supported for Collective All-Reduce.")
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution is not supported for Collective All-Reduce")
+
     all_reduced = self._batch_all_reduce(aggregation, [per_device_value])[0]
-    if destinations is None or _devices_match(per_device_value, destinations):
+    if _devices_match(per_device_value, destinations):
       return all_reduced
     else:
       index = {}
@@ -820,15 +824,33 @@ class CollectiveAllReduce(CrossTowerOps):
       return value_lib.Mirrored(index)
 
   def _batch_reduce(self, aggregation, value_destination_pairs):
-    return [
-        self._reduce(aggregation, t, destinations=v)
-        for t, v in value_destination_pairs
-    ]
+    if cross_tower_utils.contains_indexed_slices(value_destination_pairs):
+      raise ValueError(
+          "`IndexSlices` is not supported for Collective All-Reduce.")
+    if context.executing_eagerly():
+      raise ValueError(
+          "Eager execution is not supported for Collective All-Reduce")
+
+    all_devices_match = _all_devices_match(value_destination_pairs)
+    if all_devices_match:
+      return self._batch_all_reduce(aggregation,
+                                    [v[0] for v in value_destination_pairs])
+    else:
+      if not all_devices_match:
+        logging.log_first_n(
+            logging.WARN, "Efficient batch_reduce is not supported if "
+            "destinations are different.", 10)
+
+      return [
+          self._reduce(aggregation, t, destinations=v)
+          for t, v in value_destination_pairs
+      ]
 
   def _batch_all_reduce(self, aggregation, per_device_values):
     """All-reduce across all workers in a batch."""
     if context.executing_eagerly():
-      raise ValueError("Eager mode with collective ops is not supported yet.")
+      raise ValueError(
+          "Eager execution with collective ops is not supported yet.")
 
     logging.log_first_n(
         logging.INFO, "Collective All-reduce invoked with batches size = %d, "

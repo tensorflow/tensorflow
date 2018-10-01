@@ -31,7 +31,7 @@ namespace xla {
 // optimization pipeline followed by a DCE pass. If other passes are needed
 // after this pass, run BFloat16MixedPrecisionRemoval first to undo some of the
 // changed made by this pass.
-class BFloat16ConversionFolding : public HloPassInterface {
+class BFloat16ConversionFolding : public HloModulePass {
  public:
   explicit BFloat16ConversionFolding(const BFloat16Support* bfloat16_support)
       : bfloat16_support_(bfloat16_support) {}

@@ -22,15 +22,15 @@ limitations under the License.
 //
 //    C++                                  Python
 // -------------------------------------+---------------------------------------
-//  ArraySlice<int64>                  <-  sequence of int
-//  ArraySlice<LocalOp>                <-  sequence of LocalOp
+//  Span<int64>                        <-  sequence of int
+//  Span<LocalOp>                      <-  sequence of LocalOp
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
 //  Shape                               -> pair holding (dtype, dimensions)
 //                                     <-  object duck-typed as xla_client.Shape
 //  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
-//  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
+//  Span<pair<int64, in64>>            <-  sequence of int pairs
 //  PaddingConfig proto                <-  corresponding Python proto
 //  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
 //  DotDimensionNumbers proto          <-  corresponding Python proto
@@ -109,11 +109,12 @@ limitations under the License.
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
 
-#include "third_party/absl/strings/str_cat.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 
@@ -155,8 +156,8 @@ bool HandleStringAttribute(PyObject* o,
     return true;  // The attribute is None, which we consider ok.
   }
   if (!PyString_Check(attr)) {
-    string message = tensorflow::strings::Printf("%s must be a string or none; got %s",
-        attr_name, numpy::PyObjectCppRepr(attr).c_str());
+    string message = absl::StrFormat("%s must be a string or none; got %s",
+        attr_name, numpy::PyObjectCppRepr(attr));
     PyErr_SetString(PyExc_TypeError, message.c_str());
     Py_DECREF(attr);
     return false;  // Type error, not ok.
@@ -215,9 +216,9 @@ tensorflow::ImportNumpy();
 }
 
 
-%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+%typemap(out) StatusOr<Literal> {
   if ($1.ok()) {
-    std::unique_ptr<Literal> value = $1.ConsumeValueOrDie();
+    Literal value = $1.ConsumeValueOrDie();
     $result = numpy::PyObjectFromXlaLiteral(*value);
   } else {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
@@ -266,9 +267,9 @@ tensorflow::ImportNumpy();
   $result = Py_None;
 }
 
-// ArraySlice<int64>
+// Span<int64>
 
-%typemap(in) tensorflow::gtl::ArraySlice<int64>
+%typemap(in) absl::Span<const int64>
     (std::vector<int64> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -298,9 +299,9 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
-// ArraySlice<LocalOp>
+// Span<LocalOp>
 
-%typemap(in) tensorflow::gtl::ArraySlice<xla::swig::LocalOp>(
+%typemap(in) absl::Span<const xla::swig::LocalOp>(
       std::vector<LocalOp> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -322,7 +323,7 @@ tensorflow::ImportNumpy();
 
 // LocalShapedBuffer*
 
-%typemap(in) tensorflow::gtl::ArraySlice<xla::swig::LocalShapedBuffer*>
+%typemap(in) absl::Span<xla::swig::LocalShapedBuffer* const>
     (std::vector<LocalShapedBuffer*> temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
@@ -345,25 +346,25 @@ tensorflow::ImportNumpy();
 
 // Literal
 
-%typemap(in) const Literal& (StatusOr< std::unique_ptr<Literal> > literal_status) {
+%typemap(in) const Literal& (StatusOr<Literal> literal_status) {
   literal_status = numpy::XlaLiteralFromPyObject($input);
   if (!literal_status.ok()) {
     PyErr_SetString(PyExc_RuntimeError, literal_status.status().ToString().c_str());
     SWIG_fail;
   }
-  $1 = literal_status.ValueOrDie().get();
+  $1 = &literal_status.ValueOrDie();
 }
 
-%typemap(out) std::unique_ptr<Literal> {
+%typemap(out) Literal {
   $result = numpy::PyObjectFromXlaLiteral(*$1);
 }
 
-%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+%typemap(out) StatusOr<Literal> {
   if (!$1.ok()) {
     PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
     SWIG_fail;
   }
-  $result = numpy::PyObjectFromXlaLiteral(*$1.ValueOrDie());
+  $result = numpy::PyObjectFromXlaLiteral($1.ValueOrDie());
 }
 
 %typemap(in) const std::vector<Literal>& (std::vector<Literal> temps) {
@@ -374,13 +375,13 @@ tensorflow::ImportNumpy();
   const int size = PySequence_Size($input);
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
-    StatusOr< std::unique_ptr<Literal> > literal_status = numpy::XlaLiteralFromPyObject(o);
+    StatusOr<Literal> literal_status = numpy::XlaLiteralFromPyObject(o);
     if (!literal_status.ok()) {
       PyErr_SetString(PyExc_RuntimeError, literal_status.status().ToString().c_str());
       Py_DECREF(o);
       SWIG_fail;
     }
-    temps.push_back(std::move(*literal_status.ConsumeValueOrDie()));
+    temps.push_back(literal_status.ConsumeValueOrDie());
     Py_DECREF(o);
   }
   $1 = &temps;
@@ -495,9 +496,9 @@ tensorflow::ImportNumpy();
   $1 = static_cast<PrimitiveType>(value);
 }
 
-// ArraySlice<pair<int64, in64>>
+// Span<pair<int64, in64>>
 
-%typemap(in) tensorflow::gtl::ArraySlice<std::pair<int64, int64> >
+%typemap(in) absl::Span<const std::pair<int64, int64> >
     (std::vector<std::pair<int64, int64> > temps) {
   if (!PySequence_Check($input)) {
     PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");

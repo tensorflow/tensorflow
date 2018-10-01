@@ -57,7 +57,7 @@ class XlaTransferManager {
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
 
   void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
@@ -111,7 +111,7 @@ class XlaDeviceContext : public DeviceContext {
                              Tensor* device_tensor,
                              StatusCallback done) const override;
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
-                             StringPiece tensor_name, Device* device,
+                             absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
   void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
                                 const StatusCallback& done);

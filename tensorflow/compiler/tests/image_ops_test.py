@@ -410,13 +410,14 @@ class ResizeBilinearTest(xla_test.XLATestCase):
                                       image_np,
                                       target_shape,
                                       expected=None,
-                                      large_tolerance=False):
+                                      large_tolerance=False,
+                                      align_corners=True):
     if expected is None:
       self.fail("expected must be specified")
     with self.cached_session() as sess, self.test_scope():
       image = array_ops.placeholder(image_np.dtype)
       resized = gen_image_ops.resize_bilinear(
-          image, target_shape, align_corners=True)
+          image, target_shape, align_corners=align_corners)
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
       if large_tolerance:
         self.assertAllClose(
@@ -579,14 +580,31 @@ class ResizeBilinearTest(xla_test.XLATestCase):
                 dtype=np.float32)),
         large_tolerance=True)
 
+  def testNonAlignCorners3x2To6x4(self):
+    input_data = [[64, 32], [32, 64], [50, 100]]
+    expected_data = [[64.0, 48.0, 32.0, 32.0], [48.0, 48.0, 48.0, 48.0],
+                     [32.0, 48.0, 64.0, 64.0], [41.0, 61.5, 82.0, 82.0],
+                     [50.0, 75.0, 100.0, 100.0], [50.0, 75.0, 100.0, 100.0]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [6, 4],
+          expected=np.array(expected_data, dtype=np.float32),
+          align_corners=False)
+
+  def testNonAlignCorners6x4To3x2(self):
+    input_data = [[127, 127, 64, 64], [127, 127, 64, 64], [64, 64, 127, 127],
+                  [64, 64, 127, 127], [50, 50, 100, 100], [50, 50, 100, 100]]
+    expected_data = [[127, 64], [64, 127], [50, 100]]
+    for dtype in self.float_types:
+      self._assertForwardOpMatchesExpected(
+          np.array(input_data, dtype=dtype), [3, 2],
+          expected=np.array(expected_data, dtype=dtype),
+          align_corners=False)
+
 
 class NonMaxSuppressionTest(xla_test.XLATestCase):
 
   def testNMS128From1024(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       num_boxes = 1024
       boxes_np = np.random.normal(50, 10, (num_boxes, 4)).astype("f4")
@@ -622,10 +640,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
         self.assertEqual(indices_tf.size, max_output_size)
 
   def testNMS3From6Boxes(self):
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       # Three boxes are selected based on IOU.
       boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
@@ -671,10 +685,6 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     # Three boxes are selected based on IOU.
     # One is filtered out by score threshold.
 
-    # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
-      return
-
     with compat.forward_compatibility_horizon(2018, 8, 8):
       boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
                     [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
@@ -714,6 +724,49 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
         self.assertEqual(num_valid, 2)
         self.assertAllClose(indices_tf[:num_valid], [3, 0])
 
+  def testNMS3Then1WithScoreMaxThresh(self):
+    # Three boxes are selected based on IOU.
+    # One is filtered out by score threshold.
+    # One is filtered out by max_output_size.
+
+    with compat.forward_compatibility_horizon(2018, 8, 8):
+      boxes_data = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                    [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+      boxes_np = np.array(boxes_data, dtype=np.float32)
+
+      scores_data = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+      scores_np = np.array(scores_data, dtype=np.float32)
+      max_output_size = 1
+      iou_threshold_np = np.array(0.5, dtype=np.float32)
+      score_threshold_np = np.array(0.4, dtype=np.float32)
+
+      with self.cached_session() as sess:
+        boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+        scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+        iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
+                                              iou_threshold_np.shape)
+        score_threshold = array_ops.placeholder(score_threshold_np.dtype,
+                                                score_threshold_np.shape)
+        with self.test_scope():
+          selected_indices = image_ops.non_max_suppression_padded(
+              boxes=boxes,
+              scores=scores,
+              max_output_size=max_output_size,
+              iou_threshold=iou_threshold,
+              score_threshold=score_threshold,
+              pad_to_max_output_size=True)
+        inputs_feed = {
+            boxes: boxes_np,
+            scores: scores_np,
+            iou_threshold: iou_threshold_np,
+            score_threshold: score_threshold_np
+        }
+        (indices_tf, num_valid) = sess.run(
+            selected_indices, feed_dict=inputs_feed)
+
+        self.assertEqual(indices_tf.size, max_output_size)
+        self.assertEqual(num_valid, 1)
+        self.assertAllClose(indices_tf[:num_valid], [3])
 
 if __name__ == "__main__":
   test.main()

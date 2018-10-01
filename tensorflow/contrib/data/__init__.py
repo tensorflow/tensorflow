@@ -26,6 +26,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@CheckpointInputPipelineHook
 @@CsvDataset
 @@LMDBDataset
+@@Optional
 @@RandomDataset
 @@Reducer
 @@SqlDataset
@@ -38,15 +39,15 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
-
+@@get_next_as_optional
 @@get_single_element
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
+@@latency_stats
 @@make_batched_features_dataset
 @@make_csv_dataset
 @@make_saveable_from_iterator
-
 @@map_and_batch
 @@padded_batch_and_drop_remainder
 @@parallel_interleave
@@ -57,11 +58,15 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@reduce_dataset
 @@sample_from_datasets
 @@scan
+@@set_stats_aggregator
 @@shuffle_and_repeat
 @@sliding_window_batch
 @@sloppy_interleave
+@@StatsAggregator
 @@unbatch
 @@unique
+
+@@AUTOTUNE
 """
 
 from __future__ import absolute_import
@@ -91,6 +96,10 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datase
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+
+# Optimization constant that can be used to enable auto-tuning.
+from tensorflow.contrib.data.python.ops.optimization import AUTOTUNE
+
 from tensorflow.contrib.data.python.ops.parsing_ops import parse_example_dataset
 from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
@@ -105,12 +114,14 @@ from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
+from tensorflow.contrib.data.python.ops.stats_ops import latency_stats
+from tensorflow.contrib.data.python.ops.stats_ops import set_stats_aggregator
+from tensorflow.contrib.data.python.ops.stats_ops import StatsAggregator
 from tensorflow.contrib.data.python.ops.unique import unique
 from tensorflow.contrib.data.python.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
+from tensorflow.python.data.ops.optional_ops import Optional
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 remove_undocumented(__name__)
-
-# A constant that can be used to enable auto-tuning.
-AUTOTUNE = -1

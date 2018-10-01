@@ -25,16 +25,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class _ShuffleAndRepeatDataset(dataset_ops.Dataset):
+class _ShuffleAndRepeatDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that fuses `shuffle` and `repeat`."""
 
-  def __init__(self,
-               input_dataset,
-               buffer_size,
-               count=None,
-               seed=None):
-    """See `Dataset.map()` for details."""
-    super(_ShuffleAndRepeatDataset, self).__init__()
+  def __init__(self, input_dataset, buffer_size, count=None, seed=None):
+    super(_ShuffleAndRepeatDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")

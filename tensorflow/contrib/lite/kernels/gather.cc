@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -84,11 +84,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* positions = GetInput(context, node, kInputPositions);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const int input_rank = NumDimensions(input);
-#define TF_LITE_GATHER(data_type, index_type)                            \
-  optimized_ops::Gather(                                                 \
-      GetTensorData<data_type>(input), GetTensorDims(input), input_rank, \
-      GetTensorData<index_type>(positions), GetTensorDims(positions),    \
-      GetTensorData<data_type>(output), GetTensorDims(output));
+#define TF_LITE_GATHER(data_type, index_type)                              \
+  {                                                                        \
+    tflite::GatherParams op_params;                                        \
+    op_params.input_rank = input_rank;                                     \
+    optimized_ops::Gather(                                                 \
+        op_params, GetTensorShape(input), GetTensorData<data_type>(input), \
+        GetTensorShape(positions), GetTensorData<index_type>(positions),   \
+        GetTensorShape(output), GetTensorData<data_type>(output));         \
+  }
   switch (input->type) {
     case kTfLiteFloat32:
       TF_LITE_GATHER(float, int32_t);

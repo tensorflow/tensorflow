@@ -36,23 +36,6 @@ from tensorflow.tools.docs import pretty_docs
 from tensorflow.tools.docs import py_guide_parser
 
 
-def _is_free_function(py_object, full_name, index):
-  """Check if input is a free function (and not a class- or static method)."""
-  if not tf_inspect.isfunction(py_object):
-    return False
-
-  # Static methods are functions to tf_inspect (in 2.7), so check if the parent
-  # is a class. If there is no parent, it's not a function.
-  if '.' not in full_name:
-    return False
-
-  parent_name = full_name.rsplit('.', 1)[0]
-  if tf_inspect.isclass(index[parent_name]):
-    return False
-
-  return True
-
-
 def write_docs(output_dir,
                parser_config,
                yaml_toc,
@@ -109,7 +92,7 @@ def write_docs(output_dir,
 
     # Methods and some routines are documented only as part of their class.
     if not (tf_inspect.ismodule(py_object) or tf_inspect.isclass(py_object) or
-            _is_free_function(py_object, full_name, parser_config.index)):
+            parser.is_free_function(py_object, full_name, parser_config.index)):
       continue
 
     sitepath = os.path.join('api_docs/python',
@@ -418,8 +401,8 @@ class _GenerateGuideIndex(py_guide_parser.PyGuideParser):
     self.section_tag = tag
 
   def process_line(self, _, line):
-    """Index @{symbol} references as in the current file & section."""
-    for match in parser.SYMBOL_REFERENCE_RE.finditer(line):
+    """Index the file and section of each `symbol` reference."""
+    for match in parser.AUTO_REFERENCE_RE.finditer(line):
       val = self.index.get(match.group(1), [])
       val.append(
           _GuideRef(self.base_name, self.title, self.section_title,
@@ -470,7 +453,11 @@ def update_id_tags_inplace(src_dir):
 EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
 
 
-def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
+def replace_refs(src_dir,
+                 output_dir,
+                 reference_resolver,
+                 file_pattern='*.md',
+                 api_docs_relpath='api_docs'):
   """Fix @{} references in all files under `src_dir` matching `file_pattern`.
 
   A matching directory structure, with the modified files is
@@ -489,12 +476,13 @@ def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
     reference_resolver: A `parser.ReferenceResolver` to make the replacements.
     file_pattern: Only replace references in files matching file_patters,
       using fnmatch. Non-matching files are copied unchanged.
+    api_docs_relpath: Relative-path string to the api_docs, from the src_dir.
   """
   # Iterate through all the source files and process them.
   for dirpath, _, filenames in os.walk(src_dir):
+    depth = os.path.relpath(src_dir, start=dirpath)
     # How to get from `dirpath` to api_docs/python/
-    relative_path_to_root = os.path.relpath(
-        path=os.path.join(src_dir, 'api_docs/python'), start=dirpath)
+    relative_path_to_root = os.path.join(depth, api_docs_relpath, 'python')
 
     # Make the directory under output_dir.
     new_dir = os.path.join(output_dir,
@@ -514,7 +502,8 @@ def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       full_out_path = os.path.join(output_dir, suffix)
       # Copy files that do not match the file_pattern, unmodified.
       if not fnmatch.fnmatch(base_name, file_pattern):
-        shutil.copyfile(full_in_path, full_out_path)
+        if full_in_path != full_out_path:
+          shutil.copyfile(full_in_path, full_out_path)
         continue
 
       with open(full_in_path, 'rb') as f:
@@ -547,6 +536,13 @@ class DocGenerator(object):
         type=str, default='',
         help='The path from the site-root to api_docs'
              'directory for this project')
+
+    self.argument_parser.add_argument(
+        '--api_cache_out_path',
+        type=str,
+        default=None,
+        help='Path to store a json-serialized api-index, so links can be '
+        'inserted into docs without rebuilding the api_docs')
 
   def add_output_dir_argument(self):
     self.argument_parser.add_argument(
@@ -647,6 +643,9 @@ class DocGenerator(object):
     doc_index = build_doc_index(flags.src_dir)
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
+
+    if getattr(flags, 'api_cache_out_path', None):
+      reference_resolver.to_json_file(flags.api_cache_out_path)
 
     # Build the guide_index for the api_docs back links.
     root_title = getattr(flags, 'root_title', 'TensorFlow')

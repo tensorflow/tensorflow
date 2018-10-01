@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_LAYOUT_ASSIGNMENT_H_
 
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -47,7 +48,7 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(
-      HloInstruction* instr, LayoutConstraints* constraints);
+      HloCustomCallInstruction* instr, LayoutConstraints* constraints);
 
   se::StreamExecutor* stream_executor_;
 };

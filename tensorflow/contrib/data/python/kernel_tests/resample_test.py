@@ -24,6 +24,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.data.python.ops import resampling
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -57,7 +58,7 @@ def _time_resampling(
   return end_time - start_time
 
 
-class ResampleTest(test.TestCase, parameterized.TestCase):
+class ResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("InitialDistributionKnown", True),
@@ -77,7 +78,7 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
             class_func=lambda c, _: c,
             seed=27)).make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       returned = []
       while len(returned) < 4000:
         returned.append(sess.run(get_next))
@@ -115,7 +116,7 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
 
     get_next = dataset.make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       returned = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
@@ -146,7 +147,7 @@ class ResampleTest(test.TestCase, parameterized.TestCase):
 
     get_next = dataset.make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       returned = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:

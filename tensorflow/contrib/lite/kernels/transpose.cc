@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -92,26 +92,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
   }
 
-  // Reverse the permuted axes and convert to 4D due to the way Dims are
-  // constructed in GetTensorDims.
   const int* perm_data = GetTensorData<int32_t>(op_context.perm);
   const int size = op_context.perm->dims->data[0];
-  const int kOutputDimensionNum = 4;
-  int reversed_perm[kOutputDimensionNum];
-
-  for (int output_k = 0, input_k = size - 1; output_k < size;
-       ++output_k, --input_k) {
-    reversed_perm[output_k] = size - perm_data[input_k] - 1;
-  }
-  for (int k = size; k < kOutputDimensionNum; ++k) {
-    reversed_perm[k] = k;
+  TransposeParams params;
+  params.perm_count = size;
+  for (int i = 0; i < size; ++i) {
+    params.perm[i] = perm_data[i];
   }
 
 #define TF_LITE_TRANSPOSE(type, scalar)                     \
-  type::Transpose(GetTensorData<scalar>(op_context.input),  \
-                  GetTensorDims(op_context.input),          \
-                  GetTensorData<scalar>(op_context.output), \
-                  GetTensorDims(op_context.output), reversed_perm)
+  type::Transpose(params, GetTensorShape(op_context.input), \
+                  GetTensorData<scalar>(op_context.input),  \
+                  GetTensorShape(op_context.output),        \
+                  GetTensorData<scalar>(op_context.output))
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:

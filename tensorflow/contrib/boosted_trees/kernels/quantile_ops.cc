@@ -296,8 +296,9 @@ class QuantileAccumulatorAddSummariesOp : public OpKernel {
             int64 start, int64 end) {
           for (int resource_handle_idx = start; resource_handle_idx < end;
                ++resource_handle_idx) {
-            ResourceHandle handle = resource_handle_list[resource_handle_idx]
-                                        .flat<ResourceHandle>()(0);
+            const ResourceHandle& handle =
+                resource_handle_list[resource_handle_idx]
+                    .flat<ResourceHandle>()(0);
             QuantileStreamResource* streams_resource;
             // Create a reference to the underlying resource using the handle.
             OP_REQUIRES_OK(context,
@@ -709,8 +710,9 @@ class QuantileAccumulatorGetBucketsOp : public OpKernel {
          &buckets_list, stamp_token](int64 start, int64 end) {
           for (int resource_handle_idx = start; resource_handle_idx < end;
                ++resource_handle_idx) {
-            ResourceHandle handle = resource_handle_list[resource_handle_idx]
-                                        .flat<ResourceHandle>()(0);
+            const ResourceHandle& handle =
+                resource_handle_list[resource_handle_idx]
+                    .flat<ResourceHandle>()(0);
             QuantileStreamResource* streams_resource;
             OP_REQUIRES_OK(context,
                            LookupResource(context, handle, &streams_resource));

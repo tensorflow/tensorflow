@@ -81,8 +81,8 @@ Status TransferToInfeedLocalReplica(const Literal& literal,
   return client->TransferToInfeedLocal(literal, device_ordinal);
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocalReplica(
-    const Shape& shape, int replica_number) {
+StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
+                                                  int replica_number) {
   VLOG(1) << "Outfeeding literal from replica number: " << replica_number
           << " shape: " << shape;
   LocalClient* client = GetOrCreateLocalClient();
@@ -141,9 +141,8 @@ StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
   LocalClient* client = GetOrCreateLocalClient();
   StatusOr<ScopedShapedBuffer> buf = [&] {
     if (shape_with_layout) {
-      std::unique_ptr<Literal> relaid =
-          argument.Relayout(shape_with_layout.value());
-      return ToBuffer(client, /*device_ordinal=*/0, *relaid);
+      Literal relaid = argument.Relayout(shape_with_layout.value());
+      return ToBuffer(client, /*device_ordinal=*/0, relaid);
     }
     return ToBuffer(client, /*device_ordinal=*/0, argument);
   }();
@@ -151,7 +150,7 @@ StatusOr<LocalShapedBuffer*> LocalShapedBuffer::FromLiteral(
   return new LocalShapedBuffer(std::move(buf).ValueOrDie());
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalShapedBuffer::ToLiteral() const {
+StatusOr<Literal> LocalShapedBuffer::ToLiteral() const {
   LocalClient* client = GetOrCreateLocalClient();
   return client->ShapedBufferToLiteral(*shaped_buffer());
 }
@@ -160,7 +159,7 @@ CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
+StatusOr<Literal> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments,
     const std::vector<absl::optional<Shape>>& shapes_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
@@ -169,7 +168,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
 
   // Each replica populates a StatusOr result, but only replica zero actually
   // retrieves its literal value.
-  std::vector<StatusOr<std::unique_ptr<Literal>>> results(GetReplicaCount());
+  std::vector<StatusOr<Literal>> results(GetReplicaCount());
   {
     tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
                                         GetReplicaCount());
@@ -198,9 +197,8 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
 
               StatusOr<ScopedShapedBuffer> pushed;
               if (shape_with_layout) {
-                std::unique_ptr<Literal> relaid =
-                    argument.Relayout(shape_with_layout.value());
-                pushed = ToBuffer(client, device_ordinal, *relaid);
+                Literal relaid = argument.Relayout(shape_with_layout.value());
+                pushed = ToBuffer(client, device_ordinal, relaid);
               } else {
                 pushed = ToBuffer(client, device_ordinal, argument);
               }
@@ -251,7 +249,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
       return InternalError(
           "Failed running replica %d (other replicas may have failed as well): "
           "%s.",
-          replica, statusor.status().ToString().c_str());
+          replica, statusor.status().ToString());
     }
   }
 
@@ -259,7 +257,7 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
 }
 
 LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
-    tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles) {
+    absl::Span<LocalShapedBuffer* const> argument_handles) {
   LocalClient* client = GetOrCreateLocalClient();
 
   std::vector<const ShapedBuffer*> argument_buffers;
@@ -369,8 +367,7 @@ LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
 }
 
 LocalOp LocalComputationBuilder::Broadcast(
-    const LocalOp& operand,
-    tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
+    const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);
 }
 
@@ -380,14 +377,14 @@ LocalOp LocalComputationBuilder::Pad(const LocalOp& operand,
   return xla::Pad(operand.op(), padding_value.op(), padding_config);
 }
 
-LocalOp LocalComputationBuilder::Reshape(
-    const LocalOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<int64> new_sizes) {
+LocalOp LocalComputationBuilder::Reshape(const LocalOp& operand,
+                                         absl::Span<const int64> dimensions,
+                                         absl::Span<const int64> new_sizes) {
   return xla::Reshape(operand.op(), dimensions, new_sizes);
 }
 
-LocalOp LocalComputationBuilder::Collapse(
-    const LocalOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
+LocalOp LocalComputationBuilder::Collapse(const LocalOp& operand,
+                                          absl::Span<const int64> dimensions) {
   return xla::Collapse(operand.op(), dimensions);
 }
 
@@ -395,10 +392,10 @@ LocalOp LocalComputationBuilder::CrossReplicaSum(const LocalOp& operand) {
   return xla::CrossReplicaSum(operand.op());
 }
 
-LocalOp LocalComputationBuilder::Slice(
-    const LocalOp& operand, tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices,
-    tensorflow::gtl::ArraySlice<int64> strides) {
+LocalOp LocalComputationBuilder::Slice(const LocalOp& operand,
+                                       absl::Span<const int64> start_indices,
+                                       absl::Span<const int64> limit_indices,
+                                       absl::Span<const int64> strides) {
   return xla::Slice(operand.op(), start_indices, limit_indices, strides);
 }
 
@@ -411,7 +408,7 @@ LocalOp LocalComputationBuilder::SliceInDim(const LocalOp& operand,
 
 LocalOp LocalComputationBuilder::DynamicSlice(
     const LocalOp& operand, const LocalOp& start_indices,
-    tensorflow::gtl::ArraySlice<int64> slice_sizes) {
+    absl::Span<const int64> slice_sizes) {
   return xla::DynamicSlice(operand.op(), start_indices.op(), slice_sizes);
 }
 
@@ -421,8 +418,8 @@ LocalOp LocalComputationBuilder::DynamicUpdateSlice(
   return xla::DynamicUpdateSlice(operand.op(), update.op(), start_indices.op());
 }
 
-LocalOp LocalComputationBuilder::ConcatInDim(
-    tensorflow::gtl::ArraySlice<LocalOp> operands, int64 dimension) {
+LocalOp LocalComputationBuilder::ConcatInDim(absl::Span<const LocalOp> operands,
+                                             int64 dimension) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
@@ -433,18 +430,16 @@ LocalOp LocalComputationBuilder::ConcatInDim(
 
 LocalOp LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
     const LocalOp& operand, const LocalComputation& select,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    const LocalOp& source, const LocalOp& init_value,
-    const LocalComputation& scatter) {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding, const LocalOp& source,
+    const LocalOp& init_value, const LocalComputation& scatter) {
   return xla::SelectAndScatterWithGeneralPadding(
       operand.op(), select.computation(), window_dimensions, window_strides,
       padding, source.op(), init_value.op(), scatter.computation());
 }
 
-LocalOp LocalComputationBuilder::Tuple(
-    tensorflow::gtl::ArraySlice<LocalOp> elements) {
+LocalOp LocalComputationBuilder::Tuple(absl::Span<const LocalOp> elements) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(elements.size());
   for (const auto& op : elements) {
@@ -471,13 +466,14 @@ LocalOp LocalComputationBuilder::DotGeneral(
 
 LocalOp LocalComputationBuilder::ConvGeneralDilated(
     const LocalOp& lhs, const LocalOp& rhs,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
-    tensorflow::gtl::ArraySlice<int64> lhs_dilation,
-    tensorflow::gtl::ArraySlice<int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return xla::ConvGeneralDilated(lhs.op(), rhs.op(), window_strides, padding,
-                                 lhs_dilation, rhs_dilation, dimension_numbers);
+                                 lhs_dilation, rhs_dilation, dimension_numbers,
+                                 feature_group_count);
 }
 
 LocalOp LocalComputationBuilder::ConvertElementType(
@@ -490,9 +486,8 @@ LocalOp LocalComputationBuilder::BitcastConvertType(
   return xla::BitcastConvertType(operand.op(), new_element_type);
 }
 
-LocalOp LocalComputationBuilder::Call(
-    const LocalComputation& local_computation,
-    tensorflow::gtl::ArraySlice<LocalOp> operands) {
+LocalOp LocalComputationBuilder::Call(const LocalComputation& local_computation,
+                                      absl::Span<const LocalOp> operands) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
@@ -502,19 +497,18 @@ LocalOp LocalComputationBuilder::Call(
 }
 
 LocalOp LocalComputationBuilder::Transpose(
-    const LocalOp& operand, tensorflow::gtl::ArraySlice<int64> permutation) {
+    const LocalOp& operand, absl::Span<const int64> permutation) {
   return xla::Transpose(operand.op(), permutation);
 }
 
-LocalOp LocalComputationBuilder::Rev(
-    const LocalOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
+LocalOp LocalComputationBuilder::Rev(const LocalOp& operand,
+                                     absl::Span<const int64> dimensions) {
   return xla::Rev(operand.op(), dimensions);
 }
 
-LocalOp LocalComputationBuilder::Map(
-    tensorflow::gtl::ArraySlice<LocalOp> operands,
-    const LocalComputation& local_computation,
-    tensorflow::gtl::ArraySlice<int64> dimensions) {
+LocalOp LocalComputationBuilder::Map(absl::Span<const LocalOp> operands,
+                                     const LocalComputation& local_computation,
+                                     absl::Span<const int64> dimensions) {
   std::vector<XlaOp> xla_ops;
   xla_ops.reserve(operands.size());
   for (const auto& op : operands) {
@@ -528,7 +522,7 @@ LocalOp LocalComputationBuilder::Map(
 LocalOp LocalComputationBuilder::Reduce(
     const LocalOp& operand, const LocalOp& init_value,
     const LocalComputation& local_computation,
-    tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
+    absl::Span<const int64> dimensions_to_reduce) {
   return xla::Reduce(operand.op(), init_value.op(),
                      local_computation.computation(), dimensions_to_reduce);
 }
@@ -536,9 +530,9 @@ LocalOp LocalComputationBuilder::Reduce(
 LocalOp LocalComputationBuilder::ReduceWindowWithGeneralPadding(
     const LocalOp& operand, const LocalOp& init_value,
     const LocalComputation& local_computation,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides,
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding) {
   return xla::ReduceWindowWithGeneralPadding(
       operand.op(), init_value.op(), local_computation.computation(),
       window_dimensions, window_strides, padding);
@@ -599,10 +593,10 @@ StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
 #define _FORWARD_UNOP(method_name) \
   _FORWARD(method_name, LocalOp, (const LocalOp& operand), (operand.op()))
 
-#define _FORWARD_BINOP(method_name)                                   \
-  _FORWARD(method_name, LocalOp,                                      \
-           (const LocalOp& lhs, const LocalOp& rhs,                   \
-            tensorflow::gtl::ArraySlice<int64> broadcast_dimensions), \
+#define _FORWARD_BINOP(method_name)                        \
+  _FORWARD(method_name, LocalOp,                           \
+           (const LocalOp& lhs, const LocalOp& rhs,        \
+            absl::Span<const int64> broadcast_dimensions), \
            (lhs.op(), rhs.op(), broadcast_dimensions))
 
 #define _FORWARD_TRIOP(method_name)                                      \
@@ -696,8 +690,7 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
         "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
         "shape; shape: %s",
         ShapeUtil::HumanString(
-            local_shaped_buffer->shaped_buffer()->on_device_shape())
-            .c_str());
+            local_shaped_buffer->shaped_buffer()->on_device_shape()));
   }
 
   DeviceMemoryAllocator* allocator =

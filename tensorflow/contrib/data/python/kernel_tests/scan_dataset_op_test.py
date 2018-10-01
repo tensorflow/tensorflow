@@ -22,6 +22,7 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import scan_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -33,7 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ScanDatasetTest(test.TestCase):
+class ScanDatasetTest(test_base.DatasetTestBase):
 
   def _counting_dataset(self, start, scan_fn):
     return dataset_ops.Dataset.from_tensors(0).repeat().apply(
@@ -50,7 +51,7 @@ class ScanDatasetTest(test.TestCase):
         start, make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
                                             (10, 2, 10), (10, -1, 10),
@@ -100,7 +101,7 @@ class ScanDatasetTest(test.TestCase):
         make_scan_fn(step)).take(take).make_initializable_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
 
       for start_val, step_val, take_val in [(0, 1, 10), (0, 1, 0), (10, 1, 10),
                                             (10, 2, 10), (10, -1, 10),
@@ -133,7 +134,7 @@ class ScanDatasetTest(test.TestCase):
     iterator = dataset.make_one_shot_iterator()
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for i in range(5):
         (longer_vector_val, larger_rank_val), _ = sess.run(next_element)
         self.assertAllEqual([0] * (2**i), longer_vector_val)

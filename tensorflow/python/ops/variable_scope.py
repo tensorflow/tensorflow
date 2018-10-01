@@ -198,7 +198,7 @@ VariableSynchronization = variables.VariableSynchronization  # pylint: disable=i
 VariableAggregation = variables.VariableAggregation  # pylint: disable=invalid-name
 
 AUTO_REUSE = _ReuseMode.AUTO_REUSE
-tf_export("AUTO_REUSE").export_constant(__name__, "AUTO_REUSE")
+tf_export(v1=["AUTO_REUSE"]).export_constant(__name__, "AUTO_REUSE")
 AUTO_REUSE.__doc__ = """
 When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
 get_variable() should create the requested variable if it doesn't exist or, if
@@ -515,8 +515,10 @@ class _VariableStore(object):
           "synchronization": synchronization,
           "aggregation": aggregation,
       }
-      # `fn_args` can handle functions, `functools.partial`, `lambda`.
-      if "constraint" in function_utils.fn_args(custom_getter):
+      # `fn_args` and `has_kwargs` can handle functions, `functools.partial`,
+      # `lambda`.
+      if ("constraint" in function_utils.fn_args(custom_getter) or
+          function_utils.has_kwargs(custom_getter)):
         custom_getter_kwargs["constraint"] = constraint
       return custom_getter(**custom_getter_kwargs)
     else:
@@ -895,7 +897,7 @@ class _VariableStore(object):
         elif not tf_inspect.getargspec(initializer).args:
           init_val = initializer
         else:
-          raise ValueError("You can only pass an initializer function that"
+          raise ValueError("You can only pass an initializer function that "
                            "expects no arguments to its callable when the "
                            "shape is not fully defined. The given initializer "
                            "function expects the following args %s" %
@@ -906,7 +908,7 @@ class _VariableStore(object):
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = _DEFAULT_USE_RESOURCE
-    v = variable(
+    v = variables.VariableV1(
         initial_value=init_val,
         name=name,
         trainable=trainable,
@@ -992,7 +994,7 @@ def no_regularizer(_):
 
 
 # TODO(alive): support caching devices and partitioned variables in Eager mode.
-@tf_export("VariableScope")
+@tf_export(v1=["VariableScope"])
 class VariableScope(object):
   """Variable scope object to carry defaults to provide to `get_variable`.
 
@@ -1340,7 +1342,7 @@ def get_variable_scope_store():
   return scope_store
 
 
-@tf_export("get_variable_scope")
+@tf_export(v1=["get_variable_scope"])
 def get_variable_scope():
   """Returns the current variable scope."""
   return get_variable_scope_store().current_scope
@@ -1449,7 +1451,7 @@ class EagerVariableStore(object):
 # The argument list for get_variable must match arguments to get_local_variable.
 # So, if you are updating the arguments, also update arguments to
 # get_local_variable below.
-@tf_export("get_variable")
+@tf_export(v1=["get_variable"])
 def get_variable(name,
                  shape=None,
                  dtype=None,
@@ -1558,6 +1560,22 @@ Args:
     def custom_getter(getter, name, *args, **kwargs):
       return getter(name + '_suffix', *args, **kwargs)
     ```
+  constraint: An optional projection function to be applied to the variable
+    after being updated by an `Optimizer` (e.g. used to implement norm
+    constraints or value constraints for layer weights). The function must
+    take as input the unprojected Tensor representing the value of the
+    variable and return the Tensor for the projected value
+    (which must have the same shape). Constraints are not safe to
+    use when doing asynchronous distributed training.
+  synchronization: Indicates when a distributed a variable will be
+    aggregated. Accepted values are constants defined in the class
+    `tf.VariableSynchronization`. By default the synchronization is set to
+    `AUTO` and the current `DistributionStrategy` chooses
+    when to synchronize. If `synchronization` is set to `ON_READ`,
+    `trainable` must not be set to `True`.
+  aggregation: Indicates how a distributed variable will be aggregated.
+    Accepted values are constants defined in the class
+    `tf.VariableAggregation`.
 
 Returns:
   The created or existing `Variable` (or `PartitionedVariable`, if a
@@ -1578,7 +1596,7 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
 
 # The argument list for get_local_variable must match arguments to get_variable.
 # So, if you are updating the arguments, also update arguments to get_variable.
-@tf_export("get_local_variable")
+@tf_export(v1=["get_local_variable"])
 def get_local_variable(  # pylint: disable=missing-docstring
     name,
     shape=None,
@@ -1591,10 +1609,10 @@ def get_local_variable(  # pylint: disable=missing-docstring
     partitioner=None,
     validate_shape=True,
     use_resource=None,
-    synchronization=VariableSynchronization.AUTO,
-    aggregation=VariableAggregation.NONE,
     custom_getter=None,
-    constraint=None):
+    constraint=None,
+    synchronization=VariableSynchronization.AUTO,
+    aggregation=VariableAggregation.NONE):
   if collections:
     collections += [ops.GraphKeys.LOCAL_VARIABLES]
   else:
@@ -1923,7 +1941,7 @@ def _get_unique_variable_scope(prefix):
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-@tf_export("variable_scope")  # pylint: disable=invalid-name
+@tf_export(v1=["variable_scope"])  # pylint: disable=invalid-name
 class variable_scope(object):
   """A context manager for defining ops that creates variables (layers).
 
@@ -2304,7 +2322,7 @@ class variable_scope(object):
 
 
 # pylint: disable=g-doc-return-or-yield
-@tf_export("variable_op_scope")
+@tf_export(v1=["variable_op_scope"])
 @tf_contextlib.contextmanager
 def variable_op_scope(values,
                       name_or_scope,
@@ -2425,7 +2443,33 @@ def default_variable_creator(next_creator=None, **kwargs):
         expected_shape=expected_shape, import_scope=import_scope)
 
 
+def default_variable_creator_v2(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  variable_def = kwargs.get("variable_def", None)
+  dtype = kwargs.get("dtype", None)
+  import_scope = kwargs.get("import_scope", None)
+  constraint = kwargs.get("constraint", None)
+
+  # Set trainable value based on synchronization value.
+  synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
+  trainable = _get_trainable_value(
+      synchronization=synchronization, trainable=trainable)
+
+  return resource_variable_ops.ResourceVariable(
+      initial_value=initial_value, trainable=trainable,
+      validate_shape=validate_shape, caching_device=caching_device,
+      name=name, dtype=dtype, constraint=constraint, variable_def=variable_def,
+      import_scope=import_scope)
+
+
 variables.default_variable_creator = default_variable_creator
+variables.default_variable_creator_v2 = default_variable_creator_v2
 
 
 def _make_getter(captured_getter, captured_previous):
@@ -2434,11 +2478,12 @@ def _make_getter(captured_getter, captured_previous):
 
 
 # TODO(apassos) remove forwarding symbol
-variable = variables.Variable
+variable = variables.VariableV1
 
 
+@tf_export(v1=["variable_creator_scope"])
 @tf_contextlib.contextmanager
-def variable_creator_scope(variable_creator):
+def variable_creator_scope_v1(variable_creator):
   """Scope which defines a variable creation function to be used by variable().
 
   variable_creator is expected to be a function with the following signature:
@@ -2488,6 +2533,76 @@ def variable_creator_scope(variable_creator):
       constraint: A constraint function to be applied to the variable after
         updates by some algorithms.
       use_resource: if True, a ResourceVariable is always created.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
+
+  This set may grow over time, so it's important the signature of creators is as
+  mentioned above.
+
+  Args:
+    variable_creator: the passed creator
+
+  Yields:
+    A scope in which the creator is active
+  """
+  with ops.get_default_graph()._variable_creator_scope(variable_creator):  # pylint: disable=protected-access
+    yield
+
+
+# Note: only the docstrings differ between this and v1.
+@tf_export(v2=["variable_creator_scope"])
+@tf_contextlib.contextmanager
+def variable_creator_scope(variable_creator):
+  """Scope which defines a variable creation function to be used by variable().
+
+  variable_creator is expected to be a function with the following signature:
+
+  ```
+    def variable_creator(next_creator, **kwargs)
+  ```
+
+  The creator is supposed to eventually call the next_creator to create a
+  variable if it does want to create a variable and not call Variable or
+  ResourceVariable directly. This helps make creators composable. A creator may
+  choose to create multiple variables, return already existing variables, or
+  simply register that a variable was created and defer to the next creators in
+  line. Creators can also modify the keyword arguments seen by the next
+  creators.
+
+  Custom getters in the variable scope will eventually resolve down to these
+  custom creators when they do create variables.
+
+  The valid keyword arguments in kwds are:
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+        which is the initial value for the Variable. The initial value must have
+        a shape specified unless `validate_shape` is set to False. Can also be a
+        callable with no argument that returns the initial value when called. In
+        that case, `dtype` must be specified. (Note that initializer functions
+        from init_ops.py must first be bound to a shape before being used here.)
+      trainable: If `True`, the default, GradientTapes automatically watch
+        uses of this Variable.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
+      caching_device: Optional device string describing where the Variable
+        should be cached for reading.  Defaults to the Variable's device.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
+      name: Optional name for the variable. Defaults to `'Variable'` and gets
+        uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
+      constraint: A constraint function to be applied to the variable after
+        updates by some algorithms.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to

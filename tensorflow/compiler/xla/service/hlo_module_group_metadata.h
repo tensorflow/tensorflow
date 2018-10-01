@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -168,14 +169,14 @@ class HloModuleGroupMetadata {
   // Returns the companion instructions for the given instruction.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
-  const std::unordered_set<HloInstruction*>& Companions(
+  const std::vector<HloInstruction*>& Companions(
       const HloInstruction* instruction) const {
     CHECK_EQ(companion_set_index_.count(instruction), 1);
     return companion_set(companion_set_index_.at(instruction));
   }
 
   // Returns the companion set at the given index.
-  const std::unordered_set<HloInstruction*>& companion_set(int64 index) const {
+  const std::vector<HloInstruction*>& companion_set(int64 index) const {
     CHECK_LT(index, companion_sets_.size());
     return *companion_sets_[index];
   }
@@ -186,7 +187,7 @@ class HloModuleGroupMetadata {
   }
 
   // Returns the list of all companion sets in the HLO module group.
-  const std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>&
+  const std::vector<std::unique_ptr<std::vector<HloInstruction*>>>&
   companion_sets() const {
     return companion_sets_;
   }
@@ -196,6 +197,10 @@ class HloModuleGroupMetadata {
 
   // Returns the maximum channel id or all_reduce_id used in the module group.
   int64 max_channel_id() const { return max_channel_id_; }
+
+  TuplePointsToAnalysis* points_to_analysis(HloModule* module) const {
+    return points_to_analyses_.at(module).get();
+  }
 
  private:
   Status Build();
@@ -242,8 +247,7 @@ class HloModuleGroupMetadata {
   void DumpCollectedStats() const;
 
   // List of all companion instructions sets in the module.
-  std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>
-      companion_sets_;
+  std::vector<std::unique_ptr<std::vector<HloInstruction*>>> companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
   tensorflow::gtl::FlatMap<const HloInstruction*, int64> companion_set_index_;
@@ -271,6 +275,9 @@ class HloModuleGroupMetadata {
 
   // The modules that this metadata was built from.
   const std::vector<HloModule*>& modules_;
+
+  tensorflow::gtl::FlatMap<HloModule*, std::unique_ptr<TuplePointsToAnalysis>>
+      points_to_analyses_;
 };
 
 }  // namespace xla

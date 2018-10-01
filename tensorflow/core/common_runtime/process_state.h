@@ -30,7 +30,6 @@ limitations under the License.
 namespace tensorflow {
 
 class Allocator;
-class VisitableAllocator;
 class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of
@@ -65,7 +64,15 @@ class ProcessState {
 
   // Returns the one CPUAllocator used for the given numa_node.
   // TEMPORARY: ignores numa_node.
-  VisitableAllocator* GetCPUAllocator(int numa_node);
+  Allocator* GetCPUAllocator(int numa_node);
+
+  // Registers alloc visitor for the CPU allocator(s).
+  // REQUIRES: must be called before GetCPUAllocator.
+  void AddCPUAllocVisitor(SubAllocator::Visitor v);
+
+  // Registers free visitor for the CPU allocator(s).
+  // REQUIRES: must be called before GetCPUAllocator.
+  void AddCPUFreeVisitor(SubAllocator::Visitor v);
 
   typedef std::unordered_map<const void*, MemDesc> MDMap;
 
@@ -87,7 +94,9 @@ class ProcessState {
 
   mutex mu_;
 
-  std::vector<VisitableAllocator*> cpu_allocators_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
+  std::vector<SubAllocator::Visitor> cpu_alloc_visitors_ GUARDED_BY(mu_);
+  std::vector<SubAllocator::Visitor> cpu_free_visitors_ GUARDED_BY(mu_);
 
   virtual ~ProcessState();
 

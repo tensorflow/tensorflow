@@ -23,13 +23,12 @@ import collections
 from tensorflow.python import pywrap_tensorflow
 
 
-VSpace = collections.namedtuple(
-    "VSpace",
-    ["aggregate_fn", "num_elements_fn", "tensor_id", "zeros", "ones"])
+VSpace = collections.namedtuple("VSpace", [
+    "aggregate_fn", "num_elements_fn", "zeros_fn", "ones_fn", "graph_shape_fn"
+])
 
 
 def imperative_grad(
-    vspace,
     tape,
     target,
     sources,
@@ -41,7 +40,6 @@ def imperative_grad(
   gradients for all sources.
 
   Args:
-   vspace: the vector space in which to differentiate.
    tape: the gradient tape which stores the trace.
    target: either a Tensor or list of Tensors to be differentiated.
    sources: list of Tensors for which we want gradients
@@ -60,4 +58,7 @@ def imperative_grad(
      computation of target.
   """
   return pywrap_tensorflow.TFE_Py_TapeGradient(
-      tape._tape, vspace, target, sources, output_gradients)  # pylint: disable=protected-access
+      tape._tape,  # pylint: disable=protected-access
+      target,
+      sources,
+      output_gradients)

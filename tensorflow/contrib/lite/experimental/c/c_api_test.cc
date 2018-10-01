@@ -55,6 +55,8 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(TFL_TensorNumDims(input_tensor), 1);
   EXPECT_EQ(TFL_TensorDim(input_tensor, 0), 2);
   EXPECT_EQ(TFL_TensorByteSize(input_tensor), sizeof(float) * 2);
+  EXPECT_NE(TFL_TensorData(input_tensor), nullptr);
+  EXPECT_STREQ(TFL_TensorName(input_tensor), "input");
 
   std::array<float, 2> input = {1.f, 3.f};
   ASSERT_EQ(TFL_TensorCopyFromBuffer(input_tensor, input.data(),
@@ -70,6 +72,8 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(TFL_TensorNumDims(output_tensor), 1);
   EXPECT_EQ(TFL_TensorDim(output_tensor, 0), 2);
   EXPECT_EQ(TFL_TensorByteSize(output_tensor), sizeof(float) * 2);
+  EXPECT_NE(TFL_TensorData(output_tensor), nullptr);
+  EXPECT_STREQ(TFL_TensorName(output_tensor), "output");
 
   std::array<float, 2> output;
   ASSERT_EQ(TFL_TensorCopyToBuffer(output_tensor, output.data(),
@@ -77,6 +81,37 @@ TEST(CApiSimple, Smoke) {
             kTfLiteOk);
   EXPECT_EQ(output[0], 3.f);
   EXPECT_EQ(output[1], 9.f);
+
+  TFL_DeleteInterpreter(interpreter);
+}
+
+TEST(CApiSimple, ErrorReporter) {
+  TFL_Model* model = TFL_NewModelFromFile(
+      "tensorflow/contrib/lite/testdata/add.bin");
+  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
+
+  // Install a custom error reporter into the interpreter by way of options.
+  tflite::TestErrorReporter reporter;
+  TFL_InterpreterOptionsSetErrorReporter(
+      options,
+      [](void* user_data, const char* format, va_list args) {
+        reinterpret_cast<tflite::TestErrorReporter*>(user_data)->Report(format,
+                                                                        args);
+      },
+      &reporter);
+  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
+
+  // The options/model can be deleted immediately after interpreter creation.
+  TFL_DeleteInterpreterOptions(options);
+  TFL_DeleteModel(model);
+
+  // Invoke the interpreter before tensor allocation.
+  EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteError);
+
+  // The error should propagate to the custom error reporter.
+  EXPECT_EQ(reporter.error_messages(),
+            "Invoke called on model that is not ready.");
+  EXPECT_EQ(reporter.num_calls(), 1);
 
   TFL_DeleteInterpreter(interpreter);
 }

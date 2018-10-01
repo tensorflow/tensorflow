@@ -58,13 +58,12 @@ def get_input_datasets():
   train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   train_ds = train_ds.repeat()
   train_ds = train_ds.shuffle(100)
-  train_ds = train_ds.batch(64)
+  train_ds = train_ds.batch(64, drop_remainder=True)
 
   # eval dataset
   eval_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
   eval_ds = eval_ds.repeat()
-  eval_ds = eval_ds.shuffle(100)
-  eval_ds = eval_ds.batch(64)
+  eval_ds = eval_ds.batch(64, drop_remainder=True)
 
   return train_ds, eval_ds, input_shape
 
@@ -109,8 +108,7 @@ def main(_):
   # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed
   # based on the strategy instantiated.
   model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.train.GradientDescentOptimizer(
-                    learning_rate=0.001),
+                optimizer=tf.train.RMSPropOptimizer(learning_rate=0.001),
                 metrics=['accuracy'],
                 distribute=strategy)
 

@@ -86,6 +86,12 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::LiteralSlice& literal);
 
+  // As for Retval, but for return values that are resource handles.
+  Status AddResourceRetval(int retval_index, XlaResource* resource);
+
+  // As for Retval, but for return values that are XLA tokens.
+  Status AppendTokenRetval(const xla::XlaOp& token);
+
   // Creates a resource with resource `kind` and initial value `handle`. `name`
   // is a descriptive name for use in error messages. See the `XlaResource`
   // constructor for a description of the remaining arguments.

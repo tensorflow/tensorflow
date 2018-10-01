@@ -142,7 +142,7 @@ class MatMulStatsTest(test_lib.TestCase):
       for op in g.get_operations():
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
-          self.assertEqual(6975, flops)
+          self.assertEqual(7200, flops)
 
   def testTransposedStatistics(self):
     g = ops.Graph()
@@ -153,7 +153,7 @@ class MatMulStatsTest(test_lib.TestCase):
       for op in g.get_operations():
         flops = ops.get_stats_for_node_def(g, op.node_def, "flops").value
         if op.name == "MatMul":
-          self.assertEqual(6975, flops)
+          self.assertEqual(7200, flops)
 
 
 try:
@@ -206,7 +206,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
     d = math_ops.matmul(a, b)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(c.eval(), d.eval())
 
 

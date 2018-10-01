@@ -163,8 +163,8 @@ class TestStateSaverWithCounters(TestStateSaver):
 
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
-    self._num_state_calls = variables_lib.Variable(0)
-    self._num_save_state_calls = variables_lib.Variable(0)
+    self._num_state_calls = variables_lib.VariableV1(0)
+    self._num_save_state_calls = variables_lib.VariableV1(0)
 
   def state(self, name):
     with ops_lib.control_dependencies(
@@ -1906,7 +1906,7 @@ class StateSaverRNNTest(test.TestCase):
     state_saver = TestStateSaverWithCounters(batch_size, 2 * num_units)
     out, state, state_saver = self._factory(scope=None, state_saver=state_saver)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
       sess.run(variables_lib.local_variables_initializer())
 

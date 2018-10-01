@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -86,67 +87,13 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
       get_element_shape(element_instr_1), get_element_shape(element_instr_2));
 }
 
-namespace {
-bool IsInputFusibleReduction(HloInstruction* instr) {
-  if (instr->IsMultiOutputFusion()) {
-    for (const HloInstruction* operand :
-         instr->fused_expression_root()->operands()) {
-      if (operand->opcode() == HloOpcode::kReduce) {
-        CHECK(instr->fusion_kind() == HloInstruction::FusionKind::kInput)
-            << " Reduce multi-output fusion " << instr->ToString()
-            << " must be an input fusion.";
-        return true;
-      }
-    }
-    return false;
-  } else if (instr->opcode() == HloOpcode::kFusion) {
-    // The loop emitter can handle to-vector reduce fusions. Such reduce
-    // fusions have the fusion kind kLoop rather than kInput. We do not fuse
-    // to-vector reduce fusions, because the resulting fusions may no longer be
-    // supported by loop emitter.
-    return IsReductionToVector(*instr->fused_expression_root());
-  } else {
-    return IsReductionToVector(*instr);
-  }
-}
-
-// The code emitted for reduction suffers from poor data locality if the layouts
-// of input parameters differ. In such situtations it is beneficial not to fuse.
-// We consider input params with maximum rank only. Params with smaller ranks
-// will be broadcasted and have not been observed to cause data locality issues.
-// TODO(b/111977086): Improve reduce emitters to remove this limitation.
-bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
-  std::vector<HloInstruction*> params;
-  if (instr->opcode() == HloOpcode::kFusion) {
-    params = instr->fused_parameters();
-  } else {
-    for (HloInstruction* operand : instr->operands()) {
-      params.push_back(operand);
-    }
-  }
-  int64 max_rank = 0;
-  const Layout* max_rank_layout;
-  for (HloInstruction* param : params) {
-    if (ShapeUtil::Rank(param->shape()) > max_rank) {
-      max_rank = ShapeUtil::Rank(param->shape());
-      max_rank_layout = &param->shape().layout();
-    }
-  }
-  return absl::c_all_of(params, [&](HloInstruction* param) {
-    return (ShapeUtil::Rank(param->shape()) < max_rank) ||
-           (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
-  });
-}
-
-}  // namespace
-
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // We can fuse reduces and loop fusions. Elementwise instructions can be fused
   // with any other instruction.
   // TODO(b/112957171): This should use the same isFusible logic as
   // instruction_fusion.
-  return instr->IsFusable() &&
-         (IsInputFusibleReduction(instr) ||
+  return instr->IsFusible() &&
+         (IsInputFusibleReduction(*instr) ||
           (instr->opcode() == HloOpcode::kFusion &&
            instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
           instr->IsElementwise());
@@ -204,7 +151,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   tensorflow::gtl::FlatSet<HloInstruction*> to_fuse;
   // Keep a list of the instructions to fuse after making all the fusion
   // decisions. We first aggressively add instructions to potential_fusion_list,
-  // then filter out instructions that will be no longer fusable because of
+  // then filter out instructions that will be no longer fusible because of
   // reachability change. This avoids recalculating reachability on a large set
   // of instructions.
   std::vector<std::pair<HloInstruction*, HloInstruction*>>
@@ -219,8 +166,8 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       VLOG(3) << consumer->name() << " has no users.";
       continue;
     }
-    if (!IsInputFusibleReduction(consumer)) {
-      VLOG(3) << consumer->name() << " is not an input-fusable reduction.";
+    if (!IsInputFusibleReduction(*consumer)) {
+      VLOG(3) << consumer->name() << " is not an input-fusible reduction.";
       continue;
     }
     VLOG(3) << consumer->name()
@@ -229,8 +176,8 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     auto consumer_operands = consumer->operands();
     for (size_t i = 0; i < consumer_operands.size(); ++i) {
       HloInstruction* producer = consumer_operands[i];
-      if (!producer->IsFusable()) {
-        VLOG(3) << producer->name() << " is not fusable.";
+      if (!producer->IsFusible()) {
+        VLOG(3) << producer->name() << " is not fusible.";
         continue;
       }
       const bool is_loop_fusion =
@@ -244,7 +191,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " has an incompatible shape.";
         continue;
       }
-      if (!ReduceFriendlyInputLayouts(producer)) {
+      if (!LayoutsAreReduceInputFusionFriendly(*producer, *consumer)) {
         VLOG(3) << producer->name() << " has inputs with mixed layouts.";
         continue;
       }
@@ -270,7 +217,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     }
   }
 
-  // Filter out pairs that will be no longer fusable because of reachability
+  // Filter out pairs that will be no longer fusible because of reachability
   // change.
   for (auto& fusion_pair : potential_fusion_list) {
     HloInstruction* producer = fusion_pair.first;

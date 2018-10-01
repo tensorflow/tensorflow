@@ -23,7 +23,7 @@ namespace xla {
 
 // HLO pass that folds transpose operators into Dot operators, where the Dot
 // operator is implemented by a GEMM kernel that can transpose its inputs.
-class TransposeFolding : public HloPassInterface {
+class TransposeFolding : public HloModulePass {
  public:
   using OperandIndices = std::vector<int64>;
 

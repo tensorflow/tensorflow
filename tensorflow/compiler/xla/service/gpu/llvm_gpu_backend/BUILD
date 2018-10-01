@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm//:amdgpu_code_gen",
         "@llvm//:analysis",
         "@llvm//:bit_reader",

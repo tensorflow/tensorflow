@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -88,23 +89,22 @@ class HeapSimulator {
 
   // Returns the minimum memory required to compute an HLO module where all
   // computations have been scheduled (represented by the given
-  // module_sequence), assuming no fragmentation.
+  // schedule), assuming no fragmentation.
   static StatusOr<int64> MinimumMemoryForModule(
-      const SequentialHloOrdering::HloModuleSequence& module_sequence,
+      const HloSchedule& schedule,
       const LogicalBuffer::SizeFunction& size_function);
 
   // Returns the minimum memory required to compute the given computation,
   // assuming no fragmentation.
   static StatusOr<int64> MinimumMemoryForComputation(
-      const HloComputation& computation,
-      const std::vector<const HloInstruction*>& sequence,
+      const HloComputation& computation, const HloInstructionSequence& sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const LogicalBuffer::SizeFunction& size_function,
       const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
           memory_by_computation = nullptr);
 
   // Run the heap simulation with the given algorithm, assuming the given
-  // module_sequence, which must contain a topologically-consistent total
+  // schedule, which must contain a topologically-consistent total
   // ordering of all instructions within each computation. The result is invalid
   // if instructions are not run in exactly this sequence.
   //
@@ -112,12 +112,12 @@ class HeapSimulator {
   // to running on a per-computation basis, since we can re-use buffer space for
   // called sub-computations.
   //
-  static StatusOr<Result> Run(
-      std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
-      const SequentialHloOrdering::HloModuleSequence& module_sequence,
-      const TuplePointsToAnalysis& points_to_analysis,
-      const BufferValue::SizeFunction& size_fn,
-      const Options& options = Options());
+  static StatusOr<Result> Run(std::unique_ptr<HeapAlgorithm> algorithm,
+                              const HloModule& module,
+                              const HloSchedule& schedule,
+                              const TuplePointsToAnalysis& points_to_analysis,
+                              const BufferValue::SizeFunction& size_fn,
+                              const Options& options = Options());
 
   // Same as above, but runs on a single computation. The 'instruction_sequence'
   // must contain a topologically-consistent total ordering of all instructions
@@ -126,7 +126,7 @@ class HeapSimulator {
   static StatusOr<Result> Run(
       std::unique_ptr<HeapAlgorithm> algorithm,
       const HloComputation& computation,
-      const std::vector<const HloInstruction*>& instruction_sequence,
+      const HloInstructionSequence& instruction_sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const BufferValue::SizeFunction& size_fn,
       const Options& options = Options(),
@@ -134,21 +134,19 @@ class HeapSimulator {
           memory_by_computation = nullptr);
 
  private:
-  // If 'module_sequence' is non-null, it is used to find kCall and kWhile
+  // If 'schedule' is non-null, it is used to find kCall and kWhile
   // sub-computations, and the heap simulation for those sub-computations will
   // be run recursively. I.e. the simulation is run over the whole module.
-  HeapSimulator(
-      std::unique_ptr<HeapAlgorithm> algorithm,
-      const BufferValue::SizeFunction& size_fn, const Options& options,
-      const SequentialHloOrdering::HloModuleSequence* module_sequence = nullptr,
-      const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
-          memory_by_computation = nullptr);
+  HeapSimulator(std::unique_ptr<HeapAlgorithm> algorithm,
+                const BufferValue::SizeFunction& size_fn,
+                const Options& options, const HloSchedule* schedule = nullptr,
+                const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+                    memory_by_computation = nullptr);
   ~HeapSimulator();
 
-  Status RunComputation(
-      const HloComputation& computation,
-      const std::vector<const HloInstruction*>& instruction_sequence,
-      const TuplePointsToAnalysis& points_to_analysis);
+  Status RunComputation(const HloComputation& computation,
+                        const HloInstructionSequence& instruction_sequence,
+                        const TuplePointsToAnalysis& points_to_analysis);
 
   bool IgnoreBuffer(const BufferValue* buffer) const;
   void Alloc(const BufferValue* buffer, const HloInstruction* instruction);
@@ -169,11 +167,11 @@ class HeapSimulator {
   const std::unique_ptr<HeapAlgorithm> algorithm_;
   const BufferValue::SizeFunction size_fn_;
   const Options options_;
-  // module_sequence_ is set by buffer assignment, and memory_by_computation_ is
+  // schedule_ is set by buffer assignment, and memory_by_computation_ is
   // set by hlo scheduling. Then, in RunComputation, we check both in order to
   // handle subcomputations. It would be good to unify the handling of
   // subcomputations, but it's not clear how.
-  const SequentialHloOrdering::HloModuleSequence* module_sequence_;
+  const HloSchedule* schedule_;
   const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
       memory_by_computation_;
 
@@ -351,6 +349,68 @@ class LazyBestFitHeap : public HeapAlgorithm {
 
   // Maintain the set of free chunks, ordered by increasing size.
   std::set<Chunk, OrderChunkByIncreasingSize> free_;
+};
+
+// GlobalDecreasingSizeBestFitHeap collects the live intervals of all buffers,
+// then allocates them in decreasing sizes regardless of the alloc/free time. It
+// internally tracks the allocated buffers and their live intervals; when
+// allocating a buffer, it finds the best-fit free chunk during its live
+// interval.
+class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
+ public:
+  GlobalDecreasingSizeBestFitHeap(int64 alignment) : alignment_(alignment) {}
+  ~GlobalDecreasingSizeBestFitHeap() override {}
+
+  void Alloc(const BufferValue* buffer, int64 size) override;
+  void Free(const BufferValue* buffer, int64 size) override;
+  Result Finish() override;
+
+ private:
+  int64 alignment_;
+  Result result_;
+
+  // The current time represented as an integer. It increments by 1 at each
+  // Alloc or Free call.
+  int64 current_time_ = 0;
+
+  // BufferInterval stores a buffer's size and time interval.
+  struct BufferInterval {
+    const BufferValue* buffer;
+    int64 size;
+    // Alloc time of the buffer.
+    int64 start;
+    // Free time of the buffer.
+    int64 end;
+  };
+  tensorflow::gtl::FlatMap<const BufferValue*, BufferInterval>
+      buffer_intervals_;
+};
+
+// A heap algorithm that chooses the best results from other algorithms added to
+// it.
+class ChooseBestHeapAlgorithm : public HeapAlgorithm {
+ public:
+  ChooseBestHeapAlgorithm(
+      std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm>>> algorithms)
+      : algorithms_(std::move(*algorithms)) {}
+  ~ChooseBestHeapAlgorithm() override {}
+
+  void Alloc(const BufferValue* buffer, int64 size) override {
+    for (auto& algorithm : algorithms_) {
+      algorithm->Alloc(buffer, size);
+    }
+  }
+
+  void Free(const BufferValue* buffer, int64 size) override {
+    for (auto& algorithm : algorithms_) {
+      algorithm->Free(buffer, size);
+    }
+  }
+
+  Result Finish() override;
+
+ private:
+  std::vector<std::unique_ptr<HeapAlgorithm>> algorithms_;
 };
 
 }  // namespace xla

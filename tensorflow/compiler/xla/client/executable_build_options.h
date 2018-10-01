@@ -86,7 +86,7 @@ class ExecutableBuildOptions {
   void add_disabled_hlo_pass(absl::string_view pass_name) {
     disabled_hlo_passes_.push_back(std::string(pass_name));
   }
-  const tensorflow::gtl::ArraySlice<std::string> disabled_hlo_passes() const {
+  const absl::Span<const std::string> disabled_hlo_passes() const {
     return disabled_hlo_passes_;
   }
 

@@ -311,13 +311,33 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
 
 
 def _placeholder_from_tensor(t, default_batch_size=None):
+  """Creates a placeholder that matches the dtype and shape of passed tensor.
+
+  Args:
+    t: Tensor or EagerTensor
+    default_batch_size: the number of query examples expected per batch.
+        Leave unset for variable batch size (recommended).
+
+  Returns:
+    Placeholder that matches the passed tensor.
+  """
   batch_shape = tensor_shape.TensorShape([default_batch_size])
   shape = batch_shape.concatenate(t.get_shape()[1:])
 
   # Reuse the feature tensor's op name (t.op.name) for the placeholder,
   # excluding the index from the tensor's name (t.name):
   # t.name = "%s:%d" % (t.op.name, t._value_index)
-  return array_ops.placeholder(dtype=t.dtype, shape=shape, name=t.op.name)
+  try:
+    name = t.op.name
+  except AttributeError:
+    # In Eager mode, tensors don't have ops or names, and while they do have
+    # IDs, those are not maintained across runs. The name here is used
+    # primarily for debugging, and is not critical to the placeholder.
+    # So, in order to make this Eager-compatible, continue with an empty
+    # name if none is available.
+    name = None
+
+  return array_ops.placeholder(dtype=t.dtype, shape=shape, name=name)
 
 
 def _placeholders_from_receiver_tensors_dict(input_vals,

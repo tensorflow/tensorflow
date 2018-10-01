@@ -78,14 +78,14 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":batching",
-        ":gen_dataset_ops",
         ":interleave_ops",
+        ":optimization",
         ":parsing_ops",
         ":shuffle_ops",
-        ":stats_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
@@ -148,8 +148,7 @@ py_library(
     srcs = ["error_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":contrib_op_loader",
-        ":gen_dataset_ops",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
@@ -179,12 +178,11 @@ py_library(
     srcs = ["interleave_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":contrib_op_loader",
-        ":gen_dataset_ops",
         ":random_ops",
         "//tensorflow/contrib/stateless",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
@@ -199,9 +197,8 @@ py_library(
     srcs = ["optimization.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":contrib_op_loader",
-        ":gen_dataset_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
@@ -304,8 +301,7 @@ py_library(
     srcs = ["threadpool.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":contrib_op_loader",
-        ":gen_dataset_ops",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -321,9 +317,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":contrib_op_loader",
-        ":gen_dataset_ops",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
@@ -342,47 +337,11 @@ py_library(
     ],
 )
 
-tf_gen_op_wrapper_py(
-    name = "gen_dataset_ops",
-    out = "gen_dataset_ops.py",
-    deps = [
-        "//tensorflow/contrib/data:dataset_ops_op_lib",
-        "//tensorflow/contrib/data:indexed_dataset_ops_op_lib",
-    ],
-)
-
-tf_kernel_library(
-    name = "dataset_ops_kernels",
-    deps = [
-        "//tensorflow/contrib/data/kernels:dataset_kernels",
-        "//tensorflow/core:framework",
-    ],
-    alwayslink = 1,
-)
-
-tf_custom_op_py_library(
-    name = "contrib_op_loader",
-    srcs = ["contrib_op_loader.py"],
-    dso = ["//tensorflow/contrib/data:_dataset_ops.so"],
-    kernels = [
-        ":dataset_ops_kernels",
-        "//tensorflow/contrib/data:indexed_dataset_ops_op_lib",
-        "//tensorflow/contrib/data:dataset_ops_op_lib",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":gen_dataset_ops",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:platform",
-    ],
-)
-
 py_library(
     name = "indexed_dataset_ops",
     srcs = ["indexed_dataset_ops.py"],
     deps = [
-        ":contrib_op_loader",
-        ":gen_dataset_ops",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -394,7 +353,7 @@ py_library(
     name = "prefetching_ops",
     srcs = ["prefetching_ops.py"],
     deps = [
-        ":contrib_op_loader",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",

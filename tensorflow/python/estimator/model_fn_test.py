@@ -24,6 +24,7 @@ from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.keras import metrics
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -60,12 +61,17 @@ class EstimatorSpecTrainTest(test.TestCase):
       loss = constant_op.constant(1.)
       predictions = {'loss': loss}
       classes = constant_op.constant('hello')
+      metric_obj = metrics.Mean()
+      metric_obj.update_state(loss)
       model_fn.EstimatorSpec(
           mode=model_fn.ModeKeys.TRAIN,
           predictions=predictions,
           loss=loss,
           train_op=control_flow_ops.no_op(),
-          eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
+          eval_metric_ops={
+              'loss': (control_flow_ops.no_op(), loss),
+              'mean': metric_obj,
+          },
           export_outputs={
               'head_name': export_output.ClassificationOutput(classes=classes)
           },
@@ -212,12 +218,17 @@ class EstimatorSpecEvalTest(test.TestCase):
       loss = constant_op.constant(1.)
       predictions = {'loss': loss}
       classes = constant_op.constant('hello')
+      metric_obj = metrics.Mean()
+      metric_obj.update_state(loss)
       model_fn.EstimatorSpec(
           mode=model_fn.ModeKeys.EVAL,
           predictions=predictions,
           loss=loss,
           train_op=control_flow_ops.no_op(),
-          eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
+          eval_metric_ops={
+              'loss': (control_flow_ops.no_op(), loss),
+              'mean': metric_obj,
+          },
           export_outputs={
               'head_name': export_output.ClassificationOutput(classes=classes)
           },
@@ -423,7 +434,7 @@ class EstimatorSpecEvalTest(test.TestCase):
             eval_metric_ops={'loss': ((('NonTensor',),),
                                       control_flow_ops.no_op())})
 
-  def testEvalMetricOpsFromDifferentGraph(self):
+  def testEvalMetricOpsFromDifferentGraphWithMetricTuple(self):
     with ops.Graph().as_default():
       eval_metric_ops = {
           'loss': (control_flow_ops.no_op(), constant_op.constant(1.))}
@@ -431,6 +442,33 @@ class EstimatorSpecEvalTest(test.TestCase):
       loss = constant_op.constant(1.)
       with self.assertRaisesRegexp(
           ValueError, 'must be from the default graph'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.EVAL,
+            predictions={'loss': loss},
+            loss=loss,
+            eval_metric_ops=eval_metric_ops)
+
+  def testEvalMetricOpsFromDifferentGraphWithMetricObject(self):
+    with ops.Graph().as_default():
+      metric_obj = metrics.Mean()
+      metric_obj.update_state(constant_op.constant(1.))
+      eval_metric_ops = {'metric': metric_obj}
+    with ops.Graph().as_default(), self.cached_session():
+      loss = constant_op.constant(1.)
+      with self.assertRaisesRegexp(
+          ValueError, 'must be from the default graph'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.EVAL,
+            predictions={'loss': loss},
+            loss=loss,
+            eval_metric_ops=eval_metric_ops)
+
+  def testEvalMetricOpsWithoutUpdates(self):
+    with ops.Graph().as_default():
+      eval_metric_ops = {'mean': metrics.Mean()}
+    with ops.Graph().as_default(), self.cached_session():
+      loss = constant_op.constant(1.)
+      with self.assertRaisesRegexp(ValueError, 'Please call update_state(...)'):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions={'loss': loss},
@@ -454,12 +492,17 @@ class EstimatorSpecInferTest(test.TestCase):
       loss = constant_op.constant(1.)
       predictions = {'loss': loss}
       classes = constant_op.constant('hello')
+      metric_obj = metrics.Mean()
+      metric_obj.update_state(loss)
       model_fn.EstimatorSpec(
           mode=model_fn.ModeKeys.PREDICT,
           predictions=predictions,
           loss=loss,
           train_op=control_flow_ops.no_op(),
-          eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
+          eval_metric_ops={
+              'loss': (control_flow_ops.no_op(), loss),
+              'mean': metric_obj,
+          },
           export_outputs={
               'head_name': export_output.ClassificationOutput(classes=classes)
           },

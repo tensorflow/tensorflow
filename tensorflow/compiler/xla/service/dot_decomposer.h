@@ -23,7 +23,7 @@ namespace xla {
 
 // DotDecomposer is a pass which decomposes batch Dot operations into a
 // sequence of smaller (R2) Dot operations.
-class DotDecomposer : public HloPassInterface {
+class DotDecomposer : public HloModulePass {
  public:
   // Decomposes batch Dot operations when 'decompose_batch_dot' is true.
   DotDecomposer(bool decompose_batch_dot = true)

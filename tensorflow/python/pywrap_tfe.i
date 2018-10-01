@@ -50,11 +50,12 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
 %rename("%s") TFE_Py_TapeSetShouldRecord;
-%rename("%s") TFE_Py_TapeSetWatch;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
-%rename("%s") TFE_Py_TapeSetWatchVariable;
 %rename("%s") TFE_Py_TapeGradient;
+%rename("%s") TFE_Py_TapeVariableAccessed;
+%rename("%s") TFE_Py_TapeWatch;
+%rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
@@ -65,6 +66,7 @@ limitations under the License.
 %rename("%s") TFE_Py_TensorShapeOnDevice;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
+%rename("%s") TFE_Py_RegisterVSpace;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
@@ -105,20 +107,29 @@ limitations under the License.
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* serialized_function_def {
-  $1 = TFE_GetPythonString($input);
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* device_name {
   if ($input == Py_None) {
     $1 = nullptr;
   } else {
-    $1 = TFE_GetPythonString($input);
+    $1 = const_cast<char*>(TFE_GetPythonString($input));
   }
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
 %typemap(in) const char* op_name {
-  $1 = TFE_GetPythonString($input);
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
 %typemap(in) (TFE_Context*) {
@@ -177,7 +188,10 @@ limitations under the License.
                         "outputs of the operation)");
   }
   $1 = &temp;
-  $1->resize(PyInt_AsLong($input), nullptr);
+  long sz = PyInt_AsLong($input);
+  if (sz > 0) {
+    $1->resize(PyInt_AsLong($input), nullptr);
+  }
 }
 
 // Create new Status object.

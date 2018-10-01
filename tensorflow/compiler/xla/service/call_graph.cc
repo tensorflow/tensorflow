@@ -19,19 +19,19 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
+using absl::StrAppendFormat;
 using absl::StrCat;
-using ::tensorflow::strings::Appendf;
 
 string CallContextToString(CallContext context) {
   switch (context) {
@@ -356,20 +356,20 @@ CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
 
 string CallGraph::ToString() const {
   string out;
-  Appendf(&out, "Call graph for module %s:\n", module_->name().c_str());
+  StrAppendFormat(&out, "Call graph for module %s:\n", module_->name());
   for (const CallGraphNode& node : nodes()) {
-    Appendf(&out, "Computation %s:\n", node.computation()->name().c_str());
-    Appendf(&out, "  calls:\n");
+    StrAppendFormat(&out, "Computation %s:\n", node.computation()->name());
+    StrAppendFormat(&out, "  calls:\n");
     for (const HloComputation* callee : node.callees()) {
-      Appendf(&out, "    %s\n", callee->name().c_str());
+      StrAppendFormat(&out, "    %s\n", callee->name());
     }
-    Appendf(&out, "  called by:\n");
+    StrAppendFormat(&out, "  called by:\n");
     for (const HloComputation* caller : node.callers()) {
-      Appendf(&out, "    %s\n", caller->name().c_str());
+      StrAppendFormat(&out, "    %s\n", caller->name());
     }
-    Appendf(&out, "  callsites:\n");
+    StrAppendFormat(&out, "  callsites:\n");
     for (const CallSite& callsite : node.callsites()) {
-      Appendf(&out, "    %s\n", callsite.ToString().c_str());
+      StrAppendFormat(&out, "    %s\n", callsite.ToString());
     }
   }
   return out;

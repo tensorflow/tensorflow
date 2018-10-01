@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -106,7 +107,7 @@ class SliceTest(test.TestCase):
 
   def testScalarInput(self):
     input_val = 0
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test with constant input; shape inference fails.
       with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
         constant_op.constant(input_val)[:].get_shape()
@@ -120,7 +121,7 @@ class SliceTest(test.TestCase):
 
   def testInvalidIndex(self):
     input_val = [1, 2]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test with constant input; shape inference fails.
       with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
         constant_op.constant(input_val)[1:, 1:].get_shape()
@@ -260,6 +261,21 @@ class SliceTest(test.TestCase):
       grad_actual = gradients_impl.gradients(out, inp)[0].eval()
     self.assertAllClose([0., 1., 1.], grad_actual)
 
+  def _testGradientVariableSize2D(self):
+    # Regression test for bug in slice. A low-level bug in Eigen was causing
+    # incorrect results for negative indices in multi-dimensional tensors.
+    # See b/114318298.
+    with self.test_session(use_gpu=True) as sess:
+      x = constant_op.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 7]])
+      loss1 = math_ops.reduce_sum(x[:-1, :-1] * 1.0)
+      loss2 = math_ops.reduce_sum(x[:-1][:, :-1])
+
+      g1 = gradients_impl.gradients(loss1, x)[0]
+      g2 = gradients_impl.gradients(loss2, x)[0]
+
+      g1_val, g2_val = sess.run([g1, g2])
+    self.assertAllEqual(g1_val, g2_val)
+
   def testGradientsAll(self):
     # Slice the middle square out of a 4x4 input
     self._testGradientSlice([4, 4], [1, 1], [2, 2])
@@ -275,6 +291,9 @@ class SliceTest(test.TestCase):
 
     # Use -1 as a slice dimension.
     self._testGradientVariableSize()
+
+    # Use -1 as a slice dimension on a 2D tensor.
+    self._testGradientVariableSize2D()
 
   def testNotIterable(self):
     # NOTE(mrry): If we register __getitem__ as an overloaded

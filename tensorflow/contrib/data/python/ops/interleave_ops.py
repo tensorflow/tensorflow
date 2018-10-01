@@ -18,8 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import stateless
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.contrib.data.python.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -28,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 
@@ -167,11 +166,16 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return gen_dataset_ops.directed_interleave_dataset(
-        self._selector_input._as_variant_tensor(),
-        [data_input._as_variant_tensor() for data_input in self._data_inputs],
-        **dataset_ops.flat_structure(self))
+    return (
+        gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
+            self._selector_input._as_variant_tensor(), [
+                data_input._as_variant_tensor()
+                for data_input in self._data_inputs
+            ], **dataset_ops.flat_structure(self)))
     # pylint: enable=protected-access
+
+  def _inputs(self):
+    return [self._selector_input] + self._data_inputs
 
   @property
   def output_classes(self):
@@ -216,25 +220,59 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       length of the `datasets` element.
   """
   num_datasets = len(datasets)
-  if weights is None:
-    weights = dataset_ops.Dataset.from_tensors([1.0] * num_datasets).repeat()
-  elif not isinstance(weights, dataset_ops.Dataset):
-    weights = ops.convert_to_tensor(weights, name="weights")
-    if weights.dtype not in (dtypes.float32, dtypes.float64):
-      raise TypeError("`weights` must be convertible to a tensor of "
-                      "`tf.float32` or `tf.float64` elements.")
-    if not weights.shape.is_compatible_with([num_datasets]):
-      raise ValueError("`weights` must be a vector of length `len(datasets)`.")
-    weights = dataset_ops.Dataset.from_tensors(weights).repeat()
+  if not isinstance(weights, dataset_ops.Dataset):
+    if weights is None:
+      # Select inputs with uniform probability.
+      logits = [[1.0] * num_datasets]
 
-  # The `stateless_multinomial()` op expects log-probabilities, as opposed to
-  # weights.
-  logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
-  def select_dataset(logits, seed):
-    return array_ops.squeeze(
-        stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
-  selector_input = dataset_ops.Dataset.zip(
-      (logits_ds, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
+    else:
+      # Use the given `weights` as the probability of choosing the respective
+      # input.
+      weights = ops.convert_to_tensor(weights, name="weights")
+      if weights.dtype not in (dtypes.float32, dtypes.float64):
+        raise TypeError("`weights` must be convertible to a tensor of "
+                        "`tf.float32` or `tf.float64` elements.")
+      if not weights.shape.is_compatible_with([num_datasets]):
+        raise ValueError(
+            "`weights` must be a vector of length `len(datasets)`.")
+
+      # The `stateless_multinomial()` op expects log-probabilities, as opposed
+      # to weights.
+      logits = array_ops.expand_dims(math_ops.log(weights, name="logits"), 0)
+
+    # NOTE(mrry): We only specialize when `weights` is not a `Dataset`. When it
+    # is a `Dataset`, it is possible that evaluating it has a side effect the
+    # user depends on.
+    if len(datasets) == 1:
+      return datasets[0]
+
+    def select_dataset_constant_logits(seed):
+      return array_ops.squeeze(
+          stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
+
+    selector_input = dataset_ops.MapDataset(
+        random_ops.RandomDataset(seed).batch(2),
+        select_dataset_constant_logits,
+        use_inter_op_parallelism=False)
+
+  else:
+    # Use each element of the given `weights` dataset as the probability of
+    # choosing the respective input.
+
+    # The `stateless_multinomial()` op expects log-probabilities, as opposed to
+    # weights.
+    logits_ds = weights.map(lambda *p: math_ops.log(p, name="logits"))
+
+    def select_dataset_varying_logits(logits, seed):
+      return array_ops.squeeze(
+          stateless.stateless_multinomial(logits, 1, seed=seed), axis=[0, 1])
+
+    logits_and_seeds = dataset_ops.Dataset.zip(
+        (logits_ds, random_ops.RandomDataset(seed).batch(2)))
+    selector_input = dataset_ops.MapDataset(
+        logits_and_seeds,
+        select_dataset_varying_logits,
+        use_inter_op_parallelism=False)
 
   return _DirectedInterleaveDataset(selector_input, datasets)
 
