@@ -46,7 +46,7 @@ namespace tensorflow {
 // 5. TPUEmbeddingActivations, when used with appropriate Python libraries,
 //    enables the automatic differentiation of models that use embeddings.
 // 6. TPUEmbeddingSendGradients takes a list of Tensors (of the same shapes
-//    as those returned by TPUEmbeddingReceivActivations) containing gradients
+//    as those returned by TPUEmbeddingReceiveActivations) containing gradients
 //    to use in updating the embedding tables.
 // 7. Before saving a checkpoint, use the TPUEmbeddingRetrieve Op to update
 //    the Graph's embedding table Variables from the updated tables in the
@@ -147,7 +147,7 @@ parameters that are loaded from a checkpoint before a training loop is
 executed.
 %s
 table_name: Name of this table; must match a name in the
-  EmbeddingLayerConfiguration proto (overrides table_id).
+  TPUEmbeddingConfiguration proto (overrides table_id).
 num_shards: Number of shards into which the embedding tables are divided.
 shard_id: Identifier of shard for this operation.
 table_id: Index of this table in the EmbeddingLayerConfiguration proto
@@ -283,7 +283,7 @@ the correct embedding table configuration. For example, this op is
 used to retrieve updated parameters before saving a checkpoint.
 %s
 table_name: Name of this table; must match a name in the
-  EmbeddingLayerConfiguration proto (overrides table_id).
+  TPUEmbeddingConfiguration proto (overrides table_id).
 num_shards: Number of shards into which the embedding tables are divided.
 shard_id: Identifier of shard for this operation.
 table_id: Index of this table in the EmbeddingLayerConfiguration proto
