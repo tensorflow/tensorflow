@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
-#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_op.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/graph_constructor.h"
