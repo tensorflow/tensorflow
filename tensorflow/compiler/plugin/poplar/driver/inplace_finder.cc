@@ -48,8 +48,11 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       break;
     }
     case HloOpcode::kCall:
-      if (!IsPopOpsCall(inst, "scaled_inplace") &&
-          !IsPopOpsCall(inst, "conv_scaled_inplace")) {
+      if (IsPopOpsCall(inst, "conv_scaled_inplace")) {
+        // This is always acceptable on a variable update inplace route
+        break;
+      }
+      if (!IsPopOpsCall(inst, "scaled_inplace")) {
         return;
       }
     // Fall through since inplace subgraphs have to pass all the same

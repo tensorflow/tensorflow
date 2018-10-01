@@ -81,7 +81,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_XLA_Args/arg0.*_to_transpose.*.clone/OnTileCopy',
+            'Copy_XLA_Args/arg0.*_to_transpose/transpose.*.clone/OnTileCopy',
             'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -120,7 +120,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'Copy_XLA_Args/arg0.*_to_transpose.*.clone/OnTileCopy',
+            'Copy_XLA_Args/arg0.*_to_transpose/transpose.*.clone/OnTileCopy',
             'mul/multiply.*/Op/Multiply',
             'add/add.*/AddTo',
             'mul_1/multiply.*/Op/Multiply',

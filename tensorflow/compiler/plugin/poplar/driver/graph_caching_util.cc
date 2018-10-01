@@ -18,10 +18,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include <poplar/Tensor.hpp>
 #include <poplin/ConvUtil.hpp>
 #include <poplin/Convolution.hpp>
+#include <popops/ScaledAdd.hpp>
 #include <poputil/GraphFunction.hpp>
 
 namespace xla {
@@ -87,7 +90,28 @@ static ConvolutionCacheKey GetConvolutionCacheKey(
                          poplin::canonicalizeParams(params), conv_type,
                          transpose_and_flip_weights);
 }
+
+static WeightUpdateConvolutionCacheKey GetWeightUpdateConvolutionCacheKey(
+    const poplin::ConvParams& params, const ConvClassificationType& conv_type,
+    double learning_rate) {
+  // Create signature for the convolution input
+  std::vector<std::size_t> in_shape = {params.getBatchSize(),
+                                       params.getNumInputChans()};
+  in_shape.insert(in_shape.end(), params.inputFieldShape.begin(),
+                  params.inputFieldShape.end());
+  PoplarTensorSignature in_sig(params.dType, std::move(in_shape));
+
+  // Create signature for the gradients
+  std::vector<std::size_t> grad_shape = {params.getNumConvGroups(),
+                                         params.getNumOutputChansPerConvGroup(),
+                                         params.getNumInputChansPerConvGroup()};
+  grad_shape.insert(grad_shape.end(), params.kernelShape.begin(),
+                    params.kernelShape.end());
+  PoplarTensorSignature grad_sig(params.dType, std::move(grad_shape));
+  return std::make_tuple(in_sig, grad_sig, poplin::canonicalizeParams(params),
+                         conv_type, learning_rate);
 }
+}  // namespace
 
 poplar::Tensor DoCachedConvolution(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
@@ -142,6 +166,74 @@ poplar::Tensor DoCachedConvolution(
     res.conv_graph_cache.emplace(key, f);
     return f(args, prog);
   }
+}
+
+Status DoCachedConvolutionWithScaledAdd(
+    poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& w,
+    const poplar::Tensor& in, const poplar::Tensor& deltas,
+    const poplin::ConvParams& params, poplar::program::Sequence& prog,
+    const HloInstruction* root, const HloInstruction* conv) {
+  auto conv_type = GetConvClassificationType(conv, res.annotations);
+
+  // Get the scalar multiplier
+  const auto* const_inst = root->operand(1)->operand(1)->operand(0);
+  CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
+
+  double lr;
+  TF_ASSIGN_OR_RETURN(lr, LiteralScalarDoubleToDouble(const_inst->literal()));
+
+  switch (root->opcode()) {
+    case HloOpcode::kAdd: {
+      break;
+    }
+    case HloOpcode::kSubtract: {
+      lr = -lr;
+      break;
+    }
+    default: {
+      return xla::FailedPrecondition("Unsupported scaled inplace op: %s",
+                                     root->name().c_str());
+    }
+  }
+
+  std::vector<poplar::Tensor> args = {in, deltas, w};
+
+  auto key = GetWeightUpdateConvolutionCacheKey(params, conv_type, lr);
+  auto it = res.wu_graph_cache.find(key);
+  if (it != res.wu_graph_cache.end()) {
+    auto& f = it->second;
+    f(args, prog);
+    return Status::OK();
+  }
+
+  using namespace poputil::graphfn;
+  auto f = VoidFunction(
+      graph, {input(in, "in"), input(deltas, "deltas"), inout(w, "w")},
+      [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& prog) {
+        poplar::Tensor in_shuffled =
+            ShuffleConvolutionInputToPoplar(conv, args[0]);
+
+        poplar::Tensor deltas_shuffled =
+            ShuffleConvolutionWeightsToPoplar(conv, args[1], false);
+        deltas_shuffled =
+            AddGroupsDimensionToWeights(params, deltas_shuffled, false);
+
+        poplar::OptionFlags opts;
+        opts.set("pass", ConvClassificationTypeToString(conv_type));
+
+        auto c_out = poplin::convolution(
+            graph, in_shuffled, deltas_shuffled, params, false, prog,
+            GetDebugName(conv), opts, &res.convolution_cache);
+
+        c_out = ShuffleConvolutionOutputToTensorflow(conv, c_out);
+
+        // Call the inplace op
+        popops::scaledAddTo(graph, args[2], c_out, lr, prog,
+                            GetDebugName(root));
+      });
+  res.wu_graph_cache.emplace(key, f);
+  f(args, prog);
+  return Status::OK();
 }
 
 }  // namespace graph_caching_util

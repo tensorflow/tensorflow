@@ -111,12 +111,7 @@ StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
 
   if (requires_copy_inplace) {
     VLOG(1) << "Adding a copy for inplace op " << inst->name();
-    poplar::Tensor copy;
-    TF_ASSIGN_OR_RETURN(
-        copy, AddTensor(graph, std::make_pair(inst, 0),
-                        XlaShapeFromPoplarShape(output_shape.element_type(),
-                                                in0.shape()),
-                        res));
+    poplar::Tensor copy = graph.clone(in0, GetDebugName(inst) + ".clone");
     seq.add(poplar::program::Copy(in0, copy));
     in0 = copy;
   }
@@ -154,7 +149,7 @@ StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
       }
       if (clone_output) {
         VLOG(1) << "Adding a clone for output tensor of " << inst->name();
-        out = graph.clone(tensor, inst->name() + ".clone");
+        out = graph.clone(tensor, GetDebugName(inst) + ".clone");
         seq.add(poplar::program::Copy(tensor, out));
       }
     }

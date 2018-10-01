@@ -56,10 +56,20 @@ StatusOr<poplin::ConvParams> GetConvolutionParameters(
     const HloInstruction* operand_op, const HloInstruction* conv_op,
     int64 input_index, int64 kernel_index);
 
-StatusOr<poplar::Tensor> ShuffleConvolutionInputToTensorflow(
+poplar::Tensor ShuffleConvolutionInputToTensorflow(
     const HloInstruction* inst, const poplar::Tensor& tensor);
 
-StatusOr<poplar::Tensor> ShuffleConvolutionWeightsToTensorflow(
+poplar::Tensor ShuffleConvolutionWeightsToTensorflow(
+    const HloInstruction* inst, const poplar::Tensor& tensor);
+
+poplar::Tensor ShuffleConvolutionInputToPoplar(const HloInstruction* inst,
+                                               const poplar::Tensor& tensor);
+
+poplar::Tensor ShuffleConvolutionWeightsToPoplar(const HloInstruction* inst,
+                                                 const poplar::Tensor& tensor,
+                                                 bool swap_features);
+
+poplar::Tensor ShuffleConvolutionOutputToTensorflow(
     const HloInstruction* inst, const poplar::Tensor& tensor);
 
 poplar::Tensor RemoveGroupsDimensionFromWeights(const poplin::ConvParams& p,
