@@ -154,6 +154,20 @@ class TPUContext(object):
     # as far as model is replicated to all cores in the system.
     return self._internal_ctx.device_for_replica(replica_id)
 
+  @property
+  def tpu_host_placement_function(self):
+    """Returns the TPU host place function.
+
+    The place function takes host_id as the input and returns the TF device
+    for the correspoding host.
+    """
+
+    def _placement_function(host_id):
+      """Return the host device given host_id."""
+      return self._internal_ctx.tpu_host_placement_function(host_id=host_id)
+
+    return _placement_function
+
 
 class _InternalTPUContext(object):
   """A context holds immutable states of TPU computation.
