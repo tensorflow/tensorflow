@@ -1266,11 +1266,13 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     case HloOpcode::kCustomCall: {
       optional<string> custom_call_target;
+      optional<string> opaque;
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
       attrs["custom_call_target"] = {/*required=*/true, AttrTy::kString,
                                      &custom_call_target};
+      attrs["opaque"] = {/*required=*/false, AttrTy::kString, &opaque};
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/false,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -1279,8 +1281,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(HloInstruction::CreateCustomCall(
-          shape, operands, *custom_call_target));
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCustomCall(shape, operands, *custom_call_target,
+                                           opaque.has_value() ? *opaque : ""));
       if (window.has_value()) {
         instruction->set_window(*window);
       }

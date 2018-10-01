@@ -149,6 +149,7 @@ bool IsStridedSliceGrad(const NodeDef& node);
 bool IsSub(const NodeDef& node);
 bool IsSum(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
+bool IsSymbolicGradient(const NodeDef& node);
 bool IsTanhGrad(const NodeDef& node);
 bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);

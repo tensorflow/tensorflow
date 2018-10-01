@@ -186,7 +186,7 @@ class TestMultiGPUModel(test.TestCase):
     if not check_if_compatible_devices(gpus=gpus):
       return
 
-    with self.test_session():
+    with self.cached_session():
       inputs = keras.Input((4, 3))
       init_state = keras.Input((3,))
       outputs = keras.layers.SimpleRNN(

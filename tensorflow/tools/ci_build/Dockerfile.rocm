@@ -1,6 +1,5 @@
 # This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.
-
+# MIOpen and tensorflow.  
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
@@ -63,6 +62,9 @@ RUN apt-get update --allow-insecure-repositories && \
     rocm-profiler cxlactivitylogger && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+RUN cd ~ && git clone https://github.com/GPUOpen-ProfessionalCompute-Tools/HIP.git
+RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip

@@ -76,10 +76,6 @@ for now.
 )");
 
 REGISTER_OP("_XlaRun")
-    // TODO(sanjoy): We don't need constants and Tconstants and they should be
-    // removed.
-    .Input("constants: Tconstants")
-    .Attr("Tconstants: list(type) >= 0")
     .Input("args: Targs")
     .Attr("Targs: list(type) >= 0")
     .Output("results: Tresults")

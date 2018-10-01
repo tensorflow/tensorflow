@@ -336,9 +336,9 @@ bool HasAssociatedFunction(const NodeDef& node_def,
   }
 
   if (node_def.op() == FunctionLibraryDefinition::kGradientOp) {
-    // Skip gradient op. Gradient op has "f" attr, which is set to the function
-    // we are getting gradient for. That function is not associated with the op.
-    return false;
+    // Gradient op has "f" attr, which is set to the function we are getting
+    // gradient for. We need to functionalize the gradient function.
+    return true;
   }
 
   for (const auto& iter : node_def.attr()) {
@@ -357,17 +357,18 @@ std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
   if (flr->GetFunctionLibraryDefinition()->Contains(op)) {
     // This is a function call node.
     AttrValueMap attrs(node.attrs().begin(), node.attrs().end());
-    results.emplace_back(AssociatedFunctionInfo(op, attrs));
+    results.emplace_back(AssociatedFunctionInfo::FunctionCall(op, attrs));
   } else if (node.type_string() == FunctionLibraryDefinition::kGradientOp) {
-    // Skip gradient op. Gradient op has "f" attr, which is set to the function
-    // we are getting gradient for. That function is not associated with the op.
+    // This is a SymbolicGradient op.
+    AttrValueMap attrs(node.attrs().begin(), node.attrs().end());
+    results.emplace_back(AssociatedFunctionInfo::SymbolicGradient(op, attrs));
   } else {
     // Collect all function attrs for the node.
     for (auto& iter : node.attrs()) {
       if (iter.second.has_func()) {
         VLOG(2) << "Found function attr for node " << node.name() << ": "
                 << iter.first << " = " << iter.second.func().name();
-        results.emplace_back(AssociatedFunctionInfo(
+        results.emplace_back(AssociatedFunctionInfo::FunctionAttr(
             iter.second.func().name(), iter.second.func().attr(), iter.first));
       }
     }
@@ -408,6 +409,21 @@ Status RewriteAssociatedFunction(
                        edge->dst_input());
       }
       graph->RemoveNode(node);
+      break;
+    }
+    case AssociatedFunctionInfo::kSymbolicGradient: {
+      NameAttrList func;
+      TF_RETURN_IF_ERROR(GetNodeAttr(
+          node->attrs(), FunctionLibraryDefinition::kFuncAttr, &func));
+      GradientDef gradient_def;
+      gradient_def.set_function_name(func.name());
+      gradient_def.set_gradient_func(rewritten_function_name);
+      string original_grad_func = fld->FindGradient(func.name());
+      if (original_grad_func.empty()) {
+        TF_RETURN_IF_ERROR(fld->AddGradientDef(gradient_def));
+      } else if (original_grad_func != rewritten_function_name) {
+        TF_RETURN_IF_ERROR(fld->ReplaceGradient(gradient_def));
+      }
       break;
     }
     case AssociatedFunctionInfo::kFunctionAttr: {

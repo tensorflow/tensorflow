@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
@@ -453,7 +454,7 @@ gpu_py_test(
 
 gpu_py_test(
     name = "estimator_training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
         ":combinations",
@@ -651,8 +652,8 @@ py_library(
     name = "prefetching_ops_v2",
     srcs = ["prefetching_ops_v2.py"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:contrib_op_loader",
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",

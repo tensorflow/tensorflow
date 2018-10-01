@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -40,24 +41,31 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
   NodeDef fused_node;
   graph_utils::SetUniqueGraphNodeName("fused_map", graph->GetGraph(),
                                       &fused_node);
-
   fused_node.set_op("MapDataset");
   fused_node.add_input(parent_map_node.input(0));
-
-  auto copy_attribute = [](const string& attribute_name, const NodeDef& from,
-                           NodeDef* to) {
-    (*to->mutable_attr())[attribute_name] = from.attr().at(attribute_name);
-  };
 
   auto attr = parent_map_node.attr().at("f");
   *attr.mutable_func()->mutable_name() = fused_function.signature().name();
   (*fused_node.mutable_attr())["f"] = std::move(attr);
 
-  copy_attribute("Targuments", parent_map_node, &fused_node);
-
+  graph_utils::CopyAttribute("Targuments", parent_map_node, &fused_node);
   for (auto key : {"output_shapes", "output_types"})
-    copy_attribute(key, map_node, &fused_node);
+    graph_utils::CopyAttribute(key, map_node, &fused_node);
 
+  auto value_or_false = [](const AttrValue* attr) {
+    if (!attr) return false;
+    return attr->b();
+  };
+
+  const auto* first_parallelism =
+      gtl::FindOrNull(parent_map_node.attr(), "use_inter_op_parallelism");
+  const auto* second_parallelism =
+      gtl::FindOrNull(map_node.attr(), "use_inter_op_parallelism");
+  // Some graphs cannot execute with use_inter_op_parallelism=False, so we need
+  // to set it to true if one of the ops have it set to true.
+  if (value_or_false(first_parallelism) || value_or_false(second_parallelism)) {
+    (*fused_node.mutable_attr())["use_inter_op_parallelism"].set_b(true);
+  }
   return fused_node;
 }
 
@@ -123,8 +131,8 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     // fusion.
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
-    // TODO(prazek): we could also remove map functions from library if they
-    // are not used anymore.
+    // TODO(b/116285210): we could also remove map functions from library if
+    // they are not used anymore.
     nodes_to_delete.insert(parent_map_node->name());
     nodes_to_delete.insert(map_node->name());
   }

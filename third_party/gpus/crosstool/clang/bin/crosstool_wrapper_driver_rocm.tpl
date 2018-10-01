@@ -227,8 +227,7 @@ def main():
     # - guard every argument with ''
     modified_gpu_compiler_flags = []
     for flag in gpu_compiler_flags:
-      modified_gpu_compiler_flags.append(
-          "'" + flag + "'")
+      modified_gpu_compiler_flags.append("'" + flag + "'")
 
     HIPCC_ENV_list = HIPCC_ENV.split('=')
     HIPCC_ENV_dict = dict(zip(HIPCC_ENV_list[::2],HIPCC_ENV_list[1::2]))

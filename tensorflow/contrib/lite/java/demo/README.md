@@ -1,4 +1,6 @@
-# TF Lite Android App
+# TF Lite Android Image Classifier App Example
+
+A simple Android example that demonstrates image classification using the camera.
 
 ## Building in Android Studio with TensorFlow Lite AAR from JCenter.
 The build.gradle is configured to use TensorFlow Lite's nightly build.

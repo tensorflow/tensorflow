@@ -272,10 +272,11 @@ Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
       << "instruction " << instruction->name()
       << " has control successors and cannot be removed";
 
-  TF_RET_CHECK(instruction_iterators_.count(instruction) != 0);
-  auto inst_it = instruction_iterators_.at(instruction);
-  (*inst_it)->set_parent(nullptr);
-  instructions_.erase(inst_it);
+  auto inst_it = instruction_iterators_.find(instruction);
+  TF_RET_CHECK(inst_it != instruction_iterators_.end());
+  (*inst_it->second)->set_parent(nullptr);
+  instructions_.erase(inst_it->second);
+  instruction_iterators_.erase(inst_it);
   return Status::OK();
 }
 

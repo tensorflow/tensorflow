@@ -203,6 +203,7 @@ REGISTER_OP("StringStrip")
 REGISTER_OP("StringLength")
     .Input("input: string")
     .Output("output: int32")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("EncodeBase64")
@@ -242,5 +243,10 @@ REGISTER_OP("Substr")
       // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
       return shape_inference::BroadcastBinaryOpShapeFn(c);
     });
+
+REGISTER_OP("UnicodeScript")
+    .Input("input: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 }  // namespace tensorflow

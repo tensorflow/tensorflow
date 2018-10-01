@@ -33,6 +33,10 @@ tf_class {
     argspec: "args=[\'self\', \'input_fn\', \'steps\', \'hooks\', \'checkpoint_path\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "experimental_feature_importances"
+    argspec: "args=[\'self\', \'normalize\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "experimental_predict_with_explanations"
     argspec: "args=[\'self\', \'input_fn\', \'predict_keys\', \'hooks\', \'checkpoint_path\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }

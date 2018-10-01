@@ -17,9 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 
 
 def ignore_errors():
@@ -51,16 +50,16 @@ def ignore_errors():
   return _apply_fn
 
 
-class _IgnoreErrorsDataset(dataset_ops.Dataset):
+class _IgnoreErrorsDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that silently ignores errors when computing its input."""
 
   def __init__(self, input_dataset):
     """See `Dataset.ignore_errors()` for details."""
-    super(_IgnoreErrorsDataset, self).__init__()
+    super(_IgnoreErrorsDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.ignore_errors_dataset(
+    return gen_experimental_dataset_ops.experimental_ignore_errors_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))
 

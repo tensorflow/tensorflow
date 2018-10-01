@@ -59,6 +59,7 @@ from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import rmsprop
 from tensorflow.python.util import tf_inspect
 
 
@@ -354,6 +355,8 @@ gradient_descent_optimizer_v1_fn = NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
 adagrad_optimizer_v1_fn = NamedObject(
     "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
+rmsprop_optimizer_v1_fn = NamedObject(
+    "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 optimizers_v1 = [adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn,
                  adagrad_optimizer_v1_fn]
 

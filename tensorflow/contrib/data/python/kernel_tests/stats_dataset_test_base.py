@@ -19,10 +19,10 @@ from __future__ import print_function
 
 
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.platform import test
+from tensorflow.python.data.kernel_tests import test_base
 
 
-class StatsDatasetTestBase(test.TestCase):
+class StatsDatasetTestBase(test_base.DatasetTestBase):
   """Base class for testing statistics gathered in `StatsAggregator`."""
 
   def _assertSummaryContains(self, summary_str, tag):

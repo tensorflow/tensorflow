@@ -69,9 +69,9 @@ class TestCase(test.TestCase):
 class ExternalOptimizerInterfaceTest(TestCase):
 
   def test_optimize(self):
-    scalar = variables.Variable(random_ops.random_normal([]), 'scalar')
-    vector = variables.Variable(random_ops.random_normal([2]), 'vector')
-    matrix = variables.Variable(random_ops.random_normal([2, 3]), 'matrix')
+    scalar = variables.VariableV1(random_ops.random_normal([]), 'scalar')
+    vector = variables.VariableV1(random_ops.random_normal([2]), 'vector')
+    matrix = variables.VariableV1(random_ops.random_normal([2, 3]), 'matrix')
 
     minimum_location = constant_op.constant(np.arange(9), dtype=dtypes.float32)
 
@@ -96,7 +96,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
   def test_callbacks(self):
     vector_val = np.array([7., -2.], dtype=np.float32)
-    vector = variables.Variable(vector_val, 'vector')
+    vector = variables.VariableV1(vector_val, 'vector')
 
     minimum_location_val = np.arange(2)
     minimum_location = constant_op.constant(
@@ -160,7 +160,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
                                 rtol=1e-5,
                                 atol=1e-5,
                                 dimension=5):
-    x = variables.Variable(array_ops.zeros(dimension))
+    x = variables.VariableV1(array_ops.zeros(dimension))
     optimizer = external_optimizer.ScipyOptimizerInterface(
         self._objective(x), method=method, options=options)
 
@@ -173,7 +173,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
   def test_unconstrained(self):
 
     dimension = 5
-    x = variables.Variable(array_ops.zeros(dimension))
+    x = variables.VariableV1(array_ops.zeros(dimension))
     optimizer = external_optimizer.ScipyOptimizerInterface(self._objective(x))
 
     with self.cached_session() as sess:
@@ -230,7 +230,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
   def test_nonlinear_programming(self):
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
     loss = math_ops.reduce_sum(math_ops.square(vector))
@@ -249,7 +249,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
   def test_scalar_bounds(self):
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
     loss = math_ops.reduce_sum(math_ops.square(vector))
@@ -267,7 +267,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
   def test_vector_bounds(self):
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
     loss = math_ops.reduce_sum(math_ops.square(vector))
@@ -287,7 +287,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     # after running optimizer.minimize().
     # Bug reference: b/64065260
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
     loss = math_ops.reduce_sum(math_ops.square(vector))
 
     optimizer = external_optimizer.ScipyOptimizerInterface(
@@ -301,7 +301,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
   def test_callbacks(self):
     vector_val = np.array([7., -2.], dtype=np.float32)
-    vector = variables.Variable(vector_val, 'vector')
+    vector = variables.VariableV1(vector_val, 'vector')
 
     minimum_location_val = np.arange(2)
     minimum_location = constant_op.constant(

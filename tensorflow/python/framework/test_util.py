@@ -24,8 +24,8 @@ from collections import OrderedDict
 import contextlib
 import gc
 import itertools
-import os
 import math
+import os
 import random
 import re
 import tempfile
@@ -406,11 +406,14 @@ def with_c_shapes(cls):
   return cls
 
 
-def enable_cond_v2(fn):
-  """Decorator for enabling CondV2 on a test.
+def enable_control_flow_v2(fn):
+  """Decorator for enabling CondV2 and WhileV2 on a test.
 
-  Note this enables using CondV2 after running the test class's setup/teardown
-  methods.
+  Note this enables using CondV2 and WhileV2 after running the test class's
+  setup/teardown methods.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
 
   Args:
     fn: the function to be wrapped
@@ -420,21 +423,56 @@ def enable_cond_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops.ENABLE_COND_V2
+    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
+    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
     control_flow_ops.ENABLE_COND_V2 = True
+    control_flow_ops.ENABLE_WHILE_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = prev_value
+      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
+      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
 
   return wrapper
 
 
-def with_cond_v2(cls):
-  """Adds methods that call original methods but with CondV2 enabled.
+def with_control_flow_v2(cls):
+  """Adds methods that call original methods with WhileV2 and CondV2 enabled.
 
-  Note this enables CondV2 in new methods after running the test class's
-  setup method.
+  Note this enables CondV2 and WhileV2 in new methods after running the test
+  class's setup method.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
+
+  If a test function has _disable_control_flow_v2 attr set to True (using the
+  @disable_control_flow_v2 decorator), the v2 function is not generated for it.
+
+  Example:
+
+  @test_util.with_control_flow_v2
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    @test_util.disable_control_flow_v2("b/xyzabc")
+    def testDisabledForV2(self):
+      ...
+
+  Generated class:
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    def testEnabledForV2WithControlFlowV2(self):
+      // Enable V2 flags.
+      testEnabledForV2(self)
+      // Restore V2 flags.
+
+    def testDisabledForV2(self):
+      ...
 
   Args:
     cls: class to decorate
@@ -442,13 +480,31 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCondV2", enable_cond_v2(value))
+    if (callable(value) and name.startswith("test") and
+        not getattr(value, "_disable_control_flow_v2", False)):
+      setattr(cls, name + "WithControlFlowV2", enable_control_flow_v2(value))
   return cls
+
+
+def disable_control_flow_v2(unused_msg):
+  """Decorator for a function in a with_control_flow_v2 enabled test class.
+
+  Blocks the function from being run with v2 control flow ops.
+
+  Args:
+    unused_msg: Reason for disabling.
+
+  Returns:
+    The wrapped function with _disable_control_flow_v2 attr set to True.
+  """
+  def wrapper(func):
+    func._disable_control_flow_v2 = True
+    return func
+  return wrapper
 
 
 def assert_no_new_pyobjects_executing_eagerly(f):
@@ -909,7 +965,11 @@ class ErrorLoggingSession(session.Session):
     try:
       return super(ErrorLoggingSession, self).run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(str(e))
+      # Note: disable the logging for OutOfRangeError, which makes the output
+      # of tf.data tests hard to read, because OutOfRangeError is used as the
+      # signal completion
+      if not isinstance(e, errors.OutOfRangeError):
+        logging.error(str(e))
       raise
 
 
@@ -1416,35 +1476,36 @@ class TensorFlowTestCase(googletest.TestCase):
                                                                      b.shape)
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
+    msgs = [msg]
     if not np.allclose(a, b, rtol=rtol, atol=atol):
-      # Prints more details than np.testing.assert_allclose.
+      # Adds more details to np.testing.assert_allclose.
       #
       # NOTE: numpy.allclose (and numpy.testing.assert_allclose)
       # checks whether two arrays are element-wise equal within a
       # tolerance. The relative difference (rtol * abs(b)) and the
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
-      # print out which elements violate such conditions.
+      # tell user which elements violate such conditions.
       cond = np.logical_or(
           np.abs(a - b) > atol + rtol * np.abs(b),
           np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
-        print("not close where = ", np.where(cond))
+        msgs.append("not close where = {}".format(np.where(cond)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not close lhs = ", x)
-      print("not close rhs = ", y)
-      print("not close dif = ", np.abs(x - y))
-      print("not close tol = ", atol + rtol * np.abs(y))
-      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
+      msgs.append("not close lhs = {}".format(x))
+      msgs.append("not close rhs = {}".format(y))
+      msgs.append("not close dif = {}".format(np.abs(x - y)))
+      msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
+      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
       np.testing.assert_allclose(
-          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
+          a, b, rtol=rtol, atol=atol, err_msg="\n".join(msgs), equal_nan=True)
 
   def _assertAllCloseRecursive(self,
                                a,
@@ -1626,19 +1687,20 @@ class TensorFlowTestCase(googletest.TestCase):
         np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
     ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
+    msgs = [msg]
     if not np.all(same):
-      # Prints more details than np.testing.assert_array_equal.
+      # Adds more details to np.testing.assert_array_equal.
       diff = np.logical_not(same)
       if a.ndim:
         x = a[np.where(diff)]
         y = b[np.where(diff)]
-        print("not equal where = ", np.where(diff))
+        msgs.append("not equal where = {}".format(np.where(diff)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not equal lhs = ", x)
-      print("not equal rhs = ", y)
-      np.testing.assert_array_equal(a, b, err_msg=msg)
+      msgs.append("not equal lhs = {}".format(x))
+      msgs.append("not equal rhs = {}".format(y))
+      np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   def assertAllGreater(self, a, comparison_target):
     """Assert element values are all greater than a target value.

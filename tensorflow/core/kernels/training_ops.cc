@@ -561,7 +561,9 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    mutex* mu = GetTrainingVariableMutex(ctx, 0);
+    Var* resource;
+    mutex* mu = GetTrainingVariableMutex(ctx, 0, &resource);
+    core::ScopedUnref scoped_unref(resource);
     if (use_exclusive_lock_ && mu != nullptr) {
       mutex_lock l1(*mu);
       // Don't try to acquire a lock on the second ref as they share the same
@@ -710,7 +712,9 @@ class SparseApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    mutex* mu = GetTrainingVariableMutex(ctx, 0);
+    Var* var;
+    mutex* mu = GetTrainingVariableMutex(ctx, 0, &var);
+    core::ScopedUnref scoped_unref(var);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
     //

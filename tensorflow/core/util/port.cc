@@ -47,10 +47,10 @@ bool GpuSupportsHalfMatMulAndConv() {
 }
 
 bool IsMklEnabled() {
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
   return true;
 #else
   return false;
-#endif
+#endif  // INTEL_MKL && ENABLE_MKL
 }
 }  // end namespace tensorflow

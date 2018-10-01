@@ -496,6 +496,61 @@ Status HloEvaluator::HandleIsFinite(HloInstruction* is_finite) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleReal(HloInstruction* real) {
+  auto operand = real->operand(0);
+  switch (operand->shape().element_type()) {
+    case BF16: {
+      auto result_or = ElementWiseUnaryOpImpl<bfloat16, bfloat16>(
+          real, [](bfloat16 elem_operand) { return elem_operand; },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
+    case C64: {
+      auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
+          real, [](complex64 elem_operand) { return std::real(elem_operand); },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
+    case F16: {
+      auto result_or = ElementWiseUnaryOpImpl<Eigen::half, Eigen::half>(
+          real, [](Eigen::half elem_operand) { return elem_operand; },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
+    case F32: {
+      auto result_or = ElementWiseUnaryOpImpl<float, float>(
+          real, [](float elem_operand) { return elem_operand; },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
+    case F64: {
+      auto result_or = ElementWiseUnaryOpImpl<double, double>(
+          real, [](double elem_operand) { return elem_operand; },
+          GetEvaluatedLiteralFor(operand));
+      TF_ASSIGN_OR_RETURN(evaluated_[real], std::move(result_or));
+      break;
+    }
+    default:
+      LOG(FATAL) << "HandleReal: unknown/unhandled primitive type: "
+                 << PrimitiveType_Name(operand->shape().element_type());
+  }
+
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleImag(HloInstruction* imag) {
+  auto result_or = ElementWiseUnaryOpImpl<float, complex64>(
+      imag, [](complex64 elem_operand) { return std::imag(elem_operand); },
+      GetEvaluatedLiteralFor(imag->operand(0)));
+
+  TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleCompare(HloInstruction* compare) {
   HloOpcode opcode = compare->opcode();
   auto lhs = compare->operand(0);

@@ -611,7 +611,7 @@ class LSTMStateTuple(_LSTMStateTuple):
 # TODO(scottzhu): Stop exporting this class in TF 2.0.
 @tf_export("nn.rnn_cell.BasicLSTMCell")
 class BasicLSTMCell(LayerRNNCell):
-  """DEPRECATED: Please use @{tf.nn.rnn_cell.LSTMCell} instead.
+  """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
   Basic LSTM recurrent network cell.
 

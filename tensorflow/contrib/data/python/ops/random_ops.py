@@ -25,7 +25,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class RandomDataset(dataset_ops.Dataset):
+class RandomDataset(dataset_ops.DatasetSource):
   """A `Dataset` of pseudorandom values."""
 
   def __init__(self, seed=None):
