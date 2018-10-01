@@ -2380,7 +2380,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Transpose dimensions not a permutation of the operand dimensions.");
+        "Transpose dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
