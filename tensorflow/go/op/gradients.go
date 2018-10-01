@@ -21,19 +21,14 @@ import tf "github.com/tensorflow/tensorflow/tensorflow/go"
 // Gradients adds gradients computation ops to the graph according to scope.
 //
 // Arguments:
-//  prefix: unique string prefix applied before the names of nodes added to the graph to
-//    compute gradients. If null, will use "Gradients".
 //  y: output of the function to derive
 //  x: inputs of the function for which partial derivatives are computed
 //  dx: if not null, the partial derivatives of some loss function L w.r.t. y
 //
 //  return the partial derivatives
-func Gradients(scope *Scope, prefix string, y []tf.Output, x []tf.Output, dx ...tf.Output) (output []tf.Output) {
+func Gradients(scope *Scope, y []tf.Output, x []tf.Output, dx ...tf.Output) (output []tf.Output) {
 	var err error
-	if prefix == "" {
-		prefix = "Gradients"
-	}
-	if output, err = scope.graph.AddGradients(scope.opName(scope.uniqueName(prefix)), y, x, dx); err != nil {
+	if output, err = scope.graph.AddGradients(scope.opName(scope.uniqueName("Gradients")), y, x, dx); err != nil {
 		scope.UpdateErr("Gradients", err)
 		return
 	}
