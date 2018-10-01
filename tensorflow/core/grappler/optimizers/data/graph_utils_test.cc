@@ -24,6 +24,18 @@ namespace grappler {
 namespace graph_utils {
 namespace {
 
+TEST(GraphUtilsTest, GetFirstElementIndexWithPredicate) {
+  std::vector<int> vec({1, 2, 3, 4, 5, 6});
+  auto result = GetFirstElementIndexWithPredicate(
+      [](int elem) { return elem % 3 == 0; }, vec);
+
+  EXPECT_EQ(result, 2);
+
+  result = GetFirstElementIndexWithPredicate(
+      [](int elem) { return elem % 7 == 0; }, vec);
+  EXPECT_EQ(result, -1);
+}
+
 TEST(GraphUtilsTest, AddScalarConstNodeBool) {
   GraphDef graph_def;
   MutableGraphView graph(&graph_def);

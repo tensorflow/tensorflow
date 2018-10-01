@@ -64,10 +64,9 @@ class BroadcastToOp : public XlaOpKernel {
                                     output_shape.DebugString()));
 
         broadcast_dims.push_back(broadcast_shape.size());
-        if (output_dims[i] == input_dims[i] || input_dims[i] == 1) {
+        if (output_dims[i] == input_dims[i]) {
           broadcast_shape.push_back(output_dims[i]);
-        }
-        if (output_dims[i] != input_dims[i]) {
+        } else if (output_dims[i] != input_dims[i]) {
           // Add dimensions [I, O/I], which we will later flatten to just
           // [O]. We must do this in two phases since XLA broadcasting does not
           // support tiling.

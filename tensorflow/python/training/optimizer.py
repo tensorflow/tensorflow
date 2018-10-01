@@ -471,7 +471,10 @@ class Optimizer(
 
       if var_list is None:
         var_list = tape.watched_variables()
-      grads = tape.gradient(loss_value, var_list, grad_loss)
+      # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+      # to be executed.
+      with ops.control_dependencies([loss_value]):
+        grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
 
     # Non-callable/Tensor loss case
@@ -585,7 +588,7 @@ class Optimizer(
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s." %
-                       ([str(v) for _, _, v in converted_grads_and_vars],))
+                       ([str(v) for _, v, _ in converted_grads_and_vars],))
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []

@@ -26,6 +26,14 @@ config_setting(
     },
 )
 
+# Enables inclusion of TensorFlow kernels via the TF Lite Flex delegate.
+# WARNING: This build flag is experimental and subject to change.
+config_setting(
+    name = "with_tflite_flex",
+    define_values = {"with_tflite_flex": "true"},
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "schema_fbs_version",
     hdrs = ["version.h"],
@@ -157,6 +165,10 @@ cc_library(
         "stderr_reporter.h",
     ],
     copts = tflite_copts(),
+    defines = select({
+        ":with_tflite_flex": ["TFLITE_FLEX"],
+        "//conditions:default": [],
+    }),
     linkopts = [
     ] + select({
         "//tensorflow:android": [
@@ -180,7 +192,12 @@ cc_library(
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
         "//tensorflow/contrib/lite/profiling:profiler",
         "//tensorflow/contrib/lite/schema:schema_fbs",
-    ],
+    ] + select({
+        ":with_tflite_flex": [
+            "//tensorflow/contrib/lite/delegates/flex:delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(

@@ -61,7 +61,7 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
     with self.test_session(
         use_gpu=True,
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      u = variables.Variable(42.0, name="original_u")
+      u = variables.VariableV1(42.0, name="original_u")
       for _ in xrange(50 * 1000):
         u = array_ops.identity(u)
       sess.run(variables.global_variables_initializer())
@@ -94,7 +94,7 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
 
       u_init = constant_op.constant(
           u_init_val_array, dtype=dtypes.float32, name="u_init")
-      u = variables.Variable(u_init, name="u")
+      u = variables.VariableV1(u_init, name="u")
 
       def watch_fn(fetches, feeds):
         del fetches, feeds  # Unused by this watch_fn.
@@ -117,7 +117,7 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
           b"", b"spam", b"A" * 2500 * 1024, b"B" * 2500 * 1024, b"egg", b""]
       u_init = constant_op.constant(
           u_init_val, dtype=dtypes.string, name="u_init")
-      u = variables.Variable(u_init, name="u")
+      u = variables.VariableV1(u_init, name="u")
 
       def watch_fn(fetches, feeds):
         del fetches, feeds
@@ -146,7 +146,7 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
 
       u_init = constant_op.constant(
           u_init_val_array, dtype=dtypes.string, name="u_init")
-      u = variables.Variable(u_init, name="u")
+      u = variables.VariableV1(u_init, name="u")
 
       def watch_fn(fetches, feeds):
         del fetches, feeds
@@ -167,7 +167,7 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
       u_init = constant_op.constant(
           [], dtype=dtypes.float32, shape=[0], name="u_init")
-      u = variables.Variable(u_init, name="u")
+      u = variables.VariableV1(u_init, name="u")
 
       def watch_fn(fetches, feeds):
         del fetches, feeds
@@ -189,7 +189,7 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
       u_init = constant_op.constant(
           [], dtype=dtypes.string, shape=[0], name="u_init")
-      u = variables.Variable(u_init, name="u")
+      u = variables.VariableV1(u_init, name="u")
 
       def watch_fn(fetches, feeds):
         del fetches, feeds

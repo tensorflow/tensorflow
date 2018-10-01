@@ -118,6 +118,11 @@ class TPUContext(object):
     return self._internal_ctx.num_hosts
 
   @property
+  def current_host(self):
+    """The current host index for the TPU system."""
+    return self._invocation_index
+
+  @property
   def num_of_replicas_per_host(self):
     """The number of replicas for each host."""
     if self._internal_ctx.model_parallelism_enabled:
@@ -698,7 +703,7 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
       config.tpu_config.num_cores_per_replica is None):
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
-        'Please fix as soon as possible (leaving num_shards as None.')
+        'Please fix as soon as possible (leaving num_shards as None.)')
     return _OneCoreTPUContext(config, train_batch_size, eval_batch_size,
                               predict_batch_size, use_tpu)
 

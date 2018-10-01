@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -77,6 +78,34 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdSparseSplit) {
       EXPECT_EQ(arg_id, OpOutputPortIdToArgId(b_node_def, *b_op_def, port_id));
     }
   }
+}
+
+TEST_F(GraphViewTest, ParseSingleExample) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const<string>(s.WithOpName("a"), "", {});
+  Output b = ops::Const<int64>(s.WithOpName("b"), 1, {1, 1});
+  ops::ParseSingleExample c(s.WithOpName("c"), a, {b, b}, 2, {"w", "x"},
+                            {"y", "z"}, {DT_INT64, DT_INT64}, {{1}, {1}});
+
+  GraphDef graph_def;
+  TF_CHECK_OK(s.ToGraphDef(&graph_def));
+  GraphView graph_view(&graph_def);
+
+  const NodeDef& c_node_def = *graph_view.GetNode("c");
+
+  const OpDef* c_op_def = nullptr;
+  EXPECT_TRUE(
+      OpRegistry::Global()->LookUpOpDef(c_node_def.op(), &c_op_def).ok());
+
+  EXPECT_EQ(0, OpOutputPortIdToArgId(c_node_def, *c_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(c_node_def, *c_op_def, 1));
+  EXPECT_EQ(1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 2));
+  EXPECT_EQ(1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 3));
+  EXPECT_EQ(2, OpOutputPortIdToArgId(c_node_def, *c_op_def, 4));
+  EXPECT_EQ(2, OpOutputPortIdToArgId(c_node_def, *c_op_def, 5));
+  EXPECT_EQ(3, OpOutputPortIdToArgId(c_node_def, *c_op_def, 6));
+  EXPECT_EQ(3, OpOutputPortIdToArgId(c_node_def, *c_op_def, 7));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 8));
 }
 
 TEST_F(GraphViewTest, BasicGraph) {

@@ -212,7 +212,7 @@ class SumReductionTest(BaseReductionTest):
 
     arr = np.ones([68000], dtype=np.float16)
 
-    with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+    with self.session(graph=ops.Graph(), use_gpu=True) as sess:
       tf_arr = variables.Variable(arr)
       variables.global_variables_initializer().run()
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
@@ -235,7 +235,7 @@ class SumReductionTest(BaseReductionTest):
       col_sum = np.sum(arr, axis=0)
       row_sum = np.sum(arr, axis=1)
 
-      with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+      with self.session(graph=ops.Graph(), use_gpu=True) as sess:
         tf_row_sum = self._tf_reduce(arr, 1, False)
         tf_col_sum = self._tf_reduce(arr, 0, False)
         tf_out_row, tf_out_col = sess.run([tf_row_sum, tf_col_sum])
@@ -249,7 +249,7 @@ class SumReductionTest(BaseReductionTest):
           sum_y = np.sum(arr, axis=1)
           sum_xz = np.sum(arr, axis=(0, 2))
 
-          with self.test_session(graph=ops.Graph(), use_gpu=True) as sess:
+          with self.session(graph=ops.Graph(), use_gpu=True) as sess:
             tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce(arr, 1, False)
             tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])

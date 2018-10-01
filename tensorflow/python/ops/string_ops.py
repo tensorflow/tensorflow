@@ -36,10 +36,12 @@ from tensorflow.python.ops import math_ops
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+# pylint: disable=g-bad-import-order
 from tensorflow.python.ops.gen_string_ops import *
 from tensorflow.python.util import compat as util_compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+# pylint: enable=g-bad-import-order
 # pylint: enable=wildcard-import
 
 
@@ -327,6 +329,17 @@ def reduce_join(inputs, axis=None,
 
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
     gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
+
+
+# This wrapper provides backwards compatibility for code that predates the
+# unit argument and that passed 'name' as a positional argument.
+@tf_export("strings.length")
+def string_length(input, name=None, unit="BYTE"):
+  return gen_string_ops.string_length(input, unit=unit, name=name)
+
+
+string_length.__doc__ = gen_string_ops.string_length.__doc__
+
 
 ops.NotDifferentiable("RegexReplace")
 ops.NotDifferentiable("StringToHashBucket")

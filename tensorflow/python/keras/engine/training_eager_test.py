@@ -192,6 +192,20 @@ class CorrectnessTest(test.TestCase):
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
     self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
+  def test_no_loss_in_call(self):
+
+    class HasLoss(keras.layers.Layer):
+
+      def call(self, x):
+        self.add_loss(x)
+        return x
+
+    layer = HasLoss()
+    with self.assertRaises(RuntimeError):
+      layer(1.)
+
+    with ops.Graph().as_default():
+      layer(1.)
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

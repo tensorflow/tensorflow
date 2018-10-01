@@ -57,6 +57,7 @@ upper_tabs:
           path: /lite/tfmobile/optimizing
 
     - name: API
+      skip_translation: true
       contents:
       - title: API
         path: /api_docs/python/tf/contrib/lite

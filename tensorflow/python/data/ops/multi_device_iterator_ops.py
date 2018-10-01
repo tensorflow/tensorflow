@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
@@ -115,6 +116,10 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
+  def _inputs(self):
+    # TODO(b/116506223): Determine which datasets should be used as inputs here.
+    return []
+
   @property
   def output_types(self):
     return self._output_types
@@ -129,7 +134,13 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
 
 
 class MultiDeviceIterator(object):
-  """An iterator over multiple devices."""
+  """An iterator over multiple devices.
+
+  @compatibility(eager)
+  MultiDeviceIterator isn't currently supported in Eager mode but support is
+  coming soon.
+  @end_compatibility
+  """
 
   def __init__(self,
                dataset,
@@ -146,7 +157,14 @@ class MultiDeviceIterator(object):
       prefetch_buffer_size: if > 1, then we setup a buffer on each device
         to prefetch into.
       source_device: The host device to place the `dataset` on.
+
+    Raises:
+      RuntimeError: If run in Eager mode.
     """
+    if context.executing_eagerly():
+      # TODO(rohanj): Fix this. Tracking bug: b/116467184
+      raise RuntimeError("MultiDeviceIterator is not currently supported in "
+                         "Eager mode.")
     self._dataset = dataset
     self._devices = devices
     self._source_device = source_device

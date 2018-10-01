@@ -123,6 +123,8 @@ class ReplaceTransformer(gast.NodeTransformer):
         self._check_inner_children_have_context(e)
       for e in node.values:
         self._check_inner_children_have_context(e)
+    elif isinstance(node, gast.Index):
+      self._check_inner_children_have_context(node.value)
     elif isinstance(node, gast.Subscript):
       self._check_inner_children_have_context(node.value)
       self._check_inner_children_have_context(node.slice)

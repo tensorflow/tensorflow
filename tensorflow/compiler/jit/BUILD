@@ -478,6 +478,7 @@ tf_cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [
+        "build_xla_ops_pass_test.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
@@ -486,6 +487,7 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":node_matchers",
         ":xla_cluster_util",
         ":xla_gpu_device",
         "//tensorflow/cc:cc_ops",

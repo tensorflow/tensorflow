@@ -227,7 +227,7 @@ class HloComputation {
   void UpdateReachabilityThroughInstruction(
       const HloInstruction* instruction, HloReachabilityMap* reachability_map);
 
-  int64 instruction_count() const { return instructions_.size(); }
+  int64 instruction_count() const { return instruction_iterators_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -439,7 +439,7 @@ class HloComputation {
   // instruction pointer to location in the list for fast lookup.
   using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
-  std::unordered_map<const HloInstruction*, InstructionList::iterator>
+  tensorflow::gtl::FlatMap<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;

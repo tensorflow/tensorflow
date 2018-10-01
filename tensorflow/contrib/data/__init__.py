@@ -44,6 +44,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@group_by_reducer
 @@group_by_window
 @@ignore_errors
+@@latency_stats
 @@make_batched_features_dataset
 @@make_csv_dataset
 @@make_saveable_from_iterator
@@ -57,9 +58,11 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@reduce_dataset
 @@sample_from_datasets
 @@scan
+@@set_stats_aggregator
 @@shuffle_and_repeat
 @@sliding_window_batch
 @@sloppy_interleave
+@@StatsAggregator
 @@unbatch
 @@unique
 
@@ -111,6 +114,9 @@ from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
+from tensorflow.contrib.data.python.ops.stats_ops import latency_stats
+from tensorflow.contrib.data.python.ops.stats_ops import set_stats_aggregator
+from tensorflow.contrib.data.python.ops.stats_ops import StatsAggregator
 from tensorflow.contrib.data.python.ops.unique import unique
 from tensorflow.contrib.data.python.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional

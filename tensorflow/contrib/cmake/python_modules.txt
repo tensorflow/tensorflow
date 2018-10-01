@@ -132,7 +132,6 @@ tensorflow/contrib/cudnn_rnn/python
 tensorflow/contrib/cudnn_rnn/python/layers
 tensorflow/contrib/cudnn_rnn/python/ops
 tensorflow/contrib/data
-tensorflow/contrib/data/kernels
 tensorflow/contrib/data/python
 tensorflow/contrib/data/python/kernel_tests
 tensorflow/contrib/data/python/kernel_tests/serialization

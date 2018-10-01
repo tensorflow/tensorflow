@@ -128,6 +128,38 @@ TEST_F(PinToHostOptimizerTest, TopologicalSort) {
   EXPECT_EQ(found, 4);
 }
 
+TEST_F(PinToHostOptimizerTest, NoSwap) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  // `b` should be too big to swap, consequently `c` should not be swapped.
+  // PinToHostOptimizer should then detect that `a` should not be swapped.
+  Output a = ops::Const(s.WithOpName("a"), 1, {1, 1});
+  Output b = ops::Const(s.WithOpName("b"), 1, {1, 1024 * 1024});
+  Output c = ops::MatMul(s.WithOpName("c"), a, b);
+
+  GrapplerItem item;
+  item.fetch = {"a", "b", "c"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  PinToHostOptimizer optimizer(RewriterConfig::ON);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  auto tensors = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); ++i) {
+    test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+  }
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    EXPECT_TRUE(node.device().empty());
+    ++found;
+  }
+  EXPECT_EQ(found, 3);
+}
+
 TEST_F(PinToHostOptimizerTest, PortIdToArgId) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 1, {1, 2, 3});

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -40,12 +41,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class BatchDatasetTest(test.TestCase, parameterized.TestCase):
+class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
@@ -723,7 +720,7 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual([element for _ in range(10)], sess.run(get_next))
 
 
-class RestructuredDatasetTest(test.TestCase):
+class RestructuredDatasetTest(test_base.DatasetTestBase):
 
   def test_assert_element_shape(self):
 

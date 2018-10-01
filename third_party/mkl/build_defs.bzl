@@ -1,9 +1,11 @@
 # -*- Python -*-
 """Skylark macros for MKL.
-if_mkl is a conditional to check if MKL is enabled or not.
-if_mkl_ml is a conditional to check if MKL-ML is enabled.
+
+if_mkl is a conditional to check if we are building with MKL.
+if_mkl_ml is a conditional to check if we are building with MKL-ML.
 if_mkl_ml_only is a conditional to check for MKL-ML-only (no MKL-DNN) mode.
 if_mkl_lnx_x64 is a conditional to check for MKL
+if_enable_mkl is a conditional to check if building with MKL and MKL is enabled.
 
 mkl_repository is a repository rule for creating MKL repository rule that can
 be pointed to either a local folder, or download it from the internet.
@@ -24,7 +26,7 @@ def if_mkl(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:using_mkl")): if_true,
+        str(Label("//third_party/mkl:build_with_mkl")): if_true,
         "//conditions:default": if_false,
     })
 
@@ -40,8 +42,8 @@ def if_mkl_ml(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl_dnn:using_mkl_dnn_only")): if_false,
-        str(Label("//third_party/mkl:using_mkl")): if_true,
+        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_only")): if_false,
+        str(Label("//third_party/mkl:build_with_mkl")): if_true,
         "//conditions:default": if_false,
     })
 
@@ -56,12 +58,12 @@ def if_mkl_ml_only(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:using_mkl_ml_only")): if_true,
+        str(Label("//third_party/mkl:build_with_mkl_ml_only")): if_true,
         "//conditions:default": if_false,
     })
 
 def if_mkl_lnx_x64(if_true, if_false = []):
-    """Shorthand to select() on if MKL is on and the target is Linux x86-64.
+    """Shorthand to select() if building with MKL and the target is Linux x86-64.
 
     Args:
       if_true: expression to evaluate if building with MKL is enabled and the
@@ -73,7 +75,24 @@ def if_mkl_lnx_x64(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:using_mkl_lnx_x64")): if_true,
+        str(Label("//third_party/mkl:build_with_mkl_lnx_x64")): if_true,
+        "//conditions:default": if_false,
+    })
+
+def if_enable_mkl(if_true, if_false = []):
+    """Shorthand to select() if we are building with MKL and MKL is enabled.
+
+    This is only effective when built with MKL.
+
+    Args:
+      if_true: expression to evaluate if building with MKL and MKL is enabled
+      if_false: expression to evaluate if building without MKL or MKL is not enabled.
+
+    Returns:
+      A select evaluating to either if_true or if_false as appropriate.
+    """
+    return select({
+        str(Label("//third_party/mkl:enable_mkl")): if_true,
         "//conditions:default": if_false,
     })
 
@@ -87,9 +106,9 @@ def mkl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        str(Label("//third_party/mkl_dnn:using_mkl_dnn_only")): ["@mkl_dnn"],
-        str(Label("//third_party/mkl:using_mkl_ml_only")): ["//third_party/mkl:intel_binary_blob"],
-        str(Label("//third_party/mkl:using_mkl")): [
+        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_only")): ["@mkl_dnn"],
+        str(Label("//third_party/mkl:build_with_mkl_ml_only")): ["//third_party/mkl:intel_binary_blob"],
+        str(Label("//third_party/mkl:build_with_mkl")): [
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn",
         ],

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import sequential
@@ -290,7 +291,9 @@ def _in_place_subclassed_model_reset(model):
     if isinstance(value, Layer):
       attributes_cache[name] = value
       assert value in model._layers
-    elif isinstance(value, (list, tuple)) and name not in ('layers', '_layers'):
+    elif isinstance(
+        value, (list, tuple)) and name not in ('layers', '_layers',
+                                               'stateful_metric_functions'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
@@ -466,10 +469,10 @@ def clone_and_build_model(
     clone.compile(
         optimizer,
         model.loss,
-        metrics=model.metrics,
+        metrics=metrics_module.clone_metrics(model.metrics),
         loss_weights=model.loss_weights,
         sample_weight_mode=model.sample_weight_mode,
-        weighted_metrics=model.weighted_metrics,
+        weighted_metrics=metrics_module.clone_metrics(model.weighted_metrics),
         target_tensors=target_tensors)
 
   return clone
