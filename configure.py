@@ -884,7 +884,7 @@ def set_tf_cudnn_version(environ_cp):
   """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
   ask_cudnn_version = (
       'Please specify the cuDNN version you want to use. '
-      '[Leave empty to default to cuDNN %s.0]: ') % _DEFAULT_CUDNN_VERSION
+      '[Leave empty to default to cuDNN %s]: ') % _DEFAULT_CUDNN_VERSION
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_cudnn_version = get_from_env_or_user_or_default(
