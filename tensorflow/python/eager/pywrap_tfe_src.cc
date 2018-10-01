@@ -1567,9 +1567,8 @@ void TapeSetRecordOperation(
   }
 
   for (TFE_Py_Tape* tape : SafeTapeSet()) {
-    auto* function = backward_function_getter();
     tape->tape->RecordOperation(op_type_str, output_info, input_ids,
-                                input_dtypes, function,
+                                input_dtypes, backward_function_getter,
                                 backward_function_killer);
   }
 }
