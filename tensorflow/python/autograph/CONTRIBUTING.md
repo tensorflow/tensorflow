@@ -9,8 +9,6 @@ In preparation for TF 2.0, we moved the code base of AutoGraph from
 does not impact functionality, and AutoGraph will remain accessible under
 `tensorflow.contrib.autograph` until `tensorflow.contrib` is retired.
 
-When 
-
 ## TensorFlow Code of Conduct
 Please review and follow the [TensorFlow Code of Conduct](../../CODE_OF_CONDUCT.md).
 
