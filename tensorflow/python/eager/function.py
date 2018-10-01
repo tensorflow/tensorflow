@@ -269,6 +269,15 @@ class FuncGraph(ops.Graph):
   def variables(self, var_list):
     self._weak_variables = [weakref.ref(v) for v in var_list]
 
+  def control_dependencies(self, control_inputs):
+    # Drop control dependencies to outside of the graph. TODO(b/117109273)
+    # unclear how to capture an op, not a tensor.
+    if not control_inputs:
+      return super(FuncGraph, self).control_dependencies(control_inputs)
+    return super(FuncGraph, self).control_dependencies(
+        [c for c in control_inputs
+         if getattr(c, "graph", None) is self])
+
   def create_op(
       self,
       op_type,
