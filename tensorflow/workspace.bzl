@@ -642,18 +642,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         testonly_ = True,
     )
 
-    tf_http_archive(
-        name = "jemalloc",
-        build_file = clean_dep("//third_party:jemalloc.BUILD"),
-        sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
-        strip_prefix = "jemalloc-4.4.0",
-        system_build_file = clean_dep("//third_party/systemlibs:jemalloc.BUILD"),
-        urls = [
-            "https://mirror.bazel.build/github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
-            "https://github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
-        ],
-    )
-
     java_import_external(
         name = "com_google_testing_compile",
         jar_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",

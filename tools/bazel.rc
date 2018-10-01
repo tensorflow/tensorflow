@@ -73,7 +73,6 @@ build --define=grpc_no_ares=true
 build --spawn_strategy=standalone
 build --genrule_strategy=standalone
 build -c opt
-build --define=with_jemalloc=false
 
 # Other build flags.
 build --define=grpc_no_ares=true

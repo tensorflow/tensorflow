@@ -1493,7 +1493,6 @@ def main():
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
@@ -1507,7 +1506,6 @@ def main():
     environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
-    environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
     environ_cp['TF_ENABLE_XLA'] = '0'
 
