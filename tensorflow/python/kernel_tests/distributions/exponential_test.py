@@ -81,6 +81,22 @@ class ExponentialTest(test.TestCase):
     expected_cdf = stats.expon.cdf(x, scale=1 / lam_v)
     self.assertAllClose(self.evaluate(cdf), expected_cdf)
 
+  def testExponentialLogSurvival(self):
+    batch_size = 7
+    lam = constant_op.constant([2.0] * batch_size)
+    lam_v = 2.0
+    x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0, 10.0], dtype=np.float32)
+
+    exponential = exponential_lib.Exponential(rate=lam)
+
+    log_survival = exponential.log_survival_function(x)
+    self.assertEqual(log_survival.get_shape(), (7,))
+
+    if not stats:
+      return
+    expected_log_survival = stats.expon.logsf(x, scale=1 / lam_v)
+    self.assertAllClose(self.evaluate(log_survival), expected_log_survival)
+
   def testExponentialMean(self):
     lam_v = np.array([1.0, 4.0, 2.5])
     exponential = exponential_lib.Exponential(rate=lam_v)

@@ -114,6 +114,9 @@ class Exponential(gamma.Gamma):
   def rate(self):
     return self._rate
 
+  def _log_survival_function(self, value):
+    return self._log_prob(value) - math_ops.log(self._rate)
+
   def _sample_n(self, n, seed=None):
     shape = array_ops.concat([[n], array_ops.shape(self._rate)], 0)
     # Uniform variates must be sampled from the open-interval `(0, 1)` rather
