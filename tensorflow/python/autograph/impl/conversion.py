@@ -34,15 +34,16 @@ from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import decorators
 from tensorflow.python.autograph.converters import directives
 from tensorflow.python.autograph.converters import error_handlers
+from tensorflow.python.autograph.converters import function_scopes
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
-from tensorflow.python.autograph.converters import name_scopes
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
@@ -257,6 +258,7 @@ def _add_self_references(namespace, autograph_module):
     ag_internal.converted_call = autograph_module.converted_call
     ag_internal.ConversionOptions = autograph_module.ConversionOptions
     ag_internal.utils = utils
+    ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
         errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
@@ -346,7 +348,7 @@ def node_to_graph(node, context, rewrite_errors=True):
   node = converter.apply_(node, context, conditional_expressions)
   node = converter.apply_(node, context, logical_expressions)
   node = converter.apply_(node, context, side_effect_guards)
-  node = converter.apply_(node, context, name_scopes)
+  node = converter.apply_(node, context, function_scopes)
   if rewrite_errors:
     node = converter.apply_(node, context, error_handlers)
   return node

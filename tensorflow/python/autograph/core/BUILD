@@ -20,11 +20,13 @@ py_library(
         "config.py",
         "converter.py",
         "errors.py",
+        "function_wrapping.py",
         "naming.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
@@ -43,6 +45,16 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+    ],
+)
+
+py_test(
+    name = "function_wrapping_test",
+    srcs = ["function_wrapping_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":core",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
