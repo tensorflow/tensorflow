@@ -20,4 +20,8 @@ tf_module {
     name: "TextLineDataset"
     mtype: "<class \'abc.ABCMeta\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
 }
