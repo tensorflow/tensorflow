@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -290,13 +291,11 @@ class BufferValueMap {
   const HloDataflowAnalysis& dataflow_;
 
   // A map containing the set of values contained in each buffer.
-  tensorflow::gtl::FlatMap<BufferNumber,
-                           tensorflow::gtl::FlatSet<const HloValue*>>
+  absl::flat_hash_map<BufferNumber, tensorflow::gtl::FlatSet<const HloValue*>>
       buffers_;
 
   // A map indicating which buffer each value is contained in.
-  tensorflow::gtl::FlatMap<const HloValue*, BufferNumber>
-      value_to_buffer_number_;
+  absl::flat_hash_map<const HloValue*, BufferNumber> value_to_buffer_number_;
 
   // The buffer number of the next buffer to be created.
   BufferNumber next_buffer_number_ = 0;

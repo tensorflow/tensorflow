@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -74,7 +75,7 @@ class ListScheduler {
       const HloComputation& computation,
       const TuplePointsToAnalysis& points_to_analysis,
       const LogicalBuffer::SizeFunction& size_function,
-      const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+      const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) {
     ListScheduler scheduler(computation, points_to_analysis, size_function,
                             memory_by_computation);
@@ -99,7 +100,7 @@ class ListScheduler {
   ListScheduler(const HloComputation& computation,
                 const TuplePointsToAnalysis& points_to_analysis,
                 const LogicalBuffer::SizeFunction& size_function,
-                const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+                const absl::flat_hash_map<const HloComputation*, int64>&
                     memory_by_computation)
       : computation_(computation),
         points_to_analysis_(points_to_analysis),
@@ -234,8 +235,7 @@ class ListScheduler {
 
     // Populate the ready list with instructions which have no operands or
     // control predecessors.
-    tensorflow::gtl::FlatMap<const HloInstruction*, int64>
-        unscheduled_pred_count;
+    absl::flat_hash_map<const HloInstruction*, int64> unscheduled_pred_count;
     for (auto* instruction : computation_.instructions()) {
       // TODO(b/34466113): Replace this and above with successors() or
       // predecessors() when these methods are added to HloInstruction.
@@ -251,8 +251,8 @@ class ListScheduler {
     std::multimap<Priority, ReadyListEntry> ready_queue;
 
     // Map of ready instructions to their iterators in ready_queue.
-    tensorflow::gtl::FlatMap<const HloInstruction*,
-                             std::multimap<Priority, ReadyListEntry>::iterator>
+    absl::flat_hash_map<const HloInstruction*,
+                        std::multimap<Priority, ReadyListEntry>::iterator>
         ready_instructions;
 
     auto add_to_ready_queue = [&](HloInstruction* inst) {
@@ -347,12 +347,11 @@ class ListScheduler {
   // Computations are analyzed in post-order. When scheduling an instruction
   // that includes subcomputations, such as a while loop, we use this map to
   // look up the memory needed by subcomputations.
-  const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+  const absl::flat_hash_map<const HloComputation*, int64>&
       memory_by_computation_;
 
   // A map containing the LogicalBuffers that each instruction uses.
-  tensorflow::gtl::FlatMap<const HloInstruction*,
-                           std::vector<const LogicalBuffer*>>
+  absl::flat_hash_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
@@ -379,7 +378,7 @@ StatusOr<HloInstructionSequence> ScheduleComputationHelper(
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const MemorySchedulerAlgorithm& algorithm,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   VLOG(2) << "Computation: " << computation.name();
   if (algorithm) {
@@ -396,13 +395,13 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // These variables are a hack to prevent overflows.
   int64 cumulative_total_size = 0;
   int64 total_hlos = computation.parent()->instruction_count();
-  tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
-  tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
+  absl::flat_hash_map<const HloInstruction*, int64> extra_users;
+  absl::flat_hash_map<const HloInstruction*, int64> total_sizes;
   for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
     if (ListScheduler::IgnoreInstruction(*hlo)) {
       extra_users[hlo] = 0;
@@ -467,7 +466,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   return ListScheduler::Run(computation, points_to_analysis, size_function,
                             memory_by_computation);
@@ -477,7 +476,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   return HloInstructionSequence(computation.MakeInstructionPostOrder());
 }
@@ -486,7 +485,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // We try a few schedulers and choose whichever returns a lower min-memory,
   // not accounting for fragmentation.
@@ -549,7 +548,7 @@ StatusOr<HloSchedule> ScheduleModule(
   HloSchedule schedule(&module);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
+  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
   for (const auto* computation : module.MakeComputationPostOrder()) {
     if (!computation->IsFusionComputation()) {
       TF_ASSIGN_OR_RETURN(HloInstructionSequence computation_sequence,
@@ -577,7 +576,7 @@ StatusOr<HloInstructionSequence> ScheduleComputation(
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> empty_map;
+  absl::flat_hash_map<const HloComputation*, int64> empty_map;
   return ScheduleComputationHelper(computation, *points_to_analysis,
                                    size_function, nullptr, empty_map);
 }

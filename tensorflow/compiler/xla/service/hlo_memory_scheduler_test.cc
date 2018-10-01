@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -247,7 +248,7 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   EXPECT_TRUE(ordering.ExecutesBefore(bcast, add));
   EXPECT_TRUE(ordering.ExecutesBefore(transpose, add));
 
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
+  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
   memory_by_computation[cond_computation] = 17;
   memory_by_computation[body_computation] = 16;
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =
@@ -409,7 +410,7 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   EXPECT_EQ(module->entry_computation()->instruction_count(),
             schedule.sequence(module->entry_computation()).size());
 
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
+  absl::flat_hash_map<const HloComputation*, int64> memory_by_computation;
   memory_by_computation[cond_computation] = 17;
   memory_by_computation[body_computation] = 16;
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =

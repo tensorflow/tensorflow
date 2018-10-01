@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -228,8 +228,8 @@ class LayoutConstraints {
   // Array-shaped buffers which have not yet been constrained.
   std::set<LogicalBuffer::Id> unconstrained_buffer_ids_;
 
-  mutable tensorflow::gtl::FlatMap<const HloInstruction*,
-                                   std::unique_ptr<PointsToSet::BufferSet>>
+  mutable absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<PointsToSet::BufferSet>>
       buffer_sets_cache_;
 
   HloComputation* computation_;

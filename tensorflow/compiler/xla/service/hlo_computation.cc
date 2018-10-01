@@ -24,6 +24,7 @@ limitations under the License.
 #include <sstream>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -297,7 +298,7 @@ void ComputeComputationPostOrder(
 void HloComputation::ComputeInstructionPostOrder(
     const HloComputation::ChannelDependencyMap& channel_dependency_map,
     std::vector<HloInstruction*>* post_order, HloInstruction* root,
-    tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const {
+    absl::flat_hash_map<HloInstruction*, VisitState>* visited) const {
   std::vector<HloInstruction*> dfs_stack;
   dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
@@ -394,7 +395,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
-  tensorflow::gtl::FlatMap<HloInstruction*, VisitState> visited;
+  absl::flat_hash_map<HloInstruction*, VisitState> visited;
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -505,9 +506,9 @@ HloComputationProto HloComputation::ToProto() const {
 /* static */ StatusOr<std::unique_ptr<HloComputation>>
 HloComputation::CreateFromProto(
     const HloComputationProto& proto,
-    const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
-  tensorflow::gtl::FlatMap<int64, HloInstruction*> instruction_map;
-  tensorflow::gtl::FlatMap<HloInstruction*, int64> to_proto_id;
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
+  absl::flat_hash_map<int64, HloInstruction*> instruction_map;
+  absl::flat_hash_map<HloInstruction*, int64> to_proto_id;
   std::vector<std::unique_ptr<HloInstruction>> instructions;
   int64 parameter_count = 0;
   for (const HloInstructionProto& instruction_proto : proto.instructions()) {

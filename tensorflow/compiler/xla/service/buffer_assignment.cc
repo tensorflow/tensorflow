@@ -22,6 +22,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,9 +42,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using absl::flat_hash_map;
 using absl::StrAppend;
 using absl::StrAppendFormat;
-using ::tensorflow::gtl::FlatMap;
 using ::tensorflow::gtl::FlatSet;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
@@ -519,7 +520,8 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
 // BufferAllocation.
 void BufferAssignment::CombineTempAllocations() {
   VLOG(1) << "CombineTempAllocations()";
-  FlatMap<LogicalBuffer::Color, BufferAllocation, LogicalBuffer::Color::Hasher>
+  flat_hash_map<LogicalBuffer::Color, BufferAllocation,
+                LogicalBuffer::Color::Hasher>
       combined_allocation_map;
 
   // Move all temp allocations into a single run at the end of the allocations
@@ -582,7 +584,8 @@ void BufferAssignment::CombineTempAllocations() {
   }
 
   // Update allocation indices to their new positions.
-  allocation_index_for_buffer_.clear_no_resize();
+  allocation_index_for_buffer_.erase(allocation_index_for_buffer_.begin(),
+                                     allocation_index_for_buffer_.end());
   for (size_t index = 0; index < allocations_.size(); ++index) {
     BufferAllocation* allocation = &allocations_[index];
     allocation->set_index(index);
@@ -814,7 +817,7 @@ Status BufferAssigner::AssignBuffersForComputation(
     const HloComputation* computation, bool is_thread_local,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
-    FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
+    flat_hash_map<const HloComputation*, FlatSet<const LogicalBuffer*>>*
         buffers_to_assign_sequentially,
     BufferAssignment* assignment) {
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
@@ -833,7 +836,7 @@ Status BufferAssigner::AssignBuffersForComputation(
 
   // Generate a post order sort of instructions for sorting of the
   // LogicalBuffers.
-  FlatMap<const HloInstruction*, int> post_order_position;
+  flat_hash_map<const HloInstruction*, int> post_order_position;
   int position = 0;
   for (auto* instruction : computation->MakeInstructionPostOrder()) {
     post_order_position.emplace(instruction, position);
@@ -1043,12 +1046,12 @@ Status BufferAssigner::AssignBuffersForComputation(
   return Status::OK();
 }
 
-FlatMap<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
-        LogicalBuffer::Color::Hasher>
+flat_hash_map<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
+              LogicalBuffer::Color::Hasher>
 BufferAssigner::SplitBuffersByColor(
     const FlatSet<const LogicalBuffer*>& buffers) {
-  FlatMap<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
-          LogicalBuffer::Color::Hasher>
+  flat_hash_map<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
+                LogicalBuffer::Color::Hasher>
       color_map;
   for (auto buffer : buffers) {
     color_map[buffer->color()].insert(buffer);
@@ -1057,7 +1060,7 @@ BufferAssigner::SplitBuffersByColor(
 }
 
 Status BufferAssigner::AssignBuffersWithSequentialOrdering(
-    const FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>&
+    const flat_hash_map<const HloComputation*, FlatSet<const LogicalBuffer*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment) {
   // Run the sequence of instructions through the heap simulator.  The heuristic
@@ -1155,9 +1158,8 @@ std::vector<const LogicalBuffer*> ComputePeakMemoryLogicalBuffers(
     const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace) {
   // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
   // buffers in this allocation.
-  tensorflow::gtl::FlatMap<LogicalBuffer::Id, const LogicalBuffer*>
-      id_to_buffer;
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, int64> buffer_sizes;
+  absl::flat_hash_map<LogicalBuffer::Id, const LogicalBuffer*> id_to_buffer;
+  absl::flat_hash_map<const LogicalBuffer*, int64> buffer_sizes;
   for (const auto& pair : allocation.assigned_buffers()) {
     const LogicalBuffer* buffer = pair.first;
     const BufferAllocation::OffsetSize& offset_size = pair.second;
@@ -1679,7 +1681,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
 
   // First assign buffers for global computatations. Temporary buffers for
   // sequential computations are collected in 'buffers_to_assign_sequentially'.
-  FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>
+  flat_hash_map<const HloComputation*, FlatSet<const LogicalBuffer*>>
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(

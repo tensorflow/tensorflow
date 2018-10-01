@@ -32,6 +32,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -50,7 +51,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -247,7 +247,7 @@ class CanonicalNameMap {
 
  private:
   int64 index;
-  tensorflow::gtl::FlatMap<string, string> canonical_name_map;
+  absl::flat_hash_map<string, string> canonical_name_map;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -350,8 +350,8 @@ class HloInstruction {
   //     calls.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
-      const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
-      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
