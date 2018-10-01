@@ -1687,6 +1687,21 @@ class FunctionTest(test.TestCase):
           self.assertRegexpMatches(captured_function_names[i],
                                    expected_func_name_regex[i])
 
+        # Check the forward and backward function has the correct attributes.
+        self.assertEquals(
+            functions[1].definition.attr['backward_function_name'].s,
+            functions[2].name)
+        self.assertEquals(
+            functions[2].definition.attr['forward_function_name'].s,
+            functions[1].name)
+
+        self.assertEquals(
+            functions[4].definition.attr['backward_function_name'].s,
+            functions[5].name)
+        self.assertEquals(
+            functions[5].definition.attr['forward_function_name'].s,
+            functions[4].name)
+
         sq = defun_matmul(t, t)
         double = add(t, t)
         self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
