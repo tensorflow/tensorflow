@@ -55,7 +55,7 @@ REQUIRED_PACKAGES = [
     'keras_preprocessing >= 1.0.3',
     'numpy >= 1.13.3',
     'six >= 1.10.0',
-    'protobuf >= 3.6.0',
+    'protobuf >= 3.6.1',
     'tensorboard >= 1.11.0, < 1.12.0',
     'termcolor >= 1.1.0',
 ]
