@@ -260,12 +260,7 @@ def reset_tf_configure_bazelrc():
       if _TF_BAZELRC_FILENAME in l:
         continue
       f.write('%s\n' % l)
-    if is_windows():
-      tf_bazelrc_path = _TF_BAZELRC.replace('\\', '/')
-    else:
-      tf_bazelrc_path = _TF_BAZELRC
-    f.write('import %s\n' % tf_bazelrc_path)
-
+    f.write('import %%workspace%%/%s\n' % _TF_BAZELRC_FILENAME)
 
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
