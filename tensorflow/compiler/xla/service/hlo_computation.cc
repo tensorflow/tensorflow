@@ -535,6 +535,28 @@ HloComputation::CreateFromProto(
               return to_proto_id[a.get()] < to_proto_id[b.get()];
             });
 
+  TF_RETURN_IF_ERROR([&]() -> Status {
+    std::vector<bool> parameters_seen(parameter_count);
+    int parameters_seen_count = 0;
+    for (auto& instruction : instructions) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        int64 param_no = instruction->parameter_number();
+        TF_RET_CHECK(param_no >= 0 && param_no < parameter_count)
+            << "Invalid parameter number.  Expected [0, " << parameter_count
+            << "), got " << param_no;
+        TF_RET_CHECK(!parameters_seen[param_no])
+            << "Parameter number " << param_no
+            << " already allocated in this computation";
+        parameters_seen[param_no] = true;
+        parameters_seen_count++;
+      }
+    }
+    TF_RET_CHECK(parameters_seen_count == parameter_count)
+        << "Not all parameters in range [0, " << parameter_count
+        << ") were referenced";
+    return Status::OK();
+  }());
+
   auto computation = absl::WrapUnique(
       new HloComputation(proto.name(), parameter_count, &instructions, root,
                          /*fusion_instruction=*/nullptr));
