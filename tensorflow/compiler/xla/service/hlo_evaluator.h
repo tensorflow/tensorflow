@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -210,8 +211,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // post-orderring.
   // Must be cleared for each evaluation.
   // Storing Literal in place require the container to have pointer stability so
-  // we cannot use FlatMap any more.
-  std::unordered_map<const HloInstruction*, Literal> evaluated_;
+  // we cannot use flat_hash_map any more.
+  absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
 
  private:
   template <typename ReturnT, typename NativeT>

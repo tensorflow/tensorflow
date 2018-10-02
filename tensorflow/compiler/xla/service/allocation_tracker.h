@@ -124,10 +124,7 @@ class AllocationTracker {
   int64 next_handle_ GUARDED_BY(mutex_);
 
   // A map from device ordinal to AllocationMap.
-  //
-  // This is not a TF FlatMap because (currently) FlatMap (and therefore
-  // AllocationMap) is not movable.
-  std::unordered_map<int, AllocationMap> opaque_to_allocation_map_
+  absl::flat_hash_map<int, AllocationMap> opaque_to_allocation_map_
       GUARDED_BY(mutex_);
 
   // A map from data handle to a vector of shaped buffers that represent the
