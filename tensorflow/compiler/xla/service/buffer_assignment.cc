@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -43,9 +44,9 @@ namespace xla {
 namespace {
 
 using absl::flat_hash_map;
+using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
-using ::tensorflow::gtl::FlatSet;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
 template <typename T>
@@ -129,8 +130,8 @@ Status GatherComputationsByAllocationType(
 
   // Sets for quickly checking membership. Computations are returned in vectors
   // for stable iteration.
-  FlatSet<const HloComputation*> thread_local_set;
-  FlatSet<const HloComputation*> global_set;
+  flat_hash_set<const HloComputation*> thread_local_set;
+  flat_hash_set<const HloComputation*> global_set;
 
   while (!worklist.empty()) {
     auto worklist_front = worklist.front();
@@ -445,7 +446,7 @@ bool BufferAssignment::SharesSliceAtIndex(
 bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
                                           const HloInstruction* hlo_b) const {
   using SliceSet =
-      FlatSet<BufferAllocation::Slice, BufferAllocation::Slice::Hasher>;
+      flat_hash_set<BufferAllocation::Slice, BufferAllocation::Slice::Hasher>;
   // Gets the slices all of instr's subshapes.  If any subshape doesn't have an
   // assigned slice, returns the empty set.
   auto collect_slices = [&](const HloInstruction* instr) -> SliceSet {
@@ -815,9 +816,9 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
 Status BufferAssigner::AssignBuffersForComputation(
     const HloComputation* computation, bool is_thread_local,
-    const FlatSet<const LogicalBuffer*>& colocated_buffers,
-    const FlatSet<BufferAllocation::Index>& colocated_allocations,
-    flat_hash_map<const HloComputation*, FlatSet<const LogicalBuffer*>>*
+    const flat_hash_set<const LogicalBuffer*>& colocated_buffers,
+    const flat_hash_set<BufferAllocation::Index>& colocated_allocations,
+    flat_hash_map<const HloComputation*, flat_hash_set<const LogicalBuffer*>>*
         buffers_to_assign_sequentially,
     BufferAssignment* assignment) {
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
@@ -853,8 +854,8 @@ Status BufferAssigner::AssignBuffersForComputation(
     // buffers_to_assign_sequentially map, even if we end up with an empty set
     // of buffers. This ensures we can correctly determine whether to run
     // whole-module heap simulation.
-    buffers_to_assign_sequentially->emplace(computation,
-                                            FlatSet<const LogicalBuffer*>());
+    buffers_to_assign_sequentially->emplace(
+        computation, flat_hash_set<const LogicalBuffer*>());
   }
 
   // Sort the LogicalBuffers first by size. We assign the larger LogicalBuffers
@@ -1046,11 +1047,11 @@ Status BufferAssigner::AssignBuffersForComputation(
   return Status::OK();
 }
 
-flat_hash_map<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
+flat_hash_map<LogicalBuffer::Color, flat_hash_set<const LogicalBuffer*>,
               LogicalBuffer::Color::Hasher>
 BufferAssigner::SplitBuffersByColor(
-    const FlatSet<const LogicalBuffer*>& buffers) {
-  flat_hash_map<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
+    const flat_hash_set<const LogicalBuffer*>& buffers) {
+  flat_hash_map<LogicalBuffer::Color, flat_hash_set<const LogicalBuffer*>,
                 LogicalBuffer::Color::Hasher>
       color_map;
   for (auto buffer : buffers) {
@@ -1060,7 +1061,8 @@ BufferAssigner::SplitBuffersByColor(
 }
 
 Status BufferAssigner::AssignBuffersWithSequentialOrdering(
-    const flat_hash_map<const HloComputation*, FlatSet<const LogicalBuffer*>>&
+    const flat_hash_map<const HloComputation*,
+                        flat_hash_set<const LogicalBuffer*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment) {
   // Run the sequence of instructions through the heap simulator.  The heuristic
@@ -1086,10 +1088,11 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     // only live for the duration of their calling instructions.
     VLOG(1) << "Running whole-module heap simulation";
     HloSchedule schedule(&assignment->module());
-    FlatSet<const LogicalBuffer*> all_buffers_to_assign;
+    flat_hash_set<const LogicalBuffer*> all_buffers_to_assign;
     for (const auto& pair : buffers_to_assign_sequentially) {
       const HloComputation* computation = pair.first;
-      const FlatSet<const LogicalBuffer*>& buffers_to_assign = pair.second;
+      const flat_hash_set<const LogicalBuffer*>& buffers_to_assign =
+          pair.second;
       const std::vector<const HloInstruction*>* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
@@ -1123,7 +1126,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     VLOG(1) << "Running per-computation heap simulation";
     for (const auto& pair : buffers_to_assign_sequentially) {
       const HloComputation* computation = pair.first;
-      const FlatSet<const LogicalBuffer*>& buffers_to_assign = pair.second;
+      const flat_hash_set<const LogicalBuffer*>& buffers_to_assign =
+          pair.second;
       const std::vector<const HloInstruction*>* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
@@ -1198,7 +1202,7 @@ std::vector<const LogicalBuffer*> ComputePeakMemoryLogicalBuffers(
 
   // Next gather the set of logical buffers live at the earliest point of
   // maximal live set size.
-  tensorflow::gtl::FlatSet<const LogicalBuffer*> live_buffers;
+  absl::flat_hash_set<const LogicalBuffer*> live_buffers;
   live_size = 0;
   for (const auto& event : heap_trace.events()) {
     const LogicalBuffer* buffer = id_to_buffer.at(event.buffer_id());
@@ -1588,8 +1592,8 @@ void BufferAssigner::BuildColocatedBufferSets(
 void BufferAssigner::AssignColocatedBufferSets(
     const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
     BufferAssignment* assignment,
-    FlatSet<const LogicalBuffer*>* colocated_buffers,
-    FlatSet<BufferAllocation::Index>* colocated_allocations) {
+    flat_hash_set<const LogicalBuffer*>* colocated_buffers,
+    flat_hash_set<BufferAllocation::Index>* colocated_allocations) {
   for (const ColocatedBufferSet& colocated_buffer_set : colocated_buffer_sets) {
     BufferAllocation* allocation = nullptr;
     // Set 'entry_parameter_number' and 'entry_parameter_shape_idx' if entry
@@ -1662,8 +1666,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   // Once b/32491382 enables module-level liveness analysis, we may be able
   // to assign colocated buffers (or at least reuse their allocation for
   // buffers outside of the set) in AssignBuffersForComputation.
-  FlatSet<const LogicalBuffer*> colocated_buffers;
-  FlatSet<BufferAllocation::Index> colocated_allocations;
+  flat_hash_set<const LogicalBuffer*> colocated_buffers;
+  flat_hash_set<BufferAllocation::Index> colocated_allocations;
   std::vector<ColocatedBufferSet> colocated_buffer_sets;
   BuildColocatedBufferSets(module, assignment->liveness(),
                            assignment->buffer_size_, &colocated_buffer_sets);
@@ -1681,7 +1685,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
 
   // First assign buffers for global computatations. Temporary buffers for
   // sequential computations are collected in 'buffers_to_assign_sequentially'.
-  flat_hash_map<const HloComputation*, FlatSet<const LogicalBuffer*>>
+  flat_hash_map<const HloComputation*, flat_hash_set<const LogicalBuffer*>>
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(

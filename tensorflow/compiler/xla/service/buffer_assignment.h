@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -554,11 +554,10 @@ class BufferAssigner {
   // true.
   Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
-      const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
-          colocated_allocations,
+      const absl::flat_hash_set<const LogicalBuffer*>& colocated_buffers,
+      const absl::flat_hash_set<BufferAllocation::Index>& colocated_allocations,
       absl::flat_hash_map<const HloComputation*,
-                          tensorflow::gtl::FlatSet<const LogicalBuffer*>>*
+                          absl::flat_hash_set<const LogicalBuffer*>>*
           buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
@@ -569,7 +568,7 @@ class BufferAssigner {
   // assuming all global computations are sequentially ordered.
   Status AssignBuffersWithSequentialOrdering(
       const absl::flat_hash_map<const HloComputation*,
-                                tensorflow::gtl::FlatSet<const LogicalBuffer*>>&
+                                absl::flat_hash_set<const LogicalBuffer*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment);
 
@@ -589,7 +588,7 @@ class BufferAssigner {
   // alias. Explicitly handling these colocated buffers is necessary because
   // points-to analysis is computation level scope and does not recognize
   // aliasing across computations (b/32491382).
-  using ColocatedBufferSet = tensorflow::gtl::FlatSet<const LogicalBuffer*>;
+  using ColocatedBufferSet = absl::flat_hash_set<const LogicalBuffer*>;
 
   // Returns a vector of ColocatedBufferSet objects, where each
   // ColocatedBufferSet aggregates a set of related LogicalBuffers from 'module'
@@ -604,8 +603,8 @@ class BufferAssigner {
   void AssignColocatedBufferSets(
       const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
       BufferAssignment* assignment,
-      tensorflow::gtl::FlatSet<const LogicalBuffer*>* colocated_buffers,
-      tensorflow::gtl::FlatSet<BufferAllocation::Index>* colocated_allocations);
+      absl::flat_hash_set<const LogicalBuffer*>* colocated_buffers,
+      absl::flat_hash_set<BufferAllocation::Index>* colocated_allocations);
 
   // Adds the 'colocated_set' of buffers to 'colocated_buffer_sets', maintaining
   // the invariant that all sets in 'colocated_buffer_sets' are disjoint.
@@ -624,10 +623,9 @@ class BufferAssigner {
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
   absl::flat_hash_map<LogicalBuffer::Color,
-                      tensorflow::gtl::FlatSet<const LogicalBuffer*>,
+                      absl::flat_hash_set<const LogicalBuffer*>,
                       LogicalBuffer::Color::Hasher>
-  SplitBuffersByColor(
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers);
+  SplitBuffersByColor(const absl::flat_hash_set<const LogicalBuffer*>& buffers);
 
   // If true, buffer assignments assumes that input parameter buffers and output
   // buffers can be shared if their sizes match.

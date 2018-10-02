@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -328,10 +329,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
-  tensorflow::gtl::FlatSet<string> computation_names;
-  tensorflow::gtl::FlatSet<string> instruction_names;
-  tensorflow::gtl::FlatSet<int> computation_ids;
-  tensorflow::gtl::FlatSet<int> instruction_ids;
+  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<int> instruction_ids;
   for (HloComputation* computation : module->computations()) {
     TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
         << "Computation name is not unique: " << computation->name();

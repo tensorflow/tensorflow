@@ -16,17 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
 using absl::flat_hash_map;
+using absl::flat_hash_set;
 using absl::InlinedVector;
-using tensorflow::gtl::FlatSet;
 
 // Copies `to_hoist` to the computation containing `while_instr`, hoisting its
 // operands as needed.  All of its transitive operands are expected to be either
@@ -35,7 +35,7 @@ using tensorflow::gtl::FlatSet;
 // them into `hoisted_instructions`.
 static void CreateLoopInvariantCopy(
     flat_hash_map<HloInstruction*, HloInstruction*>* hoisted_instructions,
-    FlatSet<HloInstruction*>* unhoisted_invariant_instructions,
+    flat_hash_set<HloInstruction*>* unhoisted_invariant_instructions,
     HloInstruction* while_instr, HloInstruction* to_hoist) {
   HloComputation* parent_of_while = while_instr->parent();
   HloComputation* while_body = while_instr->while_body();
@@ -153,7 +153,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   // unprofitable to be hoisted alone by NotWorthHoistingIndividually.  When we
   // hoist an instruction in this set, we move it from
   // unhoisted_invariant_instructions to hoisted_instructions.
-  FlatSet<HloInstruction*> unhoisted_invariant_instructions;
+  flat_hash_set<HloInstruction*> unhoisted_invariant_instructions;
 
   // Invariant GTE's axiomatically satisfy the constraints for
   // unhoisted_invariant_instructions -- they can be legally hoisted, but there

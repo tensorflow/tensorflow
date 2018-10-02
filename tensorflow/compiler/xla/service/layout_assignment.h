@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -504,7 +504,7 @@ class LayoutAssignment : public HloModulePass {
 
   // Every copy added to the module by the layout assignment pass is registered
   // here.
-  tensorflow::gtl::FlatSet<HloInstruction*> added_copies_;
+  absl::flat_hash_set<HloInstruction*> added_copies_;
 
   // The pointer to the channel layout constraints passed in with the
   // constructor. If not nullptr, this is an input/output argument.
@@ -521,8 +521,7 @@ class LayoutAssignment : public HloModulePass {
 
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.
-  tensorflow::gtl::FlatSet<const HloInstruction*>
-      unconstrained_layout_instructions_;
+  absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
 };
 
 }  // namespace xla

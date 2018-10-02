@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 using absl::flat_hash_map;
-using tensorflow::gtl::FlatSet;
+using absl::flat_hash_set;
 
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
@@ -116,9 +117,9 @@ Status HeapSimulator::RunComputation(
   // 'used_buffers' is the reverse map - it tracks which buffers were used by an
   // instruction, so that we can remove the instructions from a buffer's live
   // set after they are visited.
-  flat_hash_map<const BufferValue*, FlatSet<const HloInstruction*>>
+  flat_hash_map<const BufferValue*, flat_hash_set<const HloInstruction*>>
       live_buffers;
-  flat_hash_map<const HloInstruction*, FlatSet<const BufferValue*>>
+  flat_hash_map<const HloInstruction*, flat_hash_set<const BufferValue*>>
       used_buffers;
   auto add_user_to_buffer = [this, &live_buffers, &used_buffers](
                                 const HloInstruction* user,
@@ -216,7 +217,7 @@ Status HeapSimulator::RunComputation(
       VLOG(4) << "  Removing user " << instruction->name() << " from buffer "
               << operand_buffer->ToString();
       auto it = live_buffers.find(operand_buffer);
-      FlatSet<const HloInstruction*>* live_set = &it->second;
+      flat_hash_set<const HloInstruction*>* live_set = &it->second;
       live_set->erase(instruction);
       if (live_set->empty()) {
         live_buffers.erase(it);
@@ -238,7 +239,7 @@ Status HeapSimulator::RunComputation(
     // that we should assign.
 
     // Make sure each buffer get reused at most once.
-    FlatSet<const BufferValue*> reused_buffers;
+    flat_hash_set<const BufferValue*> reused_buffers;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -326,7 +327,7 @@ Status HeapSimulator::RunComputation(
   to_free.reserve(live_buffers.size());
   for (const auto& buffer_pending : live_buffers) {
     const BufferValue* buffer = buffer_pending.first;
-    const FlatSet<const HloInstruction*>& pending = buffer_pending.second;
+    const flat_hash_set<const HloInstruction*>& pending = buffer_pending.second;
     CHECK_EQ(pending.size(), 1) << *buffer;
     CHECK(*pending.begin() == nullptr) << *buffer;
     to_free.push_back(buffer);

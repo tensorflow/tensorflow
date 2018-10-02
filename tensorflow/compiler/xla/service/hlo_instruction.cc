@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1433,7 +1433,7 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
 
 HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   InstructionVector unique;
-  tensorflow::gtl::FlatSet<const HloInstruction*> seen;
+  absl::flat_hash_set<const HloInstruction*> seen;
   for (HloInstruction* operand : operands()) {
     if (seen.insert(operand).second) {
       unique.push_back(operand);

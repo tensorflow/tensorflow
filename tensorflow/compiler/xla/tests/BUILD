@@ -2146,11 +2146,11 @@ xla_test(
         ":test_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
