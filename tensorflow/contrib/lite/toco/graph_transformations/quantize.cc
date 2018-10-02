@@ -97,15 +97,6 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
   // to allow easily trying out quantization even if the graph
   // lacks some minmax information.
   if (array.buffer != nullptr) {
-    LOG(WARNING)
-        << "Constant array " << array_name
-        << " lacks MinMax information. To make up for that, we will now compute"
-        << " the MinMax from actual array elements. That will result in"
-        << " quantization parameters that probably do not match whichever "
-           "arithmetic"
-        << " was used during training, and thus will probably be a cause of "
-           "poor"
-        << " inference accuracy.";
     CHECK(array.buffer->type == ArrayDataType::kFloat);
     const auto& data = array.GetBuffer<ArrayDataType::kFloat>().data;
     // We always want [min, max] to contain 0.
@@ -119,6 +110,27 @@ const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
       // Prevent downstream anger from quantized math that expects min and max
       // to not be equal.
       max = 1.f;
+    }
+    // No need to warn about accuracy if all array values are equal to either
+    // min or max:
+    // in that case, quantization is exact, and such arrays are not learned
+    // weights arrays for which fake-quantization would make sense, rather
+    // they tend to be hardcoded arrays of zeros or ones used in some graphs.
+    bool is_quantization_trivially_exact = true;
+    for (auto val : data) {
+      is_quantization_trivially_exact &= (val == min || val == max);
+    }
+    if (!is_quantization_trivially_exact) {
+      LOG(WARNING)
+          << "Constant array " << array_name
+          << " lacks MinMax information. To make up for that, we will now "
+             "compute"
+          << " the MinMax from actual array elements. That will result in"
+          << " quantization parameters that probably do not match whichever "
+             "arithmetic"
+          << " was used during training, and thus will probably be a cause of "
+             "poor"
+          << " inference accuracy.";
     }
     auto& minmax = array.GetOrCreateMinMax();
     minmax.min = min;
