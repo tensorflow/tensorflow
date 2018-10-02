@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/session_options.h"
@@ -78,7 +78,8 @@ void SortControlInputs(GraphDef* gdef) {
 namespace {
 
 bool AreAllParentsGuaranteedConst(
-    const Node& n, const gtl::FlatSet<const Node*>& runtime_const_nodes) {
+    const Node& n,
+    const absl::flat_hash_set<const Node*>& runtime_const_nodes) {
   if (n.type_string() == "GuaranteeConst") {
     // If the current node is itself a cast-to-const, no need
     // to look at the incoming edges.
@@ -101,7 +102,7 @@ bool AreAllParentsGuaranteedConst(
 void MarkGuaranteedConstants(
     const Graph& graph,
     const std::vector<std::pair<const Node*, Node*>>& src_arg_pairs) {
-  gtl::FlatSet<const Node*> guaranteed_const_nodes;
+  absl::flat_hash_set<const Node*> guaranteed_const_nodes;
   std::vector<const Node*> srcs;
   srcs.reserve(src_arg_pairs.size());
   for (const auto& src_arg : src_arg_pairs) {
