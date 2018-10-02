@@ -773,6 +773,8 @@ def is_keras_tensor(x):
 
   Examples:
   ```python
+      >>> import tensorflow as tf
+      >>> import numpy
       >>> from keras import backend as K
       >>> from keras.layers import Input, Dense
       >>> np_var = numpy.array([1, 2])
