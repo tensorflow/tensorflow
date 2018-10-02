@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
@@ -213,6 +214,7 @@ HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
 HloInstructionProto HloSendRecvInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_channel_id(channel_id_);
+  proto.set_is_host_transfer(is_host_transfer_);
   return proto;
 }
 
@@ -2309,5 +2311,24 @@ std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloDomainInstruction>(
       shape, new_operands[0], operand_side_metadata_->Clone(),
       user_side_metadata_->Clone());
+}
+
+HloInstructionProto HloDomainInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  auto operand_side_sharding =
+      dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
+  if (operand_side_sharding) {
+    *proto.mutable_domain_entry_sharding() =
+        operand_side_sharding->sharding()->ToProto();
+  }
+
+  auto user_side_sharding =
+      dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
+  if (user_side_sharding) {
+    *proto.mutable_domain_exit_sharding() =
+        user_side_sharding->sharding()->ToProto();
+  }
+
+  return proto;
 }
 }  // namespace xla

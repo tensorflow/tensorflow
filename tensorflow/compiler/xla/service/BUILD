@@ -300,6 +300,7 @@ cc_library(
         "hlo_opcode.cc",
         "hlo_schedule.cc",
         "hlo_sharding.cc",
+        "hlo_sharding_metadata.cc",
     ],
     hdrs = [
         "dfs_hlo_visitor.h",
@@ -313,6 +314,7 @@ cc_library(
         "hlo_opcode.h",
         "hlo_schedule.h",
         "hlo_sharding.h",
+        "hlo_sharding_metadata.h",
     ],
     deps = [
         ":hlo_casting_utils",
@@ -2760,22 +2762,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_sharding_metadata",
-    srcs = ["hlo_sharding_metadata.cc"],
-    hdrs = [
-        "hlo_sharding_metadata.h",
-    ],
-    deps = [
-        ":hlo",
-        "//tensorflow/compiler/xla:shape_tree",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "hlo_domain_verifier",
     srcs = ["hlo_domain_verifier.cc"],
     hdrs = ["hlo_domain_verifier.h"],
@@ -2825,7 +2811,6 @@ tf_cc_test(
         ":hlo_domain_isolator",
         ":hlo_domain_remover",
         ":hlo_parser",
-        ":hlo_sharding_metadata",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -3441,7 +3426,6 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_lexer",
-        ":hlo_sharding_metadata",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

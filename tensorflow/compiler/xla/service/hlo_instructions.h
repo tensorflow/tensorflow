@@ -1341,6 +1341,9 @@ class HloDomainInstruction : public HloInstruction {
       std::unique_ptr<DomainMetadata> operand_side_metadata,
       std::unique_ptr<DomainMetadata> user_side_metadata);
 
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
   // Retrieves the operand side metadata of a kDomain instruction.
   const DomainMetadata& operand_side_metadata() const {
     return *operand_side_metadata_;

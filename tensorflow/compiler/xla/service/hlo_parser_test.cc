@@ -1163,48 +1163,79 @@ ENTRY Sort {
   // clang-format on
 }
 
-class HloParserTest : public ::testing::Test,
-                      public ::testing::WithParamInterface<TestData> {
+// The test class for those tests defined above which round-trip through the
+// parser and ToString is templatized on two bool parameters:
+//
+//  short_form : used for the "short" test cases which use the ShortParsable
+//    output form.
+//  proto_round_trip : whether the module should also be round-tripped through
+//    HloProto form. This provides much better coverage for the proto
+//    serialization/deserialization.
+//
+// The proto_round_trip=true case also technically covers the Parser->ToString
+// roundtrip as well, but separating out the Parser->ToString roundtrip as its
+// own test provides better isolation and could conceivably catch weirdo bugs
+// which are hidden by interaction between the textual and proto roundtripping.
+template <bool short_form, bool proto_round_trip>
+class HloParameterizedParserTest
+    : public ::testing::Test,
+      public ::testing::WithParamInterface<TestData> {
  protected:
-  static void ExpectHasSubstr(string_view s, string_view expected) {
-    EXPECT_TRUE(absl::StrContains(s, expected))
-        << "'" << s << "' does not contain '" << expected << "'";
-  }
-
   // Expects "ToString(ParseHloString(string)) == string", that is, parses the
   // string, asserts that it succeeded, stringifies the parsed module, and
   // checks that the it equals the original string.
   void ExpectEqual() {
     const string& original = GetParam().module_string;
-    auto result = ParseHloString(original);
-    TF_ASSERT_OK(result.status());
-    EXPECT_EQ(original, result.ValueOrDie()->ToString(
-                            HloPrintOptions().set_print_large_constants(true)));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseHloString(original));
+    if (proto_round_trip) {
+      TF_ASSERT_OK_AND_ASSIGN(module, HloModule::CreateFromProto(
+                                          module->ToProto(), module->config()));
+    }
+    if (short_form) {
+      EXPECT_EQ(original, module->ToString(HloPrintOptions::ShortParsable()));
+    } else {
+      EXPECT_EQ(
+          original,
+          module->ToString(HloPrintOptions().set_print_large_constants(true)));
+    }
   }
 };
 
-class HloParserShortTest : public HloParserTest {
- protected:
-  void ExpectEqualShort() {
-    const string& original = GetParam().module_string;
-    auto result = ParseHloString(original);
-    TF_ASSERT_OK(result.status());
-    EXPECT_EQ(original,
-              result.ValueOrDie()->ToString(HloPrintOptions::ShortParsable()));
-  }
-};
+// These using shenanigans are required because the TEST_P macro doesn't like
+// template instantiations which contain commas.
+using HloParserTestLong = HloParameterizedParserTest<false, false>;
+using HloParserTestLongProto = HloParameterizedParserTest<false, true>;
+using HloParserTestShort = HloParameterizedParserTest<true, false>;
+using HloParserTestShortProto = HloParameterizedParserTest<true, true>;
 
-TEST_P(HloParserTest, Run) { ExpectEqual(); }
+TEST_P(HloParserTestLong, Run) { ExpectEqual(); }
+TEST_P(HloParserTestLongProto, Run) { ExpectEqual(); }
+TEST_P(HloParserTestShort, Run) { ExpectEqual(); }
+TEST_P(HloParserTestShortProto, Run) { ExpectEqual(); }
 
-TEST_P(HloParserShortTest, Run) { ExpectEqualShort(); }
-
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTest,
+INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestLong,
                         ::testing::ValuesIn(CreateTestCases()),
                         TestDataToString);
-
-INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserShortTest,
+INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
+                        HloParserTestLongProto,
+                        ::testing::ValuesIn(CreateTestCases()),
+                        TestDataToString);
+INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation, HloParserTestShort,
                         ::testing::ValuesIn(CreateShortTestCases()),
                         TestDataToString);
+INSTANTIATE_TEST_CASE_P(HloParserTestSuccessInstantiation,
+                        HloParserTestShortProto,
+                        ::testing::ValuesIn(CreateShortTestCases()),
+                        TestDataToString);
+
+class HloParserTest : public ::testing::Test {
+ protected:
+  static void ExpectHasSubstr(string_view s, string_view expected) {
+    EXPECT_TRUE(absl::StrContains(s, expected))
+        << "'" << s << "' does not contain '" << expected << "'";
+  }
+};
 
 TEST_F(HloParserTest, Empty) {
   const string original = "";
