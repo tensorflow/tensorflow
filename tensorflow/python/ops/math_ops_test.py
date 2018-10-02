@@ -369,7 +369,6 @@ class AddNTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(2 * slc_as_dense, math_ops.add_n([slc, slc]).eval())
 
 
-
 class DivAndModTest(test_util.TensorFlowTestCase):
   # TODO(aselle): Test more types before exposing new division operators.
 
