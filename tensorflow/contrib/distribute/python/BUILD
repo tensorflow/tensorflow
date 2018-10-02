@@ -728,6 +728,7 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 16,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
