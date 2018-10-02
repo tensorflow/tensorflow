@@ -15,6 +15,7 @@ py_test(
     tags = [
         "no_oss",  # (b/79552534)
         "no_pip",
+        "no_windows",
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -43,6 +44,11 @@ py_test(
     size = "medium",
     srcs = ["bucketing_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -66,7 +72,11 @@ py_test(
     size = "medium",
     srcs = ["csv_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -93,6 +103,9 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
+        "no_oss",
+        "no_pip",
+        "no_windows",
         "nomac",  # b/62040583
     ],
     deps = [
@@ -111,6 +124,11 @@ py_test(
     size = "medium",
     srcs = ["directed_interleave_dataset_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -126,6 +144,11 @@ py_test(
     name = "get_single_element_test",
     size = "small",
     srcs = ["get_single_element_test.py"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -144,6 +167,11 @@ py_test(
 py_test(
     name = "indexed_dataset_ops_test",
     srcs = ["indexed_dataset_ops_test.py"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -164,6 +192,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_windows",
         "notap",
     ],
     deps = [
@@ -187,7 +216,11 @@ py_test(
     size = "small",
     srcs = ["iterator_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -208,7 +241,9 @@ py_test(
     srcs = ["map_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_pip",
+        "no_windows",
         "noasan",  # times out
         "optonly",
     ],
@@ -234,6 +269,11 @@ py_test(
     size = "medium",
     srcs = ["filter_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -254,7 +294,11 @@ py_test(
     size = "small",
     srcs = ["map_defun_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -277,6 +321,11 @@ py_test(
     size = "small",
     srcs = ["parsing_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -313,7 +362,12 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+        "no_windows_gpu",
+    ],
 )
 
 py_test(
@@ -321,6 +375,11 @@ py_test(
     size = "small",
     srcs = ["range_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -366,7 +425,11 @@ py_test(
     size = "medium",
     srcs = ["reader_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         "//tensorflow/python:client_testlib",
@@ -390,6 +453,9 @@ py_test(
     shard_count = 2,
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
         "noasan",
         "optonly",
     ],
@@ -415,7 +481,11 @@ py_test(
     size = "small",
     srcs = ["scan_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -438,7 +508,9 @@ py_test(
     srcs = ["shuffle_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_pip",
+        "no_windows",
         "optonly",
     ],
     deps = [
@@ -475,7 +547,11 @@ py_test(
     size = "small",
     srcs = ["sql_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":sql_dataset_op_test_base",
         "//tensorflow/python:client_testlib",
@@ -489,7 +565,11 @@ py_test(
     size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         ":stats_dataset_test_base",
@@ -519,7 +599,11 @@ py_test(
     size = "small",
     srcs = ["threadpool_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -539,7 +623,11 @@ py_test(
     size = "small",
     srcs = ["unique_dataset_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -555,6 +643,11 @@ py_test(
     name = "writer_ops_test",
     size = "small",
     srcs = ["writer_ops_test.py"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
