@@ -90,8 +90,9 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
       HloInstructionInfo* instruction_info =
           computation_info->add_instruction_infos();
       instruction_info->set_long_name(hlo->ToString());
-      instruction_info->set_short_name(
-          hlo->ToString(HloPrintOptions().set_compact_operands(true)));
+      instruction_info->set_short_name(hlo->ToString(
+          HloPrintOptions().set_compact_operands(true).set_print_operand_names(
+              false)));
       instruction_info->set_category(hlo->ToCategory());
       instruction_info->set_flop_count(cost_analysis.flop_count(*hlo));
       instruction_info->set_transcendental_count(

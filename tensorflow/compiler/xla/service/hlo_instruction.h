@@ -80,6 +80,7 @@ class HloPrintOptions {
         print_backend_config_(true),
         compact_operands_(false),
         print_operand_shape_(true),
+        print_operand_names_(true),
         print_program_shape_(true),
         print_percent_(true),
         print_control_dependencies_(true),
@@ -107,6 +108,7 @@ class HloPrintOptions {
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_compact_operands(true)
+        .set_print_operand_names(false)
         .set_print_operand_shape(true)
         .set_print_program_shape(false)
         .set_print_percent(false)
@@ -144,6 +146,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, the operand names will be printed.
+  HloPrintOptions& set_print_operand_names(bool value) {
+    print_operand_names_ = value;
+    return *this;
+  }
+
   // If true, program shape of hlo computations will be printed.
   HloPrintOptions& set_print_program_shape(bool value) {
     print_program_shape_ = value;
@@ -162,8 +170,8 @@ class HloPrintOptions {
     return *this;
   }
 
-  // If true, only a part of operands will be printed out, and their names will
-  // be omitted (note that in this case the text will not be parsable).
+  // If true, only a part of operands will be printed out (note that in this
+  // case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
     compact_operands_ = value;
     return *this;
@@ -197,6 +205,7 @@ class HloPrintOptions {
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
+  bool print_operand_names() const { return print_operand_names_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
   bool print_control_dependencies() const {
@@ -215,6 +224,7 @@ class HloPrintOptions {
   bool print_backend_config_;
   bool compact_operands_;
   bool print_operand_shape_;
+  bool print_operand_names_;
   bool print_program_shape_;
   bool print_percent_;
   bool print_control_dependencies_;
