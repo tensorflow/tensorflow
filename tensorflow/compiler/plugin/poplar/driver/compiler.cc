@@ -311,7 +311,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         VLOG(1) << "Compile engine " << module->name();
 
         auto opts = poplarExecutor->GetOptionsFlags();
-        engine.reset(new poplar::Engine(graph, progs, opts));
+        auto progress_logging = [](int progress, int total) {
+          float progress_percent =
+              std::floor(100.0f * static_cast<float>(progress) /
+                         static_cast<float>(total));
+          VLOG(1) << "Poplar compilation " << progress_percent << "% complete";
+        };
+
+        engine.reset(new poplar::Engine(graph, progs, opts, progress_logging));
       } catch (std::logic_error e) {
         return tensorflow::errors::Unknown(
             StrCat("[Poplar Engine] ", e.what()));
