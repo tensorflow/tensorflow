@@ -19,10 +19,9 @@ from __future__ import print_function
 
 import threading
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import resource_variable_ops
 
 _uid_counter = 0
@@ -47,7 +46,7 @@ class PrivateThreadPool(object):
     """Creates a `PrivateThreadPool` with the given number of threads."""
     if context.executing_eagerly():
       shared_name = _generate_shared_name("privatethreadpool")
-      self._resource = gen_dataset_ops.thread_pool_handle(
+      self._resource = ged_ops.experimental_thread_pool_handle(
           num_threads=num_threads,
           max_intra_op_parallelism=max_intra_op_parallelism,
           display_name=display_name,
@@ -55,22 +54,22 @@ class PrivateThreadPool(object):
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device=context.context().device_name)
     else:
-      self._resource = gen_dataset_ops.thread_pool_handle(
+      self._resource = ged_ops.experimental_thread_pool_handle(
           num_threads=num_threads,
           max_intra_op_parallelism=max_intra_op_parallelism,
           display_name=display_name)
 
 
-class _ThreadPoolDataset(dataset_ops.Dataset):
+class _ThreadPoolDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and sets a custom threadpool."""
 
   def __init__(self, input_dataset, thread_pool):
-    super(_ThreadPoolDataset, self).__init__()
+    super(_ThreadPoolDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._thread_pool = thread_pool
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.thread_pool_dataset(
+    return ged_ops.experimental_thread_pool_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._thread_pool._resource,  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))

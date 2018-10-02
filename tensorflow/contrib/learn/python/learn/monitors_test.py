@@ -247,7 +247,7 @@ class MonitorsTest(test.TestCase):
 
   def test_logging_trainable(self):
     with ops.Graph().as_default() as g, self.session(g):
-      var = variables.Variable(constant_op.constant(42.0), name='foo')
+      var = variables.VariableV1(constant_op.constant(42.0), name='foo')
       var.initializer.run()
       cof = constant_op.constant(1.0)
       loss = math_ops.subtract(
@@ -261,7 +261,7 @@ class MonitorsTest(test.TestCase):
     with ops.Graph().as_default() as g, self.session(g):
       log_dir = 'log/dir'
       summary_writer = testing.FakeSummaryWriter(log_dir, g)
-      var = variables.Variable(0.0)
+      var = variables.VariableV1(0.0)
       var.initializer.run()
       tensor = state_ops.assign_add(var, 1.0)
       summary_op = summary.scalar('my_summary', tensor)
@@ -526,8 +526,8 @@ class MonitorsTest(test.TestCase):
     monitor0 = learn.monitors.GraphDump()
     monitor1 = learn.monitors.GraphDump()
     with ops.Graph().as_default() as g, self.session(g):
-      const_var = variables.Variable(42.0, name='my_const')
-      counter_var = variables.Variable(0.0, name='my_counter')
+      const_var = variables.VariableV1(42.0, name='my_const')
+      counter_var = variables.VariableV1(0.0, name='my_counter')
       assign_add = state_ops.assign_add(counter_var, 1.0, name='my_assign_add')
       variables.global_variables_initializer().run()
 
@@ -569,7 +569,7 @@ class MonitorsTest(test.TestCase):
     monitor = learn.monitors.CaptureVariable(
         var_name='my_assign_add:0', every_n=8, first_n=2)
     with ops.Graph().as_default() as g, self.session(g):
-      var = variables.Variable(0.0, name='my_var')
+      var = variables.VariableV1(0.0, name='my_var')
       var.initializer.run()
       state_ops.assign_add(var, 1.0, name='my_assign_add')
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)

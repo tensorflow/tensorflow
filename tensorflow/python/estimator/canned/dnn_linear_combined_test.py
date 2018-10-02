@@ -21,6 +21,7 @@ from __future__ import print_function
 import shutil
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -35,6 +36,7 @@ from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.estimator.inputs import pandas_io
 from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import nn
@@ -119,7 +121,16 @@ class LinearOnlyRegressorPartitionerTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearRegressorPartitionerTest.__init__(
-        self, _linear_regressor_fn)
+        self, _linear_regressor_fn, fc_lib=feature_column)
+
+
+class LinearOnlyRegressorPartitionerV2Test(
+    linear_testing_utils.BaseLinearRegressorPartitionerTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorPartitionerTest.__init__(
+        self, _linear_regressor_fn, fc_lib=feature_column_v2)
 
 
 class LinearOnlyRegressorEvaluationTest(
@@ -128,7 +139,16 @@ class LinearOnlyRegressorEvaluationTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearRegressorEvaluationTest.__init__(
-        self, _linear_regressor_fn)
+        self, _linear_regressor_fn, fc_lib=feature_column)
+
+
+class LinearOnlyRegressorEvaluationV2Test(
+    linear_testing_utils.BaseLinearRegressorEvaluationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorEvaluationTest.__init__(
+        self, _linear_regressor_fn, fc_lib=feature_column_v2)
 
 
 class LinearOnlyRegressorPredictTest(
@@ -137,7 +157,16 @@ class LinearOnlyRegressorPredictTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearRegressorPredictTest.__init__(
-        self, _linear_regressor_fn)
+        self, _linear_regressor_fn, fc_lib=feature_column)
+
+
+class LinearOnlyRegressorPredictV2Test(
+    linear_testing_utils.BaseLinearRegressorPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorPredictTest.__init__(
+        self, _linear_regressor_fn, fc_lib=feature_column_v2)
 
 
 class LinearOnlyRegressorIntegrationTest(
@@ -146,7 +175,16 @@ class LinearOnlyRegressorIntegrationTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearRegressorIntegrationTest.__init__(
-        self, _linear_regressor_fn)
+        self, _linear_regressor_fn, fc_lib=feature_column)
+
+
+class LinearOnlyRegressorIntegrationV2Test(
+    linear_testing_utils.BaseLinearRegressorIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorIntegrationTest.__init__(
+        self, _linear_regressor_fn, fc_lib=feature_column_v2)
 
 
 class LinearOnlyRegressorTrainingTest(
@@ -155,7 +193,16 @@ class LinearOnlyRegressorTrainingTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearRegressorTrainingTest.__init__(
-        self, _linear_regressor_fn)
+        self, _linear_regressor_fn, fc_lib=feature_column)
+
+
+class LinearOnlyRegressorTrainingV2Test(
+    linear_testing_utils.BaseLinearRegressorTrainingTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorTrainingTest.__init__(
+        self, _linear_regressor_fn, fc_lib=feature_column_v2)
 
 
 def _linear_classifier_fn(feature_columns,
@@ -185,7 +232,18 @@ class LinearOnlyClassifierTrainingTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierTrainingTest.__init__(
-        self, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn, fc_lib=feature_column)
+
+
+class LinearOnlyClassifierTrainingV2Test(
+    linear_testing_utils.BaseLinearClassifierTrainingTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierTrainingTest.__init__(
+        self,
+        linear_classifier_fn=_linear_classifier_fn,
+        fc_lib=feature_column_v2)
 
 
 class LinearOnlyClassifierClassesEvaluationTest(
@@ -194,7 +252,18 @@ class LinearOnlyClassifierClassesEvaluationTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierEvaluationTest.__init__(
-        self, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn, fc_lib=feature_column)
+
+
+class LinearOnlyClassifierClassesEvaluationV2Test(
+    linear_testing_utils.BaseLinearClassifierEvaluationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierEvaluationTest.__init__(
+        self,
+        linear_classifier_fn=_linear_classifier_fn,
+        fc_lib=feature_column_v2)
 
 
 class LinearOnlyClassifierPredictTest(
@@ -203,7 +272,18 @@ class LinearOnlyClassifierPredictTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierPredictTest.__init__(
-        self, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn, fc_lib=feature_column)
+
+
+class LinearOnlyClassifierPredictV2Test(
+    linear_testing_utils.BaseLinearClassifierPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierPredictTest.__init__(
+        self,
+        linear_classifier_fn=_linear_classifier_fn,
+        fc_lib=feature_column_v2)
 
 
 class LinearOnlyClassifierIntegrationTest(
@@ -212,9 +292,21 @@ class LinearOnlyClassifierIntegrationTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
-        self, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn, fc_lib=feature_column)
 
 
+class LinearOnlyClassifierIntegrationV2Test(
+    linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
+        self,
+        linear_classifier_fn=_linear_classifier_fn,
+        fc_lib=feature_column_v2)
+
+
+@parameterized.parameters((feature_column,), (feature_column_v2,))
 class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
 
   def setUp(self):
@@ -225,13 +317,15 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
-  def _test_complete_flow(
-      self, train_input_fn, eval_input_fn, predict_input_fn, input_dimension,
-      label_dimension, batch_size):
+  def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
+                          input_dimension, label_dimension, batch_size,
+                          fc_impl):
     linear_feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))]
+        fc_impl.numeric_column('x', shape=(input_dimension,))
+    ]
     dnn_feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))]
+        fc_impl.numeric_column('x', shape=(input_dimension,))
+    ]
     feature_columns = linear_feature_columns + dnn_feature_columns
     est = dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=linear_feature_columns,
@@ -257,14 +351,14 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
     self.assertAllEqual((batch_size, label_dimension), predictions.shape)
 
     # EXPORT
-    feature_spec = feature_column.make_parse_example_spec(feature_columns)
+    feature_spec = fc_impl.make_parse_example_spec(feature_columns)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
     export_dir = est.export_savedmodel(tempfile.mkdtemp(),
                                        serving_input_receiver_fn)
     self.assertTrue(gfile.Exists(export_dir))
 
-  def test_numpy_input_fn(self):
+  def test_numpy_input_fn(self, fc_impl):
     """Tests complete flow with numpy_input_fn."""
     label_dimension = 2
     batch_size = 10
@@ -293,9 +387,10 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         predict_input_fn=predict_input_fn,
         input_dimension=label_dimension,
         label_dimension=label_dimension,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        fc_impl=fc_impl)
 
-  def test_pandas_input_fn(self):
+  def test_pandas_input_fn(self, fc_impl):
     """Tests complete flow with pandas_input_fn."""
     if not HAS_PANDAS:
       return
@@ -326,9 +421,10 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         predict_input_fn=predict_input_fn,
         input_dimension=label_dimension,
         label_dimension=label_dimension,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        fc_impl=fc_impl)
 
-  def test_input_fn_from_parse_example(self):
+  def test_input_fn_from_parse_example(self, fc_impl):
     """Tests complete flow with input_fn constructed from parse_example."""
     label_dimension = 2
     batch_size = 10
@@ -376,7 +472,8 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         predict_input_fn=_predict_input_fn,
         input_dimension=label_dimension,
         label_dimension=label_dimension,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        fc_impl=fc_impl)
 
 
 # A function to mimic dnn-classifier init reuse same tests.
@@ -407,7 +504,16 @@ class DNNOnlyClassifierEvaluateTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNClassifierEvaluateTest.__init__(
-        self, _dnn_classifier_fn)
+        self, _dnn_classifier_fn, fc_impl=feature_column)
+
+
+class DNNOnlyClassifierEvaluateV2Test(
+    dnn_testing_utils.BaseDNNClassifierEvaluateTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierEvaluateTest.__init__(
+        self, _dnn_classifier_fn, fc_impl=feature_column_v2)
 
 
 class DNNOnlyClassifierPredictTest(
@@ -416,7 +522,16 @@ class DNNOnlyClassifierPredictTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNClassifierPredictTest.__init__(
-        self, _dnn_classifier_fn)
+        self, _dnn_classifier_fn, fc_impl=feature_column)
+
+
+class DNNOnlyClassifierPredictV2Test(
+    dnn_testing_utils.BaseDNNClassifierPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierPredictTest.__init__(
+        self, _dnn_classifier_fn, fc_impl=feature_column_v2)
 
 
 class DNNOnlyClassifierTrainTest(
@@ -425,7 +540,16 @@ class DNNOnlyClassifierTrainTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNClassifierTrainTest.__init__(
-        self, _dnn_classifier_fn)
+        self, _dnn_classifier_fn, fc_impl=feature_column)
+
+
+class DNNOnlyClassifierTrainV2Test(dnn_testing_utils.BaseDNNClassifierTrainTest,
+                                   test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierTrainTest.__init__(
+        self, _dnn_classifier_fn, fc_impl=feature_column_v2)
 
 
 # A function to mimic dnn-regressor init reuse same tests.
@@ -454,7 +578,16 @@ class DNNOnlyRegressorEvaluateTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNRegressorEvaluateTest.__init__(
-        self, _dnn_regressor_fn)
+        self, _dnn_regressor_fn, fc_impl=feature_column)
+
+
+class DNNOnlyRegressorEvaluateV2Test(
+    dnn_testing_utils.BaseDNNRegressorEvaluateTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNRegressorEvaluateTest.__init__(
+        self, _dnn_regressor_fn, fc_impl=feature_column_v2)
 
 
 class DNNOnlyRegressorPredictTest(
@@ -463,7 +596,16 @@ class DNNOnlyRegressorPredictTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNRegressorPredictTest.__init__(
-        self, _dnn_regressor_fn)
+        self, _dnn_regressor_fn, fc_impl=feature_column)
+
+
+class DNNOnlyRegressorPredictV2Test(
+    dnn_testing_utils.BaseDNNRegressorPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNRegressorPredictTest.__init__(
+        self, _dnn_regressor_fn, fc_impl=feature_column_v2)
 
 
 class DNNOnlyRegressorTrainTest(
@@ -472,9 +614,19 @@ class DNNOnlyRegressorTrainTest(
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNRegressorTrainTest.__init__(
-        self, _dnn_regressor_fn)
+        self, _dnn_regressor_fn, fc_impl=feature_column)
 
 
+class DNNOnlyRegressorTrainV2Test(dnn_testing_utils.BaseDNNRegressorTrainTest,
+                                  test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNRegressorTrainTest.__init__(
+        self, _dnn_regressor_fn, fc_impl=feature_column_v2)
+
+
+@parameterized.parameters((feature_column,), (feature_column_v2,))
 class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
 
   def setUp(self):
@@ -488,13 +640,14 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
   def _as_label(self, data_in_float):
     return np.rint(data_in_float).astype(np.int64)
 
-  def _test_complete_flow(
-      self, train_input_fn, eval_input_fn, predict_input_fn, input_dimension,
-      n_classes, batch_size):
+  def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
+                          input_dimension, n_classes, batch_size, fc_impl):
     linear_feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))]
+        fc_impl.numeric_column('x', shape=(input_dimension,))
+    ]
     dnn_feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))]
+        fc_impl.numeric_column('x', shape=(input_dimension,))
+    ]
     feature_columns = linear_feature_columns + dnn_feature_columns
     est = dnn_linear_combined.DNNLinearCombinedClassifier(
         linear_feature_columns=linear_feature_columns,
@@ -520,14 +673,14 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
     self.assertAllEqual((batch_size, n_classes), predicted_proba.shape)
 
     # EXPORT
-    feature_spec = feature_column.make_parse_example_spec(feature_columns)
+    feature_spec = fc_impl.make_parse_example_spec(feature_columns)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
     export_dir = est.export_savedmodel(tempfile.mkdtemp(),
                                        serving_input_receiver_fn)
     self.assertTrue(gfile.Exists(export_dir))
 
-  def test_numpy_input_fn(self):
+  def test_numpy_input_fn(self, fc_impl):
     """Tests complete flow with numpy_input_fn."""
     n_classes = 3
     input_dimension = 2
@@ -559,9 +712,10 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
         predict_input_fn=predict_input_fn,
         input_dimension=input_dimension,
         n_classes=n_classes,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        fc_impl=fc_impl)
 
-  def test_pandas_input_fn(self):
+  def test_pandas_input_fn(self, fc_impl):
     """Tests complete flow with pandas_input_fn."""
     if not HAS_PANDAS:
       return
@@ -593,9 +747,10 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
         predict_input_fn=predict_input_fn,
         input_dimension=input_dimension,
         n_classes=n_classes,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        fc_impl=fc_impl)
 
-  def test_input_fn_from_parse_example(self):
+  def test_input_fn_from_parse_example(self, fc_impl):
     """Tests complete flow with input_fn constructed from parse_example."""
     input_dimension = 2
     n_classes = 3
@@ -647,9 +802,11 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
         predict_input_fn=_predict_input_fn,
         input_dimension=input_dimension,
         n_classes=n_classes,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        fc_impl=fc_impl)
 
 
+@parameterized.parameters((feature_column,), (feature_column_v2,))
 class DNNLinearCombinedTests(test.TestCase):
 
   def setUp(self):
@@ -681,9 +838,9 @@ class DNNLinearCombinedTests(test.TestCase):
 
     return optimizer_mock
 
-  def test_train_op_calls_both_dnn_and_linear(self):
+  def test_train_op_calls_both_dnn_and_linear(self, fc_impl):
     opt = gradient_descent.GradientDescentOptimizer(1.)
-    x_column = feature_column.numeric_column('x')
+    x_column = fc_impl.numeric_column('x')
     input_fn = numpy_io.numpy_input_fn(
         x={'x': np.array([[0.], [1.]])},
         y=np.array([[0.], [1.]]),
@@ -708,7 +865,7 @@ class DNNLinearCombinedTests(test.TestCase):
                      checkpoint_utils.load_variable(
                          self._model_dir, 'dnn_called'))
 
-  def test_dnn_and_linear_logits_are_added(self):
+  def test_dnn_and_linear_logits_are_added(self, fc_impl):
     with ops.Graph().as_default():
       variables_lib.Variable([[1.0]], name='linear/linear_model/x/weights')
       variables_lib.Variable([2.0], name='linear/linear_model/bias_weights')
@@ -719,7 +876,7 @@ class DNNLinearCombinedTests(test.TestCase):
       variables_lib.Variable(1, name='global_step', dtype=dtypes.int64)
       linear_testing_utils.save_variables_to_ckpt(self._model_dir)
 
-    x_column = feature_column.numeric_column('x')
+    x_column = fc_impl.numeric_column('x')
     est = dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=[x_column],
         dnn_hidden_units=[1],
@@ -737,6 +894,7 @@ class DNNLinearCombinedTests(test.TestCase):
         next(est.predict(input_fn=input_fn)))
 
 
+@parameterized.parameters((feature_column,), (feature_column_v2,))
 class DNNLinearCombinedWarmStartingTest(test.TestCase):
 
   def setUp(self):
@@ -758,11 +916,11 @@ class DNNLinearCombinedWarmStartingTest(test.TestCase):
     writer_cache.FileWriterCache.clear()
     shutil.rmtree(self._ckpt_and_vocab_dir)
 
-  def test_classifier_basic_warm_starting(self):
+  def test_classifier_basic_warm_starting(self, fc_impl):
     """Tests correctness of DNNLinearCombinedClassifier default warm-start."""
-    age = feature_column.numeric_column('age')
-    city = feature_column.embedding_column(
-        feature_column.categorical_column_with_vocabulary_list(
+    age = fc_impl.numeric_column('age')
+    city = fc_impl.embedding_column(
+        fc_impl.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
 
@@ -798,11 +956,11 @@ class DNNLinearCombinedWarmStartingTest(test.TestCase):
           dnn_lc_classifier.get_variable_value(variable_name),
           warm_started_dnn_lc_classifier.get_variable_value(variable_name))
 
-  def test_regressor_basic_warm_starting(self):
+  def test_regressor_basic_warm_starting(self, fc_impl):
     """Tests correctness of DNNLinearCombinedRegressor default warm-start."""
-    age = feature_column.numeric_column('age')
-    city = feature_column.embedding_column(
-        feature_column.categorical_column_with_vocabulary_list(
+    age = fc_impl.numeric_column('age')
+    city = fc_impl.embedding_column(
+        fc_impl.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
 
@@ -836,11 +994,11 @@ class DNNLinearCombinedWarmStartingTest(test.TestCase):
           dnn_lc_regressor.get_variable_value(variable_name),
           warm_started_dnn_lc_regressor.get_variable_value(variable_name))
 
-  def test_warm_starting_selective_variables(self):
+  def test_warm_starting_selective_variables(self, fc_impl):
     """Tests selecting variables to warm-start."""
-    age = feature_column.numeric_column('age')
-    city = feature_column.embedding_column(
-        feature_column.categorical_column_with_vocabulary_list(
+    age = fc_impl.numeric_column('age')
+    city = fc_impl.embedding_column(
+        fc_impl.categorical_column_with_vocabulary_list(
             'city', vocabulary_list=['Mountain View', 'Palo Alto']),
         dimension=5)
 

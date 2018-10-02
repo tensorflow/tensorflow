@@ -333,6 +333,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1638,6 +1639,15 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "experimental_dataset_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
@@ -2007,6 +2017,7 @@ py_library(
         ":array_ops",
         ":cond_v2_impl",
         ":constant_op",
+        ":control_flow_ops",
         ":control_flow_util",
         ":framework_ops",
         ":function_def_to_graph",

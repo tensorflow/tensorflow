@@ -231,7 +231,8 @@ The same `input_fn` will be used for all workers if you use
 important to shuffle your dataset in your `input_fn`.
 
 `MirroredStrategy` will insert a `tf.dataset.Dataset.shard` call in you
-`input_fn`. As a result, each worker gets a fraction of your input data.
+`input_fn` if `auto_shard_dataset` is set to `True`. As a result, each worker
+gets a fraction of your input data.
 
 ### Performance Tips
 

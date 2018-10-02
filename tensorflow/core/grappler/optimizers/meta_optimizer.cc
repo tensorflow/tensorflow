@@ -115,6 +115,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  if (cfg_.disable_meta_optimizer()) {
+    return Status::OK();
+  }
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
@@ -135,7 +138,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
+  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -172,11 +175,12 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
-  return InitializeCustomGraphOptimizers(optimizers);
+  return InitializeCustomGraphOptimizers(std::set<string>(), optimizers);
 }
 
 Status MetaOptimizer::InitializeOptimizersByName(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  std::set<string> initialized_custom_optimizers;
   for (const string& optimizer_name : cfg_.optimizers()) {
     auto optimizer = MakeNewOptimizer(optimizer_name);
     if (optimizer) {
@@ -190,18 +194,26 @@ Status MetaOptimizer::InitializeOptimizersByName(
 
     if (custom_optimizer) {
       VLOG(2) << "Registered custom graph optimizer: " << optimizer_name;
-      TF_RETURN_IF_ERROR(custom_optimizer->Init());
+      TF_RETURN_IF_ERROR(custom_optimizer->Init(
+          GetCustomGraphOptimizerConfig(optimizer_name)));
       optimizers->push_back(std::move(custom_optimizer));
+      initialized_custom_optimizers.insert(optimizer_name);
     } else {
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
-  return InitializeCustomGraphOptimizers(optimizers);
+  return InitializeCustomGraphOptimizers(initialized_custom_optimizers,
+                                         optimizers);
 }
 
 Status MetaOptimizer::InitializeCustomGraphOptimizers(
+    const std::set<string>& pre_initialized_optimizers,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
+    if (pre_initialized_optimizers.find(optimizer_config.name()) !=
+        pre_initialized_optimizers.end()) {
+      continue;
+    }
     // Initialize the ExperimentalImplementationSelector here instead of
     // CustomizeOptimizer registry, due the static link issue in TensorRT for
     // double registry.
@@ -235,6 +247,16 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
     }
   }
   return Status::OK();
+}
+
+const RewriterConfig::CustomGraphOptimizer*
+MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
+  for (const auto& config : cfg_.custom_optimizers()) {
+    if (config.name() == name) {
+      return &config;
+    }
+  }
+  return nullptr;
 }
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
@@ -470,6 +492,9 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
+  if (cfg.disable_meta_optimizer()) {
+    return false;
+  }
   return !cfg.disable_model_pruning() ||
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() != RewriterConfig::OFF ||
@@ -483,7 +508,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
          cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         cfg.pin_to_host_optimization() == RewriterConfig::ON ||
+         cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
          !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 

@@ -301,7 +301,7 @@ def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
     # TODO(nupurgarg): Add "pb2lite" when it's in open source. b/113614050.
-    return ["toco-extended", ""]
+    return ["toco-flex", ""]
 
 def generated_test_models_all():
     """Generates a list of all tests with the different converters.
@@ -335,7 +335,7 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # TODO(nupurgarg): Comment in when pb2lite is in open source. b/113614050.
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
-        flags = "--ignore_toco_errors --run_with_extended"
+        flags = "--ignore_toco_errors --run_with_flex"
         kwargs["tags"].append("skip_already_failing")
         kwargs["tags"].append("no_oss")
         kwargs["tags"].append("notap")
@@ -391,3 +391,41 @@ def gen_selected_ops(name, model):
               (tool, model, out, tflite_path[2:]),
         tools = [tool],
     )
+
+def gen_full_model_test(conversion_modes, models, data, test_suite_tag):
+    """Generates Python test targets for testing TFLite models.
+
+    Args:
+      conversion_modes: List of conversion modes to test the models on.
+      models: List of models to test.
+      data: List of BUILD targets linking the data.
+      test_suite_tag: Tag identifying the model test suite.
+    """
+    options = [
+        (conversion_mode, model)
+        for model in models
+        for conversion_mode in conversion_modes
+    ]
+
+    for conversion_mode, model_name in options:
+        native.py_test(
+            name = "model_coverage_test_%s_%s" % (model_name, conversion_mode.lower()),
+            srcs = ["model_coverage_test.py"],
+            main = "model_coverage_test.py",
+            args = [
+                "--model_name=%s" % model_name,
+                "--converter_mode=%s" % conversion_mode,
+            ],
+            data = data,
+            srcs_version = "PY2AND3",
+            tags = [
+                "no_oss",
+                "no_windows",
+                "notap",
+            ] + [test_suite_tag],
+            deps = [
+                "//tensorflow/contrib/lite/testing:model_coverage_lib",
+                "//tensorflow/contrib/lite/python:lite",
+                "//tensorflow/python:client_testlib",
+            ],
+        )

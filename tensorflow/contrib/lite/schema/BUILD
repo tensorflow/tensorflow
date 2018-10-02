@@ -25,14 +25,18 @@ py_binary(
     ],
 )
 
+# TODO(wvo): re-enable this test once latest FlatBuffers has landed.
+
 py_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_oss",
         "no_pip",
+        "notap",
     ],
     deps = [
         ":upgrade_schema",

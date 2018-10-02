@@ -23,12 +23,13 @@ import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import optimization
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class ModelDatasetTest(test.TestCase):
+class ModelDatasetTest(test_base.DatasetTestBase):
 
   def testModelMap(self):
     k = 1024 * 1024

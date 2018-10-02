@@ -131,6 +131,8 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  int tensor_id,
                                                  TF_Tensor* tensor,
                                                  TF_Status* status);
+// Create a serialized tensorflow.ServerDef proto.
+TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
 
 // TODO: remove this API in favor of the next one.
 TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
@@ -178,10 +180,8 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
-// Returns a const scalar tensor.
-// Caller owns both the input and the output tensor handles.
-// TODO: Remove this API with hard-coded tensor computation.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_RunConstOp(TFE_Context* ctx);
+TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
+                                                      const char* errMsg);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -1278,7 +1278,7 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
 
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,
                              absl::Span<const XlaOp> operands,
-                             const Shape& shape) {
+                             const Shape& shape, const string& opaque) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1289,6 +1289,7 @@ XlaOp XlaBuilder::CustomCall(const string& call_target_name,
     }
     *instr.mutable_shape() = shape;
     instr.set_custom_call_target(call_target_name);
+    instr.set_custom_call_opaque(opaque);
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
   });
 }
@@ -2681,8 +2682,9 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 }
 
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 absl::Span<const XlaOp> operands, const Shape& shape) {
-  return builder->CustomCall(call_target_name, operands, shape);
+                 absl::Span<const XlaOp> operands, const Shape& shape,
+                 const string& opaque) {
+  return builder->CustomCall(call_target_name, operands, shape, opaque);
 }
 
 XlaOp Complex(const XlaOp& real, const XlaOp& imag,

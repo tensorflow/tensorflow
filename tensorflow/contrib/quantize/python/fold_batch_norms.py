@@ -418,10 +418,11 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
         transpose_b=layer_op.get_attr('transpose_b'),
         name=new_layer_name)
   elif layer_op.type == 'DepthwiseConv2dNative':
+    # We don't copy dilation rate because we reuse the input SpaceToBatch
+    # and create our own BatchToSpace operation below.
     conv = nn.depthwise_conv2d(
         input_tensor,
         weight_tensor,
-        rate=layer_op.get_attr('dilations'),
         strides=layer_op.get_attr('strides'),
         padding=layer_op.get_attr('padding'),
         name=new_layer_name)

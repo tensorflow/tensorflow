@@ -421,9 +421,12 @@ class Interpreter {
     allow_buffer_handle_output_ = allow_buffer_handle_output;
   }
 
-  // Reset all variable tensors to zero.
+  // Reset all variable tensors to the default value.
+  // If a variable tensor doesn't have a buffer, reset it to zero.
+  // TODO(b/115961645): Implement - If a variable tensor has a buffer, reset it
+  // to the value of the buffer.
   // WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ResetVariableTensorsToZero();
+  TfLiteStatus ResetVariableTensors();
 
   // Retrieve an operator's description of its work, for profiling purposes.
   const char* OpProfilingString(const TfLiteRegistration& op_reg,

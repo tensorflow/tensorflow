@@ -22,6 +22,7 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import scan_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -33,7 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ScanDatasetTest(test.TestCase):
+class ScanDatasetTest(test_base.DatasetTestBase):
 
   def _counting_dataset(self, start, scan_fn):
     return dataset_ops.Dataset.from_tensors(0).repeat().apply(

@@ -136,7 +136,7 @@ class StatefulScatterNdTest(test.TestCase):
         new = ref.copy()
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
-        ref_var = variables.Variable(ref)
+        ref_var = variables.VariableV1(ref)
         ref_var.initializer.run()
         tf_scatter(ref_var, indices, updates).eval()
 
@@ -258,7 +258,7 @@ class StatefulScatterNdTest(test.TestCase):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.test_session(use_gpu=False):
-        ref = variables.Variable(params)
+        ref = variables.VariableV1(params)
         ref.initializer.run()
 
         # Indices all in range, no problem.

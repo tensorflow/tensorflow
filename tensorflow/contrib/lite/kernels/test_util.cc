@@ -122,7 +122,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
       << "Cannot allocate tensors";
-  interpreter_->ResetVariableTensorsToZero();
+  interpreter_->ResetVariableTensors();
 }
 
 void SingleOpModel::Invoke() { CHECK(interpreter_->Invoke() == kTfLiteOk); }

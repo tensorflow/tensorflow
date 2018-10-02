@@ -1434,7 +1434,7 @@ tf_module {
   }
   member_method {
     name: "map_fn"
-    argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'True\', \'None\'], "
+    argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\', \'True\', \'None\'], "
   }
   member_method {
     name: "matching_files"
@@ -2219,6 +2219,10 @@ tf_module {
   member_method {
     name: "variable_axis_size_partitioner"
     argspec: "args=[\'max_shard_bytes\', \'axis\', \'bytes_per_string_element\', \'max_shards\'], varargs=None, keywords=None, defaults=[\'0\', \'16\', \'None\'], "
+  }
+  member_method {
+    name: "variable_creator_scope"
+    argspec: "args=[\'variable_creator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "variable_op_scope"
