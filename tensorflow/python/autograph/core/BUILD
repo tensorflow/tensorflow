@@ -33,6 +33,35 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_lib",
+    srcs = [
+        "converter_testing.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":core",
+        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/utils",
+        "@gast_archive//:gast",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "converter_test",
+    srcs = ["converter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":core",
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_test(
     name = "errors_test",
     srcs = ["errors_test.py"],
@@ -65,23 +94,5 @@ py_test(
     deps = [
         ":core",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_library(
-    name = "test_lib",
-    srcs = [
-        "converter_testing.py",
-    ],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        ":core",
-        "//tensorflow/python/autograph/operators",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
-        "@gast_archive//:gast",
-        "@six_archive//:six",
     ],
 )
