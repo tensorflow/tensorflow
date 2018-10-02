@@ -2663,6 +2663,9 @@ class MatchingFilesDataset(Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.matching_files_dataset(self._patterns)
 
+  def _inputs(self):
+    return []
+
   @property
   def output_classes(self):
     return ops.Tensor
