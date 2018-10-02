@@ -74,6 +74,9 @@ internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
     case PlatformKind::kOpenCL:
       factory = *internal::MakeOpenCLExecutorImplementation();
       break;
+    case PlatformKind::kROCm:
+      factory = *internal::MakeROCMExecutorImplementation();
+      break;
     case PlatformKind::kHost:
       factory = internal::MakeHostExecutorImplementation;
       break;
@@ -188,6 +191,8 @@ StreamExecutor::StreamExecutor(
       memory_limit_bytes_(GetMemoryLimitBytes()) {
   if (port::Lowercase(platform_->Name()) == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
+  } else if (port::Lowercase(platform_->Name()) == "rocm") {
+    platform_kind_ = PlatformKind::kROCm;
   } else if (port::Lowercase(platform_->Name()) == "opencl") {
     platform_kind_ = PlatformKind::kOpenCL;
   } else if (port::Lowercase(platform_->Name()) == "host") {

@@ -8,6 +8,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
@@ -39,6 +40,7 @@ tf_cuda_library(
         "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor:cuda_platform"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": [],
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor:rocm_platform"],
         "//conditions:default": [],
     }) + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
@@ -56,6 +58,15 @@ cc_library(
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "stream_executor_rocm",
+    deps = [
+        "//tensorflow/stream_executor",
+    ] + if_static(
+        ["//tensorflow/stream_executor:rocm_platform"],
+    ),
 )
 
 cc_library(
@@ -248,6 +259,16 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cudart",
     ],
+)
+
+cc_library(
+    name = "rocm",
+    data = [],
+    linkopts = select({
+        "//conditions:default": [
+        ],
+    }),
+    deps = [],
 )
 
 cc_library(

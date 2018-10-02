@@ -32,6 +32,13 @@ StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
   return &instance;
 }
 
+// -- ROCm
+
+StreamExecutorFactory* MakeROCMExecutorImplementation() {
+  static StreamExecutorFactory instance;
+  return &instance;
+}
+
 // -- Host
 
 StreamExecutorFactory MakeHostExecutorImplementation;
