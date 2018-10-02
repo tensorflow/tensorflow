@@ -23,21 +23,6 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
-namespace {
-
-static bool OkToStream(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
-    return false;
-  }
-  if (ShapeUtil::ElementsIn(shape) == 0) {
-    return false;
-  }
-  if (ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) > 4) {
-    return false;
-  }
-  return true;
-}
-}
 
 // Arrange for a FIFO and Copy for outputs which can be streamed
 Status EntryVisitor::StreamOutputs(HloInstruction* inst, uint64 start_idx,
@@ -68,7 +53,7 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
                        resources_.annotations.num_resource_inputs;
 
   parameter_streamed[inst->parameter_number()] =
-      (inst->parameter_number() < num_streaming) && OkToStream(inst->shape());
+      (inst->parameter_number() < num_streaming);
 
   std::vector<Shape> shapes = FlattenedXlaShape(inst->shape());
   std::vector<Shape> module_shapes;
@@ -173,25 +158,23 @@ Status EntryVisitor::Postprocess(HloInstruction* inst) {
   if (UseSyntheticData()) {
     return Status::OK();
   }
-  if (OkToStream(inst->shape())) {
-    const auto* root = inst->parent()->root_instruction();
-    auto num_streaming = FlattenedXlaShape(root->shape()).size() -
-                         resources_.annotations.num_resource_outputs;
-    const auto& outputs = FindInstructionOutputs(tensor_map, inst);
-    if (root->opcode() == HloOpcode::kTuple) {
-      for (int i = 0; i < root->operand_count(); i++) {
-        if (root->operand(i) == inst) {
-          if (i < num_streaming) {
-            auto pair = FindTupleInputIndices(root, i);
-            if (pair.second - pair.first == outputs.size()) {
-              StreamOutputs(inst, pair.first, outputs);
-            }
+  const auto* root = inst->parent()->root_instruction();
+  auto num_streaming = FlattenedXlaShape(root->shape()).size() -
+                       resources_.annotations.num_resource_outputs;
+  const auto& outputs = FindInstructionOutputs(tensor_map, inst);
+  if (root->opcode() == HloOpcode::kTuple) {
+    for (int i = 0; i < root->operand_count(); i++) {
+      if (root->operand(i) == inst) {
+        if (i < num_streaming) {
+          auto pair = FindTupleInputIndices(root, i);
+          if (pair.second - pair.first == outputs.size()) {
+            StreamOutputs(inst, pair.first, outputs);
           }
         }
       }
-    } else if (inst == inst->parent()->root_instruction() && num_streaming) {
-      StreamOutputs(inst, 0, outputs);
     }
+  } else if (inst == inst->parent()->root_instruction() && num_streaming) {
+    StreamOutputs(inst, 0, outputs);
   }
   return Status::OK();
 }

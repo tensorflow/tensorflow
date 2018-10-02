@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -539,9 +540,15 @@ void PoplarExecutor::FlattenedDeviceMemoryList(InputPairList& list,
   }
 }
 
-void PoplarExecutor::CreateArgsHandleMap(
-    ArgsHandleMap& arg_map, const Args& args,
-    const xla::poplarplugin::PoplarExecutable& executable) {
+void PoplarExecutor::UpdateArgsHandleMap(
+    const Args& args, const xla::poplarplugin::PoplarExecutable& executable) {
+  args_map_.clear();
+
+  // Don't map any inputs
+  if (UseSyntheticData()) {
+    return;
+  }
+
   const auto* comp = executable.module().entry_computation();
   std::vector<xla::Shape> shapes(comp->num_parameters());
   for (const auto& inst : comp->parameter_instructions()) {
@@ -553,7 +560,65 @@ void PoplarExecutor::CreateArgsHandleMap(
     FlattenedDeviceMemoryList(bufs, shapes[a],
                               const_cast<void*>(args[a].opaque()), streamed[a]);
     for (unsigned i = 0; i < bufs.size(); i++) {
-      arg_map[GetInputCopyHandle(a, i)] = bufs[i];
+      args_map_[GetInputCopyHandle(a, i)] = bufs[i];
+    }
+  }
+}
+
+void PoplarExecutor::FlattenedOutputDeviceMemoryList(OutputPairList& list,
+                                                     const xla::Shape& shape,
+                                                     void* base,
+                                                     bool streamed) {
+  TensorControl* tc = static_cast<TensorControl*>(base);
+  if (xla::ShapeUtil::IsTuple(shape)) {
+    void** ptrs = reinterpret_cast<void**>(tc->data);
+    for (unsigned int t = 0; t < xla::ShapeUtil::TupleElementCount(shape);
+         t++) {
+      void* ptr = ptrs[t];
+      FlattenedOutputDeviceMemoryList(
+          list, xla::ShapeUtil::GetTupleElementShape(shape, t), ptr, streamed);
+    }
+  } else {
+    list.push_back(OutputDef(tc, streamed));
+  }
+}
+
+void PoplarExecutor::UpdateOutputsHandleMap(
+    const xla::poplarplugin::PoplarExecutable& executable,
+    se::DeviceMemoryBase retbuf) {
+  outputs_map_.clear();
+
+  // Don't map any outputs
+  if (UseSyntheticData()) {
+    return;
+  }
+
+  const auto* comp = executable.module().entry_computation();
+  auto* root = comp->root_instruction();
+  // Get all outputs
+  std::vector<const HloInstruction*> output_insts;
+  std::vector<void*> outputs;
+
+  if (root->opcode() == HloOpcode::kTuple) {
+    TensorControl* tc = static_cast<TensorControl*>(retbuf.opaque());
+    void** ptrs = reinterpret_cast<void**>(tc->data);
+    for (unsigned i = 0; i < root->operand_count(); i++) {
+      output_insts.push_back(root->operand(i));
+      outputs.push_back(ptrs[i]);
+    }
+  } else {
+    output_insts.push_back(root);
+    outputs.push_back(retbuf.opaque());
+  }
+
+  // For all outputs
+  const auto& streamed = executable.OutputStreamed();
+  for (unsigned int a = 0; a < output_insts.size(); a++) {
+    OutputPairList bufs;
+    FlattenedOutputDeviceMemoryList(bufs, output_insts[a]->shape(), outputs[a],
+                                    streamed[a]);
+    for (unsigned i = 0; i < bufs.size(); i++) {
+      outputs_map_[bufs[i].tc->output_handle] = bufs[i];
     }
   }
 }
@@ -675,6 +740,72 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
   }
 }
 
+// Takes a tensor and returns a pointer to a buffer with the data in the right
+// format
+void* PoplarExecutor::PreProcessBuffer(InputDef& id) {
+  TensorControl* tc = id.tc;
+  void* buf(static_cast<void*>(tc->data));
+  if (id.fn != nullptr) {
+    tc->converted_data = id.fn(buf, tc->size, 0);
+    buf = tc->converted_data.data();
+  }
+  return buf;
+}
+
+// Convers the data into the right host format
+void PoplarExecutor::PostProcessBuffer(TensorControl* tc) {
+  if (tc->output_convertor) {
+    void* buf(static_cast<void*>(tc->data));
+    std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
+    memcpy(buf, converted.data(), converted.size());
+  }
+}
+
+StatusOr<bool> PoplarExecutor::CheckMoveDeviceToHostRequired(
+    const bool engine_changed) {
+  // Pull previous execution outputs back from device if:
+  // a) one is on the device _and_
+  // b)   the engine is changing _or_
+  // c)   output buffer isn't an input to the current engine _or_
+  // d)   output buffer isn't currently in the right place for the new input
+  bool do_device_to_host = false;
+  for (const auto& tc : allocations_) {
+    if (tc->on_device == true && !tc->output_handle.empty()) {
+      if (engine_changed || args_map_.count(tc->input_handle) == 0 ||
+          tc != args_map_.at(tc->input_handle).tc) {
+        do_device_to_host = true;
+      }
+    }
+  }
+  // never move anything if we are using synthetic data
+  return (do_device_to_host && !UseSyntheticData());
+}
+
+StatusOr<bool> PoplarExecutor::CheckMoveHostToDeviceRequired(
+    const bool engine_changed) {
+  // Put resources on the device if:
+  // a) the engine has changed
+  // b) resource is not on the device
+  // c) resource is on the device, but in the wrong place
+  bool do_host_to_device = false;
+  for (const auto& arg : args_map_) {
+    if (!arg.second.streamed) {
+      auto it =
+          std::find(allocations_.begin(), allocations_.end(), arg.second.tc);
+      if (it == allocations_.end()) {
+        return tensorflow::errors::InvalidArgument(
+            "Argument isn't allocated on device: ", (void*)arg.second.tc);
+      }
+      if (engine_changed || arg.second.tc->on_device == false ||
+          arg.second.tc->input_handle != arg.first) {
+        do_host_to_device = true;
+      }
+    }
+  }
+  // never move anything if we are using synthetic data
+  return (do_host_to_device && !UseSyntheticData());
+}
+
 Status PoplarExecutor::MoveDeviceToHost() {
   if (UseSyntheticData()) {
     return Status::OK();
@@ -703,7 +834,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
 
   // perform device -> host read
   try {
-    current_engine_->run(2);
+    current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
   } catch (std::logic_error& e) {
     return tensorflow::errors::Internal("Poplar host read error: ", e.what());
   }
@@ -716,16 +847,61 @@ Status PoplarExecutor::MoveDeviceToHost() {
   // Post process upload
   for (const auto& tc : allocations_) {
     if (tc->on_device == true && !tc->output_handle.empty()) {
-      if (tc->output_convertor) {
-        void* buf(static_cast<void*>(tc->data));
-        std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
-        memcpy(buf, converted.data(), converted.size());
-      }
+      PostProcessBuffer(tc);
     }
 
     tc->on_device = false;
     tc->output_handle.clear();
     tc->input_handle.clear();
+  }
+
+  return Status::OK();
+}
+
+Status PoplarExecutor::MoveHostToDevice() {
+  try {
+    Json::Value root;
+    root["tensors"] = Json::Value(Json::arrayValue);
+    uint64 total_size = 0;
+
+    for (auto arg : args_map_) {
+      TensorControl* tc = arg.second.tc;
+      std::vector<std::pair<std::string, int64>> stream_list;
+      void* buf(static_cast<void*>(tc->data));
+      if (!arg.second.streamed) {
+        buf = PreProcessBuffer(arg.second);
+
+        current_engine_->connectStream(arg.first, buf);
+
+        tc->on_device = true;
+        tc->input_handle = arg.first;
+
+        Json::Value tensor;
+        tensor["name"] = Json::Value(arg.first);
+        tensor["size"] = Json::Value::UInt64(tc->size);
+        root["tensors"].append(tensor);
+        total_size += tc->size;
+
+        stream_list.push_back(std::make_pair(arg.first, 0));
+      }
+    }
+    root["total_size"] = Json::Value::UInt64(total_size);
+    Json::StreamWriterBuilder json_builder;
+    std::string json_msg = Json::writeString(json_builder, root);
+
+    current_engine_->run(PoplarProgramType::HOST_TO_DEVICE);
+
+    if (current_config_.profiling().enable_io_trace()) {
+      AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
+                     json_msg, 0);
+    }
+
+    for (auto arg : args_map_) {
+      TensorControl* tc = arg.second.tc;
+      tc->converted_data.clear();
+    }
+  } catch (std::logic_error e) {
+    return tensorflow::errors::Internal("Poplar host write error ", e.what());
   }
 
   return Status::OK();
@@ -741,16 +917,43 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::GetTupleBufferByIndex(
   return se::DeviceMemoryBase(bufs[value], size);
 }
 
-void PoplarExecutor::FlattenedOutputDeviceMemoryList(std::vector<void*>& list,
-                                                     const xla::Shape& shape,
-                                                     void* base) {
+void PoplarExecutor::ConnectStreamedVariablesHostToDevice() {
+  for (auto arg : args_map_) {
+    if (arg.second.streamed) {
+      void* buf = PreProcessBuffer(arg.second);
+      current_engine_->connectStream(arg.first, buf);
+    }
+  }
+}
+
+void PoplarExecutor::ConnectStreamedVariablesDeviceToHost() {
+  for (auto output : outputs_map_) {
+    if (output.second.streamed) {
+      TensorControl* tc = output.second.tc;
+      current_engine_->connectStream(output.first,
+                                     static_cast<void*>(tc->data));
+    }
+  }
+}
+
+void PoplarExecutor::PostProcessStreamedVariablesDeviceToHost() {
+  for (auto output : outputs_map_) {
+    if (output.second.streamed) {
+      PostProcessBuffer(output.second.tc);
+    }
+  }
+}
+
+void PoplarExecutor::FlattenedOutputDeviceMemoryListOld(
+    std::vector<void*>& list, const xla::Shape& shape, void* base) {
   TensorControl* tc = static_cast<TensorControl*>(base);
   if (xla::ShapeUtil::IsTuple(shape)) {
     void** ptrs = reinterpret_cast<void**>(tc->data);
     for (unsigned int t = 0; t < xla::ShapeUtil::TupleElementCount(shape);
          t++) {
       void* ptr = ptrs[t];
-      FlattenedOutputDeviceMemoryList(
+      TensorControl* ptc = static_cast<TensorControl*>(ptrs[t]);
+      FlattenedOutputDeviceMemoryListOld(
           list, xla::ShapeUtil::GetTupleElementShape(shape, t), ptr);
     }
   } else {
@@ -789,48 +992,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
             "Executable must have an HloModule");
       }
 
-      ArgsHandleMap arg_map;
-      if (!UseSyntheticData()) {
-        CreateArgsHandleMap(arg_map, args, executable);
-      }
+      UpdateArgsHandleMap(args, executable);
 
-      // Put data on the device if:
-      // a) the engine has changed
-      // b) it is not on the device
-      // c) it is on the device, but in the wrong place
-      bool do_host_to_device = false;
-      for (const auto& arg : arg_map) {
-        auto it =
-            std::find(allocations_.begin(), allocations_.end(), arg.second.tc);
-        if (it == allocations_.end()) {
-          return tensorflow::errors::InvalidArgument(
-              "Argument isn't allocated on device: ", (void*)arg.second.tc);
-        }
+      TF_ASSIGN_OR_RETURN(const bool move__device_to_host,
+                          CheckMoveDeviceToHostRequired(engine_changed));
 
-        if (!arg.second.streamed) {
-          if (engine_changed || arg.second.tc->on_device == false ||
-              arg.second.tc->input_handle != arg.first) {
-            do_host_to_device = true;
-          }
-        }
-      }
-
-      // Pull previous execution outputs back from device if:
-      // a) one is on the device _and_
-      // b)   the engine is changing _or_
-      // c)   output buffer isn't an input to the current engine _or_
-      // d)   output buffer isn't currently in the right place for the new input
-      bool do_device_to_host = false;
-      for (const auto& tc : allocations_) {
-        if (tc->on_device == true && !tc->output_handle.empty()) {
-          if (engine_changed || arg_map.count(tc->input_handle) == 0 ||
-              tc != arg_map.at(tc->input_handle).tc) {
-            do_device_to_host = true;
-          }
-        }
-      }
-
-      if (do_device_to_host) {
+      if (move__device_to_host) {
         MoveDeviceToHost();
       }
 
@@ -853,85 +1020,33 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         }
       }
 
-      try {
-        if (do_host_to_device) {
-          Json::Value root;
-          root["tensors"] = Json::Value(Json::arrayValue);
-          uint64 total_size = 0;
-
-          for (auto arg : arg_map) {
-            TensorControl* tc = arg.second.tc;
-            std::vector<std::pair<std::string, int64>> stream_list;
-            void* buf(static_cast<void*>(tc->data));
-            if (!arg.second.streamed) {
-              if (arg.second.fn != nullptr) {
-                tc->converted_data = arg.second.fn(buf, tc->size, 0);
-                buf = tc->converted_data.data();
-              }
-
-              current_engine_->connectStream(arg.first, buf);
-
-              tc->on_device = true;
-              tc->input_handle = arg.first;
-
-              Json::Value tensor;
-              tensor["name"] = Json::Value(arg.first);
-              tensor["size"] = Json::Value::UInt64(tc->size);
-              root["tensors"].append(tensor);
-              total_size += tc->size;
-
-              stream_list.push_back(std::make_pair(arg.first, 0));
-            }
-          }
-          root["total_size"] = Json::Value::UInt64(total_size);
-          Json::StreamWriterBuilder json_builder;
-          std::string json_msg = Json::writeString(json_builder, root);
-
-          current_engine_->run(1);
-
-          if (current_config_.profiling().enable_io_trace()) {
-            AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
-                           "", json_msg, 0);
-          }
-
-          for (auto arg : arg_map) {
-            TensorControl* tc = arg.second.tc;
-            tc->converted_data.clear();
-          }
-        }
-      } catch (std::logic_error e) {
-        return tensorflow::errors::Internal("Poplar host write error ",
-                                            e.what());
+      TF_ASSIGN_OR_RETURN(const bool move__host_to_device,
+                          CheckMoveHostToDeviceRequired(engine_changed));
+      if (move__host_to_device) {
+        MoveHostToDevice();
       }
 
       std::tie(retbuf, tensor_count) =
           AllocateOutputBuffer(allocator, output_shape, 0, output_map, args,
                                executable.OutputStreamed());
 
+      UpdateOutputsHandleMap(executable, retbuf);
+
       VLOG(1) << "Executing on poplar stream ordinal " << ordinal_
               << " of type " << GetDeviceTargetName();
 
       try {
-        // Input streams
-        for (auto arg : arg_map) {
-          TensorControl* tc = arg.second.tc;
-          void* buf(static_cast<void*>(tc->data));
-          if (arg.second.streamed) {
-            current_engine_->connectStream(arg.first, buf);
-          }
-        }
+        // Connect the streams to and from the device
+        ConnectStreamedVariablesHostToDevice();
+        ConnectStreamedVariablesDeviceToHost();
 
-        // Output streams
-        const auto& streamed = executable.OutputStreamed();
-        std::vector<void*> bufs;
-        FlattenedOutputDeviceMemoryList(bufs, output_shape, retbuf.opaque());
-        for (int o = 0; o < streamed.size(); o++) {
-          if (streamed[o]) {
-            current_engine_->connectStream(GetOutputCopyHandle(o), bufs[o]);
-          }
-        }
+        // Run the main engine
+        current_engine_->run(PoplarProgramType::MAIN_SEQUENCE);
 
-        current_engine_->run(0);
+        // We need to call post process to make sure all the data is in the
+        // right format on the host
+        PostProcessStreamedVariablesDeviceToHost();
+
       } catch (std::logic_error e) {
         return tensorflow::errors::Internal("Poplar execution error ",
                                             e.what());

@@ -290,8 +290,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       return tensorflow::errors::Unknown(StrCat("[Poplar Compile] ", e.what()));
     }
 
-    progs.push_back(visitor.sequence);
+    // =======================================================================
+    // DO NOT CHANGE THE ORDER OF THESE WITHOUT UPDATING PoplarProgramType IN
+    // exectutor.h
+    // =======================================================================
     progs.push_back(visitor.GetHostToDevice());
+    progs.push_back(visitor.sequence);
     progs.push_back(visitor.GetDeviceToHost());
 
     char* vertex_filename = getenv("TF_DUMP_VERTEX_GRAPH");

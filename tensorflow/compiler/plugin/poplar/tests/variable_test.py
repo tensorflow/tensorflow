@@ -9,6 +9,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -551,6 +552,36 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
       self.assertEqual(len(list(filter(lambda x:x[1]==w1_ul, device_to_host))), 1)
       self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 1)
+
+  def testTuplesOfTuplesAreStreamed(self):
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
+        pa = array_ops.placeholder(np.int64, [2,2], name="a")
+        pb = array_ops.placeholder(np.int64, [2,2], name="b")
+        pc = array_ops.placeholder(np.int64, [2,2], name="c")
+        c = control_flow_ops.tuple((pa + pc, pb + pc))
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(report)
+      in0 = np.full((2,2), 7)
+      in1 = np.full((2,2), 6)
+      in2 = np.full((2,2), 5)
+      fd = {
+        pa : in0,
+        pb : in1,
+        pc : in2,
+      }
+      out = sess.run(c, fd)
+      self.assertEqual(len(out), 2)
+      self.assertAllClose(out, (np.full((2,2), 12), np.full((2,2), 11)))
+
+      rep = sess.run(report)
+      io_evts = tu.extract_all_io_events(rep)
+      # No io_events implies the data was streamed
+      self.assertEqual(len(io_evts), 0)
 
 class IpuXlaVariableTestSyntheticData(test_util.TensorFlowTestCase):
   # This test is in its separate class to prevent messing up the enviroment for
