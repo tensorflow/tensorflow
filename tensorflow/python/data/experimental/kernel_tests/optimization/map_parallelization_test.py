@@ -62,8 +62,10 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapParallelization(self, function, should_optimize):
     next_nodes = ["ParallelMap"] if should_optimize else ["Map"]
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(next_nodes)).map(function).apply(
-            optimization.optimize(["map_parallelization"]))
+        optimization.assert_next(next_nodes)).map(function)
+    options = dataset_ops.Options()
+    options.experimental_map_parallelization = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 

@@ -37,7 +37,9 @@ class ModelDatasetTest(test_base.DatasetTestBase):
                                                 np.random.rand(4 * k,
                                                                1))).repeat()
     dataset = dataset.map(math_ops.matmul)
-    iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
+    options = dataset_ops.Options()
+    options.experimental_autotune = True
+    iterator = dataset.with_options(options).make_one_shot_iterator()
     get_next = iterator.get_next()
 
     deltas = []
@@ -61,7 +63,9 @@ class ModelDatasetTest(test_base.DatasetTestBase):
                                                                1))).repeat()
     dataset = dataset.map(
         math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
+    options = dataset_ops.Options()
+    options.experimental_autotune = True
+    iterator = dataset.with_options(options).make_one_shot_iterator()
     get_next = iterator.get_next()
 
     deltas = []
@@ -89,7 +93,9 @@ class ModelDatasetTest(test_base.DatasetTestBase):
             math_ops.matmul,
             num_parallel_calls=optimization.AUTOTUNE,
             batch_size=batch_size))
-    iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
+    options = dataset_ops.Options()
+    options.experimental_autotune = True
+    iterator = dataset.with_options(options).make_one_shot_iterator()
     get_next = iterator.get_next()
 
     deltas = []
@@ -116,7 +122,9 @@ class ModelDatasetTest(test_base.DatasetTestBase):
         lambda _: dataset,
         cycle_length=10,
         num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
+    options = dataset_ops.Options()
+    options.experimental_autotune = True
+    iterator = dataset.with_options(options).make_one_shot_iterator()
     get_next = iterator.get_next()
 
     deltas = []
@@ -161,7 +169,9 @@ class ModelDatasetTest(test_base.DatasetTestBase):
         lambda _: dataset, cycle_length=2)
 
     dataset = dataset.map(f3, num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.apply(optimization.model()).make_one_shot_iterator()
+    options = dataset_ops.Options()
+    options.experimental_autotune = True
+    iterator = dataset.with_options(options).make_one_shot_iterator()
     get_next = iterator.get_next()
 
     deltas = []
