@@ -623,7 +623,7 @@ REGISTER_OP("MatchingFilesDataset")
     .Input("patterns: string")
     .Output("handle: variant")
     .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
-        // stateful to inhibit constant folding.
+                      // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // `patterns` must be a scalar or a vector.
