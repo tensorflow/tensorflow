@@ -131,8 +131,8 @@ class DepthwiseConv2DTest(test.TestCase):
     with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
           dtypes.float16: 4e-2,
-          dtypes.float32: 1e-8,
-          dtypes.float64: 1e-13,
+          dtypes.float32: 1e-7,
+          dtypes.float64: 1e-12,
       }[data_type]
 
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=data_type)
