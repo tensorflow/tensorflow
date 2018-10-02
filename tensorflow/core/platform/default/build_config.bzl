@@ -615,11 +615,7 @@ def tf_kernel_tests_linkstatic():
 
 def tf_additional_lib_defines():
     """Additional defines needed to build TF libraries."""
-    return select({
-        "//tensorflow:with_jemalloc_linux_x86_64": ["TENSORFLOW_USE_JEMALLOC"],
-        "//tensorflow:with_jemalloc_linux_ppc64le": ["TENSORFLOW_USE_JEMALLOC"],
-        "//conditions:default": [],
-    })
+    return []
 
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
@@ -631,13 +627,7 @@ def tf_additional_lib_deps():
     ] + if_static(
         ["@nsync//:nsync_cpp"],
         ["@nsync//:nsync_headers"],
-    ) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64_dynamic": ["@jemalloc//:jemalloc_headers"],
-        "//tensorflow:with_jemalloc_linux_ppc64le_dynamic": ["@jemalloc//:jemalloc_headers"],
-        "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
-        "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
-        "//conditions:default": [],
-    })
+    )
 
 def tf_additional_core_deps():
     return select({
@@ -725,11 +715,7 @@ def tf_additional_binary_deps():
             "//tensorflow/stream_executor:cuda_platform",
             "//tensorflow/core/platform/default/build_config:cuda",
         ],
-    ) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
-        "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
-        "//conditions:default": [],
-    }) + [
+    ) + [
         # TODO(allenl): Split these out into their own shared objects (they are
         # here because they are shared between contrib/ op shared objects and
         # core).

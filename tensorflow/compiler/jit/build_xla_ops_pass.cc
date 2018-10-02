@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
+#include "absl/algorithm/container.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -31,132 +35,108 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-
-static Status BuildXlaCompileNode(
-    const string& nodename, const string& function_name,
-    const AttrValueMap& function_attr, const string& device_name,
-    const DataTypeVector& constant_dtypes, int num_resources,
-    const DataTypeVector& arg_dtypes, Graph* graph, Node** node) {
-  NodeDef def;
-  def.set_name(graph->NewName(nodename));
-  def.set_op("_XlaCompile");
-  def.set_device(device_name);
-  AddNodeAttr("Tconstants", constant_dtypes, &def);
-  AddNodeAttr("Targs", arg_dtypes, &def);
-  AddNodeAttr("Nresources", num_resources, &def);
-  NameAttrList function;
-  function.set_name(function_name);
-  *function.mutable_attr() = function_attr;
-  AddNodeAttr("function", function, &def);
-
-  Status status;
-  *node = graph->AddNode(def, &status);
-  return status;
-}
-
-static Status BuildXlaRunNode(const string& nodename, const string& device_name,
-                              const DataTypeVector& arg_dtypes,
-                              const DataTypeVector& result_dtypes, Graph* graph,
-                              Node** node) {
-  NodeDef def;
-  def.set_name(graph->NewName(nodename));
-  def.set_op("_XlaRun");
-  def.set_device(device_name);
-  AddNodeAttr("Targs", arg_dtypes, &def);
-  AddNodeAttr("Tresults", result_dtypes, &def);
-
-  Status status;
-  *node = graph->AddNode(def, &status);
-  return status;
-}
-
-static Status GetXlaAttrs(Node* node, int* num_constant_args,
-                          int* num_resource_args, DataTypeVector* const_dtypes,
-                          DataTypeVector* arg_dtypes) {
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(node->attrs(), kXlaNumConstantArgsAttr, num_constant_args));
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(node->attrs(), kXlaNumResourceArgsAttr, num_resource_args));
-
-  if (*num_constant_args < 0 || *num_resource_args < 0 ||
-      *num_constant_args + *num_resource_args > node->num_inputs()) {
-    return errors::InvalidArgument(
-        "Invalid number of constant/resource arguments to XLA kernel.");
-  }
-
-  const int num_nonconst_args =
-      node->num_inputs() - *num_constant_args - *num_resource_args;
-
-  const DataTypeVector& input_types = node->input_types();
-  std::copy(input_types.begin(), input_types.begin() + *num_constant_args,
-            std::back_inserter(*const_dtypes));
-  std::copy(input_types.begin() + *num_constant_args,
-            input_types.begin() + *num_constant_args + num_nonconst_args,
-            std::back_inserter(*arg_dtypes));
-  return Status::OK();
-}
-
-static void CopyIncomingEdges(Graph* g, Node* old_node, Node* new_node,
-                              int prefix_to_ignore) {
-  for (const Edge* edge : old_node->in_edges()) {
-    if (edge->IsControlEdge()) {
-      g->AddControlEdge(edge->src(), new_node);
-    } else if (edge->dst_input() >= prefix_to_ignore) {
-      g->AddEdge(edge->src(), edge->src_output(), new_node,
-                 edge->dst_input() - prefix_to_ignore);
-    }
-  }
-}
-
-static void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
+namespace {
+void MoveOutgoingEdges(Graph* g, Node* old_node, Node* new_node) {
   std::vector<const Edge*> out_edges(old_node->out_edges().begin(),
                                      old_node->out_edges().end());
   for (const Edge* edge : out_edges) {
-    // TODO(sanjoy): This does not update NodeDef inputs.
+    // TODO(sanjoy): This does not update NodeDef inputs.  To be able to update
+    // NodeDef inputs we first need to fix encapsulate_subgraphs_pass to fix up
+    // the NodeDef inputs to the function call nodes.
     g->AddEdge(new_node, edge->src_output(), edge->dst(), edge->dst_input());
     g->RemoveEdge(edge);
   }
 }
 
-static Status ReplaceNodeWithXlaCompileAndRun(Graph* g, Node* n) {
-  int num_constant_args, num_resource_args;
-  DataTypeVector const_dtypes;
-  DataTypeVector arg_dtypes;
+struct XlaClusterInfo {
+  std::vector<Output> constant_inputs;
+  std::vector<Output> non_constant_inputs;
+  std::vector<Output> resource_inputs;
+  NameAttrList function;
+};
 
-  TF_RETURN_IF_ERROR(GetXlaAttrs(n, &num_constant_args, &num_resource_args,
-                                 &const_dtypes, &arg_dtypes));
+Output IncomingEdgeAsOutput(const Edge* e) {
+  return Output(e->src(), e->src_output());
+}
 
-  Node *compile_node, *run_node;
+Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
+  int num_constant_inputs, num_resource_inputs;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(n->attrs(), kXlaNumConstantArgsAttr, &num_constant_inputs));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(n->attrs(), kXlaNumResourceArgsAttr, &num_resource_inputs));
 
-  TF_RETURN_IF_ERROR(BuildXlaCompileNode(
-      n->name(), n->type_string(), n->def().attr(), n->requested_device(),
-      const_dtypes, num_resource_args, arg_dtypes, g, &compile_node));
-
-  DataTypeVector arg_dtypes_with_resources = arg_dtypes;
-  for (int i = 0; i < num_resource_args; i++) {
-    arg_dtypes_with_resources.push_back(DT_RESOURCE);
+  if (num_constant_inputs < 0 || num_resource_inputs < 0 ||
+      num_constant_inputs + num_resource_inputs > n->num_inputs()) {
+    return errors::InvalidArgument(
+        "Invalid number of constant/resource arguments to XLA kernel.");
   }
 
-  TF_RETURN_IF_ERROR(BuildXlaRunNode(n->name(), n->requested_device(),
-                                     arg_dtypes_with_resources,
-                                     n->output_types(), g, &run_node));
+  int num_non_constant_inputs =
+      n->num_inputs() - num_constant_inputs - num_resource_inputs;
 
-  compile_node->set_assigned_device_name(n->assigned_device_name());
-  run_node->set_assigned_device_name(n->assigned_device_name());
+  std::vector<const Edge*> input_edges_vector;
+  TF_RETURN_IF_ERROR(n->input_edges(&input_edges_vector));
+  absl::Span<const Edge*> input_edges(input_edges_vector);
 
-  CopyIncomingEdges(g, /*old_node=*/n, /*new_node=*/compile_node,
-                    /*prefix_to_ignore=*/0);
-  CopyIncomingEdges(g, /*old_node=*/n, /*new_node=*/run_node,
-                    /*prefix_to_ignore=*/num_constant_args);
+  absl::c_transform(input_edges.subspan(0, num_constant_inputs),
+                    std::back_inserter(result->constant_inputs),
+                    IncomingEdgeAsOutput);
 
-  // The compilation_key output.
-  g->AddEdge(compile_node, 0, run_node, n->num_inputs() - num_constant_args);
+  absl::c_transform(
+      input_edges.subspan(num_constant_inputs, num_non_constant_inputs),
+      std::back_inserter(result->non_constant_inputs), IncomingEdgeAsOutput);
 
-  MoveOutgoingEdges(g, /*old_node=*/n, /*new_node=*/run_node);
+  absl::c_transform(
+      input_edges.subspan(num_constant_inputs + num_non_constant_inputs,
+                          num_resource_inputs),
+      std::back_inserter(result->resource_inputs), IncomingEdgeAsOutput);
+
+  result->function.set_name(n->type_string());
+  *result->function.mutable_attr() = n->def().attr();
+  return Status::OK();
+}
+
+Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
+  for (const Edge* e : from->in_edges()) {
+    if (e->IsControlEdge()) {
+      g->AddControlEdge(e->src(), to);
+    }
+  }
+
+  return Status::OK();
+}
+
+Status ReplaceNodeWithXlaCompileAndXlaRun(Graph* g, Node* n) {
+  Status status;
+  Scope root = NewInternalScope(g, &status, /*refiner=*/nullptr)
+                   .NewSubScope(n->name())
+                   .WithDevice(n->requested_device())
+                   .WithAssignedDevice(n->assigned_device_name());
+
+  XlaClusterInfo cluster_info;
+  TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
+
+  ops::_XlaCompile xla_compile(root.WithOpName("xla_compile"),
+                               /*constants=*/cluster_info.constant_inputs,
+                               /*args=*/cluster_info.non_constant_inputs,
+                               /*resources=*/cluster_info.resource_inputs,
+                               cluster_info.function);
+  TF_RETURN_IF_ERROR(
+      CopyIncomingControlEdges(g, /*from=*/n, /*to=*/xla_compile.key.node()));
+
+  std::vector<Output> xla_run_args = cluster_info.non_constant_inputs;
+  absl::c_copy(cluster_info.resource_inputs, std::back_inserter(xla_run_args));
+  ops::_XlaRun xla_run(root.WithOpName("xla_run"), xla_run_args,
+                       xla_compile.key, n->output_types());
+
+  MoveOutgoingEdges(g, /*old_node=*/n,
+                    /*new_node=*/xla_run.operation.node());
   g->RemoveNode(n);
 
   return Status::OK();
 }
+}  // namespace
 
 Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
@@ -170,7 +150,7 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
     // Only compile nodes that are marked for compilation by the
     // compilation-marking pass (via 'attr_name').
     if (IsXlaCompiledKernel(*n)) {
-      TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndRun(graph, n));
+      TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(graph, n));
     }
   }
 

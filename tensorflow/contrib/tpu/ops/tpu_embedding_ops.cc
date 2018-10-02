@@ -46,7 +46,7 @@ namespace tensorflow {
 // 5. TPUEmbeddingActivations, when used with appropriate Python libraries,
 //    enables the automatic differentiation of models that use embeddings.
 // 6. TPUEmbeddingSendGradients takes a list of Tensors (of the same shapes
-//    as those returned by TPUEmbeddingReceivActivations) containing gradients
+//    as those returned by TPUEmbeddingReceiveActivations) containing gradients
 //    to use in updating the embedding tables.
 // 7. Before saving a checkpoint, use the TPUEmbeddingRetrieve Op to update
 //    the Graph's embedding table Variables from the updated tables in the
@@ -104,9 +104,18 @@ Status RegisterPerTableLoadOpsForAlgorithmBody(
     }
   }
   {
+    auto* table_id_attr = op_def->add_attr();
+    table_id_attr->set_name("table_id");
+    table_id_attr->set_type("int");
+    table_id_attr->set_has_minimum(true);
+    table_id_attr->set_minimum(-1);
+    table_id_attr->mutable_default_value()->set_i(-1);
+  }
+  {
     auto* table_name_attr = op_def->add_attr();
     table_name_attr->set_name("table_name");
     table_name_attr->set_type("string");
+    table_name_attr->mutable_default_value()->set_s("");
   }
   {
     auto* num_shards_attr = op_def->add_attr();
@@ -138,9 +147,11 @@ parameters that are loaded from a checkpoint before a training loop is
 executed.
 %s
 table_name: Name of this table; must match a name in the
-  EmbeddingLayerConfiguration proto.
+  TPUEmbeddingConfiguration proto (overrides table_id).
 num_shards: Number of shards into which the embedding tables are divided.
 shard_id: Identifier of shard for this operation.
+table_id: Index of this table in the EmbeddingLayerConfiguration proto
+  (deprecated).
 )doc",
                                           parameter_descriptions.c_str()));
   op_def->set_is_commutative(false);
@@ -149,10 +160,14 @@ shard_id: Identifier of shard for this operation.
   auto shape_inference_function =
       [state_variable_specs,
        is_debug_op](shape_inference::InferenceContext* c) -> Status {
+    int table_id;
+    TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
     string table_name;
     TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
-    if (table_name.empty()) {
-      return errors::InvalidArgument("table_name attribute must be set");
+    // Exactly one must be non-default.
+    if ((table_id >= 0) == (!table_name.empty())) {
+      return errors::InvalidArgument(
+          "exactly one of table_id or table_name must be non-default");
     }
     int num_shards;
     TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
@@ -226,9 +241,18 @@ Status RegisterPerTableRetrieveOpsForAlgorithmBody(
     }
   }
   {
+    auto* table_id_attr = op_def->add_attr();
+    table_id_attr->set_name("table_id");
+    table_id_attr->set_type("int");
+    table_id_attr->set_has_minimum(true);
+    table_id_attr->set_minimum(-1);
+    table_id_attr->mutable_default_value()->set_i(-1);
+  }
+  {
     auto* table_name_attr = op_def->add_attr();
     table_name_attr->set_name("table_name");
     table_name_attr->set_type("string");
+    table_name_attr->mutable_default_value()->set_s("");
   }
   {
     auto* num_shards_attr = op_def->add_attr();
@@ -259,9 +283,11 @@ the correct embedding table configuration. For example, this op is
 used to retrieve updated parameters before saving a checkpoint.
 %s
 table_name: Name of this table; must match a name in the
-  EmbeddingLayerConfiguration proto.
+  TPUEmbeddingConfiguration proto (overrides table_id).
 num_shards: Number of shards into which the embedding tables are divided.
 shard_id: Identifier of shard for this operation.
+table_id: Index of this table in the EmbeddingLayerConfiguration proto
+  (deprecated).
 )doc",
                                           parameter_descriptions.c_str()));
   op_def->set_is_commutative(false);
@@ -270,10 +296,14 @@ shard_id: Identifier of shard for this operation.
   auto shape_inference_function =
       [state_variable_specs,
        is_debug_op](shape_inference::InferenceContext* c) -> Status {
+    int table_id;
+    TF_RETURN_IF_ERROR(c->GetAttr("table_id", &table_id));
     string table_name;
     TF_RETURN_IF_ERROR(c->GetAttr("table_name", &table_name));
-    if (table_name.empty()) {
-      return errors::InvalidArgument("table_name must be non-empty");
+    // Exactly one must be non-default.
+    if ((table_id >= 0) == (!table_name.empty())) {
+      return errors::InvalidArgument(
+          "exactly one of table_id or table_name must be non-default");
     }
     int num_shards;
     TF_RETURN_IF_ERROR(c->GetAttr("num_shards", &num_shards));
@@ -305,7 +335,6 @@ void RegisterPerTableLoadAndRetrieveOps() {
     tpu::GradientAccumulationSupport grad_accum_support;
     TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
     if (grad_accum_support == tpu::GradientAccumulationSupport::kSupported) {
-      // TODO(gkurian): Condition this on being used internally within Google.
       OpRegistry::Global()->Register(
           [alg](OpRegistrationData* op_reg_data) -> Status {
             return RegisterPerTableLoadOpsForAlgorithmBody(alg, true,
@@ -323,7 +352,6 @@ void RegisterPerTableLoadAndRetrieveOps() {
     tpu::GradientAccumulationSupport grad_accum_support;
     TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
     if (grad_accum_support == tpu::GradientAccumulationSupport::kSupported) {
-      // TODO(gkurian): Condition this on being used internally within Google.
       OpRegistry::Global()->Register(
           [alg](OpRegistrationData* op_reg_data) -> Status {
             return RegisterPerTableRetrieveOpsForAlgorithmBody(alg, true,
@@ -336,7 +364,7 @@ void RegisterPerTableLoadAndRetrieveOps() {
 }  // namespace
 
 REGISTER_OP("RecvTPUEmbeddingActivations")
-    .Output("outputs: num_outputs * float")
+    .Output("outputs: num_outputs * float32")
     .Attr("num_outputs: int >= 1")
     .Attr("config: string")
     .SetIsStateful()
@@ -446,7 +474,8 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
 REGISTER_OP("EnqueueTPUEmbeddingIntegerBatch")
     .Input("batch: N * int32")
-    .Attr("N: int")
+    .Input("mode_override: string")
+    .Attr("N: int >= 1")
     .Attr("device_ordinal: int = -1")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
@@ -455,6 +484,10 @@ An op that enqueues a list of input batch tensors to TPUEmbedding.
 
 batch: A list of 1D tensors, one for each embedding table, containing the
     indices into the tables.
+mode_override: A string input that overrides the mode specified in the
+    TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+    'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+    in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
 device_ordinal: The TPU device to use. Should be >= 0 and less than the number
     of TPU cores in the task on which the node is placed.
 )doc");
@@ -463,7 +496,8 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
     .Input("sample_indices: N * int32")
     .Input("embedding_indices: N * int32")
     .Input("aggregation_weights: N * float32")
-    .Attr("N: int")
+    .Input("mode_override: string")
+    .Attr("N: int >= 1")
     .Attr("device_ordinal: int = -1")
     .Attr("combiners: list(string) = []")
     .SetIsStateful()
@@ -493,14 +527,18 @@ The tensors at corresponding positions in the three input lists
 must have the same shape, i.e. rank 1 with dim_size() equal to the total
 number of lookups into the table described by the corresponding table_id.
 
-sample_indices: A list of Rank 1 Tensors specifying the training example and
+sample_indices: A list of rank 1 Tensors specifying the training example and
     feature to which the corresponding embedding_indices and aggregation_weights
     values belong. sample_indices[i] must equal b * nf + f, where nf is the
     number of features from the corresponding table, f is in [0, nf), and
     b is in [0, batch size).
-embedding_indices: A list of Rank 1 Tensors, indices into the embedding tables.
-aggregation_weights: A list of Rank 1 Tensors containing per sample -- i.e. per
+embedding_indices: A list of rank 1 Tensors, indices into the embedding tables.
+aggregation_weights: A list of rank 1 Tensors containing per sample -- i.e. per
     (training example, feature) -- aggregation weights.
+mode_override: A string input that overrides the mode specified in the
+    TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+    'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+    in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
 device_ordinal: The TPU device to use. Should be >= 0 and less than the number
     of TPU cores in the task on which the node is placed.
 combiners: A list of string scalars, one for each embedding table that specify
@@ -515,7 +553,8 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .Input("sample_indices: N * int32")
     .Input("embedding_indices: N * int32")
     .Input("aggregation_weights: N * float32")
-    .Attr("N: int")
+    .Input("mode_override: string")
+    .Attr("N: int >= 1")
     .Attr("device_ordinal: int = -1")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
@@ -525,7 +564,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
 This Op eases the porting of code that uses tf.nn.embedding_lookup_sparse().
 
 sample_indices[i], embedding_indices[i] and aggregation_weights[i] correspond
-to ith feature. table_ids[i] indicates which embedding table to look up ith
+to the ith feature. table_ids[i] indicates which embedding table to look up ith
 feature.
 
 The tensors at corresponding positions in the three input lists (sample_indices,
@@ -533,12 +572,18 @@ embedding_indices and aggregation_weights) must have the same shape, i.e. rank 1
 with dim_size() equal to the total number of lookups into the table described by
 the corresponding feature.
 
-sample_indices: A list of Rank 1 Tensors, corresponds to sp_ids.indices[:,0] in
+sample_indices: A list of rank 1 Tensors specifying the training example to
+    which the corresponding embedding_indices and aggregation_weights values
+    belong. It corresponds to sp_ids.indices[:,0] in  embedding_lookup_sparse().
+embedding_indices: A list of rank 1 Tensors, indices into the embedding tables.
+    It corresponds to sp_ids.values in embedding_lookup_sparse().
+aggregation_weights: A list of rank 1 Tensors containing per training example
+    aggregation weights. It corresponds to sp_weights.values in
     embedding_lookup_sparse().
-embedding_indices: A list of Rank 1 Tensors, corresponds to sp_ids.values
-    in embedding_lookup_sparse().
-aggregation_weights: A list of Rank 1 Tensors, corresponds to sp_weights.values
-    in embedding_lookup_sparse().
+mode_override: A string input that overrides the mode specified in the
+    TPUEmbeddingConfiguration. Supported values are {'unspecified', 'inference',
+    'training', 'backward_pass_only'}. When set to 'unspecified', the mode set
+    in TPUEmbeddingConfiguration is used, otherwise mode_override is used.
 device_ordinal: The TPU device to use. Should be >= 0 and less than the number
     of TPU cores in the task on which the node is placed.
 combiners: A list of string scalars, one for each embedding table that specify
@@ -547,8 +592,11 @@ combiners: A list of string scalars, one for each embedding table that specify
     the sum of the weights be 0 for 'mean' or the sum of the squared weights be
     0 for 'sqrtn'. If combiners isn't passed, the default is to use 'sum' for
     all tables.
-table_ids: A list of int. table_ids[i] indicates which embedding table to look
-    up ith feature in the list.
+table_ids: A list of integers specifying the identifier of the embedding table
+    (offset of TableDescriptor in the TPUEmbeddingConfiguration) to lookup the
+    corresponding input. The ith input is looked up using table_ids[i]. The size
+    of the table_ids list must be equal to that of sample_indices,
+    embedding_indices and aggregation_weights.
 )doc");
 
 }  // namespace tensorflow

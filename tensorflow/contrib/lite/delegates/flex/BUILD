@@ -20,7 +20,7 @@ cc_library(
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -60,7 +60,7 @@ cc_library(
         "//tensorflow/contrib/lite:util",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
@@ -178,7 +178,7 @@ cc_library(
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
+            "//tensorflow/core:android_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",

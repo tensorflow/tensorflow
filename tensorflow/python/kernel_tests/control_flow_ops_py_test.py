@@ -31,6 +31,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -3412,6 +3413,27 @@ class EagerTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       self.assertAllEqual(r.numpy(), 10)
+      self.assertFalse(isinstance(r, list))
+
+  def testCondInDefun(self):
+    if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
+      return unittest.skip("b/113346829 (gpu failure)")
+
+    with context.eager_mode():
+
+      @eager_function.defun
+      def foo(pred):
+        # TODO(b/111124878): this only needs to output one element.
+        fn1 = lambda: (constant_op.constant(10), constant_op.constant(100))
+        fn2 = lambda: (constant_op.constant(20), constant_op.constant(200))
+        return control_flow_ops.cond(constant_op.constant(pred), fn1, fn2)
+
+      r = foo(True)
+      self.assertAllEqual(r[0].numpy(), 10)
+      self.assertNotIsInstance(r, list)
+
+      r = foo(False)
+      self.assertAllEqual(r[0].numpy(), 20)
       self.assertFalse(isinstance(r, list))
 
   def testWhileLoop(self):

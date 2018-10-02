@@ -271,6 +271,12 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
+java_proto_library(
+    name = "example_java_proto",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
+)
+
 closure_proto_library(
     name = "example_protos_closure",
     visibility = ["//visibility:public"],
