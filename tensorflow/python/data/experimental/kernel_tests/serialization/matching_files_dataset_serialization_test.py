@@ -21,7 +21,7 @@ import os
 import shutil
 import tempfile
 
-from tensorflow.contrib.data.python.kernel_tests.serialization import dataset_serialization_test_base
+from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.ops.dataset_ops import MatchingFilesDataset
 from tensorflow.python.platform import test
 
