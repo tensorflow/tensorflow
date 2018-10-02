@@ -339,6 +339,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
