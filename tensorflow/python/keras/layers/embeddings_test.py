@@ -95,7 +95,9 @@ class EmbeddingTest(test.TestCase):
   @tf_test_util.run_in_graph_and_eager_modes(use_gpu=False)
   def test_embedding_invalid(self):
     # len(input_length) should be equal to len(input_shape) - 1
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        '"input_length" is 2, but received input has shape \(\?, 3, 4, 5\)'):
       model = keras.Sequential([keras.layers.Embedding(
           input_dim=10,
           output_dim=4,
@@ -103,7 +105,9 @@ class EmbeddingTest(test.TestCase):
           input_shape=(3, 4, 5))])
 
     # input_length should be equal to input_shape[1:]
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        '"input_length" is 2, but received input has shape \(\?, 3, 5\)'):
       model = keras.Sequential([keras.layers.Embedding(
           input_dim=10,
           output_dim=4,
