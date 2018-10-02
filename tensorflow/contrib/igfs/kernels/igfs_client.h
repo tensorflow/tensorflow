@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_CLIENT_H_
 #define TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_CLIENT_H_
 
-#include "igfs_messages.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_messages.h"
 
 namespace tensorflow {
 
 class IGFSClient {
  public:
-  IGFSClient(std::string host, int port, std::string fs_name,
-             std::string user_name);
+  IGFSClient(const string &host, int port, const string &fs_name,
+             const string &user_name);
   ~IGFSClient();
 
   inline Status Handshake(CtrlResponse<HandshakeResponse> *res) {
@@ -31,47 +31,46 @@ class IGFSClient {
   }
 
   inline Status ListFiles(CtrlResponse<ListFilesResponse> *res,
-                          const std::string &path) {
+                          const string &path) {
     return SendRequestGetResponse(ListFilesRequest(user_name_, path), res);
   }
 
   inline Status ListPaths(CtrlResponse<ListPathsResponse> *res,
-                          const std::string &path) {
+                          const string &path) {
     return SendRequestGetResponse(ListPathsRequest(user_name_, path), res);
   }
 
-  inline Status Info(CtrlResponse<InfoResponse> *res, const std::string &path) {
+  inline Status Info(CtrlResponse<InfoResponse> *res, const string &path) {
     return SendRequestGetResponse(InfoRequest(user_name_, path), res);
   }
 
   inline Status OpenCreate(CtrlResponse<OpenCreateResponse> *res,
-                           const std::string &path) {
+                           const string &path) {
     return SendRequestGetResponse(OpenCreateRequest(user_name_, path), res);
   }
 
   inline Status OpenAppend(CtrlResponse<OpenAppendResponse> *res,
-                           const std::string &path) {
+                           const string &path) {
     return SendRequestGetResponse(OpenAppendRequest(user_name_, path), res);
   }
 
   inline Status OpenRead(CtrlResponse<OpenReadResponse> *res,
-                         const std::string &path) {
+                         const string &path) {
     return SendRequestGetResponse(OpenReadRequest(user_name_, path), res);
   }
 
-  inline Status Exists(CtrlResponse<ExistsResponse> *res,
-                       const std::string &path) {
+  inline Status Exists(CtrlResponse<ExistsResponse> *res, const string &path) {
     return SendRequestGetResponse(ExistsRequest(user_name_, path), res);
   }
 
   inline Status MkDir(CtrlResponse<MakeDirectoriesResponse> *res,
-                      const std::string &path) {
+                      const string &path) {
     return SendRequestGetResponse(MakeDirectoriesRequest(user_name_, path),
                                   res);
   }
 
-  inline Status Delete(CtrlResponse<DeleteResponse> *res,
-                       const std::string &path, bool recursive) {
+  inline Status Delete(CtrlResponse<DeleteResponse> *res, const string &path,
+                       bool recursive) {
     return SendRequestGetResponse(DeleteRequest(user_name_, path, recursive),
                                   res);
   }
@@ -92,19 +91,19 @@ class IGFSClient {
     return SendRequestGetResponse(CloseRequest(stream_id), res);
   }
 
-  inline Status Rename(CtrlResponse<RenameResponse> *res,
-                       const std::string &source, const std::string &dest) {
+  inline Status Rename(CtrlResponse<RenameResponse> *res, const string &source,
+                       const string &dest) {
     return SendRequestGetResponse(RenameRequest(user_name_, source, dest), res);
   }
 
  private:
-  const std::string fs_name_;
-  const std::string user_name_;
-  ExtendedTCPClient client_;
-
   Status SendRequestGetResponse(const Request &request, Response *response);
+
+  const string fs_name_;
+  const string user_name_;
+  ExtendedTCPClient client_;
 };
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_CLIENT_H_

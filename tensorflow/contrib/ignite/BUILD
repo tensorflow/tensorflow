@@ -42,7 +42,7 @@ cc_library(
         "kernels/ignite_byte_swapper.h",
         "kernels/ignite_plain_client.h",
         "kernels/ignite_ssl_wrapper.h",
-        "kernels/ignite_ssl_wrapper.cc"
+        "kernels/ignite_ssl_wrapper.cc",
     ] + if_not_windows([
         "kernels/ignite_plain_client_unix.cc",
     ]) + if_windows([
@@ -52,8 +52,8 @@ cc_library(
         "-DWIN32_LEAN_AND_MEAN",
     ]),
     deps = [
-        "@boringssl//:ssl",
         "//tensorflow/core:framework_headers_lib",
+        "@boringssl//:ssl",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -61,19 +61,19 @@ cc_library(
 cc_library(
     name = "dataset_kernels",
     srcs = [
-        "kernels/ignite_dataset_ops.cc",
-        "kernels/ignite_binary_object_parser.h",
         "kernels/ignite_binary_object_parser.cc",
-        "kernels/ignite_dataset.h",
+        "kernels/ignite_binary_object_parser.h",
         "kernels/ignite_dataset.cc",
-        "kernels/ignite_dataset_iterator.h",
+        "kernels/ignite_dataset.h",
         "kernels/ignite_dataset_iterator.cc",
+        "kernels/ignite_dataset_iterator.h",
+        "kernels/ignite_dataset_ops.cc",
     ],
     deps = [
         ":ignite_client",
         "//tensorflow/core:framework_headers_lib",
-        "@protobuf_archive//:protobuf_headers",
         "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
     ],
     alwayslink = 1,
 )

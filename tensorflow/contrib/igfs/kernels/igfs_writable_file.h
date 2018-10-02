@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_WRITABLE_FILE_H_
 #define TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_WRITABLE_FILE_H_
 
-#include "igfs_client.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_client.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
@@ -26,7 +26,7 @@ class IGFSWritableFile : public WritableFile {
   IGFSWritableFile(const string &file_name, int64_t resource_id,
                    std::shared_ptr<IGFSClient> client);
   ~IGFSWritableFile() override;
-  Status Append(const StringPiece &data) override;
+  Status Append(StringPiece data) override;
   Status Close() override;
   Status Flush() override;
   Status Sync() override;
@@ -39,4 +39,4 @@ class IGFSWritableFile : public WritableFile {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_WRITABLE_FILE_H_

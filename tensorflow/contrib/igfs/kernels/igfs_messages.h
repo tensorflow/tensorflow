@@ -16,14 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_MESSAGES_H_
 #define TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_MESSAGES_H_
 
-#include "igfs_extended_tcp_client.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_extended_tcp_client.h"
 
 namespace tensorflow {
-
-using std::map;
-using std::string;
-using std::vector;
-using std::streamsize;
 
 enum CommandId {
   HANDSHAKE_ID = 0,
@@ -44,18 +39,18 @@ enum CommandId {
 
 class IGFSPath {
  public:
-  std::string path;
-
   Status Read(ExtendedTCPClient *client);
+
+  string path;
 };
 
 class IGFSFile {
  public:
+  Status Read(ExtendedTCPClient *client);
+
   int64_t length;
   int64_t modification_time;
   uint8_t flags;
-
-  Status Read(ExtendedTCPClient *client);
 };
 
 class Request {
@@ -69,35 +64,33 @@ class Request {
 
 class Response {
  public:
+  virtual Status Read(ExtendedTCPClient *client);
+
   int32_t res_type;
   int32_t req_id;
   int32_t length;
 
-  virtual Status Read(ExtendedTCPClient *client);
-
  protected:
-  static const int32_t HEADER_SIZE = 24;
-  static const int32_t RESPONSE_HEADER_SIZE = 9;
-  static const int32_t RES_TYPE_ERR_STREAM_ID = 9;
+  static const int32_t header_size_ = 24;
+  static const int32_t response_header_size_ = 9;
 };
 
 class PathCtrlRequest : public Request {
  public:
-  PathCtrlRequest(int32_t command_id, string user_name, string path,
-                  string destination_path, bool flag, bool collocate,
-                  map<string, string> properties);
-
+  PathCtrlRequest(int32_t command_id, const string &user_name,
+                  const string &path, const string &destination_path, bool flag,
+                  bool collocate, const std::map<string, string> &properties);
   Status Write(ExtendedTCPClient *client) const override;
 
  protected:
+  Status WritePath(ExtendedTCPClient *client, const string &path) const;
+
   const string user_name_;
   const string path_;
   const string destination_path_;
   const bool flag_;
   const bool collocate_;
-  const map<string, string> props_;
-
-  Status WritePath(ExtendedTCPClient *client, const string &path) const;
+  const std::map<string, string> props_;
 };
 
 class StreamCtrlRequest : public Request {
@@ -113,9 +106,6 @@ class StreamCtrlRequest : public Request {
 template <class R>
 class CtrlResponse : public Response {
  public:
-  R res;
-  bool has_content;
-
   CtrlResponse(bool optional) : optional_(optional){};
   Status Read(ExtendedTCPClient *client) override {
     TF_RETURN_IF_ERROR(Response::Read(client));
@@ -133,6 +123,9 @@ class CtrlResponse : public Response {
     return Status::OK();
   }
 
+  R res;
+  bool has_content;
+
  private:
   bool optional_;
 };
@@ -140,13 +133,11 @@ class CtrlResponse : public Response {
 template <class T>
 class ListResponse {
  public:
-  vector<T> entries;
-
   Status Read(ExtendedTCPClient *client) {
     int32_t len;
     TF_RETURN_IF_ERROR(client->ReadInt(&len));
 
-    entries = vector<T>();
+    entries = std::vector<T>();
 
     for (int32_t i = 0; i < len; i++) {
       T f = {};
@@ -156,6 +147,8 @@ class ListResponse {
 
     return Status::OK();
   }
+
+  std::vector<T> entries;
 };
 
 class DeleteRequest : public PathCtrlRequest {
@@ -165,9 +158,9 @@ class DeleteRequest : public PathCtrlRequest {
 
 class DeleteResponse {
  public:
-  bool exists;
-
   Status Read(ExtendedTCPClient *client);
+
+  bool exists;
 };
 
 class ExistsRequest : public PathCtrlRequest {
@@ -177,9 +170,9 @@ class ExistsRequest : public PathCtrlRequest {
 
 class ExistsResponse {
  public:
-  bool exists;
-
   Status Read(ExtendedTCPClient *client);
+
+  bool exists;
 };
 
 class HandshakeRequest : public Request {
@@ -194,9 +187,9 @@ class HandshakeRequest : public Request {
 
 class HandshakeResponse {
  public:
-  string fs_name;
-
   Status Read(ExtendedTCPClient *client);
+
+  string fs_name;
 };
 
 class ListRequest : public PathCtrlRequest {
@@ -222,7 +215,6 @@ class ListPathsResponse : public ListResponse<IGFSPath> {};
 class OpenCreateRequest : public PathCtrlRequest {
  public:
   OpenCreateRequest(const string &user_name, const string &path);
-
   Status Write(ExtendedTCPClient *client) const override;
 
  private:
@@ -232,9 +224,9 @@ class OpenCreateRequest : public PathCtrlRequest {
 
 class OpenCreateResponse {
  public:
-  int64_t stream_id;
-
   Status Read(ExtendedTCPClient *client);
+
+  int64_t stream_id;
 };
 
 class OpenAppendRequest : public PathCtrlRequest {
@@ -245,18 +237,16 @@ class OpenAppendRequest : public PathCtrlRequest {
 
 class OpenAppendResponse {
  public:
-  int64_t stream_id;
-
   Status Read(ExtendedTCPClient *client);
+
+  int64_t stream_id;
 };
 
 class OpenReadRequest : public PathCtrlRequest {
  public:
   OpenReadRequest(const string &user_name, const string &path, bool flag,
                   int32_t seqReadsBeforePrefetch);
-
   OpenReadRequest(const string &user_name, const string &path);
-
   Status Write(ExtendedTCPClient *client) const override;
 
  protected:
@@ -266,10 +256,10 @@ class OpenReadRequest : public PathCtrlRequest {
 
 class OpenReadResponse {
  public:
+  Status Read(ExtendedTCPClient *client);
+
   int64_t stream_id;
   int64_t length;
-
-  Status Read(ExtendedTCPClient *client);
 };
 
 class InfoRequest : public PathCtrlRequest {
@@ -279,9 +269,9 @@ class InfoRequest : public PathCtrlRequest {
 
 class InfoResponse {
  public:
-  IGFSFile file_info;
-
   Status Read(ExtendedTCPClient *client);
+
+  IGFSFile file_info;
 };
 
 class MakeDirectoriesRequest : public PathCtrlRequest {
@@ -291,9 +281,9 @@ class MakeDirectoriesRequest : public PathCtrlRequest {
 
 class MakeDirectoriesResponse {
  public:
-  bool successful;
-
   Status Read(ExtendedTCPClient *client);
+
+  bool successful;
 };
 
 /** Stream control requests. **/
@@ -305,15 +295,14 @@ class CloseRequest : public StreamCtrlRequest {
 
 class CloseResponse {
  public:
-  bool successful;
-
   Status Read(ExtendedTCPClient *client);
+
+  bool successful;
 };
 
 class ReadBlockRequest : public StreamCtrlRequest {
  public:
   ReadBlockRequest(int64_t stream_id, int64_t pos, int32_t length);
-
   Status Write(ExtendedTCPClient *client) const override;
 
  private:
@@ -323,20 +312,17 @@ class ReadBlockRequest : public StreamCtrlRequest {
 class ReadBlockResponse {
  public:
   Status Read(ExtendedTCPClient *client, int32_t length, uint8_t *dst);
-
   Status Read(ExtendedTCPClient *client);
-
-  streamsize GetSuccessfulyRead();
+  std::streamsize GetSuccessfulyRead();
 
  private:
   int32_t length;
-  streamsize successfuly_read;
+  std::streamsize successfuly_read;
 };
 
 class ReadBlockCtrlResponse : public CtrlResponse<ReadBlockResponse> {
  public:
   ReadBlockCtrlResponse(uint8_t *dst);
-
   Status Read(ExtendedTCPClient *client) override;
 
  private:
@@ -346,7 +332,6 @@ class ReadBlockCtrlResponse : public CtrlResponse<ReadBlockResponse> {
 class WriteBlockRequest : public StreamCtrlRequest {
  public:
   WriteBlockRequest(int64_t stream_id, const uint8_t *data, int32_t length);
-
   Status Write(ExtendedTCPClient *client) const override;
 
  private:
@@ -355,17 +340,17 @@ class WriteBlockRequest : public StreamCtrlRequest {
 
 class RenameRequest : public PathCtrlRequest {
  public:
-  RenameRequest(const std::string &user_name, const std::string &path,
-                const std::string &destination_path);
+  RenameRequest(const string &user_name, const string &path,
+                const string &destination_path);
 };
 
 class RenameResponse {
  public:
-  bool successful;
-
   Status Read(ExtendedTCPClient *client);
+
+  bool successful;
 };
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_MESSAGES_H_

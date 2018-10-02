@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "igfs_extended_tcp_client.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_extended_tcp_client.h"
 
 namespace tensorflow {
 
-ExtendedTCPClient::ExtendedTCPClient(std::string host, int port,
+ExtendedTCPClient::ExtendedTCPClient(const string &host, int port,
                                      bool big_endian)
     : PlainClient(host, port, big_endian), pos_(0) {}
 
-Status ExtendedTCPClient::ReadData(uint8_t *buf, int32_t length) {
+Status ExtendedTCPClient::ReadData(uint8_t *buf, const int32_t length) {
   TF_RETURN_IF_ERROR(PlainClient::ReadData(buf, length));
   pos_ += length;
 
   return Status::OK();
 }
 
-Status ExtendedTCPClient::WriteData(uint8_t *buf, int32_t length) {
+Status ExtendedTCPClient::WriteData(const uint8_t *buf, const int32_t length) {
   TF_RETURN_IF_ERROR(PlainClient::WriteData(buf, length));
   pos_ += length;
 
@@ -52,7 +52,7 @@ Status ExtendedTCPClient::ReadBool(bool *res) {
   return Status::OK();
 }
 
-Status ExtendedTCPClient::ReadNullableString(std::string *res) {
+Status ExtendedTCPClient::ReadNullableString(string *res) {
   bool is_empty = false;
   TF_RETURN_IF_ERROR(ReadBool(&is_empty));
 
@@ -63,27 +63,26 @@ Status ExtendedTCPClient::ReadNullableString(std::string *res) {
   return Status::OK();
 }
 
-Status ExtendedTCPClient::ReadString(std::string *res) {
+Status ExtendedTCPClient::ReadString(string *res) {
   int16_t length;
   TF_RETURN_IF_ERROR(ReadShort(&length));
 
   uint8_t *buf = new uint8_t[length];
   Status status = ReadData(buf, length);
 
-  if (status.ok()) res->assign((char *)buf, length);
+  if (status.ok()) res->assign(reinterpret_cast<char *>(buf), length);
 
   delete[] buf;
   return status;
 }
 
-Status ExtendedTCPClient::ReadStringMap(
-    std::map<std::string, std::string> *res) {
+Status ExtendedTCPClient::ReadStringMap(std::map<string, string> *res) {
   int size;
   TF_RETURN_IF_ERROR(ReadInt(&size));
 
   for (int i = 0; i < size; i++) {
-    std::string key;
-    std::string val;
+    string key;
+    string val;
     TF_RETURN_IF_ERROR(ReadString(&key));
     TF_RETURN_IF_ERROR(ReadString(&val));
 
@@ -93,15 +92,14 @@ Status ExtendedTCPClient::ReadStringMap(
   return Status::OK();
 };
 
-Status ExtendedTCPClient::WriteSize(
-    std::map<std::string, std::string>::size_type s) {
+Status ExtendedTCPClient::WriteSize(std::map<string, string>::size_type s) {
   return WriteInt(s);
 }
 
 Status ExtendedTCPClient::FillWithZerosUntil(int n) {
-  int toSkip = std::max(0, n - pos_);
+  int to_skip = std::max(0, n - pos_);
 
-  for (int i = 0; i < toSkip; i++) {
+  for (int i = 0; i < to_skip; i++) {
     TF_RETURN_IF_ERROR(WriteByte(0));
   }
 
@@ -112,12 +110,13 @@ Status ExtendedTCPClient::WriteBool(bool val) {
   return WriteByte((char)(val ? 1 : 0));
 }
 
-Status ExtendedTCPClient::WriteString(std::string str) {
+Status ExtendedTCPClient::WriteString(string str) {
   if (!str.empty()) {
     TF_RETURN_IF_ERROR(WriteBool(false));
     unsigned short l = str.length();
     TF_RETURN_IF_ERROR(WriteShort(l));
-    TF_RETURN_IF_ERROR(WriteData((uint8_t *)str.c_str(), str.length()));
+    TF_RETURN_IF_ERROR(WriteData(reinterpret_cast<const uint8_t *>(str.c_str()),
+                                 str.length()));
   } else {
     TF_RETURN_IF_ERROR(WriteBool(true));
   }
@@ -125,12 +124,11 @@ Status ExtendedTCPClient::WriteString(std::string str) {
   return Status::OK();
 }
 
-Status ExtendedTCPClient::WriteStringMap(
-    std::map<std::string, std::string> map) {
+Status ExtendedTCPClient::WriteStringMap(std::map<string, string> map) {
   std::map<string, string>::size_type size = map.size();
   TF_RETURN_IF_ERROR(WriteSize(size));
 
-  for (auto const &x : map) {
+  for (auto &x : map) {
     TF_RETURN_IF_ERROR(WriteString(x.first));
     TF_RETURN_IF_ERROR(WriteString(x.second));
   }

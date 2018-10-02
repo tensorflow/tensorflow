@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "igfs_random_access_file.h"
-#include "igfs_messages.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_random_access_file.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_messages.h"
 
 namespace tensorflow {
 
-IGFSRandomAccessFile::IGFSRandomAccessFile(const std::string &file_name,
+IGFSRandomAccessFile::IGFSRandomAccessFile(const string &file_name,
                                            int64_t resource_id,
                                            std::shared_ptr<IGFSClient> client)
     : file_name_(file_name), resource_id_(resource_id), client_(client) {}
@@ -35,7 +35,7 @@ Status IGFSRandomAccessFile::Read(uint64 offset, size_t n, StringPiece *result,
   ReadBlockCtrlResponse response = ReadBlockCtrlResponse((uint8_t *)scratch);
   TF_RETURN_IF_ERROR(client_->ReadBlock(&response, resource_id_, offset, n));
 
-  streamsize sz = response.res.GetSuccessfulyRead();
+  std::streamsize sz = response.res.GetSuccessfulyRead();
   if (sz == 0) return errors::OutOfRange("End of file");
 
   *result = StringPiece(scratch, sz);
