@@ -65,6 +65,13 @@ class ExponentialTest(test.TestCase):
     self.assertAllClose(self.evaluate(log_pdf), expected_log_pdf)
     self.assertAllClose(self.evaluate(pdf), np.exp(expected_log_pdf))
 
+  def testExponentialLogPDFBoundary(self):
+    # Check that Log PDF is finite at 0.
+    rate = np.array([0.1, 0.5, 1., 2., 5., 10.], dtype=np.float32)
+    exponential = exponential_lib.Exponential(rate=rate)
+    log_pdf = exponential.log_prob(0.)
+    self.assertAllClose(np.log(rate), self.evaluate(log_pdf))
+
   def testExponentialCDF(self):
     batch_size = 6
     lam = constant_op.constant([2.0] * batch_size)

@@ -267,8 +267,8 @@ class Beta(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return ((self.concentration1 - 1.) * math_ops.log(x)
-            + (self.concentration0 - 1.) * math_ops.log1p(-x))
+    return (math_ops.xlogy(self.concentration1 - 1., x) +
+            (self.concentration0 - 1.) * math_ops.log1p(-x))
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration1)

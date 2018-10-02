@@ -225,7 +225,7 @@ class Gamma(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return (self.concentration - 1.) * math_ops.log(x) - self.rate * x
+    return math_ops.xlogy(self.concentration - 1., x) - self.rate * x
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration)

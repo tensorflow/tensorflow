@@ -236,7 +236,7 @@ class Dirichlet(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return math_ops.reduce_sum((self.concentration - 1.) * math_ops.log(x), -1)
+    return math_ops.reduce_sum(math_ops.xlogy(self.concentration - 1., x), -1)
 
   def _log_normalization(self):
     return special_math_ops.lbeta(self.concentration)
