@@ -33,23 +33,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
   def testOptimizationDefault(self):
     dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(
-            ["Map", "Batch"])).map(lambda x: x * x).batch(10).apply(
-                optimization.optimize())
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
-
-  def testOptimizationEmpty(self):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(
-            ["Map", "Batch"])).map(lambda x: x * x).batch(10).apply(
-                optimization.optimize([]))
-    iterator = dataset.make_one_shot_iterator()
+        optimization.assert_next(["Map",
+                                  "Batch"])).map(lambda x: x * x).batch(10)
+    iterator = dataset.with_options(
+        dataset_ops.Options()).make_one_shot_iterator()
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -60,8 +47,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
   def testOptimizationFusion(self):
     dataset = dataset_ops.Dataset.range(10).apply(
         optimization.assert_next(
-            ["MapAndBatch"])).map(lambda x: x * x).batch(10).apply(
-                optimization.optimize(["map_and_batch_fusion"]))
+            ["MapAndBatch"])).map(lambda x: x * x).batch(10)
+    options = dataset_ops.Options()
+    options.experimental_map_and_batch_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
@@ -72,8 +61,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
   def testOptimizationStatefulFunction(self):
     dataset = dataset_ops.Dataset.range(10).map(
-        lambda _: random_ops.random_uniform([])).batch(10).apply(
-            optimization.optimize(["map_and_batch_fusion"]))
+        lambda _: random_ops.random_uniform([])).batch(10)
+    options = dataset_ops.Options()
+    options.experimental_map_and_batch_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
 
@@ -82,8 +73,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
   def testOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
-    dataset = dataset_ops.Dataset.from_tensors(input_t).apply(
-        optimization.optimize())
+    dataset = dataset_ops.Dataset.from_tensors(input_t)
+    options = dataset_ops.Options()
+    options.experimental_map_and_batch_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -94,8 +87,10 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
   def testOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
-    dataset = dataset_ops.Dataset.from_tensor_slices(input_t).apply(
-        optimization.optimize())
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
+    options = dataset_ops.Options()
+    options.experimental_map_and_batch_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()

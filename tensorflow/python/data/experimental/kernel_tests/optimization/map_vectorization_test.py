@@ -69,10 +69,11 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
           map_fn, num_parallel_calls=num_parallel_calls).batch(batch_size)
 
     unoptimized = _make_dataset([map_node_name, "Batch"])
-    optimized = _make_dataset(["Batch", map_node_name] if expect_optimized else
-                              [map_node_name, "Batch"]).apply(
-                                  optimization.optimize(["map_vectorization"]))
-
+    optimized = _make_dataset(["Batch", map_node_name]
+                              if expect_optimized else [map_node_name, "Batch"])
+    options = dataset_ops.Options()
+    options.experimental_map_vectorization = True
+    optimized = optimized.with_options(options)
     return unoptimized, optimized
 
   @parameterized.named_parameters(
@@ -179,7 +180,10 @@ class MapVectorizationBenchmark(test.Benchmark):
     unoptimized = input_dataset.map(map_fn).batch(batch_size)
     unoptimized_op = unoptimized.make_one_shot_iterator().get_next()
 
-    optimized = unoptimized.apply(optimization.optimize(["map_vectorization"]))
+    optimized = input_dataset.map(map_fn).batch(batch_size)
+    options = dataset_ops.Options()
+    options.experimental_map_vectorization = True
+    optimized = optimized.with_options(options)
     optimized_op = optimized.make_one_shot_iterator().get_next()
 
     unoptimized_time = self._run(

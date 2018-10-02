@@ -64,7 +64,9 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
         optimization.assert_next(
             ["Zip[0]", "Map"] if will_optimize else ["Map"])).map(function)
 
-    dataset = dataset.apply(optimization.optimize(["hoist_random_uniform"]))
+    options = dataset_ops.Options()
+    options.experimental_hoist_random_uniform = True
+    dataset = dataset.with_options(options)
     self._testDataset(dataset)
 
   def testAdditionalInputs(self):
@@ -77,9 +79,10 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
           [], minval=1, maxval=10, dtype=dtypes.float32, seed=42)
 
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(
-            ["Zip[0]", "Map"])).map(random_with_capture).apply(
-                optimization.optimize(["hoist_random_uniform"]))
+        optimization.assert_next(["Zip[0]", "Map"])).map(random_with_capture)
+    options = dataset_ops.Options()
+    options.experimental_hoist_random_uniform = True
+    dataset = dataset.with_options(options)
     self._testDataset(dataset)
 
   def _testDataset(self, dataset):

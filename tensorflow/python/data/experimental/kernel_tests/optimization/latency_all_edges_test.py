@@ -28,14 +28,15 @@ from tensorflow.python.platform import test
 class OptimizeStatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testLatencyStatsOptimization(self):
-
     stats_aggregator = stats_ops.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
         optimization.assert_next(
             ["LatencyStats", "Map", "LatencyStats", "Prefetch",
              "LatencyStats"])).map(lambda x: x * x).prefetch(1).apply(
-                 stats_ops.set_stats_aggregator(stats_aggregator)).apply(
-                     optimization.optimize(["latency_all_edges"]))
+                 stats_ops.set_stats_aggregator(stats_aggregator))
+    options = dataset_ops.Options()
+    options.experimental_latency_all_edges = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_initializable_iterator()
     get_next = iterator.get_next()
     summary_t = stats_aggregator.get_summary()

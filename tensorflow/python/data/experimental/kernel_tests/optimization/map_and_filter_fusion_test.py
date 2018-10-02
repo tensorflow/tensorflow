@@ -72,7 +72,10 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     for function in functions:
       dataset = dataset.map(function)
 
-    dataset = dataset.prefetch(0).apply(optimization.optimize(["map_fusion"]))
+    dataset = dataset.prefetch(0)
+    options = dataset_ops.Options()
+    options.experimental_map_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
     with self.cached_session() as sess:
@@ -124,9 +127,10 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapFilterFusion(self, function, predicate):
     dataset = dataset_ops.Dataset.range(10).apply(
         optimization.assert_next(
-            ["Map",
-             "FilterByLastComponent"])).map(function).filter(predicate).apply(
-                 optimization.optimize(["map_and_filter_fusion"]))
+            ["Map", "FilterByLastComponent"])).map(function).filter(predicate)
+    options = dataset_ops.Options()
+    options.experimental_map_and_filter_fusion = True
+    dataset = dataset.with_options(options)
     self._testMapAndFilter(dataset, function, predicate)
 
   def _testMapAndFilter(self, dataset, function, predicate):
@@ -156,10 +160,11 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # We are currently not supporting functions with additional inputs.
     dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(
-            ["Map", "Filter"])).map(function).filter(predicate).apply(
-                optimization.optimize(["map_and_filter_fusion"]))
-
+        optimization.assert_next(["Map",
+                                  "Filter"])).map(function).filter(predicate)
+    options = dataset_ops.Options()
+    options.experimental_map_and_filter_fusion = True
+    dataset = dataset.with_options(options)
     self._testMapAndFilter(dataset, function, predicate)
 
   @staticmethod
@@ -197,8 +202,10 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
     for predicate in predicates:
       dataset = dataset.filter(predicate)
 
-    dataset = dataset.prefetch(0).apply(
-        optimization.optimize(["filter_fusion"]))
+    dataset = dataset.prefetch(0)
+    options = dataset_ops.Options()
+    options.experimental_filter_fusion = True
+    dataset = dataset.with_options(options)
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()
     with self.cached_session() as sess:
