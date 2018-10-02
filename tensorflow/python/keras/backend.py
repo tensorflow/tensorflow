@@ -653,6 +653,7 @@ def variable(value, dtype=None, name=None, constraint=None):
 
   Examples:
   ```python
+      >>> import numpy as np
       >>> from keras import backend as K
       >>> val = np.array([[1, 2], [3, 4]])
       >>> kvar = K.variable(value=val, dtype='float64', name='example_var')
