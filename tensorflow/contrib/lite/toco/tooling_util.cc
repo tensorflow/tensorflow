@@ -852,27 +852,30 @@ void CheckNonExistentIOArrays(const Model& model) {
   if (model.flags.allow_nonexistent_arrays()) {
     return;
   }
+  static constexpr char general_comment[] =
+      "Is it a typo? To silence this message, pass this flag:  "
+      "allow_nonexistent_arrays";
   for (const auto& input_array : model.flags.input_arrays()) {
     QCHECK(GetOpWithInput(model, input_array.name()))
-        << "Specified input array " << input_array.name()
-        << " is not consumed by any op in this graph. Is it a typo?";
+        << "Specified input array \"" << input_array.name()
+        << "\" is not consumed by any op in this graph. " << general_comment;
   }
   for (const string& output_array : model.flags.output_arrays()) {
     QCHECK(GetOpWithOutput(model, output_array))
-        << "Specified output array " << output_array
-        << " is not produced by any op in this graph. Is it a typo?";
+        << "Specified output array \"" << output_array
+        << "\" is not produced by any op in this graph. " << general_comment;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
       // Check that all RNN states are consumed
       QCHECK(GetOpWithInput(model, rnn_state.state_array()))
-          << "Specified RNN state " << rnn_state.state_array()
-          << " is not consumed by any op in this graph. Is it a typo?";
+          << "Specified RNN state \"" << rnn_state.state_array()
+          << "\" is not consumed by any op in this graph. " << general_comment;
       // Check that all RNN back-edge source arrays are produced
       QCHECK(GetOpWithOutput(model, rnn_state.back_edge_source_array()))
-          << "Specified RNN back-edge source array "
+          << "Specified RNN back-edge source array \""
           << rnn_state.back_edge_source_array()
-          << " is not produced by any op in this graph. Is it a typo?";
+          << "\" is not produced by any op in this graph. " << general_comment;
     }
   }
 }
