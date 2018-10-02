@@ -688,7 +688,7 @@ class IgniteClient(TcpClient):
         "Unknown binary type when expected string [type_id=%d]" % header)
 
 
-class IgniteDataset(dataset_ops.Dataset):
+class IgniteDataset(dataset_ops.DatasetSource):
   """Apache Ignite is a memory-centric distributed database, caching, and
 
      processing platform for transactional, analytical, and streaming workloads,
