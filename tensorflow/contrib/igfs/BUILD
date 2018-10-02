@@ -6,13 +6,12 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
+    "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
     "tf_py_test",
-    "tf_cc_shared_object",
 )
 
 py_library(
@@ -27,39 +26,39 @@ py_library(
 tf_custom_op_library(
     name = "_igfs_ops.so",
     srcs = [
-        "ops/igfs_ops.cc",
         "kernels/igfs.h",
+        "ops/igfs_ops.cc",
     ],
     deps = [":igfs_kernels"],
 )
 
 tf_gen_op_libs(
     op_lib_names = ["igfs_ops"],
-    deps = [":igfs_kernels"]
+    deps = [":igfs_kernels"],
 )
 
 cc_library(
     name = "igfs_kernels",
     srcs = [
-        "kernels/igfs.h",
         "kernels/igfs.cc",
-        "kernels/igfs_random_access_file.h",
-        "kernels/igfs_random_access_file.cc",
-        "kernels/igfs_writable_file.h",
-        "kernels/igfs_writable_file.cc",
-        "kernels/igfs_client.h",
+        "kernels/igfs.h",
         "kernels/igfs_client.cc",
-        "kernels/igfs_messages.h",
-        "kernels/igfs_messages.cc",
+        "kernels/igfs_client.h",
+        "kernels/igfs_extended_tcp_client.cc",
         "kernels/igfs_extended_tcp_client.h",
-        "kernels/igfs_extended_tcp_client.cc"
+        "kernels/igfs_messages.cc",
+        "kernels/igfs_messages.h",
+        "kernels/igfs_random_access_file.cc",
+        "kernels/igfs_random_access_file.h",
+        "kernels/igfs_writable_file.cc",
+        "kernels/igfs_writable_file.h",
     ],
     deps = [
         "//tensorflow/contrib/ignite:ignite_client",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal"
+        "//tensorflow/core:lib_internal",
     ],
-    alwayslink=1,
+    alwayslink = 1,
 )
 
 py_library(

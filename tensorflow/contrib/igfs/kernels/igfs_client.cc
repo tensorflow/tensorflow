@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "igfs_client.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_client.h"
 
 namespace tensorflow {
 
-IGFSClient::IGFSClient(std::string host, int port, std::string fs_name,
-                       std::string user_name)
+IGFSClient::IGFSClient(const string &host, int port, const string &fs_name,
+                       const string &user_name)
     : fs_name_(fs_name),
       user_name_(user_name),
       client_(ExtendedTCPClient(host, port, true)) {

@@ -22,20 +22,20 @@ namespace tensorflow {
 
 class ExtendedTCPClient : public PlainClient {
  public:
-  ExtendedTCPClient(std::string host, int port, bool big_endian);
-  Status ReadData(uint8_t *buf, int32_t length) override;
-  Status WriteData(uint8_t *buf, int32_t length) override;
+  ExtendedTCPClient(const string &host, int port, bool big_endian);
+  Status ReadData(uint8_t *buf, const int32_t length) override;
+  Status WriteData(const uint8_t *buf, const int32_t length) override;
   Status Ignore(int n);
   Status SkipToPos(int target_pos);
   Status ReadBool(bool *res);
-  Status ReadNullableString(std::string *res);
-  Status ReadString(std::string *res);
-  Status ReadStringMap(std::map<std::string, std::string> *res);
-  Status WriteSize(std::map<std::string, std::string>::size_type s);
+  Status ReadNullableString(string *res);
+  Status ReadString(string *res);
+  Status ReadStringMap(std::map<string, string> *res);
+  Status WriteSize(std::map<string, string>::size_type s);
   Status FillWithZerosUntil(int n);
   Status WriteBool(bool val);
-  Status WriteString(std::string str);
-  Status WriteStringMap(std::map<std::string, std::string> map);
+  Status WriteString(string str);
+  Status WriteStringMap(std::map<string, string> map);
   void reset();
 
  private:
@@ -44,4 +44,4 @@ class ExtendedTCPClient : public PlainClient {
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_CONTRIB_IGFS_KERNELS_IGFS_EXTENDED_TCP_CLIENT_H_

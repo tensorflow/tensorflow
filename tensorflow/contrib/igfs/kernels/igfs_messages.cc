@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "igfs_messages.h"
+#include "tensorflow/contrib/igfs/kernels/igfs_messages.h"
 
 namespace tensorflow {
 
@@ -24,7 +24,7 @@ Status IGFSPath::Read(ExtendedTCPClient *client) {
 Status IGFSFile::Read(ExtendedTCPClient *client) {
   int32_t block_size;
   int64_t group_block_size;
-  map<string, string> properties = {};
+  std::map<string, string> properties = {};
   int64_t access_time;
 
   bool has_path;
@@ -68,25 +68,26 @@ Status Response::Read(ExtendedTCPClient *client) {
 
   if (has_error) {
     int32_t error_code;
-    std::string error_msg;
+    string error_msg;
     TF_RETURN_IF_ERROR(client->ReadString(&error_msg));
     TF_RETURN_IF_ERROR(client->ReadInt(&error_code));
 
-    return errors::Internal("Error [code=", error_code, ", message=\"",
-                            error_msg, "\"]");
+    return errors::Unknown("Error [code=", error_code, ", message=\"",
+                           error_msg, "\"]");
   }
 
-  TF_RETURN_IF_ERROR(client->SkipToPos(HEADER_SIZE + 5));
+  TF_RETURN_IF_ERROR(client->SkipToPos(header_size_ + 5));
   TF_RETURN_IF_ERROR(client->ReadInt(&length));
-  TF_RETURN_IF_ERROR(client->SkipToPos(HEADER_SIZE + RESPONSE_HEADER_SIZE));
+  TF_RETURN_IF_ERROR(client->SkipToPos(header_size_ + response_header_size_));
 
   return Status::OK();
 }
 
-PathCtrlRequest::PathCtrlRequest(int32_t command_id_, string user_name,
-                                 string path, string destination_path,
-                                 bool flag, bool collocate,
-                                 map<string, string> properties)
+PathCtrlRequest::PathCtrlRequest(int32_t command_id_, const string &user_name,
+                                 const string &path,
+                                 const string &destination_path, bool flag,
+                                 bool collocate,
+                                 const std::map<string, string> &properties)
     : Request(command_id_),
       user_name_(std::move(user_name)),
       path_(std::move(path)),
@@ -302,7 +303,9 @@ Status ReadBlockResponse::Read(ExtendedTCPClient *client) {
   return Status::OK();
 }
 
-streamsize ReadBlockResponse::GetSuccessfulyRead() { return successfuly_read; }
+std::streamsize ReadBlockResponse::GetSuccessfulyRead() {
+  return successfuly_read;
+}
 
 ReadBlockCtrlResponse::ReadBlockCtrlResponse(uint8_t *dst)
     : CtrlResponse(false), dst(dst) {}
