@@ -426,8 +426,8 @@ class _WithSpaceToBatch(object):
     try:
       input_shape.with_rank_at_least(expected_input_rank)
     except ValueError:
-      ValueError("input tensor must have rank %d at least" %
-                 (expected_input_rank))
+      raise ValueError(
+          "input tensor must have rank %d at least" % (expected_input_rank))
 
     const_rate = tensor_util.constant_value(dilation_rate)
     rate_or_const_rate = dilation_rate
@@ -817,12 +817,14 @@ class Convolution(object):
     try:
       input_shape.with_rank(num_spatial_dims + 2)
     except ValueError:
-      ValueError("input tensor must have rank %d" % (num_spatial_dims + 2))
+      raise ValueError(
+          "input tensor must have rank %d" % (num_spatial_dims + 2))
 
     try:
       filter_shape.with_rank(num_spatial_dims + 2)
     except ValueError:
-      ValueError("filter tensor must have rank %d" % (num_spatial_dims + 2))
+      raise ValueError(
+          "filter tensor must have rank %d" % (num_spatial_dims + 2))
 
     if data_format is None or not data_format.startswith("NC"):
       input_channels_dim = input_shape[num_spatial_dims + 1]
