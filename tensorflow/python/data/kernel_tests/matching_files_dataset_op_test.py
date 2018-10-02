@@ -125,7 +125,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
       for j in range(depth):
         new_base = os.path.join(self.tmp_dir, str(i),
                                 *[str(dir_name) for dir_name in range(j)])
-        os.makedirs(new_base, exist_ok=True)
+        os.makedirs(new_base)
         for f in ['a.txt', 'b.py', 'c.pyc']:
           filename = os.path.join(new_base, f)
           filenames.append(filename)
