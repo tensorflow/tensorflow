@@ -65,7 +65,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 #ifdef _OPENMP
     mkl_intra_op = omp_get_max_threads();
 #endif  // _OPENMP
-    CHECK_GE(mkl_intra_op, 1);
+    DCHECK_GE(mkl_intra_op, 1);
     const int32 mkl_inter_op = std::max(
         (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
     VLOG(0)
