@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -467,26 +468,33 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.dot_dimension_numbers(), precision_config);
       break;
     }
-    case HloOpcode::kDomain:
+    case HloOpcode::kDomain: {
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Domain instruction should have 1 operands but sees "
           << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_domain_entry_sharding())
+          << "Domain instruction must domain_entry_sharding";
+      TF_RET_CHECK(proto.has_domain_exit_sharding())
+          << "Domain instruction must domain_exit_sharding";
+      TF_ASSIGN_OR_RETURN(
+          HloSharding entry_hlo_sharding,
+          HloSharding::FromProto(proto.domain_entry_sharding()));
+      TF_ASSIGN_OR_RETURN(HloSharding exit_hlo_sharding,
+                          HloSharding::FromProto(proto.domain_exit_sharding()));
       instruction = absl::make_unique<HloDomainInstruction>(
-          proto.shape(), operands(0), /*operand_side_metadata=*/nullptr,
-          /*user_side_metadata=*/nullptr);
+          proto.shape(), operands(0),
+          absl::make_unique<ShardingMetadata>(
+              std::make_shared<const HloSharding>(entry_hlo_sharding)),
+          absl::make_unique<ShardingMetadata>(
+              std::make_shared<const HloSharding>(exit_hlo_sharding)));
       break;
+    }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
         TF_RET_CHECK(ContainsKey(instruction_map, operand_id))
             << "No instruction with id " << operand_id;
         instruction->AppendOperand(instruction_map.at(operand_id));
-      }
-      for (const int64 predecessor_id : proto.control_predecessor_ids()) {
-        TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
-            << "No instruction with id " << predecessor_id;
-        TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
-                               ->AddControlDependencyTo(instruction.get()));
       }
       if (instruction->opcode() != HloOpcode::kFusion) {
         for (const int64 computation_id : proto.called_computation_ids()) {
@@ -501,6 +509,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
       break;
     }
+  }
+
+  for (const int64 predecessor_id : proto.control_predecessor_ids()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
+        << "No instruction with id " << predecessor_id;
+    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
+                           ->AddControlDependencyTo(instruction.get()));
   }
 
   TF_RET_CHECK(!proto.name().empty());
