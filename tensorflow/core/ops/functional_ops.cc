@@ -150,10 +150,29 @@ REGISTER_OP("While")
     .Attr("T: list(type) >= 0")
     .Attr("cond: func")
     .Attr("body: func")
+    .Attr("output_shapes: list(shape) = []")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      for (int i = 0; i < c->num_outputs(); ++i) {
-        c->set_output(i, c->input(i));
+      std::vector<PartialTensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      // If `output_shapes` attr is set use that as the shapes of the outputs
+      // else use the input shapes.
+      if (!output_shapes.empty()) {
+        if (output_shapes.size() != c->num_outputs()) {
+          return errors::InvalidArgument(
+              "`output_shapes` must be the same length as num outputs (",
+              output_shapes.size(), " vs. ", c->num_outputs());
+        }
+        for (size_t i = 0; i < output_shapes.size(); ++i) {
+          shape_inference::ShapeHandle output_shape_handle;
+          TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+              output_shapes[i], &output_shape_handle));
+          c->set_output(static_cast<int>(i), output_shape_handle);
+        }
+      } else {
+        for (int i = 0; i < c->num_outputs(); ++i) {
+          c->set_output(i, c->input(i));
+        }
       }
       return Status::OK();
     });
