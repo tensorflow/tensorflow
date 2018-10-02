@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -81,7 +82,7 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
   };
 
   auto root = fusion->fused_instructions_computation()->root_instruction();
-  tensorflow::gtl::FlatSet<const HloValue*> changed_root_buffers;
+  absl::flat_hash_set<const HloValue*> changed_root_buffers;
 
   auto root_changes_it = changes_to_bf16_.find(root);
   if (root_changes_it != changes_to_bf16_.end()) {
@@ -500,7 +501,7 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
 
 bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
     HloComputation* computation,
-    tensorflow::gtl::FlatSet<const HloComputation*>* visited_computations) {
+    absl::flat_hash_set<const HloComputation*>* visited_computations) {
   bool parameter_changed = false;
   auto insts = computation->MakeInstructionPostOrder();
   // Do the adjustment on each instruction in the computation in reverse
@@ -560,7 +561,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       // another input parameter. A fixed point will be reached because the
       // parameters can only be changed from BF16 to F32, not the other way
       // around.
-      tensorflow::gtl::FlatSet<const HloComputation*> visited_in_while;
+      absl::flat_hash_set<const HloComputation*> visited_in_while;
       while (ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_condition(),
                                                          &visited_in_while) ||
              ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_body(),
@@ -587,7 +588,7 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
   const auto& computations_topological_order =
       module->MakeComputationPostOrder();
-  tensorflow::gtl::FlatSet<const HloComputation*> resolved;
+  absl::flat_hash_set<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
     if (ContainsKey(resolved, *comp_it)) {

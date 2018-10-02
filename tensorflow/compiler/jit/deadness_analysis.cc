@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
 // ALGORITHM OVERVIEW
@@ -298,7 +298,7 @@ class SymbolPredicate : public Predicate {
 
 template <typename FunctionTy>
 /*static*/ void Predicate::Visit(Predicate* p, const FunctionTy& func) {
-  gtl::FlatSet<Predicate*> visited;
+  absl::flat_hash_set<Predicate*> visited;
   std::vector<Predicate*> stack;
 
   stack.push_back(p);
@@ -467,7 +467,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(
       is_and ? Predicate::Kind::kAnd : Predicate::Kind::kOr;
   Predicate::Kind other_pred_kind =
       is_and ? Predicate::Kind::kOr : Predicate::Kind::kAnd;
-  gtl::FlatSet<Predicate*> simplified_ops_set;
+  absl::flat_hash_set<Predicate*> simplified_ops_set;
   std::vector<Predicate*> simplified_ops;
   for (Predicate* op : operands) {
     // Simplify A&A => A and  A|A => A.
@@ -492,7 +492,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(
   }
 
   // Simplify "A&~A=>False" and "A|~A=>True".
-  gtl::FlatSet<Predicate*> negated_ops;
+  absl::flat_hash_set<Predicate*> negated_ops;
   for (Predicate* op : simplified_ops) {
     if (op->kind() == Predicate::Kind::kNot) {
       negated_ops.insert(dynamic_cast<NotPredicate&>(*op).operand());
@@ -512,7 +512,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(
   //
   // First find any predicates contained in all subops.
   std::vector<Predicate*> common_inner_operands;
-  gtl::FlatSet<Predicate*> common_inner_operands_set;
+  absl::flat_hash_set<Predicate*> common_inner_operands_set;
   for (Predicate* op : simplified_ops) {
     if (op->kind() != other_pred_kind) {
       common_inner_operands.clear();

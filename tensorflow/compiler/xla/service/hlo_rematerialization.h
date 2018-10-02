@@ -16,6 +16,7 @@
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -122,7 +123,7 @@ class HloRematerialization : public HloModulePass {
 
   // Set of computations which have had rematerialization
   // applied. Rematerialization is only applied once per computation.
-  tensorflow::gtl::FlatSet<const HloComputation*> rematerialized_computations_;
+  absl::flat_hash_set<const HloComputation*> rematerialized_computations_;
 
   // Count of the total instructions rematerialized.
   int64 instructions_rematerialized_ = 0;

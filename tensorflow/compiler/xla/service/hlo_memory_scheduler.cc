@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -111,7 +112,7 @@ class ListScheduler {
     // LogicalBuffer is in an operand of the instruction as indicated by
     // points-to analysis.
     for (auto* instruction : computation.instructions()) {
-      tensorflow::gtl::FlatSet<const LogicalBuffer*> instr_uses;
+      absl::flat_hash_set<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
         points_to_analysis.GetPointsToSet(operand).ForEachElement(
             [&](const ShapeIndex& /*index*/,
@@ -360,7 +361,7 @@ class ListScheduler {
   std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
-  tensorflow::gtl::FlatSet<const HloInstruction*> scheduled_instructions_;
+  absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
 };
 
 int64 SumLogicalBufferSizes(
@@ -418,7 +419,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
     total_sizes[hlo] = logical_buffer_size;
     cumulative_total_size += logical_buffer_size;
-    tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
+    absl::flat_hash_set<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];

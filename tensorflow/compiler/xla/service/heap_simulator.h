@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -197,8 +197,8 @@ class HeapSimulator {
       shared_buffers_;
 
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
-  tensorflow::gtl::FlatSet<const BufferValue*> allocated_buffers_;
-  tensorflow::gtl::FlatSet<const BufferValue*> freed_buffers_;
+  absl::flat_hash_set<const BufferValue*> allocated_buffers_;
+  absl::flat_hash_set<const BufferValue*> freed_buffers_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;
