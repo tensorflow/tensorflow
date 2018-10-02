@@ -140,8 +140,8 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
     dataset = MatchingFilesDataset(patterns)
     with self.cached_session() as sess:
       next_element = dataset.make_one_shot_iterator().get_next()
-      expected_filenames = [compat.as_bytes(file)
-                            for file in filenames if file.endswith('.txt')]
+      expected_filenames = [compat.as_bytes(filename)
+                            for filename in filenames if filename.endswith('.txt')]
       actual_filenames = []
       while True:
         try:
