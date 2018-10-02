@@ -98,7 +98,7 @@ Status GenericTransferManager::TransferLiteralFromDeviceInternal(
 
 Status GenericTransferManager::TransferLiteralToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
-    const ShapedBuffer& device_buffer) {
+    const ShapedBuffer& device_buffer, TransferToDeviceHint /*hint*/) {
   const Shape& shape = literal.shape();
   VLOG(2) << "transferring literal shape to device: "
           << ShapeUtil::HumanString(shape)
