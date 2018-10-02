@@ -71,8 +71,10 @@ bool ReadArrayMinmaxAndNarrowRangeFromFakeQuant::Run(Model* model,
   CHECK(fq_op->minmax);
   CHECK_EQ(1, fq_op->inputs.size());
 
-  return ApplyAttrsToArray(this, model, *fq_op, fq_op->inputs[0]) ||
-         ApplyAttrsToArray(this, model, *fq_op, fq_op->outputs[0]);
+  bool changed = false;
+  changed |= ApplyAttrsToArray(this, model, *fq_op, fq_op->inputs[0]);
+  changed |= ApplyAttrsToArray(this, model, *fq_op, fq_op->outputs[0]);
+  return changed;
 }
 
 }  // namespace toco
