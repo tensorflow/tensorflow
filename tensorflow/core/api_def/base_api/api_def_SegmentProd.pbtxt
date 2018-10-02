@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "SegmentProd"
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.
+END
+  }
+  summary: "Computes the product along segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \prod_j data_j\\) where the product is over `j` such
+that `segment_ids[j] == i`.
+
+If the product is empty for a given segment ID `i`, `output[i] = 1`.
+
+<div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:100%" src="https://www.tensorflow.org/images/SegmentProd.png" alt>
+</div>
+END
+}

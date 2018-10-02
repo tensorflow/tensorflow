@@ -1,0 +1,388 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1C8BA8FD1EC682E700CCCC8C /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.mm */; };
+		1C8BA8FE1EC682E700CCCC8C /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFF21CF4E68100C4259F /* AppDelegate.mm */; };
+		1C8BA8FF1EC682E700CCCC8C /* BenchmarkViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFF1CF4E68100C4259F /* BenchmarkViewController.mm */; };
+		1C8BA9001EC682E700CCCC8C /* ios_image_load.mm in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */; };
+		1C8BA9051EC682E700CCCC8C /* BenchmarkViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 59A3D0001CF4E68100C4259F /* BenchmarkViewController.xib */; };
+		1C8BA9061EC682E700CCCC8C /* imagenet_comp_graph_label_strings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */; };
+		1C8BA9071EC682E700CCCC8C /* tensorflow_inception_graph.pb in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */; };
+		1C8BA9081EC682E700CCCC8C /* grace_hopper.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */; };
+		1CB1883E1ECCC0DC00C93EF7 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1CB1883D1ECCC0DC00C93EF7 /* CoreGraphics.framework */; };
+		1CB1883F1ECCC10D00C93EF7 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C7AC7FC1ECCBFE400EAE588 /* UIKit.framework */; };
+		1E0EBA4DF4C722C63814B257 /* libPods-tf_benchmark_example.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C4FE48552EFB73D066C66E9 /* libPods-tf_benchmark_example.a */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1C7AC7FC1ECCBFE400EAE588 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		1C8BA90C1EC682E700CCCC8C /* tf_benchmark_example.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tf_benchmark_example.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1CB1883B1ECCC09A00C93EF7 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+		1CB1883D1ECCC0DC00C93EF7 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		59A3CFF11CF4E68100C4259F /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		59A3CFF21CF4E68100C4259F /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AppDelegate.mm; sourceTree = "<group>"; };
+		59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grace_hopper.jpg; sourceTree = "<group>"; };
+		59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = imagenet_comp_graph_label_strings.txt; sourceTree = "<group>"; };
+		59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = tensorflow_inception_graph.pb; sourceTree = "<group>"; };
+		59A3CFFA1CF4E68100C4259F /* ios_image_load.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ios_image_load.h; sourceTree = "<group>"; };
+		59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_image_load.mm; sourceTree = "<group>"; };
+		59A3CFFC1CF4E68100C4259F /* main.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		59A3CFFD1CF4E68100C4259F /* Benchmark-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "Benchmark-Info.plist"; sourceTree = "<group>"; };
+		59A3CFFE1CF4E68100C4259F /* BenchmarkViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BenchmarkViewController.h; sourceTree = "<group>"; };
+		59A3CFFF1CF4E68100C4259F /* BenchmarkViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = BenchmarkViewController.mm; sourceTree = "<group>"; };
+		59A3D0001CF4E68100C4259F /* BenchmarkViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = BenchmarkViewController.xib; sourceTree = "<group>"; };
+		5FD1623E64FC0154A67E8DD5 /* Pods-tf_benchmark_example.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tf_benchmark_example.debug.xcconfig"; path = "Pods/Target Support Files/Pods-tf_benchmark_example/Pods-tf_benchmark_example.debug.xcconfig"; sourceTree = "<group>"; };
+		8C4FE48552EFB73D066C66E9 /* libPods-tf_benchmark_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tf_benchmark_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB6B3E596779C98202E84711 /* Pods-tf_benchmark_example.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-tf_benchmark_example.release.xcconfig"; path = "Pods/Target Support Files/Pods-tf_benchmark_example/Pods-tf_benchmark_example.release.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1C8BA9011EC682E700CCCC8C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1CB1883F1ECCC10D00C93EF7 /* UIKit.framework in Frameworks */,
+				1CB1883E1ECCC0DC00C93EF7 /* CoreGraphics.framework in Frameworks */,
+				1E0EBA4DF4C722C63814B257 /* libPods-tf_benchmark_example.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2BD56010B574F539C2070A57 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				5FD1623E64FC0154A67E8DD5 /* Pods-tf_benchmark_example.debug.xcconfig */,
+				DB6B3E596779C98202E84711 /* Pods-tf_benchmark_example.release.xcconfig */,
+			);
+			name = Pods;
+			sourceTree = "<group>";
+		};
+		591157921CF4011C00C31E3A = {
+			isa = PBXGroup;
+			children = (
+				59A3CFF11CF4E68100C4259F /* AppDelegate.h */,
+				59A3CFF21CF4E68100C4259F /* AppDelegate.mm */,
+				59A3CFF31CF4E68100C4259F /* data */,
+				59A3CFFA1CF4E68100C4259F /* ios_image_load.h */,
+				59A3CFFB1CF4E68100C4259F /* ios_image_load.mm */,
+				59A3CFFC1CF4E68100C4259F /* main.mm */,
+				59A3CFFD1CF4E68100C4259F /* Benchmark-Info.plist */,
+				59A3CFFE1CF4E68100C4259F /* BenchmarkViewController.h */,
+				59A3CFFF1CF4E68100C4259F /* BenchmarkViewController.mm */,
+				59A3D0001CF4E68100C4259F /* BenchmarkViewController.xib */,
+				5911579C1CF4011C00C31E3A /* Products */,
+				2BD56010B574F539C2070A57 /* Pods */,
+				76A25A27041EB307BDFF0DD1 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		5911579C1CF4011C00C31E3A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1C8BA90C1EC682E700CCCC8C /* tf_benchmark_example.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		59A3CFF31CF4E68100C4259F /* data */ = {
+			isa = PBXGroup;
+			children = (
+				59A3CFF51CF4E68100C4259F /* grace_hopper.jpg */,
+				59A3CFF71CF4E68100C4259F /* imagenet_comp_graph_label_strings.txt */,
+				59A3CFF91CF4E68100C4259F /* tensorflow_inception_graph.pb */,
+			);
+			path = data;
+			sourceTree = "<group>";
+		};
+		76A25A27041EB307BDFF0DD1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1CB1883D1ECCC0DC00C93EF7 /* CoreGraphics.framework */,
+				1CB1883B1ECCC09A00C93EF7 /* CoreFoundation.framework */,
+				1C7AC7FC1ECCBFE400EAE588 /* UIKit.framework */,
+				8C4FE48552EFB73D066C66E9 /* libPods-tf_benchmark_example.a */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1C8BA8FB1EC682E700CCCC8C /* tf_benchmark_example */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1C8BA9091EC682E700CCCC8C /* Build configuration list for PBXNativeTarget "tf_benchmark_example" */;
+			buildPhases = (
+				0388D751057A257A12848245 /* [CP] Check Pods Manifest.lock */,
+				1C8BA8FC1EC682E700CCCC8C /* Sources */,
+				1C8BA9011EC682E700CCCC8C /* Frameworks */,
+				1C8BA9041EC682E700CCCC8C /* Resources */,
+				8999A303091D4E86202C2F64 /* [CP] Embed Pods Frameworks */,
+				A7B4B278BCC417B76A47ABB0 /* [CP] Copy Pods Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = tf_benchmark_example;
+			productName = benchmark;
+			productReference = 1C8BA90C1EC682E700CCCC8C /* tf_benchmark_example.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		591157931CF4011C00C31E3A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0830;
+				ORGANIZATIONNAME = Google;
+			};
+			buildConfigurationList = 591157961CF4011C00C31E3A /* Build configuration list for PBXProject "tf_benchmark_example" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 591157921CF4011C00C31E3A;
+			productRefGroup = 5911579C1CF4011C00C31E3A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1C8BA8FB1EC682E700CCCC8C /* tf_benchmark_example */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1C8BA9041EC682E700CCCC8C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1C8BA9051EC682E700CCCC8C /* BenchmarkViewController.xib in Resources */,
+				1C8BA9061EC682E700CCCC8C /* imagenet_comp_graph_label_strings.txt in Resources */,
+				1C8BA9071EC682E700CCCC8C /* tensorflow_inception_graph.pb in Resources */,
+				1C8BA9081EC682E700CCCC8C /* grace_hopper.jpg in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		0388D751057A257A12848245 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n";
+			showEnvVarsInLog = 0;
+		};
+		8999A303091D4E86202C2F64 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tf_benchmark_example/Pods-tf_benchmark_example-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A7B4B278BCC417B76A47ABB0 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Copy Pods Resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Pods/Target Support Files/Pods-tf_benchmark_example/Pods-tf_benchmark_example-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1C8BA8FC1EC682E700CCCC8C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1C8BA8FD1EC682E700CCCC8C /* main.mm in Sources */,
+				1C8BA8FE1EC682E700CCCC8C /* AppDelegate.mm in Sources */,
+				1C8BA8FF1EC682E700CCCC8C /* BenchmarkViewController.mm in Sources */,
+				1C8BA9001EC682E700CCCC8C /* ios_image_load.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1C8BA90A1EC682E700CCCC8C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5FD1623E64FC0154A67E8DD5 /* Pods-tf_benchmark_example.debug.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited)";
+				INFOPLIST_FILE = "$(SRCROOT)/Benchmark-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LIBRARY_SEARCH_PATHS = "";
+				OTHER_LDFLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.google.tf-benchmark-example";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		1C8BA90B1EC682E700CCCC8C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = DB6B3E596779C98202E84711 /* Pods-tf_benchmark_example.release.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_BITCODE = NO;
+				HEADER_SEARCH_PATHS = "$(inherited)";
+				INFOPLIST_FILE = "$(SRCROOT)/Benchmark-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				LIBRARY_SEARCH_PATHS = "";
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.google.tf-benchmark-example";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		591157B01CF4011D00C31E3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		591157B11CF4011D00C31E3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1C8BA9091EC682E700CCCC8C /* Build configuration list for PBXNativeTarget "tf_benchmark_example" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C8BA90A1EC682E700CCCC8C /* Debug */,
+				1C8BA90B1EC682E700CCCC8C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		591157961CF4011C00C31E3A /* Build configuration list for PBXProject "tf_benchmark_example" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				591157B01CF4011D00C31E3A /* Debug */,
+				591157B11CF4011D00C31E3A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 591157931CF4011C00C31E3A /* Project object */;
+}

@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -48,6 +49,28 @@ class SliceTest(test.TestCase):
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[2, k:k])
+
+  def testInt64Slicing(self):
+    with self.test_session(use_gpu=True):
+      a = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+
+      # Slice using int64 Tensor.
+      i = constant_op.constant(1, dtype=dtypes.int64)
+      slice_t = a[i]
+      slice_val = slice_t.eval()
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i+1]
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1], slice_val)
+
+      # Slice using int64 integer.
+      i = np.asarray(1).astype(np.int64)
+      slice_t = a[i]
+      slice_val = slice_t.eval()
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i+1]
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1], slice_val)
 
   def testSelectAll(self):
     for _ in range(10):
@@ -84,7 +107,7 @@ class SliceTest(test.TestCase):
 
   def testScalarInput(self):
     input_val = 0
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test with constant input; shape inference fails.
       with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
         constant_op.constant(input_val)[:].get_shape()
@@ -98,7 +121,7 @@ class SliceTest(test.TestCase):
 
   def testInvalidIndex(self):
     input_val = [1, 2]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test with constant input; shape inference fails.
       with self.assertRaisesWithPredicateMatch(ValueError, "out of range"):
         constant_op.constant(input_val)[1:, 1:].get_shape()
@@ -195,6 +218,17 @@ class SliceTest(test.TestCase):
     self.assertEqual(expected_val.shape, slice_t.get_shape())
     self.assertEqual(expected_val.shape, slice2_t.get_shape())
 
+  def testPartialShapeInference(self):
+    z = array_ops.zeros((1, 2, 3))
+    self.assertAllEqual(z.get_shape().as_list(), [1, 2, 3])
+
+    m1 = array_ops.slice(z, [0, 0, 0], [-1, -1, -1])
+    self.assertAllEqual(m1.get_shape().as_list(), [1, 2, 3])
+
+    m2 = array_ops.slice(z, [0, 0, 0], [constant_op.constant(1) + 0, 2, -1])
+    self.assertAllEqual(m2.get_shape().as_list(), [1, 2, 3])
+
+
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):
     with self.test_session(use_gpu=True):
       num_inputs = np.prod(input_shape)
@@ -227,6 +261,21 @@ class SliceTest(test.TestCase):
       grad_actual = gradients_impl.gradients(out, inp)[0].eval()
     self.assertAllClose([0., 1., 1.], grad_actual)
 
+  def _testGradientVariableSize2D(self):
+    # Regression test for bug in slice. A low-level bug in Eigen was causing
+    # incorrect results for negative indices in multi-dimensional tensors.
+    # See b/114318298.
+    with self.test_session(use_gpu=True) as sess:
+      x = constant_op.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 7]])
+      loss1 = math_ops.reduce_sum(x[:-1, :-1] * 1.0)
+      loss2 = math_ops.reduce_sum(x[:-1][:, :-1])
+
+      g1 = gradients_impl.gradients(loss1, x)[0]
+      g2 = gradients_impl.gradients(loss2, x)[0]
+
+      g1_val, g2_val = sess.run([g1, g2])
+    self.assertAllEqual(g1_val, g2_val)
+
   def testGradientsAll(self):
     # Slice the middle square out of a 4x4 input
     self._testGradientSlice([4, 4], [1, 1], [2, 2])
@@ -243,6 +292,9 @@ class SliceTest(test.TestCase):
     # Use -1 as a slice dimension.
     self._testGradientVariableSize()
 
+    # Use -1 as a slice dimension on a 2D tensor.
+    self._testGradientVariableSize2D()
+
   def testNotIterable(self):
     # NOTE(mrry): If we register __getitem__ as an overloaded
     # operator, Python will valiantly attempt to iterate over the
@@ -250,7 +302,7 @@ class SliceTest(test.TestCase):
     # unintended behavior is prevented.
     c = constant_op.constant(5.0)
     with self.assertRaisesWithPredicateMatch(
-        TypeError, lambda e: "'Tensor' object is not iterable" in str(e)):
+        TypeError, lambda e: "Tensor objects are only iterable" in str(e)):
       for _ in c:
         pass
 
@@ -268,6 +320,15 @@ class SliceTest(test.TestCase):
     begin = array_ops.placeholder(dtypes.int32, shape=())
     c = array_ops.slice(a, [begin, 0], [-1, 2])
     self.assertEqual([None, 2], c.get_shape().as_list())
+
+  def testSliceOfSlice(self):
+    with self.test_session(use_gpu=True):
+      a = constant_op.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
+      b = a[1:, :]
+      c = b[:-1, :]
+      d = c[1, :]
+      res = 2 * d - c[1, :] + a[2, :] - 2 * b[-2, :]
+      self.assertAllEqual([0, 0, 0], res.eval())
 
 
 if __name__ == "__main__":

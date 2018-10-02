@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow Learn Utils."""
+"""TensorFlow Learn Utils (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

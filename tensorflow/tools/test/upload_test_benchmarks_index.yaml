@@ -27,7 +27,7 @@ indexes:
   properties:
   - name: test
   - name: start
-    direction: asc
+    direction: desc
 
 # Index to access a specific (test, entry, start) Entity, and also to be able to
 # fetch a range of (start, timing) graph values for a given (test, entry) pair

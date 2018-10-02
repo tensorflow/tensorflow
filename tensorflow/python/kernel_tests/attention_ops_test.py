@@ -84,7 +84,7 @@ class ExtractGlimpseTest(test.TestCase):
         image_ops.extract_glimpse(t_cols_4d, t1, t2), [0, 2, 1, 3]))
 
     # Evaluate the TensorFlow Graph.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       value_rows, value_cols = sess.run([glimpse_rows, glimpse_cols])
 
     # Check dimensions of returned glimpse.
@@ -118,7 +118,7 @@ class ExtractGlimpseTest(test.TestCase):
   def testEmptyTensor(self):
     empty_image = np.zeros((0, 4, 3, 0))
     offsets = np.zeros((0, 2))
-    with self.test_session():
+    with self.cached_session():
       result = image_ops.extract_glimpse(empty_image, [1, 1], offsets)
       self.assertAllEqual(
           np.zeros(
@@ -195,7 +195,6 @@ class ExtractGlimpseTest(test.TestCase):
         offsets=[-1, 0.9],
         expected_rows=[None, None, None, 1, 2, 3, 4],
         expected_cols=[56, 57, 58, 59, 60])
-
 
 if __name__ == '__main__':
   test.main()

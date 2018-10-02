@@ -41,8 +41,8 @@ class SummaryOpsTest(test.TestCase):
   def _AssertNumpyEq(self, actual, expected):
     self.assertTrue(np.array_equal(actual, expected))
 
-  def testNodeNames(self):
-    with self.test_session() as sess:
+  def testTags(self):
+    with self.cached_session() as sess:
       c = constant_op.constant(1)
       s1 = summary_ops.tensor_summary("s1", c)
       with ops.name_scope("foo"):
@@ -53,19 +53,19 @@ class SummaryOpsTest(test.TestCase):
       summ1, summ2, summ3, summ4 = sess.run([s1, s2, s3, s4])
 
     v1 = self._SummarySingleValue(summ1)
-    self.assertEqual(v1.node_name, "s1")
+    self.assertEqual(v1.tag, "s1")
 
     v2 = self._SummarySingleValue(summ2)
-    self.assertEqual(v2.node_name, "foo/s2")
+    self.assertEqual(v2.tag, "foo/s2")
 
     v3 = self._SummarySingleValue(summ3)
-    self.assertEqual(v3.node_name, "foo/zod/s3")
+    self.assertEqual(v3.tag, "foo/zod/s3")
 
     v4 = self._SummarySingleValue(summ4)
-    self.assertEqual(v4.node_name, "foo/zod/TensorSummary")
+    self.assertEqual(v4.tag, "foo/zod/TensorSummary")
 
   def testScalarSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(10.0)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -76,7 +76,7 @@ class SummaryOpsTest(test.TestCase):
 
   def testStringSummary(self):
     s = six.b("foobar")
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(s)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -86,7 +86,7 @@ class SummaryOpsTest(test.TestCase):
     self._AssertNumpyEq(n, s)
 
   def testManyScalarSummary(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = array_ops.ones([5, 5, 5])
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -96,7 +96,7 @@ class SummaryOpsTest(test.TestCase):
 
   def testManyStringSummary(self):
     strings = [[six.b("foo bar"), six.b("baz")], [six.b("zoink"), six.b("zod")]]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(strings)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -106,7 +106,7 @@ class SummaryOpsTest(test.TestCase):
 
   def testManyBools(self):
     bools = [True, True, True, False, False, False]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       const = constant_op.constant(bools)
       summ = summary_ops.tensor_summary("foo", const)
       result = sess.run(summ)
@@ -114,6 +114,56 @@ class SummaryOpsTest(test.TestCase):
     value = self._SummarySingleValue(result)
     n = tensor_util.MakeNdarray(value.tensor)
     self._AssertNumpyEq(n, bools)
+
+  def testSummaryDescriptionAndDisplayName(self):
+    with self.cached_session() as sess:
+
+      def get_description(summary_op):
+        summ_str = sess.run(summary_op)
+        summ = summary_pb2.Summary()
+        summ.ParseFromString(summ_str)
+        return summ.value[0].metadata
+
+      const = constant_op.constant(1)
+      # Default case; no description or display name
+      simple_summary = summary_ops.tensor_summary("simple", const)
+
+      descr = get_description(simple_summary)
+      self.assertEqual(descr.display_name, "")
+      self.assertEqual(descr.summary_description, "")
+
+      # Values are provided via function args
+      with_values = summary_ops.tensor_summary(
+          "simple",
+          const,
+          display_name="my name",
+          summary_description="my description")
+
+      descr = get_description(with_values)
+      self.assertEqual(descr.display_name, "my name")
+      self.assertEqual(descr.summary_description, "my description")
+
+      # Values are provided via the SummaryMetadata arg
+      metadata = summary_pb2.SummaryMetadata()
+      metadata.display_name = "my name"
+      metadata.summary_description = "my description"
+
+      with_metadata = summary_ops.tensor_summary(
+          "simple", const, summary_metadata=metadata)
+      descr = get_description(with_metadata)
+      self.assertEqual(descr.display_name, "my name")
+      self.assertEqual(descr.summary_description, "my description")
+
+      # If both SummaryMetadata and explicit args are provided, the args win
+      overwrite = summary_ops.tensor_summary(
+          "simple",
+          const,
+          summary_metadata=metadata,
+          display_name="overwritten",
+          summary_description="overwritten")
+      descr = get_description(overwrite)
+      self.assertEqual(descr.display_name, "overwritten")
+      self.assertEqual(descr.summary_description, "overwritten")
 
 
 if __name__ == "__main__":

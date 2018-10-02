@@ -19,6 +19,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_XLA_OP("NoOp", NoOp);
+// XLA_* devices also register a "real" NoOp operator so we suppress the
+// dummy operator using CompilationOnly().
+REGISTER_XLA_OP(Name("NoOp").CompilationOnly(), NoOp);
+
+// We register ControlTrigger as a no-op. This is correct since nodes seen
+// by the XLA compiler are never dead.
+REGISTER_XLA_OP(Name("ControlTrigger").CompilationOnly(), NoOp);
 
 }  // namespace tensorflow

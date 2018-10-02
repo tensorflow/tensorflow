@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column
@@ -74,12 +68,12 @@ class StabilityTest(test.TestCase):
     minval = -0.3333
     maxval = 0.3333
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         g.seed = my_seed
         x = random_ops.random_uniform([10, 10], minval=minval, maxval=maxval)
         val1 = session.run(x)
     with ops.Graph().as_default() as g:
-      with self.test_session(graph=g) as session:
+      with self.session(graph=g) as session:
         g.seed = my_seed
         x = random_ops.random_uniform([10, 10], minval=minval, maxval=maxval)
         val2 = session.run(x)
@@ -109,8 +103,15 @@ class StabilityTest(test.TestCase):
           optimizer=_NULL_OPTIMIZER, feature_columns=columns, config=config)
       regressor2.fit(x=boston.data, y=boston.target, steps=1)
 
-    self.assertAllClose(regressor1.weights_, regressor2.weights_)
-    self.assertAllClose(regressor1.bias_, regressor2.bias_)
+    variable_names = regressor1.get_variable_names()
+    self.assertIn('linear//weight', variable_names)
+    self.assertIn('linear/bias_weight', variable_names)
+    regressor1_weights = regressor1.get_variable_value('linear//weight')
+    regressor2_weights = regressor2.get_variable_value('linear//weight')
+    regressor1_bias = regressor1.get_variable_value('linear/bias_weight')
+    regressor2_bias = regressor2.get_variable_value('linear/bias_weight')
+    self.assertAllClose(regressor1_weights, regressor2_weights)
+    self.assertAllClose(regressor1_bias, regressor2_bias)
     self.assertAllClose(
         list(regressor1.predict_scores(
             boston.data, as_iterable=True)),

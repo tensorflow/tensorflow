@@ -25,9 +25,27 @@ namespace gpu {
 class GpuInstructionFusion : public InstructionFusion {
  public:
   explicit GpuInstructionFusion(bool may_duplicate)
-      : InstructionFusion(may_duplicate) {}
+      : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate) {}
+
+  // Maximum number of operands plus outputs allowed on a single fusion node.
+  // Exposed publicly mainly for tests.
+  static constexpr int64 kMaxOperandsAndOutputsPerFusion = 64;
+
+  // Determines whether the combination of `a` and `b` into a (possibly
+  // multi-output) fusion would be "too large" -- i.e., have more operands and
+  // outputs than is allowed.
+  //
+  // `ShouldFuse` and `ShouldFuseIntoMultiOutput` call this; it's public so that
+  // other fusion passes (e.g. GPU multi-output fusion) can also call this.
+  static bool FusionWouldBeTooLarge(const HloInstruction* a,
+                                    const HloInstruction* b);
+
+  static bool IsExpensive(const HloInstruction& instruction);
 
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
+
+  bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
+                                 int64 operand_index) override;
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;

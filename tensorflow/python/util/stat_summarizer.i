@@ -49,7 +49,6 @@ tensorflow::StatSummarizer* NewStatSummarizer(
 }
 %}
 
-
 %{
 void DeleteStatSummarizer(tensorflow::StatSummarizer* ss) {
   delete ss;
@@ -74,6 +73,6 @@ void DeleteStatSummarizer(tensorflow::StatSummarizer* ss);
     return ss;
 }
 }
-
+%include "tensorflow/core/util/stat_summarizer_options.h"
 %include "tensorflow/core/util/stat_summarizer.h"
 %unignoreall

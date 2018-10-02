@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.layers.python.layers import summaries as summaries_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -36,19 +29,19 @@ from tensorflow.python.platform import test
 class SummariesTest(test.TestCase):
 
   def test_summarize_scalar_tensor(self):
-    with self.test_session():
+    with self.cached_session():
       scalar_var = variables.Variable(1)
       summary_op = summaries_lib.summarize_tensor(scalar_var)
       self.assertEquals(summary_op.op.type, 'ScalarSummary')
 
   def test_summarize_multidim_tensor(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_var = variables.Variable([1, 2, 3])
       summary_op = summaries_lib.summarize_tensor(tensor_var)
       self.assertEquals(summary_op.op.type, 'HistogramSummary')
 
   def test_summarize_activation(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(1)
       op = array_ops.identity(var, name='SummaryTest')
       summary_op = summaries_lib.summarize_activation(op)
@@ -59,7 +52,7 @@ class SummariesTest(test.TestCase):
       self.assertIn(u'SummaryTest/activation', names)
 
   def test_summarize_activation_relu(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(1)
       op = nn_ops.relu(var, name='SummaryTest')
       summary_op = summaries_lib.summarize_activation(op)
@@ -71,7 +64,7 @@ class SummariesTest(test.TestCase):
       self.assertIn(u'SummaryTest/activation', names)
 
   def test_summarize_activation_relu6(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(1)
       op = nn_ops.relu6(var, name='SummaryTest')
       summary_op = summaries_lib.summarize_activation(op)
@@ -84,7 +77,7 @@ class SummariesTest(test.TestCase):
       self.assertIn(u'SummaryTest/activation', names)
 
   def test_summarize_collection_regex(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable(1)
       array_ops.identity(var, name='Test1')
       ops.add_to_collection('foo', array_ops.identity(var, name='Test2'))

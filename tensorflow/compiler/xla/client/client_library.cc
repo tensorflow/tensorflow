@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -23,15 +24,19 @@ limitations under the License.
 
 namespace xla {
 
-LocalClientOptions& LocalClientOptions::set_platform(
-    perftools::gputools::Platform* platform) {
+LocalClientOptions::LocalClientOptions(se::Platform* platform,
+                                       int number_of_replicas,
+                                       int intra_op_parallelism_threads)
+    : platform_(platform),
+      number_of_replicas_(number_of_replicas),
+      intra_op_parallelism_threads_(intra_op_parallelism_threads) {}
+
+LocalClientOptions& LocalClientOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
   return *this;
 }
 
-perftools::gputools::Platform* LocalClientOptions::platform() const {
-  return platform_;
-}
+se::Platform* LocalClientOptions::platform() const { return platform_; }
 
 LocalClientOptions& LocalClientOptions::set_number_of_replicas(
     int number_of_replicas) {
@@ -43,6 +48,16 @@ int LocalClientOptions::number_of_replicas() const {
   return number_of_replicas_;
 }
 
+LocalClientOptions& LocalClientOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int LocalClientOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
+}
+
 /* static */ ClientLibrary& ClientLibrary::Singleton() {
   static ClientLibrary* c = new ClientLibrary;
   return *c;
@@ -52,7 +67,7 @@ ClientLibrary::ClientLibrary() = default;
 ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   LocalClientOptions default_options;
   default_options.set_platform(platform);
   return GetOrCreateLocalClient(default_options);
@@ -60,7 +75,7 @@ ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
     const LocalClientOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
   ClientLibrary& client_library = Singleton();
   tensorflow::mutex_lock lock(client_library.service_mutex_);
@@ -69,22 +84,24 @@ ClientLibrary::~ClientLibrary() = default;
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  auto it = client_library.instances_.find(platform->id());
-  if (it != client_library.instances_.end()) {
+  auto it = client_library.local_instances_.find(platform->id());
+  if (it != client_library.local_instances_.end()) {
     return it->second->client.get();
   }
 
   ServiceOptions service_options;
   service_options.set_platform(platform);
   service_options.set_number_of_replicas(replica_count);
+  service_options.set_intra_op_parallelism_threads(
+      options.intra_op_parallelism_threads());
 
-  std::unique_ptr<LocalInstance> instance = MakeUnique<LocalInstance>();
+  auto instance = absl::make_unique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
                       LocalService::NewService(service_options));
-  instance->client = MakeUnique<LocalClient>(instance->service.get());
+  instance->client = absl::make_unique<LocalClient>(instance->service.get());
   LocalClient* cl = instance->client.get();
 
-  client_library.instances_.insert(
+  client_library.local_instances_.insert(
       std::make_pair(platform->id(), std::move(instance)));
   return cl;
 }
@@ -96,12 +113,46 @@ ClientLibrary::~ClientLibrary() = default;
 }
 
 /* static */ LocalService* ClientLibrary::GetXlaService(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
   tensorflow::mutex_lock lock(client_library.service_mutex_);
-  auto it = client_library.instances_.find(platform->id());
-  CHECK(it != client_library.instances_.end());
+  auto it = client_library.local_instances_.find(platform->id());
+  CHECK(it != client_library.local_instances_.end());
   return it->second->service.get();
+}
+
+/* static */ StatusOr<CompileOnlyClient*>
+ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
+  ClientLibrary& client_library = Singleton();
+  tensorflow::mutex_lock lock(client_library.service_mutex_);
+
+  if (platform == nullptr) {
+    TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
+  }
+
+  auto it = client_library.compile_only_instances_.find(platform->id());
+  if (it != client_library.compile_only_instances_.end()) {
+    return it->second->client.get();
+  }
+
+  auto instance = absl::make_unique<CompileOnlyInstance>();
+  TF_ASSIGN_OR_RETURN(instance->service,
+                      CompileOnlyService::NewService(platform));
+  instance->client =
+      absl::make_unique<CompileOnlyClient>(instance->service.get());
+  CompileOnlyClient* cl = instance->client.get();
+
+  client_library.compile_only_instances_.insert(
+      std::make_pair(platform->id(), std::move(instance)));
+  return cl;
+}
+
+/* static */ void ClientLibrary::DestroyLocalInstances() {
+  ClientLibrary& client_library = Singleton();
+  tensorflow::mutex_lock lock(client_library.service_mutex_);
+
+  client_library.local_instances_.clear();
+  client_library.compile_only_instances_.clear();
 }
 
 }  // namespace xla

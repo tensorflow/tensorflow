@@ -29,7 +29,7 @@ namespace tensorflow {
 bool WorkerCachePartial::GetDeviceLocalityNonBlocking(
     const string& device_name, DeviceLocality* locality) {
   mutex_lock lock(mu_);  // could use reader lock
-  const auto& iter = device_status_cache_.find(device_name);
+  auto iter = device_status_cache_.find(device_name);
   if (iter != device_status_cache_.end()) {
     *locality = iter->second.locality();
     return true;
@@ -44,16 +44,8 @@ void WorkerCachePartial::GetDeviceLocalityAsync(const string& device_name,
     // If cache entry was empty, make one try to fill it by RPC.
     SchedClosure([this, &device_name, locality, done]() {
       Status s = RefreshDeviceStatus(device_name);
-      if (s.ok()) {
-        if (!GetDeviceLocalityNonBlocking(device_name, locality)) {
-          mutex_lock lock(mu_);
-          const auto& iter = device_status_cache_.find(device_name);
-          if (iter == device_status_cache_.end()) {
-            s = errors::Unavailable("No known remote device: ", device_name);
-          } else {
-            s = errors::Internal("Failed to find locality for ", device_name);
-          }
-        }
+      if (s.ok() && !GetDeviceLocalityNonBlocking(device_name, locality)) {
+        s = errors::Unavailable("No known remote device: ", device_name);
       }
       done(s);
     });
@@ -70,10 +62,12 @@ Status WorkerCachePartial::RefreshDeviceStatus(const string& device_name) {
     s = errors::InvalidArgument("Bad device name to RefreshDeviceStatus: ",
                                 device_name);
   }
-  auto deleter = [this, task](WorkerInterface* wi) { ReleaseWorker(task, wi); };
+  auto deleter = [this, &task](WorkerInterface* wi) {
+    ReleaseWorker(task, wi);
+  };
   std::unique_ptr<WorkerInterface, decltype(deleter)> rwi(CreateWorker(task),
                                                           deleter);
-  if (s.ok() && !rwi.get()) {
+  if (s.ok() && !rwi) {
     s = errors::Internal("RefreshDeviceStatus, unknown worker task: ", task);
   }
 

@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_REDUCTION_OPS_H_
-#define TENSORFLOW_KERNELS_REDUCTION_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_H_
 
 // Functor definitions for Reduction ops, must be compilable by nvcc.
 
 #include <iostream>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -67,7 +68,7 @@ void FillIdentityEigenImpl(const Device& d, OUT_T out, const Reducer& reducer) {
 template <typename Device, typename Reducer>
 struct ReduceFunctor {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const Device& d, OUT_T out, IN_T in,
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer);
 
@@ -78,4 +79,4 @@ struct ReduceFunctor {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_REDUCTION_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_H_

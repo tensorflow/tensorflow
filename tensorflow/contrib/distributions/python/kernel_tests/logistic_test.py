@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 from scipy import stats
-from tensorflow.contrib.distributions.python.ops import distribution
 from tensorflow.contrib.distributions.python.ops import logistic
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.platform import test
 
 
@@ -39,7 +39,7 @@ class LogisticTest(test.TestCase):
         dist.reparameterization_type == distribution.FULLY_REPARAMETERIZED)
 
   def testLogisticLogProb(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -57,7 +57,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(prob.eval(), np.exp(expected_log_prob))
 
   def testLogisticCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -71,8 +71,54 @@ class LogisticTest(test.TestCase):
       self.assertEqual(cdf.get_shape(), (6,))
       self.assertAllClose(cdf.eval(), expected_cdf)
 
+  def testLogisticLogCDF(self):
+    with self.cached_session():
+      batch_size = 6
+      np_loc = np.array([2.0] * batch_size, dtype=np.float32)
+      loc = constant_op.constant(np_loc)
+      scale = 1.5
+
+      dist = logistic.Logistic(loc, scale)
+      x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+      logcdf = dist.log_cdf(x)
+      expected_logcdf = stats.logistic.logcdf(x, np_loc, scale)
+
+      self.assertEqual(logcdf.get_shape(), (6,))
+      self.assertAllClose(logcdf.eval(), expected_logcdf)
+
+  def testLogisticSurvivalFunction(self):
+    with self.cached_session():
+      batch_size = 6
+      np_loc = np.array([2.0] * batch_size, dtype=np.float32)
+      loc = constant_op.constant(np_loc)
+      scale = 1.5
+
+      dist = logistic.Logistic(loc, scale)
+      x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+      survival_function = dist.survival_function(x)
+      expected_survival_function = stats.logistic.sf(x, np_loc, scale)
+
+      self.assertEqual(survival_function.get_shape(), (6,))
+      self.assertAllClose(survival_function.eval(), expected_survival_function)
+
+  def testLogisticLogSurvivalFunction(self):
+    with self.cached_session():
+      batch_size = 6
+      np_loc = np.array([2.0] * batch_size, dtype=np.float32)
+      loc = constant_op.constant(np_loc)
+      scale = 1.5
+
+      dist = logistic.Logistic(loc, scale)
+      x = np.array([2.5, 2.5, 4.0, 0.1, 1.0, 2.0], dtype=np.float32)
+      logsurvival_function = dist.log_survival_function(x)
+      expected_logsurvival_function = stats.logistic.logsf(x, np_loc, scale)
+
+      self.assertEqual(logsurvival_function.get_shape(), (6,))
+      self.assertAllClose(logsurvival_function.eval(),
+                          expected_logsurvival_function)
+
   def testLogisticMean(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [2.0, 1.5, 1.0]
       scale = 1.5
       expected_mean = stats.logistic.mean(loc, scale)
@@ -80,7 +126,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(dist.mean().eval(), expected_mean)
 
   def testLogisticVariance(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [2.0, 1.5, 1.0]
       scale = 1.5
       expected_variance = stats.logistic.var(loc, scale)
@@ -88,7 +134,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(dist.variance().eval(), expected_variance)
 
   def testLogisticEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 3
       np_loc = np.array([2.0] * batch_size, dtype=np.float32)
       loc = constant_op.constant(np_loc)
@@ -98,7 +144,7 @@ class LogisticTest(test.TestCase):
       self.assertAllClose(dist.entropy().eval(), expected_entropy)
 
   def testLogisticSample(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [3.0, 4.0, 2.0]
       scale = 1.0
       dist = logistic.Logistic(loc, scale)

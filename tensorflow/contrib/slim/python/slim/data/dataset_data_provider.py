@@ -33,7 +33,7 @@ To read data using multiple readers simultaneous with shuffling:
       shuffle=True)
   images, labels = pascal_voc_data_provider.get(['images', 'labels'])
 
-Equivalently, one may request different fields of the same sample seperately:
+Equivalently, one may request different fields of the same sample separately:
 
   [images] = pascal_voc_data_provider.get(['images'])
   [labels] = pascal_voc_data_provider.get(['labels'])
@@ -59,9 +59,12 @@ class DatasetDataProvider(data_provider.DataProvider):
                common_queue_capacity=256,
                common_queue_min=128,
                record_key='record_key',
-               seed=None):
+               seed=None,
+               scope=None):
     """Creates a DatasetDataProvider.
-
+    Note: if `num_epochs` is not `None`,  local counter `epochs` will be created
+    by relevant function. Use `local_variables_initializer()` to initialize
+    local variables.
     Args:
       dataset: An instance of the Dataset class.
       num_readers: The number of parallel readers to use.
@@ -76,6 +79,7 @@ class DatasetDataProvider(data_provider.DataProvider):
       record_key: The item name to use for the dataset record keys in the
         provided tensors.
       seed: The seed to use if shuffling.
+      scope: Optional name scope for the ops.
     Raises:
       ValueError: If `record_key` matches one of the items in the dataset.
     """
@@ -88,17 +92,18 @@ class DatasetDataProvider(data_provider.DataProvider):
         shuffle=shuffle,
         capacity=common_queue_capacity,
         min_after_dequeue=common_queue_min,
-        seed=seed)
+        seed=seed,
+        scope=scope)
 
     items = dataset.decoder.list_items()
     tensors = dataset.decoder.decode(data, items)
 
-    if record_key in items:
+    items_to_tensors = dict(zip(items, tensors))
+    if record_key in items_to_tensors:
       raise ValueError('The item name used for `record_key` cannot also be '
                        'used for a dataset item: %s', record_key)
-    items.append(record_key)
-    tensors.append(key)
+    items_to_tensors[record_key] = key
 
     super(DatasetDataProvider, self).__init__(
-        items_to_tensors=dict(zip(items, tensors)),
+        items_to_tensors=items_to_tensors,
         num_samples=dataset.num_samples)

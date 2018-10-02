@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "L2Loss"
+  in_arg {
+    name: "t"
+    description: <<END
+Typically 2-D, but may have any dimensions.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+0-D.
+END
+  }
+  summary: "L2 Loss."
+  description: <<END
+Computes half the L2 norm of a tensor without the `sqrt`:
+
+    output = sum(t ** 2) / 2
+END
+}

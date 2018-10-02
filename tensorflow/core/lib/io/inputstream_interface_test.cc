@@ -25,7 +25,7 @@ namespace {
 
 class TestStringStream : public InputStreamInterface {
  public:
-  TestStringStream(const string& content) : content_(content) {}
+  explicit TestStringStream(const string& content) : content_(content) {}
 
   Status ReadNBytes(int64 bytes_to_read, string* result) override {
     result->clear();

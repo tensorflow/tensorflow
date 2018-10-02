@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LIB_CORE_REFCOUNT_H_
 
 #include <atomic>
+#include <memory>
+
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -58,6 +60,15 @@ class RefCounted {
   void operator=(const RefCounted&) = delete;
 };
 
+// A deleter class to form a std::unique_ptr that unrefs objects.
+struct RefCountDeleter {
+  void operator()(tensorflow::core::RefCounted* o) const { o->Unref(); }
+};
+
+// A unique_ptr that unrefs the owned object on destruction.
+template <typename T>
+using RefCountPtr = std::unique_ptr<T, RefCountDeleter>;
+
 // Helper class to unref an object when out-of-scope.
 class ScopedUnref {
  public:
@@ -87,7 +98,7 @@ inline bool RefCounted::Unref() const {
   DCHECK_GT(ref_.load(), 0);
   // If ref_==1, this object is owned only by the caller. Bypass a locked op
   // in that case.
-  if (ref_.load(std::memory_order_acquire) == 1 || ref_.fetch_sub(1) == 1) {
+  if (RefCountIsOne() || ref_.fetch_sub(1) == 1) {
     // Make DCHECK in ~RefCounted happy
     DCHECK((ref_.store(0), true));
     delete this;

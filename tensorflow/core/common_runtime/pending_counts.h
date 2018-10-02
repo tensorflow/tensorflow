@@ -1,5 +1,5 @@
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
 
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// PendingCounts is internal helper class to keep track of pending and
+// PendingCounts is an internal helper class to keep track of pending and
 // dead counts for nodes, for use in the ExecutorState module.  It
 // holds a map from Handles to various counts for that handle.  This
 // information is needed per frame iteration. The amount of memory
@@ -39,12 +39,12 @@ namespace tensorflow {
 //    }
 //
 // When we actually want to start an iteration we first create a
-// nPendingCounts object and then index into it using the precomputed
+// PendingCounts object and then index into it using the precomputed
 // handles:
 
 //    PendingCounts counts(layout);
 //    ...
-//    counts.decrement_panding(h[id], 1);
+//    counts.decrement_pending(h[id], 1);
 class PendingCounts {
  public:
   // The state machine for a node's execution.
@@ -69,7 +69,7 @@ class PendingCounts {
   // to retrieve the count data for this node.
   class Layout {
    public:
-    Handle CreateHandle(int max_pending_count, int max_dead_count);
+    Handle CreateHandle(size_t max_pending_count, size_t max_dead_count);
 
    private:
     friend class PendingCounts;
@@ -91,7 +91,7 @@ class PendingCounts {
 
   ~PendingCounts() { delete[] bytes_; }
 
-  void set_initial_count(Handle h, int pending_count) {
+  void set_initial_count(Handle h, size_t pending_count) {
     if (h.is_large_) {
       LargeCounts* c = Large(h);
       c->pending = pending_count;
@@ -306,7 +306,7 @@ class PendingCounts {
 };
 
 inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
-    int max_pending_count, int max_dead_count) {
+    size_t max_pending_count, size_t max_dead_count) {
   Handle result;
   if ((max_pending_count > kMaxCountForPackedCounts) ||
       (max_dead_count > kMaxCountForPackedCounts)) {
@@ -328,4 +328,4 @@ inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
 
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_

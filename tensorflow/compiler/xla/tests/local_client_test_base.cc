@@ -12,36 +12,44 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#define EIGEN_USE_THREADS
 
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/byte_order.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<perftools::gputools::DeviceMemoryBase> TestAllocator::Allocate(
-    int device_ordinal, uint64 size, bool retry_on_failure) {
+StatusOr<OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
+                                                     uint64 size,
+                                                     bool retry_on_failure) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size);
+  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
+                                                 retry_on_failure);
 }
 
-tensorflow::Status TestAllocator::Deallocate(
-    int device_ordinal, perftools::gputools::DeviceMemoryBase* mem) {
+Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
@@ -82,7 +90,10 @@ int64 TestAllocator::deallocation_count(int device_ordinal) const {
 }
 
 /* static */ TestAllocator* LocalClientTestBase::GetOrCreateAllocator(
-    perftools::gputools::Platform* platform) {
+    se::Platform* platform) {
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  tensorflow::mutex_lock lock(mu);
+
   if (allocator_ == nullptr) {
     allocator_ = new TestAllocator(
         platform == nullptr ? PlatformUtil::GetDefaultPlatform().ValueOrDie()
@@ -91,130 +102,107 @@ int64 TestAllocator::deallocation_count(int device_ordinal) const {
   return allocator_;
 }
 
-LocalClientTestBase::LocalClientTestBase(
-    perftools::gputools::Platform* platform)
+// Define this in .cc file to avoid having to include eigen or forward declare
+// these types in the header.
+struct LocalClientTestBase::EigenThreadPoolWrapper {
+  explicit EigenThreadPoolWrapper()
+      : pool(new tensorflow::thread::ThreadPool(
+            tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
+        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
+        device(new Eigen::ThreadPoolDevice(wrapper.get(),
+                                           wrapper->NumThreads())) {}
+
+  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
+  std::unique_ptr<Eigen::ThreadPoolDevice> device;
+};
+
+LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
     : local_client_(
-          ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()) {
+          ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
+      thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
                          .ValueOrDie()[local_client_->default_device_ordinal()];
   transfer_manager_ =
       TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
 }
 
-std::unique_ptr<ScopedShapedBuffer>
-LocalClientTestBase::LiteralToScopedShapedBuffer(const Literal& literal) {
-  return LiteralToScopedShapedBuffer(literal,
-                                     local_client_->default_device_ordinal());
+LocalClientTestBase::~LocalClientTestBase() {}
+
+ScopedShapedBuffer LocalClientTestBase::LiteralToShapedBuffer(
+    const Literal& literal) {
+  return local_client_
+      ->LiteralToShapedBuffer(literal, local_client_->default_device_ordinal())
+      .ConsumeValueOrDie();
 }
 
-std::unique_ptr<ScopedShapedBuffer>
-LocalClientTestBase::LiteralToScopedShapedBuffer(const Literal& literal,
-                                                 int device_ordinal) {
-  CHECK(!ShapeUtil::IsTuple(literal.shape()));
-  auto scoped_buffer =
-      ScopedShapedBuffer::MakeScopedShapedBuffer(
-          literal.shape(), GetOrCreateAllocator(local_client_->platform()),
-          device_ordinal)
-          .ConsumeValueOrDie();
-  // The creation of the scoped shaped buffer should allocate the buffer.
-  CHECK(!scoped_buffer->buffer(/*index=*/{}).is_null() ||
-        ShapeUtil::HasZeroElements(literal.shape()));
-  TF_CHECK_OK(transfer_manager_->TransferLiteralToDevice(
-      stream_executor_, literal, scoped_buffer->mutable_buffer(/*index=*/{})));
-  return scoped_buffer;
-}
-
-void LocalClientTestBase::CopyShapedBufferToLiteral(
-    const ShapedBuffer& shaped_buffer, ShapeIndex* index, Literal* literal) {
-  const Shape& shape = ShapeUtil::GetSubshape(shaped_buffer.shape(), *index);
-  if (ShapeUtil::IsTuple(shape)) {
-    *literal->mutable_shape() = shape;
-    for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-      Literal* element_literal = literal->add_tuple_literals();
-      index->push_back(i);
-      CopyShapedBufferToLiteral(shaped_buffer, index, element_literal);
-      index->pop_back();
-    }
-  } else {
-    ASSERT_IS_OK(transfer_manager_->TransferLiteralFromDevice(
-        stream_executor_, shaped_buffer.buffer(*index), shape, shape, literal));
-  }
-}
-
-std::unique_ptr<Literal> LocalClientTestBase::ShapedBufferToLiteral(
+Literal LocalClientTestBase::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
-  auto literal = MakeUnique<Literal>();
-  ShapeIndex index;
-  CopyShapedBufferToLiteral(shaped_buffer, &index, literal.get());
-  return literal;
+  return local_client_->ShapedBufferToLiteral(shaped_buffer)
+      .ConsumeValueOrDie();
 }
 
-std::unique_ptr<ScopedShapedBuffer>
-LocalClientTestBase::ShapedBufferToScopedShapedBuffer(
-    std::unique_ptr<ShapedBuffer> shaped_buffer,
-    DeviceMemoryAllocator* allocator) {
-  std::unique_ptr<ScopedShapedBuffer> scoped_buffer =
-      ScopedShapedBuffer::MakeScopedShapedBuffer(
-          shaped_buffer->shape(), allocator, shaped_buffer->device_ordinal())
-          .ConsumeValueOrDie();
-  // Deallocate the existing DeviceMemoryBase values in the newly created scoped
-  // buffer and replace them with the values from the shaped buffer.
-  for (perftools::gputools::DeviceMemoryBase& memory_base :
-       *scoped_buffer->mutable_buffers()) {
-    TF_CHECK_OK(
-        allocator->Deallocate(shaped_buffer->device_ordinal(), &memory_base));
+ExecutableBuildOptions LocalClientTestBase::DefaultExecutableBuildOptions()
+    const {
+  return ExecutableBuildOptions();
+}
+
+ExecutableRunOptions LocalClientTestBase::DefaultExecutableRunOptions() const {
+  ExecutableRunOptions run_options;
+  run_options.set_intra_op_thread_pool(thread_pool_wrapper_->device.get());
+  run_options.set_allocator(GetOrCreateAllocator(local_client_->platform()));
+  return run_options;
+}
+
+ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
+    const XlaComputation& computation,
+    absl::Span<const ShapedBuffer* const> arguments) {
+  return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
+                        DefaultExecutableRunOptions())
+      .ConsumeValueOrDie();
+}
+
+ScopedShapedBuffer LocalClientTestBase::ExecuteLocallyOrDie(
+    const XlaComputation& computation,
+    absl::Span<const ShapedBuffer* const> arguments,
+    const ExecutableBuildOptions& build_options,
+    const ExecutableRunOptions& run_options) {
+  return ExecuteLocally(computation, arguments, build_options, run_options)
+      .ConsumeValueOrDie();
+}
+
+StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+    const XlaComputation& computation,
+    absl::Span<const ShapedBuffer* const> arguments) {
+  return ExecuteLocally(computation, arguments, DefaultExecutableBuildOptions(),
+                        DefaultExecutableRunOptions());
+}
+
+StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
+    const XlaComputation& computation,
+    absl::Span<const ShapedBuffer* const> arguments,
+    const ExecutableBuildOptions& build_options,
+    const ExecutableRunOptions& run_options) {
+  std::vector<const Shape*> argument_layouts(arguments.size());
+  for (int i = 0; i < arguments.size(); ++i) {
+    argument_layouts[i] = &arguments[i]->on_host_shape();
   }
-  *scoped_buffer->mutable_buffers() = shaped_buffer->buffers();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LocalExecutable> executable,
+      local_client_->Compile(computation, argument_layouts, build_options));
+  TF_ASSIGN_OR_RETURN(auto ret, executable->Run(arguments, run_options));
 
-  TF_CHECK_OK(
-      scoped_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
-              [&shaped_buffer](const ShapeIndex& index, bool is_leaf,
-                               size_t* buffer_entry) -> ::tensorflow::Status {
-                if (is_leaf) {
-                  *buffer_entry =
-                      shaped_buffer->shape_index_to_buffer_entry().element(
-                          index);
-                }
-                return tensorflow::Status::OK();
-              }));
-  return scoped_buffer;
-}
-
-LocalExecuteOptions LocalClientTestBase::DefaultLocalExecuteOptions() const {
-  return LocalExecuteOptions().set_allocator(
-      GetOrCreateAllocator(local_client_->platform()));
-}
-
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
-  return ExecuteLocally(computation, arguments, DefaultLocalExecuteOptions());
-}
-
-std::unique_ptr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options) {
-  return ShapedBufferToScopedShapedBuffer(
-      local_client_->ExecuteLocally(computation, arguments, options)
-          .ConsumeValueOrDie(),
-      options.allocator());
-}
-
-void LocalClientTestBase::ExecuteLocally(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result) {
-  ExecuteLocally(computation, arguments, DefaultLocalExecuteOptions(), result);
-}
-
-void LocalClientTestBase::ExecuteLocally(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const LocalExecuteOptions& options, ShapedBuffer* result) {
-  ASSERT_IS_OK(
-      local_client_->ExecuteLocally(computation, arguments, options, result));
+  auto device_ordinal =
+      build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
+  auto* stream = run_options.stream();
+  if (!stream) {
+    stream = local_client_->mutable_backend()
+                 ->BorrowStream(device_ordinal)
+                 .ValueOrDie()
+                 .get();
+  }
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return std::move(ret);
 }
 
 }  // namespace xla

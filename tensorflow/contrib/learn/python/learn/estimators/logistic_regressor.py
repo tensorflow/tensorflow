@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logistic regression (aka binary classifier) class.
+"""Logistic regression (aka binary classifier) class (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 This defines some useful basic metrics for using logistic regression to classify
 a binary event (0 vs 1).
@@ -23,6 +27,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import metrics as metrics_lib
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
@@ -53,13 +58,17 @@ def _get_model_fn_with_logistic_metrics(model_fn):
           thresholds=thresholds)
     else:
       eval_metric_ops = None
-
     return model_fn_lib.ModelFnOps(
         mode=mode,
         predictions=predictions,
         loss=loss,
         train_op=train_op,
-        eval_metric_ops=eval_metric_ops)
+        eval_metric_ops=eval_metric_ops,
+        output_alternatives={
+            'head': (constants.ProblemType.LOGISTIC_REGRESSION, {
+                'predictions': predictions
+            })
+        })
 
   return _model_fn
 
@@ -69,6 +78,10 @@ def LogisticRegressor(  # pylint: disable=invalid-name
     model_fn, thresholds=None, model_dir=None, config=None,
     feature_engineering_fn=None):
   """Builds a logistic regression Estimator for binary classification.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   This method provides a basic Estimator with some additional metrics for custom
   binary classification models, including AUC, precision/recall and accuracy.
@@ -106,7 +119,7 @@ def LogisticRegressor(  # pylint: disable=invalid-name
                       into the model.
 
   Returns:
-    A `tf.contrib.learn.Estimator` instance.
+    An `Estimator` instance.
   """
   return estimator.Estimator(
       model_fn=_get_model_fn_with_logistic_metrics(model_fn),

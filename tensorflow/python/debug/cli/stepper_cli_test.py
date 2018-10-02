@@ -22,6 +22,8 @@ import re
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.lib import stepper
@@ -130,8 +132,8 @@ def _parse_updated(lines):
 class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = variables.Variable(10.0, name="a")
-    self.b = variables.Variable(20.0, name="b")
+    self.a = variables.VariableV1(10.0, name="a")
+    self.b = variables.VariableV1(20.0, name="b")
 
     self.c = math_ops.add(self.a, self.b, name="c")  # Should be 30.0.
     self.d = math_ops.subtract(self.a, self.c, name="d")  # Should be -20.0.
@@ -143,7 +145,11 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
     self.opt = gradient_descent.GradientDescentOptimizer(0.1).minimize(
         self.e, name="opt")
 
-    self.sess = session.Session()
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+    self.sess = session.Session(config=config)
 
     self.sess.run(self.a.initializer)
     self.sess.run(self.b.initializer)

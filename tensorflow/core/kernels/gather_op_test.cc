@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -40,9 +40,10 @@ namespace {
 
 class GatherOpTest : public OpsTestBase {
  protected:
-  void MakeOp(DataType index_type) {
-    TF_ASSERT_OK(NodeDefBuilder("myop", "Gather")
-                     .Input(FakeInput(DT_FLOAT))
+  void MakeOp(DataType data_type, DataType index_type) {
+    TF_ASSERT_OK(NodeDefBuilder("myop", "GatherV2")
+                     .Input(FakeInput(data_type))
+                     .Input(FakeInput(index_type))
                      .Input(FakeInput(index_type))
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -50,11 +51,12 @@ class GatherOpTest : public OpsTestBase {
 };
 
 TEST_F(GatherOpTest, ScalarIndices) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 1, 2, 3, 4});
   AddInputFromArray<int32>(TensorShape({}), {3});
+  AddInputFromArray<int32>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -63,13 +65,33 @@ TEST_F(GatherOpTest, ScalarIndices) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(GatherOpTest, Simple_TwoD32) {
-  MakeOp(DT_INT32);
+TEST_F(GatherOpTest, ScalarIndices_Complex) {
+  MakeOp(DT_COMPLEX64, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<std::complex<float>>(
+      TensorShape({5}), {std::complex<float>(0, 10), std::complex<float>(1, 11),
+                         std::complex<float>(2, 12), std::complex<float>(3, 13),
+                         std::complex<float>(4, 14)});
+  AddInputFromArray<int32>(TensorShape({}), {3});
+  AddInputFromArray<int32>(TensorShape({}), {0});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_COMPLEX64, TensorShape({}));
+  test::FillValues<std::complex<float>>(&expected,
+                                        {std::complex<float>(3, 13)});
+  test::ExpectTensorEqual<std::complex<float>>(expected, *GetOutput(0));
+}
+
+TEST_F(GatherOpTest, Simple_TwoD32_Axis0) {
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({4}), {0, 4, 0, 2});
+  AddInputFromArray<int32>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -78,12 +100,30 @@ TEST_F(GatherOpTest, Simple_TwoD32) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(GatherOpTest, Simple_TwoD32_Axis1) {
+  MakeOp(DT_FLOAT, DT_INT32);
+
+  // Feed and run
+  AddInputFromArray<float>(TensorShape({5, 3}),
+                           {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
+  AddInputFromArray<int32>(TensorShape({4}), {0, 1, 0, 2});
+  AddInputFromArray<int32>(TensorShape({}), {1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({5, 4}));
+  test::FillValues<float>(&expected, {0, 1, 0, 2,  3, 4,  3,  5,  6,  7,
+                                      6, 8, 9, 10, 9, 11, 12, 13, 12, 14});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(GatherOpTest, ZeroSize_TwoD32) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 0}), {});
   AddInputFromArray<int32>(TensorShape({4}), {0, 4, 0, 2});
+  AddInputFromArray<int32>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -92,12 +132,13 @@ TEST_F(GatherOpTest, ZeroSize_TwoD32) {
 }
 
 TEST_F(GatherOpTest, Simple_TwoD64) {
-  MakeOp(DT_INT64);
+  MakeOp(DT_FLOAT, DT_INT64);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int64>(TensorShape({4}), {0, 4, 0, 2});
+  AddInputFromArray<int64>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -107,11 +148,12 @@ TEST_F(GatherOpTest, Simple_TwoD64) {
 }
 
 TEST_F(GatherOpTest, HighRank) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({4}), {0, 1, 2, 3});
   AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 0, 2, 3, 0});
+  AddInputFromArray<int32>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output
@@ -121,15 +163,16 @@ TEST_F(GatherOpTest, HighRank) {
 }
 
 TEST_F(GatherOpTest, Error_IndexOutOfRange) {
-  MakeOp(DT_INT32);
+  MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
   AddInputFromArray<int32>(TensorShape({4}), {0, 4, 99, 2});
+  AddInputFromArray<int32>(TensorShape({}), {0});
   Status s = RunOpKernel();
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("indices[2] = 99 is not in [0, 5)"))
+      str_util::StrContains(s.ToString(), "indices[2] = 99 is not in [0, 5)"))
       << s;
 }
 
@@ -146,6 +189,7 @@ static Graph* Gather(int dim) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   std::vector<Index> indices_vec;
+  indices_vec.reserve(kLookups);
   for (int i = 0; i < kLookups; i++) {
     indices_vec.push_back(rnd.Uniform(kRows));
   }
@@ -154,8 +198,12 @@ static Graph* Gather(int dim) {
     indices.flat<Index>()(i) = indices_vec[i];
   }
 
+  Tensor axis(DataTypeToEnum<Index>::value, TensorShape({}));
+  axis.scalar<Index>()() = 0;
+
   test::graph::Gather(g, test::graph::Constant(g, params),
-                      test::graph::Constant(g, indices));
+                      test::graph::Constant(g, indices),
+                      test::graph::HostConstant(g, axis));
   return g;
 }
 

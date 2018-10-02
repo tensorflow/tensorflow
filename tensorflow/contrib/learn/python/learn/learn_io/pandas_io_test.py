@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn.learn_io import pandas_io
@@ -72,7 +65,7 @@ class PandasIoTest(test.TestCase):
   def testPandasInputFn_ProducesExpectedOutputs(self):
     if not HAS_PANDAS:
       return
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, y = self.makeTestDataFrame()
       input_fn = pandas_io.pandas_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
@@ -83,10 +76,77 @@ class PandasIoTest(test.TestCase):
       self.assertAllEqual(features['b'], [32, 33])
       self.assertAllEqual(target, [-32, -31])
 
+  def testPandasInputFn_ProducesOutputsForLargeBatchAndMultipleEpochs(self):
+    if not HAS_PANDAS:
+      return
+    with self.cached_session() as session:
+      index = np.arange(100, 102)
+      a = np.arange(2)
+      b = np.arange(32, 34)
+      x = pd.DataFrame({'a': a, 'b': b}, index=index)
+      y = pd.Series(np.arange(-32, -30), index=index)
+      input_fn = pandas_io.pandas_input_fn(
+          x, y, batch_size=128, shuffle=False, num_epochs=2)
+
+      results = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      features, target = session.run(results)
+      self.assertAllEqual(features['a'], [0, 1, 0, 1])
+      self.assertAllEqual(features['b'], [32, 33, 32, 33])
+      self.assertAllEqual(target, [-32, -31, -32, -31])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(results)
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def testPandasInputFn_ProducesOutputsWhenDataSizeNotDividedByBatchSize(self):
+    if not HAS_PANDAS:
+      return
+    with self.cached_session() as session:
+      index = np.arange(100, 105)
+      a = np.arange(5)
+      b = np.arange(32, 37)
+      x = pd.DataFrame({'a': a, 'b': b}, index=index)
+      y = pd.Series(np.arange(-32, -27), index=index)
+
+      input_fn = pandas_io.pandas_input_fn(
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
+
+      results = input_fn()
+
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+
+      features, target = session.run(results)
+      self.assertAllEqual(features['a'], [0, 1])
+      self.assertAllEqual(features['b'], [32, 33])
+      self.assertAllEqual(target, [-32, -31])
+
+      features, target = session.run(results)
+      self.assertAllEqual(features['a'], [2, 3])
+      self.assertAllEqual(features['b'], [34, 35])
+      self.assertAllEqual(target, [-30, -29])
+
+      features, target = session.run(results)
+      self.assertAllEqual(features['a'], [4])
+      self.assertAllEqual(features['b'], [36])
+      self.assertAllEqual(target, [-28])
+
+      with self.assertRaises(errors.OutOfRangeError):
+        session.run(results)
+
+      coord.request_stop()
+      coord.join(threads)
+
   def testPandasInputFn_OnlyX(self):
     if not HAS_PANDAS:
       return
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, _ = self.makeTestDataFrame()
       input_fn = pandas_io.pandas_input_fn(
           x, y=None, batch_size=2, shuffle=False, num_epochs=1)
@@ -99,7 +159,7 @@ class PandasIoTest(test.TestCase):
   def testPandasInputFn_ExcludesIndex(self):
     if not HAS_PANDAS:
       return
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, y = self.makeTestDataFrame()
       input_fn = pandas_io.pandas_input_fn(
           x, y, batch_size=2, shuffle=False, num_epochs=1)
@@ -122,7 +182,7 @@ class PandasIoTest(test.TestCase):
   def testPandasInputFn_RespectsEpoch_NoShuffle(self):
     if not HAS_PANDAS:
       return
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, y = self.makeTestDataFrame()
       input_fn = pandas_io.pandas_input_fn(
           x, y, batch_size=4, shuffle=False, num_epochs=1)
@@ -132,7 +192,7 @@ class PandasIoTest(test.TestCase):
   def testPandasInputFn_RespectsEpoch_WithShuffle(self):
     if not HAS_PANDAS:
       return
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, y = self.makeTestDataFrame()
       input_fn = pandas_io.pandas_input_fn(
           x, y, batch_size=4, shuffle=True, num_epochs=1)
@@ -142,7 +202,7 @@ class PandasIoTest(test.TestCase):
   def testPandasInputFn_RespectsEpoch_WithShuffleAutosize(self):
     if not HAS_PANDAS:
       return
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x, y = self.makeTestDataFrame()
       input_fn = pandas_io.pandas_input_fn(
           x, y, batch_size=2, shuffle=True, queue_capacity=None, num_epochs=2)
@@ -153,7 +213,7 @@ class PandasIoTest(test.TestCase):
     if not HAS_PANDAS:
       return
     x, y = self.makeTestDataFrame()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       input_fn = pandas_io.pandas_input_fn(
           x, y, batch_size=3, shuffle=False, num_epochs=1)
 

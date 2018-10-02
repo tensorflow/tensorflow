@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_SIGNATURE_CONSTANTS_H_
-#define THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_SIGNATURE_CONSTANTS_H_
+#ifndef TENSORFLOW_CC_SAVED_MODEL_SIGNATURE_CONSTANTS_H_
+#define TENSORFLOW_CC_SAVED_MODEL_SIGNATURE_CONSTANTS_H_
 
 namespace tensorflow {
 
@@ -66,4 +66,4 @@ static constexpr char kRegressOutputs[] = "outputs";
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_SIGNATURE_CONSTANTS_H_
+#endif  // TENSORFLOW_CC_SAVED_MODEL_SIGNATURE_CONSTANTS_H_

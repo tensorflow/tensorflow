@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_TENSOR_JNI_H_
-#define TENSORFLOW_JAVA_TENSOR_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_
 
 #include <jni.h>
 
@@ -28,7 +28,8 @@ extern "C" {
  * Signature: (I[JJ)J
  */
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv *, jclass,
-                                                            jint, jlongArray, jlong);
+                                                            jint, jlongArray,
+                                                            jlong);
 
 /*
  * Class:     org_tensorflow_Tensor
@@ -37,6 +38,14 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocate(JNIEnv *, jclass,
  */
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_Tensor_allocateScalarBytes(JNIEnv *, jclass, jbyteArray);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    allocateNonScalarBytes
+ * Signature: ([J[Ljava/lang/Object;)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateNonScalarBytes(
+    JNIEnv *, jclass, jlongArray, jobjectArray);
 
 /*
  * Class:     org_tensorflow_Tensor
@@ -52,7 +61,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_delete(JNIEnv *, jclass,
  * Signature: (J)Ljava/nio/ByteBuffer;
  */
 JNIEXPORT jobject JNICALL Java_org_tensorflow_Tensor_buffer(JNIEnv *, jclass,
-                                                              jlong);
+                                                            jlong);
 
 /*
  * Class:     org_tensorflow_Tensor
@@ -144,4 +153,4 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv *, jclass,
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_TENSOR_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSOR_JNI_H_

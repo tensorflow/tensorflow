@@ -29,5 +29,5 @@ struct TensorSetZero {
 };
 }  // namespace functor
 
-} // end namespace tensorflow
-#endif // TENSORFLOW_CONTRIB_FRAMEWORK_KERNELS_ZERO_INITIALIZER_OP_H_
+}  // end namespace tensorflow
+#endif  // TENSORFLOW_CONTRIB_FRAMEWORK_KERNELS_ZERO_INITIALIZER_OP_H_

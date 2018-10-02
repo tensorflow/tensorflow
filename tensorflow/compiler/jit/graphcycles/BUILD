@@ -6,16 +6,19 @@ package(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "graphcycles",
     srcs = ["graphcycles.cc"],
     hdrs = ["graphcycles.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "graphcycles_test",
     srcs = ["graphcycles_test.cc"],
     deps = [
@@ -24,18 +27,4 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

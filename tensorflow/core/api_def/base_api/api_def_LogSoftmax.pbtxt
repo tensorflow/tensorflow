@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "LogSoftmax"
+  in_arg {
+    name: "logits"
+    description: <<END
+2-D with shape `[batch_size, num_classes]`.
+END
+  }
+  out_arg {
+    name: "logsoftmax"
+    description: <<END
+Same shape as `logits`.
+END
+  }
+  summary: "Computes log softmax activations."
+  description: <<END
+For each batch `i` and class `j` we have
+
+    logsoftmax[i, j] = logits[i, j] - log(sum(exp(logits[i])))
+END
+}

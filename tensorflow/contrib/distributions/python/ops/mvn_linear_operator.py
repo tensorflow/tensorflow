@@ -18,17 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
-from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.distributions.python.ops import kullback_leibler
-from tensorflow.contrib.distributions.python.ops import normal
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
+from tensorflow.contrib.distributions.python.ops.bijectors import AffineLinearOperator
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import kullback_leibler
+from tensorflow.python.ops.distributions import normal
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -60,7 +59,7 @@ class MultivariateNormalLinearOperator(
 
   The Multivariate Normal distribution is defined over `R^k` and parameterized
   by a (batch of) length-`k` `loc` vector (aka "mu") and a (batch of) `k x k`
-  `scale` matrix; `covariance = scale @ scale.T` where `@` denotes
+  `scale` matrix; `covariance = scale @ scale.T`, where `@` denotes
   matrix-multiplication.
 
   #### Mathematical Details
@@ -92,8 +91,8 @@ class MultivariateNormalLinearOperator(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
-  la = tf.contrib.linalg
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
@@ -105,9 +104,9 @@ class MultivariateNormalLinearOperator(
   #      [ 0.2,  0.5,  0. ],
   #      [ 0.1, -0.3,  0.4]])
 
-  mvn = ds.MultivariateNormalLinearOperator(
+  mvn = tfd.MultivariateNormalLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorTriL(scale))
+      scale=tf.linalg.LinearOperatorLowerTriangular(scale))
 
   # Covariance agrees with cholesky(cov) parameterization.
   mvn.covariance().eval()
@@ -124,9 +123,9 @@ class MultivariateNormalLinearOperator(
   scale_diag = [[1., 2, 3],
                 [0.5, 1, 1.5]]     # shape: [2, 3]
 
-  mvn = ds.MultivariateNormalLinearOperator(
+  mvn = tfd.MultivariateNormalLinearOperator(
       loc=mu,
-      scale=la.LinearOperatorDiag(scale_diag))
+      scale=tf.linalg.LinearOperatorDiag(scale_diag))
 
   # Compute the pdf of two `R^3` observations; return a length-2 vector.
   x = [[-0.9, 0, 0.1],
@@ -136,6 +135,14 @@ class MultivariateNormalLinearOperator(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale=None,
@@ -147,8 +154,8 @@ class MultivariateNormalLinearOperator(
     The `batch_shape` is the broadcast shape between `loc` and `scale`
     arguments.
 
-    The `event_shape` is given by the last dimension of `loc` or the last
-    dimension of the matrix implied by `scale`.
+    The `event_shape` is given by last dimension of the matrix implied by
+    `scale`. The last dimension of `loc` (if provided) must broadcast with this.
 
     Recall that `covariance = scale @ scale.T`.
 
@@ -173,26 +180,26 @@ class MultivariateNormalLinearOperator(
       ValueError: if `scale` is unspecified.
       TypeError: if not `scale.dtype.is_floating`
     """
-    parameters = locals()
+    parameters = dict(locals())
     if scale is None:
       raise ValueError("Missing required `scale` parameter.")
     if not scale.dtype.is_floating:
       raise TypeError("`scale` parameter must have floating-point dtype.")
 
-    # Since expand_dims doesn't preserve constant-ness, we obtain the
-    # non-dynamic value if possible.
-    event_shape = scale.domain_dimension_tensor()
-    if tensor_util.constant_value(event_shape) is not None:
-      event_shape = tensor_util.constant_value(event_shape)
-    event_shape = event_shape[array_ops.newaxis]
+    with ops.name_scope(name, values=[loc] + scale.graph_parents) as name:
+      # Since expand_dims doesn't preserve constant-ness, we obtain the
+      # non-dynamic value if possible.
+      loc = ops.convert_to_tensor(loc, name="loc") if loc is not None else loc
+      batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+          loc, scale)
 
     super(MultivariateNormalLinearOperator, self).__init__(
         distribution=normal.Normal(
             loc=array_ops.zeros([], dtype=scale.dtype),
             scale=array_ops.ones([], dtype=scale.dtype)),
-        bijector=bijectors.AffineLinearOperator(
+        bijector=AffineLinearOperator(
             shift=loc, scale=scale, validate_args=validate_args),
-        batch_shape=scale.batch_shape_tensor(),
+        batch_shape=batch_shape,
         event_shape=event_shape,
         validate_args=validate_args,
         name=name)
@@ -208,18 +215,6 @@ class MultivariateNormalLinearOperator(
     """The `scale` `LinearOperator` in `Y = scale @ X + loc`."""
     return self.bijector.scale
 
-  def log_det_covariance(self, name="log_det_covariance"):
-    """Log of determinant of covariance matrix."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=self.scale.graph_parents):
-        return 2. * self.scale.log_abs_determinant()
-
-  def det_covariance(self, name="det_covariance"):
-    """Determinant of covariance matrix."""
-    with ops.name_scope(self.name):
-      with ops.name_scope(name, values=self.scale.graph_parents):
-        return math_ops.exp(2.* self.scale.log_abs_determinant())
-
   @distribution_util.AppendDocstring(_mvn_sample_note)
   def _log_prob(self, x):
     return super(MultivariateNormalLinearOperator, self)._log_prob(x)
@@ -229,50 +224,51 @@ class MultivariateNormalLinearOperator(
     return super(MultivariateNormalLinearOperator, self)._prob(x)
 
   def _mean(self):
-    if self.loc is None:
+    shape = self.batch_shape.concatenate(self.event_shape)
+    has_static_shape = shape.is_fully_defined()
+    if not has_static_shape:
       shape = array_ops.concat([
           self.batch_shape_tensor(),
           self.event_shape_tensor(),
       ], 0)
+
+    if self.loc is None:
       return array_ops.zeros(shape, self.dtype)
-    return array_ops.identity(self.loc)
+
+    if has_static_shape and shape == self.loc.get_shape():
+      return array_ops.identity(self.loc)
+
+    # Add dummy tensor of zeros to broadcast.  This is only necessary if shape
+    # != self.loc.shape, but we could not determine if this is the case.
+    return array_ops.identity(self.loc) + array_ops.zeros(shape, self.dtype)
 
   def _covariance(self):
-    if (isinstance(self.scale, linalg.LinearOperatorIdentity) or
-        isinstance(self.scale, linalg.LinearOperatorScaledIdentity) or
-        isinstance(self.scale, linalg.LinearOperatorDiag)):
+    if distribution_util.is_diagonal_scale(self.scale):
       return array_ops.matrix_diag(math_ops.square(self.scale.diag_part()))
     else:
-      # TODO(b/35040238): Remove transpose once LinOp supports `transpose`.
-      return self.scale.apply(array_ops.matrix_transpose(self.scale.to_dense()))
+      return self.scale.matmul(self.scale.to_dense(), adjoint_arg=True)
 
   def _variance(self):
-    if (isinstance(self.scale, linalg.LinearOperatorIdentity) or
-        isinstance(self.scale, linalg.LinearOperatorScaledIdentity) or
-        isinstance(self.scale, linalg.LinearOperatorDiag)):
+    if distribution_util.is_diagonal_scale(self.scale):
       return math_ops.square(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
-          and self.scale.is_self_adjoint):
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
+          self.scale.is_self_adjoint):
       return array_ops.matrix_diag_part(
-          self.scale.apply(self.scale.to_dense()))
+          self.scale.matmul(self.scale.to_dense()))
     else:
-      # TODO(b/35040238): Remove transpose once LinOp supports `transpose`.
       return array_ops.matrix_diag_part(
-          self.scale.apply(array_ops.matrix_transpose(self.scale.to_dense())))
+          self.scale.matmul(self.scale.to_dense(), adjoint_arg=True))
 
   def _stddev(self):
-    if (isinstance(self.scale, linalg.LinearOperatorIdentity) or
-        isinstance(self.scale, linalg.LinearOperatorScaledIdentity) or
-        isinstance(self.scale, linalg.LinearOperatorDiag)):
+    if distribution_util.is_diagonal_scale(self.scale):
       return math_ops.abs(self.scale.diag_part())
-    elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
-          and self.scale.is_self_adjoint):
+    elif (isinstance(self.scale, linalg.LinearOperatorLowRankUpdate) and
+          self.scale.is_self_adjoint):
       return math_ops.sqrt(array_ops.matrix_diag_part(
-          self.scale.apply(self.scale.to_dense())))
+          self.scale.matmul(self.scale.to_dense())))
     else:
-      # TODO(b/35040238): Remove transpose once LinOp supports `transpose`.
       return math_ops.sqrt(array_ops.matrix_diag_part(
-          self.scale.apply(array_ops.matrix_transpose(self.scale.to_dense()))))
+          self.scale.matmul(self.scale.to_dense(), adjoint_arg=True)))
 
   def _mode(self):
     return self._mean()
@@ -280,6 +276,14 @@ class MultivariateNormalLinearOperator(
 
 @kullback_leibler.RegisterKL(MultivariateNormalLinearOperator,
                              MultivariateNormalLinearOperator)
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _kl_brute_force(a, b, name=None):
   """Batched KL divergence `KL(a || b)` for multivariate Normals.
 
@@ -311,7 +315,10 @@ def _kl_brute_force(a, b, name=None):
   def squared_frobenius_norm(x):
     """Helper to make KL calculation slightly more readable."""
     # http://mathworld.wolfram.com/FrobeniusNorm.html
-    return math_ops.square(linalg_ops.norm(x, ord="fro", axis=[-2, -1]))
+    # The gradient of KL[p,q] is not defined when p==q. The culprit is
+    # linalg_ops.norm, i.e., we cannot use the commented out code.
+    # return math_ops.square(linalg_ops.norm(x, ord="fro", axis=[-2, -1]))
+    return math_ops.reduce_sum(math_ops.square(x), axis=[-2, -1])
 
   # TODO(b/35041439): See also b/35040945. Remove this function once LinOp
   # supports something like:

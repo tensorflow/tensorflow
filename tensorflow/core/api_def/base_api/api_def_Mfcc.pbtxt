@@ -1,0 +1,51 @@
+op {
+  graph_op_name: "Mfcc"
+  in_arg {
+    name: "spectrogram"
+    description: <<END
+Typically produced by the Spectrogram op, with magnitude_squared
+set to true.
+END
+  }
+  in_arg {
+    name: "sample_rate"
+    description: <<END
+How many samples per second the source audio used.
+END
+  }
+  attr {
+    name: "upper_frequency_limit"
+    description: <<END
+The highest frequency to use when calculating the
+ceptstrum.
+END
+  }
+  attr {
+    name: "lower_frequency_limit"
+    description: <<END
+The lowest frequency to use when calculating the
+ceptstrum.
+END
+  }
+  attr {
+    name: "filterbank_channel_count"
+    description: <<END
+Resolution of the Mel bank used internally.
+END
+  }
+  attr {
+    name: "dct_coefficient_count"
+    description: <<END
+How many output channels to produce per time slice.
+END
+  }
+  summary: "Transforms a spectrogram into a form that\'s useful for speech recognition."
+  description: <<END
+Mel Frequency Cepstral Coefficients are a way of representing audio data that's
+been effective as an input feature for machine learning. They are created by
+taking the spectrum of a spectrogram (a 'cepstrum'), and discarding some of the
+higher frequencies that are less significant to the human ear. They have a long
+history in the speech recognition world, and https://en.wikipedia.org/wiki/Mel-frequency_cepstrum
+is a good resource to learn more.
+END
+}

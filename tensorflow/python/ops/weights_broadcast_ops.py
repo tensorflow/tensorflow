@@ -97,9 +97,10 @@ def assert_broadcastable(weights, values):
         return control_flow_ops.no_op(name="static_scalar_check_success")
       if weights_rank_static != values_rank_static:
         raise ValueError(
-            "%s values.rank=%s. weights.rank=%s." % (
+            "%s values.rank=%s. weights.rank=%s."
+            " values.shape=%s. weights.shape=%s." % (
                 _ASSERT_BROADCASTABLE_ERROR_PREFIX, values_rank_static,
-                weights_rank_static))
+                weights_rank_static, values.shape, weights.shape))
       weights_shape_static = tensor_util.constant_value(weights_shape)
       values_shape_static = tensor_util.constant_value(values_shape)
       if weights_shape_static is not None and values_shape_static is not None:

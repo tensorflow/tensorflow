@@ -13,22 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
-using tensorflow::strings::StrCat;
-using tensorflow::strings::StrAppend;
+using absl::StrAppend;
+using absl::StrCat;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STRCAT_H_

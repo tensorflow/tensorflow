@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PREFETCH_H_
-#define TENSORFLOW_PLATFORM_PREFETCH_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_PREFETCH_H_
+#define TENSORFLOW_CORE_PLATFORM_PREFETCH_H_
 
 #include "tensorflow/core/platform/platform.h"
 
@@ -44,7 +44,9 @@ void prefetch(const void* x);
 // ---------------------------------------------------------------------------
 template <PrefetchHint hint>
 inline void prefetch(const void* x) {
-#if defined(__llvm__) || defined(COMPILER_GCC)
+// Check of COMPILER_GCC macro below is kept only for backward-compatibility
+// reasons. COMPILER_GCC3 is the macro that actually enables prefetch.
+#if defined(__llvm__) || defined(COMPILER_GCC) || defined(COMPILER_GCC3)
   __builtin_prefetch(x, 0, hint);
 #else
 // You get no effect.  Feel free to add more sections above.
@@ -54,4 +56,4 @@ inline void prefetch(const void* x) {
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_PREFETCH_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_PREFETCH_H_

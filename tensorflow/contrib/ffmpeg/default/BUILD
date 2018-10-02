@@ -8,6 +8,8 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "ffmpeg_lib",
     srcs = ["ffmpeg_lib.cc"],
@@ -16,12 +18,25 @@ cc_library(
         "//tensorflow/contrib/ffmpeg:ffmpeg_lib.h",
     ],
     deps = [
-        "//:protobuf_headers",
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
-cc_test(
+tf_cc_test(
+    name = "ffmpeg_lib_utility_test",
+    srcs = ["ffmpeg_lib_utility_test.cc"],
+    deps = [
+        ":ffmpeg_lib",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "ffmpeg_lib_installed_test",
     srcs = ["ffmpeg_lib_test.cc"],
     args = [
@@ -42,7 +57,7 @@ cc_test(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "ffmpeg_lib_uninstalled_test",
     srcs = ["ffmpeg_lib_test.cc"],
     args = [
@@ -58,16 +73,4 @@ cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

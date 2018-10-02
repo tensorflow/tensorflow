@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.slim.python.slim.nets import overfeat
 from tensorflow.python.ops import math_ops
@@ -40,7 +33,7 @@ class OverFeatTest(test.TestCase):
     batch_size = 5
     height, width = 231, 231
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = overfeat.overfeat(inputs, num_classes)
       self.assertEquals(logits.op.name, 'overfeat/fc8/squeezed')
@@ -51,7 +44,7 @@ class OverFeatTest(test.TestCase):
     batch_size = 1
     height, width = 281, 281
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = overfeat.overfeat(inputs, num_classes, spatial_squeeze=False)
       self.assertEquals(logits.op.name, 'overfeat/fc8/BiasAdd')
@@ -62,7 +55,7 @@ class OverFeatTest(test.TestCase):
     batch_size = 5
     height, width = 231, 231
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       _, end_points = overfeat.overfeat(inputs, num_classes)
       expected_names = [
@@ -77,7 +70,7 @@ class OverFeatTest(test.TestCase):
     batch_size = 5
     height, width = 231, 231
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       overfeat.overfeat(inputs, num_classes)
       expected_names = [
@@ -105,7 +98,7 @@ class OverFeatTest(test.TestCase):
     batch_size = 2
     height, width = 231, 231
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       eval_inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = overfeat.overfeat(eval_inputs, is_training=False)
       self.assertListEqual(logits.get_shape().as_list(),
@@ -119,7 +112,7 @@ class OverFeatTest(test.TestCase):
     train_height, train_width = 231, 231
     eval_height, eval_width = 281, 281
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       train_inputs = random_ops.random_uniform(
           (train_batch_size, train_height, train_width, 3))
       logits, _ = overfeat.overfeat(train_inputs)
@@ -139,7 +132,7 @@ class OverFeatTest(test.TestCase):
   def testForward(self):
     batch_size = 1
     height, width = 231, 231
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = overfeat.overfeat(inputs)
       sess.run(variables.global_variables_initializer())

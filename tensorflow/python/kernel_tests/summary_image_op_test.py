@@ -50,10 +50,9 @@ class SummaryImageOpTest(test.TestCase):
     self.assertProtoEquals(expected, image_summ)
 
   def testImageSummary(self):
-    np.random.seed(7)
     for depth in (1, 3, 4):
       for positive in False, True:
-        with self.test_session(graph=ops.Graph()) as sess:
+        with self.session(graph=ops.Graph()) as sess:
           shape = (4, 5, 7) + (depth,)
           bad_color = [255, 0, 0, 255][:depth]
           # Build a mostly random image with one nan
@@ -80,7 +79,7 @@ class SummaryImageOpTest(test.TestCase):
                                        .image.encoded_image_string).eval()
           self.assertAllEqual(image[1, 2], bad_color)
           image[1, 2] = adjusted[0, 1, 2]
-          self.assertAllClose(image, adjusted[0])
+          self.assertAllClose(image, adjusted[0], rtol=2e-5, atol=2e-5)
 
           # Check the rest of the proto
           self._CheckProto(image_summ, shape)
@@ -88,7 +87,7 @@ class SummaryImageOpTest(test.TestCase):
   def testImageSummaryUint8(self):
     np.random.seed(7)
     for depth in (1, 3, 4):
-      with self.test_session(graph=ops.Graph()) as sess:
+      with self.session(graph=ops.Graph()) as sess:
         shape = (4, 5, 7) + (depth,)
 
         # Build a random uint8 image

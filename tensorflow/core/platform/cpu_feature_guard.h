@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_CPU_FEATURE_GUARD_H_
-#define TENSORFLOW_PLATFORM_CPU_FEATURE_GUARD_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CPU_FEATURE_GUARD_H_
+#define TENSORFLOW_CORE_PLATFORM_CPU_FEATURE_GUARD_H_
 
 namespace tensorflow {
 namespace port {
@@ -24,9 +24,9 @@ namespace port {
 // hardware. The first time it's called it will run lightweight checks of
 // available SIMD acceleration features and log warnings about any that aren't
 // used.
-void WarnAboutUnusedCPUFeatures();
+void InfoAboutUnusedCPUFeatures();
 
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_CPU_FEATURE_GUARD_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CPU_FEATURE_GUARD_H_

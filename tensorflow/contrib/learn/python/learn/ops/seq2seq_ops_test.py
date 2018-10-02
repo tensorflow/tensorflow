@@ -18,19 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.learn.python.learn import ops
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.platform import test
 
 
@@ -38,7 +31,7 @@ class Seq2SeqOpsTest(test.TestCase):
   """Sequence-to-sequence tests."""
 
   def test_sequence_classifier(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       decoding = [
           array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)
       ]
@@ -67,7 +60,7 @@ class Seq2SeqOpsTest(test.TestCase):
   def test_seq2seq_inputs(self):
     inp = np.array([[[1, 0], [0, 1], [1, 0]], [[0, 1], [1, 0], [0, 1]]])
     out = np.array([[[0, 1, 0], [1, 0, 0]], [[1, 0, 0], [0, 1, 0]]])
-    with self.test_session() as session:
+    with self.cached_session() as session:
       x = array_ops.placeholder(dtypes.float32, [2, 3, 2])
       y = array_ops.placeholder(dtypes.float32, [2, 2, 3])
       in_x, in_y, out_y = ops.seq2seq_inputs(x, y, 3, 2)
@@ -84,12 +77,12 @@ class Seq2SeqOpsTest(test.TestCase):
                                   [[0, 0, 0], [0, 0, 0]]])
 
   def test_rnn_decoder(self):
-    with self.test_session():
+    with self.cached_session():
       decoder_inputs = [
           array_ops.placeholder(dtypes.float32, [2, 2]) for _ in range(3)
       ]
       encoding = array_ops.placeholder(dtypes.float32, [2, 2])
-      cell = core_rnn_cell_impl.GRUCell(2)
+      cell = rnn_cell.GRUCell(2)
       outputs, states, sampling_outputs, sampling_states = (
           ops.rnn_decoder(decoder_inputs, encoding, cell))
       self.assertEqual(len(outputs), 3)

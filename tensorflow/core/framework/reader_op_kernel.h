@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_READER_OP_KERNEL_H_
-#define TENSORFLOW_FRAMEWORK_READER_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_READER_OP_KERNEL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_READER_OP_KERNEL_H_
 
 #include <functional>
 #include <string>
@@ -47,7 +47,28 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
     factory_ = factory;
   }
 
+  void Compute(OpKernelContext* context) override {
+    if (!IsCancellable()) {
+      ResourceOpKernel<ReaderInterface>::Compute(context);
+    } else {
+      // Install cancellation
+      CancellationManager* cm = context->cancellation_manager();
+      CancellationToken token = cm->get_cancellation_token();
+      bool already_cancelled =
+          !cm->RegisterCallback(token, [this]() { this->Cancel(); });
+
+      if (!already_cancelled) {
+        ResourceOpKernel<ReaderInterface>::Compute(context);
+      } else {
+        context->SetStatus(errors::Cancelled("read operation was cancelled"));
+      }
+    }
+  }
+
  private:
+  virtual bool IsCancellable() const { return false; }
+  virtual void Cancel() {}
+
   Status CreateResource(ReaderInterface** reader)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
     *reader = factory_();
@@ -64,4 +85,4 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_READER_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_READER_OP_KERNEL_H_

@@ -46,20 +46,40 @@ TEST(AllocatorAttributesTest, AllCombos) {
   for (bool on_host : {false, true}) {
     for (bool nic_compatible : {false, true}) {
       for (bool gpu_compatible : {false, true}) {
-        for (bool track_sizes : {false, true}) {
-          AllocatorAttributes aa;
-          aa.set_on_host(on_host);
-          aa.set_nic_compatible(nic_compatible);
-          aa.set_gpu_compatible(gpu_compatible);
-          aa.set_track_sizes(track_sizes);
-          EXPECT_EQ(on_host, aa.on_host());
-          EXPECT_EQ(nic_compatible, aa.nic_compatible());
-          EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
-          EXPECT_EQ(track_sizes, aa.track_sizes());
-        }
+        AllocatorAttributes aa;
+        aa.set_on_host(on_host);
+        aa.set_nic_compatible(nic_compatible);
+        aa.set_gpu_compatible(gpu_compatible);
+        EXPECT_EQ(on_host, aa.on_host());
+        EXPECT_EQ(nic_compatible, aa.nic_compatible());
+        EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
       }
     }
   }
+}
+
+TEST(AllocatorAttributesTest, IsEqualOrLessRestrictiveThan) {
+  AllocatorAttributes a, b;
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  b.set_gpu_compatible(true);
+  // The set of flags in b is not a subset of those in a.
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  a.set_nic_compatible(true);
+  // Neither a nor b is a subset of the other.
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+
+  a.set_gpu_compatible(true);
+  // The set of flags in b is a proper subset of those in a.
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
 }
 
 TEST(CPUAllocatorTest, Simple) {
@@ -90,6 +110,8 @@ TEST(CPUAllocatorTest, Simple) {
 
   CheckStats(a, 1025, 0, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
+  a->ClearStats();
+  CheckStats(a, 0, 0, 0, 0);
   EnableCPUAllocatorStats(false);
 }
 

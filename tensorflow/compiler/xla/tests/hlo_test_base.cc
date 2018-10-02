@@ -15,179 +15,344 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
 
-#define EIGEN_USE_THREADS
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_test_base_flags.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/shape_layout.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 
-// Define this in .cc file to avoid having to include eigen or forward declare
-// these types in the header.
-struct HloTestBase::EigenThreadPoolWrapper {
-  std::unique_ptr<EigenThreadPoolWrapper> pool;
-  std::unique_ptr<Eigen::ThreadPoolDevice> device;
-};
+namespace {
 
-HloTestBase::HloTestBase()
-    : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()) {
-  test_hlo_dumper_ = [](const HloModule& module, const string& label) {
-    legacy_flags::HloTestBaseFlags* flags = legacy_flags::GetHloTestBaseFlags();
-    if (flags->xla_hlo_test_generate_hlo_graph) {
-      const bool show_addresses = true;
-      const bool show_layouts = true;
-      hlo_graph_dumper::DumpGraph(*module.entry_computation(), label,
-                                  show_addresses, show_layouts);
-    }
-  };
-  VLOG(1) << "executing on platform " << backend_->platform()->Name();
+using absl::optional;
+using absl::string_view;
+
+constexpr char kInterpreter[] = "interpreter";
+
+// Helper functions to get test and reference platforms.
+se::Platform* GetReferencePlatform() {
+  auto result = PlatformUtil::GetPlatform(kInterpreter);
+  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  return result.ValueOrDie();
 }
 
-HloTestBase::~HloTestBase() {
-  // Deallocate all the memory allocated during the tests.
-  for (auto& allocation : allocations_) {
-    backend_->default_stream_executor()->Deallocate(&allocation);
+se::Platform* GetTestPlatform() {
+  auto result = PlatformUtil::GetDefaultPlatform();
+  TF_CHECK_OK(result.status()) << "could not get test platform";
+  return result.ValueOrDie();
+}
+
+bool ProgramShapesEqual(const ProgramShape& lhs, const ProgramShape& rhs) {
+  if (lhs.parameters_size() != rhs.parameters_size()) {
+    return false;
   }
+  for (int i = 0; i < lhs.parameters_size(); i++) {
+    if (!ShapeUtil::Equal(lhs.parameters(i), rhs.parameters(i))) {
+      return false;
+    }
+  }
+  return ShapeUtil::Equal(lhs.result(), rhs.result());
 }
 
-StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
+ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
+  ProgramShape program_shape;
+  const auto* entry = module.entry_computation();
+  for (const auto* param : entry->parameter_instructions()) {
+    *program_shape.add_parameters() = param->shape();
+    *program_shape.add_parameter_names() = param->name();
+  }
+  *program_shape.mutable_result() = entry->root_instruction()->shape();
+  return program_shape;
+}
+
+}  // namespace
+
+HloTestBase::HloTestBase(bool verifier_layout_sensitive,
+                         bool allow_mixed_precision_in_hlo_verifier)
+    : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
+                  verifier_layout_sensitive,
+                  allow_mixed_precision_in_hlo_verifier) {}
+
+HloTestBase::HloTestBase(se::Platform* test_platform,
+                         se::Platform* reference_platform,
+                         bool verifier_layout_sensitive,
+                         bool allow_mixed_precision_in_hlo_verifier)
+    : test_runner_(test_platform), reference_runner_(reference_platform) {
+  hlo_verifier_ = absl::make_unique<HloVerifier>(
+      /*layout_sensitive=*/verifier_layout_sensitive,
+      /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier);
+}
+
+std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
+  return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
+}
+
+/* static */
+StatusOr<bool> HloTestBase::RunHloPass(HloPassInterface* hlo_pass,
+                                       HloModule* module) {
+  const string module_str_before_run = module->ToProto().ShortDebugString();
+  const auto status_or = hlo_pass->Run(module);
+  if (status_or.status().ok()) {
+    const string module_str_after_run = module->ToProto().ShortDebugString();
+    if (!status_or.ValueOrDie()) {
+      // Check that the proto remains same.
+      EXPECT_EQ(module_str_after_run, module_str_before_run);
+    }
+  }
+  return status_or;
+}
+
+/* static */
+PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      operands, PrecisionConfig::DEFAULT);
+  return precision_config;
+}
+
+DebugOptions HloTestBase::GetDebugOptionsForTest() {
+  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
+  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  return debug_options;
+}
+
+StatusOr<Literal> HloTestBase::Execute(std::unique_ptr<HloModule> module,
+                                       absl::Span<Literal* const> arguments) {
+  return test_runner_.Execute(std::move(module), arguments);
+}
+
+Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
+                                        absl::Span<Literal* const> arguments) {
+  return test_runner_
+      .Execute(std::move(module), arguments,
+               /*run_hlo_passes=*/false)
+      .ValueOrDie();
+}
+
+Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
+                                        absl::Span<Literal* const> arguments) {
+  return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
+}
+
+StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
+    const HloModule& test_module,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  std::unique_ptr<HloModule> reference_module = test_module.Clone();
+  const auto& program_shape = GetProgramShapeWithLayout(test_module);
+
+  if (reference_preprocessor != nullptr) {
+    reference_preprocessor(reference_module.get());
+    if (!ProgramShapesEqual(program_shape,
+                            GetProgramShapeWithLayout(*reference_module))) {
+      return InvalidArgument(
+          "reference preprocessor must not modify the program shape");
+    }
+  }
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(reference_module.get()).status());
+  return std::move(reference_module);
+}
+
+StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        arguments,
-    Shape* result_shape) {
-  auto module_config = MakeUnique<HloModuleConfig>(
-      module->entry_computation()->ComputeProgramShape());
-  return Execute(std::move(module), std::move(module_config), arguments,
-                 result_shape);
-}
+    const absl::Span<Literal* const> arguments,
+    const optional<ErrorSpec>& error, bool run_hlo_passes,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module.get()).status());
+  TF_ASSIGN_OR_RETURN(auto reference_module,
+                      MakeReferenceModule(*module, reference_preprocessor));
 
-StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    Shape* result_shape) {
-  VLOG(3) << "module_config layout "
-          << LayoutUtil::HumanString(module_config->entry_computation_layout()
-                                         .result_layout()
-                                         .layout());
+  // Execute on two backends.
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      backend_->compiler()->Compile(std::move(hlo_module),
-                                    std::move(module_config), test_hlo_dumper_,
-                                    backend_->default_stream_executor()));
+      auto test,
+      test_runner_.Execute(std::move(module), arguments, run_hlo_passes));
+  TF_ASSIGN_OR_RETURN(auto reference,
+                      reference_runner_.Execute(std::move(reference_module),
+                                                arguments, run_hlo_passes));
+  return LiteralTestUtil::NearOrEqual(/*expected=*/reference, /*actual=*/test,
+                                      error);
+}
 
-  se::Stream stream(backend_->default_stream_executor());
-  stream.Init();
+::testing::AssertionResult HloTestBase::RunAndCompare(
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
+    const optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto result =
+      RunAndCompareInternal(std::move(module), arguments, error,
+                            /*run_hlo_passes=*/true, reference_preprocessor);
+  if (!result.ok()) {
+    return ::testing::AssertionFailure() << result.status();
+  }
+  return result.ValueOrDie();
+}
 
-  ExecutableRunOptions run_options;
-  run_options.set_stream(&stream);
-  run_options.set_allocator(backend_->memory_allocator());
-  run_options.set_inter_op_thread_pool(backend_->inter_op_thread_pool());
-  run_options.set_intra_op_thread_pool(
-      backend_->eigen_intra_op_thread_pool_device());
+::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
+    std::unique_ptr<HloModule> module,
+    const absl::Span<Literal* const> arguments,
+    const optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto result =
+      RunAndCompareInternal(std::move(module), arguments, error,
+                            /*run_hlo_passes=*/false, reference_preprocessor);
+  if (!result.ok()) {
+    return ::testing::AssertionFailure() << result.status();
+  }
+  return result.ValueOrDie();
+}
 
-  HloExecutionProfile hlo_execution_profile;
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase result,
-                      executable->ExecuteOnStream(&run_options, arguments,
-                                                  &hlo_execution_profile));
-  TF_RET_CHECK(stream.BlockHostUntilDone());
+::testing::AssertionResult HloTestBase::RunAndCompare(
+    std::unique_ptr<HloModule> module, const optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto fake_arguments = MakeFakeArguments(module.get()).ConsumeValueOrDie();
 
-  allocations_.push_back(result);
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-  *result_shape = executable->result_shape();
+  return RunAndCompare(std::move(module), fake_argument_ptrs, error,
+                       reference_preprocessor);
+}
 
-  if (ShapeUtil::IsTuple(*result_shape)) {
-    // We must record element buffers of tuples as well to avoid leaks.
-    DCHECK(!ShapeUtil::IsNestedTuple(*result_shape));
-    TF_ASSIGN_OR_RETURN(
-        std::vector<se::DeviceMemoryBase> element_buffers,
-        backend_->transfer_manager()->ShallowCopyTupleFromDevice(
-            backend_->default_stream_executor(), result, *result_shape));
+::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
+    std::unique_ptr<HloModule> module, const optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  const auto& fake_arguments =
+      MakeFakeArguments(module.get()).ConsumeValueOrDie();
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-    // A tuple may contain the same buffer in more than one element. Keep track
-    // of the buffers already added to avoid duplicates in allocations_.
-    std::set<void*> added_opaques;
-    for (auto element_buffer : element_buffers) {
-      if (added_opaques.count(element_buffer.opaque()) == 0) {
-        added_opaques.insert(element_buffer.opaque());
-        allocations_.push_back(element_buffer);
-      }
+  return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
+                                  reference_preprocessor);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompare(
+    string_view hlo_string, const absl::optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
+  }
+  return RunAndCompare(module_or_status.ConsumeValueOrDie(), error,
+                       reference_preprocessor);
+}
+
+::testing::AssertionResult HloTestBase::Run(string_view hlo_string) {
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
+  }
+  const auto& fake_arguments =
+      MakeFakeArguments(module_or_status.ValueOrDie().get())
+          .ConsumeValueOrDie();
+  std::vector<Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      fake_arguments, std::back_inserter(fake_argument_ptrs),
+      [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+  return test_runner_
+                 .Execute(std::move(module_or_status.ValueOrDie()),
+                          fake_argument_ptrs, /*run_hlo_passes=*/true)
+                 .ok()
+             ? ::testing::AssertionSuccess()
+             : ::testing::AssertionFailure();
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
+    const string& filename, const absl::optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto module_or_status =
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "failed reading hlo module from file";
+  }
+  return RunAndCompare(module_or_status.ConsumeValueOrDie(), error,
+                       reference_preprocessor);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
+    string_view hlo_string, const absl::optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
+  }
+  return RunAndCompareNoHloPasses(module_or_status.ConsumeValueOrDie(), error,
+                                  reference_preprocessor);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
+    const string& filename, const absl::optional<ErrorSpec>& error,
+    const std::function<void(HloModule*)>& reference_preprocessor) {
+  auto module_or_status =
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
+  if (!module_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "failed reading hlo module from file";
+  }
+  return RunAndCompareNoHloPasses(module_or_status.ConsumeValueOrDie(), error,
+                                  reference_preprocessor);
+}
+
+HloComputation* HloTestBase::FindComputation(HloModule* module,
+                                             absl::string_view name) {
+  auto computations = module->computations();
+  auto it = absl::c_find_if(
+      computations, [&](HloComputation* c) { return c->name() == name; });
+  if (it == computations.end()) {
+    return nullptr;
+  }
+  return *it;
+}
+
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             absl::string_view name) {
+  for (const HloComputation* c : module->computations()) {
+    auto instructions = c->instructions();
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->name() == name; });
+    if (it != instructions.end()) {
+      return *it;
     }
   }
-
-  return result;
+  return nullptr;
 }
 
-se::DeviceMemoryBase HloTestBase::TransferToDevice(const Literal& literal) {
-  // Allocate memory on the device using the stream executor.
-  int64 allocation_size =
-      backend_->transfer_manager()->GetByteSizeRequirement(literal.shape());
-  se::DeviceMemoryBase allocation =
-      backend_->default_stream_executor()->AllocateArray<uint8>(
-          allocation_size);
-  allocations_.push_back(allocation);
+Backend& HloTestBase::backend() { return test_runner_.backend(); }
 
-  TF_CHECK_OK(backend_->transfer_manager()->TransferLiteralToDevice(
-      backend_->default_stream_executor(), literal, &allocation));
-
-  return allocation;
-}
-
-std::unique_ptr<Literal> HloTestBase::TransferFromDevice(
-    const Shape& shape, se::DeviceMemoryBase device_base) {
-  auto literal = MakeUnique<Literal>();
-  TF_CHECK_OK(backend_->transfer_manager()->TransferLiteralFromDevice(
-      backend_->default_stream_executor(), device_base, shape, shape,
-      literal.get()));
-  return literal;
-}
-
-std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  Shape result_shape;
-  se::DeviceMemoryBase device_base =
-      Execute(std::move(module), arguments, &result_shape).ValueOrDie();
-  return TransferFromDevice(result_shape, device_base);
-}
-
-std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  Shape result_shape;
-  se::DeviceMemoryBase device_base =
-      Execute(std::move(module), std::move(module_config), arguments,
-              &result_shape)
-          .ValueOrDie();
-  return TransferFromDevice(result_shape, device_base);
-}
-
-string HloTestBase::TestName() const {
+/* static */
+string HloTestBase::TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 

@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.layers.python.layers import encoders
 from tensorflow.contrib.layers.python.ops import sparse_ops
 from tensorflow.python.ops import init_ops
@@ -41,14 +34,14 @@ def _get_const_var(name, shape, value):
 class EncodersTest(test.TestCase):
 
   def testBowEncoderSparse(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3]]
       enc = encoders.bow_encoder(docs, 4, 3)
       sess.run(variables.global_variables_initializer())
       self.assertAllEqual([2, 3], enc.eval().shape)
 
   def testBowEncoderSparseTensor(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3]]
       sparse_docs = sparse_ops.dense_to_sparse_tensor(docs)
       enc = encoders.bow_encoder(sparse_docs, 4, 3)
@@ -56,28 +49,28 @@ class EncodersTest(test.TestCase):
       self.assertAllEqual([2, 3], enc.eval().shape)
 
   def testBowEncoderSparseEmptyRow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3], [0, 0]]
       enc = encoders.bow_encoder(docs, 4, 5)
       sess.run(variables.global_variables_initializer())
       self.assertAllEqual([3, 5], enc.eval().shape)
 
   def testBowEncoderDense(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3], [0, 0], [0, 0]]
       enc = encoders.bow_encoder(docs, 4, 3, sparse_lookup=False)
       sess.run(variables.global_variables_initializer())
       self.assertAllEqual([4, 3], enc.eval().shape)
 
   def testBowEncoderSparseTensorDenseLookup(self):
-    with self.test_session():
+    with self.cached_session():
       docs = [[0, 1]]
       sparse_docs = sparse_ops.dense_to_sparse_tensor(docs)
       with self.assertRaises(TypeError):
         encoders.bow_encoder(sparse_docs, 4, 3, sparse_lookup=False)
 
   def testBowEncodersSharingEmbeddings(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3]]
       enc_1 = encoders.bow_encoder(docs, 4, 3, scope='test')
       enc_2 = encoders.bow_encoder(docs, 4, 3, scope='test', reuse=True)
@@ -86,7 +79,7 @@ class EncodersTest(test.TestCase):
       self.assertAllEqual(avg_1, avg_2)
 
   def testBowEncodersSharingEmbeddingsInheritedScopes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3]]
       with variable_scope.variable_scope('test'):
         enc_1 = encoders.bow_encoder(docs, 4, 3)
@@ -97,7 +90,7 @@ class EncodersTest(test.TestCase):
       self.assertAllEqual(avg_1, avg_2)
 
   def testBowEncodersSharingEmbeddingsSharedScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[0, 1], [2, 3]]
       enc_1 = encoders.bow_encoder(docs, 4, 3, scope='bow')
       variable_scope.get_variable_scope().reuse_variables()
@@ -107,7 +100,7 @@ class EncodersTest(test.TestCase):
       self.assertAllEqual(avg_1, avg_2)
 
   def testBowEncoderReuseEmbeddingsVariable(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[1, 1], [2, 3]]
       with variable_scope.variable_scope('test'):
         v = _get_const_var('embeddings', (4, 3),
@@ -118,7 +111,7 @@ class EncodersTest(test.TestCase):
       self.assertAllClose([[3., 4., 5.], [7.5, 8.5, 9.5]], enc.eval())
 
   def testEmbedSequence(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       docs = [[1, 1], [2, 3]]
       with variable_scope.variable_scope('test'):
         v = _get_const_var('embeddings', (4, 3),

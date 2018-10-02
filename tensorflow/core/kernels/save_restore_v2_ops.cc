@@ -47,8 +47,9 @@ void ValidateInputs(bool is_save_op, OpKernelContext* context,
       context, prefix.NumElements() == 1,
       errors::InvalidArgument("Input prefix should have a single element, got ",
                               prefix.NumElements(), " instead."));
-  OP_REQUIRES(context, TensorShapeUtils::IsVector(tensor_names.shape()) &&
-                           TensorShapeUtils::IsVector(shape_and_slices.shape()),
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsVector(tensor_names.shape()) &&
+                  TensorShapeUtils::IsVector(shape_and_slices.shape()),
               errors::InvalidArgument(
                   "Input tensor_names and shape_and_slices "
                   "should be an 1-D tensors, got ",
@@ -105,6 +106,7 @@ class SaveV2 : public OpKernel {
     const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
 
     BundleWriter writer(Env::Default(), prefix_string);
+    OP_REQUIRES_OK(context, writer.status());
     VLOG(1) << "BundleWriter, prefix_string: " << prefix_string;
 
     for (int i = 0; i < num_tensors; ++i) {
@@ -167,8 +169,14 @@ class RestoreV2 : public OpKernel {
         paths.empty()) {
       // Cannot find V2's metadata file, so "prefix_string" does not point to a
       // V2 checkpoint.  Invokes the V1 read path instead.
-      RestoreTensor(context, &checkpoint::OpenTableTensorSliceReader,
-                    /* preferred_shard */ -1, /* restore_slice */ true);
+      for (size_t i = 0; i < tensor_names.NumElements(); ++i) {
+        RestoreTensor(context, &checkpoint::OpenTableTensorSliceReader,
+                      /* preferred_shard */ -1, /* restore_slice */ true,
+                      /* restore_index */ i);
+        if (!context->status().ok()) {
+          return;
+        }
+      }
       return;
     }
     // If found, invokes the V2 reader.
@@ -212,9 +220,9 @@ class MergeV2Checkpoints : public OpKernel {
         context, tensorflow::MergeBundles(env, input_prefixes, merged_prefix));
 
     if (delete_old_dirs_) {
-      const string& merged_dir = io::Dirname(merged_prefix).ToString();
+      const string merged_dir(io::Dirname(merged_prefix));
       for (const string& input_prefix : input_prefixes) {
-        const string& dirname = io::Dirname(input_prefix).ToString();
+        const string dirname(io::Dirname(input_prefix));
         if (dirname == merged_dir) continue;
         Status status = env->DeleteDir(dirname);
         // For sharded save, only the first delete will go through and all

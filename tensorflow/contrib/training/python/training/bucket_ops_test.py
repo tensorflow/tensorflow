@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.contrib.training.python.training import bucket_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -111,7 +112,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(32):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -161,7 +162,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[None], [None, None], [None, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(15):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -203,7 +204,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3], [None, None]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(64):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -285,7 +286,7 @@ class BucketTest(test.TestCase):
     self.assertAllEqual(
         [[32], [32, None], [32, 3]],
         [out.get_shape().as_list() for out in bucketed_dynamic[1]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for v in range(128):
         self.enqueue_inputs(sess, {
             self.scalar_int_feed: v,
@@ -309,10 +310,20 @@ class BucketTest(test.TestCase):
       self.assertAllEqual(
           np.arange(0, 128, 2), sorted(bucketed_values_all_elem0))
 
+  def testFailOnWrongBucketCapacities(self):
+    with self.assertRaisesRegexp(ValueError, r"must have exactly num_buckets"):
+      bucket_ops.bucket(  # 2 buckets and 3 capacities raises ValueError.
+          tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+          which_bucket=constant_op.constant(0), num_buckets=2,
+          batch_size=32, bucket_capacities=[3, 4, 5])
+
 
 class BucketBySequenceLengthTest(test.TestCase):
 
-  def _testBucketBySequenceLength(self, allow_small_batch):
+  def _testBucketBySequenceLength(self,
+                                  allow_small_batch,
+                                  bucket_capacities=None,
+                                  drain_entire_queue=True):
     ops.reset_default_graph()
 
     # All inputs must be identical lengths across tuple index.
@@ -330,6 +341,7 @@ class BucketBySequenceLengthTest(test.TestCase):
 
     batch_size = 8
     bucket_boundaries = [3, 4, 5, 10]
+    num_pairs_to_enqueue = 50 * batch_size + 100
 
     # Make capacity very large so we can feed all the inputs in the
     # main thread without blocking
@@ -345,6 +357,7 @@ class BucketBySequenceLengthTest(test.TestCase):
         tensors=[data_t, labels_t],
         batch_size=batch_size,
         bucket_boundaries=bucket_boundaries,
+        bucket_capacities=bucket_capacities,
         allow_smaller_final_batch=allow_small_batch,
         num_threads=10))
 
@@ -356,34 +369,47 @@ class BucketBySequenceLengthTest(test.TestCase):
                      [expected_batch_size, labels_len])
 
     def _read_test(sess):
-      for _ in range(50):
-        (out_lengths, (data, labels)) = sess.run(
-            (out_lengths_t, data_and_labels_t))
+      num_pairs_dequeued = 0
+      try:
+        while drain_entire_queue or num_pairs_dequeued < 40 * batch_size:
+          (out_lengths, (data, labels)) = sess.run(
+              (out_lengths_t, data_and_labels_t))
+          num_pairs_dequeued += out_lengths.shape[0]
+          if allow_small_batch:
+            self.assertEqual(data_len, data.shape[1])
+            self.assertEqual(labels_len, labels.shape[1])
+            self.assertGreaterEqual(batch_size, out_lengths.shape[0])
+            self.assertGreaterEqual(batch_size, data.shape[0])
+            self.assertGreaterEqual(batch_size, labels.shape[0])
+          else:
+            self.assertEqual((batch_size, data_len), data.shape)
+            self.assertEqual((batch_size, labels_len), labels.shape)
+            self.assertEqual((batch_size,), out_lengths.shape)
+          for (lr, dr, tr) in zip(out_lengths, data, labels):
+            # Make sure length matches data (here it's the same value).
+            self.assertEqual(dr[0], lr)
+            # Make sure data & labels match.
+            self.assertEqual(dr[0], int(tr[0].decode("ascii")))
+            # Make sure for each row, data came from the same bucket.
+            self.assertEqual(
+                _which_bucket(bucket_boundaries, dr[0]),
+                _which_bucket(bucket_boundaries, dr[1]))
+      except errors.OutOfRangeError:
         if allow_small_batch:
-          self.assertEqual(data_len, data.shape[1])
-          self.assertEqual(labels_len, labels.shape[1])
-          self.assertGreaterEqual(batch_size, out_lengths.shape[0])
-          self.assertGreaterEqual(batch_size, data.shape[0])
-          self.assertGreaterEqual(batch_size, labels.shape[0])
+          self.assertEqual(num_pairs_to_enqueue, num_pairs_dequeued)
         else:
-          self.assertEqual((batch_size, data_len), data.shape)
-          self.assertEqual((batch_size, labels_len), labels.shape)
-          self.assertEqual((batch_size,), out_lengths.shape)
-        for (lr, dr, tr) in zip(out_lengths, data, labels):
-          # Make sure length matches data (here it's the same value).
-          self.assertEqual(dr[0], lr)
-          # Make sure data & labels match.
-          self.assertEqual(dr[0], int(tr[0].decode("ascii")))
-          # Make sure for each row, data came from the same bucket.
-          self.assertEqual(
-              _which_bucket(bucket_boundaries, dr[0]),
-              _which_bucket(bucket_boundaries, dr[1]))
+          # Maximum left over in the queues should be at most one less than the
+          # batch_size, for every bucket.
+          num_buckets = len(bucket_boundaries) + 2
+          self.assertLessEqual(
+              num_pairs_to_enqueue - (batch_size - 1) * num_buckets,
+              num_pairs_dequeued)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
 
       # Feed the inputs, then close the input thread.
-      for _ in range(50 * batch_size + 100):
+      for _ in range(num_pairs_to_enqueue):
         which = random.randint(0, len(input_pairs) - 1)
         length, pair = input_pairs[which]
         sess.run(input_enqueue_op,
@@ -404,6 +430,20 @@ class BucketBySequenceLengthTest(test.TestCase):
 
   def testBucketBySequenceLengthAllow(self):
     self._testBucketBySequenceLength(allow_small_batch=True)
+
+  def testBucketBySequenceLengthBucketCapacities(self):
+    # Above bucket_boundaries = [3, 4, 5, 10] so we need 5 capacities.
+    with self.assertRaisesRegexp(ValueError, r"must have exactly num_buckets"):
+      self._testBucketBySequenceLength(allow_small_batch=False,
+                                       bucket_capacities=[32, 32, 32, 32])
+    # Test with different capacities.
+    capacities = [48, 40, 32, 24, 16]
+    self._testBucketBySequenceLength(allow_small_batch=True,
+                                     bucket_capacities=capacities)
+
+  def testBucketBySequenceLengthShutdown(self):
+    self._testBucketBySequenceLength(allow_small_batch=True,
+                                     drain_entire_queue=False)
 
 
 if __name__ == "__main__":

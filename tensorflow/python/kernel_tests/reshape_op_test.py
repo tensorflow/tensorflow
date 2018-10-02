@@ -37,9 +37,20 @@ class ReshapeTest(test.TestCase):
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
+      # Repeat with an int64 shape tensor.
+      y64 = constant_op.constant(y, dtype=dtypes.int64)
+      tf_ans = array_ops.reshape(x, y64)
+      out = tf_ans.eval()
+      self.assertEqual(tf_ans.get_shape(), out.shape)
+      self.assertShapeEqual(np_ans, tf_ans)
+
   def _testBothReshape(self, x, y):
     self._testReshape(x, y, False)
     self._testReshape(x, y, True)
+
+  def testBoolBasic(self):
+    x = np.arange(1., 7.).reshape([1, 6]) > 3
+    self._testBothReshape(x, [2, 3])
 
   def testFloatBasic(self):
     x = np.arange(1., 7.).reshape([1, 6]).astype(np.float32)
@@ -83,7 +94,7 @@ class ReshapeTest(test.TestCase):
   def testFloatReshapeGradThreeDimensions(self):
     x = np.arange(1., 25.).reshape([2, 3, 4]).astype(np.float32)
     s = list(np.shape(x))
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x)
       reshape_out = array_ops.reshape(input_tensor, [1, 8, 3])
       err = gradient_checker.compute_gradient_error(

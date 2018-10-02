@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -176,6 +177,96 @@ TEST(CollectMetricsTest, Counter) {
   }
 }
 
+TEST(CollectMetricsTest, Gauge) {
+  auto string_gauge_with_labels =
+      std::unique_ptr<Gauge<string, 2>>(Gauge<string, 2>::New(
+          "/tensorflow/test/string_gauge_with_labels",
+          "String gauge with labels.", "MyLabel0", "MyLabel1"));
+  auto inteter_gauge_without_labels = std::unique_ptr<Gauge<int64, 0>>(
+      Gauge<int64, 0>::New("/tensorflow/test/integer_gauge_without_labels",
+                           "Integer gauge without labels."));
+
+  string_gauge_with_labels->GetCell("Label00", "Label10")->Set("test1");
+  string_gauge_with_labels->GetCell("Label01", "Label11")->Set("test2");
+  inteter_gauge_without_labels->GetCell()->Set(7);
+
+  for (const bool collect_metric_descriptors : {true, false}) {
+    SCOPED_TRACE(strings::StrCat("collect_metric_descriptors: ",
+                                 collect_metric_descriptors));
+
+    auto* collection_registry = CollectionRegistry::Default();
+    CollectionRegistry::CollectMetricsOptions options;
+    options.collect_metric_descriptors = collect_metric_descriptors;
+    const std::unique_ptr<CollectedMetrics> collected_metrics =
+        collection_registry->CollectMetrics(options);
+
+    if (collect_metric_descriptors) {
+      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+
+      const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
+          "/tensorflow/test/string_gauge_with_labels");
+      EXPECT_EQ("/tensorflow/test/string_gauge_with_labels", ld.name);
+      EXPECT_EQ("String gauge with labels.", ld.description);
+      ASSERT_EQ(2, ld.label_names.size());
+      EXPECT_EQ("MyLabel0", ld.label_names[0]);
+      EXPECT_EQ("MyLabel1", ld.label_names[1]);
+      EXPECT_EQ(MetricKind::kGauge, ld.metric_kind);
+      EXPECT_EQ(ValueType::kString, ld.value_type);
+
+      const MetricDescriptor& ud = *collected_metrics->metric_descriptor_map.at(
+          "/tensorflow/test/integer_gauge_without_labels");
+      EXPECT_EQ("/tensorflow/test/integer_gauge_without_labels", ud.name);
+      EXPECT_EQ("Integer gauge without labels.", ud.description);
+      ASSERT_EQ(0, ud.label_names.size());
+      EXPECT_EQ(MetricKind::kGauge, ud.metric_kind);
+      EXPECT_EQ(ValueType::kInt64, ud.value_type);
+    } else {
+      EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
+    }
+
+    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+
+    const PointSet& lps = *collected_metrics->point_set_map.at(
+        "/tensorflow/test/string_gauge_with_labels");
+    EXPECT_EQ("/tensorflow/test/string_gauge_with_labels", lps.metric_name);
+    ASSERT_EQ(2, lps.points.size());
+    ASSERT_EQ(2, lps.points[0]->labels.size());
+    EXPECT_EQ("MyLabel0", lps.points[0]->labels[0].name);
+    EXPECT_EQ("Label00", lps.points[0]->labels[0].value);
+    EXPECT_EQ("MyLabel1", lps.points[0]->labels[1].name);
+    EXPECT_EQ("Label10", lps.points[0]->labels[1].value);
+    EXPECT_EQ(ValueType::kString, lps.points[0]->value_type);
+    EXPECT_EQ("test1", lps.points[0]->string_value);
+    EXPECT_LT(0, lps.points[0]->start_timestamp_millis);
+    EXPECT_LT(0, lps.points[0]->end_timestamp_millis);
+    EXPECT_GE(lps.points[0]->end_timestamp_millis,
+              lps.points[0]->start_timestamp_millis);
+    ASSERT_EQ(2, lps.points[1]->labels.size());
+    EXPECT_EQ("MyLabel0", lps.points[1]->labels[0].name);
+    EXPECT_EQ("Label01", lps.points[1]->labels[0].value);
+    EXPECT_EQ("MyLabel1", lps.points[1]->labels[1].name);
+    EXPECT_EQ("Label11", lps.points[1]->labels[1].value);
+    EXPECT_EQ(ValueType::kString, lps.points[1]->value_type);
+    EXPECT_EQ("test2", lps.points[1]->string_value);
+    EXPECT_LT(0, lps.points[1]->start_timestamp_millis);
+    EXPECT_LT(0, lps.points[1]->end_timestamp_millis);
+    EXPECT_GE(lps.points[1]->end_timestamp_millis,
+              lps.points[1]->start_timestamp_millis);
+
+    const PointSet& ups = *collected_metrics->point_set_map.at(
+        "/tensorflow/test/integer_gauge_without_labels");
+    EXPECT_EQ("/tensorflow/test/integer_gauge_without_labels", ups.metric_name);
+    ASSERT_EQ(1, ups.points.size());
+    EXPECT_EQ(0, ups.points[0]->labels.size());
+    EXPECT_EQ(ValueType::kInt64, ups.points[0]->value_type);
+    EXPECT_EQ(7, ups.points[0]->int64_value);
+    EXPECT_LT(0, ups.points[0]->start_timestamp_millis);
+    EXPECT_LT(0, ups.points[0]->end_timestamp_millis);
+    EXPECT_GE(ups.points[0]->end_timestamp_millis,
+              ups.points[0]->start_timestamp_millis);
+  }
+}
+
 void EqHistograms(const Histogram& expected,
                   const HistogramProto& actual_proto) {
   Histogram actual;
@@ -188,10 +279,10 @@ TEST(CollectMetricsTest, Sampler) {
   auto sampler_with_labels = std::unique_ptr<Sampler<2>>(
       Sampler<2>::New({"/tensorflow/test/sampler_with_labels",
                        "Sampler with labels.", "MyLabel0", "MyLabel1"},
-                      {1.0, 2.0}));
+                      Buckets::Explicit({1.0, 2.0})));
   auto sampler_without_labels = std::unique_ptr<Sampler<0>>(Sampler<0>::New(
       {"/tensorflow/test/sampler_without_labels", "Sampler without labels."},
-      {0.0}));
+      Buckets::Explicit({0.0})));
 
   Histogram with_labels0({1.0, 2.0, DBL_MAX});
   sampler_with_labels->GetCell("Label00", "Label10")->Add(0.7);

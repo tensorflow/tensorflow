@@ -344,7 +344,7 @@ def _prepare_sequence_inputs(inputs, states):
   key = _check_rank(inputs.key, 0)
 
   if length.dtype != dtypes.int32:
-    raise TypeError("length dtype must be int32, but recieved: %s" %
+    raise TypeError("length dtype must be int32, but received: %s" %
                     length.dtype)
   if key.dtype != dtypes.string:
     raise TypeError("key dtype must be string, but received: %s" % key.dtype)
@@ -876,7 +876,7 @@ class SequenceQueueingStateSaver(object):
         ]):
           self._length = array_ops.identity(self._length)
 
-        # Only create barrier; enqueu and dequeue operations happen when you
+        # Only create barrier; enqueue and dequeue operations happen when you
         # access prefetch_op and next_batch.
         self._create_barrier()
         self._scope = scope
@@ -988,14 +988,14 @@ class SequenceQueueingStateSaver(object):
     assert isinstance(sequences, dict)
     assert isinstance(context, dict)
     assert isinstance(states, dict)
-    self._name_to_index = dict(
-        (name, ix)
+    self._name_to_index = {
+        name: ix
         for (ix, name) in enumerate([
             "__length", "__total_length", "__next_key", "__sequence",
             "__sequence_count"
         ] + ["__sequence__%s" % k for k in sequences.keys()] + [
             "__context__%s" % k for k in context.keys()
-        ] + ["__state__%s" % k for k in states.keys()]))
+        ] + ["__state__%s" % k for k in states.keys()])}
     self._index_to_name = [
         name
         for (name, _) in sorted(
@@ -1443,6 +1443,7 @@ def batch_sequences_with_states(input_key,
       input_length = input_length if input_length is not None else length
     elif input_sequences:
       # Assert that value_length is a multiple of num_unroll.
+      checked_input_sequences = {}
       for key, value in input_sequences.items():
         if (isinstance(value, sparse_tensor.SparseTensor) or
             isinstance(value, sparse_tensor.SparseTensorValue)):
@@ -1460,11 +1461,13 @@ def batch_sequences_with_states(input_key,
                           ", but saw value: ",
                           string_ops.as_string(value_length),
                           ". Consider setting pad=True."])])]):
-            input_sequences[key] = sparse_tensor.SparseTensor(
-                indices=value.indices,
+            checked_input_sequences[key] = sparse_tensor.SparseTensor(
+                indices=array_ops.identity(
+                    value.indices, name="multiple_of_checked"),
                 values=array_ops.identity(
                     value.values, name="multiple_of_checked"),
-                dense_shape=value.dense_shape)
+                dense_shape=array_ops.identity(
+                    value.dense_shape, name="multiple_of_checked"))
         else:
           if not isinstance(value, ops.Tensor):
             try:
@@ -1490,9 +1493,9 @@ def batch_sequences_with_states(input_key,
                       ])
                   ])
           ]):
-            input_sequences[key] = array_ops.identity(
+            checked_input_sequences[key] = array_ops.identity(
                 value, name="multiple_of_checked")
-
+      input_sequences = checked_input_sequences
     # Move SparseTensors in context into input_sequences.
     _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll)
     # Deconstruct SparseTensors in sequence into a dense Tensor before inputting
@@ -1571,8 +1574,9 @@ def _padding(sequences, num_unroll):
   if not sequences:
     return 0, {}
 
-  sequences_dict = {}
-  for key, value in sequences.items():
+  # Sort 'sequences_dict' so 'length' will have a predictable value below.
+  sequences_dict = collections.OrderedDict()
+  for key, value in sorted(sequences.items()):
     if not (isinstance(value, sparse_tensor.SparseTensor) or
             isinstance(value, sparse_tensor.SparseTensorValue)):
       sequences_dict[key] = ops.convert_to_tensor(value)
@@ -1593,7 +1597,7 @@ def _padding(sequences, num_unroll):
   else:  # Only have SparseTensors
     sparse_lengths = [value.dense_shape[0] for value in sequences_dict.values()
                       if isinstance(value, sparse_tensor.SparseTensor)]
-    length = math_ops.maximum(sparse_lengths)
+    length = math_ops.reduce_max(math_ops.to_int32(sparse_lengths))
 
   unroll = array_ops.constant(num_unroll)
   padded_length = length + ((unroll - (length % unroll)) % unroll)
@@ -1633,7 +1637,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
 
   For `key, value` pairs in `input_context` with `SparseTensor` `value` removes
   them from `input_context` and transforms the `value` into a sequence and
-  then adding `key`, transformed `value` into `input_seuqences`.
+  then adding `key`, transformed `value` into `input_sequences`.
   The transformation is done by adding a new first dimension of `value_length`
   equal to that of the other values in input_sequences` and tiling the `value`
   every `num_unroll` steps.
@@ -1649,7 +1653,8 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
   if input_sequences:
     seq = list(input_sequences.values())[0]
     if isinstance(seq, ops.Tensor):
-      value_length = array_ops.shape(seq)[0]
+      with ops.control_dependencies([seq]):
+        value_length = array_ops.shape(seq)[0]
     else:
       value_length = seq.dense_shape[0]
   value_length = math_ops.cast(value_length, dtype=dtypes.int64)
@@ -1670,7 +1675,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
     shape = array_ops.concat(
         [array_ops.expand_dims(value_length, 0), sp_tensor.dense_shape], 0)
 
-    # Construct new indices by mutliplying old ones and prepending [0, n).
+    # Construct new indices by multiplying old ones and prepending [0, n).
     # First multiply indices n times along a newly created 0-dimension.
     multiplied_indices = array_ops.tile(
         array_ops.expand_dims(sp_tensor.indices, 0),
@@ -1691,7 +1696,6 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
     ind = array_ops.expand_dims(ind, 1)
     ind = array_ops.expand_dims(ind, 2)
     ind = array_ops.tile(ind, [1, dim0, 1])
-    array_ops.reshape(ind, array_ops.stack([n, dim0, 1]))
 
     # Concatenate both and reshape.
     indices = array_ops.concat([ind, multiplied_indices], 2)
@@ -1812,7 +1816,7 @@ def _reconstruct_sparse_tensor_seq(sequence,
 
     Counter-part of `_flatten_tensor` which is called on the input of
     `_restore_sparse` while this method is called on the output of it.
-    Together they  work around the limitation of `_restore_sparse` to only
+    Together they work around the limitation of `_restore_sparse` to only
     accept 1D handles.
 
     The `indices` in `sp_tensor` is a 2D `Tensor` of `shape [N, ndims]`, where

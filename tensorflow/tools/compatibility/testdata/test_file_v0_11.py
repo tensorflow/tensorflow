@@ -35,7 +35,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   """
 
   def testArgRenames(self):
-    with self.test_session():
+    with self.cached_session():
 
       a = [[1., 2., 3.], [4., 5., 6.]]
       b = [[True, False, False], [False, True, True]]
@@ -94,11 +94,11 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertAllClose(
           tf.reduce_logsumexp(a, [0, 1]).eval(), 6.45619344711)
       self.assertAllEqual(
-          tf.expand_dims([[1, 2], [3, 4]], dim=1).eval(),
+          tf.expand_dims([[1, 2], [3, 4]], axis=1).eval(),
           [[[1, 2]], [[3, 4]]])
 
   def testArgMinMax(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(
           tf.argmin([[1, 2, 3], [4, 1, 0]], dimension=1).eval(),
           [0, 2])
@@ -113,7 +113,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           [1, 0, 0])
 
   def testExpandAndSqueeze(self):
-    with self.test_session():
+    with self.cached_session():
 
       # TODO(aselle): sparse_split, sparse_reduce_sum,
       #  sparse_reduce_sum_sparse, reduce_join
@@ -140,7 +140,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           a)
 
   def testArithmeticRenames(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       stuff = tf.split(1, 2, [[1, 2, 3, 4], [4, 5, 6, 7]])
       vals = s.run(stuff)
       self.assertAllEqual(vals,
@@ -164,7 +164,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       # ]
 
   def testBatchAndSvd(self):
-    with self.test_session():
+    with self.cached_session():
       mat = [[1., 2.], [2., 3.]]
       batched_mat = tf.expand_dims(mat, [0])
       result = tf.matmul(mat, mat).eval()
@@ -176,7 +176,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
   def testCrossEntropy(self):
     # TODO(aselle): Test sparse_softmax_...
-    with self.test_session():
+    with self.cached_session():
       labels = [.8, .5, .2, .1]
       logits = [.9, .1, .3, .1]
       self.assertAllEqual(
@@ -191,7 +191,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
               labels=labels, logits=logits).eval())
 
   def testVariables(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
 
       # make some variables
       _ = [tf.Variable([1, 2, 3], dtype=tf.float32),
@@ -201,7 +201,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       _ = [v.name for v in tf.local_variables()]
 
   def testSummaries(self):
-    with self.test_session() as s:
+    with self.cached_session() as s:
       var = tf.Variable([1, 2, 3], dtype=tf.float32)
       s.run(tf.initialize_all_variables())
       x, y = np.meshgrid(np.linspace(-10, 10, 256), np.linspace(-10, 10, 256))

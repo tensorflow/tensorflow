@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
+#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
+#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
 
 #include <stdint.h>
 
@@ -67,7 +67,7 @@ inline static void MarkImage(const int x, const int y, const int radius,
     // reduce the number of iterations required as compared to starting from
     // either 0 and counting up or radius and counting down.
     for (int d_x = radius - d_y; d_x <= radius; ++d_x) {
-      // The first time this critera is met, we know the width of the circle at
+      // The first time this criteria is met, we know the width of the circle at
       // this row (without using sqrt).
       if (squared_y_dist + Square(d_x) >= squared_radius) {
         const int min_x = MAX(x - d_x, 0);
@@ -295,4 +295,4 @@ inline void NormalizeImage(Image<float>* const image) {
 
 }  // namespace tf_tracking
 
-#endif  // THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_
+#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_UTILS_H_

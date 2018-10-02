@@ -18,11 +18,15 @@ limitations under the License.
 #include <unordered_set>
 
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
@@ -36,53 +40,17 @@ auto* load_attempt_count = monitoring::Counter<2>::New(
     "status");
 auto* load_latency = monitoring::Counter<1>::New(
     "/tensorflow/cc/saved_model/load_latency",
-    "Latency in microseconds for SavedModels that were succesfully loaded.",
+    "Latency in microseconds for SavedModels that were successfully loaded.",
     "model_path");
 constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 
-Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
-  const string saved_model_pb_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePb);
-  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                           saved_model_proto);
-  }
-  const string saved_model_pbtxt_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                         saved_model_proto);
-  }
-  return Status(error::Code::NOT_FOUND,
-                "Could not find SavedModel .pb or .pbtxt at supplied export "
-                "directory path: " +
-                    export_dir);
-}
-
-Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
-                              const std::unordered_set<string>& tags,
-                              MetaGraphDef* meta_graph_def_to_load) {
-  for (const MetaGraphDef& meta_graph_def : saved_model_proto.meta_graphs()) {
-    // Get tags from the meta_graph_def.
-    std::unordered_set<string> graph_tags;
-    for (const string& tag : meta_graph_def.meta_info_def().tags()) {
-      graph_tags.insert(tag);
-    }
-    // Match with the set of tags provided.
-    if (graph_tags == tags) {
-      *meta_graph_def_to_load = meta_graph_def;
-      return Status::OK();
-    }
-  }
-  return Status(error::Code::NOT_FOUND,
-                "Could not find meta graph def matching supplied tags.");
-}
-
 Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
                                 const SessionOptions& session_options,
                                 std::unique_ptr<Session>* session) {
-  session->reset(NewSession(session_options));
+  Session* session_p = nullptr;
+  TF_RETURN_IF_ERROR(NewSession(session_options, &session_p));
+  session->reset(session_p);
   return (*session)->Create(meta_graph_def.graph_def());
 }
 
@@ -106,6 +74,86 @@ void AddAssetsTensorsToInputs(const StringPiece export_dir,
   }
 }
 
+// Like Session::Run(), but uses the Make/Run/ReleaseCallable() API to avoid
+// leaving behind non-GC'ed state.
+//
+// Detailed motivation behind this approach, from ashankar@:
+//
+// Each call to Session::Run() that identifies a new subgraph (based on feeds
+// and fetches) creates some datastructures that live as long as the session
+// (the partitioned graph, associated executors etc.).
+//
+// A pathological case of this would be if say the initialization op
+// (main_op/legacy_init_op) involves the use of a large constant. Then we
+// allocate memory for that large constant that will just stick around till the
+// session dies. With this Callable mechanism, that memory will be released
+// right after ReleaseCallable returns.
+//
+// However, the resource manager state remains.
+Status RunOnce(const RunOptions& run_options,
+               const std::vector<std::pair<string, Tensor>>& inputs,
+               const std::vector<string>& output_tensor_names,
+               const std::vector<string>& target_node_names,
+               std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+               Session* session) {
+  CallableOptions callable_options;
+  std::vector<Tensor> feed_tensors;
+  *callable_options.mutable_run_options() = run_options;
+  for (const auto& input : inputs) {
+    const string& name = input.first;
+    const Tensor& tensor = input.second;
+    callable_options.add_feed(name);
+    feed_tensors.push_back(tensor);
+  }
+  for (const string& output_tensor_name : output_tensor_names) {
+    callable_options.add_fetch(output_tensor_name);
+  }
+  for (const string& target_node_name : target_node_names) {
+    callable_options.add_target(target_node_name);
+  }
+
+  Session::CallableHandle callable_handle;
+  TF_RETURN_IF_ERROR(session->MakeCallable(callable_options, &callable_handle));
+  const Status run_status = session->RunCallable(callable_handle, feed_tensors,
+                                                 outputs, run_metadata);
+  // Be sure to call ReleaseCallable() regardless of the outcome of
+  // RunCallable().
+  session->ReleaseCallable(callable_handle).IgnoreError();
+  return run_status;
+}
+
+bool HasMainOp(const MetaGraphDef& meta_graph_def) {
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  if (collection_def_map.find(kSavedModelMainOpKey) !=
+      collection_def_map.end()) {
+    return true;
+  }
+  return false;
+}
+
+Status RunMainOp(const RunOptions& run_options, const string& export_dir,
+                 const MetaGraphDef& meta_graph_def,
+                 const std::vector<AssetFileDef>& asset_file_defs,
+                 Session* session, const string& main_op_key) {
+  LOG(INFO) << "Running MainOp with key " << main_op_key
+            << " on SavedModel bundle.";
+  const auto& collection_def_map = meta_graph_def.collection_def();
+  const auto main_op_it = collection_def_map.find(main_op_key);
+  if (main_op_it != collection_def_map.end()) {
+    if (main_op_it->second.node_list().value_size() != 1) {
+      return errors::FailedPrecondition(
+          strings::StrCat("Expected exactly one main op in : ", export_dir));
+    }
+    std::vector<std::pair<string, Tensor>> inputs;
+    AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
+    RunMetadata run_metadata;
+    const StringPiece main_op_name = main_op_it->second.node_list().value(0);
+    return RunOnce(run_options, inputs, {}, {string(main_op_name)},
+                   nullptr /* outputs */, &run_metadata, session);
+  }
+  return Status::OK();
+}
+
 Status RunRestore(const RunOptions& run_options, const string& export_dir,
                   const StringPiece restore_op_name,
                   const StringPiece variable_filename_const_op_name,
@@ -122,7 +170,8 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
   if (!Env::Default()->FileExists(variables_index_path).ok()) {
     LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
-                 "were restored.";
+                 "were restored. File does not exist: "
+              << variables_index_path;
     return Status::OK();
   }
   const string variables_path =
@@ -133,37 +182,13 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   variables_path_tensor.scalar<string>()() = variables_path;
 
   std::vector<std::pair<string, Tensor>> inputs = {
-      {variable_filename_const_op_name.ToString(), variables_path_tensor}};
+      {string(variable_filename_const_op_name), variables_path_tensor}};
 
   AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
 
   RunMetadata run_metadata;
-  return session->Run(run_options, inputs, {}, {restore_op_name.ToString()},
-                      nullptr /* outputs */, &run_metadata);
-}
-
-Status RunLegacyInitOp(const RunOptions& run_options, const string& export_dir,
-                       const MetaGraphDef& meta_graph_def,
-                       const std::vector<AssetFileDef>& asset_file_defs,
-                       Session* session) {
-  LOG(INFO) << "Running LegacyInitOp on SavedModel bundle.";
-  const auto& collection_def_map = meta_graph_def.collection_def();
-  const auto init_op_it = collection_def_map.find(kSavedModelLegacyInitOpKey);
-  if (init_op_it != collection_def_map.end()) {
-    if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(strings::StrCat(
-          "Expected exactly one serving init op in : ", export_dir));
-    }
-    std::vector<std::pair<string, Tensor>> inputs;
-    AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
-    RunMetadata run_metadata;
-    const StringPiece legacy_init_op_name =
-        init_op_it->second.node_list().value(0);
-    return session->Run(run_options, inputs, {},
-                        {legacy_init_op_name.ToString()}, nullptr /* outputs */,
-                        &run_metadata);
-  }
-  return Status::OK();
+  return RunOnce(run_options, inputs, {}, {string(restore_op_name)},
+                 nullptr /* outputs */, &run_metadata, session);
 }
 
 Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
@@ -188,17 +213,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const string& export_dir,
                               const std::unordered_set<string>& tags,
                               SavedModelBundle* const bundle) {
-  if (!MaybeSavedModelDirectory(export_dir)) {
-    return Status(error::Code::NOT_FOUND,
-                  "SavedModel not found in export directory: " + export_dir);
-  }
-  LOG(INFO) << "Loading SavedModel from: " << export_dir;
-
-  SavedModel saved_model_proto;
-  TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
-
-  TF_RETURN_IF_ERROR(
-      FindMetaGraphDefToLoad(saved_model_proto, tags, &bundle->meta_graph_def));
+  TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
+                                                    &bundle->meta_graph_def));
 
   TF_RETURN_IF_ERROR(LoadMetaGraphIntoSession(
       bundle->meta_graph_def, session_options, &bundle->session));
@@ -211,11 +227,15 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
                  bundle->meta_graph_def.saver_def().restore_op_name(),
                  bundle->meta_graph_def.saver_def().filename_tensor_name(),
                  asset_file_defs, bundle->session.get()));
-  // TODO(sukritiramesh): Add support for a single main op to run upon load,
-  // which will supersede the legacy_init_op and separate RunRestore.
-  TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
-                                     bundle->meta_graph_def, asset_file_defs,
-                                     bundle->session.get()));
+  if (HasMainOp(bundle->meta_graph_def)) {
+    TF_RETURN_IF_ERROR(RunMainOp(run_options, export_dir,
+                                 bundle->meta_graph_def, asset_file_defs,
+                                 bundle->session.get(), kSavedModelMainOpKey));
+  } else {
+    TF_RETURN_IF_ERROR(RunMainOp(
+        run_options, export_dir, bundle->meta_graph_def, asset_file_defs,
+        bundle->session.get(), kSavedModelLegacyInitOpKey));
+  }
   return Status::OK();
 }
 
@@ -236,7 +256,8 @@ Status LoadSavedModel(const SessionOptions& session_options,
     return end_microseconds - start_microseconds;
   }();
   auto log_and_count = [&](const string& status_str) {
-    LOG(INFO) << "Loading SavedModel: " << status_str << ". Took "
+    LOG(INFO) << "SavedModel load for tags { " << str_util::Join(tags, " ")
+              << " }; Status: " << status_str << ". Took "
               << load_latency_microsecs << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);
   };

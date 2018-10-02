@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatrixBandPart"
+  endpoint {
+    name: "linalg.band_part"
+  }
+  endpoint {
+    name: "matrix_band_part"
+    deprecated: true
+  }
+}

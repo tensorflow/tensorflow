@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import gamma
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import gamma
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -61,6 +64,14 @@ class Chi2(gamma.Gamma):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                validate_args=False,
@@ -81,19 +92,23 @@ class Chi2(gamma.Gamma):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
     # Even though all stats of chi2 are defined for valid parameters, this is
     # not true in the parent class "gamma."  therefore, passing
     # allow_nan_stats=True
     # through to the parent class results in unnecessary asserts.
-    with ops.name_scope(name, values=[df]) as ns:
-      self._df = ops.convert_to_tensor(df, name="df")
+    with ops.name_scope(name, values=[df]) as name:
+      with ops.control_dependencies([
+          check_ops.assert_positive(df),
+      ] if validate_args else []):
+        self._df = array_ops.identity(df, name="df")
+
       super(Chi2, self).__init__(
           concentration=0.5 * self._df,
           rate=constant_op.constant(0.5, dtype=self._df.dtype),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
   @staticmethod
@@ -108,18 +123,26 @@ class Chi2(gamma.Gamma):
 class Chi2WithAbsDf(Chi2):
   """Chi2 with parameter transform `df = floor(abs(df))`."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                validate_args=False,
                allow_nan_stats=True,
                name="Chi2WithAbsDf"):
-    parameters = locals()
-    with ops.name_scope(name, values=[df]) as ns:
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[df]) as name:
       super(Chi2WithAbsDf, self).__init__(
           df=math_ops.floor(
               math_ops.abs(df, name="abs_df"),
               name="floor_abs_df"),
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters

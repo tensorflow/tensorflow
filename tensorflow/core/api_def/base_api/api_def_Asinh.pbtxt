@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Asinh"
+  summary: "Computes inverse hyperbolic sine of x element-wise."
+}

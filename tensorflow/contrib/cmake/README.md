@@ -1,6 +1,10 @@
 TensorFlow CMake build
 ======================
 
+CMAKE build is deprecated for TensorFlow. Please use `bazel` to build TF for all
+platforms. For details, see the
+[TensorFlow install guide](https://www.tensorflow.org/install/).
+
 This directory contains CMake files for building TensorFlow on Microsoft
 Windows. [CMake](https://cmake.org) is a cross-platform tool that can
 generate build scripts for multiple build systems, including Microsoft
@@ -13,29 +17,12 @@ Linux.
 Current Status
 --------------
 
-CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/get_started/os_setup.html#pip-installation-on-windows)
+CMake can be used to build TensorFlow on Windows. See the [getting started documentation](https://www.tensorflow.org/install/source_windows)
 for instructions on how to install a pre-built TensorFlow package on Windows.
 
 ### Current known limitations
 * It is not possible to load a custom Op library.
 * GCS file system is not supported.
-* The following Ops are not currently implemented:
- - Dequantize
- - QuantizeAndDequantize
- - QuantizedAvgPool
- - QuantizedBatchNomWithGlobalNormalization
- - QuantizedBiasAdd 
- - QuantizedConcat
- - QuantizedConv2D
- - QuantizedMatmul
- - QuantizedMaxPoo
- - QuantizeDownAndShrinkRange
- - QuantizedRelu
- - QuantizedRelu6
- - QuantizedReshape
- - QuantizeV2
- - RequantizationRange
- - Requantize
 
 ## Building with CMake
 
@@ -43,35 +30,37 @@ The CMake files in this directory can build the core TensorFlow runtime, an
 example C++ binary, and a PIP package containing the runtime and Python
 bindings.
 
-### Pre-requisites
+### Prerequisites
 
-* CMake version 3.5 up to 3.6
+* CMake version 3.5 or later.
 
-* [Git](http://git-scm.com)
+* [Git](https://git-scm.com)
 
 * [SWIG](http://www.swig.org/download.html)
 
-* Additional pre-requisites for Microsoft Windows:
+* Additional prerequisites for Microsoft Windows:
   - Visual Studio 2015
   - Python 3.5
-  - NumPy 1.11.0 or later
 
-* Additional pre-requisites for Linux:
+* Additional prerequisites for Linux:
   - Python 2.7 or later
   - [Docker](https://www.docker.com/) (for automated testing)
+
+* Python dependencies:
+  - wheel
   - NumPy 1.11.0 or later
 
 ### Known-good configurations
 
 * Microsoft Windows 10
   - Microsoft Visual Studio Enterprise 2015 with Visual C++ 2015
-  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.continuum.io/downloads)
+  - [Anaconda 4.1.1 (Python 3.5 64-bit)](https://www.anaconda.com/download/)
   - [Git for Windows version 2.9.2.windows.1](https://git-scm.com/download/win)
   - [swigwin-3.0.10](http://www.swig.org/download.html)
-  - [NVidia CUDA Toolkit 8.0] (https://developer.nvidia.com/cuda-downloads)
-  - [NVidia CUDNN 5.1] (https://developer.nvidia.com/cudnn)
+  - [NVidia CUDA Toolkit 8.0](https://developer.nvidia.com/cuda-downloads)
+  - [NVidia CUDNN 5.1](https://developer.nvidia.com/cudnn)
   - [CMake 3.6](https://cmake.org/files/v3.6/cmake-3.6.3-win64-x64.msi)
-  
+
 * Ubuntu 14.04
   - Makefile generator
   - Docker 1.9.1 (for automated testing)
@@ -87,7 +76,7 @@ bindings.
 
   - The following Python APIs are not currently implemented:
     * Loading custom op libraries via `tf.load_op_library()`. In order to use your
-      custom op, please put the source code under the tensorflow/core/user_ops 
+      custom op, please put the source code under the tensorflow/core/user_ops
       directory, and a shape function is required (not optional) for each op.
     * Path manipulation functions (such as `tf.gfile.ListDirectory()`) are not
       functional.
@@ -119,7 +108,7 @@ ops or APIs.
 Step-by-step Windows build
 ==========================
 
-1. Install the pre-requisites detailed above, and set up your environment.
+1. Install the prerequisites detailed above, and set up your environment.
 
    * The following commands assume that you are using the Windows Command
      Prompt (`cmd.exe`). You will need to set up your environment to use the
@@ -132,16 +121,28 @@ Step-by-step Windows build
      D:\temp> "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvarsall.bat"
      ```
 
-   * When building with GPU support after installing the CUDNN zip file from NVidia, append its 
+   * When building with GPU support after installing the CUDNN zip file from NVidia, append its
      bin directory to your PATH environment variable.
-     In case TensorFlow fails to find the CUDA dll's during initialization, check your PATH environment variable. 
+     In case TensorFlow fails to find the CUDA dll's during initialization, check your PATH environment variable.
      It should contain the directory of the CUDA dlls and the directory of the CUDNN dll.
      For example:
-     
+
      ```
      D:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v8.0\bin
      D:\local\cuda\bin
      ```
+
+   * When building with MKL support after installing [MKL](https://software.intel.com/en-us/mkl) from INTEL, append its bin directories to your PATH environment variable.
+
+     In case TensorFlow fails to find the MKL dll's during initialization, check your PATH environment variable.
+     It should contain the directory of the MKL dlls. For example:
+
+     ```
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\mkl
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\compiler
+     D:\Tools\IntelSWTools\compilers_and_libraries\windows\redist\intel64\tbb\vc_mt
+     ```
+
 
    * We assume that `cmake` and `git` are installed and in your `%PATH%`. If
      for example `cmake` is not in your path and it is installed in
@@ -174,14 +175,26 @@ Step-by-step Windows build
    D:\...\build> cmake .. -A x64 -DCMAKE_BUILD_TYPE=Release ^
    More? -DSWIG_EXECUTABLE=C:/tools/swigwin-3.0.10/swig.exe ^
    More? -DPYTHON_EXECUTABLE=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/python.exe ^
-   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib 
+   More? -DPYTHON_LIBRARIES=C:/Users/%USERNAME%/AppData/Local/Continuum/Anaconda3/libs/python35.lib
    ```
    To build with GPU support add "^" at the end of the last line above following with:
    ```
    More? -Dtensorflow_ENABLE_GPU=ON ^
    More? -DCUDNN_HOME="D:\...\cudnn"
    ```
-    
+   To build with MKL support add "^" at the end of the last line above following with:
+
+   ```
+   More? -Dtensorflow_ENABLE_MKL_SUPPORT=ON ^
+   More? -DMKL_HOME="D:\...\compilers_and_libraries"
+   ```
+
+   To enable SIMD instructions with MSVC, as AVX and SSE, define it as follows:
+
+   ```
+   More? -Dtensorflow_WIN_CPU_SIMD_OPTIONS=/arch:AVX
+   ```
+
    Note that the `-DCMAKE_BUILD_TYPE=Release` flag must match the build
    configuration that you choose when invoking `msbuild`. The known-good
    values are `Release` and `RelWithDebInfo`. The `Debug` build type is
@@ -218,11 +231,11 @@ Step-by-step Windows build
      SSL support (for making secure HTTP requests) in the TensorFlow runtime.
      This support is incomplete, and will be used for Google Cloud Storage
      support.
-     
+
    * `-Dtensorflow_ENABLE_GPU=(ON|OFF)`. Defaults to `OFF`. Include
      GPU support. If GPU is enabled you need to install the CUDA 8.0 Toolkit and CUDNN 5.1.
-     CMake will expect the location of CUDNN in -DCUDNN_HOME=path_you_unziped_cudnn.
- 
+     CMake will expect the location of CUDNN in -DCUDNN_HOME=path_you_unzipped_cudnn.
+
    * `-Dtensorflow_BUILD_CC_TESTS=(ON|OFF)`. Defaults to `OFF`. This builds cc unit tests.
      There are many of them and building will take a few hours.
      After cmake, build and execute the tests with
@@ -230,13 +243,27 @@ Step-by-step Windows build
      MSBuild /p:Configuration=RelWithDebInfo ALL_BUILD.vcxproj
      ctest -C RelWithDebInfo
      ```
- 
+
    * `-Dtensorflow_BUILD_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python kernel tests.
      After building the python wheel, you need to install the new wheel before running the tests.
      To execute the tests, use
      ```
      ctest -C RelWithDebInfo
      ```
+
+   * `-Dtensorflow_BUILD_MORE_PYTHON_TESTS=(ON|OFF)`. Defaults to `OFF`. This enables python tests on
+     serveral major packages. This option is only valid if this and tensorflow_BUILD_PYTHON_TESTS are both set as `ON`.
+     After building the python wheel, you need to install the new wheel before running the tests.
+     To execute the tests, use
+     ```
+     ctest -C RelWithDebInfo
+     ```
+
+   * `-Dtensorflow_ENABLE_MKL_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include MKL support. If MKL is enabled you need to install the [Intel Math Kernal Library](https://software.intel.com/en-us/mkl).
+     CMake will expect the location of MKL in -MKL_HOME=path_you_install_mkl.
+
+   * `-Dtensorflow_ENABLE_MKLDNN_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include MKL DNN support. MKL DNN is [Intel(R) Math Kernel Library for Deep Neural Networks (Intel(R) MKL-DNN)](https://github.com/intel/mkl-dnn). You have to add `-Dtensorflow_ENABLE_MKL_SUPPORT=ON` before including MKL DNN support.
+
 
 4. Invoke MSBuild to build TensorFlow.
 
@@ -254,6 +281,7 @@ Step-by-step Windows build
    ```
    D:\...\build> MSBuild /p:Configuration=Release tf_python_build_pip_package.vcxproj
    ```
+
 
 Linux Continuous Integration build
 ==================================

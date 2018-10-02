@@ -17,7 +17,7 @@
 
 Implements the inference/loss/training pattern for model building.
 
-1. inference() - Builds the model as far as is required for running the network
+1. inference() - Builds the model as far as required for running the network
 forward to make predictions.
 2. loss() - Adds to the inference model the layers required to generate loss.
 3. training() - Adds to the loss model the Ops required to generate and
@@ -94,9 +94,7 @@ def loss(logits, labels):
     loss: Loss tensor of type float.
   """
   labels = tf.to_int64(labels)
-  cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-      labels=labels, logits=logits, name='xentropy')
-  return tf.reduce_mean(cross_entropy, name='xentropy_mean')
+  return tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
 
 def training(loss, learning_rate):

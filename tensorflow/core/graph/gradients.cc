@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -64,16 +65,37 @@ struct NodeOutEq {
 static Node* AddZerosLike(Graph* g, NodeOut input) {
   DCHECK_LT(0, input.dtype());
   DCHECK_LT(input.dtype(), DT_FLOAT_REF);
-  NodeDef ndef;
-  ndef.set_name(g->NewName(kNodeLabel));
-  ndef.set_op("ZerosLike");
-  ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
-  Status s;
-  Node* ret = g->AddNode(ndef, &s);
-  TF_CHECK_OK(s);
-  g->AddEdge(input.node, input.index, ret, 0);
-  return ret;
+  if (input.dtype() == DT_RESOURCE) {
+    NodeDef read_def;
+    read_def.set_name(g->NewName("Read"));
+    read_def.set_op("ReadVariableOp");
+    read_def.add_input(input.name());
+    AddNodeAttr("dtype", DT_FLOAT, &read_def);
+    Status s;
+    Node* read = g->AddNode(read_def, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(input.node, input.index, read, 0);
+    NodeDef ndef;
+    ndef.set_name(g->NewName(kNodeLabel));
+    ndef.set_op("ZerosLike");
+    ndef.add_input(read_def.name());
+    AddNodeAttr("T", DT_FLOAT, &ndef);
+    Node* ret = g->AddNode(ndef, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(read, 0, ret, 0);
+    return ret;
+  } else {
+    NodeDef ndef;
+    ndef.set_name(g->NewName(kNodeLabel));
+    ndef.set_op("ZerosLike");
+    ndef.add_input(input.name());
+    AddNodeAttr("T", input.dtype(), &ndef);
+    Status s;
+    Node* ret = g->AddNode(ndef, &s);
+    TF_CHECK_OK(s);
+    g->AddEdge(input.node, input.index, ret, 0);
+    return ret;
+  }
 }
 
 static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
@@ -105,11 +127,20 @@ static Node* AddSymGrad(Graph* g, Node* n, gtl::ArraySlice<NodeOut> grads) {
   AddNodeAttr("Tin", in_types, &ndef);
 
   // The gradient node's outputs have the same types as the node 'n's
-  // inputs.
-  AddNodeAttr("Tout", n->input_types(), &ndef);
+  // inputs, except for resources.
+  DataTypeVector out_types = n->input_types();
+  for (int i = 0; i < out_types.size(); ++i) {
+    if (out_types[i] == DT_RESOURCE) {
+      // TODO(apassos): figure out how to get the right dtype
+      out_types[i] = DT_FLOAT;
+    }
+  }
+  AddNodeAttr("Tout", out_types, &ndef);
   NameAttrList func;
   func.set_name(n->type_string());
-  *(func.mutable_attr()) = n->def().attr();
+  for (const auto& attr : n->attrs()) {
+    (*func.mutable_attr())[attr.first] = attr.second;
+  }
   AddNodeAttr("f", func, &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);

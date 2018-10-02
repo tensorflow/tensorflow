@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
+#define TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
 
 #include "tensorflow/core/platform/platform.h"
 
@@ -24,4 +24,4 @@ limitations under the License.
 #include "tensorflow/core/platform/default/gpu/cupti_wrapper.h"
 #endif
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_

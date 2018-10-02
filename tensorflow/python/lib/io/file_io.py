@@ -21,12 +21,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import os
 import uuid
 
+import six
+
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
+
+# A good default block size depends on the system in question.
+# A somewhat conservative default chosen here.
+_DEFAULT_BLOCK_SIZE = 16 * 1024 * 1024
 
 
 class FileIO(object):
@@ -121,11 +131,51 @@ class FileIO(object):
       return self._prepare_value(
           pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
 
-  def seek(self, position):
-    """Seeks to the position in the file."""
+  @deprecation.deprecated_args(
+      None,
+      "position is deprecated in favor of the offset argument.",
+      "position")
+  def seek(self, offset=None, whence=0, position=None):
+    # TODO(jhseu): Delete later. Used to omit `position` from docs.
+    # pylint: disable=g-doc-args
+    """Seeks to the offset in the file.
+
+    Args:
+      offset: The byte count relative to the whence argument.
+      whence: Valid values for whence are:
+        0: start of the file (default)
+        1: relative to the current position of the file
+        2: relative to the end of file. offset is usually negative.
+    """
+    # pylint: enable=g-doc-args
     self._preread_check()
+    # We needed to make offset a keyword argument for backwards-compatibility.
+    # This check exists so that we can convert back to having offset be a
+    # positional argument.
+    # TODO(jhseu): Make `offset` a positional argument after `position` is
+    # deleted.
+    if offset is None and position is None:
+      raise TypeError("seek(): offset argument required")
+    if offset is not None and position is not None:
+      raise TypeError("seek(): offset and position may not be set "
+                      "simultaneously.")
+
+    if position is not None:
+      offset = position
+
     with errors.raise_exception_on_not_ok_status() as status:
-      ret_status = self._read_buf.Seek(position)
+      if whence == 0:
+        pass
+      elif whence == 1:
+        offset += self.tell()
+      elif whence == 2:
+        offset += self.size()
+      else:
+        raise errors.InvalidArgumentError(
+            None, None,
+            "Invalid whence argument: {}. Valid values are 0, 1, or 2."
+            .format(whence))
+      ret_status = self._read_buf.Seek(offset)
       pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
 
   def readline(self):
@@ -191,6 +241,7 @@ class FileIO(object):
     self._writable_file = None
 
 
+@tf_export("gfile.Exists")
 def file_exists(filename):
   """Determines whether a path exists or not.
 
@@ -212,6 +263,7 @@ def file_exists(filename):
   return True
 
 
+@tf_export("gfile.Remove")
 def delete_file(filename):
   """Deletes the file located at 'filename'.
 
@@ -262,26 +314,38 @@ def write_string_to_file(filename, file_content):
     f.write(file_content)
 
 
+@tf_export("gfile.Glob")
 def get_matching_files(filename):
-  """Returns a list of files that match the given pattern.
+  """Returns a list of files that match the given pattern(s).
 
   Args:
-    filename: string, the pattern
+    filename: string or iterable of strings. The glob pattern(s).
 
   Returns:
-    Returns a list of strings containing filenames that match the given pattern.
+    A list of strings containing filenames that match the given pattern(s).
 
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
   """
   with errors.raise_exception_on_not_ok_status() as status:
-    # Convert each element to string, since the return values of the
-    # vector of string should be interpreted as strings, not bytes.
-    return [compat.as_str_any(matching_filename)
-            for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-                compat.as_bytes(filename), status)]
+    if isinstance(filename, six.string_types):
+      return [
+          # Convert the filenames to string from bytes.
+          compat.as_str_any(matching_filename)
+          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+              compat.as_bytes(filename), status)
+      ]
+    else:
+      return [
+          # Convert the filenames to string from bytes.
+          compat.as_str_any(matching_filename)
+          for single_filename in filename
+          for matching_filename in pywrap_tensorflow.GetMatchingFiles(
+              compat.as_bytes(single_filename), status)
+      ]
 
 
+@tf_export("gfile.MkDir")
 def create_dir(dirname):
   """Creates a directory with the name 'dirname'.
 
@@ -299,6 +363,7 @@ def create_dir(dirname):
     pywrap_tensorflow.CreateDir(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.MakeDirs")
 def recursive_create_dir(dirname):
   """Creates a directory and all parent/intermediate directories.
 
@@ -314,6 +379,7 @@ def recursive_create_dir(dirname):
     pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.Copy")
 def copy(oldpath, newpath, overwrite=False):
   """Copies data from oldpath to newpath.
 
@@ -331,14 +397,15 @@ def copy(oldpath, newpath, overwrite=False):
         compat.as_bytes(oldpath), compat.as_bytes(newpath), overwrite, status)
 
 
+@tf_export("gfile.Rename")
 def rename(oldname, newname, overwrite=False):
   """Rename or move a file / directory.
 
   Args:
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+    overwrite: boolean, if false it's an error for `newname` to be occupied by
+        an existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -348,7 +415,7 @@ def rename(oldname, newname, overwrite=False):
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
 
 
-def atomic_write_string_to_file(filename, contents):
+def atomic_write_string_to_file(filename, contents, overwrite=True):
   """Writes to `filename` atomically.
 
   This means that when `filename` appears in the filesystem, it will contain
@@ -360,12 +427,19 @@ def atomic_write_string_to_file(filename, contents):
   Args:
     filename: string, pathname for a file
     contents: string, contents that need to be written to the file
+    overwrite: boolean, if false it's an error for `filename` to be occupied by
+        an existing file.
   """
   temp_pathname = filename + ".tmp" + uuid.uuid4().hex
   write_string_to_file(temp_pathname, contents)
-  rename(temp_pathname, filename, overwrite=True)
+  try:
+    rename(temp_pathname, filename, overwrite)
+  except errors.OpError:
+    delete_file(temp_pathname)
+    raise
 
 
+@tf_export("gfile.DeleteRecursively")
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.
 
@@ -379,6 +453,7 @@ def delete_recursively(dirname):
     pywrap_tensorflow.DeleteRecursively(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.IsDirectory")
 def is_directory(dirname):
   """Returns whether the path is a directory or not.
 
@@ -388,13 +463,11 @@ def is_directory(dirname):
   Returns:
     True, if the path is a directory; False otherwise
   """
-  try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+  status = c_api_util.ScopedTFStatus()
+  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.ListDirectory")
 def list_directory(dirname):
   """Returns a list of entries contained within a directory.
 
@@ -422,6 +495,7 @@ def list_directory(dirname):
     ]
 
 
+@tf_export("gfile.Walk")
 def walk(top, in_order=True):
   """Recursive directory tree generator for directories.
 
@@ -465,6 +539,7 @@ def walk(top, in_order=True):
     yield here
 
 
+@tf_export("gfile.Stat")
 def stat(filename):
   """Returns file statistics for a given path.
 
@@ -481,3 +556,56 @@ def stat(filename):
   with errors.raise_exception_on_not_ok_status() as status:
     pywrap_tensorflow.Stat(compat.as_bytes(filename), file_statistics, status)
     return file_statistics
+
+
+def filecmp(filename_a, filename_b):
+  """Compare two files, returning True if they are the same, False otherwise.
+
+  We check size first and return False quickly if the files are different sizes.
+  If they are the same size, we continue to generating a crc for the whole file.
+
+  You might wonder: why not use Python's filecmp.cmp() instead? The answer is
+  that the builtin library is not robust to the many different filesystems
+  TensorFlow runs on, and so we here perform a similar comparison with
+  the more robust FileIO.
+
+  Args:
+    filename_a: string path to the first file.
+    filename_b: string path to the second file.
+
+  Returns:
+    True if the files are the same, False otherwise.
+  """
+  size_a = FileIO(filename_a, "rb").size()
+  size_b = FileIO(filename_b, "rb").size()
+  if size_a != size_b:
+    return False
+
+  # Size is the same. Do a full check.
+  crc_a = file_crc32(filename_a)
+  crc_b = file_crc32(filename_b)
+  return crc_a == crc_b
+
+
+def file_crc32(filename, block_size=_DEFAULT_BLOCK_SIZE):
+  """Get the crc32 of the passed file.
+
+  The crc32 of a file can be used for error checking; two files with the same
+  crc32 are considered equivalent. Note that the entire file must be read
+  to produce the crc32.
+
+  Args:
+    filename: string, path to a file
+    block_size: Integer, process the files by reading blocks of `block_size`
+      bytes. Use -1 to read the file as once.
+
+  Returns:
+    hexadecimal as string, the crc32 of the passed file.
+  """
+  crc = 0
+  with FileIO(filename, mode="rb") as f:
+    chunk = f.read(n=block_size)
+    while chunk:
+      crc = binascii.crc32(chunk, crc)
+      chunk = f.read(n=block_size)
+  return hex(crc & 0xFFFFFFFF)

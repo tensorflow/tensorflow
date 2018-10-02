@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib.stepper import NodeStepper
 from tensorflow.python.framework import constant_op
@@ -34,8 +36,8 @@ from tensorflow.python.training import gradient_descent
 class StepperTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = variables.Variable(2.0, name="a")
-    self.b = variables.Variable(3.0, name="b")
+    self.a = variables.VariableV1(2.0, name="a")
+    self.b = variables.VariableV1(3.0, name="b")
 
     self.c = math_ops.multiply(self.a, self.b, name="c")  # Should be 6.0.
     self.d = math_ops.multiply(self.a, self.a, name="d")  # Should be 4.0.
@@ -47,12 +49,18 @@ class StepperTest(test_util.TensorFlowTestCase):
 
     # The there nodes x, y and z form a graph with "cross-links" in. I.e., x
     # and y are both direct inputs to z, but x is also a direct input to y.
-    self.x = variables.Variable(2.0, name="x")  # Should be 2.0
+    self.x = variables.VariableV1(2.0, name="x")  # Should be 2.0
     self.y = math_ops.negative(self.x, name="y")  # Should be -2.0.
 
     self.z = math_ops.multiply(self.x, self.y, name="z")  # Should be -4.0.
 
-    self.sess = session.Session()
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+    self.sess = session.Session(config=config)
     self.sess.run(variables.global_variables_initializer())
 
   def tearDown(self):
@@ -395,7 +403,7 @@ class StepperTest(test_util.TensorFlowTestCase):
       elif i == 5:
         fetches = {"e": "e:0", "fz": {"f": "f:0", "z": "z:0"}}
 
-      with  NodeStepper(self.sess, fetches) as stepper:
+      with NodeStepper(self.sess, fetches) as stepper:
         sorted_nodes = stepper.sorted_nodes()
         self.assertEqual(13, len(sorted_nodes))
 
@@ -572,7 +580,7 @@ class StepperTestWithPlaceHolders(test_util.TensorFlowTestCase):
 class StepperAssignAddTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.v = variables.Variable(10.0, name="v")
+    self.v = variables.VariableV1(10.0, name="v")
     self.p = math_ops.add(self.v, self.v, name="p")
     self.q = math_ops.multiply(self.p, self.p, name="q")
     self.delta = constant_op.constant(2.0, name="delta")
@@ -581,7 +589,13 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
                                        1.0,
                                        name="v_add_plus_one")
 
-    self.sess = session.Session()
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+    self.sess = session.Session(config=config)
     self.sess.run(self.v.initializer)
 
   def tearDown(self):
@@ -591,7 +605,7 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
     with NodeStepper(self.sess, [self.q, self.v_add]) as stepper:
       self.assertIsNone(stepper.last_updated())
 
-  def testContToUpdateInvalidatesDumpedIntermedates(self):
+  def testContToUpdateInvalidatesDumpedIntermediates(self):
     with NodeStepper(self.sess, [self.q, self.v_add]) as stepper:
       self.assertAllClose(400.0, stepper.cont("q:0"))
       self.assertItemsEqual(["v/read:0", "p:0"],
@@ -697,9 +711,9 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     Construct a backward graph using the GradientDescentOptimizer.
     """
 
-    self.a = variables.Variable(1.0, name="a")
-    self.b = variables.Variable(2.0, name="b")
-    self.c = variables.Variable(4.0, name="c")
+    self.a = variables.VariableV1(1.0, name="a")
+    self.b = variables.VariableV1(2.0, name="b")
+    self.c = variables.VariableV1(4.0, name="c")
     self.d = math_ops.multiply(self.a, self.b, name="d")
     self.e = math_ops.multiply(self.b, self.c, name="e")
     self.f = math_ops.multiply(self.d, self.e, name="f")
@@ -708,7 +722,13 @@ class StepperBackwardRunTest(test_util.TensorFlowTestCase):
     gradient_descent.GradientDescentOptimizer(0.01).minimize(
         self.f, name="optim")
 
-    self.sess = session.Session()
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=True,
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+    self.sess = session.Session(config=config)
     self.sess.run(variables.global_variables_initializer())
 
   def tearDown(self):

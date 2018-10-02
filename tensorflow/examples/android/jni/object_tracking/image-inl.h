@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
-#define THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
+#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
+#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
 
 #include <stdint.h>
 
@@ -452,7 +452,7 @@ void Image<T>::DownsampleSmoothed5x5(const Image<T>& original) {
                                        4, 16, 24, 16, 4,   // 64 +
                                        1,  4,  6,  4, 1};  // 16 = 256
 
-  // We'll multiply and sum with the the whole numbers first, then divide by
+  // We'll multiply and sum with the whole numbers first, then divide by
   // the total weight to normalize at the last moment.
   for (int y = 0; y < height_; ++y) {
     for (int x = 0; x < width_; ++x) {
@@ -641,4 +641,4 @@ inline void Image<T>::FromArray(const T* const pixels, const int stride,
 
 }  // namespace tf_tracking
 
-#endif  // THIRD_PARTY_TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_
+#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_INL_H_

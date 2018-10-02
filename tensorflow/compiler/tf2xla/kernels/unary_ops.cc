@@ -16,60 +16,198 @@ limitations under the License.
 // Native XLA implementations of simple unary Ops
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
 namespace {
 
-// A subclass of a TlaUnaryOp must build the lambda computation that
-// describes the scalar->scalar function to apply to each element of
-// the input.
-#define XLAJIT_MAKE_UNARY(Name, COMPUTATION)                           \
-  class Name##Op : public XlaOpKernel {                                \
+#define XLAJIT_MAKE_UNARY(NAME, COMPUTATION)                           \
+  class NAME##Op : public XlaOpKernel {                                \
    public:                                                             \
-    explicit Name##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
+    explicit NAME##Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {} \
     void Compile(XlaOpKernelContext* ctx) {                            \
-      xla::ComputationBuilder* b = ctx->builder();                     \
-      xla::ComputationDataHandle x = ctx->Input(0);                    \
-      xla::ComputationDataHandle y = COMPUTATION;                      \
+      xla::XlaBuilder* b = ctx->builder();                             \
+      (void)b;                                                         \
+      xla::XlaOp x = ctx->Input(0);                                    \
+      xla::XlaOp y = COMPUTATION;                                      \
       ctx->SetOutput(0, y);                                            \
     }                                                                  \
   };                                                                   \
-  REGISTER_XLA_OP(#Name, Name##Op);
+  REGISTER_XLA_OP(Name(#NAME), NAME##Op);
+
+XLAJIT_MAKE_UNARY(ComplexAbs, xla::Abs(x));
+
+XLAJIT_MAKE_UNARY(Angle, xla::Atan2(xla::Imag(x), xla::Real(x)));
+
+XLAJIT_MAKE_UNARY(Conj, xla::Conj(x));
 
 // Return x if x>0, otherwise -x.
-XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
-XLAJIT_MAKE_UNARY(Ceil, b->Ceil(x));
-XLAJIT_MAKE_UNARY(Exp, b->Exp(x));
-XLAJIT_MAKE_UNARY(Floor, b->Floor(x));
-// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-XLAJIT_MAKE_UNARY(Sign, b->Sign(x));
+XLAJIT_MAKE_UNARY(Abs, xla::Abs(x));
+XLAJIT_MAKE_UNARY(Acos, xla::Acos(x));
+XLAJIT_MAKE_UNARY(Acosh, xla::Acosh(x));
+XLAJIT_MAKE_UNARY(Asin, xla::Asin(x))
+XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
+XLAJIT_MAKE_UNARY(Atan, xla::Atan(x));
+XLAJIT_MAKE_UNARY(Atanh, xla::Atanh(x));
+XLAJIT_MAKE_UNARY(Ceil, xla::Ceil(x));
+XLAJIT_MAKE_UNARY(Cos, xla::Cos(x));
+XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
+XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
+XLAJIT_MAKE_UNARY(Exp, xla::Exp(x));
+XLAJIT_MAKE_UNARY(Expm1, xla::Expm1(x));
+XLAJIT_MAKE_UNARY(Floor, xla::Floor(x));
+XLAJIT_MAKE_UNARY(IsFinite, xla::IsFinite(x));
+XLAJIT_MAKE_UNARY(
+    IsInf,
+    xla::Eq(xla::Abs(x),
+            xla::ScalarLike(x, std::numeric_limits<double>::infinity())));
+XLAJIT_MAKE_UNARY(IsNan, xla::Ne(x, x));
 // Return 1/x
-XLAJIT_MAKE_UNARY(Inv, b->Div(XlaHelpers::One(b, input_type(0)), x));
-XLAJIT_MAKE_UNARY(Reciprocal, b->Div(XlaHelpers::One(b, input_type(0)), x));
-XLAJIT_MAKE_UNARY(Log, b->Log(x));
+XLAJIT_MAKE_UNARY(Inv, xla::ScalarLike(x, 1.0) / x);
+XLAJIT_MAKE_UNARY(Reciprocal, xla::ScalarLike(x, 1.0) / x);
+XLAJIT_MAKE_UNARY(Log, xla::Log(x));
+XLAJIT_MAKE_UNARY(Log1p, xla::Log1p(x));
 
-// TODO(b/34703906): use a more accurate implementation of log1p.
-XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
+XLAJIT_MAKE_UNARY(Invert, xla::Not(x));
+XLAJIT_MAKE_UNARY(LogicalNot, xla::Not(x));
+XLAJIT_MAKE_UNARY(Neg, -x);
 
-XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
-XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
-XLAJIT_MAKE_UNARY(Rsqrt,
-                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), -0.5)));
-XLAJIT_MAKE_UNARY(Sigmoid,
-                  b->Map({x}, *ctx->GetOrCreateSigmoid(input_type(0))));
-XLAJIT_MAKE_UNARY(Softplus,
-                  b->Log(b->Add(b->Exp(x), XlaHelpers::One(b, input_type(0)))));
-XLAJIT_MAKE_UNARY(Sqrt,
-                  b->Pow(x, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)));
-XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
-XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
+// Implements Banker's rounding: numbers that are equidistant between two
+// integers are rounded towards even.
+xla::XlaOp RoundToEven(xla::XlaOp x) {
+  auto half = xla::ScalarLike(x, 0.5);
+  auto one = xla::ScalarLike(x, 1.0);
+  auto two = xla::ScalarLike(x, 2.0);
+
+  auto round_val = xla::Floor(x);
+  auto fraction = x - round_val;
+  auto nearest_even_int = round_val - two * xla::Floor(half * x);
+  auto is_odd = xla::Eq(nearest_even_int, one);
+  return xla::Select(xla::Or(xla::Gt(fraction, half),
+                             xla::And(xla::Eq(fraction, half), is_odd)),
+                     round_val + one, round_val);
+}
+
+XLAJIT_MAKE_UNARY(Rint, RoundToEven(x));
+XLAJIT_MAKE_UNARY(Round, RoundToEven(x));
+
+XLAJIT_MAKE_UNARY(Rsqrt, xla::Rsqrt(x));
+
+// Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
+xla::XlaOp Sigmoid(xla::XlaOp x) {
+  auto half = xla::ScalarLike(x, 0.5);
+  return half + half * xla::Tanh(half * x);
+}
+XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(x));
+
+// Returns 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+XLAJIT_MAKE_UNARY(Sign, xla::Sign(x));
+XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
+
+// softplus(x) = log(1 + exp(x))
+//
+// This is not numerically stable when x is large, it can easily overflow.
+// However, we can compute it as LogSumExp(x, 0):
+//   max(x, 0) + log(exp(x - max(x, 0)) + exp(0 - max(x, 0)))
+//
+// This is equivalent to:
+//   max(x, 0) + log1p(exp(-abs(x)))
+XLAJIT_MAKE_UNARY(Softplus, xla::Max(x, xla::ScalarLike(x, 0.0)) +
+                                xla::Log1p(xla::Exp(-xla::Abs(x))));
+
+// softsign(x) = x / (abs(x) + 1)
+XLAJIT_MAKE_UNARY(Softsign, x / (xla::Abs(x) + xla::ScalarLike(x, 1.0)));
+XLAJIT_MAKE_UNARY(Sqrt, xla::Sqrt(x));
+XLAJIT_MAKE_UNARY(Square, x* x);
+XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
+XLAJIT_MAKE_UNARY(Tanh, xla::Tanh(x));
+
+XLAJIT_MAKE_UNARY(Real, xla::Real(x));
+XLAJIT_MAKE_UNARY(Imag, xla::Imag(x));
 
 #undef XLAJIT_MAKE_UNARY
+
+// Erf/Erfc.  For x in (-1, 1), the erf approximation is used; erfc polynomial
+// is used outside of this range.
+class ErfOp : public XlaOpKernel {
+ public:
+  explicit ErfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp x = ctx->Input(0);
+    xla::XlaOp one = xla::ScalarLike(x, 1.0);
+    auto y =
+        xla::Select(xla::Gt(xla::Abs(x), one), one - xla::Erfc(x), xla::Erf(x));
+    ctx->SetOutput(0, y);
+  }
+};
+REGISTER_XLA_OP(Name("Erf"), ErfOp);
+
+class ErfcOp : public XlaOpKernel {
+ public:
+  explicit ErfcOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp x = ctx->Input(0);
+    xla::XlaOp one = xla::ScalarLike(x, 1.0);
+    auto y =
+        xla::Select(xla::Lt(xla::Abs(x), one), one - xla::Erf(x), xla::Erfc(x));
+    ctx->SetOutput(0, y);
+  }
+};
+REGISTER_XLA_OP(Name("Erfc"), ErfcOp);
+
+class LgammaOp : public XlaOpKernel {
+ public:
+  explicit LgammaOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Calculate lgamma using the Lanczos approximation
+  // (https://en.wikipedia.org/wiki/Lanczos_approximation).
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp input = ctx->Input(0);
+    xla::PrimitiveType input_type = ctx->input_xla_type(0);
+
+    if (input_type == xla::F16 || input_type == xla::BF16) {
+      // The approximation works better with at least 32-bits of accuracy.
+      xla::XlaOp input_f32 = xla::ConvertElementType(input, xla::F32);
+      xla::XlaOp result_f32 = xla::Lgamma(input_f32);
+      xla::XlaOp result_x16 = xla::ConvertElementType(result_f32, input_type);
+      ctx->SetOutput(0, result_x16);
+    } else {
+      xla::XlaOp result = xla::Lgamma(input);
+      ctx->SetOutput(0, result);
+    }
+  }
+};  // namespace
+REGISTER_XLA_OP(Name("Lgamma"), LgammaOp);
+
+class DigammaOp : public XlaOpKernel {
+ public:
+  explicit DigammaOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  // Calculate lgamma using the Lanczos approximation
+  // (https://en.wikipedia.org/wiki/Lanczos_approximation).
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp input = ctx->Input(0);
+    xla::PrimitiveType input_type = ctx->input_xla_type(0);
+
+    if (input_type == xla::F16 || input_type == xla::BF16) {
+      // The approximation works better with at least 32-bits of accuracy.
+      xla::XlaOp input_f32 = xla::ConvertElementType(input, xla::F32);
+      xla::XlaOp result_f32 = xla::Digamma(input_f32);
+      xla::XlaOp result_x16 = xla::ConvertElementType(result_f32, input_type);
+      ctx->SetOutput(0, result_x16);
+    } else {
+      xla::XlaOp result = xla::Digamma(input);
+      ctx->SetOutput(0, result);
+    }
+  }
+};  // namespace
+REGISTER_XLA_OP(Name("Digamma"), DigammaOp);
 
 }  // namespace
 }  // namespace tensorflow

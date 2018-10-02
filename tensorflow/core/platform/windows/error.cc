@@ -21,7 +21,7 @@ namespace internal {
 std::string GetWindowsErrorMessage(DWORD err) {
   LPSTR buffer = NULL;
   DWORD flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-      FORMAT_MESSAGE_IGNORE_INSERTS;
+                FORMAT_MESSAGE_IGNORE_INSERTS;
   FormatMessageA(flags, NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                  reinterpret_cast<LPSTR>(&buffer), 0, NULL);
   std::string message = buffer;

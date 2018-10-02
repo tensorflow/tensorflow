@@ -18,15 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.factorization.python.ops import gmm as gmm_lib
 from tensorflow.contrib.learn.python.learn.estimators import kmeans
@@ -35,11 +27,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed as random_seed_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
-
-FLAGS = flags.FLAGS
+from tensorflow.python.training import queue_runner
 
 
 class GMMTest(test.TestCase):
@@ -69,9 +60,8 @@ class GMMTest(test.TestCase):
     self.batch_size = self.num_points
     self.true_centers = self.make_random_centers(self.num_centers,
                                                  self.num_dims)
-    self.points, self.assignments, self.scores = self.make_random_points(
+    self.points, self.assignments = self.make_random_points(
         self.true_centers, self.num_points)
-    self.true_score = np.add.reduce(self.scores)
 
     # Use initial means from kmeans (just like scikit-learn does).
     clusterer = kmeans.KMeansClustering(num_clusters=self.num_centers)
@@ -91,25 +81,8 @@ class GMMTest(test.TestCase):
     offsets = np.round(
         np.random.randn(num_points, num_dims).astype(np.float32) * 20)
     points = centers[assignments] + offsets
-    means = [
-        np.mean(
-            points[assignments == center], axis=0)
-        for center in xrange(num_centers)
-    ]
-    covs = [
-        np.cov(points[assignments == center].T)
-        for center in xrange(num_centers)
-    ]
-    scores = []
-    for r in xrange(num_points):
-      scores.append(
-          np.sqrt(
-              np.dot(
-                  np.dot(points[r, :] - means[assignments[r]],
-                         np.linalg.inv(covs[assignments[r]])), points[r, :] -
-                  means[assignments[r]])))
-    return (points, assignments, scores)
-  
+    return (points, assignments)
+
   def test_weights(self):
     """Tests the shape of the weights."""
     gmm = gmm_lib.GMM(self.num_centers,
@@ -141,8 +114,7 @@ class GMMTest(test.TestCase):
     gmm.fit(input_fn=self.input_fn(), steps=10)
     score2 = gmm.score(input_fn=self.input_fn(batch_size=self.num_points),
                        steps=1)
-    self.assertGreater(score1, score2)
-    self.assertNear(self.true_score, score2, self.true_score * 0.15)
+    self.assertLess(score1, score2)
 
   def test_infer(self):
     gmm = gmm_lib.GMM(self.num_centers,
@@ -154,8 +126,7 @@ class GMMTest(test.TestCase):
 
     # Make a small test set
     num_points = 40
-    points, true_assignments, true_offsets = (
-        self.make_random_points(clusters, num_points))
+    points, true_assignments = self.make_random_points(clusters, num_points)
 
     assignments = []
     for item in gmm.predict_assignments(
@@ -163,11 +134,6 @@ class GMMTest(test.TestCase):
       assignments.append(item)
     assignments = np.ravel(assignments)
     self.assertAllEqual(true_assignments, assignments)
-
-    # Test score
-    score = gmm.score(input_fn=self.input_fn(points=points,
-                                             batch_size=num_points), steps=1)
-    self.assertNear(score, np.sum(true_offsets), 4.05)
 
   def _compare_with_sklearn(self, cov_type):
     # sklearn version.
@@ -207,6 +173,49 @@ class GMMTest(test.TestCase):
 
   def test_compare_diag(self):
     self._compare_with_sklearn('diag')
+
+  def test_random_input_large(self):
+    # sklearn version.
+    iterations = 5  # that should be enough to know whether this diverges
+    np.random.seed(5)
+    num_classes = 20
+    x = np.array([[np.random.random() for _ in range(100)]
+                  for _ in range(num_classes)], dtype=np.float32)
+
+    # skflow version.
+    gmm = gmm_lib.GMM(num_classes,
+                      covariance_type='full',
+                      config=run_config.RunConfig(tf_random_seed=2))
+
+    def get_input_fn(x):
+      def input_fn():
+        return constant_op.constant(x.astype(np.float32)), None
+      return input_fn
+
+    gmm.fit(input_fn=get_input_fn(x), steps=iterations)
+    self.assertFalse(np.isnan(gmm.clusters()).any())
+
+
+class GMMTestQueues(test.TestCase):
+
+  def input_fn(self):
+    def _fn():
+      queue = data_flow_ops.FIFOQueue(capacity=10,
+                                      dtypes=dtypes.float32,
+                                      shapes=[10, 3])
+      enqueue_op = queue.enqueue(array_ops.zeros([10, 3], dtype=dtypes.float32))
+      queue_runner.add_queue_runner(queue_runner.QueueRunner(queue,
+                                                             [enqueue_op]))
+      return queue.dequeue(), None
+    return _fn
+
+  # This test makes sure that there are no deadlocks when using a QueueRunner.
+  # Note that since cluster initialization is dependent on inputs, if input
+  # is generated using a QueueRunner, one has to make sure that these runners
+  # are started before the initialization.
+  def test_queues(self):
+    gmm = gmm_lib.GMM(2, covariance_type='diag')
+    gmm.fit(input_fn=self.input_fn(), steps=1)
 
 
 if __name__ == '__main__':

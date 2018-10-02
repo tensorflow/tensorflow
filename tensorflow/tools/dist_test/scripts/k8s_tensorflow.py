@@ -25,6 +25,8 @@ from __future__ import print_function
 import argparse
 import sys
 
+import k8s_tensorflow_lib
+
 # Note: It is intentional that we do not import tensorflow in this script. The
 # machine that launches a TensorFlow k8s cluster does not have to have the
 # Python package of TensorFlow installed on it.
@@ -32,125 +34,6 @@ import sys
 
 DEFAULT_DOCKER_IMAGE = 'tensorflow/tf_grpc_test_server'
 DEFAULT_PORT = 2222
-
-# TODO(cais): Consider adding resource requests/limits to the pods.
-
-# Worker pods will mount host volume /shared, as a convenient way to create
-# shared storage among workers during local tests.
-WORKER_RC = (
-    """apiVersion: v1
-kind: ReplicationController
-metadata:
-  name: {name_prefix}-worker{worker_id}
-spec:
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        tf-worker: "{worker_id}"
-        name-prefix: "{name_prefix}"
-        job: "worker"
-    spec:
-      containers:
-      - name: tf-worker{worker_id}
-        image: {docker_image}
-        args:
-          - --cluster_spec={cluster_spec}
-          - --job_name=worker
-          - --task_id={worker_id}
-        ports:
-        - containerPort: {port}
-        env:
-        - name: POD_NAME_PREFIX
-          value: {name_prefix}
-        volumeMounts: [{volume_mounts}]
-      volumes: [{volumes}]
-""")
-WORKER_SVC = (
-    """apiVersion: v1
-kind: Service
-metadata:
-  name: {name_prefix}-worker{worker_id}
-  labels:
-    tf-worker: "{worker_id}"
-spec:
-  ports:
-  - port: {port}
-    targetPort: {port}
-  selector:
-    tf-worker: "{worker_id}"
-""")
-WORKER_LB_SVC = (
-    """apiVersion: v1
-kind: Service
-metadata:
-  name: {name_prefix}-worker{worker_id}
-  labels:
-    tf-worker: "{worker_id}"
-spec:
-  type: LoadBalancer
-  ports:
-  - port: {port}
-  selector:
-    tf-worker: "{worker_id}"
-""")
-PARAM_SERVER_RC = (
-    """apiVersion: v1
-kind: ReplicationController
-metadata:
-  name: {name_prefix}-ps{param_server_id}
-spec:
-  replicas: 1
-  template:
-    metadata:
-      labels:
-        tf-ps: "{param_server_id}"
-        name-prefix: "{name_prefix}"
-        job: "ps"
-    spec:
-      containers:
-      - name: tf-ps{param_server_id}
-        image: {docker_image}
-        args:
-          - --cluster_spec={cluster_spec}
-          - --job_name=ps
-          - --task_id={param_server_id}
-        ports:
-        - containerPort: {port}
-        env:
-        - name: POD_NAME_PREFIX
-          value: {name_prefix}
-        volumeMounts: [{volume_mounts}]
-      volumes: [{volumes}]
-""")
-PARAM_SERVER_SVC = (
-    """apiVersion: v1
-kind: Service
-metadata:
-  name: {name_prefix}-ps{param_server_id}
-  labels:
-    tf-ps: "{param_server_id}"
-spec:
-  ports:
-  - port: {port}
-  selector:
-    tf-ps: "{param_server_id}"
-""")
-PARAM_LB_SVC = ("""apiVersion: v1
-kind: Service
-metadata:
-  name: {name_prefix}-ps{param_server_id}
-  labels:
-    tf-ps: "{param_server_id}"
-spec:
-  type: LoadBalancer
-  ports:
-  - port: {port}
-  selector:
-    tf-ps: "{param_server_id}"
-""")
-VOLUME_MOUNTS = '{name: shared, mountPath: /shared}'
-VOLUMES = '{name: shared, hostPath: {path: /shared}}'
 
 
 def main():
@@ -204,107 +87,16 @@ def main():
     sys.exit(1)
 
   # Generate contents of yaml config
-  yaml_config = GenerateConfig(args.num_workers,
-                               args.num_parameter_servers,
-                               args.grpc_port,
-                               args.request_load_balancer,
-                               args.docker_image,
-                               args.name_prefix,
-                               args.use_shared_volume)
+  yaml_config = k8s_tensorflow_lib.GenerateConfig(
+      args.num_workers,
+      args.num_parameter_servers,
+      args.grpc_port,
+      args.request_load_balancer,
+      args.docker_image,
+      args.name_prefix,
+      env_vars=None,
+      use_shared_volume=args.use_shared_volume)
   print(yaml_config)  # pylint: disable=superfluous-parens
-
-
-def GenerateConfig(num_workers,
-                   num_param_servers,
-                   port,
-                   request_load_balancer,
-                   docker_image,
-                   name_prefix,
-                   use_shared_volume):
-  """Generate configuration strings."""
-  config = ''
-  for worker in range(num_workers):
-    config += WORKER_RC.format(
-        port=port,
-        worker_id=worker,
-        docker_image=docker_image,
-        name_prefix=name_prefix,
-        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
-        volumes=VOLUMES if use_shared_volume else '',
-        cluster_spec=WorkerClusterSpecString(num_workers,
-                                             num_param_servers,
-                                             port,
-                                             name_prefix))
-    config += '---\n'
-    if request_load_balancer:
-      config += WORKER_LB_SVC.format(port=port,
-                                     worker_id=worker,
-                                     name_prefix=name_prefix)
-    else:
-      config += WORKER_SVC.format(port=port,
-                                  worker_id=worker,
-                                  name_prefix=name_prefix)
-    config += '---\n'
-
-  for param_server in range(num_param_servers):
-    config += PARAM_SERVER_RC.format(
-        port=port,
-        param_server_id=param_server,
-        docker_image=docker_image,
-        name_prefix=name_prefix,
-        volume_mounts=VOLUME_MOUNTS if use_shared_volume else '',
-        volumes=VOLUMES if use_shared_volume else '',
-        cluster_spec=ParamServerClusterSpecString(num_workers,
-                                                  num_param_servers,
-                                                  port,
-                                                  name_prefix))
-    config += '---\n'
-    if request_load_balancer:
-      config += PARAM_LB_SVC.format(
-          port=port, param_server_id=param_server, name_prefix=name_prefix)
-    else:
-      config += PARAM_SERVER_SVC.format(
-          port=port, param_server_id=param_server, name_prefix=name_prefix)
-    config += '---\n'
-
-  return config
-
-
-def WorkerClusterSpecString(num_workers,
-                            num_param_servers,
-                            port,
-                            name_prefix):
-  """Generates worker cluster spec."""
-  return ClusterSpecString(num_workers, num_param_servers, port, name_prefix)
-
-
-def ParamServerClusterSpecString(num_workers,
-                                 num_param_servers,
-                                 port,
-                                 name_prefix):
-  """Generates parameter server spec."""
-  return ClusterSpecString(num_workers, num_param_servers, port,
-                           name_prefix)
-
-
-def ClusterSpecString(num_workers,
-                      num_param_servers,
-                      port,
-                      name_prefix):
-  """Generates general cluster spec."""
-  spec = 'worker|'
-  for worker in range(num_workers):
-    spec += '%s-worker%d:%d' % (name_prefix, worker, port)
-    if worker != num_workers-1:
-      spec += ';'
-
-  spec += ',ps|'
-  for param_server in range(num_param_servers):
-    spec += '%s-ps%d:%d' % (name_prefix, param_server, port)
-    if param_server != num_param_servers-1:
-      spec += ';'
-
-  return spec
 
 
 if __name__ == '__main__':

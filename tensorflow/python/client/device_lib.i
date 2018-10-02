@@ -15,19 +15,39 @@ limitations under the License.
 
 %include "tensorflow/python/platform/base.i"
 
+%typemap(in) const tensorflow::ConfigProto& (tensorflow::ConfigProto temp) {
+  char* c_string;
+  Py_ssize_t py_size;
+  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
+    // Python has raised an error (likely TypeError or UnicodeEncodeError).
+    SWIG_fail;
+  }
+
+  if (!temp.ParseFromString(string(c_string, py_size))) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "The ConfigProto could not be parsed as a valid protocol buffer");
+    SWIG_fail;
+  }
+  $1 = &temp;
+}
+
 %{
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace swig {
 
-static std::vector<string> ListDevices(TF_Status* out_status) {
+static std::vector<string> ListDevicesWithSessionConfig(
+    const tensorflow::ConfigProto& config, TF_Status* out_status) {
   std::vector<string> output;
   SessionOptions options;
+  options.config = config;
   std::vector<Device*> devices;
   Status status = DeviceFactory::AddDevices(
       options, "" /* name_prefix */, &devices);
@@ -35,7 +55,8 @@ static std::vector<string> ListDevices(TF_Status* out_status) {
     Set_TF_Status_from_Status(out_status, status);
   }
 
-  std::vector<std::unique_ptr<Device>> device_holder(devices.begin(), devices.end());
+  std::vector<std::unique_ptr<Device>> device_holder(devices.begin(),
+                                                     devices.end());
 
   for (const Device* device : devices) {
     const DeviceAttributes& attr = device->attributes();
@@ -53,6 +74,11 @@ static std::vector<string> ListDevices(TF_Status* out_status) {
   return output;
 }
 
+std::vector<string> ListDevices(TF_Status* out_status) {
+  tensorflow::ConfigProto session_config;
+  return ListDevicesWithSessionConfig(session_config, out_status);
+}
+
 }  // namespace swig
 }  // namespace tensorflow
 
@@ -62,21 +88,28 @@ static std::vector<string> ListDevices(TF_Status* out_status) {
 
 %unignore tensorflow;
 %unignore tensorflow::swig;
+%unignore tensorflow::swig::ListDevicesWithSessionConfig;
 %unignore tensorflow::swig::ListDevices;
 
 // Wrap this function
 namespace tensorflow {
 namespace swig {
 std::vector<string> ListDevices(TF_Status* out_status);
+static std::vector<string> ListDevicesWithSessionConfig(
+    const tensorflow::ConfigProto& config, TF_Status* out_status);
 }  // namespace swig
 }  // namespace tensorflow
 
 %insert("python") %{
-def list_devices():
+def list_devices(session_config=None):
   from tensorflow.python.framework import errors
 
   with errors.raise_exception_on_not_ok_status() as status:
-    return ListDevices(status)
+    if session_config:
+      return ListDevicesWithSessionConfig(session_config.SerializeToString(),
+                                          status)
+    else:
+      return ListDevices(status)
 %}
 
 %unignoreall

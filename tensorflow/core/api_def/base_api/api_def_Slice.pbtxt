@@ -1,0 +1,28 @@
+op {
+  graph_op_name: "Slice"
+  in_arg {
+    name: "begin"
+    description: <<END
+begin[i] specifies the offset into the 'i'th dimension of
+'input' to slice from.
+END
+  }
+  in_arg {
+    name: "size"
+    description: <<END
+size[i] specifies the number of elements of the 'i'th dimension
+of 'input' to slice. If size[i] is -1, all remaining elements in dimension
+i are included in the slice (i.e. this is equivalent to setting
+size[i] = input.dim_size(i) - begin[i]).
+END
+  }
+  summary: "Return a slice from \'input\'."
+  description: <<END
+The output tensor is a tensor with dimensions described by 'size'
+whose values are extracted from 'input' starting at the offsets in
+'begin'.
+
+*Requirements*:
+  0 <= begin[i] <= begin[i] + size[i] <= Di  for i in [0, n)
+END
+}

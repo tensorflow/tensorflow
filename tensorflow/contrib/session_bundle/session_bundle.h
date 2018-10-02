@@ -15,8 +15,8 @@ limitations under the License.
 
 // Low-level functionality for setting up a inference Session.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_
+#ifndef TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_
+#define TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_
 
 #include <memory>
 
@@ -82,4 +82,4 @@ bool IsPossibleExportDirectory(const StringPiece export_dir);
 }  // namespace serving
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_
+#endif  // TENSORFLOW_CONTRIB_SESSION_BUNDLE_SESSION_BUNDLE_H_

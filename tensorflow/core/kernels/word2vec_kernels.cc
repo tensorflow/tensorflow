@@ -188,9 +188,9 @@ class SkipgramOp : public OpKernel {
       ++corpus_size_;
     }
     if (corpus_size_ < window_size_ * 10) {
-      return errors::InvalidArgument("The text file ", filename,
-                                     " contains too little data: ",
-                                     corpus_size_, " words");
+      return errors::InvalidArgument(
+          "The text file ", filename,
+          " contains too little data: ", corpus_size_, " words");
     }
     typedef std::pair<string, int32> WordFreq;
     std::vector<WordFreq> ordered;
@@ -257,7 +257,7 @@ class NegTrainOp : public OpKernel {
     sampler_ = new random::DistributionSampler(vocab_weights);
   }
 
-  ~NegTrainOp() { delete sampler_; }
+  ~NegTrainOp() override { delete sampler_; }
 
   void Compute(OpKernelContext* ctx) override {
     Tensor w_in = ctx->mutable_input(0, false);

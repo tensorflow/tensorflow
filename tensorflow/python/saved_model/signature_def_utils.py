@@ -14,7 +14,7 @@
 # ==============================================================================
 """SignatureDef utility functions.
 
-Utility functions for constructing SignatureDef protos.
+Utility functions for building and inspecting SignatureDef protos.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -23,16 +23,13 @@ from __future__ import print_function
 # pylint: disable=unused-import
 from tensorflow.python.saved_model.signature_def_utils_impl import build_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import classification_signature_def
+from tensorflow.python.saved_model.signature_def_utils_impl import is_valid_signature
 from tensorflow.python.saved_model.signature_def_utils_impl import predict_signature_def
 from tensorflow.python.saved_model.signature_def_utils_impl import regression_signature_def
+from tensorflow.python.saved_model.signature_def_utils_impl import supervised_eval_signature_def
+from tensorflow.python.saved_model.signature_def_utils_impl import supervised_train_signature_def
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
 
-
-_allowed_symbols = [
-    "build_signature_def",
-    "classification_signature_def",
-    "predict_signature_def",
-    "regression_signature_def",
-]
-remove_undocumented(__name__, _allowed_symbols)
+del absolute_import
+del division
+del print_function

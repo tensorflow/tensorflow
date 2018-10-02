@@ -341,7 +341,7 @@ Status ConvertSessionBundleToSavedModelBundle(
   saved_model_bundle->session = std::move(session_bundle.session);
 
   // Copy the meta graph def from the SessionBundle to the SavedModelBundle.
-  saved_model_bundle->meta_graph_def.CopyFrom(session_bundle.meta_graph_def);
+  saved_model_bundle->meta_graph_def = session_bundle.meta_graph_def;
 
   // Convert signatures from session-bundle to signature-defs in
   // saved-model-bundle.
@@ -355,23 +355,38 @@ Status LoadSessionBundleOrSavedModelBundle(
     const SessionOptions& session_options, const RunOptions& run_options,
     const string& export_dir,
     const std::unordered_set<string>& saved_model_tags,
-    SavedModelBundle* saved_model_bundle) {
+    SavedModelBundle* saved_model_bundle, bool* is_session_bundle) {
+  if (is_session_bundle != nullptr) {
+    *is_session_bundle = false;
+  }
   if (MaybeSavedModelDirectory(export_dir)) {
     LOG(INFO)
         << "Attempting to load native SavedModelBundle in bundle-shim from: "
         << export_dir;
+
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
+    LOG(ERROR) << "Found possible SessionBundle in export directory. "
+                  "SessionBundle is deprecated. Use SavedModel instead.";
     LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
                  "in bundle-shim from: "
               << export_dir;
+    if (is_session_bundle != nullptr) {
+      *is_session_bundle = true;
+    }
     return LoadSavedModelFromLegacySessionBundlePath(
         session_options, run_options, export_dir, saved_model_bundle);
   }
-  return Status(error::Code::NOT_FOUND,
-                "Session bundle or SavedModel bundle not found at specified "
-                "export location");
+  return Status(
+      error::Code::NOT_FOUND,
+      strings::StrCat(
+          "Specified file path does not appear to contain a:\n"
+          "- Session bundle (should have a file called `export.meta`)\n"
+          "- or, SavedModel bundle (should have a file called "
+          "`saved_model.pb`)\n"
+          "Specified file path: ",
+          export_dir));
 }
 
 }  // namespace serving

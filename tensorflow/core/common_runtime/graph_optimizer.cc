@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
@@ -32,8 +33,13 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              Device* device, std::unique_ptr<Graph>* graph) {
+void GraphOptimizer::Optimize(
+    FunctionLibraryRuntime* runtime, Env* env, Device* device,
+    std::unique_ptr<Graph>* graph,
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+        shape_map,
+    const std::function<bool(const Node*)>& cse_consider_fn,
+    const std::function<bool(const Node*)>& cf_consider_fn) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -56,7 +62,16 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, runtime, env, device, g)) {
+      cf_opts.shape_map = shape_map;
+      cf_opts.consider = cf_consider_fn;
+      if (opts_.max_folded_constant_in_bytes() > 0) {
+        cf_opts.max_constant_size_in_bytes =
+            opts_.max_folded_constant_in_bytes();
+      }
+      bool was_mutated;
+      ConstantFold(cf_opts, runtime, env, device, g, &was_mutated)
+          .IgnoreError();
+      if (was_mutated) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;
@@ -68,7 +83,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
       changed = true;
     }
     if (opts_.do_common_subexpression_elimination() &&
-        OptimizeCSE(g, nullptr)) {
+        OptimizeCSE(g, cse_consider_fn)) {
       DumpGraph("OptimizeCSE", g);
       changed = true;
     }
@@ -79,7 +94,9 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
     if (!changed) break;
   }
 
-  std::unique_ptr<Graph> copy(new Graph(g->op_registry()));
+  // Note that we use the Graph constructor that copies the input
+  // FunctionLibraryDefinition, since the original lib def will go out of scope.
+  std::unique_ptr<Graph> copy(new Graph(g->flib_def()));
   CopyGraph(*g, copy.get());
   graph->swap(copy);
 

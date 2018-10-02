@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "GeneratorDataset"
+  summary: "Creates a dataset that invokes a function to generate elements."
+}

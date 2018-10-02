@@ -58,7 +58,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Shared code that is not dependent on the type of T.  We do this to reduce
 // code size by not duplicating all this for all T (float, double, int32, etc.)
@@ -72,10 +72,11 @@ static void SharedValidation(OpKernelContext* context,
   const Tensor& size_tensor = context->input(2);
 
   OP_REQUIRES(
-      context, context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
-                   context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
-                   begin_tensor.NumElements() == input.dims() &&
-                   size_tensor.NumElements() == input.dims(),
+      context,
+      context->op_kernel().IsLegacyVector(begin_tensor.shape()) &&
+          context->op_kernel().IsLegacyVector(size_tensor.shape()) &&
+          begin_tensor.NumElements() == input.dims() &&
+          size_tensor.NumElements() == input.dims(),
       errors::InvalidArgument(
           "Expected begin and size arguments to be 1-D tensors of size ",
           input.dims(), ", but got shapes ", begin_tensor.shape().DebugString(),
@@ -118,6 +119,41 @@ static void SharedValidation(OpKernelContext* context,
   }
 }
 
+// Extracted out code in SliceOp::Compute so that MklSliceOp can reuse this
+// generic code
+template <typename T>
+static void SharedSliceCommonCases(OpKernelContext* context,
+                                   TensorShape* output_shape,
+                                   gtl::InlinedVector<int64, 4>* begin,
+                                   gtl::InlinedVector<int64, 4>* size,
+                                   Tensor** result, bool* done) {
+  bool is_identity = true;
+  bool slice_dim0 = true;
+  *done = false;
+
+  SharedValidation(context, output_shape, &is_identity, &slice_dim0, begin,
+                   size);
+  if (!context->status().ok()) return;
+  const Tensor& input = context->input(0);
+  if (is_identity) {
+    VLOG(1) << "Slice identity";
+    context->set_output(0, input);
+    *done = true;
+    return;
+  }
+
+  if (slice_dim0 &&
+      IsDim0SliceAligned<T>(input.shape(), (*begin)[0], (*size)[0])) {
+    VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
+    CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
+    context->set_output(0, input.Slice((*begin)[0], (*begin)[0] + (*size)[0]));
+    *done = true;
+    return;
+  }
+
+  OP_REQUIRES_OK(context, context->allocate_output(0, *output_shape, result));
+}
+
 template <typename Device, typename T>
 class SliceOp : public OpKernel {
  public:
@@ -125,29 +161,15 @@ class SliceOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     TensorShape output_shape;
-    bool is_identity = true;
-    bool slice_dim0 = true;
     gtl::InlinedVector<int64, 4> begin;
     gtl::InlinedVector<int64, 4> size;
-    SharedValidation(context, &output_shape, &is_identity, &slice_dim0, &begin,
-                     &size);
-    if (!context->status().ok()) return;
-    const Tensor& input = context->input(0);
-    if (is_identity) {
-      VLOG(1) << "Slice identity";
-      context->set_output(0, input);
-      return;
-    }
-
-    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], size[0])) {
-      VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
-      CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
-      context->set_output(0, input.Slice(begin[0], begin[0] + size[0]));
-      return;
-    }
-
     Tensor* result = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));
+    bool done = false;
+    SharedSliceCommonCases<T>(context, &output_shape, &begin, &size, &result,
+                              &done);
+    if (!context->status().ok() || done == true) return;
+
+    const Tensor& input = context->input(0);
     const int input_dims = input.dims();
 
     if (output_shape.num_elements() > 0) {
@@ -183,8 +205,9 @@ class SliceOp : public OpKernel {
 
 #undef HANDLE_DIM
 
-      OP_REQUIRES(context, false, errors::Unimplemented(
-                                      "SliceOp : Unhandled input dimensions"));
+      OP_REQUIRES(
+          context, false,
+          errors::Unimplemented("SliceOp : Unhandled input dimensions"));
     }
   }
 
@@ -227,7 +250,6 @@ namespace functor {
   DECLARE_CPU_SPEC(T, 7);
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N);
-DECLARE_FOR_N(bfloat16);
 
 #undef DECLARE_FOR_N
 #undef DECLARE_CPU_SPEC
@@ -243,8 +265,6 @@ DECLARE_FOR_N(bfloat16);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
-REGISTER_SLICE(bfloat16);
-
 #undef REGISTER_SLICE
 
 #if GOOGLE_CUDA
@@ -271,6 +291,7 @@ namespace functor {
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
 TF_CALL_complex64(DECLARE_FOR_N);
 TF_CALL_complex128(DECLARE_FOR_N);
+TF_CALL_bfloat16(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
 
 #undef DECLARE_FOR_N
@@ -289,6 +310,7 @@ DECLARE_FOR_N(int32);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -310,13 +332,13 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
 #ifdef TENSORFLOW_USE_SYCL
 // Forward declarations of the functor specializations for SYCL.
 namespace functor {
-#define DECLARE_SYCL_SPEC(T, NDIM)                                 \
-  template <>                                                      \
-  void Slice<SYCLDevice, T, NDIM>::operator()(                     \
-      const SYCLDevice& d, typename TTypes<T, NDIM>::Tensor output,\
-      typename TTypes<T, NDIM>::ConstTensor input,                 \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,       \
-      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);        \
+#define DECLARE_SYCL_SPEC(T, NDIM)                                  \
+  template <>                                                       \
+  void Slice<SYCLDevice, T, NDIM>::operator()(                      \
+      const SYCLDevice& d, typename TTypes<T, NDIM>::Tensor output, \
+      typename TTypes<T, NDIM>::ConstTensor input,                  \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& indices,        \
+      const Eigen::DSizes<Eigen::DenseIndex, NDIM>& sizes);         \
   extern template struct Slice<SYCLDevice, T, NDIM>;
 
 #define DECLARE_FOR_N(T)   \
@@ -328,8 +350,9 @@ namespace functor {
   DECLARE_SYCL_SPEC(T, 6); \
   DECLARE_SYCL_SPEC(T, 7);
 
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_FOR_N);
 DECLARE_FOR_N(int32);
+DECLARE_FOR_N(bool);
 
 #undef DECLARE_FOR_N
 #undef DECLARE_SYCL_SPEC
@@ -344,11 +367,8 @@ DECLARE_FOR_N(int32);
                               .TypeConstraint<int32>("Index"), \
                           SliceOp<SYCLDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
 
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Slice")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -358,7 +378,6 @@ REGISTER_KERNEL_BUILDER(Name("Slice")
                             .HostMemory("size")
                             .HostMemory("output"),
                         SliceOp<CPUDevice, int32>);
-
 #undef REGISTER_SYCL
 
 #endif  // TENSORFLOW_USE_SYCL

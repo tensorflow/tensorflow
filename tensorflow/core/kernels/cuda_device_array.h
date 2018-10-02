@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
+#define TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
 
 #if GOOGLE_CUDA
 
@@ -80,7 +80,7 @@ class CudaDeviceArrayOnHost {
     TensorReference tensor_ref(out_of_line_values_on_host_);
     TF_RETURN_IF_ERROR(context_->allocate_temp(
         DT_INT8, TensorShape{total_bytes_}, &out_of_line_values_on_gpu_));
-    perftools::gputools::DeviceMemoryBase output_values_base{
+    se::DeviceMemoryBase output_values_base{
         out_of_line_values_on_gpu_.flat<int8>().data(),
         static_cast<uint64>(total_bytes_)};
     stream->ThenMemcpy(&output_values_base,
@@ -117,4 +117,4 @@ class CudaDeviceArrayOnHost {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_

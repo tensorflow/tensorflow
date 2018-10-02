@@ -18,18 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.contrib.compiler import jit
-from tensorflow.core.framework import function_pb2
-from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -38,6 +37,18 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 jit_scope = jit.experimental_jit_scope
+
+
+# Disable rewrites to make sure we don't end up having to update this test
+# whenever we implement new ones.
+def NoRewriteSessionConfig():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      function_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
 
 
 def CompiledKernel(fn, *inputs, **kwargs):
@@ -66,11 +77,11 @@ def InLabels(labels, substr):
   return any([substr in x for x in labels])
 
 
-def MetadataHasXlaLaunch(run_metadata):
-  """Returns true if there is a _XlaLaunch kernel in run_metadata's timeline."""
+def MetadataHasXlaOp(run_metadata):
+  """Returns true if there are XlaRun kernels in run_metadata's timeline."""
 
   # TODO(phawkins): find a less hacky way to test whether a kernel ran.
-  return InLabels(RunMetadataLabels(run_metadata), "_XlaLaunch")
+  return InLabels(RunMetadataLabels(run_metadata), "XlaRun")
 
 
 class JitLaunchTest(test.TestCase):
@@ -79,11 +90,12 @@ class JitLaunchTest(test.TestCase):
   # Verifies that the outputs match and that XLA was invoked. 'fn' must take
   # the same number of tensors as arguments that are in 'args', and must return
   # a tuple of output tensors.
-  # If 'require_kernel_launch' is True, then we verify that a _XlaLaunch node
-  # actually ran. However, it is sometimes possible for _XlaLaunch ops to be
-  # constant-folded away, so the check is optional.
+  #
+  # If 'require_kernel_launch' is True, then we verify that an XlaCompile/XlaRun
+  # node actually ran. However, it is sometimes possible for XlaCompile/XlaRun
+  # ops to be constant-folded away, so the check is optional.
   def _compare(self, fn, args, require_kernel_launch=True, noinline=None):
-    with session_lib.Session() as sess:
+    with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
       placeholders = []
       feeds = {}
       for arg in args:
@@ -104,7 +116,7 @@ class JitLaunchTest(test.TestCase):
       print("Compiled Result {}".format(compiled))
 
       if require_kernel_launch:
-        self.assert_(MetadataHasXlaLaunch(run_metadata))
+        self.assert_(MetadataHasXlaOp(run_metadata))
 
         direct = sess.run(direct_op, feeds)
         print("Direct Result {}".format(direct))
@@ -114,35 +126,17 @@ class JitLaunchTest(test.TestCase):
           for (x, y) in zip(compiled, direct):
             self.assertAllClose(x, y, rtol=1e-1)
         else:
-          self.assertAllClose(compiled, direct)
+          self.assertAllClose(compiled, direct, rtol=1e-2)
 
   def testNoOutputs(self):
     with session_lib.Session() as sess:
-      # Build a function with a single Const node, whose output is ignored.
-      fdef = function_pb2.FunctionDef()
-      fdef.signature.name = "KernelWithNoOutputs"
-      node = node_def_pb2.NodeDef()
-      node.op = "Const"
-      node.name = "ignored"
-      node.attr["dtype"].type = dtypes.int32.as_datatype_enum
-      tensor = tensor_util.make_tensor_proto([0], dtype=dtypes.int32, shape=[])
-      node.attr["value"].tensor.CopyFrom(tensor)
-      fdef.node_def.extend([node])
 
       # Check that calling the result as a compiled kernel doesn't crash.
       @function.Defun(compiled=True)
       def KernelWithNoOutputs():
-        return constant_op.constant(100)
+        a = constant_op.constant(100)  # pylint: disable=unused-variable
 
-      # Hack to override the definition.  By accessing .definition, we
-      # force the _DefinedFunction initialized internally. Then, we
-      # replace it's internal FunctionDef proto. We do this hack here
-      # because one typically can't construct KernelWithNoOutputs
-      # function via Defun decorator directly.
-      _ = KernelWithNoOutputs.definition
-      foo = KernelWithNoOutputs
-      foo._definition = fdef
-      call = KernelWithNoOutputs()
+      call = KernelWithNoOutputs()  # pylint: disable=assignment-from-no-return
       sess.run(call, {})
 
   def testAliasing(self):
@@ -156,16 +150,18 @@ class JitLaunchTest(test.TestCase):
       y = math_ops.add(x, x)
       return y, y
 
-    # Exercises compling a function (say, Foo) which calls another
-    # function (say, Bar) which is not inlined. When the compiler compiles
-    # Foo, it needs to symbolic execute Bar correctly regardless whether
-    # Bar is inlined or not.
-    #
+    # Exercises compiling a function (say, Foo) which calls another function
+    # (say, Bar) which is not inlined. When the compiler compiles Foo, it needs
+    # to symbolically execute Bar correctly regardless of whether Bar is inlined
+    # or not.
+
+    # TODO(b/36139787): Re-enable this test when noinline works again.
     # Tests compiled=True and noinline=True.
-    self._compare(
-        AddOnceReturnTwice, [np.array(
-            [[[0.5, -1.0]]], dtype=np.float32)],
-        noinline=True)
+    # self._compare(
+    #     AddOnceReturnTwice, [np.array(
+    #         [[[0.5, -1.0]]], dtype=np.float32)],
+    #     noinline=True)
+
     # Tests compiled=True and noinline=False.
     self._compare(
         AddOnceReturnTwice, [np.array(
@@ -264,7 +260,7 @@ class JitLaunchTest(test.TestCase):
         # TODO(phawkins): really we would like to test that there were exactly
         # two kernel launches. However, we have no reliable way to determine
         # that.
-        self.assert_(MetadataHasXlaLaunch(run_metadata))
+        self.assert_(MetadataHasXlaOp(run_metadata))
 
         expected = np.square(np.dot(dx, dw) + db)
         self.assertAllClose(expected, output, rtol=1e-1)
@@ -276,7 +272,7 @@ class XlaCompilationTest(test.TestCase):
   def testReshape(self):
     """Tests an operator with compile-time constant and non-constant inputs."""
 
-    with self.test_session() as sess:
+    with self.test_session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -294,13 +290,13 @@ class XlaCompilationTest(test.TestCase):
                      run_metadata=run_metadata,
                      options=config_pb2.RunOptions(
                          trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaLaunch(run_metadata))
+      self.assert_(MetadataHasXlaOp(run_metadata))
       self.assertAllClose(np.array([[1, 2, 3], [4, 5, 6]], np.float32), out)
 
   def testIgnoredArguments(self):
     """Tests that JIT computations can ignore formal parameters."""
 
-    with self.test_session() as sess:
+    with self.test_session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.int32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -318,13 +314,13 @@ class XlaCompilationTest(test.TestCase):
                      run_metadata=run_metadata,
                      options=config_pb2.RunOptions(
                          trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaLaunch(run_metadata))
+      self.assert_(MetadataHasXlaOp(run_metadata))
       self.assertAllClose(28, out)
 
   def testLoops(self):
     """Tests that compilation accepts computations containing loops."""
 
-    with self.test_session() as session:
+    with self.test_session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         c = lambda i, _: math_ops.less(i, 5)
@@ -336,13 +332,13 @@ class XlaCompilationTest(test.TestCase):
                            run_metadata=run_metadata,
                            options=config_pb2.RunOptions(
                                trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaLaunch(run_metadata))
+      self.assert_(MetadataHasXlaOp(run_metadata))
       self.assertAllClose(result, np.float32(95), rtol=1e-1)
 
   def testCond(self):
     """Tests that compilation handles switch operators."""
 
-    with self.test_session() as session:
+    with self.test_session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
       c = array_ops.placeholder(dtypes.bool)
@@ -361,7 +357,7 @@ class XlaCompilationTest(test.TestCase):
                            run_metadata=run_metadata,
                            options=config_pb2.RunOptions(
                                trace_level=config_pb2.RunOptions.FULL_TRACE))
-      self.assert_(MetadataHasXlaLaunch(run_metadata))
+      self.assert_(MetadataHasXlaOp(run_metadata))
       self.assertAllClose(result, np.float32(6), rtol=1e-1)
 
   def testNestedFunction(self):
@@ -383,7 +379,8 @@ class XlaCompilationTest(test.TestCase):
       inp = array_ops.placeholder(dtypes.float32)
       out = Entry(inp)
 
-    with self.test_session(graph=g, use_gpu=True) as sess:
+    with self.test_session(
+        config=NoRewriteSessionConfig(), graph=g, use_gpu=True) as sess:
       run_metadata = config_pb2.RunMetadata()
       val = sess.run(out,
                      feed_dict={inp: [2., 10.]},
@@ -395,7 +392,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoopDeadlock(self):
     """Regression test for bug that caused deadlocks in graphs with loops."""
 
-    with self.test_session() as session:
+    with self.test_session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         y = x + 1.0
@@ -422,10 +419,10 @@ class XlaCompilationTest(test.TestCase):
         y = Forward(x)
         dx, = gradients_impl.gradients(y, [x], 1.0)
 
-      cfg = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-          optimizer_options=config_pb2.OptimizerOptions(
-              opt_level=config_pb2.OptimizerOptions.L1,
-              do_function_inlining=True)))
+      cfg = NoRewriteSessionConfig()
+      cfg.graph_options.optimizer_options.opt_level = (
+          config_pb2.OptimizerOptions.L1)
+      cfg.graph_options.optimizer_options.do_function_inlining = True
       with session_lib.Session(graph=g, config=cfg) as sess:
         run_metadata = config_pb2.RunMetadata()
         dx_val = sess.run(dx,
@@ -445,14 +442,71 @@ class XlaCompilationTest(test.TestCase):
     self.assertFalse(InLabels(labels, "Log"))
     self.assertTrue(InLabels(labels, "Reciprocal"))
     self.assertTrue(InLabels(labels, "Mul"))
-    self.assertFalse(InLabels(labels, "_XlaLaunch"))
+    self.assertFalse(InLabels(labels, "XlaCompile"))
+    self.assertFalse(InLabels(labels, "XlaRun"))
 
-    # Compile the backprop. One _XlaLaunch.
+    # Compile the backprop. One XlaCompile/XlaRun pair.
     labels = _Run(compiled=True)
     self.assertFalse(InLabels(labels, "Log"))
     self.assertFalse(InLabels(labels, "Reciprocal"))
     self.assertFalse(InLabels(labels, "Mul"))
-    self.assertTrue(InLabels(labels, "_XlaLaunch"))
+    self.assertTrue(InLabels(labels, "XlaCompile"))
+    self.assertTrue(InLabels(labels, "XlaRun"))
+
+
+class ElementWiseFusionTest(test.TestCase):
+
+  # Runs a simple test with the input jit_level and fusion_only flag.
+  def simpleTest(self, arg0, arg1, global_jit_level):
+    config = config_pb2.ConfigProto()
+    config.graph_options.optimizer_options.global_jit_level = global_jit_level
+
+    with session_lib.Session(config=config) as sess:
+      a1 = array_ops.placeholder(dtypes.float32, [2, 2], name="a1")
+      a2 = array_ops.placeholder(dtypes.float32, [2, 2], name="a2")
+      # Two element-wise ops. We need at least two ops since single
+      # element clusters are not passed to XLA in fusion_only mode.
+      a3 = a1 * a2
+      a4 = a3 + a1
+      # A matmul to break XLA clustering.
+      a5 = math_ops.matmul(a4, a1)
+      # Two more element-wise ops.
+      a6 = a5 - a4
+      a7 = a6 + a2
+
+      run_metadata = config_pb2.RunMetadata()
+      output = sess.run(
+          a7, {
+              a1: arg0,
+              a2: arg1
+          },
+          run_metadata=run_metadata,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+
+      labels = RunMetadataLabels(run_metadata)
+
+      xla_compile_count = sum("XlaCompile(" in x for x in labels)
+      xla_run_count = sum("XlaRun(" in x for x in labels)
+      self.assertEqual(xla_compile_count, xla_run_count)
+
+      return output, xla_run_count
+
+  def testElementWiseClustering(self):
+    arg0 = np.random.rand(2, 2).astype(np.float32)
+    arg1 = np.random.rand(2, 2).astype(np.float32)
+    os.environ["TF_XLA_FLAGS"] = (
+        "--tf_xla_fusion_only=true "
+        "--tf_xla_cpu_global_jit " + os.environ.get("TF_XLA_FLAGS", ""))
+    tf_op, tf_count = self.simpleTest(arg0, arg1,
+                                      config_pb2.OptimizerOptions.OFF)
+    self.assertEqual(0, tf_count)
+
+    tfef_op, tfef_count = self.simpleTest(arg0, arg1,
+                                          config_pb2.OptimizerOptions.ON_1)
+    self.assertEqual(2, tfef_count)
+
+    self.assertAllClose(tf_op, tfef_op, rtol=1e-1)
 
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/contrib/session_bundle/manifest.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -137,10 +138,10 @@ Status RunRestoreOp(const RunOptions& run_options, const StringPiece export_dir,
   Tensor variables_tensor =
       CreateStringTensor(GetVariablesFilename(export_dir));
   std::vector<std::pair<string, Tensor>> inputs = {
-      {variables_filename_const_op_name.ToString(), variables_tensor}};
+      {string(variables_filename_const_op_name), variables_tensor}};
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
   RunMetadata run_metadata;
-  return session->Run(run_options, inputs, {}, {restore_op_name.ToString()},
+  return session->Run(run_options, inputs, {}, {string(restore_op_name)},
                       nullptr /* outputs */, &run_metadata);
 }
 
@@ -151,7 +152,7 @@ Status RunInitOp(const RunOptions& run_options, const StringPiece export_dir,
   std::vector<std::pair<string, Tensor>> inputs;
   AddAssetsTensorsToInputs(export_dir, asset_files, &inputs);
   RunMetadata run_metadata;
-  return session->Run(run_options, inputs, {}, {init_op_name.ToString()},
+  return session->Run(run_options, inputs, {}, {string(init_op_name)},
                       nullptr /* outputs */, &run_metadata);
 }
 
@@ -162,6 +163,13 @@ Status LoadSessionBundleFromPathUsingRunOptionsInternal(
   LOG(INFO) << "Using RunOptions: " << DebugStringIfAvailable(run_options);
   TF_RETURN_IF_ERROR(
       GetMetaGraphDefFromExport(export_dir, &(bundle->meta_graph_def)));
+
+  // Deprecated SessionBundle models may fail to load because newly added
+  // attributes are not added to the Graph in the default Session initialization
+  // flow. Add an explicit call here when first loading the graph from disk.
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(bundle->meta_graph_def.mutable_graph_def(),
+                                *OpRegistry::Global(), 0 /* node_offset */));
 
   const auto& collection_def_map = bundle->meta_graph_def.collection_def();
   const auto graph_it = bundle->meta_graph_def.collection_def().find(kGraphKey);
@@ -243,15 +251,14 @@ Status LoadSessionBundleFromPathUsingRunOptions(const SessionOptions& options,
   auto log_and_count = [&](const string& status_str) {
     LOG(INFO) << "Loading SessionBundle: " << status_str << ". Took "
               << load_latency_microsecs << " microseconds.";
-    load_attempt_count->GetCell(export_dir.ToString(), status_str)
-        ->IncrementBy(1);
+    load_attempt_count->GetCell(string(export_dir), status_str)->IncrementBy(1);
   };
   if (status.ok()) {
     log_and_count(kLoadAttemptSuccess);
   } else {
     log_and_count(kLoadAttemptFail);
   }
-  load_latency->GetCell(export_dir.ToString())
+  load_latency->GetCell(string(export_dir))
       ->IncrementBy(load_latency_microsecs);
   return status;
 }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_RECORD_YIELDER_H_
-#define TENSORFLOW_KERNELS_RECORD_YIELDER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RECORD_YIELDER_H_
+#define TENSORFLOW_CORE_KERNELS_RECORD_YIELDER_H_
 
 #include <atomic>
 #include <random>
@@ -36,7 +36,7 @@ namespace tensorflow {
 // It guarantees that:
 //   1) all records in tfrecords are yielded within every epoch;
 //   2) each record is yielded only once within every epoch;
-//   3) the order in which records are yielded are highly randomized.
+//   3) the order in which records are yielded is highly randomized.
 //   4) the peak memory usage is roughly avg record size *
 //      (opts.bufsize + opts.parellelism * 16).
 //
@@ -78,6 +78,8 @@ class RecordYielder {
     // Uses these many concurrent tfrecord iterators to iterate through
     // tfrecords.
     int32 parallelism = 1;
+
+    string compression_type;
   };
 
   explicit RecordYielder(OpKernelConstruction* context,
@@ -119,6 +121,7 @@ class RecordYielder {
   // True iff we are draining an epoch.
   bool epoch_end_ = false;
 
+  int64 num_records_added_in_epoch_ = 0;
   int64 num_records_yielded_in_epoch_ = 0;
 
   // Trigger when the main loop has exited.
@@ -142,7 +145,7 @@ class RecordYielder {
     // any.
     return stop_ || !status_.ok() || (epoch_end_ && !buf_.empty()) ||
            (!epoch_end_ &&
-            buf_.size() >= std::max<int64>(1, opts_.bufsize / 2));
+            buf_.size() >= std::max<uint64>(1, opts_.bufsize / 2));
   }
 
   void MainLoop();
@@ -154,4 +157,4 @@ class RecordYielder {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_RECORD_YIELDER_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RECORD_YIELDER_H_

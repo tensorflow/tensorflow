@@ -43,13 +43,30 @@ bool soc_interface_Finalize();
 bool soc_interface_ExecuteGraph();
 // Teardown graph setup
 bool soc_interface_TeardownGraph();
+
+// Allocate buffers for input node and output node
+bool soc_interface_AllocateInOutNodeBuffers(int input_count, int* input_sizes,
+                                            int output_count,
+                                            int* output_sizes);
+
+// Send input data to SOC with port
+bool soc_interface_FillInputNodeWithPort(int port, int x, int y, int z, int d,
+                                         const uint8_t* const buf,
+                                         uint64_t buf_byte_size);
+
 // Send input data to SOC
 bool soc_interface_FillInputNodeFloat(int x, int y, int z, int d,
                                       const uint8_t* const buf,
-                                      uint64_t buf_size);
+                                      uint64_t buf_byte_size);
+
+// Load output data from SOC with port
+bool soc_interface_ReadOutputNodeWithPort(int port, uint8_t** buf,
+                                          uint64_t* buf_byte_size);
+
 // Load output data from SOC
 bool soc_interface_ReadOutputNodeFloat(const char* const node_name,
-                                       uint8_t** buf, uint64_t* buf_size);
+                                       uint8_t** buf, uint64_t* buf_byte_size);
+
 // Setup graph
 // TODO(satok): Remove and use runtime version
 bool soc_interface_setupDummyGraph(int version);

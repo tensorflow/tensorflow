@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "QuantizedReluX"
+  endpoint {
+    name: "nn.quantized_relu_x"
+  }
+}

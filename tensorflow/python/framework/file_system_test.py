@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Tests for functions."""
+"""Tests for file_system."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
@@ -43,7 +37,7 @@ class FileSystemTest(test.TestCase):
     load_library.load_file_system_library(file_system_library)
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       reader = io_ops.WholeFileReader("test_reader")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       queue.enqueue_many([["test://foo"]]).run()

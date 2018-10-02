@@ -18,14 +18,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
-#include "tensorflow/compiler/aot/tfcompile.pb.h"
-#include "tensorflow/compiler/aot/tfcompile_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -34,9 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -52,60 +51,70 @@ const char kUsageHeader[] =
     "header file that gives access to the functionality in the object file.\n"
     "A typical invocation looks like this:\n"
     "\n"
-    "   $ tfcompile --graph=mygraph.pb --config=myfile.pbtxt\n"
+    "   $ tfcompile --graph=mygraph.pb --config=myfile.pbtxt "
+    "--cpp_class=\"mynamespace::MyComputation\"\n"
     "\n";
 
-Status ReadProtoFile(const string& kind, const string& fname,
-                     protobuf::Message* proto) {
-  if (StringPiece(fname).ends_with(".pbtxt")) {
+Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
+  if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
   } else {
     return ReadBinaryProto(Env::Default(), fname, proto);
   }
 }
 
-void ParseTensorId(const string& name, TensorId* id) {
-  const std::pair<StringPiece, int> name_index = ParseTensorName(name);
-  id->set_node_name(name_index.first.ToString());
-  id->set_output_index(name_index.second);
-}
-
 Status Main(const MainFlags& flags) {
   // Process config.
-  Config config;
-  TF_RETURN_IF_ERROR(ReadProtoFile("config", flags.config, &config));
+  tf2xla::Config config;
+  if (flags.config.empty()) {
+    return errors::InvalidArgument("Must specify --config");
+  }
+  TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
     std::set<string> nodes;
-    for (const Fetch& fetch : config.fetch()) {
+    for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
-    std::cout << str_util::Join(nodes, ",");
+    std::cout << absl::StrJoin(nodes, ",");
     return Status::OK();
   }
 
   // Read and initialize the graph.
+  if (flags.graph.empty()) {
+    return errors::InvalidArgument("Must specify --graph");
+  }
   GraphDef graph_def;
-  TF_RETURN_IF_ERROR(ReadProtoFile("graph", flags.graph, &graph_def));
-  std::unique_ptr<Graph> graph;
-  FunctionLibraryDefinition flib(OpRegistry::Global(), graph_def.library());
-  TF_RETURN_IF_ERROR(InitGraph(graph_def, config, flags, &flib, &graph));
-
+  TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
   CompileResult compile_result;
-  TF_RETURN_IF_ERROR(
-      CompileGraph(std::move(graph), flags, &flib, &compile_result));
+  TF_RETURN_IF_ERROR(CompileGraph(graph_def, config, flags, &compile_result));
 
   // Write output files.
   Env* env = Env::Default();
   const std::vector<char>& obj = compile_result.aot->object_file_data();
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_object,
-                                       StringPiece(obj.data(), obj.size())));
-  HeaderOpts header_opts;
-  TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &header_opts.class_name,
-                                   &header_opts.namespaces));
-  string header;
   TF_RETURN_IF_ERROR(
-      GenerateHeader(header_opts, config, compile_result, &header));
+      WriteStringToFile(env, flags.out_function_object,
+                        absl::string_view(obj.data(), obj.size())));
+  CodegenOpts codegen_opts;
+  codegen_opts.gen_name_to_index = flags.gen_name_to_index;
+  codegen_opts.gen_program_shape = flags.gen_program_shape;
+  codegen_opts.target_triple = flags.target_triple;
+  if (flags.cpp_class.empty()) {
+    return errors::InvalidArgument("Must specify --cpp_class");
+  }
+  codegen_opts.gen_hlo_profile_printer_data =
+      xla::legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
+  TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
+                                   &codegen_opts.namespaces));
+
+  MetadataResult metadata_result;
+  TF_RETURN_IF_ERROR(
+      GenerateMetadata(codegen_opts, compile_result, &metadata_result));
+  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
+                                       metadata_result.object_file_data));
+  string header;
+  TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
+                                    metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
   return Status::OK();
 }
@@ -116,14 +125,14 @@ Status Main(const MainFlags& flags) {
 int main(int argc, char** argv) {
   tensorflow::tfcompile::MainFlags flags;
   flags.target_triple = "x86_64-pc-linux";
-  flags.out_object = "out.o";
+  flags.out_function_object = "out_model.o";
+  flags.out_metadata_object = "out_helper.o";
   flags.out_header = "out.h";
+  flags.entry_point = "entry";
 
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);
-  xla::legacy_flags::AppendCompilerFunctorFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
 
   tensorflow::string usage = tensorflow::tfcompile::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
@@ -131,12 +140,16 @@ int main(int argc, char** argv) {
   QCHECK(parsed_flags_ok) << "\n" << usage;
 
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
-  QCHECK(argc == 1 && !flags.config.empty() &&
-         (flags.dump_fetch_nodes ||
-          (!flags.graph.empty() && !flags.entry_point.empty())))
-      << "\n"
-      << usage;
-
-  TF_QCHECK_OK(tensorflow::tfcompile::Main(flags));
+  QCHECK(argc == 1) << "\nERROR: This command does not take any arguments "
+                       "other than flags\n\n"
+                    << usage;
+  tensorflow::Status status = tensorflow::tfcompile::Main(flags);
+  if (status.code() == tensorflow::error::INVALID_ARGUMENT) {
+    std::cerr << "INVALID ARGUMENTS: " << status.error_message() << "\n\n"
+              << usage;
+    return 1;
+  } else {
+    TF_QCHECK_OK(status);
+  }
   return 0;
 }

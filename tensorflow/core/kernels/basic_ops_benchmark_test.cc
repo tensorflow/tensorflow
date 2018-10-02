@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// We focus on the single thread performance of runing ops.
+// We focus on the single thread performance of running ops.
 static SessionOptions InitOptions() {
   SessionOptions opts;
   opts.config.set_intra_op_parallelism_threads(1);

@@ -49,7 +49,7 @@ string FormatLibraryFileName(const string& name, const string& version) {
     filename = "lib" + name + "." + version + ".dylib";
   }
 #else
-  if (version.size() == 0) {
+  if (version.empty()) {
     filename = "lib" + name + ".so";
   } else {
     filename = "lib" + name + ".so" + "." + version;

@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -31,10 +31,10 @@ class ReluOp : public XlaOpKernel {
  public:
   explicit ReluOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Computes the max of the scalar input x and 0.
-  void Compile(XlaOpKernelContext* ctx) {
-    xla::ComputationBuilder* builder = ctx->builder();
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* builder = ctx->builder();
     auto zero = XlaHelpers::Zero(builder, input_type(0));
-    ctx->SetOutput(0, builder->Max(zero, ctx->Input(0)));
+    ctx->SetOutput(0, xla::Max(zero, ctx->Input(0)));
   }
 };
 
@@ -42,51 +42,52 @@ class Relu6Op : public XlaOpKernel {
  public:
   explicit Relu6Op(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Clamp the scalar input between 0 and 6.
-  void Compile(XlaOpKernelContext* ctx) {
-    xla::ComputationBuilder* builder = ctx->builder();
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* builder = ctx->builder();
     auto zero = XlaHelpers::Zero(builder, input_type(0));
     auto six = XlaHelpers::IntegerLiteral(builder, input_type(0), 6);
-    ctx->SetOutput(0, builder->Clamp(zero, ctx->Input(0), six));
+    ctx->SetOutput(0, xla::Clamp(zero, ctx->Input(0), six));
   }
 };
 
-// A subclass of a XlaBinaryMapOp must build the lambda computation
-// that describes the (scalar,scalar)->scalar function to apply to
-// each element of the input. We have to use XlaBinaryMapOp instead of
-// XlaBinaryOp here because XLA Select does not do automatic
-// broadcasting.
-class ReluGradOp : public XlaBinaryMapOp {
+class ReluGradOp : public XlaOpKernel {
  public:
-  explicit ReluGradOp(OpKernelConstruction* ctx) : XlaBinaryMapOp(ctx) {}
+  explicit ReluGradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
   // otherwise return 0.
-  void BuildMapLambda(xla::ComputationBuilder* b,
-                      const xla::ComputationDataHandle& gradient,
-                      const xla::ComputationDataHandle& feature) override {
-    const auto zero = XlaHelpers::Zero(b, input_type(0));
-    b->Select(b->Gt(feature, zero), gradient, zero);
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    const TensorShape shape = ctx->InputShape(0);
+    const auto zero =
+        xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
+    const auto pred = xla::Gt(ctx->Input(1), zero);
+    ctx->SetOutput(0, xla::Select(pred, ctx->Input(0), zero));
   }
 };
 
-class Relu6GradOp : public XlaBinaryMapOp {
+class Relu6GradOp : public XlaOpKernel {
  public:
-  explicit Relu6GradOp(OpKernelConstruction* ctx) : XlaBinaryMapOp(ctx) {}
+  explicit Relu6GradOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   // Return the lhs (incoming gradient) if the rhs (input feature) > 0,
   // otherwise return 0.
-  void BuildMapLambda(xla::ComputationBuilder* b,
-                      const xla::ComputationDataHandle& gradient,
-                      const xla::ComputationDataHandle& feature) override {
-    const auto zero = XlaHelpers::Zero(b, input_type(0));
-    auto six = XlaHelpers::IntegerLiteral(b, input_type(0), 6);
-    b->Select(b->LogicalAnd(b->Lt(feature, six), b->Gt(feature, zero)),
-              gradient, zero);
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    const TensorShape shape = ctx->InputShape(0);
+    const auto zero =
+        xla::Broadcast(XlaHelpers::Zero(b, input_type(0)), shape.dim_sizes());
+    const auto six = xla::Broadcast(
+        XlaHelpers::IntegerLiteral(b, input_type(0), 6), shape.dim_sizes());
+    auto out = xla::Select(
+        xla::And(xla::Lt(ctx->Input(1), six), xla::Gt(ctx->Input(1), zero)),
+        ctx->Input(0), zero);
+    ctx->SetOutput(0, out);
   }
 };
 
-REGISTER_XLA_OP("Relu", ReluOp);
-REGISTER_XLA_OP("Relu6", Relu6Op);
-REGISTER_XLA_OP("ReluGrad", ReluGradOp);
-REGISTER_XLA_OP("Relu6Grad", Relu6GradOp);
+REGISTER_XLA_OP(Name("Relu"), ReluOp);
+REGISTER_XLA_OP(Name("Relu6"), Relu6Op);
+REGISTER_XLA_OP(Name("ReluGrad"), ReluGradOp);
+REGISTER_XLA_OP(Name("Relu6Grad"), Relu6GradOp);
 
 }  // namespace
 }  // namespace tensorflow

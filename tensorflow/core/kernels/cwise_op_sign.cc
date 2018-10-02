@@ -33,4 +33,14 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
                         UnaryOp<CPUDevice, functor::sign<int32>>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(UnaryOp, SYCL, "Sign", functor::sign, float, double, int64);
+REGISTER_KERNEL_BUILDER(Name("Sign")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::sign<int32>>);
+#endif  // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "IFFT"
+  endpoint {
+    name: "spectral.ifft"
+  }
+  endpoint {
+    name: "ifft"
+    deprecated: true
+  }
+}

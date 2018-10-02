@@ -113,7 +113,12 @@ void ConcatGPU(
       Tensor* output, typename TTypes<T, 2>::Tensor* output_flat);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);
-REGISTER(bfloat16);
+TF_CALL_complex64(REGISTER);
+TF_CALL_complex128(REGISTER);
+TF_CALL_int64(REGISTER);
+TF_CALL_bfloat16(REGISTER);
+TF_CALL_bool(REGISTER);
+TF_CALL_uint8(REGISTER);
 
 #undef REGISTER
 

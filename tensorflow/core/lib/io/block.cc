@@ -64,7 +64,7 @@ Block::~Block() {
 static inline const char* DecodeEntry(const char* p, const char* limit,
                                       uint32* shared, uint32* non_shared,
                                       uint32* value_length) {
-  if (limit - p < 3) return NULL;
+  if (limit - p < 3) return nullptr;
   *shared = reinterpret_cast<const unsigned char*>(p)[0];
   *non_shared = reinterpret_cast<const unsigned char*>(p)[1];
   *value_length = reinterpret_cast<const unsigned char*>(p)[2];
@@ -72,13 +72,15 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
     // Fast path: all three values are encoded in one byte each
     p += 3;
   } else {
-    if ((p = core::GetVarint32Ptr(p, limit, shared)) == NULL) return NULL;
-    if ((p = core::GetVarint32Ptr(p, limit, non_shared)) == NULL) return NULL;
-    if ((p = core::GetVarint32Ptr(p, limit, value_length)) == NULL) return NULL;
+    if ((p = core::GetVarint32Ptr(p, limit, shared)) == nullptr) return nullptr;
+    if ((p = core::GetVarint32Ptr(p, limit, non_shared)) == nullptr)
+      return nullptr;
+    if ((p = core::GetVarint32Ptr(p, limit, value_length)) == nullptr)
+      return nullptr;
   }
 
   if (static_cast<uint32>(limit - p) < (*non_shared + *value_length)) {
-    return NULL;
+    return nullptr;
   }
   return p;
 }
@@ -130,23 +132,23 @@ class Block::Iter : public Iterator {
     assert(num_restarts_ > 0);
   }
 
-  virtual bool Valid() const { return current_ < restarts_; }
-  virtual Status status() const { return status_; }
-  virtual StringPiece key() const {
+  bool Valid() const override { return current_ < restarts_; }
+  Status status() const override { return status_; }
+  StringPiece key() const override {
     assert(Valid());
     return key_;
   }
-  virtual StringPiece value() const {
+  StringPiece value() const override {
     assert(Valid());
     return value_;
   }
 
-  virtual void Next() {
+  void Next() override {
     assert(Valid());
     ParseNextKey();
   }
 
-  virtual void Seek(const StringPiece& target) {
+  void Seek(const StringPiece& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
     uint32 left = 0;
@@ -158,7 +160,7 @@ class Block::Iter : public Iterator {
       const char* key_ptr =
           DecodeEntry(data_ + region_offset, data_ + restarts_, &shared,
                       &non_shared, &value_length);
-      if (key_ptr == NULL || (shared != 0)) {
+      if (key_ptr == nullptr || (shared != 0)) {
         CorruptionError();
         return;
       }
@@ -186,7 +188,7 @@ class Block::Iter : public Iterator {
     }
   }
 
-  virtual void SeekToFirst() {
+  void SeekToFirst() override {
     SeekToRestartPoint(0);
     ParseNextKey();
   }
@@ -197,7 +199,7 @@ class Block::Iter : public Iterator {
     restart_index_ = num_restarts_;
     status_ = errors::DataLoss("bad entry in block");
     key_.clear();
-    value_.clear();
+    value_ = StringPiece();
   }
 
   bool ParseNextKey() {
@@ -214,7 +216,7 @@ class Block::Iter : public Iterator {
     // Decode next entry
     uint32 shared, non_shared, value_length;
     p = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
-    if (p == NULL || key_.size() < shared) {
+    if (p == nullptr || key_.size() < shared) {
       CorruptionError();
       return false;
     } else {

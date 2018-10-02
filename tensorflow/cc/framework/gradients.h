@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
+#define TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -27,14 +27,17 @@ namespace tensorflow {
 /// derivatives of some loss function 'L' w.r.t 'outputs'), adds gradient nodes
 /// to the graph associated with 'scope', which compute (and return in
 /// 'grad_outputs') the symbolic partial derivatives of 'L' w.r.t 'inputs'.
-///
-
-// TODO(andydavis) Add overload of this function with no 'grad_inputs' arg.
-// Implementation will fill in 'OnesLike' for all shapes in 'outputs'.
 Status AddSymbolicGradients(const Scope& scope,
                             const std::vector<Output>& outputs,
                             const std::vector<Output>& inputs,
                             const std::vector<Output>& grad_inputs,
+                            std::vector<Output>* grad_outputs);
+
+// Same as above, but uses 'OnesLike' for all shapes in
+// 'outputs' as grad_inputs.
+Status AddSymbolicGradients(const Scope& scope,
+                            const std::vector<Output>& outputs,
+                            const std::vector<Output>& inputs,
                             std::vector<Output>* grad_outputs);
 
 /// Returns a sentinel Output that represents 'no gradient' (i.e. no gradient
@@ -46,4 +49,4 @@ Output NoGradient();
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_GRADIENTS_H_

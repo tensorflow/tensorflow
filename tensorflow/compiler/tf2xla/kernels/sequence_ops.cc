@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -32,7 +32,7 @@ template <typename T>
 Status GetValue(int index, XlaOpKernelContext* ctx, T* value) {
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ctx->ConstantInput(index, &literal));
-  *value = xla::LiteralUtil::Get<T>(literal, {});
+  *value = literal.Get<T>({});
   return Status::OK();
 }
 
@@ -41,10 +41,10 @@ Status GetIntValue(int index, XlaOpKernelContext* ctx, int64* value) {
   TF_RETURN_IF_ERROR(ctx->ConstantInput(index, &literal));
   switch (literal.shape().element_type()) {
     case xla::S32:
-      *value = xla::LiteralUtil::Get<int32>(literal, {});
+      *value = literal.Get<int32>({});
       break;
     case xla::S64:
-      *value = xla::LiteralUtil::Get<int64>(literal, {});
+      *value = literal.Get<int64>({});
       break;
     default:
       return errors::InvalidArgument("Invalid argument type for argument",
@@ -55,25 +55,26 @@ Status GetIntValue(int index, XlaOpKernelContext* ctx, int64* value) {
 
 // The type-specific part of the implementation of Range.
 template <typename T>
-Status CreateRangeTensor(const xla::Literal& start_literal,
-                         const xla::Literal& limit_literal,
-                         const xla::Literal& delta_literal, Tensor* output) {
-  T start = xla::LiteralUtil::Get<T>(start_literal, {});
-  T limit = xla::LiteralUtil::Get<T>(limit_literal, {});
-  T delta = xla::LiteralUtil::Get<T>(delta_literal, {});
+Status CreateRangeTensor(const xla::LiteralSlice& start_literal,
+                         const xla::LiteralSlice& limit_literal,
+                         const xla::LiteralSlice& delta_literal,
+                         Tensor* output) {
+  T start = start_literal.Get<T>({});
+  T limit = limit_literal.Get<T>({});
+  T delta = delta_literal.Get<T>({});
 
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0: ", delta);
   }
   if (delta > 0) {
     if (start > limit) {
-      return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
-                                     start, "/", limit);
+      return errors::InvalidArgument(
+          "Requires start <= limit when delta > 0: ", start, "/", limit);
     }
   } else {
     if (start < limit) {
-      return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
-                                     start, "/", limit);
+      return errors::InvalidArgument(
+          "Requires start >= limit when delta < 0: ", start, "/", limit);
     }
   }
   int64 size =
@@ -138,7 +139,11 @@ class RangeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Range", RangeOp);
+REGISTER_XLA_OP(Name("Range")
+                    .CompileTimeConstInput("start")
+                    .CompileTimeConstInput("limit")
+                    .CompileTimeConstInput("delta"),
+                RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
  public:
@@ -207,7 +212,11 @@ class LinSpaceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("LinSpace", LinSpaceOp);
+REGISTER_XLA_OP(Name("LinSpace")
+                    .CompileTimeConstInput("start")
+                    .CompileTimeConstInput("stop")
+                    .CompileTimeConstInput("num"),
+                LinSpaceOp);
 
 }  // namespace
 }  // namespace tensorflow

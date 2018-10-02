@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/session_bundle/bundle_shim.h"
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/contrib/session_bundle/test_util.h"
@@ -32,8 +33,6 @@ namespace {
 
 constexpr char kSessionBundlePath[] =
     "session_bundle/testdata/half_plus_two/00000123";
-constexpr char kSessionBundleMetaGraphFilename[] = "export.meta";
-constexpr char kSessionBundleVariablesFilename[] = "export-00000-of-00001";
 constexpr char kSavedModelBundlePath[] =
     "cc/saved_model/testdata/half_plus_two/00000123";
 
@@ -64,12 +63,16 @@ void ValidateHalfPlusTwo(const SavedModelBundle& saved_model_bundle,
 
 void LoadAndValidateSavedModelBundle(const string& export_dir,
                                      const std::unordered_set<string>& tags,
-                                     const string& signature_def_key) {
+                                     const string& signature_def_key,
+                                     bool expect_session_bundle) {
   SessionOptions session_options;
   RunOptions run_options;
   SavedModelBundle saved_model_bundle;
+  bool is_session_bundle = false;
   TF_ASSERT_OK(LoadSessionBundleOrSavedModelBundle(
-      session_options, run_options, export_dir, tags, &saved_model_bundle));
+      session_options, run_options, export_dir, tags, &saved_model_bundle,
+      &is_session_bundle));
+  EXPECT_EQ(expect_session_bundle, is_session_bundle);
   const MetaGraphDef meta_graph_def = saved_model_bundle.meta_graph_def;
   const auto& signature_def_map = meta_graph_def.signature_def();
 
@@ -494,17 +497,15 @@ TEST(BundleShimTest, DefaultAndNamedSignatureWithPredict) {
   ASSERT_FALSE(
       actual_signature_def_predict->second.inputs().find("foo-input") ==
       actual_signature_def_predict->second.inputs().end());
-  EXPECT_EQ("foo-input",
-            actual_signature_def_predict->second.inputs()
-                .find("foo-input")
-                ->second.name());
+  EXPECT_EQ("foo-input", actual_signature_def_predict->second.inputs()
+                             .find("foo-input")
+                             ->second.name());
   ASSERT_FALSE(
       actual_signature_def_predict->second.outputs().find("foo-output") ==
       actual_signature_def_predict->second.outputs().end());
-  EXPECT_EQ("foo-output",
-            actual_signature_def_predict->second.outputs()
-                .find("foo-output")
-                ->second.name());
+  EXPECT_EQ("foo-output", actual_signature_def_predict->second.outputs()
+                              .find("foo-output")
+                              ->second.name());
   EXPECT_EQ(kPredictMethodName,
             actual_signature_def_predict->second.method_name());
 }
@@ -515,7 +516,8 @@ TEST(BundleShimTest, BasicExportSessionBundle) {
   const string session_bundle_export_dir =
       test_util::TestSrcDirPath(kSessionBundlePath);
   LoadAndValidateSavedModelBundle(session_bundle_export_dir, tags,
-                                  kDefaultServingSignatureDefKey);
+                                  kDefaultServingSignatureDefKey,
+                                  /*expect_session_bundle=*/true);
 
   // Verify that the named signature is also present.
   SessionOptions session_options;
@@ -561,7 +563,8 @@ TEST(BundleShimTest, BasicExportSavedModel) {
   const string saved_model_bundle_export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kSavedModelBundlePath);
   LoadAndValidateSavedModelBundle(saved_model_bundle_export_dir,
-                                  {kSavedModelTagServe}, "regress_x_to_y");
+                                  {kSavedModelTagServe}, "regress_x_to_y",
+                                  /*expect_session_bundle=*/false);
 }
 
 // Checks a basic load fails with an invalid export path.

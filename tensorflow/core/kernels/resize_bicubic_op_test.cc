@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -34,9 +35,9 @@ class ResizeBicubicOpTest : public OpsTestBase {
     TF_EXPECT_OK(InitOp());
   }
 
-  const Tensor* AddRandomImageInput(const TensorShape& shape) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
+  const Tensor* SetRandomImageInput(const TensorShape& shape) {
+    inputs_.clear();
+
     CHECK_EQ(shape.dims(), 4) << "All images must have 4 dimensions.";
     bool is_ref = IsRefType(input_types_[inputs_.size()]);
     Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
@@ -80,7 +81,7 @@ class ResizeBicubicOpTest : public OpsTestBase {
 
   // Used in the baseline implementation
   inline int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(0ll, val));
+    return std::min(limit - 1ll, std::max(int64{0}, val));
   }
 
   // Used in the baseline implementation
@@ -155,16 +156,22 @@ class ResizeBicubicOpTest : public OpsTestBase {
   }
 
  protected:
-  void RunRandomTest(const int64 in_height, const int64 in_width) {
-    const Tensor* input =
-        AddRandomImageInput(TensorShape({1, in_height, in_width, 1}));
-    AddInputFromArray<int32>(TensorShape({2}), {299, 299});
+  void RunRandomTest(const int batch_size, const int64 in_height,
+                     const int64 in_width, const int target_height,
+                     const int target_width, int channels) {
+    LOG(INFO) << "Running random test " << in_height << "x" << in_width << "x"
+              << channels << " to " << target_height << "x" << target_width
+              << "x" << channels;
+    const Tensor* input = SetRandomImageInput(
+        TensorShape({batch_size, in_height, in_width, channels}));
+    AddInputFromArray<int32>(TensorShape({2}), {target_height, target_width});
 
     TF_ASSERT_OK(RunOpKernel());
 
-    std::unique_ptr<Tensor> expected(
-        new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                   DataTypeToEnum<float>::v(), TensorShape({1, 299, 299, 1})));
+    std::unique_ptr<Tensor> expected(new Tensor(
+        device_->GetAllocator(AllocatorAttributes()),
+        DataTypeToEnum<float>::v(),
+        TensorShape({batch_size, target_height, target_width, channels})));
 
     ResizeBicubicBaseline(input->tensor<float, 4>(),
                           expected->tensor<float, 4>());
@@ -174,6 +181,21 @@ class ResizeBicubicOpTest : public OpsTestBase {
     // some slight floating point inaccuracies. We thus ensure we're within
     // 0.00001 of the previous implementation.
     test::ExpectTensorNear<float>(*expected, *GetOutput(0), 0.00001);
+  }
+
+  void RunManyRandomTests(int channels) {
+    for (int batch_size : {1, 2, 5}) {
+      for (int in_w : {2, 4, 7, 20, 165}) {
+        for (int in_h : {1, 3, 5, 8, 100, 233}) {
+          for (int target_height : {1, 2, 3, 50, 113}) {
+            for (int target_width : {target_height, target_height / 2 + 1}) {
+              RunRandomTest(batch_size, in_h, in_w, target_height, target_width,
+                            channels);
+            }
+          }
+        }
+      }
+    }
   }
 };
 
@@ -197,32 +219,47 @@ TEST_F(ResizeBicubicOpTest, TestBicubic2x2To0x0) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
 
   Status s = RunOpKernel();
-  EXPECT_TRUE(
-      StringPiece(s.ToString())
-          .contains("Invalid argument: output dimensions must be positive"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(), "Invalid argument: output dimensions must be positive"))
       << s;
 }
 
 TEST_F(ResizeBicubicOpTest, TestBicubicRandom141x186) {
-  RunRandomTest(141, 186);
+  RunRandomTest(2, 141, 186, 299, 299, 1 /* channels */);
+  RunRandomTest(2, 141, 186, 299, 299, 3 /* channels */);
 }
 
 TEST_F(ResizeBicubicOpTest, TestBicubicRandom183x229) {
-  RunRandomTest(183, 229);
+  RunRandomTest(2, 183, 229, 299, 299, 1 /* channels */);
+  RunRandomTest(2, 183, 229, 299, 299, 3 /* channels */);
 }
 
 TEST_F(ResizeBicubicOpTest, TestBicubicRandom749x603) {
-  RunRandomTest(749, 603);
+  RunRandomTest(2, 749, 603, 299, 299, 1 /* channels */);
+  RunRandomTest(2, 749, 603, 299, 299, 3 /* channels */);
 }
 
-static Graph* ResizeBicubic(int batch_size, int size, int channels) {
+TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes1Channel) {
+  RunManyRandomTests(1);
+}
+
+TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes3Channels) {
+  RunManyRandomTests(3);
+}
+
+TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes4Channels) {
+  RunManyRandomTests(4);
+}
+
+static Graph* ResizeBicubic(int batch_size, int size, int channels,
+                            float scale_y = 0.3, float scale_x = 0.7) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor input(DT_FLOAT, TensorShape({batch_size, size, size, channels}));
   input.flat<float>().setRandom();
   Tensor shape(DT_INT32, TensorShape({2}));
   auto shape_t = shape.flat<int32>();
-  shape_t(0) = 0.3 * size;
-  shape_t(1) = 0.7 * size;
+  shape_t(0) = scale_y * size;
+  shape_t(1) = scale_x * size;
   test::graph::Binary(g, "ResizeBicubic", test::graph::Constant(g, input),
                       test::graph::Constant(g, shape));
   return g;
@@ -248,5 +285,19 @@ BM_ResizeBicubicDev(32, 32, 3);
 BM_ResizeBicubicDev(32, 128, 3);
 BM_ResizeBicubicDev(32, 512, 3);
 BM_ResizeBicubicDev(32, 1024, 3);
+
+#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                         \
+  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(         \
+      int iters) {                                                            \
+    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * SIZE * SIZE * \
+                            CHANNELS * 8 * 8);                                \
+    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8))        \
+        .Run(iters);                                                          \
+  }                                                                           \
+  BENCHMARK(BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS);
+
+BM_ResizeBicubicExpand(12, 48, 1);
+BM_ResizeBicubicExpand(12, 48, 3);
+BM_ResizeBicubicExpand(12, 48, 40);
 
 }  // end namespace tensorflow

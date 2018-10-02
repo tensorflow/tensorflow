@@ -23,18 +23,15 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/ndlstm",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "@six_archive//:six",
     ],
 )
 
@@ -47,6 +44,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
 )
@@ -61,16 +59,4 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

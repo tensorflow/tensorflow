@@ -1,0 +1,63 @@
+upper_tabs:
+# Tabs left of dropdown menu
+- include: /_upper_tabs_left.yaml
+- include: /versions/_upper_tabs_versions.yaml
+# Dropdown menu
+- name: Ecosystem
+  path: /ecosystem
+  is_default: true
+  menu:
+  - include: /ecosystem/_menu_toc.yaml
+  lower_tabs:
+    # Subsite tabs
+    other:
+    - name: Guide
+      contents:
+      - title: Overview
+        path: /lite/overview
+      - title: Developer guide
+        path: /lite/devguide
+      - title: Android demo app
+        path: /lite/demo_android
+      - title: iOS demo app
+        path: /lite/demo_ios
+      - title: Performance
+        path: /lite/performance
+      - break: true
+      - title: TensorFlow Lite APIs
+        path: /lite/apis
+      - title: Custom operators
+        path: /lite/custom_operators
+      - title: TensorFlow Lite ops versioning
+        path: /lite/ops_versioning
+      - title: TensorFlow Lite compatibility guide
+        path: /lite/tf_ops_compatibility
+      - title: List of hosted models
+        path: /lite/models
+      - title: TensorFlow Lite for iOS
+        path: /lite/ios
+      - title: TensorFlow Lite for Raspberry Pi
+        path: /lite/rpi
+
+      - title: TF Mobile
+        style: accordion
+        status: deprecated
+        section:
+        - title: Overview
+          path: /lite/tfmobile/
+        - title: Building TensorFlow on Android
+          path: /lite/tfmobile/android_build
+        - title: Building TensorFlow on IOS
+          path: /lite/tfmobile/ios_build
+        - title: Integrating TensorFlow libraries
+          path: /lite/tfmobile/linking_libs
+        - title: Preparing models for mobile deployment
+          path: /lite/tfmobile/prepare_models
+        - title: Optimizing for mobile
+          path: /lite/tfmobile/optimizing
+
+    - name: API
+      skip_translation: true
+      contents:
+      - title: API
+        path: /api_docs/python/tf/contrib/lite

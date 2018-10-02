@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "FixedLengthRecordReaderV2"
+  visibility: HIDDEN
+}

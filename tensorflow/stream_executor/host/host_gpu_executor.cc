@@ -19,16 +19,14 @@ limitations under the License.
 
 #include <string.h>
 
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 
-namespace gpu = ::perftools::gputools;
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostStream *AsHostStream(Stream *stream) {
@@ -95,7 +93,7 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   // the nature of the HostExecutor) memcpy  on the stream (HostStream)
   // associated with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
-      [src_mem, dst_mem, size]() { memcpy(src_mem, dst_mem, size); });
+      [src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
   return true;
 }
 
@@ -161,7 +159,7 @@ void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { other->BlockHostUntilDone(); });
+      [other]() { SE_CHECK_OK(other->BlockHostUntilDone()); });
   AsHostStream(dependent)->BlockUntilDone();
   return true;
 }
@@ -176,9 +174,9 @@ bool HostExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-bool HostExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status HostExecutor::BlockHostUntilDone(Stream *stream) {
   AsHostStream(stream)->BlockUntilDone();
-  return true;
+  return port::Status::OK();
 }
 
 DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
@@ -190,7 +188,9 @@ DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
 
-  builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
+  float cycle_counter_frequency = static_cast<float>(
+      tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
+  builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
   auto built = builder.Build();
   return built.release();
@@ -260,5 +260,4 @@ rng::RngSupport *HostExecutor::CreateRng() {
 }
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

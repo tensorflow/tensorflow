@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_BOUNDS_CHECK_H_
-#define TENSORFLOW_UTIL_BOUNDS_CHECK_H_
+#ifndef TENSORFLOW_CORE_KERNELS_BOUNDS_CHECK_H_
+#define TENSORFLOW_CORE_KERNELS_BOUNDS_CHECK_H_
 
 #include <type_traits>
 
@@ -48,7 +48,7 @@ EIGEN_ALWAYS_INLINE EIGEN_DEVICE_FUNC const T SubtleMustCopy(const T &x) {
   auto *to_x = reinterpret_cast<const volatile T *>(&x);
   return *to_x;
 }
-}  // namespace tensorflow::internal
+}  // namespace internal
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_BOUNDS_CHECK_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BOUNDS_CHECK_H_

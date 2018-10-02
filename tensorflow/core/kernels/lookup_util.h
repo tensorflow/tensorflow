@@ -40,6 +40,12 @@ Status GetInitializableLookupTable(const string& input_name,
 // table's data types.
 Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
                            DataType value_dtype, const string& table_name);
+
+Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
+                                   char delimiter, int32 key_index,
+                                   int32 value_index, Env* env,
+                                   InitializableLookupTable* table);
+
 }  // namespace lookup
 }  // namespace tensorflow
 

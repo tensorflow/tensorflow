@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -123,8 +124,8 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     io::ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
-    path.Consume("/");
-    *parsed_path = path.ToString();
+    str_util::ConsumePrefix(&path, "/");
+    *parsed_path = string(path);
   }
 
   std::map<string, std::set<string>> celestial_bodies_ = {
@@ -159,14 +160,15 @@ string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
     std::sort(results.begin(), results.end());
     for (const string& result : results) {
       StringPiece trimmed_result(result);
-      EXPECT_TRUE(trimmed_result.Consume(strings::StrCat(kPrefix, "/")));
+      EXPECT_TRUE(str_util::ConsumePrefix(&trimmed_result,
+                                          strings::StrCat(kPrefix, "/")));
       trimmed_results.push_back(trimmed_result);
     }
     return str_util::Join(trimmed_results, ",");
   }
 }
 
-TEST(TestFileSystem, IPFSMatch) {
+TEST(InterPlanetaryFileSystemTest, IPFSMatch) {
   InterPlanetaryFileSystem ipfs;
   EXPECT_EQ(Match(&ipfs, "thereisnosuchfile"), "");
   EXPECT_EQ(Match(&ipfs, "*"),
@@ -183,7 +185,7 @@ TEST(TestFileSystem, IPFSMatch) {
   EXPECT_EQ(Match(&ipfs, "Planet?"), "Planet0,Planet1");
 }
 
-TEST(TestFileSystem, MatchSimple) {
+TEST(InterPlanetaryFileSystemTest, MatchSimple) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-00")));
   TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "match-0a")));
@@ -199,7 +201,7 @@ TEST(TestFileSystem, MatchSimple) {
 
 // Create 2 directories abcd and evil_directory. Look for abcd and make sure
 // that evil_directory isn't accessed.
-TEST(TestFileSystem, MatchOnlyNeeded) {
+TEST(InterPlanetaryFileSystemTest, MatchOnlyNeeded) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "abcd")));
   TF_EXPECT_OK(ipfs.CreateDir(io::JoinPath(kPrefix, "evil_directory")));
@@ -207,7 +209,7 @@ TEST(TestFileSystem, MatchOnlyNeeded) {
   EXPECT_EQ(Match(&ipfs, "abcd"), "abcd");
 }
 
-TEST(TestFileSystem, MatchDirectory) {
+TEST(InterPlanetaryFileSystemTest, MatchDirectory) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
       ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/x")));
@@ -228,7 +230,7 @@ TEST(TestFileSystem, MatchDirectory) {
   EXPECT_EQ(Match(&ipfs, "match-?[^a]/abc/x"), "match-00/abc/x,match-01/abc/x");
 }
 
-TEST(TestFileSystem, MatchMultipleWildcards) {
+TEST(InterPlanetaryFileSystemTest, MatchMultipleWildcards) {
   InterPlanetaryFileSystem ipfs;
   TF_EXPECT_OK(
       ipfs.RecursivelyCreateDir(io::JoinPath(kPrefix, "match-00/abc/00")));
@@ -249,7 +251,7 @@ TEST(TestFileSystem, MatchMultipleWildcards) {
             "match-00/abc/00,match-00/abc/01,match-01/abc/00,match-01/abc/04");
 }
 
-TEST(TestFileSystem, RecursivelyCreateAlreadyExistingDir) {
+TEST(InterPlanetaryFileSystemTest, RecursivelyCreateAlreadyExistingDir) {
   InterPlanetaryFileSystem ipfs;
   const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
   TF_EXPECT_OK(ipfs.RecursivelyCreateDir(dirname));
@@ -257,6 +259,38 @@ TEST(TestFileSystem, RecursivelyCreateAlreadyExistingDir) {
   // actually tests the behavior of RecursivelyCreateDir.
   EXPECT_EQ(ipfs.CreateDir(dirname).code(), tensorflow::error::ALREADY_EXISTS);
   TF_EXPECT_OK(ipfs.RecursivelyCreateDir(dirname));
+}
+
+// A simple file system with a root directory and a single file underneath it.
+class TestFileSystem : public NullFileSystem {
+ public:
+  // Only allow for a single root directory.
+  Status IsDirectory(const string& dirname) override {
+    if (dirname == "." || dirname.empty()) {
+      return Status::OK();
+    }
+    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+  }
+
+  // Simulating a FS with a root dir and a single file underneath it.
+  Status GetChildren(const string& dir, std::vector<string>* result) override {
+    if (dir == "." || dir.empty()) {
+      result->push_back("test");
+    }
+    return Status::OK();
+  }
+};
+
+// Making sure that ./<pattern> and <pattern> have the same result.
+TEST(TestFileSystemTest, RootDirectory) {
+  TestFileSystem fs;
+  std::vector<string> results;
+  auto ret = fs.GetMatchingPaths("./te*", &results);
+  EXPECT_EQ(1, results.size());
+  EXPECT_EQ("./test", results[0]);
+  ret = fs.GetMatchingPaths("te*", &results);
+  EXPECT_EQ(1, results.size());
+  EXPECT_EQ("./test", results[0]);
 }
 
 }  // namespace tensorflow

@@ -17,18 +17,19 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 
-#include "external/llvm/include/llvm/IR/LLVMContext.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IRReader/IRReader.h"
-#include "external/llvm/include/llvm/Support/SourceMgr.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace {
 
 static void DieWithSMDiagnosticError(llvm::SMDiagnostic* diagnostic) {
-  LOG(FATAL) << diagnostic->getLineNo() << ":" << diagnostic->getColumnNo()
+  LOG(FATAL) << diagnostic->getFilename().str() << ":"
+             << diagnostic->getLineNo() << ":" << diagnostic->getColumnNo()
              << ": " << diagnostic->getMessage().str();
 }
 
@@ -51,14 +52,13 @@ std::unique_ptr<llvm::Module> LoadIRModule(const string& filename,
   return module;
 }
 
-string ReplaceFilenameExtension(tensorflow::StringPiece filename,
-                                tensorflow::StringPiece new_extension) {
+string ReplaceFilenameExtension(absl::string_view filename,
+                                absl::string_view new_extension) {
   auto pos = filename.rfind('.');
-  tensorflow::StringPiece stem =
-      pos == tensorflow::StringPiece::npos
-          ? filename
-          : tensorflow::StringPiece(filename.data(), pos);
-  return tensorflow::strings::StrCat(stem, ".", new_extension);
+  absl::string_view stem = pos == absl::string_view::npos
+                               ? filename
+                               : absl::string_view(filename.data(), pos);
+  return absl::StrCat(stem, ".", new_extension);
 }
 
 }  // namespace gpu

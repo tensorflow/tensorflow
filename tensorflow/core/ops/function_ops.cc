@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 
-REGISTER_OP("_Arg")
+REGISTER_SYSTEM_OP("_Arg")
     .Output("output: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
@@ -34,7 +35,7 @@ output: The argument.
 index: This argument is the index-th argument of the function.
 )doc");
 
-REGISTER_OP("_Retval")
+REGISTER_SYSTEM_OP("_Retval")
     .Input("input: T")
     .Attr("T: type")
     .Attr("index: int >= 0")
@@ -55,6 +56,7 @@ REGISTER_OP("_ListToArray")
     .Attr("Tin: list(type)")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Converts a list of tensors to an array of tensors.
 )doc");
@@ -65,6 +67,7 @@ REGISTER_OP("_ArrayToList")
     .Attr("T: type")
     .Attr("N: int >= 1")
     .Attr("out_types: list(type)")
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Converts an array of tensors to a list of tensors.
 )doc");

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
-#define TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
 
 #include "tensorflow/core/kernels/typed_conditional_accumulator_base.h"
 
@@ -50,10 +50,10 @@ class SparseConditionalAccumulator
  public:
   SparseConditionalAccumulator(const DataType& dtype,
                                const PartialTensorShape& shape,
-                               const string& name)
+                               const string& name, const string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
-            dtype, shape, name) {
+            dtype, shape, name, reduction_type) {
     accum_idx_vec_ = nullptr;
     count_element_ = nullptr;
     accum_val_ = nullptr;
@@ -172,8 +172,10 @@ class SparseConditionalAccumulator
     }
 
     // Assign values to accum_val_tensor
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     ctx->allocate_persistent(dtype_, grad_val->shape(), accum_val_persistent_,
-                             &accum_val_);
+                             &accum_val_)
+        .IgnoreError();
     accum_val_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad_val->flat<T>();
 
@@ -457,4 +459,4 @@ class SparseConditionalAccumulator
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_

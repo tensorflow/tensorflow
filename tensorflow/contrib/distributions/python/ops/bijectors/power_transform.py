@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -41,9 +42,16 @@ class PowerTransform(bijector.Bijector):
   This bijector is equivalent to the `Exp` bijector when `c=0`.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                power=0.,
-               event_ndims=0,
                validate_args=False,
                name="power_transform"):
     """Instantiates the `PowerTransform` bijector.
@@ -51,8 +59,6 @@ class PowerTransform(bijector.Bijector):
     Args:
       power: Python `float` scalar indicating the transform power, i.e.,
         `Y = g(X) = (1 + X * c)**(1 / c)` where `c` is the `power`.
-      event_ndims: Python scalar indicating the number of dimensions associated
-        with a particular draw from the distribution.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
@@ -70,7 +76,7 @@ class PowerTransform(bijector.Bijector):
       raise ValueError("`power` must be a non-negative TF constant.")
     self._power = power
     super(PowerTransform, self).__init__(
-        event_ndims=event_ndims,
+        forward_min_event_ndims=0,
         validate_args=validate_args,
         name=name)
 
@@ -83,33 +89,27 @@ class PowerTransform(bijector.Bijector):
     x = self._maybe_assert_valid_x(x)
     if self.power == 0.:
       return math_ops.exp(x)
-    # TODO(jvdillon): If large x accuracy is an issue, consider using
+    # If large x accuracy is an issue, consider using:
     # (1. + x * self.power)**(1. / self.power) when x >> 1.
     return math_ops.exp(math_ops.log1p(x * self.power) / self.power)
 
-  def _inverse_and_inverse_log_det_jacobian(self, y):
+  def _inverse(self, y):
     y = self._maybe_assert_valid_y(y)
-    event_dims = self._event_dims_tensor(y)
     if self.power == 0.:
-      x = math_ops.log(y)
-      ildj = -math_ops.reduce_sum(x, axis=event_dims)
-      return x, ildj
-    # TODO(jvdillon): If large y accuracy is an issue, consider using
+      return math_ops.log(y)
+    # If large y accuracy is an issue, consider using:
     # (y**self.power - 1.) / self.power when y >> 1.
-    x = math_ops.expm1(math_ops.log(y) * self.power) / self.power
-    ildj = (self.power - 1.) * math_ops.reduce_sum(
-        math_ops.log(y),
-        axis=event_dims)
-    return x, ildj
+    return math_ops.expm1(math_ops.log(y) * self.power) / self.power
+
+  def _inverse_log_det_jacobian(self, y):
+    y = self._maybe_assert_valid_y(y)
+    return (self.power - 1.) * math_ops.log(y)
 
   def _forward_log_det_jacobian(self, x):
     x = self._maybe_assert_valid_x(x)
-    event_dims = self._event_dims_tensor(x)
     if self.power == 0.:
-      return math_ops.reduce_sum(x, axis=event_dims)
-    return (1. / self.power - 1.) * math_ops.reduce_sum(
-        math_ops.log1p(x * self.power),
-        axis=event_dims)
+      return x
+    return (1. / self.power - 1.) * math_ops.log1p(x * self.power)
 
   def _maybe_assert_valid_x(self, x):
     if not self.validate_args or self.power == 0.:

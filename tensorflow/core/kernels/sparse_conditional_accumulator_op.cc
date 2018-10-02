@@ -34,8 +34,8 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
   Creator GetCreator() const override {
     return [this](ConditionalAccumulatorBase** ret) {
       SparseConditionalAccumulator<Device, T>* accumulator =
-          new SparseConditionalAccumulator<Device, T>(dtype_, shape_,
-                                                      cinfo_.name());
+          new SparseConditionalAccumulator<Device, T>(
+              dtype_, shape_, cinfo_.name(), reduction_type_);
       *ret = accumulator;
       return Status::OK();
     };
@@ -103,8 +103,9 @@ class SparseAccumulatorTakeGradientOp
                       DoneCallback callback) override {
     // Check signature
     OP_REQUIRES_OK_ASYNC(
-        ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
-                                 {DT_INT64, accumulator->dtype(), DT_INT64}),
+        ctx,
+        ctx->MatchSignature({DT_STRING_REF, DT_INT32},
+                            {DT_INT64, accumulator->dtype(), DT_INT64}),
         callback);
   }
 

@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLUGIN_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLUGIN_H_
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // A plugin ID is a unique identifier for each registered plugin type.
 typedef void* PluginId;
@@ -49,7 +48,7 @@ enum class PluginKind {
 //
 // A PluginConfig may be passed to the StreamExecutor constructor - the plugins
 // described therein will be used to provide BLAS, DNN, FFT, and RNG
-// functionality. Platform-approprate defaults will be used for any un-set
+// functionality. Platform-appropriate defaults will be used for any un-set
 // libraries. If a platform does not support a specified plugin (ex. cuBLAS on
 // an OpenCL executor), then an error will be logged and no plugin operations
 // will succeed.
@@ -83,7 +82,6 @@ class PluginConfig {
   PluginId blas_, dnn_, fft_, rng_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLUGIN_H_

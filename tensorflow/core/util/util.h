@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_UTIL_H_
-#define TENSORFLOW_UTIL_UTIL_H_
+#ifndef TENSORFLOW_CORE_UTIL_UTIL_H_
+#define TENSORFLOW_CORE_UTIL_UTIL_H_
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -49,7 +49,7 @@ class MovingAverage {
 
 // Returns a string printing bytes in ptr[0..n).  The output looks
 // like "00 01 ef cd cd ef".
-string PrintMemory(const char* ptr, int n);
+string PrintMemory(const char* ptr, size_t n);
 
 // Given a flattened index into a tensor, computes a string s so that
 // StrAppend("tensor", s) is a Python indexing expression.  E.g.,
@@ -58,4 +58,4 @@ string SliceDebugString(const TensorShape& shape, const int64 flat);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_UTIL_H_
+#endif  // TENSORFLOW_CORE_UTIL_UTIL_H_

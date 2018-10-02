@@ -1,6 +1,8 @@
 # Description:
 #   TensorFlow camera demo app for Android.
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -29,13 +31,14 @@ cc_binary(
     defines = ["STANDALONE_DEMO_LIB"],
     linkopts = [
         "-landroid",
+        "-ldl",
         "-ljnigraphics",
         "-llog",
         "-lm",
         "-z defs",
         "-s",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
-        LINKER_SCRIPT,
+        "$(location {})".format(LINKER_SCRIPT),
     ],
     linkshared = 1,
     linkstatic = 1,
@@ -43,7 +46,9 @@ cc_binary(
         "manual",
         "notap",
     ],
-    deps = [LINKER_SCRIPT],
+    deps = [
+        LINKER_SCRIPT,
+    ],
 )
 
 cc_library(
@@ -63,13 +68,12 @@ android_binary(
     srcs = glob([
         "src/**/*.java",
     ]),
+    aapt_version = "aapt",
     # Package assets from assets dir as well as all model targets. Remove undesired models
     # (and corresponding Activities in source) to reduce APK size.
     assets = [
         "//tensorflow/examples/android/assets:asset_files",
-        "@inception5h//:model_files",
-        "@mobile_multibox//:model_files",
-        "@stylize//:model_files",
+        ":external_assets",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.demo",
@@ -86,21 +90,17 @@ android_binary(
     ],
 )
 
+# LINT.IfChange
 filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-            "gradleBuild/**",
-            "libs/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+    name = "external_assets",
+    srcs = [
+        "@inception_v1//:model_files",
+        "@mobile_ssd//:model_files",
+        "@speech_commands//:model_files",
+        "@stylize//:model_files",
+    ],
 )
+# LINT.ThenChange(//tensorflow/examples/android/download-models.gradle)
 
 filegroup(
     name = "java_files",

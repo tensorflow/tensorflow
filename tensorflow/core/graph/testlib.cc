@@ -16,37 +16,19 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 
 #include <vector>
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-
-// HostConst: forced to generate output on the host.
-// Only used by testlib; no op is registered for this kernel
-// externally (i.e., in array_ops.cc)
-REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
-
-// Register the HostConst Op
-// Returns a constant tensor on the host.  Useful for writing C++ tests
-// and benchmarks which run on GPU but require arguments pinned to the host.
-// Used by test::graph::HostConstant.
-// value: Attr `value` is the tensor to return.
-REGISTER_OP("HostConst")
-    .Output("output: dtype")
-    .Attr("value: tensor")
-    .Attr("dtype: type");
-
 namespace test {
 namespace graph {
 
@@ -268,6 +250,16 @@ Node* Reverse(Graph* g, Node* tensor, Node* axis) {
   return Binary(g, "ReverseV2", tensor, axis);
 }
 
+Node* Roll(Graph* g, Node* input, Node* shift, Node* axis) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Roll", g->op_registry())
+                  .Input(input)
+                  .Input(shift)
+                  .Input(axis)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Error(Graph* g, Node* input, const string& errmsg) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Error")
@@ -416,29 +408,12 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   return ret;
 }
 
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1) {
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastArgs")
-                  .Input(s0)
-                  .Input(s1)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BroadcastGradientArgs")
-                  .Input(s0)
-                  .Input(s1)
-                  .Finalize(g, &ret));
-  return ret;
-}
-
-Node* Gather(Graph* g, Node* in0, Node* in1) {
-  Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Gather")
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GatherV2")
                   .Input(in0)
                   .Input(in1)
+                  .Input(axis)
                   .Finalize(g, &ret));
   return ret;
 }
@@ -488,6 +463,51 @@ Node* Conv2D(Graph* g, Node* in0, Node* in1) {
                   .Attr("T", DT_FLOAT)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Diag(Graph* g, Node* in, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Diag")
+                  .Input(in)
+                  .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* DiagPart(Graph* g, Node* in, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "DiagPart")
+                  .Input(in)
+                  .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* CheckNumerics(Graph* g, Node* in, const string& message) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "CheckNumerics")
+                  .Input(in)
+                  .Attr("message", message)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Arg(Graph* g, int64 index, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Arg")
+                  .Attr("T", type)
+                  .Attr("index", index)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Retval(Graph* g, int64 index, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Retval")
+                  .Input(in)
+                  .Attr("index", index)
                   .Finalize(g, &ret));
   return ret;
 }

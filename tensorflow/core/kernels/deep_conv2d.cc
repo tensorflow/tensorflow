@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// DeepConv2D is a Conv2D implementation specialzied for deep convolutions (i.e
+// DeepConv2D is a Conv2D implementation specialized for deep convolutions (i.e
 // large 'in_depth' and 'out_depth' product. See cost models below for details).
 //
 // DeepConv2D is implemented by computing the following equation:
@@ -120,9 +120,9 @@ bool CanUseDeepConv2D(int stride_rows, int stride_cols, int filter_rows,
 
   VLOG(2) << "CanUseDeepConv2D"
           << " deep_conv_cost: " << deep_conv_cost
-          << " direct_conv_cost: " << direct_conv_cost
-          << " deep_direct_ratio: " << (static_cast<float>(deep_conv_cost) /
-                                        static_cast<float>(direct_conv_cost))
+          << " direct_conv_cost: " << direct_conv_cost << " deep_direct_ratio: "
+          << (static_cast<float>(deep_conv_cost) /
+              static_cast<float>(direct_conv_cost))
           << " use_deep_conv: " << (deep_conv_cost < direct_conv_cost);
   return deep_conv_cost < direct_conv_cost;
 }
@@ -294,11 +294,11 @@ struct TransformFilterRange {
 
     // Compute number of filter shards.
     const int64 residual_row =
-        std::max(0LL, args.filter_rows - base_filter_rows);
+        std::max(int64{0}, args.filter_rows - base_filter_rows);
     const int64 shard_rows = 1 + (residual_row + 2 - 1) / 2;
 
     const int64 residual_col =
-        std::max(0LL, args.filter_cols - base_filter_cols);
+        std::max(int64{0}, args.filter_cols - base_filter_cols);
     const int64 shard_cols = 1 + (residual_col + 2 - 1) / 2;
 
     // Compute strides to be used for input and output IO.
@@ -416,8 +416,9 @@ struct TransformFilters {
         filter_total_size + filter_transform_buffer_size + filter_out_buf_size;
 
     // Remove fixed cost and divide by per-filter cost.
-    const int64 num_filters_cache = std::max(
-        1LL, (cache_size - filter_transform_matrix_size) / per_filter_cost);
+    const int64 num_filters_cache =
+        std::max(int64{1},
+                 (cache_size - filter_transform_matrix_size) / per_filter_cost);
     const int64 num_filters_transform = std::min(out_depth, num_filters_cache);
 
     // Allocate buffer for filter transform matrix:
@@ -953,11 +954,11 @@ struct DeepConv2D<CPUDevice, T> {
     const int64 base_filter_rows = transform->filter_shape().rows;
 
     const int64 filter_residual_row =
-        std::max(0LL, args.filter_rows - base_filter_rows);
+        std::max(int64{0}, args.filter_rows - base_filter_rows);
     const int64 filter_shards_row = 1 + (filter_residual_row + 2 - 1) / 2;
 
     const int64 filter_residual_col =
-        std::max(0LL, args.filter_cols - base_filter_rows);
+        std::max(int64{0}, args.filter_cols - base_filter_rows);
     const int64 filter_shards_col = 1 + (filter_residual_col + 2 - 1) / 2;
 
     // Allocate buffer for transformed filters.
@@ -1047,8 +1048,8 @@ struct DeepConv2D<CPUDevice, T> {
           buffer1_per_tile_size + buffer2_per_tile_size +
           packed_tile_per_tile_size + gemm_out_per_tile_size;
 
-      const int64 num_tiles_cache =
-          std::max(4LL, (cache_size - total_fixed_cost) / total_per_tile_cost);
+      const int64 num_tiles_cache = std::max(
+          int64{4}, (cache_size - total_fixed_cost) / total_per_tile_cost);
       const int64 num_tiles = std::min(num_tiles_cache, col_tiles);
 
       // Allocate temporary buffer 'buffer1', which is first used for copying
@@ -1069,7 +1070,7 @@ struct DeepConv2D<CPUDevice, T> {
       // Allocate temporary buffer 'buffer2', which is first used for
       // transformed input tiles, then re-used for transformed output tiles.
       // Calculate required buffer size for 'buffer2' as max required buffer
-      // between input and output tranform buffer sizes.
+      // between input and output transform buffer sizes.
       const int64 buffer2_tile_transform_size =
           tile_spatial_size * num_tiles * in_depth;
       const int64 buffer2_out_transform_size =

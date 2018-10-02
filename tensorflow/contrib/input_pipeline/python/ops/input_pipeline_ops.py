@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import random
 
+from tensorflow.contrib.input_pipeline.ops import gen_input_pipeline_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -42,7 +43,7 @@ def obtain_next(string_list_tensor, counter):
     An op that produces the element at counter + 1 in the list, round
     robin style.
   """
-  return _input_pipeline_ops.obtain_next(string_list_tensor, counter)
+  return gen_input_pipeline_ops.obtain_next(string_list_tensor, counter)
 
 
 def _maybe_randomize_list(string_list, shuffle):
@@ -54,7 +55,7 @@ def _maybe_randomize_list(string_list, shuffle):
 def _create_list(string_list, shuffle, seed, num_epochs):
   if shuffle and seed:
     random.seed(seed)
-  expanded_list = _maybe_randomize_list(string_list, shuffle)
+  expanded_list = _maybe_randomize_list(string_list, shuffle)[:]
   if num_epochs:
     for _ in range(num_epochs - 1):
       expanded_list.extend(_maybe_randomize_list(string_list, shuffle))
@@ -88,18 +89,21 @@ def seek_next(string_list, shuffle=False, seed=None, num_epochs=None):
         name="obtain_next_counter",
         initializer=constant_op.constant(
             -1, dtype=dtypes.int64),
-        dtype=dtypes.int64)
+        dtype=dtypes.int64,
+        trainable=False)
     with ops.colocate_with(counter):
       string_tensor = variable_scope.get_variable(
           name="obtain_next_expanded_list",
           initializer=constant_op.constant(expanded_list),
-          dtype=dtypes.string)
+          dtype=dtypes.string,
+          trainable=False)
     if num_epochs:
       filename_counter = variable_scope.get_variable(
           name="obtain_next_filename_counter",
           initializer=constant_op.constant(
               0, dtype=dtypes.int64),
-          dtype=dtypes.int64)
+          dtype=dtypes.int64,
+          trainable=False)
       c = filename_counter.count_up_to(len(expanded_list))
       with ops.control_dependencies([c]):
         return obtain_next(string_tensor, counter)

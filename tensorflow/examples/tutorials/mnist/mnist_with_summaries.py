@@ -14,7 +14,7 @@
 # ==============================================================================
 """A simple MNIST classifier which displays summaries in TensorBoard.
 
- This is an unimpressive MNIST model, but it is a good example of using
+This is an unimpressive MNIST model, but it is a good example of using
 tf.name_scope to make a graph legible in the TensorBoard graph explorer, and of
 naming summary tags so that they are grouped meaningfully in TensorBoard.
 
@@ -25,6 +25,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import sys
 
 import tensorflow as tf
@@ -37,7 +38,6 @@ FLAGS = None
 def train():
   # Import data
   mnist = input_data.read_data_sets(FLAGS.data_dir,
-                                    one_hot=True,
                                     fake_data=FLAGS.fake_data)
 
   sess = tf.InteractiveSession()
@@ -46,7 +46,7 @@ def train():
   # Input placeholders
   with tf.name_scope('input'):
     x = tf.placeholder(tf.float32, [None, 784], name='x-input')
-    y_ = tf.placeholder(tf.float32, [None, 10], name='y-input')
+    y_ = tf.placeholder(tf.int64, [None], name='y-input')
 
   with tf.name_scope('input_reshape'):
     image_shaped_input = tf.reshape(x, [-1, 28, 28, 1])
@@ -78,7 +78,7 @@ def train():
   def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
     """Reusable code for making a simple neural net layer.
 
-    It does a matrix multiply, bias add, and then uses relu to nonlinearize.
+    It does a matrix multiply, bias add, and then uses ReLU to nonlinearize.
     It also sets up name scoping so that the resultant graph is easy to read,
     and adds a number of summary ops.
     """
@@ -116,12 +116,12 @@ def train():
     #
     # can be numerically unstable.
     #
-    # So here we use tf.nn.softmax_cross_entropy_with_logits on the
-    # raw outputs of the nn_layer above, and then average across
+    # So here we use tf.losses.sparse_softmax_cross_entropy on the
+    # raw logit outputs of the nn_layer above, and then average across
     # the batch.
-    diff = tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y)
     with tf.name_scope('total'):
-      cross_entropy = tf.reduce_mean(diff)
+      cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+          labels=y_, logits=y)
   tf.summary.scalar('cross_entropy', cross_entropy)
 
   with tf.name_scope('train'):
@@ -130,12 +130,13 @@ def train():
 
   with tf.name_scope('accuracy'):
     with tf.name_scope('correct_prediction'):
-      correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
+      correct_prediction = tf.equal(tf.argmax(y, 1), y_)
     with tf.name_scope('accuracy'):
       accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   tf.summary.scalar('accuracy', accuracy)
 
-  # Merge all the summaries and write them out to /tmp/tensorflow/mnist/logs/mnist_with_summaries (by default)
+  # Merge all the summaries and write them out to
+  # /tmp/tensorflow/mnist/logs/mnist_with_summaries (by default)
   merged = tf.summary.merge_all()
   train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
   test_writer = tf.summary.FileWriter(FLAGS.log_dir + '/test')
@@ -196,9 +197,17 @@ if __name__ == '__main__':
                       help='Initial learning rate')
   parser.add_argument('--dropout', type=float, default=0.9,
                       help='Keep probability for training dropout.')
-  parser.add_argument('--data_dir', type=str, default='/tmp/tensorflow/mnist/input_data',
-                      help='Directory for storing input data')
-  parser.add_argument('--log_dir', type=str, default='/tmp/tensorflow/mnist/logs/mnist_with_summaries',
-                      help='Summaries log directory')
+  parser.add_argument(
+      '--data_dir',
+      type=str,
+      default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
+                           'tensorflow/mnist/input_data'),
+      help='Directory for storing input data')
+  parser.add_argument(
+      '--log_dir',
+      type=str,
+      default=os.path.join(os.getenv('TEST_TMPDIR', '/tmp'),
+                           'tensorflow/mnist/logs/mnist_with_summaries'),
+      help='Summaries log directory')
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

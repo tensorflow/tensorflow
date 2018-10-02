@@ -20,13 +20,13 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 
+#include "cuda/include/cufft.h"
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
-#include "cuda/include/cufft.h"
+#include "tensorflow/stream_executor/scratch_allocator.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 
@@ -37,30 +37,58 @@ class CUDAExecutor;
 // Opaque and unique indentifier for the cuFFT plugin.
 extern const PluginId kCuFftPlugin;
 
+// CUDAFftPlan uses deferred initialization. Only a single call of
+// Initialize() is allowed to properly create cufft plan and set member
+// variable is_initialized_ to true. Newly added interface that uses member
+// variables should first check is_initialized_ to make sure that the values of
+// member variables are valid.
 class CUDAFftPlan : public fft::Plan {
  public:
-  // Constructor creating 1d FFT plan.
-  CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, fft::Type type);
-  // Constructor creating 2d FFT plan.
-  CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, uint64 num_y, fft::Type type);
-  // Constructor creating 3d FFT plan.
-  CUDAFftPlan(CUDAExecutor *parent, uint64 num_x, uint64 num_y, uint64 num_z,
-              fft::Type type);
-  // Constructor creating batched FFT plan.
-  CUDAFftPlan(CUDAExecutor *parent, int rank, uint64 *elem_count,
-              uint64 *input_embed, uint64 input_stride, uint64 input_distance,
-              uint64 *output_embed, uint64 output_stride,
-              uint64 output_distance, fft::Type type, int batch_count);
+  CUDAFftPlan()
+      : parent_(nullptr),
+        plan_(-1),
+        fft_type_(fft::Type::kInvalid),
+        scratch_(nullptr),
+        scratch_size_bytes_(0),
+        is_initialized_(false) {}
   ~CUDAFftPlan() override;
 
   // Get FFT direction in cuFFT based on FFT type.
   int GetFftDirection() const;
-  cufftHandle GetPlan() const { return plan_; }
+  cufftHandle GetPlan() const {
+    if (IsInitialized()) {
+      return plan_;
+    } else {
+      LOG(FATAL) << "Try to get cufftHandle value before initialization.";
+    }
+  }
+
+  // Initialize function for batched plan
+  port::Status Initialize(CUDAExecutor *parent, Stream *stream, int rank,
+                          uint64 *elem_count, uint64 *input_embed,
+                          uint64 input_stride, uint64 input_distance,
+                          uint64 *output_embed, uint64 output_stride,
+                          uint64 output_distance, fft::Type type,
+                          int batch_count, ScratchAllocator *scratch_allocator);
+
+  // Initialize function for 1d,2d, and 3d plan
+  port::Status Initialize(CUDAExecutor *parent, Stream *stream, int rank,
+                          uint64 *elem_count, fft::Type type,
+                          ScratchAllocator *scratch_allocator);
+
+  port::Status UpdateScratchAllocator(Stream *stream,
+                                      ScratchAllocator *scratch_allocator);
+
+ protected:
+  bool IsInitialized() const { return is_initialized_; }
 
  private:
   CUDAExecutor *parent_;
   cufftHandle plan_;
   fft::Type fft_type_;
+  DeviceMemory<uint8> scratch_;
+  size_t scratch_size_bytes_;
+  bool is_initialized_;
 };
 
 // FFT support for CUDA platform via cuFFT library.
@@ -104,7 +132,6 @@ class CUDAFft : public fft::FftSupport {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_

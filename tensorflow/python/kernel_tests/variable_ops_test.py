@@ -118,7 +118,7 @@ class VariableOpTest(test.TestCase):
     self.assertEqual(tensor_shape.unknown_shape(), assigned.get_shape())
 
   def testAssignNoShape(self):
-    with self.test_session():
+    with self.cached_session():
       value = self._NewShapelessTensor()
       var = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
       self.assertEqual(tensor_shape.unknown_shape(), var.get_shape())
@@ -126,7 +126,7 @@ class VariableOpTest(test.TestCase):
                        state_ops.assign(var, value).get_shape())
 
   def testAssignNoShapeNoValidateShape(self):
-    with self.test_session():
+    with self.cached_session():
       value = self._NewShapelessTensor()
       var = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
       self.assertEqual(tensor_shape.unknown_shape(), var.get_shape())
@@ -165,26 +165,26 @@ class VariableOpTest(test.TestCase):
 
   def testTemporaryVariable(self):
     with self.test_session(use_gpu=True):
-      var = gen_state_ops._temporary_variable(
+      var = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="foo")
       var = state_ops.assign(var, [[4.0, 5.0]])
       var = state_ops.assign_add(var, [[6.0, 7.0]])
-      final = gen_state_ops._destroy_temporary_variable(var, var_name="foo")
+      final = gen_state_ops.destroy_temporary_variable(var, var_name="foo")
       self.assertAllClose([[10.0, 12.0]], final.eval())
 
   def testDestroyNonexistentTemporaryVariable(self):
     with self.test_session(use_gpu=True):
-      var = gen_state_ops._temporary_variable([1, 2], dtypes.float32)
-      final = gen_state_ops._destroy_temporary_variable(var, var_name="bad")
+      var = gen_state_ops.temporary_variable([1, 2], dtypes.float32)
+      final = gen_state_ops.destroy_temporary_variable(var, var_name="bad")
       with self.assertRaises(errors.NotFoundError):
         final.eval()
 
   def testDuplicateTemporaryVariable(self):
     with self.test_session(use_gpu=True):
-      var1 = gen_state_ops._temporary_variable(
+      var1 = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="dup")
       var1 = state_ops.assign(var1, [[1.0, 2.0]])
-      var2 = gen_state_ops._temporary_variable(
+      var2 = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="dup")
       var2 = state_ops.assign(var2, [[3.0, 4.0]])
       final = var1 + var2
@@ -193,25 +193,25 @@ class VariableOpTest(test.TestCase):
 
   def testDestroyTemporaryVariableTwice(self):
     with self.test_session(use_gpu=True):
-      var = gen_state_ops._temporary_variable([1, 2], dtypes.float32)
-      val1 = gen_state_ops._destroy_temporary_variable(var, var_name="dup")
-      val2 = gen_state_ops._destroy_temporary_variable(var, var_name="dup")
+      var = gen_state_ops.temporary_variable([1, 2], dtypes.float32)
+      val1 = gen_state_ops.destroy_temporary_variable(var, var_name="dup")
+      val2 = gen_state_ops.destroy_temporary_variable(var, var_name="dup")
       final = val1 + val2
       with self.assertRaises(errors.NotFoundError):
         final.eval()
 
   def testTemporaryVariableNoLeak(self):
     with self.test_session(use_gpu=True):
-      var = gen_state_ops._temporary_variable(
+      var = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="bar")
       final = array_ops.identity(var)
       final.eval()
 
   def testTwoTemporaryVariablesNoLeaks(self):
     with self.test_session(use_gpu=True):
-      var1 = gen_state_ops._temporary_variable(
+      var1 = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="var1")
-      var2 = gen_state_ops._temporary_variable(
+      var2 = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="var2")
       final = var1 + var2
       final.eval()

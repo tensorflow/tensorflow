@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/error.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
-
 
 namespace tensorflow {
 
@@ -58,6 +58,7 @@ class LibHDFS {
   std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
+  std::function<int(const char*, char**)> hdfsConfGetStr;
   std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
       hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
@@ -85,6 +86,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsBuilderConnect);
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
+      BIND_HDFS_FUNC(hdfsConfGetStr);
       BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
@@ -103,27 +105,27 @@ class LibHDFS {
       return Status::OK();
     };
 
-    // libhdfs.so won't be in the standard locations. Use the path as specified
-    // in the libhdfs documentation.
+// libhdfs.so won't be in the standard locations. Use the path as specified
+// in the libhdfs documentation.
 #if defined(PLATFORM_WINDOWS)
-    const char *kLibHdfsDso = "hdfs.dll";
+    const char* kLibHdfsDso = "hdfs.dll";
+#elif defined(MACOS) || defined(TARGET_OS_MAC)
+    const char* kLibHdfsDso = "libhdfs.dylib";
 #else
-    const char *kLibHdfsDso = "libhdfs.so";
+    const char* kLibHdfsDso = "libhdfs.so";
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
-    if (hdfs_home == nullptr) {
-      status_ = errors::FailedPrecondition(
-          "Environment variable HADOOP_HDFS_HOME not set");
-      return;
+    if (hdfs_home != nullptr) {
+      string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
+      status_ = TryLoadAndBind(path.c_str(), &handle_);
+      if (status_.ok()) {
+        return;
+      }
     }
-    string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
-    status_ = TryLoadAndBind(path.c_str(), &handle_);
-    if (!status_.ok()) {
-      // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
-      // is installed in non-standard location
-      status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
-    }
-    return;
+
+    // Try to load the library dynamically in case it has been installed
+    // to a in non-standard location.
+    status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
   }
 
   Status status_;
@@ -142,14 +144,31 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 
   StringPiece scheme, namenode, path;
   io::ParseURI(fname, &scheme, &namenode, &path);
-  const string nn = namenode.ToString();
+  const string nn(namenode);
 
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
   if (scheme == "file") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
+  } else if (scheme == "viewfs") {
+    char* defaultFS = nullptr;
+    hdfs_->hdfsConfGetStr("fs.defaultFS", &defaultFS);
+    StringPiece defaultScheme, defaultCluster, defaultPath;
+    io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
+
+    if (scheme != defaultScheme || namenode != defaultCluster) {
+      return errors::Unimplemented(
+          "viewfs is only supported as a fs.defaultFS.");
+    }
+    // The default NameNode configuration will be used (from the XML
+    // configuration files). See:
+    // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
+    hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
+  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is
+  // the build in environment variable of Kerberos, so KERB_TICKET_CACHE_PATH
+  // and related code are unnecessary.
   char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
   if (ticket_cache_path != nullptr) {
     hdfs_->hdfsBuilderSetKerbTicketCachePath(builder, ticket_cache_path);
@@ -164,7 +183,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
 string HadoopFileSystem::TranslateName(const string& name) const {
   StringPiece scheme, namenode, path;
   io::ParseURI(name, &scheme, &namenode, &path);
-  return path.ToString();
+  return string(path);
 }
 
 class HDFSRandomAccessFile : public RandomAccessFile {
@@ -263,7 +282,7 @@ class HDFSWritableFile : public WritableFile {
     }
   }
 
-  Status Append(const StringPiece& data) override {
+  Status Append(StringPiece data) override {
     if (hdfs_->hdfsWrite(fs_, file_, data.data(),
                          static_cast<tSize>(data.size())) == -1) {
       return IOError(filename_, errno);
@@ -373,10 +392,15 @@ Status HadoopFileSystem::GetChildren(const string& dir,
     return IOError(dir, errno);
   }
   for (int i = 0; i < entries; i++) {
-    result->push_back(io::Basename(info[i].mName).ToString());
+    result->push_back(string(io::Basename(info[i].mName)));
   }
   hdfs_->hdfsFreeFileInfo(info, entries);
   return Status::OK();
+}
+
+Status HadoopFileSystem::GetMatchingPaths(const string& pattern,
+                                          std::vector<string>* results) {
+  return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status HadoopFileSystem::DeleteFile(const string& fname) {
@@ -478,5 +502,6 @@ Status HadoopFileSystem::Stat(const string& fname, FileStatistics* stats) {
 }
 
 REGISTER_FILE_SYSTEM("hdfs", HadoopFileSystem);
+REGISTER_FILE_SYSTEM("viewfs", HadoopFileSystem);
 
 }  // namespace tensorflow

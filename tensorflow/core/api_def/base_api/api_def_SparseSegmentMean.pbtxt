@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "SparseSegmentMean"
+  in_arg {
+    name: "indices"
+    description: <<END
+A 1-D tensor. Has same rank as `segment_ids`.
+END
+  }
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor. Values should be sorted and can be repeated.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for dimension 0 which
+has size `k`, the number of segments.
+END
+  }
+  summary: "Computes the mean along sparse segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+for an explanation of segments.
+
+Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+dimension, selecting a subset of dimension 0, specified by `indices`.
+END
+}

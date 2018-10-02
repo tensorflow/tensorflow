@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "Expm1"
+  summary: "Computes exponential of x - 1 element-wise."
+  description: <<END
+I.e., \\(y = (\exp x) - 1\\).
+END
+}

@@ -33,8 +33,8 @@ __all__ = ['collect_named_outputs',
            'get_variable_collections',
            'two_element_tuple',
            'n_positive_integers',
-           'last_dimension',
-           'first_dimension']
+           'channel_dimension',
+           'last_dimension']
 
 NamedOutputs = namedtuple('NamedOutputs', ['name', 'outputs'])
 
@@ -120,18 +120,23 @@ def get_tensor_aliases(tensor):
   return aliases
 
 
-def convert_collection_to_dict(collection):
+def convert_collection_to_dict(collection, clear_collection=False):
   """Returns an OrderedDict of Tensors with their aliases as keys.
 
   Args:
     collection: A collection.
+    clear_collection: When True, it clears the collection after converting to
+      OrderedDict.
 
   Returns:
     An OrderedDict of {alias: tensor}
   """
-  return OrderedDict((alias, tensor)
-                     for tensor in ops.get_collection(collection)
-                     for alias in get_tensor_aliases(tensor))
+  output = OrderedDict((alias, tensor)
+                       for tensor in ops.get_collection(collection)
+                       for alias in get_tensor_aliases(tensor))
+  if clear_collection:
+    ops.get_default_graph().clear_collection(collection)
+  return output
 
 
 def constant_value(value_or_tensor_or_var, dtype=None):
@@ -220,15 +225,16 @@ def get_variable_collections(variables_collections, name):
   return variable_collections
 
 
-def first_dimension(shape, min_rank=1):
-  """Returns the first dimension of shape while checking it has min_rank.
+def _get_dimension(shape, dim, min_rank=1):
+  """Returns the `dim` dimension of `shape`, while checking it has `min_rank`.
 
   Args:
     shape: A `TensorShape`.
+    dim: Integer, which dimension to return.
     min_rank: Integer, minimum rank of shape.
 
   Returns:
-    The value of the first dimension.
+    The value of the `dim` dimension.
 
   Raises:
     ValueError: if inputs don't have at least min_rank dimensions, or if the
@@ -240,10 +246,30 @@ def first_dimension(shape, min_rank=1):
   if len(dims) < min_rank:
     raise ValueError('rank of shape must be at least %d not: %d' % (min_rank,
                                                                     len(dims)))
-  value = dims[0].value
+  value = dims[dim].value
   if value is None:
-    raise ValueError('first dimension shape must be known but is None')
+    raise ValueError(
+        'dimension %d of shape must be known but is None: %s' % (dim, shape))
   return value
+
+
+def channel_dimension(shape, data_format, min_rank=1):
+  """Returns the channel dimension of shape, while checking it has min_rank.
+
+  Args:
+    shape: A `TensorShape`.
+    data_format: `channels_first` or `channels_last`.
+    min_rank: Integer, minimum rank of shape.
+
+  Returns:
+    The value of the first dimension.
+
+  Raises:
+    ValueError: if inputs don't have at least min_rank dimensions, or if the
+      first dimension value is not defined.
+  """
+  return _get_dimension(shape, 1 if data_format == 'channels_first' else -1,
+                        min_rank=min_rank)
 
 
 def last_dimension(shape, min_rank=1):
@@ -260,16 +286,7 @@ def last_dimension(shape, min_rank=1):
     ValueError: if inputs don't have at least min_rank dimensions, or if the
       last dimension value is not defined.
   """
-  dims = shape.dims
-  if dims is None:
-    raise ValueError('dims of shape must be known but is None')
-  if len(dims) < min_rank:
-    raise ValueError('rank of shape must be at least %d not: %d' % (min_rank,
-                                                                    len(dims)))
-  value = dims[-1].value
-  if value is None:
-    raise ValueError('last dimension shape must be known but is None')
-  return value
+  return _get_dimension(shape, -1, min_rank=min_rank)
 
 
 def two_element_tuple(int_or_tuple):

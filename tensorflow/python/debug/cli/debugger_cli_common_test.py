@@ -21,6 +21,9 @@ import os
 import stat
 import tempfile
 
+import numpy as np
+
+from tensorflow.python import pywrap_tensorflow_internal
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
@@ -76,6 +79,23 @@ class RichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(screen_output.font_attr_segs))
     self.assertEqual(1, len(screen_output.font_attr_segs[0]))
     self.assertEqual(1, len(screen_output.annotations))
+
+  def testRichLinesAppendRichLine(self):
+    rtl = debugger_cli_common.RichTextLines(
+        "Roses are red",
+        font_attr_segs={0: [(0, 5, "red")]})
+    rtl.append_rich_line(debugger_cli_common.RichLine("Violets are ") +
+                         debugger_cli_common.RichLine("blue", "blue"))
+    self.assertEqual(2, len(rtl.lines))
+    self.assertEqual(2, len(rtl.font_attr_segs))
+    self.assertEqual(1, len(rtl.font_attr_segs[0]))
+    self.assertEqual(1, len(rtl.font_attr_segs[1]))
+
+  def testRichLineLenMethodWorks(self):
+    self.assertEqual(0, len(debugger_cli_common.RichLine()))
+    self.assertEqual(0, len(debugger_cli_common.RichLine("")))
+    self.assertEqual(1, len(debugger_cli_common.RichLine("x")))
+    self.assertEqual(6, len(debugger_cli_common.RichLine("x y z ", "blue")))
 
   def testRichTextLinesConstructorIncomplete(self):
     # Test RichTextLines constructor, with incomplete keyword arguments.
@@ -530,7 +550,10 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
                       "  Show screen width in number of columns.", "", "",
                       "help", "  Aliases: h", "", "  Print this help message.",
                       "", "", "noop", "  Aliases: n, NOOP", "",
-                      "  No operation.", "  I.e., do nothing.", "", ""],
+                      "  No operation.", "  I.e., do nothing.", "", "",
+                      "version", "  Aliases: ver", "",
+                      "  Print the versions of TensorFlow and its key "
+                      "dependencies.", "", ""],
                      output.lines)
 
     # Get help for one specific command prefix.
@@ -558,7 +581,9 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     self.assertEqual(help_intro.lines + [
         "help", "  Aliases: h", "", "  Print this help message.", "", "",
         "noop", "  Aliases: n, NOOP", "", "  No operation.",
-        "  I.e., do nothing.", "", ""
+        "  I.e., do nothing.", "", "",
+        "version", "  Aliases: ver", "",
+        "  Print the versions of TensorFlow and its key dependencies.", "", ""
     ], output.lines)
 
 
@@ -913,6 +938,11 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     if os.path.isfile(self._history_file_path):
       os.remove(self._history_file_path)
 
+  def _restoreFileReadWritePermissions(self, file_path):
+    os.chmod(file_path,
+             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
+              stat.S_IWGRP | stat.S_IWOTH))
+
   def testLookUpMostRecent(self):
     self.assertEqual([], self._cmd_hist.most_recent_n(3))
 
@@ -1005,6 +1035,8 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
     debugger_cli_common.CommandHistory(
         limit=3, history_file_path=self._history_file_path)
 
+    self._restoreFileReadWritePermissions(self._history_file_path)
+
   def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
     with open(self._history_file_path, "wt") as f:
       f.write("help\n")
@@ -1027,10 +1059,7 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
         limit=3, history_file_path=self._history_file_path)
     self.assertEqual(["help"], cmd_hist_3.most_recent_n(1))
 
-    # Change the file to back to read-write.
-    os.chmod(self._history_file_path,
-             (stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH | stat.S_IWUSR |
-              stat.S_IWGRP | stat.S_IWOTH))
+    self._restoreFileReadWritePermissions(self._history_file_path)
 
 
 class MenuNodeTest(test_util.TensorFlowTestCase):
@@ -1124,6 +1153,23 @@ class MenuTest(test_util.TensorFlowTestCase):
     self.assertEqual((6, 18, [self.node1]), output.font_attr_segs[0][0])
     self.assertEqual((20, 38, [self.node2]), output.font_attr_segs[0][1])
     self.assertEqual((40, 50, ["bold"]), output.font_attr_segs[0][2])
+
+
+class GetTensorFlowVersionLinesTest(test_util.TensorFlowTestCase):
+
+  def testGetVersionWithoutDependencies(self):
+    out = debugger_cli_common.get_tensorflow_version_lines()
+    self.assertEqual(2, len(out.lines))
+    self.assertEqual(
+        "TensorFlow version: %s" % pywrap_tensorflow_internal.__version__,
+        out.lines[0])
+
+  def testGetVersionWithDependencies(self):
+    out = debugger_cli_common.get_tensorflow_version_lines(True)
+    self.assertIn(
+        "TensorFlow version: %s" % pywrap_tensorflow_internal.__version__,
+        out.lines)
+    self.assertIn("  numpy: %s" % np.__version__, out.lines)
 
 
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GATHER_ND_OP_H_
-#define TENSORFLOW_KERNELS_GATHER_ND_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_
+#define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_
 // Functor definition for GatherOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -25,6 +25,8 @@ limitations under the License.
 namespace tensorflow {
 
 class OpKernelContext;
+class Status;
+class Tensor;
 
 namespace functor {
 template <typename Device, typename T, typename Index, int IXDIM>
@@ -39,7 +41,10 @@ struct GatherNdSlice {
                    typename TTypes<T>::Matrix Tout);
 };
 
+template <typename Device, typename T, typename Index>
+Status DoGatherNd(OpKernelContext* c, const Tensor& params,
+                  const Tensor& indices, Tensor* out);
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_GATHER_ND_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_

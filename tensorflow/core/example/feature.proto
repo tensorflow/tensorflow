@@ -58,7 +58,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "FeatureProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
-
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example";
 package tensorflow;
 
 // Containers to hold repeated fundamental values.

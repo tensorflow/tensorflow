@@ -20,39 +20,14 @@ from __future__ import print_function
 
 import time
 
-import portpicker
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import server_lib
 from tensorflow.python.training import training
-
-
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
-  """Create local GRPC servers and return them."""
-  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
-  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
-  cluster_dict = {
-      "worker": ["localhost:%s" % port for port in worker_ports],
-      "ps": ["localhost:%s" % port for port in ps_ports]
-  }
-  cs = server_lib.ClusterSpec(cluster_dict)
-
-  workers = [
-      server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_workers)
-  ]
-  ps_servers = [
-      server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_ps)
-  ]
-
-  return workers, ps_servers
 
 
 # Creates the workers and return their sessions, graphs, train_ops.
@@ -65,11 +40,12 @@ def get_workers(num_workers, replicas_to_aggregate, workers):
     is_chief = (worker_id == 0)
     with graph.as_default():
       with ops.device("/job:ps/task:0"):
-        global_step = variables.Variable(0, name="global_step", trainable=False)
-        var_0 = variables.Variable(0.0, name="v0")
+        global_step = variables.VariableV1(
+            0, name="global_step", trainable=False)
+        var_0 = variables.VariableV1(0.0, name="v0")
       with ops.device("/job:ps/task:1"):
-        var_1 = variables.Variable(1.0, name="v1")
-        var_sparse = variables.Variable([[3.0], [4.0]], name="v_sparse")
+        var_1 = variables.VariableV1(1.0, name="v1")
+        var_sparse = variables.VariableV1([[3.0], [4.0]], name="v_sparse")
 
       with ops.device("/job:worker/task:" + str(worker_id)):
         grads_0 = constant_op.constant(0.1 + worker_id * 0.2)
@@ -297,10 +273,23 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
         replicas_to_aggregate=1,
         total_num_replicas=1)
     hook = opt.make_session_run_hook(True)
-    v = variables.Variable([0.])
-    global_step = variables.Variable(0, name="global_step", trainable=False)
+    v = variables.VariableV1([0.])
+    global_step = variables.VariableV1(0, name="global_step", trainable=False)
     opt.minimize(v, global_step=global_step)
     hook.begin()
+
+  def testFetchVariableList(self):
+    opt = training.SyncReplicasOptimizer(
+        opt=adam.AdamOptimizer(0.01),
+        replicas_to_aggregate=1,
+        total_num_replicas=1)
+    v = variables.VariableV1([0.], name="fetch_variable_test")
+    global_step = variables.VariableV1(0, name="global_step", trainable=False)
+    opt.minimize(v, global_step=global_step)
+    opt_variables = opt.variables()
+    beta1_power, beta2_power = opt._opt._get_beta_accumulators()
+    self.assertIn(beta1_power, opt_variables)
+    self.assertIn(beta2_power, opt_variables)
 
 
 if __name__ == "__main__":

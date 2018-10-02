@@ -1,0 +1,15 @@
+op {
+  graph_op_name: "ArgMin"
+  in_arg {
+    name: "dimension"
+    description: <<END
+int32 or int64, must be in the range `[-rank(input), rank(input))`.
+Describes which dimension of the input Tensor to reduce across. For vectors,
+use dimension = 0.
+END
+  }
+  summary: "Returns the index with the smallest value across dimensions of a tensor."
+  description: <<END
+Note that in case of ties the identity of the return value is not guaranteed.
+END
+}

@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "TensorArraySizeV3"
+  endpoint {
+    name: "TensorArraySize"
+  }
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a TensorArray (output of TensorArray or TensorArrayGrad).
+END
+  }
+  in_arg {
+    name: "flow_in"
+    description: <<END
+A float scalar that enforces proper chaining of operations.
+END
+  }
+  out_arg {
+    name: "size"
+    description: <<END
+The current size of the TensorArray.
+END
+  }
+  summary: "Get the current size of the TensorArray."
+}

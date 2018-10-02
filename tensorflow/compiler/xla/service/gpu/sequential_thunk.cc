@@ -15,30 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace gpu {
 
-SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>>&& thunks,
+SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
                                  const HloInstruction* hlo)
     : Thunk(Kind::kSequential, hlo), thunks_(std::move(thunks)) {}
 
-tensorflow::Status SequentialThunk::Initialize(
-    const GpuExecutable& executable) {
+Status SequentialThunk::Initialize(const GpuExecutable& executable,
+                                   se::StreamExecutor* executor) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(executable));
+    TF_RETURN_IF_ERROR(thunk->Initialize(executable, executor));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status SequentialThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+Status SequentialThunk::ExecuteOnStream(
+    const BufferAllocations& buffer_allocations, se::Stream* stream,
+    HloExecutionProfiler* profiler) {
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   for (const auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
+    TF_RETURN_IF_ERROR(
+        thunk->ExecuteOnStream(buffer_allocations, stream, profiler));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

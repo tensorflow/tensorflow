@@ -14,18 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/null_file_system.h"
 
 namespace tensorflow {
 
 class TestRandomAccessFile : public RandomAccessFile {
-  // The filecontents is all A's
+  // The file contents is 10 bytes of all A's
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
+    Status s;
     for (int i = 0; i < n; ++i) {
+      if (offset + i >= 10) {
+        n = i;
+        s = errors::OutOfRange("EOF");
+        break;
+      }
       scratch[i] = 'A';
     }
     *result = StringPiece(scratch, n);
-    return Status::OK();
+    return s;
   }
 };
 

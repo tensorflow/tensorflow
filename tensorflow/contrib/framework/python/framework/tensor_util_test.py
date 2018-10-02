@@ -20,100 +20,26 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+
 import numpy as np
+
 from tensorflow.contrib.framework.python.framework import tensor_util
 from tensorflow.contrib.framework.python.ops import variables as variables_lib2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 
 
-class FloatDTypeTest(test.TestCase):
-
-  def test_assert_same_float_dtype(self):
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(None, None))
-    self.assertIs(dtypes.float32, tensor_util.assert_same_float_dtype([], None))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype([], dtypes.float32))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(None, dtypes.float32))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype([None, None], None))
-    self.assertIs(
-        dtypes.float32,
-        tensor_util.assert_same_float_dtype([None, None], dtypes.float32))
-
-    const_float = constant_op.constant(3.0, dtype=dtypes.float32)
-    self.assertIs(
-        dtypes.float32,
-        tensor_util.assert_same_float_dtype([const_float], dtypes.float32))
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [const_float], dtypes.int32)
-
-    sparse_float = sparse_tensor.SparseTensor(
-        constant_op.constant([[111], [232]], dtypes.int64),
-        constant_op.constant([23.4, -43.2], dtypes.float32),
-        constant_op.constant([500], dtypes.int64))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype([sparse_float],
-                                                      dtypes.float32))
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float], dtypes.int32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [const_float, None, sparse_float], dtypes.float64)
-
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(
-                      [const_float, sparse_float]))
-    self.assertIs(dtypes.float32,
-                  tensor_util.assert_same_float_dtype(
-                      [const_float, sparse_float], dtypes.float32))
-
-    const_int = constant_op.constant(3, dtype=dtypes.int32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float, const_int])
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float, const_int], dtypes.int32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [sparse_float, const_int], dtypes.float32)
-    self.assertRaises(ValueError, tensor_util.assert_same_float_dtype,
-                      [const_int])
-
-
-class AssertScalarTest(test.TestCase):
-
-  def test_assert_scalar(self):
-    tensor_util.assert_scalar(constant_op.constant(3))
-    tensor_util.assert_scalar(constant_op.constant("foo"))
-    tensor_util.assert_scalar(3)
-    tensor_util.assert_scalar("foo")
-    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
-      tensor_util.assert_scalar(constant_op.constant([3, 4]))
-
-  def test_assert_scalar_int(self):
-    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int32))
-    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int64))
-    tensor_util.assert_scalar_int(3)
-    with self.assertRaisesRegexp(ValueError, "Unexpected type"):
-      tensor_util.assert_scalar_int(
-          constant_op.constant(
-              3, dtype=dtypes.float32))
-    with self.assertRaisesRegexp(ValueError, "Unexpected shape"):
-      tensor_util.assert_scalar_int(
-          constant_op.constant(
-              [3, 4], dtype=dtypes.int32))
-
-
 class LocalVariabletest(test.TestCase):
 
   def test_local_variable(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEquals([], variables_lib.local_variables())
       value0 = 42
       variables_lib2.local_variable(value0)
@@ -122,18 +48,34 @@ class LocalVariabletest(test.TestCase):
       variables = variables_lib.local_variables()
       self.assertEquals(2, len(variables))
       self.assertRaises(errors_impl.OpError, sess.run, variables)
-      variables_lib.initialize_variables(variables).run()
+      variables_lib.variables_initializer(variables).run()
       self.assertAllEqual(set([value0, value1]), set(sess.run(variables)))
 
 
 class ReduceSumNTest(test.TestCase):
 
   def test_reduce_sum_n(self):
-    with self.test_session():
+    with self.cached_session():
       a = constant_op.constant(1)
       b = constant_op.constant([2])
       c = constant_op.constant([[3, 4], [5, 6]])
       self.assertEqual(21, tensor_util.reduce_sum_n([a, b, c]).eval())
+
+
+class AssertScalarIntTest(test.TestCase):
+
+  def test_assert_scalar_int(self):
+    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int32))
+    tensor_util.assert_scalar_int(constant_op.constant(3, dtype=dtypes.int64))
+    tensor_util.assert_scalar_int(3)
+    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+      tensor_util.assert_scalar_int(
+          constant_op.constant(
+              3, dtype=dtypes.float32))
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      tensor_util.assert_scalar_int(
+          constant_op.constant(
+              [3, 4], dtype=dtypes.int32))
 
 
 class WithShapeTest(test.TestCase):
@@ -177,13 +119,13 @@ class WithShapeTest(test.TestCase):
                                   }))
 
   def test_with_shape_invalid_expected_shape(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(ValueError, "Invalid rank",
                               tensor_util.with_shape, [[1], [2]],
                               constant_op.constant(1.0))
 
   def test_with_shape_invalid_type(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(ValueError, "Invalid dtype",
                               tensor_util.with_shape, [1.1],
                               constant_op.constant([1.0]))
@@ -196,7 +138,7 @@ class WithShapeTest(test.TestCase):
                               constant_op.constant(1.0))
 
   def test_with_shape_0(self):
-    with self.test_session():
+    with self.cached_session():
       value = 42
       shape = [0]
       unexpected_shapes = [[1], [2], [1, 1]]
@@ -208,7 +150,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_1(self):
-    with self.test_session():
+    with self.cached_session():
       value = [42]
       shape = [1]
       unexpected_shapes = [[0], [2], [1, 1]]
@@ -220,7 +162,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2(self):
-    with self.test_session():
+    with self.cached_session():
       value = [42, 43]
       shape = [2]
       unexpected_shapes = [[0], [1], [2, 1]]
@@ -232,7 +174,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2x2(self):
-    with self.test_session():
+    with self.cached_session():
       value = [[42, 43], [44, 45]]
       shape = [2, 2]
       unexpected_shapes = [[0], [1], [2, 1]]
@@ -243,8 +185,18 @@ class WithShapeTest(test.TestCase):
           shape,
           unexpected_shapes)
 
+  def test_with_shape_2x2_with_partial_expected_shape(self):
+    with self.cached_session():
+      value = [[42, 43], [44, 45]]
+      actual_shape = [2, 2]
+      tensor = constant_op.constant(value, shape=actual_shape)
+      partial_expected_shape = tensor_shape.TensorShape([None, 2])
+      # Won't raise any exception here:
+      tensor_with_shape = tensor_util.with_shape(partial_expected_shape, tensor)
+      np.testing.assert_array_equal(value, tensor_with_shape.eval())
+
   def test_with_shape_none(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_no_shape = array_ops.placeholder(dtypes.float32)
 
       compatible_shape = [2, 2]
@@ -266,14 +218,15 @@ class WithShapeTest(test.TestCase):
         self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
                                 tensor_2x2.eval, {tensor_no_shape: [42.0]})
 
+  @test_util.enable_c_shapes
   def test_with_shape_partial(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_partial_shape = array_ops.placeholder(dtypes.float32)
       tensor_partial_shape.set_shape([None, 2])
 
       for incompatible_shape in [[0], [1]]:
         self.assertRaisesRegexp(
-            ValueError, r"Shapes \(\?, 2\) and \([01],\) are not compatible",
+            ValueError, "Shapes must be equal rank, but are 2 and 1",
             tensor_util.with_shape, incompatible_shape, tensor_partial_shape)
       for incompatible_shape in [[1, 2, 1]]:
         self.assertRaisesRegexp(ValueError, "Dimensions must be equal",
@@ -281,7 +234,9 @@ class WithShapeTest(test.TestCase):
                                 tensor_partial_shape)
       for incompatible_shape in [[2, 1]]:
         self.assertRaisesRegexp(
-            ValueError, r"Shapes \(\?, 2\) and \(2, 1\) are not compatible",
+            ValueError,
+            r"Dimension 1 in both shapes must be equal, but are 2 and 1. "
+            r"Shapes are \[\?,2\] and \[2,1\].",
             tensor_util.with_shape, incompatible_shape, tensor_partial_shape)
 
       compatible_shape = [2, 2]
@@ -421,7 +376,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
       squeezed_predictions, squeezed_labels = (
           tensor_util.remove_squeezable_dimensions(predictions, labels))
-      with self.test_session(g):
+      with self.session(g):
         variables_lib.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))

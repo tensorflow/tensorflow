@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -51,6 +50,18 @@ TEST(SparseOpsTest, SparseAddGrad_ShapeFn) {
 
   // input[1].dim(0) and input[2].dim(0) determine output.
   INFER_OK(op, "?;[?,?];[?,?];?", "[d1_0];[d2_0]");
+}
+
+TEST(SparseOpsTest, SparseSliceGrad_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSliceGrad");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "?;[1];?;?");
+
+  INFER_OK(op, "?;?;?;?", "[?]");
+
+  // input[1].dim(0) determine output.
+  INFER_OK(op, "?;[?,?];?;?", "[d1_0]");
 }
 
 TEST(SparseOpsTest, SparseReorder_ShapeFn) {
@@ -188,8 +199,8 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
 
   // second output dim comes from b, depending on adjoint_b value.
   INFER_OK(op, "?;?;?;?", "[?,?]");
-  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");  // use d3_1, !adjoint_b.
-  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");    // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");    // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;[2];[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
 
   set_adjoints(false, true);
@@ -255,6 +266,7 @@ TEST(SparseOpsTest, SparseConcat_ShapeFn) {
   ShapeInferenceTestOp op("SparseConcat");
   std::vector<NodeDefBuilder::NodeOut> src_list;
   int n = 2;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT64);
   TF_ASSERT_OK(NodeDefBuilder("test", "SparseConcat")
                    .Input(src_list)

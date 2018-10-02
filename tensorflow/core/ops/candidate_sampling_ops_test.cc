@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
@@ -24,9 +23,12 @@ namespace tensorflow {
 
 TEST(CandidateSamplerOpsTest, CandidateSampler_ShapeFn) {
   for (const char* op_name : {
-           "AllCandidateSampler", "FixedUnigramCandidateSampler",
-           "LearnedUnigramCandidateSampler", "LogUniformCandidateSampler",
-           "ThreadUnsafeUnigramCandidateSampler", "UniformCandidateSampler",
+           "AllCandidateSampler",
+           "FixedUnigramCandidateSampler",
+           "LearnedUnigramCandidateSampler",
+           "LogUniformCandidateSampler",
+           "ThreadUnsafeUnigramCandidateSampler",
+           "UniformCandidateSampler",
        }) {
     ShapeInferenceTestOp op(op_name);
     TF_ASSERT_OK(NodeDefBuilder("test", op.name)

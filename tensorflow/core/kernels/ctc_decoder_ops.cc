@@ -19,14 +19,15 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/core/util/ctc/ctc_beam_search.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/ctc/ctc_beam_search.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
@@ -80,16 +81,17 @@ class CTCDecodeHelper {
 
     if (!(batch_size == (*seq_len)->dim_size(0))) {
       return errors::FailedPrecondition(
-          "len(sequence_length) != batch_size.  ", "len(sequence_length):  ",
-          (*seq_len)->dim_size(0), " batch_size: ", batch_size);
+          "len(sequence_length) != batch_size.  ",
+          "len(sequence_length):  ", (*seq_len)->dim_size(0),
+          " batch_size: ", batch_size);
     }
 
     auto seq_len_t = (*seq_len)->vec<int32>();
 
     for (int b = 0; b < batch_size; ++b) {
       if (!(seq_len_t(b) <= max_time)) {
-        return errors::FailedPrecondition("sequence_length(", b, ") <= ",
-                                          max_time);
+        return errors::FailedPrecondition("sequence_length(", b,
+                                          ") <= ", max_time);
       }
     }
 
@@ -212,20 +214,29 @@ class CTCGreedyDecoderOp : public OpKernel {
 
     // Perform best path decoding
     std::vector<std::vector<std::vector<int> > > sequences(batch_size);
-    for (int b = 0; b < batch_size; ++b) {
-      sequences[b].resize(1);
-      auto& sequence = sequences[b][0];
-      int prev_indices = -1;
-      for (int t = 0; t < seq_len_t(b); ++t) {
-        int max_class_indices;
-        log_prob_t(b, 0) += -RowMax(input_list_t[t], b, &max_class_indices);
-        if (max_class_indices != blank_index &&
-            !(merge_repeated_ && max_class_indices == prev_indices)) {
-          sequence.push_back(max_class_indices);
+    auto decode = [&](const int64 begin, const int64 end) {
+      for (int b = begin; b < end; ++b) {
+        sequences[b].resize(1);
+        auto &sequence = sequences[b][0];
+        int prev_indices = -1;
+        for (int t = 0; t < seq_len_t(b); ++t) {
+          int max_class_indices;
+          log_prob_t(b, 0) += -RowMax(input_list_t[t], b, &max_class_indices);
+          if (max_class_indices != blank_index &&
+              !(merge_repeated_ && max_class_indices == prev_indices)) {
+            sequence.push_back(max_class_indices);
+          }
+          prev_indices = max_class_indices;
         }
-        prev_indices = max_class_indices;
       }
-    }
+    };
+
+    const int64 kCostPerUnit = 50 * max_time * num_classes;
+    const int64 total = batch_size;
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *ctx->device()->tensorflow_cpu_worker_threads();
+    Shard(worker_threads.num_threads, worker_threads.workers, total,
+          kCostPerUnit, decode);
 
     OP_REQUIRES_OK(
         ctx, decode_helper_.StoreAllDecodedSequences(
@@ -306,8 +317,10 @@ class CTCBeamSearchDecoderOp : public OpKernel {
             Eigen::Map<const Eigen::ArrayXf>(input_chip_t.data(), num_classes);
         beam_search.Step(input_bi);
       }
-      beam_search.TopPaths(decode_helper_.GetTopPaths(), &best_paths_b,
-                           &log_probs, merge_repeated_);
+      OP_REQUIRES_OK(
+          ctx, beam_search.TopPaths(decode_helper_.GetTopPaths(), &best_paths_b,
+                                    &log_probs, merge_repeated_));
+
       beam_search.Reset();
 
       for (int bp = 0; bp < decode_helper_.GetTopPaths(); ++bp) {

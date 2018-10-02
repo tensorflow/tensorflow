@@ -147,10 +147,18 @@ class ShapeOpsTest(test.TestCase):
     self._testAll(np.random.randn(2, 3, 5, 7, 11))
     self._testAll(np.random.randn(2, 3, 5, 7, 11, 13))
 
+  def testBool(self):
+    self._testAll(np.random.choice((False, True), size=(2,)))
+    self._testAll(np.random.choice((False, True), size=(2, 3)))
+    self._testAll(np.random.choice((False, True), size=(2, 3, 5)))
+    self._testAll(np.random.choice((False, True), size=(2, 3, 5, 7)))
+    self._testAll(np.random.choice((False, True), size=(2, 3, 5, 7, 11)))
+    self._testAll(np.random.choice((False, True), size=(2, 3, 5, 7, 11, 13)))
+
   # Disabled because it takes too long to run, but manually verified
   # as passing at time of writing.
   def _test64BitOutput(self):
-    with self.test_session():
+    with self.cached_session():
       inp = array_ops.zeros([2**31])
       num_elements = array_ops.size_internal(
           inp, optimize=False, out_type=dtypes.int64)
@@ -158,7 +166,7 @@ class ShapeOpsTest(test.TestCase):
 
     # Too large for tf.int32 output.
     with self.assertRaises(errors_impl.InvalidArgumentError):
-      with self.test_session():
+      with self.cached_session():
         inp = array_ops.zeros([2**31])
         num_elements = array_ops.size_internal(
             inp, optimize=False, out_type=dtypes.int32)
@@ -197,15 +205,41 @@ class ShapeOpsTest(test.TestCase):
     self._compareExpandDimsAll(np.zeros([2, 3, 5]), -3)
     self._compareExpandDimsAll(np.zeros([2, 3, 5]), -4)
 
+  def testExpandDimsBool(self):
+    choice = lambda s: np.random.choice((False, True), size=s)
+    self._compareExpandDimsAll(choice([2]), 0)
+    self._compareExpandDimsAll(choice([2]), 1)
+    self._compareExpandDimsAll(choice([2]), -1)
+
+    self._compareExpandDimsAll(choice([2, 3]), 0)
+    self._compareExpandDimsAll(choice([2, 3]), 1)
+    self._compareExpandDimsAll(choice([2, 3]), 2)
+    self._compareExpandDimsAll(choice([2, 3]), -1)
+    self._compareExpandDimsAll(choice([2, 3]), -2)
+
+    self._compareExpandDimsAll(choice([2, 3, 5]), 0)
+    self._compareExpandDimsAll(choice([2, 3, 5]), 1)
+    self._compareExpandDimsAll(choice([2, 3, 5]), 2)
+    self._compareExpandDimsAll(choice([2, 3, 5]), 3)
+
+    self._compareExpandDimsAll(choice([2, 3, 5]), -1)
+    self._compareExpandDimsAll(choice([2, 3, 5]), -2)
+    self._compareExpandDimsAll(choice([2, 3, 5]), -3)
+    self._compareExpandDimsAll(choice([2, 3, 5]), -4)
+
   def testExpandDimsErrors(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaises(ValueError, array_ops.expand_dims,
                         np.zeros([2, 3, 5]), -5)
       self.assertRaises(ValueError, array_ops.expand_dims,
+                        [False, True, True], -5)
+      self.assertRaises(ValueError, array_ops.expand_dims,
                         np.zeros([2, 3, 5]), 4)
+      self.assertRaises(ValueError, array_ops.expand_dims,
+                        [False, True, True], 4)
 
   def testExpandDimsGradient(self):
-    with self.test_session():
+    with self.cached_session():
       inp = constant_op.constant(
           np.random.rand(4, 2).astype("f"), dtype=dtypes.float32)
       squeezed = array_ops.expand_dims(inp, 1)
@@ -215,10 +249,24 @@ class ShapeOpsTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   def testExpandDimsScalar(self):
-    with self.test_session():
+    with self.cached_session():
       inp = constant_op.constant(7)
       self.assertAllEqual([7], array_ops.expand_dims(inp, 0).eval())
       self.assertAllEqual([7], array_ops.expand_dims(inp, -1).eval())
+
+      inp = constant_op.constant(True)
+      self.assertAllEqual([True], array_ops.expand_dims(inp, 0).eval())
+      self.assertAllEqual([True], array_ops.expand_dims(inp, -1).eval())
+
+  def testExpandDimsDimType(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = np.zeros([2])
+      np_ans = np.expand_dims(x, axis=0)
+      with self.test_session(use_gpu=True):
+        tensor = array_ops.expand_dims(x, constant_op.constant(0, dtype))
+        tf_ans = tensor.eval()
+      self.assertShapeEqual(np_ans, tensor)
+      self.assertAllEqual(np_ans, tf_ans)
 
   def _compareSqueeze(self, x, squeeze_dims, use_gpu):
     with self.test_session(use_gpu=use_gpu):
@@ -250,6 +298,18 @@ class ShapeOpsTest(test.TestCase):
     # Squeeze on both ends.
     self._compareSqueezeAll(np.zeros([1, 2, 1, 3, 1]))
 
+  def testSqueezeBool(self):
+    choice = lambda s: np.random.choice((False, True), size=s)
+    # Nothing to squeeze.
+    self._compareSqueezeAll(choice([2]))
+    self._compareSqueezeAll(choice([2, 3]))
+
+    # Squeeze the middle element away.
+    self._compareSqueezeAll(choice([2, 1, 2]))
+
+    # Squeeze on both ends.
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]))
+
   def testSqueezeSpecificDimension(self):
     # Positive squeeze dim index.
     self._compareSqueezeAll(np.zeros([1, 2, 1, 3, 1]), [0])
@@ -261,12 +321,34 @@ class ShapeOpsTest(test.TestCase):
     self._compareSqueezeAll(np.zeros([1, 2, 1, 3, 1]), [-3, -5])
     self._compareSqueezeAll(np.zeros([1, 2, 1, 3, 1]), [-3, -5, -1])
 
+  def testSqueezeSpecificDimensionBool(self):
+    choice = lambda s: np.random.choice((False, True), size=s)
+    # Positive squeeze dim index.
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]), [0])
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]), [2, 4])
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]), [0, 4, 2])
+
+    # Negative squeeze dim index.
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]), [-1])
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]), [-3, -5])
+    self._compareSqueezeAll(choice([1, 2, 1, 3, 1]), [-3, -5, -1])
+
   def testSqueezeAllOnes(self):
     # Numpy squeezes a 1 element tensor into a zero dimensional tensor.
     # Verify that we do the same.
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):
         tensor = array_ops.squeeze(np.zeros([1, 1, 1]), [])
+        self.assertEqual(np.shape(1), tensor.get_shape())
+        tf_ans = tensor.eval()
+        self.assertEqual(np.shape(1), tf_ans.shape)
+
+  def testSqueezeAllOnesBool(self):
+    # Numpy squeezes a 1 element tensor into a zero dimensional tensor.
+    # Verify that we do the same.
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu):
+        tensor = array_ops.squeeze([[[False]]], [])
         self.assertEqual(np.shape(1), tensor.get_shape())
         tf_ans = tensor.eval()
         self.assertEqual(np.shape(1), tf_ans.shape)
@@ -293,7 +375,7 @@ class ShapeOpsTest(test.TestCase):
                           np.zeros([1, 2, 1]), [2, 3])
 
   def testSqueezeGradient(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = array_ops.reshape(inp, [4, 1, 2])
       squeezed = array_ops.squeeze(a, [])
@@ -303,7 +385,7 @@ class ShapeOpsTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   def testSqueezeGradientWithSqueezeDims(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = array_ops.reshape(inp, [4, 1, 2, 1])
       squeezed = array_ops.squeeze(a, [1])
@@ -313,7 +395,7 @@ class ShapeOpsTest(test.TestCase):
     self.assertLess(err, 1e-3)
 
   def testSqueezeWithUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       a = array_ops.placeholder(dtypes.float32, shape=[2, None])
 
       squeezed = array_ops.squeeze(a, [1])
@@ -339,17 +421,29 @@ class TileTest(test.TestCase):
       self.assertEqual(7, result)
 
   def testSimple(self):
-    with self.test_session():
+    # multiples could be int32 or int64
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(4, 1).astype(np.float32)
+        a = constant_op.constant(inp)
+        tiled = array_ops.tile(a, constant_op.constant([1, 4], dtype=dtype))
+        result = tiled.eval()
+      self.assertEqual(result.shape, (4, 4))
+      self.assertEqual([4, 4], tiled.get_shape())
+      self.assertTrue((result == np.tile(inp, (1, 4))).all())
+
+  def testIdentityTileAndGrad(self):
+    with self.cached_session():
       inp = np.random.rand(4, 1).astype(np.float32)
       a = constant_op.constant(inp)
-      tiled = array_ops.tile(a, [1, 4])
+      tiled = array_ops.tile(a, [1, 1])
       result = tiled.eval()
-    self.assertEqual(result.shape, (4, 4))
-    self.assertEqual([4, 4], tiled.get_shape())
-    self.assertTrue((result == np.tile(inp, (1, 4))).all())
+    self.assertEqual(result.shape, (4, 1))
+    self.assertEqual([4, 1], tiled.get_shape())
+    self.assertTrue((result == np.tile(inp, (1, 1))).all())
 
   def testEmpty(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(2, 3).astype(np.float32)
       a = constant_op.constant(inp)
       tiled = array_ops.tile(a, [5, 0])
@@ -359,7 +453,7 @@ class TileTest(test.TestCase):
 
   def testUnknownInputShape(self):
     """Importing can call _TileShape without shape of <multiples> known."""
-    with self.test_session():
+    with self.cached_session():
       inp = array_ops.placeholder(dtypes.float32)  # unknown shape
       multiples = constant_op.constant([1, 2, 3, 4], dtype=np.int32)
       tiled = array_ops.tile(inp, multiples)
@@ -409,7 +503,7 @@ class TileTest(test.TestCase):
       self.assertAllEqual(result, np.tile(inp, (1, 4)))
 
   def testInvalidDim(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 1).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.ravel(order="C")],
@@ -422,16 +516,16 @@ class TileTest(test.TestCase):
       with self.assertRaises(ValueError):
         array_ops.tile(a, [[2, 3], [3, 4]]).eval()
 
-  def _RunAndVerifyResult(self, use_gpu):
+  def _RunAndVerifyResult(self, rank, use_gpu):
     with self.test_session(use_gpu=use_gpu):
-      # Random dims of rank 5
-      input_shape = np.random.randint(1, 4, size=5)
+      # Random dims of given rank
+      input_shape = np.random.randint(1, 4, size=rank)
       inp = np.random.rand(*input_shape).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.ravel(order="C")],
           shape=input_shape,
           dtype=dtypes.float32)
-      multiples = np.random.randint(1, 4, size=5).astype(np.int32)
+      multiples = np.random.randint(1, 4, size=rank).astype(np.int32)
       tiled = array_ops.tile(a, multiples)
       result = tiled.eval()
     self.assertTrue((np.array(multiples) * np.array(inp.shape) == np.array(
@@ -440,13 +534,19 @@ class TileTest(test.TestCase):
     self.assertShapeEqual(result, tiled)
 
   def testRandom(self):
+    # test low rank, like 5
     for _ in range(5):
-      self._RunAndVerifyResult(use_gpu=False)
+      self._RunAndVerifyResult(5, use_gpu=False)
     for _ in range(5):
-      self._RunAndVerifyResult(use_gpu=True)
+      self._RunAndVerifyResult(5, use_gpu=True)
+    # test high rank, like 10
+    for _ in range(5):
+      self._RunAndVerifyResult(10, use_gpu=False)
+    for _ in range(5):
+      self._RunAndVerifyResult(10, use_gpu=True)
 
   def testGradientSimpleReduction(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 1).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 1], dtype=dtypes.float32)
@@ -461,7 +561,7 @@ class TileTest(test.TestCase):
     self.assertAllClose(np.sum(grad_inp, axis=1).reshape(4, 1), result, 1e-3)
 
   def testGradientStridedReduction(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 2], dtype=dtypes.float32)
@@ -528,18 +628,42 @@ class TileTest(test.TestCase):
     self._RunAndVerifyGradientResult([], [])
 
   def testGradientRandom(self):
+    self._RunAndVerifyGradientResult([2, 2, 1, 1, 3], [1, 1, 1, 1, 1])
     self._RunAndVerifyGradientResult([2, 2, 1, 1, 3], [1, 2, 1, 3, 1])
     self._RunAndVerifyGradientResult([2, 3, 1, 1, 3], [3, 1, 1, 2, 2])
     self._RunAndVerifyGradientResult([2, 1, 3, 3, 2], [1, 3, 3, 1, 2])
 
   def testGradientStridedReductionGC(self):
-    with self.test_session():
+    with self.cached_session():
       inp = np.random.rand(4, 2).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.flatten()], shape=[4, 2], dtype=dtypes.float32)
       tiled = array_ops.tile(a, [1, 2])
       err = gradient_checker.compute_gradient_error(a, [4, 2], tiled, [4, 4])
     self.assertLess(err, 1e-3)
+
+  def testGradientWithSparseGradWithRank1(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
+                                  dtype=dtypes.float32)
+    outputs = array_ops.gather(array_ops.tile(inputs, [3]),
+                               [1, 5, 9, 3, 7, 2, 2, 2])
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
+
+  def testGradientWithSparseGradWithRank3(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
+                                  dtype=dtypes.float32)
+    inputs = array_ops.reshape(inputs, [-1, 1, 1])
+    outputs = array_ops.gather(array_ops.tile(inputs, [3, 4, 2]),
+                               [1, 5, 9, 3, 7, 2, 2, 2])
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
 
   def testShapeFunctionEdgeCases(self):
     # Unknown multiples shape.

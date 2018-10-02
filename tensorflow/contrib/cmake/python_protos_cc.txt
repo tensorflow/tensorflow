@@ -1,0 +1,5 @@
+tensorflow/core/profiler
+tensorflow/python
+tensorflow/contrib/session_bundle
+tensorflow/contrib/tensorboard
+tensorflow/contrib/training

@@ -15,15 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
 #include "tensorflow/core/platform/google/build_config/googletest.h"
 #endif
+
+#include <cstdlib>
+#include <iostream>
 
 namespace tensorflow {
 namespace testing {
 
-#if defined(PLATFORM_GOOGLE) || defined(__ANDROID__)
+#if defined(PLATFORM_GOOGLE)
 string TmpDir() { return FLAGS_test_tmpdir; }
 int RandomSeed() { return FLAGS_test_random_seed; }
 #else

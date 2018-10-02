@@ -85,12 +85,9 @@ REGISTER_OP("KFeatureGradient")
 
 class KFeatureGradient : public OpKernel {
  public:
-  explicit KFeatureGradient(OpKernelConstruction* context)
-      : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("layer_num",
-                                             &layer_num_));
-    OP_REQUIRES_OK(context, context->GetAttr("random_seed",
-                                             &random_seed_));
+  explicit KFeatureGradient(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("layer_num", &layer_num_));
+    OP_REQUIRES_OK(context, context->GetAttr("random_seed", &random_seed_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -101,14 +98,14 @@ class KFeatureGradient : public OpKernel {
     const Tensor& routing_tensor = context->input(3);
 
     // Extract dimensions from input tensors.
-    const int32 num_data = static_cast<int32>(
-        input_data_tensor.shape().dim_size(0));
-    const int32 num_features = static_cast<int32>(
-        input_data_tensor.shape().dim_size(1));
-    const int32 num_nodes = static_cast<int32>(
-        tree_parameters_tensor.shape().dim_size(0));
-    const int32 num_features_per_node = static_cast<int32>(
-        tree_parameters_tensor.shape().dim_size(1));
+    const int32 num_data =
+        static_cast<int32>(input_data_tensor.shape().dim_size(0));
+    const int32 num_features =
+        static_cast<int32>(input_data_tensor.shape().dim_size(1));
+    const int32 num_nodes =
+        static_cast<int32>(tree_parameters_tensor.shape().dim_size(0));
+    const int32 num_features_per_node =
+        static_cast<int32>(tree_parameters_tensor.shape().dim_size(1));
 
     // Construct output tensors.
     Tensor* out_routes = nullptr;
@@ -127,12 +124,12 @@ class KFeatureGradient : public OpKernel {
     out_weights_shape.AddDim(num_nodes);
     out_weights_shape.AddDim(num_features_per_node);
 
-    OP_REQUIRES_OK(context, context->allocate_output(
-        0, out_routes_shape, &out_routes));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        1, out_data_shape, &out_data));
-    OP_REQUIRES_OK(context, context->allocate_output(
-        2, out_weights_shape, &out_weights));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, out_routes_shape, &out_routes));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(1, out_data_shape, &out_data));
+    OP_REQUIRES_OK(
+        context, context->allocate_output(2, out_weights_shape, &out_weights));
 
     tensorforest::Initialize(*out_data, 0.0f);
 
@@ -148,18 +145,13 @@ class KFeatureGradient : public OpKernel {
 
     std::vector<int32> feature_set;
     for (int i = 0; i < num_data; i++) {
-      const Tensor point = input_data_tensor.Slice(i, i+1);
+      const Tensor point = input_data_tensor.Slice(i, i + 1);
       feature_set.clear();
 
       // Traverse the tree from the bottom up.
       for (int j = num_nodes - 1; j >= 0; j--) {
-        tensorforest::GetFeatureSet(
-            layer_num_,
-            j,
-            random_seed_,
-            num_features,
-            num_features_per_node,
-            &feature_set);
+        tensorforest::GetFeatureSet(layer_num_, j, random_seed_, num_features,
+                                    num_features_per_node, &feature_set);
 
         // Compute routing gradient.
         // j is a leaf node.
@@ -170,12 +162,8 @@ class KFeatureGradient : public OpKernel {
           int32 right_child = left_child + 1;
 
           float left_prob = LeftProbabilityK(
-              point,
-              feature_set,
-              tree_parameters_tensor.Slice(j, j+1),
-              tree_biases(j),
-              num_features,
-              num_features_per_node);
+              point, feature_set, tree_parameters_tensor.Slice(j, j + 1),
+              tree_biases(j), num_features, num_features_per_node);
 
           float right_prob = 1.0f - left_prob;
 

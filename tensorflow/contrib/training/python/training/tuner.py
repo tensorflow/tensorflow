@@ -24,17 +24,16 @@ import abc
 from tensorflow.contrib.framework.python.framework import experimental
 
 
-@experimental
 class Tuner(object):
   """Tuner class is the interface for Experiment hyper-parameters tuning.
 
   Example:
   ```
-    def _create_my_experiment(config, hparams):
+    def _create_my_experiment(run_config, hparams):
       hidden_units = [hparams.unit_per_layer] * hparams.num_hidden_layers
 
       return tf.contrib.learn.Experiment(
-          estimator=DNNClassifier(config=config, hidden_units=hidden_units),
+          estimator=DNNClassifier(config=run_config, hidden_units=hidden_units),
           train_input_fn=my_train_input,
           eval_input_fn=my_eval_input)
 
@@ -45,6 +44,7 @@ class Tuner(object):
 
   __metaclass__ = abc.ABCMeta
 
+  @experimental
   @abc.abstractmethod
   def next_trial(self):
     """Switch to the next trial.
@@ -59,6 +59,7 @@ class Tuner(object):
     """
     raise NotImplementedError("Calling an abstract method.")
 
+  @experimental
   @abc.abstractmethod
   def run_experiment(self, experiment_fn):
     """Creates an Experiment by calling `experiment_fn` and executes it.
@@ -78,7 +79,7 @@ class Tuner(object):
 
     Args:
       experiment_fn: A function that creates an `Experiment`. It should accept
-        an argument `config` which should be used to create the `Estimator`
+        an argument `run_config` which should be used to create the `Estimator`
         (passed as `config` to its constructor), and an argument `hparams`,
         which should be used for hyper-parameters tuning. It must return an
         `Experiment`.

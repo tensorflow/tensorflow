@@ -27,7 +27,6 @@ EIGEN_RESTRICTED_DEPS = [
     "Eigen/SparseLU",
 ]
 
-# Note: unsupported/Eigen is unsupported and might go away at any time.
 EIGEN_FILES = [
     "Eigen/**",
     "unsupported/Eigen/CXX11/**",
@@ -37,6 +36,7 @@ EIGEN_FILES = [
     "unsupported/Eigen/src/KroneckerProduct/**",
     "unsupported/Eigen/MatrixFunctions",
     "unsupported/Eigen/SpecialFunctions",
+    "unsupported/Eigen/src/MatrixFunctions/**",
     "unsupported/Eigen/src/SpecialFunctions/**",
 ]
 
@@ -64,7 +64,14 @@ cc_library(
         # This define (mostly) guarantees we don't link any problematic
         # code. We use it, but we do not rely on it, as evidenced above.
         "EIGEN_MPL2_ONLY",
+        "EIGEN_MAX_ALIGN_BYTES=64",
     ],
     includes = ["."],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "eigen_header_files",
+    srcs = EIGEN_MPL2_HEADER_FILES,
     visibility = ["//visibility:public"],
 )

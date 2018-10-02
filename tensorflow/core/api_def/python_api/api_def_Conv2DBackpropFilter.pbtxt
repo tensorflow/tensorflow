@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Conv2DBackpropFilter"
+  endpoint {
+    name: "nn.conv2d_backprop_filter"
+  }
+}

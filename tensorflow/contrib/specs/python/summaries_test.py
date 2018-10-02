@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib.specs.python import specs
@@ -41,7 +34,7 @@ def _rand(*size):
 class SummariesTest(test.TestCase):
 
   def testStructure(self):
-    with self.test_session():
+    with self.cached_session():
       inputs_shape = (1, 18, 19, 5)
       inputs = constant_op.constant(_rand(*inputs_shape))
       spec = "net = Cr(64, [5, 5])"
@@ -55,7 +48,7 @@ class SummariesTest(test.TestCase):
           "_ variablev2 conv variablev2 biasadd relu")
 
   def testStructureFromTensor(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
@@ -67,7 +60,7 @@ class SummariesTest(test.TestCase):
           "_ variablev2 conv variablev2 biasadd relu")
 
   def testPrint(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)
@@ -77,7 +70,7 @@ class SummariesTest(test.TestCase):
       summaries.tf_spec_print(spec, inputs)
 
   def testSummary(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = constant_op.constant(_rand(1, 18, 19, 5))
       spec = "net = Cr(64, [5, 5])"
       outputs = specs.create_net(spec, inputs)

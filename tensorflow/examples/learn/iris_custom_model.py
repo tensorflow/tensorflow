@@ -16,62 +16,81 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from sklearn import cross_validation
+import numpy as np
 from sklearn import datasets
 from sklearn import metrics
+from sklearn import model_selection
 import tensorflow as tf
 
-layers = tf.contrib.layers
-learn = tf.contrib.learn
+
+X_FEATURE = 'x'  # Name of the input feature.
 
 
-def my_model(features, target):
+def my_model(features, labels, mode):
   """DNN with three hidden layers, and dropout of 0.1 probability."""
-  # Convert the target to a one-hot tensor of shape (length of features, 3) and
-  # with a on-value of 1 for each one-hot vector of length 3.
-  target = tf.one_hot(target, 3, 1, 0)
-
   # Create three fully connected layers respectively of size 10, 20, and 10 with
   # each layer having a dropout probability of 0.1.
-  normalizer_fn = layers.dropout
-  normalizer_params = {'keep_prob': 0.9}
-  features = layers.stack(
-      features,
-      layers.fully_connected, [10, 20, 10],
-      normalizer_fn=normalizer_fn,
-      normalizer_params=normalizer_params)
+  net = features[X_FEATURE]
+  for units in [10, 20, 10]:
+    net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+    net = tf.layers.dropout(net, rate=0.1)
 
-  # Compute logits (1 per class) and compute loss.
-  logits = layers.fully_connected(features, 3, activation_fn=None)
-  loss = tf.losses.softmax_cross_entropy(target, logits)
+  # Compute logits (1 per class).
+  logits = tf.layers.dense(net, 3, activation=None)
 
-  # Create a tensor for training op.
-  train_op = tf.contrib.layers.optimize_loss(
-      loss,
-      tf.contrib.framework.get_global_step(),
-      optimizer='Adagrad',
-      learning_rate=0.1)
+  # Compute predictions.
+  predicted_classes = tf.argmax(logits, 1)
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    predictions = {
+        'class': predicted_classes,
+        'prob': tf.nn.softmax(logits)
+    }
+    return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
-  return ({
-      'class': tf.argmax(logits, 1),
-      'prob': tf.nn.softmax(logits)
-  }, loss, train_op)
+  # Compute loss.
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+  # Create training op.
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.AdagradOptimizer(learning_rate=0.1)
+    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
+
+  # Compute evaluation metrics.
+  eval_metric_ops = {
+      'accuracy': tf.metrics.accuracy(
+          labels=labels, predictions=predicted_classes)
+  }
+  return tf.estimator.EstimatorSpec(
+      mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
 
 def main(unused_argv):
   iris = datasets.load_iris()
-  x_train, x_test, y_train, y_test = cross_validation.train_test_split(
+  x_train, x_test, y_train, y_test = model_selection.train_test_split(
       iris.data, iris.target, test_size=0.2, random_state=42)
 
-  classifier = learn.Estimator(model_fn=my_model)
-  classifier.fit(x_train, y_train, steps=1000)
+  classifier = tf.estimator.Estimator(model_fn=my_model)
 
-  y_predicted = [
-      p['class'] for p in classifier.predict(
-          x_test, as_iterable=True)
-  ]
+  # Train.
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: x_train}, y=y_train, num_epochs=None, shuffle=True)
+  classifier.train(input_fn=train_input_fn, steps=1000)
+
+  # Predict.
+  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: x_test}, y=y_test, num_epochs=1, shuffle=False)
+  predictions = classifier.predict(input_fn=test_input_fn)
+  y_predicted = np.array(list(p['class'] for p in predictions))
+  y_predicted = y_predicted.reshape(np.array(y_test).shape)
+
+  # Score with sklearn.
   score = metrics.accuracy_score(y_test, y_predicted)
-  print('Accuracy: {0:f}'.format(score))
+  print('Accuracy (sklearn): {0:f}'.format(score))
+
+  # Score with tensorflow.
+  scores = classifier.evaluate(input_fn=test_input_fn)
+  print('Accuracy (tensorflow): {0:f}'.format(scores['accuracy']))
 
 
 if __name__ == '__main__':

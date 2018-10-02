@@ -45,7 +45,7 @@ class MultivariateNormalTriLTest(test.TestCase):
     return chol.eval(), sigma.eval()
 
   def testLogPDFScalarBatch(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[1, 1] = -chol[1, 1]
@@ -65,7 +65,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval())
 
   def testLogPDFXIsHigherRank(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[0, 0] = -chol[0, 0]
@@ -85,7 +85,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval(), atol=0., rtol=0.03)
 
   def testLogPDFXLowerDimension(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 2)
       chol, sigma = self._random_chol(3, 2, 2)
       chol[0, 0, 0] = -chol[0, 0, 0]
@@ -108,7 +108,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval()[1])
 
   def testEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[0, 0] = -chol[0, 0]
@@ -121,7 +121,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_entropy, entropy.eval())
 
   def testEntropyMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -136,7 +136,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_entropy, entropy.eval()[1, 1])
 
   def testSample(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(2)
       chol, sigma = self._random_chol(2, 2)
       chol[0, 0] = -chol[0, 0]
@@ -151,8 +151,16 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(sample_values.mean(axis=0), mu, atol=1e-2)
       self.assertAllClose(np.cov(sample_values, rowvar=0), sigma, atol=0.06)
 
+  def testSingularScaleRaises(self):
+    with self.cached_session():
+      mu = None
+      chol = [[1., 0.], [0., 0.]]
+      mvn = ds.MultivariateNormalTriL(mu, chol, validate_args=True)
+      with self.assertRaisesOpError("Singular operator"):
+        mvn.sample().eval()
+
   def testSampleWithSampleShape(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -177,7 +185,7 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, x_log_pdf)
 
   def testSampleMultiDimensional(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, sigma = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -197,7 +205,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           atol=1e-1)
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       mu = self._rng.rand(3, 5, 2)
       chol, _ = self._random_chol(3, 5, 2, 2)
       chol[1, 0, 0, 0] = -chol[1, 0, 0, 0]
@@ -227,9 +235,9 @@ class MultivariateNormalTriLTest(test.TestCase):
     return mu, sigma
 
   def testKLNonBatch(self):
-    batch_shape = ()
-    event_shape = (2,)
-    with self.test_session():
+    batch_shape = []
+    event_shape = [2]
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalTriL(
@@ -241,7 +249,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           scale_tril=np.linalg.cholesky(sigma_b),
           validate_args=True)
 
-      kl = ds.kl(mvn_a, mvn_b)
+      kl = ds.kl_divergence(mvn_a, mvn_b)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -249,9 +257,9 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_kl, kl_v)
 
   def testKLBatch(self):
-    batch_shape = (2,)
-    event_shape = (3,)
-    with self.test_session():
+    batch_shape = [2]
+    event_shape = [3]
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalTriL(
@@ -263,7 +271,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           scale_tril=np.linalg.cholesky(sigma_b),
           validate_args=True)
 
-      kl = ds.kl(mvn_a, mvn_b)
+      kl = ds.kl_divergence(mvn_a, mvn_b)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -274,10 +282,37 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(expected_kl_0, kl_v[0])
       self.assertAllClose(expected_kl_1, kl_v[1])
 
+  def testKLBatchBroadcast(self):
+    batch_shape = [2]
+    event_shape = [3]
+    with self.cached_session():
+      mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
+      # No batch shape.
+      mu_b, sigma_b = self._random_mu_and_sigma([], event_shape)
+      mvn_a = ds.MultivariateNormalTriL(
+          loc=mu_a,
+          scale_tril=np.linalg.cholesky(sigma_a),
+          validate_args=True)
+      mvn_b = ds.MultivariateNormalTriL(
+          loc=mu_b,
+          scale_tril=np.linalg.cholesky(sigma_b),
+          validate_args=True)
+
+      kl = ds.kl_divergence(mvn_a, mvn_b)
+      self.assertEqual(batch_shape, kl.get_shape())
+
+      kl_v = kl.eval()
+      expected_kl_0 = _compute_non_batch_kl(mu_a[0, :], sigma_a[0, :, :],
+                                            mu_b, sigma_b)
+      expected_kl_1 = _compute_non_batch_kl(mu_a[1, :], sigma_a[1, :, :],
+                                            mu_b, sigma_b)
+      self.assertAllClose(expected_kl_0, kl_v[0])
+      self.assertAllClose(expected_kl_1, kl_v[1])
+
   def testKLTwoIdenticalDistributionsIsZero(self):
-    batch_shape = (2,)
-    event_shape = (3,)
-    with self.test_session():
+    batch_shape = [2]
+    event_shape = [3]
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalTriL(
           loc=mu_a,
@@ -285,7 +320,7 @@ class MultivariateNormalTriLTest(test.TestCase):
           validate_args=True)
 
       # Should be zero since KL(p || p) = =.
-      kl = ds.kl(mvn_a, mvn_a)
+      kl = ds.kl_divergence(mvn_a, mvn_a)
       self.assertEqual(batch_shape, kl.get_shape())
 
       kl_v = kl.eval()
@@ -300,10 +335,8 @@ class MultivariateNormalTriLTest(test.TestCase):
     true_covariance = np.matmul(true_scale, true_scale.T)
     true_variance = np.diag(true_covariance)
     true_stddev = np.sqrt(true_variance)
-    true_det_covariance = np.linalg.det(true_covariance)
-    true_log_det_covariance = np.log(true_det_covariance)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dist = ds.MultivariateNormalTriL(
           loc=mu,
           scale_tril=scale_tril,
@@ -323,7 +356,7 @@ class MultivariateNormalTriLTest(test.TestCase):
 
       sample_kl_chol = math_ops.reduce_mean(
           dist.log_prob(samps) - mvn_chol.log_prob(samps), 0)
-      analytical_kl_chol = ds.kl(dist, mvn_chol)
+      analytical_kl_chol = ds.kl_divergence(dist, mvn_chol)
 
       scale = dist.scale.to_dense()
 
@@ -334,8 +367,6 @@ class MultivariateNormalTriLTest(test.TestCase):
           analytical_covariance_,
           analytical_variance_,
           analytical_stddev_,
-          analytical_log_det_covariance_,
-          analytical_det_covariance_,
           sample_kl_chol_, analytical_kl_chol_,
           scale_,
       ] = sess.run([
@@ -345,16 +376,12 @@ class MultivariateNormalTriLTest(test.TestCase):
           dist.covariance(),
           dist.variance(),
           dist.stddev(),
-          dist.log_det_covariance(),
-          dist.det_covariance(),
           sample_kl_chol, analytical_kl_chol,
           scale,
       ])
 
       sample_variance_ = np.diag(sample_covariance_)
       sample_stddev_ = np.sqrt(sample_variance_)
-      sample_det_covariance_ = np.linalg.det(sample_covariance_)
-      sample_log_det_covariance_ = np.log(sample_det_covariance_)
 
       logging.vlog(2, "true_mean:\n{}  ".format(true_mean))
       logging.vlog(2, "sample_mean:\n{}".format(sample_mean_))
@@ -372,21 +399,6 @@ class MultivariateNormalTriLTest(test.TestCase):
       logging.vlog(2, "true_stddev:\n{}".format(true_stddev))
       logging.vlog(2, "sample_stddev:\n{}".format(sample_stddev_))
       logging.vlog(2, "analytical_stddev:\n{}".format(analytical_stddev_))
-
-      logging.vlog(
-          2, "true_log_det_covariance:\n{}".format(true_log_det_covariance))
-      logging.vlog(
-          2, "sample_log_det_covariance:\n{}".format(
-              sample_log_det_covariance_))
-      logging.vlog(2, "analytical_log_det_covariance:\n{}".format(
-          analytical_log_det_covariance_))
-
-      logging.vlog(2, "true_det_covariance:\n{}".format(true_det_covariance))
-      logging.vlog(
-          2, "sample_det_covariance:\n{}".format(sample_det_covariance_))
-      logging.vlog(
-          2, "analytical_det_covariance:\n{}".format(
-              analytical_det_covariance_))
 
       logging.vlog(2, "true_scale:\n{}".format(true_scale))
       logging.vlog(2, "scale:\n{}".format(scale_))
@@ -412,17 +424,6 @@ class MultivariateNormalTriLTest(test.TestCase):
       self.assertAllClose(true_stddev, sample_stddev_,
                           atol=0., rtol=0.01)
       self.assertAllClose(true_stddev, analytical_stddev_,
-                          atol=0., rtol=1e-6)
-
-      self.assertAllClose(true_log_det_covariance, sample_log_det_covariance_,
-                          atol=0., rtol=0.04)
-      self.assertAllClose(true_log_det_covariance,
-                          analytical_log_det_covariance_,
-                          atol=0., rtol=1e-6)
-
-      self.assertAllClose(true_det_covariance, sample_det_covariance_,
-                          atol=0., rtol=0.03)
-      self.assertAllClose(true_det_covariance, analytical_det_covariance_,
                           atol=0., rtol=1e-6)
 
       self.assertAllClose(true_scale, scale_,

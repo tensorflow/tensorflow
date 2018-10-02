@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_HINGE_LOSS_H_
-#define TENSORFLOW_KERNELS_HINGE_LOSS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HINGE_LOSS_H_
+#define TENSORFLOW_CORE_KERNELS_HINGE_LOSS_H_
 
 #include <algorithm>
 #include <limits>
@@ -44,15 +44,14 @@ class HingeLossUpdater : public DualLossUpdater {
                             const double current_dual, const double wx,
                             const double weighted_example_norm) const final {
     // Intutitvely there are 3 cases:
-    // a. new optimal value of the dual variable falls withing the admissible
+    // a. new optimal value of the dual variable falls within the admissible
     // range [0, 1]. In this case we set new dual to this value.
     // b. new optimal value is < 0. Then, because of convexity, the optimal
     // valid value for new dual = 0
     // c. new optimal value > 1.0. Then new optimal value should be set to 1.0.
     const double candidate_optimal_dual =
-        current_dual +
-        (label - wx) /
-            (num_loss_partitions * example_weight * weighted_example_norm);
+        current_dual + (label - wx) / (num_loss_partitions * example_weight *
+                                       weighted_example_norm);
     if (label * candidate_optimal_dual < 0) {
       return 0.0;
     }
@@ -124,4 +123,4 @@ class HingeLossUpdater : public DualLossUpdater {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_HINGE_LOSS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_HINGE_LOSS_H_

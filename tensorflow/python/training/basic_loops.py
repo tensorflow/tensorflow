@@ -18,8 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import errors
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.basic_train_loop")
 def basic_train_loop(supervisor, train_step_fn, args=None,
                      kwargs=None, master=""):
   """Basic loop to train a model.
@@ -34,7 +36,7 @@ def basic_train_loop(supervisor, train_step_fn, args=None,
   typically runs one training step in the session.
 
   Args:
-    supervisor: `tf.Supervisor` to run the training services.
+    supervisor: `tf.train.Supervisor` to run the training services.
     train_step_fn: Callable to execute one training step.  Called
       repeatedly as `train_step_fn(session, *args **kwargs)`.
     args: Optional positional arguments passed to `train_step_fn`.

@@ -20,15 +20,14 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -39,53 +38,62 @@ __all__ = [
 class CholeskyOuterProduct(bijector.Bijector):
   """Compute `g(X) = X @ X.T`; X is lower-triangular, positive-diagonal matrix.
 
-  `event_ndims` must be 0 or 2, i.e., scalar or matrix.
-
   Note: the upper-triangular part of X is ignored (whether or not its zero).
 
-  Examples:
+  The surjectivity of g as a map from  the set of n x n positive-diagonal
+  lower-triangular matrices to the set of SPD matrices follows immediately from
+  executing the Cholesky factorization algorithm on an SPD matrix A to produce a
+  positive-diagonal lower-triangular matrix L such that `A = L @ L.T`.
+
+  To prove the injectivity of g, suppose that L_1 and L_2 are lower-triangular
+  with positive diagonals and satisfy `A = L_1 @ L_1.T = L_2 @ L_2.T`. Then
+    `inv(L_1) @ A @ inv(L_1).T = [inv(L_1) @ L_2] @ [inv(L_1) @ L_2].T = I`.
+  Setting `L_3 := inv(L_1) @ L_2`, that L_3 is a positive-diagonal
+  lower-triangular matrix follows from `inv(L_1)` being positive-diagonal
+  lower-triangular (which follows from the diagonal of a triangular matrix being
+  its spectrum), and that the product of two positive-diagonal lower-triangular
+  matrices is another positive-diagonal lower-triangular matrix.
+
+  A simple inductive argument (proceeding one column of L_3 at a time) shows
+  that, if `I = L_3 @ L_3.T`, with L_3 being lower-triangular with positive-
+  diagonal, then `L_3 = I`. Thus, `L_1 = L_2`, proving injectivity of g.
+
+  #### Examples
 
   ```python
-  bijector.CholeskyOuterProduct(event_ndims=2).forward(x=[[1., 0], [2, 1]])
+  bijector.CholeskyOuterProduct().forward(x=[[1., 0], [2, 1]])
   # Result: [[1., 2], [2, 5]], i.e., x @ x.T
 
-  bijector.CholeskyOuterProduct(event_ndims=2).inverse(y=[[1., 2], [2, 5]])
+  bijector.CholeskyOuterProduct().inverse(y=[[1., 2], [2, 5]])
   # Result: [[1., 0], [2, 1]], i.e., cholesky(y).
   ```
 
   """
 
-  def __init__(self, event_ndims=2, validate_args=False,
-               name="cholesky_outer_product"):
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
+  def __init__(self, validate_args=False, name="cholesky_outer_product"):
     """Instantiates the `CholeskyOuterProduct` bijector.
 
     Args:
-      event_ndims: `constant` `int32` scalar `Tensor` indicating the number of
-        dimensions associated with a particular draw from the distribution. Must
-        be 0 or 2.
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
       name: Python `str` name given to ops managed by this object.
-
-    Raises:
-      ValueError: if event_ndims is neither 0 or 2.
     """
     self._graph_parents = []
     self._name = name
-    with self._name_scope("init", values=[event_ndims]):
-      event_ndims = ops.convert_to_tensor(event_ndims, name="event_ndims")
-      event_ndims = tensor_util.constant_value(event_ndims)
-    if event_ndims is None or event_ndims not in [0, 2]:
-      raise ValueError("`event_ndims` must be a TF constant which is 0 or 2")
-    self._static_event_ndims = event_ndims
     super(CholeskyOuterProduct, self).__init__(
-        event_ndims=event_ndims,
+        forward_min_event_ndims=2,
         validate_args=validate_args,
         name=name)
 
   def _forward(self, x):
-    if self._static_event_ndims == 0:
-      return math_ops.square(x)
     if self.validate_args:
       is_matrix = check_ops.assert_rank_at_least(x, 2)
       shape = array_ops.shape(x)
@@ -95,10 +103,8 @@ class CholeskyOuterProduct(bijector.Bijector):
     x = array_ops.matrix_band_part(x, -1, 0)
     return math_ops.matmul(x, x, adjoint_b=True)
 
-  def _inverse_and_inverse_log_det_jacobian(self, y):
-    x = (math_ops.sqrt(y) if self._static_event_ndims == 0
-         else linalg_ops.cholesky(y))
-    return x, -self._forward_log_det_jacobian(x)
+  def _inverse(self, y):
+    return linalg_ops.cholesky(y)
 
   def _forward_log_det_jacobian(self, x):
     # Let Y be a symmetric, positive definite matrix and write:
@@ -141,13 +147,6 @@ class CholeskyOuterProduct(bijector.Bijector):
     # Since there is a 2 X[j,j] term for every lower-triangular element of X we
     # conclude:
     #   |Jac(d vec[Y]/d vec[X])| = 2^p prod_{j=0}^{p-1} X[j,j]^{p-j}.
-    if self._static_event_ndims == 0:
-      if self.validate_args:
-        is_positive = check_ops.assert_positive(
-            x, message="All elements must be positive.")
-        x = control_flow_ops.with_dependencies([is_positive], x)
-      return np.log(2.) + math_ops.log(x)
-
     diag = array_ops.matrix_diag_part(x)
 
     # We now ensure diag is columnar. Eg, if `diag = [1, 2, 3]` then the output
@@ -180,10 +179,23 @@ class CholeskyOuterProduct(bijector.Bijector):
     sum_weighted_log_diag = array_ops.squeeze(
         math_ops.matmul(math_ops.log(diag),
                         exponents[..., array_ops.newaxis]),
-        squeeze_dims=-1)
+        axis=-1)
     fldj = p_float * np.log(2.) + sum_weighted_log_diag
 
-    return fldj
+    # We finally need to undo adding an extra column in non-scalar cases
+    # where there is a single matrix as input.
+    if x.get_shape().ndims is not None:
+      if x.get_shape().ndims == 2:
+        fldj = array_ops.squeeze(fldj, axis=-1)
+      return fldj
+
+    shape = array_ops.shape(fldj)
+    maybe_squeeze_shape = array_ops.concat([
+        shape[:-1],
+        distribution_util.pick_vector(
+            math_ops.equal(array_ops.rank(x), 2),
+            np.array([], dtype=np.int32), shape[-1:])], 0)
+    return array_ops.reshape(fldj, maybe_squeeze_shape)
 
   def _make_columnar(self, x):
     """Ensures non-scalar input has at least one column.

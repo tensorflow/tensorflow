@@ -24,9 +24,7 @@ namespace tensorflow {
 namespace internal {
 
 std::string GetWindowsErrorMessage(DWORD err);
-
 }
-}
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_ERROR_H_
-

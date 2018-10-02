@@ -5,11 +5,15 @@ option cc_enable_arenas = true;
 option java_outer_classname = "VariableProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 
 // Protocol buffer representing a Variable.
 message VariableDef {
   // Name of the variable tensor.
   string variable_name = 1;
+
+  // Name of the tensor holding the variable's initial value.
+  string initial_value_name = 6;
 
   // Name of the initializer op.
   string initializer_name = 2;
@@ -22,6 +26,9 @@ message VariableDef {
 
   // Whether to represent this as a ResourceVariable.
   bool is_resource = 5;
+
+  // Whether this variable should be trained.
+  bool trainable = 7;
 }
 
 message SaveSliceInfoDef {

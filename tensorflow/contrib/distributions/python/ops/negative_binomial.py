@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -27,6 +25,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class NegativeBinomial(distribution.Distribution):
@@ -51,6 +52,14 @@ class NegativeBinomial(distribution.Distribution):
   * `n!` is the factorial of `n`.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                total_count,
                logits=None,
@@ -90,8 +99,8 @@ class NegativeBinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
 
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]) as ns:
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
       with ops.control_dependencies(
@@ -100,13 +109,12 @@ class NegativeBinomial(distribution.Distribution):
 
     super(NegativeBinomial, self).__init__(
         dtype=self._probs.dtype,
-        is_continuous=False,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._total_count, self._probs, self._logits],
-        name=ns)
+        name=name)
 
   @property
   def total_count(self):
@@ -149,39 +157,33 @@ class NegativeBinomial(distribution.Distribution):
         beta=math_ops.exp(-self.logits),
         dtype=self.dtype,
         seed=seed)
-
     return random_ops.random_poisson(
         rate,
         shape=[],
         dtype=self.dtype,
         seed=distribution_util.gen_new_seed(seed, "negative_binom"))
 
-  def _cdf(self, positive_counts):
+  def _cdf(self, x):
     if self.validate_args:
-      positive_counts = math_ops.floor(
-          distribution_util.embed_check_nonnegative_discrete(
-              positive_counts, check_integer=False))
-    return math_ops.betainc(
-        self.total_count, positive_counts + 1.,
-        math_ops.sigmoid(-self.logits))
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return math_ops.betainc(self.total_count, 1. + x,
+                            math_ops.sigmoid(-self.logits))
 
-  def _log_prob(self, positive_counts):
-    return (self._log_unnormalized_prob(positive_counts)
-            - self._log_normalization(positive_counts))
+  def _log_prob(self, x):
+    return (self._log_unnormalized_prob(x)
+            - self._log_normalization(x))
 
-  def _log_unnormalized_prob(self, positive_counts):
+  def _log_unnormalized_prob(self, x):
     if self.validate_args:
-      positive_counts = distribution_util.embed_check_nonnegative_discrete(
-          positive_counts, check_integer=True)
-    return self.total_count * math_ops.log1p(
-        -self.probs) + positive_counts * math_ops.log(self.probs)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return (self.total_count * math_ops.log_sigmoid(-self.logits)
+            + x * math_ops.log_sigmoid(self.logits))
 
-  def _log_normalization(self, positive_counts):
+  def _log_normalization(self, x):
     if self.validate_args:
-      positive_counts = distribution_util.embed_check_nonnegative_discrete(
-          positive_counts, check_integer=True)
-    return (-math_ops.lgamma(self.total_count + positive_counts)
-            + math_ops.lgamma(positive_counts + 1.)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return (-math_ops.lgamma(self.total_count + x)
+            + math_ops.lgamma(1. + x)
             + math_ops.lgamma(self.total_count))
 
   def _mean(self):

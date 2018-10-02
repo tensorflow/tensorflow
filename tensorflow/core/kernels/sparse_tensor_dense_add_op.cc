@@ -29,6 +29,43 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 // NOTE: does not support GPU yet.
 
+namespace {
+
+template <typename Index>
+Status ValidateInputs(const Tensor *a_indices, const Tensor *a_values,
+                      const Tensor *a_shape, const Tensor *b) {
+  if (!TensorShapeUtils::IsMatrix(a_indices->shape())) {
+    return errors::InvalidArgument(
+        "Input a_indices should be a matrix but received shape: ",
+        a_indices->shape().DebugString());
+  }
+  if (!TensorShapeUtils::IsVector(a_values->shape()) ||
+      !TensorShapeUtils::IsVector(a_shape->shape())) {
+    return errors::InvalidArgument(
+        "Inputs a_values and a_shape should be vectors "
+        "but received shapes: ",
+        a_values->shape().DebugString(), " and ",
+        a_shape->shape().DebugString());
+  }
+  if (a_shape->NumElements() != b->dims()) {
+    return errors::InvalidArgument(
+        "Two operands have different ranks; received: ", a_shape->NumElements(),
+        " and ", b->dims());
+  }
+  const auto a_shape_flat = a_shape->flat<Index>();
+  for (int i = 0; i < b->dims(); ++i) {
+    if (a_shape_flat(i) != b->dim_size(i)) {
+      return errors::InvalidArgument(
+          "Dimension ", i,
+          " does not equal (no broadcasting is supported): sparse side ",
+          a_shape_flat(i), " vs dense side ", b->dim_size(i));
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 template <typename Device, typename T, typename Index>
 class SparseTensorDenseAddOp : public OpKernel {
  public:
@@ -36,27 +73,12 @@ class SparseTensorDenseAddOp : public OpKernel {
 
   void Compute(OpKernelContext *ctx) override {
     const Tensor *a_indices_t, *a_values_t, *a_shape_t, *b;
-
     OP_REQUIRES_OK(ctx, ctx->input("a_indices", &a_indices_t));
     OP_REQUIRES_OK(ctx, ctx->input("a_values", &a_values_t));
     OP_REQUIRES_OK(ctx, ctx->input("a_shape", &a_shape_t));
     OP_REQUIRES_OK(ctx, ctx->input("b", &b));
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_indices_t->shape()),
-                errors::InvalidArgument(
-                    "Input a_indices should be a matrix but received shape: ",
-                    a_indices_t->shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(a_values_t->shape()) &&
-                 TensorShapeUtils::IsVector(a_shape_t->shape()),
-        errors::InvalidArgument("Inputs a_values and a_shape should be vectors "
-                                "but received shapes: ",
-                                a_values_t->shape().DebugString(), " and ",
-                                a_shape_t->shape().DebugString()));
-    OP_REQUIRES(ctx, a_shape_t->NumElements() == b->dims(),
-                errors::InvalidArgument(
-                    "Two operands have different dimensions; received: ",
-                    a_shape_t->NumElements(), " and ", b->dims()));
+    OP_REQUIRES_OK(
+        ctx, ValidateInputs<Index>(a_indices_t, a_values_t, a_shape_t, b));
 
     Tensor *out_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, b->shape(), &out_t));
@@ -66,14 +88,20 @@ class SparseTensorDenseAddOp : public OpKernel {
     const auto a_values_flat = a_values_t->flat<T>();
 
     switch (ndims) {
-#define NDIMS_CASE(N)                                                   \
-  case N: {                                                             \
-    auto out_tensor = out_t->tensor<T, N>();                            \
-    out_tensor.device(ctx->eigen_device<Device>()) = b->tensor<T, N>(); \
-    functor::ScatterNdFunctor<Device, T, Index, N,                      \
-                              scatter_op::UpdateOp::ADD>()(             \
-        ctx->eigen_device<Device>(), a_indices_mat, a_values_flat,      \
-        out_tensor);                                                    \
+#define NDIMS_CASE(N)                                                     \
+  case N: {                                                               \
+    auto out_tensor = out_t->tensor<T, N>();                              \
+    out_tensor.device(ctx->eigen_device<Device>()) = b->tensor<T, N>();   \
+    const Index result =                                                  \
+        functor::ScatterNdFunctor<Device, T, Index, N,                    \
+                                  scatter_op::UpdateOp::ADD>()(           \
+            ctx->eigen_device<Device>(), a_indices_mat, a_values_flat,    \
+            out_tensor);                                                  \
+    OP_REQUIRES(                                                          \
+        ctx, result == -1,                                                \
+        errors::InvalidArgument(                                          \
+            "Sparse tensor has some invalid index on dimension ", result, \
+            "; dense tensor shape: ", b->shape().DebugString()));         \
   } break;
 
       NDIMS_CASE(1);
@@ -82,8 +110,9 @@ class SparseTensorDenseAddOp : public OpKernel {
       NDIMS_CASE(4);
       NDIMS_CASE(5);
       default:
-        OP_REQUIRES(ctx, false, errors::InvalidArgument(
-                                    "Only tensors with ranks between 1 and 5 "
+        OP_REQUIRES(
+            ctx, false,
+            errors::InvalidArgument("Only tensors with ranks between 1 and 5 "
                                     "are currently supported.  Tensor rank: ",
                                     ndims));
 #undef NDIMS_CASE
@@ -102,11 +131,14 @@ struct ScatterNdFunctor<CPUDevice, T, Index, NDIMS, scatter_op::UpdateOp::ADD> {
     const int num_nnz = static_cast<int>(indices.dimension(0));
     for (int i = 0; i < num_nnz; ++i) {
       for (int d = 0; d < NDIMS; ++d) {
-        idx[d] = indices(i, d);
+        idx[d] = internal::SubtleMustCopy(indices(i, d));
+        if (!FastBoundsCheck(idx[d], out.dimension(d))) {
+          return d;  // on failure: d nonnegative
+        }
       }
       out(idx) += updates(i);
     }
-    return -1;
+    return -1;  // on success
   }
 };
 }  // namespace functor

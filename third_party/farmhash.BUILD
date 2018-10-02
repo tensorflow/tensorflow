@@ -5,7 +5,7 @@ exports_files(["COPYING"])
 config_setting(
     name = "windows",
     values = {
-        "cpu": "x64_windows_msvc",
+        "cpu": "x64_windows",
     },
 )
 

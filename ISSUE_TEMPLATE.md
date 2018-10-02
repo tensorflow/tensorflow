@@ -1,36 +1,40 @@
-NOTE: Only file GitHub issues for bugs and feature requests.  All other topics will be closed.
+Please go to Stack Overflow for help and support:
 
-For general support from the community, see [StackOverflow](https://stackoverflow.com/questions/tagged/tensorflow).
-To make bugs and feature requests more easy to find and organize, we close issues that are deemed
-out of scope for GitHub Issues and point people to StackOverflow.
+https://stackoverflow.com/questions/tagged/tensorflow
 
-For bugs or installation issues, please provide the following information.
-The more information you provide, the more easily we will be able to offer
-help and advice.
+If you open a GitHub issue, here is our policy:
 
-### What related GitHub issues or StackOverflow threads have you found by searching the web for your problem?
+1. It must be a bug, a feature request, or a significant problem with documentation (for small docs fixes please send a PR instead).
+2. The form below must be filled out.
+3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorboard/issues).
 
-### Environment info
-Operating System:
+**Here's why we have that policy**: TensorFlow developers respond to issues. We want to focus on work that benefits the whole community, e.g., fixing bugs and adding features. Support only helps individuals. GitHub also notifies thousands of people when issues are filed. We want them to see you communicating an interesting problem, rather than being redirected to Stack Overflow.
 
-Installed version of CUDA and cuDNN: 
-(please attach the output of `ls -l /path/to/cuda/lib/libcud*`):
+------------------------
 
-If installed from binary pip package, provide:
+### System information
+- **Have I written custom code (as opposed to using a stock example script provided in TensorFlow)**:
+- **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
+- **Mobile device (e.g. iPhone 8, Pixel 2, Samsung Galaxy) if the issue happens on mobile device**:
+- **TensorFlow installed from (source or binary)**:
+- **TensorFlow version (use command below)**:
+- **Python version**:
+- **Bazel version (if compiling from source)**:
+- **GCC/Compiler version (if compiling from source)**:
+- **CUDA/cuDNN version**:
+- **GPU model and memory**:
+- **Exact command to reproduce**:
 
-1. A link to the pip package you installed:
-2. The output from `python -c "import tensorflow; print(tensorflow.__version__)"`.
+You can collect some of this information using our environment capture script:
 
-If installed from source, provide 
+https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
 
-1. The commit hash (`git rev-parse HEAD`)
-2. The output of `bazel version`
+You can obtain the TensorFlow version with
 
-### If possible, provide a minimal reproducible example (We usually don't have time to read hundreds of lines of your code)
+python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
 
+### Describe the problem
+Describe the problem clearly here. Be sure to convey here why it's a bug in TensorFlow or a feature request.
 
-### What other attempted solutions have you tried?
-
-
-### Logs or other output that would be helpful
-(If logs are large, please upload as attachment or provide link).
+### Source code / logs
+Include any logs or source code that would be helpful to diagnose the problem. If including tracebacks, please include the full traceback. Large logs and files should be attached. Try to provide a reproducible test case that is the bare minimum necessary to generate the problem.

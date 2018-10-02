@@ -19,17 +19,24 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
+namespace op = xla::testing::opcode_matchers;
+
 namespace xla {
 namespace {
+
+using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAreArray;
 
 class TuplePointsToAnalysisTest : public HloTestBase {
  protected:
@@ -41,22 +48,21 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   }
 
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_.reset(new HloModule(TestName()));
+    module_ = CreateNewModule();
     module_->AddEntryComputation(std::move(computation));
   }
 
-  void RunAnalysis(const bool include_loop_fusion_instructions = false) {
+  void RunAnalysis() {
     CHECK_NOTNULL(module_.get());
-    points_to_analysis_ = TuplePointsToAnalysis::Run(
-                              module_.get(), include_loop_fusion_instructions)
-                              .ConsumeValueOrDie();
+    points_to_analysis_ =
+        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
   }
 
   // Returns the LogicalBuffer defined at the given instruction and
   // index. CHECKs if no buffer is defined at that point.
   const LogicalBuffer* const GetBuffer(const HloInstruction* instruction,
                                        const ShapeIndex& index) {
-    const std::vector<const LogicalBuffer*>& pointed_to =
+    const auto& pointed_to =
         points_to_analysis_->GetPointsToSet(instruction).element(index);
     CHECK_EQ(1, pointed_to.size());
     CHECK_EQ(instruction, pointed_to[0]->instruction());
@@ -66,60 +72,52 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   // Checks that the given points-to set contains exactly (unordered) the given
   // LogicalBuffers.
-  void ExpectHasBuffers(
-      const std::vector<const LogicalBuffer*>& points_to_set,
-      tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
+  void ExpectHasBuffers(const PointsToSet::BufferList& points_to_set,
+                        absl::Span<const LogicalBuffer* const> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
-    EXPECT_MATCH(points_to_set, testing::UnorderedElementsAre(vec));
+    EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
   }
 
   // Checks that the given points-to set contains exactly (unordered) the
   // top-level buffers of the given instructions.
   void ExpectHasTopLevelBuffers(
-      const std::vector<const LogicalBuffer*>& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-    std::vector<const LogicalBuffer*> buffers;
+      const PointsToSet::BufferList& points_to_set,
+      absl::Span<HloInstruction* const> instructions) {
+    PointsToSet::BufferList buffers;
     for (auto instruction : instructions) {
       buffers.push_back(GetBuffer(instruction, /*index=*/{}));
     }
     ExpectHasBuffers(points_to_set, buffers);
   }
 
-  // Overload which takes a std::set instead of a std::vector.
+  // Overload which takes a set instead of a vector.
   void ExpectHasTopLevelBuffers(
-      const std::set<const LogicalBuffer*>& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-    ExpectHasTopLevelBuffers(std::vector<const LogicalBuffer*>(
-                                 points_to_set.begin(), points_to_set.end()),
-                             instructions);
+      const PointsToSet::BufferSet& points_to_set,
+      absl::Span<HloInstruction* const> instructions) {
+    ExpectHasTopLevelBuffers(
+        PointsToSet::BufferList(points_to_set.begin(), points_to_set.end()),
+        instructions);
   }
 
   // Checks that the buffer defined at the given instruction and index has
   // aliases which are exactly (unordered) the given instruction/index pairs.
   void ExpectHasBufferAliases(
       const HloInstruction* instruction, const ShapeIndex& index,
-      tensorflow::gtl::ArraySlice<std::pair<HloInstruction*, ShapeIndex>>
-          expected) {
+      absl::Span<const std::pair<HloInstruction*, ShapeIndex>> expected) {
     const LogicalBuffer* buffer =
         points_to_analysis_->GetBufferDefinedAt(instruction, index)
             .ValueOrDie();
     std::vector<BufferAlias> expected_aliases;
     for (auto& pair : expected) {
-      expected_aliases.push_back(BufferAlias(*buffer, pair.first, pair.second));
+      expected_aliases.push_back(BufferAlias(pair.first, pair.second));
     }
-    EXPECT_MATCH(points_to_analysis_->GetBufferAliases(*buffer),
-                 testing::UnorderedElementsAre(expected_aliases));
+    EXPECT_THAT(points_to_analysis_->GetBufferAliases(*buffer),
+                UnorderedElementsAreArray(expected_aliases));
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 };
-
-// Expect the given std::set<HloInstruction*> as A contains exactly the given
-// HloInstruction*s as __VA_ARGS__.
-#define EXPECT_ISET(A, ...)                           \
-  EXPECT_MATCH(testing::SetToVec<HloInstruction*>(A), \
-               testing::UnorderedMatcher<HloInstruction*>(__VA_ARGS__))
 
 TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
   auto builder = HloComputation::Builder(TestName());
@@ -146,8 +144,8 @@ TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
 
   EXPECT_EQ(3, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
@@ -205,9 +203,9 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(inner_tuple).element({}),
       {inner_tuple});
-  EXPECT_ISET(
+  EXPECT_THAT(
       points_to_analysis_->GetPointsToSet(inner_tuple).tuple_sources({}),
-      inner_tuple);
+      UnorderedElementsAre(inner_tuple));
 
   EXPECT_EQ(5, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
@@ -215,10 +213,10 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
       {constant1, constant2, constant3, inner_tuple, tuple});
 
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({0}),
-              inner_tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({0}),
+              UnorderedElementsAre(inner_tuple));
   EXPECT_TRUE(
       points_to_analysis_->GetPointsToSet(tuple).tuple_sources({1}).empty());
 
@@ -262,7 +260,8 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
                            {constant1, constant2, inner_tuple});
   ExpectHasTopLevelBuffers(points_to_set.element({}), {inner_tuple});
 
-  EXPECT_ISET(points_to_set.tuple_sources({}), inner_tuple);
+  EXPECT_THAT(points_to_set.tuple_sources({}),
+              UnorderedElementsAre(inner_tuple));
 }
 
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
@@ -312,6 +311,53 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
       {constant1, constant2, copy});
 }
 
+TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
+  // Send forwards its operand to the output tuple at {0}.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  auto send = builder.AddInstruction(
+      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send).element({}), {send});
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send).element({0}), {constant});
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send_done).CreateFlattenedSet(),
+      {send_done});
+  ExpectHasBufferAliases(constant, {}, {{constant, {}}, {send, {0}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
+  // RecvDone forwards its operand tuple element at {0} to the output.
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      ShapeUtil::MakeShape(F32, {1, 2, 3}), token, /*channel_id=*/0));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(recv).element({}), {recv});
+  ExpectHasBufferAliases(recv, {0}, {{recv, {0}}, {recv_done, {0}}});
+}
+
 TEST_F(TuplePointsToAnalysisTest, TupleSelect) {
   // Select from two different tuples. This should create an ambiguous points to
   // set containing the union of both sides.
@@ -328,7 +374,7 @@ TEST_F(TuplePointsToAnalysisTest, TupleSelect) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -357,7 +403,7 @@ TEST_F(TuplePointsToAnalysisTest, SelectTupleParameters) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, param0, param1));
+      tuple_shape, HloOpcode::kTupleSelect, pred, param0, param1));
   auto copy = builder.AddInstruction(
       HloInstruction::CreateUnary(tuple_shape, HloOpcode::kCopy, select));
 
@@ -406,7 +452,7 @@ TEST_F(TuplePointsToAnalysisTest, UnambiguousTupleSelect) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -442,7 +488,7 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -460,8 +506,10 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
   ExpectHasTopLevelBuffers(points_to_set.element({0, 1}), {constant2});
 
   // Verify tuple sources.
-  EXPECT_ISET(points_to_set.tuple_sources({}), tuple1, tuple2);
-  EXPECT_ISET(points_to_set.tuple_sources({0}), inner_tuple1, inner_tuple2);
+  EXPECT_THAT(points_to_set.tuple_sources({}),
+              UnorderedElementsAre(tuple1, tuple2));
+  EXPECT_THAT(points_to_set.tuple_sources({0}),
+              UnorderedElementsAre(inner_tuple1, inner_tuple2));
   EXPECT_EQ(0, points_to_set.tuple_sources({0, 0}).size());
   EXPECT_EQ(0, points_to_set.tuple_sources({0, 1}).size());
 }
@@ -489,8 +537,8 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
 
   EXPECT_EQ(3, points_to_analysis_->GetPointsToSet(tuple).size());
   EXPECT_FALSE(points_to_analysis_->GetPointsToSet(tuple).IsAmbiguous());
-  EXPECT_ISET(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
-              tuple);
+  EXPECT_THAT(points_to_analysis_->GetPointsToSet(tuple).tuple_sources({}),
+              UnorderedElementsAre(tuple));
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(tuple).CreateFlattenedSet(),
@@ -507,10 +555,10 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
-  auto tuple_constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::MakeTuple(
-          {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-           LiteralUtil::CreateR1<float>({2.0, 42}).get()})));
+  Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
+                        LiteralUtil::CreateR1<float>({2.0, 42})};
+  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
 
@@ -582,7 +630,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     if (add_additional_gte0_user) {
       // Create 'slice' as an additional user of 'input'.
       auto slice = builder.AddInstruction(
-          HloInstruction::CreateSlice(update_shape, input, {0}, {3}));
+          HloInstruction::CreateSlice(update_shape, input, {0}, {3}, {1}));
       // Modify 'update' to take 'slice' output.
       update = builder.AddInstruction(HloInstruction::CreateBinary(
           update_shape, HloOpcode::kAdd, update, slice));
@@ -598,12 +646,14 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     // Build computation and add it to module as entry computation.
     BuildModule(builder.Build());
     // Run instruction fusion HloPass.
-    EXPECT_TRUE(InstructionFusion().Run(module_.get()).ValueOrDie());
+    EXPECT_TRUE(InstructionFusion(InstructionFusion::IsExpensive)
+                    .Run(module_.get())
+                    .ValueOrDie());
     // Get computation root instruction (should be a kFusion).
     auto* fusion = module_->entry_computation()->root_instruction();
-    EXPECT_EQ(HloOpcode::kFusion, fusion->opcode());
+    EXPECT_THAT(fusion, op::Fusion(tuple_param0));
     // Run points-to analysis (should include fused instructions from 'fusion').
-    RunAnalysis(/*include_loop_fusion_instructions=*/true);
+    RunAnalysis();
 
     // Check points-to set of fusion parameter associated with 'tuple_param0'.
     auto* fusion_param = GetFusionParameterForOperand(fusion, tuple_param0);
@@ -657,13 +707,12 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
                                                HloInstruction* operand) {
     auto it = std::find_if(
         fusion->fused_instructions().begin(),
-        fusion->fused_instructions().end(),
-        [=](const std::unique_ptr<HloInstruction>& fused) {
+        fusion->fused_instructions().end(), [=](const HloInstruction* fused) {
           return fused->opcode() == HloOpcode::kParameter &&
                  fusion->operand(fused->parameter_number()) == operand;
         });
     CHECK(it != fusion->fused_instructions().end());
-    return (*it).get();
+    return *it;
   }
 
   // Returns all users of 'fusion_paran' at 'tuple_index'.
@@ -755,6 +804,419 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0OneUser) {
 //
 TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
   Run(/*add_additional_gte0_user=*/true);
+}
+
+class PointsToAnalysisTestBase : public HloTestBase {
+ protected:
+  void BuildModule(std::unique_ptr<HloComputation> computation) {
+    module_ = CreateNewModule();
+    computation_ = module_->AddEntryComputation(std::move(computation));
+  }
+
+  void RunAnalysis() {
+    CHECK_NOTNULL(module_.get());
+    points_to_analysis_ =
+        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+  }
+
+  void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
+    BuildModule(std::move(computation));
+    RunAnalysis();
+  }
+
+  std::unique_ptr<HloModule> module_;
+  HloComputation* computation_ = nullptr;
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+};
+
+class DoesNotUseOperandBufferTest : public PointsToAnalysisTestBase {};
+
+TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape elem_shape = ShapeUtil::MakeShape(F32, {8});
+  auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeTupleShape({elem_shape, elem_shape}), "tuple"));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(elem_shape, tuple, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(elem_shape, tuple, 1));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(elem_shape, HloOpcode::kAdd, gte0, gte1));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // GetTupleElement instructions only access the top-level buffer of their
+  // operand.
+  EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {0}, gte0));
+  EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, gte1));
+  EXPECT_FALSE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {}, gte0));
+  EXPECT_FALSE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {}, gte1));
+}
+
+TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 1));
+
+  // Create a DynamicUpdateSlice instruction of tuple element 1.
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+  auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+  auto dynamic_update_slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          data_shape, gte1, update, starts));
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dynamic_update_slice, starts, update, gte1},
+      HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  // The fusion instruction never uses tuple element 0, but does use element 1.
+  EXPECT_TRUE(points_to_analysis_->DoesNotUseOperandBuffer(tuple, {0}, fusion));
+  EXPECT_FALSE(
+      points_to_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
+}
+
+class CanShareOperandBufferWithUserTest : public PointsToAnalysisTestBase {};
+
+TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param));
+  auto log = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kLog, exp));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(param, {}, exp, {}));
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(exp, {}, log, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape in_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape out_shape = ShapeUtil::MakeShape(PRED, {8});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, in_shape, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, in_shape, "param1"));
+  auto result = builder.AddInstruction(
+      HloInstruction::CreateBinary(out_shape, HloOpcode::kEq, param0, param1));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                  result, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                  result, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param));
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, exp));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(param, {}, exp, {}));
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(exp, {}, copy, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 1));
+
+  // Create a DynamicUpdateSlice instruction of tuple element 1.
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+  auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+  auto dynamic_update_slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          data_shape, gte1, update, starts));
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dynamic_update_slice, starts, update, gte1},
+      HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  // The fusion instruction can share with tuple element 1.
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(tuple, {0},
+                                                                  fusion, {}));
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(tuple, {1},
+                                                                 fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape update_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+  auto data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "data"));
+  auto update = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, update_shape, "update"));
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, starts_shape, "starts"));
+  auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      data_shape, data, update, starts));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The DynamicUpdateSlice instruction can share with the data operand, but not
+  // with update or starts.
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(data, {}, dus, {}));
+  EXPECT_FALSE(
+      points_to_analysis_->CanShareOperandBufferWithUser(update, {}, dus, {}));
+  EXPECT_FALSE(
+      points_to_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto sort =
+      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto values = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, values_shape, "values"));
+  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The buffer for the keys can be shared with the first tuple entry.
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {0}));
+  // The buffer for the values can be shared with the second tuple entry.
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(values, {},
+                                                                 sort, {1}));
+  // Verify that the buffers are not shared with the "wrong" tuple entry.
+  EXPECT_FALSE(
+      points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {1}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(values, {},
+                                                                  sort, {0}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto a = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+  auto b = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      /*new_size=*/2, PrecisionConfig::DEFAULT);
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums, precision_config));
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto add_operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kAdd, dot, add_operand));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, dot}, HloInstruction::FusionKind::kOutput);
+  RunAnalysis();
+
+  // Output fused dot add should be able to share buffer with 'add_operand'.
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(
+      add_operand, {}, fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+
+  auto reverse = builder.AddInstruction(
+      HloInstruction::CreateReverse(data_shape, operand, {0, 1}));
+
+  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, reverse, two));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, two, reverse}, HloInstruction::FusionKind::kOutput);
+  RunAnalysis();
+
+  // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(operand, {},
+                                                                  fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+
+  auto make_cond = [&data_shape]() {
+    auto builder = HloComputation::Builder(TestName() + ".Cond");
+    auto data = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, data_shape, "data"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq, data, data));
+    return builder.Build();
+  };
+
+  auto make_body = [&data_shape]() {
+    auto builder = HloComputation::Builder(TestName() + ".Body");
+    auto data = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, data_shape, "data"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, data, data));
+    return builder.Build();
+  };
+
+  module_ = CreateNewModule();
+  HloComputation* cond_computation =
+      module_->AddEmbeddedComputation(make_cond());
+  HloComputation* body_computation =
+      module_->AddEmbeddedComputation(make_body());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "data"));
+  auto whil = builder.AddInstruction(HloInstruction::CreateWhile(
+      data_shape, cond_computation, body_computation, data));
+  computation_ = module_->AddEntryComputation(builder.Build());
+
+  RunAnalysis();
+
+  // The While instruction can share with the data operand.
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(data, {}, whil, {}));
+}
+
+// Tests that Call can alias operand buffer if the only use of the operand
+// in the called computation is an elementwise instruction.
+TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  // Build sub-computation with fusion root.
+  auto sub_builder = HloComputation::Builder(TestName() + "_sub");
+  auto sub_param = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "sub_param"));
+  auto one = sub_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto ones = sub_builder.AddInstruction(
+      HloInstruction::CreateBroadcast(shape, one, {1}));
+  auto add = sub_builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
+
+  module_ = CreateNewModule();
+  auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
+  sub_computation->CreateFusionInstruction({add, ones},
+                                           HloInstruction::FusionKind::kLoop);
+
+  // Build entry-computation with kCall which calls 'sub_computation'.
+  auto builder = HloComputation::Builder(TestName());
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto reverse =
+      builder.AddInstruction(HloInstruction::CreateReverse(shape, param, {0}));
+  auto call = builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {reverse}, sub_computation));
+  computation_ = module_->AddEntryComputation(builder.Build());
+
+  RunAnalysis();
+
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(reverse, {},
+                                                                 call, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, LoopFusionWithElementwiseOperand) {
+  Shape full_shape = ShapeUtil::MakeShape(F32, {16, 32});
+  Shape broadcast_shape = ShapeUtil::MakeShape(F32, {16});
+
+  auto builder = HloComputation::Builder(TestName() + "_fusion");
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, full_shape, "full"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, broadcast_shape, "small"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(full_shape, param1, {0}));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      full_shape, HloOpcode::kAdd, param0, broadcast));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, broadcast}, HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                  fusion, {}));
 }
 
 }  // namespace

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#define TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/rnn/kernels/blas_gemm.h"
@@ -181,4 +181,4 @@ struct GRUBlockCellBprop : public GRUCell {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_RNN_KERNELS_GRU_OPS_H_

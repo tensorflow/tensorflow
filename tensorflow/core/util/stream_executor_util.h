@@ -30,20 +30,9 @@ class StreamExecutorUtil {
   // Map a Tensor as a DeviceMemory object wrapping the given typed
   // buffer.
   template <typename T>
-  static perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
+  static se::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<char*>(t.tensor_data().data()));
-    return perftools::gputools::DeviceMemory<T>(
-        perftools::gputools::DeviceMemoryBase(ptr, t.TotalBytes()));
-  }
-
-  // Converts from a StreamExecutor Status to a TensorFlow Status.
-  //
-  // This assumes that the error codes between the two implementations
-  // match.
-  static Status ConvertStatus(const perftools::gputools::port::Status& s) {
-    return s.ok() ? Status::OK() : Status(static_cast<tensorflow::error::Code>(
-                                              static_cast<int>(s.code())),
-                                          s.error_message());
+    return se::DeviceMemory<T>(se::DeviceMemoryBase(ptr, t.TotalBytes()));
   }
 };
 

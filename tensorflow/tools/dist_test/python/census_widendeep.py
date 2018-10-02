@@ -133,7 +133,7 @@ class CensusDataSource(object):
       columns: Columns to retrieve from the data files (A list of strings)
       label_column: Name of the label column
       categorical_columns: Names of the categorical columns (A list of strings)
-      continuous_columns: Names of the continuous columsn (A list of strings)
+      continuous_columns: Names of the continuous columns (A list of strings)
     """
 
     # Retrieve data from disk (if available) or download from the web.
@@ -263,8 +263,7 @@ if __name__ == "__main__":
       "--data_dir",
       type=str,
       default="/tmp/census-data",
-      help="Directory for storing the cesnsus data"
-  )
+      help="Directory for storing the census data")
   parser.add_argument(
       "--model_dir",
       type=str,

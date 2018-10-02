@@ -1,9 +1,29 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 #new_http_archive(
 #  name = "eigen_archive",
 #  urls = ["https://bitbucket.org/eigen/eigen/get/..."],
 #  sha256 = "...",
 #  build_file = "eigen.BUILD",
 #)
+
+option(eigen_PATCH_FILE "Patch file to apply to eigen" OFF)
+set(eigen_PATCH_COMMAND "")
+if(eigen_PATCH_FILE)
+    set(eigen_PATCH_COMMAND PATCH_COMMAND patch -p0 -i "${eigen_PATCH_FILE}")
+endif(eigen_PATCH_FILE)
 
 include (ExternalProject)
 
@@ -31,6 +51,7 @@ ExternalProject_Add(eigen
     URL ${eigen_URL}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     INSTALL_DIR "${eigen_INSTALL}"
+    ${eigen_PATCH_COMMAND}
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF

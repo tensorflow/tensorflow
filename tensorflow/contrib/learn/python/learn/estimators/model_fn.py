@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Classes and methods related to model_fn."""
+"""Classes and methods related to model_fn (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,17 +28,27 @@ import collections
 
 import six
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import get_graph_from_inputs
-
-from tensorflow.python.training import session_run_hook
+from tensorflow.contrib.learn.python.learn.estimators import constants
+from tensorflow.contrib.learn.python.learn.estimators import metric_key
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.python.estimator import model_fn as core_model_fn_lib
+from tensorflow.python.estimator.export import export_output as core_export_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.deprecation import deprecated
 
 
 class ModeKeys(object):
-  """Standard names for model modes.
+  """Standard names for model modes (deprecated).
+
+  THIS CLASS IS DEPRECATED.
 
   The following standard keys are defined:
 
@@ -46,15 +61,28 @@ class ModeKeys(object):
   EVAL = 'eval'
   INFER = 'infer'
 
+  @classmethod
+  def validate(cls, key):
+    if key not in (cls.TRAIN, cls.EVAL, cls.INFER):
+      raise ValueError('Invalid mode %s.' % key)
+
 
 class ModelFnOps(
     collections.namedtuple('ModelFnOps', [
         'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
-        'scaffold'
+        'scaffold', 'mode'
     ])):
-  """Ops returned from a model_fn."""
+  """Ops returned from a model_fn.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'When switching to tf.estimator.Estimator, use '
+              'tf.estimator.EstimatorSpec. You can use the `estimator_spec`'
+              ' method to create an equivalent one.')
   def __new__(cls,
               mode,
               predictions=None,
@@ -112,13 +140,15 @@ class ModelFnOps(
     Raises:
       ValueError: If validation fails.
     """
+    ModeKeys.validate(mode)
+
     # Assert all ops are from the same graph.
     get_graph_from_inputs((predictions, loss, train_op))
 
     # Validate train_op.
     if train_op is None:
       if mode == ModeKeys.TRAIN:
-        raise ValueError('Missing training_op.')
+        raise ValueError('Missing train_op.')
     elif not isinstance(train_op, ops.Operation):
       # TODO(ptucker): Should this be allowed? Consider raising error.
       train_op = ops.convert_to_tensor(train_op).op
@@ -142,11 +172,11 @@ class ModelFnOps(
     else:
       if isinstance(predictions, dict):
         predictions = {
-            k: contrib_framework.convert_to_tensor_or_sparse_tensor(v)
+            k: sparse_tensor.convert_to_tensor_or_sparse_tensor(v)
             for k, v in six.iteritems(predictions)
         }
       else:
-        predictions = contrib_framework.convert_to_tensor_or_sparse_tensor(
+        predictions = sparse_tensor.convert_to_tensor_or_sparse_tensor(
             predictions)
 
     # Validate eval_metric_ops
@@ -176,4 +206,102 @@ class ModelFnOps(
         output_alternatives=output_alternatives,
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
-        scaffold=scaffold)
+        scaffold=scaffold,
+        mode=mode)
+
+  def estimator_spec(self, default_serving_output_alternative_key=None):
+    """Creates an equivalent `EstimatorSpec`.
+
+    Args:
+      default_serving_output_alternative_key: Required for multiple heads. If
+        you have multiple entries in `output_alternatives` dict (comparable to
+        multiple heads), `EstimatorSpec` requires a default head that will be
+        used if a Servo request does not explicitly mention which head to infer
+        on. Pass the key of the output alternative here that you want to
+        designate as default. A separate ExportOutpout for this default head
+        wil be added to the export_outputs dict with the special key
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
+        already an enry in output_alternatives with this special key.
+
+    Returns:
+      Instance of `EstimatorSpec` that is equivalent to this `ModelFnOps`
+
+    Raises:
+      ValueError: If problem type is unknown.
+    """
+    def _scores(output_tensors):
+      scores = output_tensors.get(prediction_key.PredictionKey.SCORES)
+      if scores is None:
+        scores = output_tensors.get(prediction_key.PredictionKey.PROBABILITIES)
+      return scores
+
+    def _classes(output_tensors):  # pylint: disable=missing-docstring
+      classes = output_tensors.get(prediction_key.PredictionKey.CLASSES)
+      if classes is None:
+        logging.warning(
+            'classes is None, Servo inference will not have class ids.')
+        return None
+      elif classes.dtype != dtypes.string:
+        # Servo classification can only serve string classes
+        logging.warning(
+            'classes is not string, Servo inference will not have class ids.')
+        return None
+
+      return classes
+
+    def _export_output(problem_type, predictions):  # pylint: disable=missing-docstring
+      if problem_type == constants.ProblemType.LINEAR_REGRESSION:
+        return core_export_lib.RegressionOutput(_scores(predictions))
+
+      if (problem_type == constants.ProblemType.CLASSIFICATION or
+          problem_type == constants.ProblemType.LOGISTIC_REGRESSION):
+        return core_export_lib.ClassificationOutput(
+            scores=_scores(predictions), classes=_classes(predictions))
+
+      if problem_type == constants.ProblemType.UNSPECIFIED:
+        return core_export_lib.PredictOutput(predictions)
+
+      raise ValueError('Unknown problem_type=%s' % problem_type)
+
+    # Converts output_alternatives
+    export_outputs_dict = None
+    if self.output_alternatives:
+      output_alternatives = self.output_alternatives
+      # Adds default output_alternative if needed.
+      if (len(output_alternatives) > 1 and
+          signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY not in
+          output_alternatives):
+        output_alternatives = output_alternatives.copy()
+        output_alternatives[
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY] = (
+                output_alternatives[default_serving_output_alternative_key])
+      export_outputs_dict = {key: _export_output(*val) for key, val in
+                             output_alternatives.items()}
+
+    def _get_eval_metric_ops():
+      """Returns self.eval_metric_ops without loss metric."""
+      result = {}
+      for key, value in six.iteritems(self.eval_metric_ops):
+        if key != metric_key.MetricKey.LOSS:
+          result[key] = value
+      return result
+
+    # Convert the contrib mode enum to the core mode enum.
+    # Note: mode already validated in __new__().
+    if self.mode == ModeKeys.TRAIN:
+      core_mode = core_model_fn_lib.ModeKeys.TRAIN
+    elif self.mode == ModeKeys.EVAL:
+      core_mode = core_model_fn_lib.ModeKeys.EVAL
+    elif self.mode == ModeKeys.INFER:
+      core_mode = core_model_fn_lib.ModeKeys.PREDICT
+
+    return core_model_fn_lib.EstimatorSpec(
+        mode=core_mode,
+        predictions=self.predictions,
+        loss=self.loss,
+        train_op=self.train_op,
+        eval_metric_ops=_get_eval_metric_ops(),
+        export_outputs=export_outputs_dict,
+        training_chief_hooks=self.training_chief_hooks,
+        training_hooks=self.training_hooks,
+        scaffold=self.scaffold)

@@ -23,10 +23,6 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -67,6 +63,8 @@ class ClientSession {
   /// Create a new session, configuring it with `session_options`.
   ClientSession(const Scope& scope, const SessionOptions& session_options);
 
+  ~ClientSession();
+
   /// Evaluate the tensors in `fetch_outputs`. The values are returned as
   /// `Tensor` objects in `outputs`. The number and order of `outputs` will
   /// match `fetch_outputs`.
@@ -89,19 +87,39 @@ class ClientSession {
              const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
 
-  // TODO(keveman): Add support for partial run.
+  /// \brief A handle to a subgraph, created with
+  /// `ClientSession::MakeCallable()`.
+  typedef int64 CallableHandle;
+
+  /// \brief Creates a `handle` for invoking the subgraph defined by
+  /// `callable_options`.
+  /// NOTE: This API is still experimental and may change.
+  Status MakeCallable(const CallableOptions& callable_options,
+                      CallableHandle* out_handle);
+
+  /// \brief Invokes the subgraph named by `handle` with the given options and
+  /// input tensors.
+  ///
+  /// The order of tensors in `feed_tensors` must match the order of names in
+  /// `CallableOptions::feed()` and the order of tensors in `fetch_tensors` will
+  /// match the order of names in `CallableOptions::fetch()` when this subgraph
+  /// was created.
+  /// NOTE: This API is still experimental and may change.
+  Status RunCallable(CallableHandle handle,
+                     const std::vector<Tensor>& feed_tensors,
+                     std::vector<Tensor>* fetch_tensors,
+                     RunMetadata* run_metadata);
+
+  /// \brief Releases resources associated with the given `handle` in this
+  /// session.
+  /// NOTE: This API is still experimental and may change.
+  Status ReleaseCallable(CallableHandle handle);
 
  private:
-  SessionOptions MakeDefaultSessionOptions(const string& target) const;
-  Status MaybeExtendGraph() const;
-
-  std::unique_ptr<Session> session_;
-  std::shared_ptr<Graph> graph_;
-
-  mutable mutex mu_;
-  mutable int last_num_graph_nodes_ GUARDED_BY(mu_) = 0;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ClientSession);
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+  Impl* impl() { return impl_.get(); }
+  const Impl* impl() const { return impl_.get(); }
 };
 
 /// @}

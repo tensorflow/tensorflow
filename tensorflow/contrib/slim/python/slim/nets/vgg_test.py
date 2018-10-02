@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.slim.python.slim.nets import vgg
 from tensorflow.python.framework import ops
@@ -41,7 +34,7 @@ class VGGATest(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_a(inputs, num_classes)
       self.assertEquals(logits.op.name, 'vgg_a/fc8/squeezed')
@@ -52,7 +45,7 @@ class VGGATest(test.TestCase):
     batch_size = 1
     height, width = 256, 256
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_a(inputs, num_classes, spatial_squeeze=False)
       self.assertEquals(logits.op.name, 'vgg_a/fc8/BiasAdd')
@@ -80,7 +73,7 @@ class VGGATest(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       vgg.vgg_a(inputs, num_classes)
       expected_names = [
@@ -114,7 +107,7 @@ class VGGATest(test.TestCase):
     batch_size = 2
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       eval_inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_a(eval_inputs, is_training=False)
       self.assertListEqual(logits.get_shape().as_list(),
@@ -128,7 +121,7 @@ class VGGATest(test.TestCase):
     train_height, train_width = 224, 224
     eval_height, eval_width = 256, 256
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       train_inputs = random_ops.random_uniform(
           (train_batch_size, train_height, train_width, 3))
       logits, _ = vgg.vgg_a(train_inputs)
@@ -148,7 +141,7 @@ class VGGATest(test.TestCase):
   def testForward(self):
     batch_size = 1
     height, width = 224, 224
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_a(inputs)
       sess.run(variables.global_variables_initializer())
@@ -162,7 +155,7 @@ class VGG16Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_16(inputs, num_classes)
       self.assertEquals(logits.op.name, 'vgg_16/fc8/squeezed')
@@ -173,7 +166,7 @@ class VGG16Test(test.TestCase):
     batch_size = 1
     height, width = 256, 256
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_16(inputs, num_classes, spatial_squeeze=False)
       self.assertEquals(logits.op.name, 'vgg_16/fc8/BiasAdd')
@@ -204,7 +197,7 @@ class VGG16Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       vgg.vgg_16(inputs, num_classes)
       expected_names = [
@@ -248,7 +241,7 @@ class VGG16Test(test.TestCase):
     batch_size = 2
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       eval_inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_16(eval_inputs, is_training=False)
       self.assertListEqual(logits.get_shape().as_list(),
@@ -262,7 +255,7 @@ class VGG16Test(test.TestCase):
     train_height, train_width = 224, 224
     eval_height, eval_width = 256, 256
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       train_inputs = random_ops.random_uniform(
           (train_batch_size, train_height, train_width, 3))
       logits, _ = vgg.vgg_16(train_inputs)
@@ -282,7 +275,7 @@ class VGG16Test(test.TestCase):
   def testForward(self):
     batch_size = 1
     height, width = 224, 224
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_16(inputs)
       sess.run(variables.global_variables_initializer())
@@ -296,7 +289,7 @@ class VGG19Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_19(inputs, num_classes)
       self.assertEquals(logits.op.name, 'vgg_19/fc8/squeezed')
@@ -307,7 +300,7 @@ class VGG19Test(test.TestCase):
     batch_size = 1
     height, width = 256, 256
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_19(inputs, num_classes, spatial_squeeze=False)
       self.assertEquals(logits.op.name, 'vgg_19/fc8/BiasAdd')
@@ -339,7 +332,7 @@ class VGG19Test(test.TestCase):
     batch_size = 5
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       vgg.vgg_19(inputs, num_classes)
       expected_names = [
@@ -389,7 +382,7 @@ class VGG19Test(test.TestCase):
     batch_size = 2
     height, width = 224, 224
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       eval_inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_19(eval_inputs, is_training=False)
       self.assertListEqual(logits.get_shape().as_list(),
@@ -403,7 +396,7 @@ class VGG19Test(test.TestCase):
     train_height, train_width = 224, 224
     eval_height, eval_width = 256, 256
     num_classes = 1000
-    with self.test_session():
+    with self.cached_session():
       train_inputs = random_ops.random_uniform(
           (train_batch_size, train_height, train_width, 3))
       logits, _ = vgg.vgg_19(train_inputs)
@@ -423,7 +416,7 @@ class VGG19Test(test.TestCase):
   def testForward(self):
     batch_size = 1
     height, width = 224, 224
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = random_ops.random_uniform((batch_size, height, width, 3))
       logits, _ = vgg.vgg_19(inputs)
       sess.run(variables.global_variables_initializer())

@@ -32,7 +32,7 @@ class EvalMetricsTest(test_util.TensorFlowTestCase):
                                           [0.9, 0.8, 0.2], [0.6, 0.4, 0.8]])
     targets = constant_op.constant([[0], [2], [1], [1]])
     in_top_2_op, update_op = top_2_fn(probabilities, targets)
-    with self.test_session():
+    with self.cached_session():
       # initializes internal accuracy vars
       variables.local_variables_initializer().run()
       # need to call in order to run the in_top_2_op internal operations because
@@ -49,7 +49,7 @@ class EvalMetricsTest(test_util.TensorFlowTestCase):
                                           [0.3, 0.6, 0.9, 0.4, 0.8, 0.6]])
     targets = constant_op.constant([3, 0, 2, 5, 1])
     in_top_3_op, update_op = top_3_fn(probabilities, targets)
-    with self.test_session():
+    with self.cached_session():
       # initializes internal accuracy vars
       variables.local_variables_initializer().run()
       # need to call in order to run the in_top_3_op internal operations because
@@ -61,7 +61,7 @@ class EvalMetricsTest(test_util.TensorFlowTestCase):
     predictions = constant_op.constant([0, 1, 3, 6, 5, 2, 7, 6, 4, 9])
     targets = constant_op.constant([0, 1, 4, 6, 5, 1, 7, 5, 4, 8])
     accuracy_op, update_op = eval_metrics._accuracy(predictions, targets)
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       # need to call in order to run the accuracy_op internal operations because
       # it is a streaming function
@@ -69,18 +69,18 @@ class EvalMetricsTest(test_util.TensorFlowTestCase):
       self.assertNear(0.6, accuracy_op.eval(), 0.0001)
 
   def testR2(self):
-    probabilities = constant_op.constant(
+    scores = constant_op.constant(
         [1.2, 3.9, 2.1, 0.9, 2.2, 0.1, 6.0, 4.0, 0.9])
     targets = constant_op.constant(
         [1.0, 4.3, 2.6, 0.5, 1.1, 0.7, 5.1, 3.4, 1.8])
-    r2_op, update_op = eval_metrics._r2(probabilities, targets)
-    with self.test_session():
+    r2_op, update_op = eval_metrics._r2(scores, targets)
+    with self.cached_session():
       # initializes internal accuracy vars
       variables.local_variables_initializer().run()
       # need to call in order to run the r2_op internal operations because
       # it is a streaming function
       update_op.eval()
-      self.assertNear(-19.7729, r2_op.eval(), 0.0001)
+      self.assertNear(0.813583, r2_op.eval(), 0.0001)
 
 
 if __name__ == '__main__':

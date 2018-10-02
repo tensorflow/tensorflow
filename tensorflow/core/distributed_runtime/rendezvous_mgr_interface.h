@@ -25,6 +25,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct WorkerSession;
+
+// RemoteRendezvous follow a 2-part initialization. First the objects are
+// constructed. Eventually, they will be initialized. Clients of the
+// RendezvousMgrInterface must guarantee to call Initialize on the returned
+// RemoteRendezvous eventually.
+//
+// Partially initialized RemoteRendezvous must respect the Rendezvous interface
+// (i.e. Send() must never block), however implementations are not expected to
+// actually perform the underlying operations until after the RemoteRendezvous
+// has been Initialize'd.
+class RemoteRendezvous : public Rendezvous {
+ public:
+  // Fully construct the RemoteRendezvous.
+  virtual Status Initialize(WorkerSession* session) = 0;
+};
+
 // RendezvousMgr keeps track of a set of local rendezvous instances.
 // All tensors sent by this worker are buffered in a RendezvousMgr
 // until the tensor is received.  Each global unique "step_id"
@@ -51,7 +68,10 @@ class RendezvousMgrInterface {
   // Returns Rendezvous supporting send and recv among workers in the
   // "step_id".  The caller takes ownership of one reference on the
   // returned Rendezvous instance.
-  virtual Rendezvous* Find(int64 step_id) = 0;
+  //
+  // Note: the caller must guarantee to eventually call Initialize on the
+  // returned RemoteRendezvous
+  virtual RemoteRendezvous* Find(int64 step_id) = 0;
 
   // Finds the local rendezvous instance for the "step_id".  Runs
   // "done" when the tensor for "key" is produced or an error occurs.

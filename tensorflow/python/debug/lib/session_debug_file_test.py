@@ -33,7 +33,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
+class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
 
   def _debug_urls(self, run_number=None):
     return ["file://%s" % self._debug_dump_dir(run_number=run_number)]
@@ -47,7 +47,8 @@ class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
   def testAllowsDifferentWatchesOnDifferentRuns(self):
     """Test watching different tensors on different runs of the same graph."""
 
-    with session.Session() as sess:
+    with session.Session(
+        config=session_debug_testlib.no_rewrite_session_config()) as sess:
       u_init_val = [[5.0, 3.0], [-1.0, 0.0]]
       v_init_val = [[2.0], [-1.0]]
 
@@ -57,9 +58,9 @@ class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
       v_name = "diff_Watch/v"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v_init = constant_op.constant(v_init_val, shape=[2, 1])
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       w = math_ops.matmul(u, v, name="diff_Watch/matmul")
 

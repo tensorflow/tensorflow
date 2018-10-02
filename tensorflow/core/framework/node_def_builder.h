@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_
 
 #include <functional>
 #include <vector>
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -71,22 +71,11 @@ class NodeDefBuilder {
   // *and in the same order as the input_args appear in the OpDef.*
 
   // For inputs that take a single tensor.
-  NodeDefBuilder& Input(StringPiece src_node, int src_index, DataType dt) {
-    const OpDef::ArgDef* arg = NextArgDef();
-    if (arg != nullptr) SingleInput(arg, src_node, src_index, dt);
-    return *this;
-  }
-  NodeDefBuilder& Input(const NodeOut& src) {
-    Input(src.node, src.index, src.data_type);
-    return *this;
-  }
+  NodeDefBuilder& Input(StringPiece src_node, int src_index, DataType dt);
+  NodeDefBuilder& Input(const NodeOut& src);
 
   // For inputs that take a list of tensors.
-  NodeDefBuilder& Input(gtl::ArraySlice<NodeOut> src_list) {
-    const OpDef::ArgDef* arg = NextArgDef();
-    if (arg != nullptr) ListInput(arg, src_list);
-    return *this;
-  }
+  NodeDefBuilder& Input(gtl::ArraySlice<NodeOut> src_list);
 
   // To create inputs in tests, see fake_input.h.
   NodeDefBuilder& Input(FakeInputFunctor fake_input);
@@ -99,13 +88,39 @@ class NodeDefBuilder {
 
   // Sets the attr, if not already set.  If already set with a different
   // value, an error will be returned from Finalize().
+  NodeDefBuilder& Attr(StringPiece name, const AttrValue& value);
+  NodeDefBuilder& Attr(StringPiece name, StringPiece value);
+  NodeDefBuilder& Attr(StringPiece name, const char* value);
+  NodeDefBuilder& Attr(StringPiece name, int32 value);
+  NodeDefBuilder& Attr(StringPiece name, int64 value);
+  NodeDefBuilder& Attr(StringPiece name, float value);
+  NodeDefBuilder& Attr(StringPiece name, double value);
+  NodeDefBuilder& Attr(StringPiece name, bool value);
+  NodeDefBuilder& Attr(StringPiece name, DataType value);
+  NodeDefBuilder& Attr(StringPiece name, const PartialTensorShape& value);
+  NodeDefBuilder& Attr(StringPiece name, const Tensor& value);
+  NodeDefBuilder& Attr(StringPiece name, const TensorProto& value);
+  NodeDefBuilder& Attr(StringPiece name, const NameAttrList& value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<StringPiece> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<const char*> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<string> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int32> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<int64> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<float> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<bool> value);
+  NodeDefBuilder& Attr(StringPiece name, const std::vector<bool>& value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<DataType> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<TensorShape> value);
+  NodeDefBuilder& Attr(StringPiece name,
+                       gtl::ArraySlice<PartialTensorShape> value);
+  NodeDefBuilder& Attr(StringPiece name,
+                       gtl::ArraySlice<TensorShapeProto> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<Tensor> value);
+  NodeDefBuilder& Attr(StringPiece name, gtl::ArraySlice<NameAttrList> value);
+
   template <class T>
-  NodeDefBuilder& Attr(StringPiece attr_name, T&& value);
-  // Note: overload needed to allow {...} expressions for value.
-  template <class T>
-  NodeDefBuilder& Attr(StringPiece attr_name, std::initializer_list<T> value) {
-    Attr<std::initializer_list<T>>(attr_name, std::move(value));
-    return *this;
+  NodeDefBuilder& Attr(StringPiece name, std::initializer_list<T> value) {
+    return Attr(name, gtl::ArraySlice<T>(value));
   }
 
   // Finish building the NodeDef, returning any errors or setting
@@ -151,9 +166,6 @@ class NodeDefBuilder {
     return input_arg->is_ref() ? MakeRefType(dt) : dt;
   }
 
-  void CheckInconsistency(StringPiece attr_name, const AttrValue& found,
-                          const AttrValue& attr_value);
-
   const OpDef* op_def_;
   NodeDef node_def_;
   int inputs_specified_;
@@ -161,21 +173,6 @@ class NodeDefBuilder {
   std::vector<string> errors_;
 };
 
-// IMPLEMENTATION -------------------------------------------------------------
-
-template <class T>
-NodeDefBuilder& NodeDefBuilder::Attr(StringPiece attr_name, T&& value) {
-  const AttrValue* found = AttrSlice(node_def_).Find(attr_name);
-  if (found == nullptr) {
-    AddNodeAttr(attr_name, std::forward<T>(value), &node_def_);
-  } else {
-    AttrValue attr_value;
-    SetAttrValue(std::forward<T>(value), &attr_value);
-    CheckInconsistency(attr_name, *found, attr_value);
-  }
-  return *this;
-}
-
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_NODE_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_BUILDER_H_

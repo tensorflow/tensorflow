@@ -1,0 +1,4 @@
+from "third_party/tensorflow/cc/saved_model/loader.h":
+  namespace `tensorflow`:
+    class SavedModelBundle:
+      def __init__(self)

@@ -1,0 +1,53 @@
+op {
+  graph_op_name: "CompareAndBitpack"
+  in_arg {
+    name: "input"
+    description: <<END
+Values to compare against `threshold` and bitpack.
+END
+  }
+  in_arg {
+    name: "threshold"
+    description: <<END
+Threshold to compare against.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The bitpacked comparisons.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The type of the input and threshold.
+END
+  }
+  summary: "Compare values of `input` to `threshold` and pack resulting bits into a `uint8`."
+  description: <<END
+Each comparison returns a boolean `true` (if `input_value > threshold`)
+or and `false` otherwise.
+
+This operation is useful for Locality-Sensitive-Hashing (LSH) and other
+algorithms that use hashing approximations of cosine and `L2` distances;
+codes can be generated from an input via:
+
+```python
+codebook_size = 50
+codebook_bits = codebook_size * 32
+codebook = tf.get_variable('codebook', [x.shape[-1].value, codebook_bits],
+                           dtype=x.dtype,
+                           initializer=tf.orthogonal_initializer())
+codes = compare_and_threshold(tf.matmul(x, codebook), threshold=0.)
+codes = tf.bitcast(codes, tf.int32)  # go from uint8 to int32
+# now codes has shape x.shape[:-1] + [codebook_size]
+```
+
+**NOTE**: Currently, the innermost dimension of the tensor must be divisible
+by 8.
+
+Given an `input` shaped `[s0, s1, ..., s_n]`, the output is
+a `uint8` tensor shaped `[s0, s1, ..., s_n / 8]`.
+END
+}

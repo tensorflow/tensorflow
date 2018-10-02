@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "SoftsignGrad"
+  visibility: HIDDEN
+  in_arg {
+    name: "gradients"
+    description: <<END
+The backpropagated gradients to the corresponding softsign operation.
+END
+  }
+  in_arg {
+    name: "features"
+    description: <<END
+The features passed as input to the corresponding softsign operation.
+END
+  }
+  out_arg {
+    name: "backprops"
+    description: <<END
+The gradients: `gradients / (1 + abs(features)) ** 2`.
+END
+  }
+  summary: "Computes softsign gradients for a softsign operation."
+}

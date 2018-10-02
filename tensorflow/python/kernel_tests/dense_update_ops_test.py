@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -86,9 +85,9 @@ class AssignOpTest(test.TestCase):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
   def testAssignNonStrictShapeChecking(self):
-    with self.test_session():
+    with self.cached_session():
       data = array_ops.fill([1024, 1024], 0)
-      p = variables.Variable([1])
+      p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
       self.assertAllEqual(p.eval(), data.eval())
@@ -100,82 +99,18 @@ class AssignOpTest(test.TestCase):
       self.assertAllEqual(p.eval(), data2.eval())
 
   def testInitRequiredAssignAdd(self):
-    with self.test_session():
-      p = variables.Variable(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    with self.cached_session():
+      p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
       a = state_ops.assign_add(p, array_ops.fill([1024, 1024], 0))
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
 
   def testInitRequiredAssignSub(self):
-    with self.test_session():
-      p = variables.Variable(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    with self.cached_session():
+      p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
       a = state_ops.assign_sub(p, array_ops.fill([1024, 1024], 0))
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
-
-  # NOTE(mrry): See also
-  #   dense_update_ops_no_tsan_test.AssignOpTest, which contains a benign
-  #   data race and must run without TSAN.
-  def testParallelUpdateWithLocking(self):
-    with self.test_session() as sess:
-      zeros_t = array_ops.fill([1024, 1024], 0.0)
-      ones_t = array_ops.fill([1024, 1024], 1.0)
-      p = variables.Variable(zeros_t)
-      adds = [
-          state_ops.assign_add(
-              p, ones_t, use_locking=True) for _ in range(20)
-      ]
-      p.initializer.run()
-
-      def run_add(add_op):
-        sess.run(add_op)
-
-      threads = [
-          self.checkedThread(
-              target=run_add, args=(add_op,)) for add_op in adds
-      ]
-      for t in threads:
-        t.start()
-      for t in threads:
-        t.join()
-
-      vals = p.eval()
-      ones = np.ones((1024, 1024)).astype(np.float32)
-      self.assertAllEqual(vals, ones * 20)
-
-  # NOTE(mrry): See also
-  #   dense_update_ops_no_tsan_test.[...].testParallelAssignWithoutLocking,
-  #   which contains a benign data race and must run without TSAN.
-  def testParallelAssignWithLocking(self):
-    with self.test_session() as sess:
-      zeros_t = array_ops.fill([1024, 1024], 0.0)
-      ones_t = array_ops.fill([1024, 1024], 1.0)
-      p = variables.Variable(zeros_t)
-      assigns = [
-          state_ops.assign(
-              p, math_ops.multiply(ones_t, float(i)), use_locking=True)
-          for i in range(1, 21)
-      ]
-      p.initializer.run()
-
-      def run_assign(assign_op):
-        sess.run(assign_op)
-
-      threads = [
-          self.checkedThread(
-              target=run_assign, args=(assign_op,)) for assign_op in assigns
-      ]
-      for t in threads:
-        t.start()
-      for t in threads:
-        t.join()
-
-      vals = p.eval()
-
-      # Assert every element is the same, and taken from one of the assignments.
-      self.assertTrue(vals[0, 0] > 0)
-      self.assertTrue(vals[0, 0] <= 20)
-      self.assertAllEqual(vals, np.ones([1024, 1024]) * vals[0, 0])
 
 
 if __name__ == "__main__":

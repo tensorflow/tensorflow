@@ -88,10 +88,8 @@ def _SparseAddGrad(op, *grads):
   # the non-zero elements of the sum, and we will peek into `sum_indices` in the
   # gradient op.
 
-  # pylint: disable=protected-access
-  a_val_grad, b_val_grad = gen_sparse_ops._sparse_add_grad(val_grad, a_indices,
-                                                           b_indices,
-                                                           sum_indices)
+  a_val_grad, b_val_grad = gen_sparse_ops.sparse_add_grad(
+      val_grad, a_indices, b_indices, sum_indices)
   a_val_grad.set_shape(op.inputs[1].get_shape())
   b_val_grad.set_shape(op.inputs[4].get_shape())
   # (a_indices, a_values, a_shape, b_indices, b_values, b_shape, thresh)
@@ -118,6 +116,35 @@ def _SparseReduceSumGrad(op, out_grad):
           None, None)
 
 
+@ops.RegisterGradient("SparseSlice")
+def _SparseSliceGrad(op, *grads):
+  """The backward operator for the SparseSlice op.
+
+  This op takes in the upstream gradient w.r.t. non-empty values of
+  the sliced `SparseTensor`, and outputs the gradients w.r.t.
+  the non-empty values of input `SparseTensor`.
+
+  Args:
+    op: the SparseSlice op
+    *grads: the incoming gradients, one element per output of `op`
+
+  Returns:
+    Gradient for each of the 5 input tensors of SparseSlice:
+      (indices, values, shape, start, size)
+    The gradients for the indices, shape, start and the size are None.
+  """
+  backprop_val_grad = grads[1]
+  input_indices = op.inputs[0]
+  input_start = op.inputs[3]
+  output_indices = op.outputs[0]
+
+  val_grad = gen_sparse_ops.sparse_slice_grad(
+      backprop_val_grad, input_indices, input_start, output_indices)
+  val_grad.set_shape(op.inputs[1].get_shape())
+  # (indices, values, shape, start, size)
+  return (None, val_grad, None, None, None)
+
+
 @ops.RegisterGradient("SparseTensorDenseMatMul")
 def _SparseTensorDenseMatMulGrad(op, grad):
   """Gradients for the dense tensor in the SparseTensorDenseMatMul op.
@@ -136,12 +163,13 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   Raises:
     TypeError: When the two operands don't have the same type.
   """
-  sp_t = sparse_tensor.SparseTensor(*op.inputs[:3])
+  a_indices, a_values, a_shape = op.inputs[:3]
+  b = op.inputs[3]
   adj_a = op.get_attr("adjoint_a")
   adj_b = op.get_attr("adjoint_b")
 
-  a_type = sp_t.values.dtype.base_dtype
-  b_type = op.inputs[3].dtype.base_dtype
+  a_type = a_values.dtype.base_dtype
+  b_type = b.dtype.base_dtype
   if a_type != b_type:
     raise TypeError("SparseTensorDenseMatMul op received operands with "
                     "different types: ", a_type, " and ", b_type)
@@ -150,15 +178,12 @@ def _SparseTensorDenseMatMulGrad(op, grad):
                               "complex gradients.")
 
   # gradient w.r.t. dense
-  b_grad = sparse_ops.sparse_tensor_dense_matmul(sp_t, grad,
-                                                 adjoint_a=not adj_a)
+  b_grad = gen_sparse_ops.sparse_tensor_dense_mat_mul(
+      a_indices, a_values, a_shape, grad, adjoint_a=not adj_a)
   if adj_b:
     b_grad = array_ops.transpose(b_grad)
 
   # gradient w.r.t. sparse values
-  a_indices = op.inputs[0]
-  b = op.inputs[3]
-
   rows = a_indices[:, 0]
   cols = a_indices[:, 1]
 
@@ -271,3 +296,17 @@ def _SparseSparseMaximumGrad(unused_op, unused_grad):
 def _SparseSparseMinimumGrad(unused_op, unused_grad):
   raise NotImplementedError("Gradient for SparseSparseMinimum is currently not"
                             " implemented yet.")
+
+
+@ops.RegisterGradient("SparseFillEmptyRows")
+def _SparseFillEmptyRowsGrad(op, unused_grad_output_indices, output_grad_values,
+                             unused_grad_empty_row_indicator,
+                             unused_grad_reverse_index_map):
+  """Gradients for SparseFillEmptyRows."""
+  reverse_index_map = op.outputs[3]
+
+  d_values, d_default_value = gen_sparse_ops.sparse_fill_empty_rows_grad(
+      reverse_index_map=reverse_index_map, grad_values=output_grad_values)
+
+  # d_indices, d_values, d_dense_shape, d_default_value.
+  return [None, d_values, None, d_default_value]

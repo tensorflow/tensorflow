@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -76,7 +78,7 @@ class PrintOp : public OpKernel {
       strings::StrAppend(&msg, "[", ctx->input(i).SummarizeValue(summarize_),
                          "]");
     }
-    LOG(INFO) << msg;
+    std::cerr << msg << std::endl;
   }
 
  private:
@@ -88,5 +90,77 @@ class PrintOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Print").Device(DEVICE_CPU), PrintOp);
+
+class PrintV2Op : public OpKernel {
+ public:
+  explicit PrintV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_stream", &output_stream_));
+
+    auto output_stream_index =
+        std::find(std::begin(valid_output_streams_),
+                  std::end(valid_output_streams_), output_stream_);
+
+    if (output_stream_index == std::end(valid_output_streams_)) {
+      string error_msg = strings::StrCat(
+          "Unknown output stream: ", output_stream_, ", Valid streams are:");
+      for (auto valid_stream : valid_output_streams_) {
+        strings::StrAppend(&error_msg, " ", valid_stream);
+      }
+      OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor* input_;
+    OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
+    const string& msg = input_->scalar<string>()();
+
+    if (output_stream_ == "stdout") {
+      std::cout << msg << std::endl;
+    } else if (output_stream_ == "stderr") {
+      std::cerr << msg << std::endl;
+    } else if (output_stream_ == "log(info)") {
+      LOG(INFO) << msg << std::endl;
+    } else if (output_stream_ == "log(warning)") {
+      LOG(WARNING) << msg << std::endl;
+    } else if (output_stream_ == "log(error)") {
+      LOG(ERROR) << msg << std::endl;
+    } else {
+      string error_msg = strings::StrCat(
+          "Unknown output stream: ", output_stream_, ", Valid streams are:");
+      for (auto valid_stream : valid_output_streams_) {
+        strings::StrAppend(&error_msg, " ", valid_stream);
+      }
+      OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
+    }
+  }
+
+  const char* valid_output_streams_[6] = {"stdout", "stderr", "log(info)",
+                                          "log(warning)", "log(error)"};
+
+ private:
+  string output_stream_;
+};
+
+REGISTER_KERNEL_BUILDER(Name("PrintV2").Device(DEVICE_CPU), PrintV2Op);
+
+class TimestampOp : public OpKernel {
+ public:
+  explicit TimestampOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    TensorShape output_shape;  // Default shape is 0 dim, 1 element
+    Tensor* output_tensor = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, output_shape, &output_tensor));
+
+    auto output_scalar = output_tensor->scalar<double>();
+    double now_us = static_cast<double>(Env::Default()->NowMicros());
+    double now_s = now_us / 1000000;
+    output_scalar() = now_s;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("Timestamp").Device(DEVICE_CPU), TimestampOp);
 
 }  // end namespace tensorflow

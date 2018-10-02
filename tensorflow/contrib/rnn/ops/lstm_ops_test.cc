@@ -37,7 +37,7 @@ class LSTMOpsTest : public ::testing::Test {
   }
 };
 
-static string JoinedCopies(string s, int copies) {
+static string JoinedCopies(const string& s, int copies) {
   string res;
   for (int i = 0; i < copies; ++i) {
     strings::StrAppend(&res, i > 0 ? ";" : "", s);
@@ -149,8 +149,9 @@ TEST_F(LSTMOpsTest, BlockLSTMGrad_ShapeFn) {
   INFER_ERROR("must be rank 1", op, "?;?;?;?;?;?;?;?;[1,?]" + suffix);
 
   // Output with all input knowns makes known rank outputs.
-  INFER_OK(op, JoinedCopies("?", 18), "[?,?,?];" + JoinedCopies("[?,?]", 3) +
-                                          ";" + JoinedCopies("[?]", 4));
+  INFER_OK(
+      op, JoinedCopies("?", 18),
+      "[?,?,?];" + JoinedCopies("[?,?]", 3) + ";" + JoinedCopies("[?]", 4));
 
   // Output with copies input shapes to output.
   string input = strings::StrCat("?;[?,?,?];", JoinedCopies("[?,?]", 3), ";",

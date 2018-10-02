@@ -1,0 +1,34 @@
+op {
+  graph_op_name: "AssignAdd"
+  in_arg {
+    name: "ref"
+    description: <<END
+Should be from a `Variable` node.
+END
+  }
+  in_arg {
+    name: "value"
+    description: <<END
+The value to be added to the variable.
+END
+  }
+  out_arg {
+    name: "output_ref"
+    description: <<END
+= Same as "ref".  Returned as a convenience for operations that want
+to use the new value after the variable has been updated.
+END
+  }
+  attr {
+    name: "use_locking"
+    description: <<END
+If True, the addition will be protected by a lock;
+otherwise the behavior is undefined, but may exhibit less contention.
+END
+  }
+  summary: "Update \'ref\' by adding \'value\' to it."
+  description: <<END
+This operation outputs "ref" after the update is done.
+This makes it easier to chain operations that need to use the reset value.
+END
+}

@@ -70,7 +70,7 @@ cc_binary(
         "Source/Swig/wrapfunc.c",
     ],
     copts = ["$(STACK_FRAME_UNLIMITED)"] + select({
-        ":x64_windows_msvc": [],
+        ":windows": [],
         "//conditions:default": [
             "-Wno-parentheses",
             "-Wno-unused-variable",
@@ -88,7 +88,7 @@ cc_binary(
     ],
     output_licenses = ["unencumbered"],
     visibility = ["//visibility:public"],
-    deps = ["@pcre//:pcre"],
+    deps = ["@pcre"],
 )
 
 filegroup(
@@ -331,6 +331,6 @@ genrule(
 )
 
 config_setting(
-    name = "x64_windows_msvc",
-    values = {"cpu": "x64_windows_msvc"},
+    name = "windows",
+    values = {"cpu": "x64_windows"},
 )

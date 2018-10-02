@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_PROTOBUF_H_
-#define TENSORFLOW_PLATFORM_PROTOBUF_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_PROTOBUF_H_
+#define TENSORFLOW_CORE_PLATFORM_PROTOBUF_H_
 
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
@@ -25,7 +25,7 @@ limitations under the License.
 // TensorFlow code should use the ::tensorflow::protobuf namespace to
 // refer to all protobuf APIs.
 
-#if defined(PLATFORM_GOOGLE)
+#if defined(PLATFORM_GOOGLE) && !defined(USE_DEFAULT_PROTOBUF)
 #include "tensorflow/core/platform/google/protobuf.h"
 #else
 #include "tensorflow/core/platform/default/protobuf.h"
@@ -52,4 +52,4 @@ inline void SetProtobufStringSwapAllowed(string* src, string* dest) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_PROTOBUF_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_PROTOBUF_H_

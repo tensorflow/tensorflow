@@ -28,8 +28,15 @@ namespace hlo_query {
 // Precondition: out != nullptr
 bool IsConstantR0F32(HloInstruction* instruction, float* out);
 
+// Returns whether all of an instruction's operands are of the types constants
+// and parameters.
+bool AllOperandsAreParametersOrConstants(const HloInstruction& instruction);
+
 // Returns whether all of an instruction's operands are parameters.
 bool AllOperandsAreParameters(const HloInstruction& instruction);
+
+// Returns whether all of an instruction's operands are constants.
+bool AllOperandsAreConstants(const HloInstruction& instruction);
 
 // Returns whether the instruction is a scalar constant.
 bool IsScalarConstant(const HloInstruction* instruction);
@@ -38,7 +45,7 @@ bool IsScalarConstant(const HloInstruction* instruction);
 // multiple matching operands, then the first matching operand is returned. If
 // there are no matching operands then nullptr is returned.
 HloInstruction* GetMatchingOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction);
 
 // Returns whether a binary instruction has a matching operand. Sets
@@ -46,7 +53,7 @@ HloInstruction* GetMatchingOperand(
 // other_operand. Note: in the case where both operands match, the first operand
 // of the instruction is returned.
 bool MatchBinaryInstructionOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction, HloInstruction** matching_operand,
     HloInstruction** other_operand);
 

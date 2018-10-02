@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """ODE solvers for TensorFlow."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
+
+import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -28,31 +31,35 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 
-
-_ButcherTableau = collections.namedtuple(
-    '_ButcherTableau', 'alpha beta c_sol c_mid c_error')
+_ButcherTableau = collections.namedtuple('_ButcherTableau',
+                                         'alpha beta c_sol c_mid c_error')
 
 # Parameters from Shampine (1986), section 4.
 _DORMAND_PRINCE_TABLEAU = _ButcherTableau(
-    alpha=[1/5, 3/10, 4/5, 8/9, 1., 1.],
-    beta=[[1/5],
-          [3/40, 9/40],
-          [44/45, -56/15, 32/9],
-          [19372/6561, -25360/2187, 64448/6561, -212/729],
-          [9017/3168, -355/33, 46732/5247, 49/176, -5103/18656],
-          [35/384, 0, 500/1113, 125/192, -2187/6784, 11/84]],
-    c_sol=[35/384, 0, 500/1113, 125/192, -2187/6784, 11/84, 0],
-    c_mid=[6025192743/30085553152 / 2, 0, 51252292925/65400821598 / 2,
-           -2691868925/45128329728 / 2, 187940372067/1594534317056 / 2,
-           -1776094331/19743644256 / 2, 11237099/235043384 / 2],
-    c_error=[1951/21600 - 35/384,
-             0,
-             22642/50085 - 500/1113,
-             451/720 - 125/192,
-             -12231/42400 - -2187/6784,
-             649/6300 - 11/84,
-             1/60],
-)
+    alpha=[1 / 5, 3 / 10, 4 / 5, 8 / 9, 1., 1.],
+    beta=[
+        [1 / 5],
+        [3 / 40, 9 / 40],
+        [44 / 45, -56 / 15, 32 / 9],
+        [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729],
+        [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656],
+        [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84],
+    ],
+    c_sol=[35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0],
+    c_mid=[
+        6025192743 / 30085553152 / 2, 0, 51252292925 / 65400821598 / 2,
+        -2691868925 / 45128329728 / 2, 187940372067 / 1594534317056 / 2,
+        -1776094331 / 19743644256 / 2, 11237099 / 235043384 / 2
+    ],
+    c_error=[
+        1951 / 21600 - 35 / 384,
+        0,
+        22642 / 50085 - 500 / 1113,
+        451 / 720 - 125 / 192,
+        -12231 / 42400 - -2187 / 6784,
+        649 / 6300 - 11 / 84,
+        1 / 60,
+    ],)
 
 
 def _possibly_nonzero(x):
@@ -64,9 +71,10 @@ def _scaled_dot_product(scale, xs, ys, name=None):
   with ops.name_scope(name, 'scaled_dot_product', [scale, xs, ys]) as scope:
     # Some of the parameters in our Butcher tableau include zeros. Using
     # _possibly_nonzero lets us avoid wasted computation.
-    return math_ops.add_n([(scale * x) * y for x, y in zip(xs, ys)
-                           if _possibly_nonzero(x) or _possibly_nonzero(y)],
-                          name=scope)
+    return math_ops.add_n(
+        [(scale * x) * y for x, y in zip(xs, ys)
+         if _possibly_nonzero(x) and _possibly_nonzero(y)],
+        name=scope)
 
 
 def _dot_product(xs, ys, name=None):
@@ -75,7 +83,12 @@ def _dot_product(xs, ys, name=None):
     return math_ops.add_n([x * y for x, y in zip(xs, ys)], name=scope)
 
 
-def _runge_kutta_step(func, y0, f0, t0, dt, tableau=_DORMAND_PRINCE_TABLEAU,
+def _runge_kutta_step(func,
+                      y0,
+                      f0,
+                      t0,
+                      dt,
+                      tableau=_DORMAND_PRINCE_TABLEAU,
                       name=None):
   """Take an arbitrary Runge-Kutta step and estimate error.
 
@@ -109,14 +122,14 @@ def _runge_kutta_step(func, y0, f0, t0, dt, tableau=_DORMAND_PRINCE_TABLEAU,
       yi = y0 + _scaled_dot_product(dt_cast, beta_i, k)
       k.append(func(yi, ti))
 
-    if not (tableau.c_sol[-1] == 0 and tableau.c_sol == tableau.beta[-1]):
+    if not (tableau.c_sol[-1] == 0 and tableau.c_sol[:-1] == tableau.beta[-1]):
       # This property (true for Dormand-Prince) lets us save a few FLOPs.
       yi = y0 + _scaled_dot_product(dt_cast, tableau.c_sol, k)
 
     y1 = array_ops.identity(yi, name='%s/y1' % scope)
     f1 = array_ops.identity(k[-1], name='%s/f1' % scope)
-    y1_error = _scaled_dot_product(dt_cast, tableau.c_error, k,
-                                   name='%s/y1_error' % scope)
+    y1_error = _scaled_dot_product(
+        dt_cast, tableau.c_error, k, name='%s/y1_error' % scope)
     return (y1, f1, y1_error, k)
 
 
@@ -208,15 +221,15 @@ def _optimal_step_size(last_step,
                        order=5,
                        name=None):
   """Calculate the optimal size for the next Runge-Kutta step."""
-  with ops.name_scope(
-      name, 'optimal_step_size', [last_step, error_ratio]) as scope:
+  with ops.name_scope(name, 'optimal_step_size', [last_step,
+                                                  error_ratio]) as scope:
     error_ratio = math_ops.cast(error_ratio, last_step.dtype)
     exponent = math_ops.cast(1 / order, last_step.dtype)
     # this looks more complex than necessary, but importantly it keeps
     # error_ratio in the numerator so we can't divide by zero:
-    factor = math_ops.maximum(
-        1 / ifactor,
-        math_ops.minimum(error_ratio ** exponent / safety, 1 / dfactor))
+    factor = math_ops.maximum(1 / ifactor,
+                              math_ops.minimum(error_ratio**exponent / safety,
+                                               1 / dfactor))
     return math_ops.div(last_step, factor, name=scope)
 
 
@@ -232,8 +245,9 @@ def _ta_append(tensor_array, value):
   return tensor_array.write(tensor_array.size(), value)
 
 
-class _RungeKuttaState(collections.namedtuple(
-    '_RungeKuttaState', 'y1, f1, t0, t1, dt, interp_coeff')):
+class _RungeKuttaState(
+    collections.namedtuple('_RungeKuttaState',
+                           'y1, f1, t0, t1, dt, interp_coeff')):
   """Saved state of the Runge Kutta solver.
 
   Attributes:
@@ -247,8 +261,8 @@ class _RungeKuttaState(collections.namedtuple(
   """
 
 
-class _History(collections.namedtuple(
-    '_History', 'integrate_points, error_ratio')):
+class _History(
+    collections.namedtuple('_History', 'integrate_points, error_ratio')):
   """Saved integration history for use in `info_dict`.
 
   Attributes:
@@ -256,6 +270,34 @@ class _History(collections.namedtuple(
     error_ratio: tf.TensorArray storing computed error ratios at each
       integration step.
   """
+
+
+def _assert_increasing(t):
+  assert_increasing = control_flow_ops.Assert(
+      math_ops.reduce_all(t[1:] > t[:-1]), ['`t` must be monotonic increasing'])
+  return ops.control_dependencies([assert_increasing])
+
+
+def _check_input_types(y0, t, dt=None):
+  if not (y0.dtype.is_floating or y0.dtype.is_complex):
+    raise TypeError('`y0` must have a floating point or complex floating '
+                    'point dtype')
+  if not t.dtype.is_floating:
+    raise TypeError('`t` must have a floating point dtype')
+
+  if dt is not None and not dt.dtype.is_floating:
+    raise TypeError('`dt` must have a floating point dtype')
+
+
+def _check_input_sizes(t, dt):
+  if len(t.get_shape().as_list()) > 1:
+    raise ValueError('t must be a 1D tensor')
+
+  if len(dt.get_shape().as_list()) > 1:
+    raise ValueError('t must be a 1D tensor')
+
+  if t.get_shape()[0] != dt.get_shape()[0] + 1:
+    raise ValueError('t and dt have incompatible lengths, must be N and N-1')
 
 
 def _dopri5(func,
@@ -277,24 +319,24 @@ def _dopri5(func,
     # automatically
     first_step = 1.0
 
-  with ops.name_scope(
-      name, 'dopri5',
-      [y0, t, rtol, atol, safety, ifactor, dfactor, max_num_steps]) as scope:
+  with ops.name_scope(name, 'dopri5', [
+      y0, t, rtol, atol, safety, ifactor, dfactor, max_num_steps
+  ]) as scope:
 
-    first_step = ops.convert_to_tensor(first_step, dtype=t.dtype,
-                                       name='first_step')
+    first_step = ops.convert_to_tensor(
+        first_step, dtype=t.dtype, name='first_step')
     safety = ops.convert_to_tensor(safety, dtype=t.dtype, name='safety')
     ifactor = ops.convert_to_tensor(ifactor, dtype=t.dtype, name='ifactor')
     dfactor = ops.convert_to_tensor(dfactor, dtype=t.dtype, name='dfactor')
-    max_num_steps = ops.convert_to_tensor(max_num_steps, dtype=dtypes.int32,
-                                          name='max_num_steps')
+    max_num_steps = ops.convert_to_tensor(
+        max_num_steps, dtype=dtypes.int32, name='max_num_steps')
 
     def adaptive_runge_kutta_step(rk_state, history, n_steps):
       """Take an adaptive Runge-Kutta step to integrate the ODE."""
       y0, f0, _, t0, dt, interp_coeff = rk_state
       with ops.name_scope('assertions'):
-        check_underflow = control_flow_ops.Assert(
-            t0 + dt > t0, ['underflow in dt', dt])
+        check_underflow = control_flow_ops.Assert(t0 + dt > t0,
+                                                  ['underflow in dt', dt])
         check_max_num_steps = control_flow_ops.Assert(
             n_steps < max_num_steps, ['max_num_steps exceeded'])
         check_numerics = control_flow_ops.Assert(
@@ -320,16 +362,16 @@ def _dopri5(func,
         f_next = control_flow_ops.cond(accept_step, lambda: f1, lambda: f0)
         t_next = control_flow_ops.cond(accept_step, lambda: t0 + dt, lambda: t0)
         interp_coeff = control_flow_ops.cond(
-            accept_step,
-            lambda: _interp_fit_rk(y0, y1, k, dt),
+            accept_step, lambda: _interp_fit_rk(y0, y1, k, dt),
             lambda: interp_coeff)
         dt_next = _optimal_step_size(dt, error_ratio, safety, ifactor, dfactor)
-        rk_state = _RungeKuttaState(
-            y_next, f_next, t0, t_next, dt_next, interp_coeff)
+        rk_state = _RungeKuttaState(y_next, f_next, t0, t_next, dt_next,
+                                    interp_coeff)
 
       with ops.name_scope('update/history'):
-        history = _History(_ta_append(history.integrate_points, t0 + dt),
-                           _ta_append(history.error_ratio, error_ratio))
+        history = _History(
+            _ta_append(history.integrate_points, t0 + dt),
+            _ta_append(history.error_ratio, error_ratio))
       return rk_state, history, n_steps + 1
 
     def interpolate(solution, history, rk_state, i):
@@ -337,18 +379,14 @@ def _dopri5(func,
       with ops.name_scope('interpolate'):
         rk_state, history, _ = control_flow_ops.while_loop(
             lambda rk_state, *_: t[i] > rk_state.t1,
-            adaptive_runge_kutta_step,
-            (rk_state, history, 0),
+            adaptive_runge_kutta_step, (rk_state, history, 0),
             name='integrate_loop')
-        y = _interp_evaluate(
-            rk_state.interp_coeff, rk_state.t0, rk_state.t1, t[i])
+        y = _interp_evaluate(rk_state.interp_coeff, rk_state.t0, rk_state.t1,
+                             t[i])
         solution = solution.write(i, y)
         return solution, history, rk_state, i + 1
 
-    assert_increasing = control_flow_ops.Assert(
-        math_ops.reduce_all(t[1:] > t[:-1]),
-        ['`t` must be monotonic increasing'])
-    with ops.control_dependencies([assert_increasing]):
+    with _assert_increasing(t):
       num_times = array_ops.size(t)
 
     solution = tensor_array_ops.TensorArray(
@@ -363,8 +401,7 @@ def _dopri5(func,
 
     solution, history, _, _ = control_flow_ops.while_loop(
         lambda _, __, ___, i: i < num_times,
-        interpolate,
-        (solution, history, rk_state, 1),
+        interpolate, (solution, history, rk_state, 1),
         name='interpolate_loop')
 
     y = solution.stack(name=scope)
@@ -373,9 +410,11 @@ def _dopri5(func,
       return y
     else:
       integrate_points = history.integrate_points.stack()
-      info_dict = {'num_func_evals': 6 * array_ops.size(integrate_points) + 1,
-                   'integrate_points': integrate_points,
-                   'error_ratio': history.error_ratio.stack()}
+      info_dict = {
+          'num_func_evals': 6 * array_ops.size(integrate_points) + 1,
+          'integrate_points': integrate_points,
+          'error_ratio': history.error_ratio.stack()
+      }
       return (y, info_dict)
 
 
@@ -390,7 +429,7 @@ def odeint(func,
            name=None):
   """Integrate a system of ordinary differential equations.
 
-  Solves the initial value problem for a non-stiff system of first order ode-s:
+  Solves the initial value problem for a non-stiff system of first order ODEs:
 
     ```
     dy/dt = func(y, t), y(t[0]) = y0
@@ -483,21 +522,182 @@ def odeint(func,
     # arbitrarily nested tuple. This will help performance and usability by
     # avoiding the need to pack/unpack in user functions.
     y0 = ops.convert_to_tensor(y0, name='y0')
-    if not (y0.dtype.is_floating or y0.dtype.is_complex):
-      raise TypeError('`y0` must have a floating point or complex floating '
-                      'point dtype')
-
     t = ops.convert_to_tensor(t, preferred_dtype=dtypes.float64, name='t')
-    if not t.dtype.is_floating:
-      raise TypeError('`t` must have a floating point dtype')
+    _check_input_types(y0, t)
 
     error_dtype = abs(y0).dtype
     rtol = ops.convert_to_tensor(rtol, dtype=error_dtype, name='rtol')
     atol = ops.convert_to_tensor(atol, dtype=error_dtype, name='atol')
 
-    return _dopri5(func, y0, t,
-                   rtol=rtol,
-                   atol=atol,
-                   full_output=full_output,
-                   name=scope,
-                   **options)
+    return _dopri5(
+        func,
+        y0,
+        t,
+        rtol=rtol,
+        atol=atol,
+        full_output=full_output,
+        name=scope,
+        **options)
+
+
+class _FixedGridIntegrator(six.with_metaclass(abc.ABCMeta)):
+  """Base class for fixed-grid ODE integrators."""
+
+  def integrate(self, evol_func, y0, time_grid, dt_grid, steps_on_intervals):
+    """Returns integrated values of differential equation on the `time grid`.
+
+    Numerically integrates differential equation defined via time derivative
+    evaluator `evol_func` using fixed time steps specified in dt_grid.
+
+    Args:
+      evol_func: Callable, evaluates time derivative of y at a given time.
+      y0: N-D Tensor holds initial values of the solution.
+      time_grid: 1-D Tensor holding the time points at which the solution
+        will be recorded, must have a floating dtype.
+      dt_grid: 1-D Tensor holds fixed time steps to be used on time_grid
+        intervals. Must be a floating dtype and have one less element than that
+        of the time_grid.
+      steps_on_intervals: 1-D Tensor of integer dtype, must have the same size
+        as dt_grid. Specifies number of steps needed for every interval. Assumes
+        steps_on_intervals * dt_grid == time intervals.
+
+    Returns:
+      (N+1)-D tensor, where the first dimension corresponds to different
+      time points. Contains the solved value of y for each desired time point in
+      `t`, with the initial value `y0` being the first element along the first
+      dimension.
+    """
+
+    iteration_func = self._make_iteration_func(evol_func, dt_grid)
+    integrate_interval = self._make_interval_integrator(iteration_func,
+                                                        steps_on_intervals)
+
+    num_times = array_ops.size(time_grid)
+    current_time = time_grid[0]
+    solution_array = tensor_array_ops.TensorArray(y0.dtype, num_times)
+    solution_array = solution_array.write(0, y0)
+
+    solution_array, _, _, _ = control_flow_ops.while_loop(
+        lambda _, __, ___, i: i < num_times,
+        integrate_interval,
+        (solution_array, y0, current_time, 1)
+    )
+    solution_array = solution_array.stack()
+    solution_array.set_shape(time_grid.get_shape().concatenate(y0.get_shape()))
+    return solution_array
+
+  def _make_iteration_func(self, evol_func, dt_grid):
+    """Returns a function that builds operations of a single time step."""
+
+    def iteration_func(y, t, dt_step, interval_step):
+      """Performs a single time step advance."""
+      dt = dt_grid[interval_step - 1]
+      dy = self._step_func(evol_func, t, dt, y)
+      dy = math_ops.cast(dy, dtype=y.dtype)
+      return y + dy, t + dt, dt_step + 1, interval_step
+
+    return iteration_func
+
+  def _make_interval_integrator(self, iteration_func, interval_sizes):
+    """Returns a function that builds operations for interval integration."""
+
+    def integrate_interval(solution_array, y, t, interval_num):
+      """Integrates y with fixed time step on interval `interval_num`."""
+      y, t, _, _ = control_flow_ops.while_loop(
+          lambda _, __, j, interval_num: j < interval_sizes[interval_num - 1],
+          iteration_func,
+          (y, t, 0, interval_num)
+      )
+      return solution_array.write(interval_num, y), y, t, interval_num + 1
+
+    return integrate_interval
+
+  @abc.abstractmethod
+  def _step_func(self, evol_func, t, dt, y):
+    pass
+
+
+class _MidpointFixedGridIntegrator(_FixedGridIntegrator):
+  """Fixed grid integrator implementing midpoint scheme."""
+
+  def _step_func(self, evol_func, t, dt, y):
+    dt_cast = math_ops.cast(dt, y.dtype)
+    # yn1 = yn + h * f(tn + h/2, yn + f(tn, yn) * h/2)
+    return dt_cast * evol_func(y + evol_func(y, t) * dt_cast / 2, t + dt / 2)
+
+
+class _RK4FixedGridIntegrator(_FixedGridIntegrator):
+  """Fixed grid integrator implementing RK4 scheme."""
+
+  def _step_func(self, evol_func, t, dt, y):
+    k1 = evol_func(y, t)
+    half_step = t + dt / 2
+    dt_cast = math_ops.cast(dt, y.dtype)
+
+    k2 = evol_func(y + dt_cast * k1 / 2, half_step)
+    k3 = evol_func(y + dt_cast * k2 / 2, half_step)
+    k4 = evol_func(y + dt_cast * k3, t + dt)
+    return math_ops.add_n([k1, 2 * k2, 2 * k3, k4]) * (dt_cast / 6)
+
+
+def odeint_fixed(func, y0, t, dt=None, method='rk4', name=None):
+  """ODE integration on a fixed grid (with no step size control).
+
+  Useful in certain scenarios to avoid the overhead of adaptive step size
+  control, e.g. when differentiation of the integration result is desired and/or
+  the time grid is known a priori to be sufficient.
+
+  Args:
+    func: Function that maps a Tensor holding the state `y` and a scalar Tensor
+      `t` into a Tensor of state derivatives with respect to time.
+    y0: N-D Tensor giving starting value of `y` at time point `t[0]`.
+    t: 1-D Tensor holding a sequence of time points for which to solve for
+      `y`. The initial time point should be the first element of this sequence,
+      and each time must be larger than the previous time. May have any floating
+      point dtype.
+    dt: 0-D or 1-D Tensor providing time step suggestion to be used on time
+      integration intervals in `t`. 1-D Tensor should provide values
+      for all intervals, must have 1 less element than that of `t`.
+      If given a 0-D Tensor, the value is interpreted as time step suggestion
+      same for all intervals. If passed None, then time step is set to be the
+      t[1:] - t[:-1]. Defaults to None. The actual step size is obtained by
+      insuring an integer number of steps per interval, potentially reducing the
+      time step.
+    method: One of 'midpoint' or 'rk4'.
+    name: Optional name for the resulting operation.
+
+  Returns:
+    y: (N+1)-D tensor, where the first dimension corresponds to different
+      time points. Contains the solved value of y for each desired time point in
+      `t`, with the initial value `y0` being the first element along the first
+      dimension.
+
+  Raises:
+    ValueError: Upon caller errors.
+  """
+  with ops.name_scope(name, 'odeint_fixed', [y0, t, dt]):
+    t = ops.convert_to_tensor(t, preferred_dtype=dtypes.float64, name='t')
+    y0 = ops.convert_to_tensor(y0, name='y0')
+
+    intervals = t[1:] - t[:-1]
+    if dt is None:
+      dt = intervals
+    dt = ops.convert_to_tensor(dt, preferred_dtype=dtypes.float64, name='dt')
+
+    steps_on_intervals = math_ops.ceil(intervals / dt)
+    dt = intervals / steps_on_intervals
+    steps_on_intervals = math_ops.cast(steps_on_intervals, dtype=dtypes.int32)
+
+    _check_input_types(y0, t, dt)
+    _check_input_sizes(t, dt)
+
+    with _assert_increasing(t):
+      with ops.name_scope(method):
+        if method == 'midpoint':
+          return _MidpointFixedGridIntegrator().integrate(func, y0, t, dt,
+                                                          steps_on_intervals)
+        elif method == 'rk4':
+          return _RK4FixedGridIntegrator().integrate(func, y0, t, dt,
+                                                     steps_on_intervals)
+        else:
+          raise ValueError('method not supported: {!s}'.format(method))

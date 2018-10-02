@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_MAXPOOLING_OP_H_
-#define TENSORFLOW_KERNELS_MAXPOOLING_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_H_
+#define TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_H_
 // Functor definition for MaxPoolingOp, must be compilable by nvcc.
 
+#include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -37,8 +39,16 @@ struct SpatialMaxPooling {
   }
 };
 
+template <typename Device>
+struct SpatialMaxPooling<Device, qint8> {
+  void operator()(const Device& d, typename TTypes<qint8, 4>::Tensor output,
+                  typename TTypes<qint8, 4>::ConstTensor input, int window_rows,
+                  int window_cols, int row_stride, int col_stride,
+                  const Eigen::PaddingType& padding) {}
+};
+
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_MAXPOOLING_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_H_

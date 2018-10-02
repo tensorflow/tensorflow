@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_TREE_UTILS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_TREE_UTILS_H_
 
 #include <limits>
 
@@ -22,6 +22,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -44,18 +45,25 @@ const int32 LEAF_NODE = -1;
 const int32 FREE_NODE = -2;
 
 // Used to indicate column types, e.g. categorical vs. float
-enum DataColumnTypes {
-  kDataFloat = 0,
-  kDataCategorical = 1
-};
+enum DataColumnTypes { kDataFloat = 0, kDataCategorical = 1 };
 
 // Calculates the sum of a tensor.
-template<typename T>
+template <typename T>
 T Sum(Tensor counts) {
   Eigen::Tensor<T, 0, Eigen::RowMajor> count_sum =
       counts.unaligned_flat<T>().sum();
   return count_sum(0);
 }
+
+// Get the two best scores and their indices among max splits.
+void GetTwoBest(int max, const std::function<float(int)>& score_fn,
+                float* best_score, int* best_index, float* second_best_score,
+                int* second_best_index);
+
+// If the Gini Impurity is g, this returns n^2 (g - 1).  This is an int
+// rather than a float, and so can be more easily checked for ties.
+int BootstrapGini(int n, int s, const random::DistributionSampler& ds,
+                  random::SimplePhilox* rand);
 
 // Get the DataColumnTypes number for the given feature.
 DataColumnTypes FindDenseFeatureSpec(
@@ -86,7 +94,7 @@ float WeightedGiniImpurity(const T& counts) {
   return RawWeightedGiniImpurity(smoothed);
 }
 
-template<typename T1, typename T2>
+template <typename T1, typename T2>
 float WeightedVariance(const T1& sums, const T2& squares, float count) {
   const auto e_x = sums / count;
   const auto e_x2 = squares / count;
@@ -109,12 +117,13 @@ int32 BestFeatureRegression(const Tensor& total_sums,
 
 // Returns true if the best split's variance is sufficiently smaller than
 // that of the next best split.
-bool BestSplitDominatesRegression(
-    const Tensor& total_sums, const Tensor& total_squares,
-    const Tensor& split_sums, const Tensor& split_squares,
-    int32 accumulator);
+bool BestSplitDominatesRegression(const Tensor& total_sums,
+                                  const Tensor& total_squares,
+                                  const Tensor& split_sums,
+                                  const Tensor& split_squares,
+                                  int32 accumulator);
 
-// Performs booststrap_samples bootstrap samples of the best split's class
+// Performs bootstrap_samples bootstrap samples of the best split's class
 // counts and the second best splits's class counts, and returns true if at
 // least dominate_fraction of the time, the former has a better (lower)
 // Gini impurity.  Does not take over ownership of *rand.
@@ -167,10 +176,8 @@ bool DecideNode(const GetFeatureFnType& get_dense,
 // isn't present in sparse_input_indices.  sparse_input_indices is assumed
 // to be sorted.
 template <typename T1, typename T2>
-float FindSparseValue(
-    const T1& sparse_input_indices,
-    const T2& sparse_input_values,
-    int32 i, int32 j) {
+float FindSparseValue(const T1& sparse_input_indices,
+                      const T2& sparse_input_values, int32 i, int32 j) {
   int32 low = 0;
   int32 high = sparse_input_values.dimension(0);
   while (low < high) {
@@ -197,11 +204,70 @@ float FindSparseValue(
   return 0.0;
 }
 
+// Returns the number of sparse values for example input_index.
+// Also returns the index where those features start in sparse_input_start
+// if any were found.
+// Assumes that the first column in indices is ordered.
+template <typename T1>
+int32 GetNumSparseFeatures(const T1& indices, int32 input_index,
+                           int64* sparse_input_start) {
+  // Binary search for input_index.
+  // TODO(gilberth): Consider using std::lower_bound, std::upper_bound
+  // for a simpler but possibly slower solution, or searching for
+  // input_start and input_end simultaneously.
+  const int64 num_total = indices.dimension(0);
+  int64 index;
+  int64 low = 0;
+  int64 high = num_total;
+  *sparse_input_start = -1;  // Easy error checking.
+
+  while (true) {
+    if (low == high) {
+      return 0;
+    }
+    index = low + (high - low) / 2;
+    const int64 feature_index = indices(index, 0);
+    if (feature_index == input_index) {
+      // found it.
+      break;
+    } else if (feature_index < input_index) {
+      // Correct for the implicit floor in the index assignment.
+      if (low == index) {
+        return 0;
+      }
+      low = index;
+    } else {
+      high = index;
+    }
+  }
+
+  // Scan for the start and end of the input_index range.
+  int64 input_start = index;
+  int64 val = indices(input_start, 0);
+  while (val == input_index) {
+    --input_start;
+    if (input_start < 0) {
+      break;
+    }
+    val = indices(input_start, 0);
+  }
+  *sparse_input_start = input_start + 1;
+  int32 input_end = index;
+  val = indices(input_end, 0);
+  while (val == input_index) {
+    ++input_end;
+    if (input_end >= num_total) {
+      break;
+    }
+    val = indices(input_end, 0);
+  }
+  return input_end - input_start - 1;
+}
+
 // Returns left/right decision between the input value and the threshold bias.
 // For floating point types, the decision is value > bias, but for
 // categorical data, it is value != bias.
 bool Decide(float value, float bias, DataColumnTypes type = kDataFloat);
-
 
 // Returns true if all the splits are initialized. Since they get initialized
 // in order, we can simply infer this from the last split.
@@ -236,4 +302,4 @@ void GetParentWeightedMean(float leaf_sum, const float* leaf_data,
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_TREE_UTILS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_TREE_UTILS_H_

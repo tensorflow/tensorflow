@@ -16,6 +16,11 @@
 #
 # Common Bash functions used by build scripts
 
+COLOR_NC='\033[0m'
+COLOR_BOLD='\033[1m'
+COLOR_LIGHT_GRAY='\033[0;37m'
+COLOR_GREEN='\033[0;32m'
+COLOR_RED='\033[0;31m'
 
 die() {
   # Print a message and exit with code 1.
@@ -230,7 +235,7 @@ android_sdk_repository(
 android_ndk_repository(
     name="androidndk",
     path="${ANDROID_NDK_HOME}",
-    api_level=21)
+    api_level=14)
 EOF
     fi
   fi

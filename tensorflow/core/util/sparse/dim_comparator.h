@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
-#define TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
+#ifndef TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_
+#define TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -47,13 +47,13 @@ class DimComparator {
   typedef typename gtl::ArraySlice<int64> VarDimArray;
 
   DimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
-                const TensorShape& shape)
-      : ix_(ix), order_(order), dims_(shape.dims()) {
-    CHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
-    CHECK_LE(order.size(), shape.dims()) << "Can only sort up to dims";
+                const VarDimArray& shape)
+      : ix_(ix), order_(order), dims_(shape.size()) {
+    DCHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
+    DCHECK_LE(order.size(), shape.size()) << "Can only sort up to dims";
     for (size_t d = 0; d < order.size(); ++d) {
-      CHECK_GE(order[d], 0);
-      CHECK_LT(order[d], shape.dims());
+      DCHECK_GE(order[d], 0);
+      DCHECK_LT(order[d], shape.size());
     }
   }
 
@@ -95,9 +95,9 @@ template <int ORDER_DIM>
 class FixedDimComparator : DimComparator {
  public:
   FixedDimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
-                     const TensorShape& shape)
+                     const VarDimArray& shape)
       : DimComparator(ix, order, shape) {
-    CHECK_EQ(order.size(), ORDER_DIM);
+    DCHECK_EQ(order.size(), ORDER_DIM);
   }
   inline bool operator()(const int64 i, const int64 j) const {
     bool value = false;
@@ -116,4 +116,4 @@ class FixedDimComparator : DimComparator {
 }  // namespace sparse
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_SPARSE_DIM_COMPARATOR_H_
+#endif  // TENSORFLOW_CORE_UTIL_SPARSE_DIM_COMPARATOR_H_

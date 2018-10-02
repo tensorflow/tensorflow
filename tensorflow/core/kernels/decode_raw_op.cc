@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
 
@@ -50,8 +50,8 @@ class DecodeRawOp : public OpKernel {
       }
     }
     TensorShape out_shape = input.shape();
-    if (str_size == -1) {  // Empty input
-      out_shape.AddDim(1);
+    if (str_size == -1 || str_size == 0) {  // Empty input
+      out_shape.AddDim(0);
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output("output", out_shape,
                                                        &output_tensor));
@@ -70,10 +70,24 @@ class DecodeRawOp : public OpKernel {
     auto out = output_tensor->flat_inner_dims<T>();
     DCHECK_EQ(flat_in.size(), out.dimensions()[0]);
     T* out_data = out.data();
-    for (int64 i = 0; i < flat_in.size(); ++i) {
-      const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
-      memcpy(out_data, in_data, str_size);
-      out_data += added_dim;
+    if (port::kLittleEndian == little_endian_ || sizeof(T) == 1) {
+      for (int64 i = 0; i < flat_in.size(); ++i) {
+        const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
+        memcpy(out_data, in_data, str_size);
+        out_data += added_dim;
+      }
+    } else {
+      for (int64 i = 0; i < flat_in.size(); ++i) {
+        const char* in_data_bytes =
+            reinterpret_cast<const char*>(flat_in(i).data());
+        char* out_data_bytes = reinterpret_cast<char*>(out_data);
+        const char* p = in_data_bytes;
+        char* q = out_data_bytes;
+        for (; p < in_data_bytes + str_size; p += sizeof(T), q += sizeof(T)) {
+          std::reverse_copy(p, p + sizeof(T), q);
+        }
+        out_data += added_dim;
+      }
     }
   }
 
@@ -91,6 +105,7 @@ REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);
+REGISTER(uint16);
 REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);

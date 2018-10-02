@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import math
 import numpy as np
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +28,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util import deprecation
 
 
 class _Gumbel(distribution.Distribution):
@@ -45,7 +45,7 @@ class _Gumbel(distribution.Distribution):
 
   where `loc = mu` and `scale = sigma`.
 
-  The cumulative densifyt function of this distribution is,
+  The cumulative density function of this distribution is,
 
   ```cdf(x; mu, sigma) = exp(-exp(-(x - mu) / sigma))```
 
@@ -63,15 +63,18 @@ class _Gumbel(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Define a single scalar Gumbel distribution.
-  dist = tf.contrib.distributions.Gumbel(loc=0., scale=3.)
+  dist = tfd.Gumbel(loc=0., scale=3.)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1.)
 
   # Define a batch of two scalar valued Gumbels.
   # The first has mean 1 and scale 11, the second 2 and 22.
-  dist = tf.contrib.distributions.Gumbel(loc=[1, 2.], scale=[11, 22.])
+  dist = tfd.Gumbel(loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
@@ -86,7 +89,7 @@ class _Gumbel(distribution.Distribution):
   ```python
   # Define a batch of two scalar valued Logistics.
   # Both have mean 1, but different scales.
-  dist = tf.contrib.distributions.Gumbel(loc=1., scale=[11, 22.])
+  dist = tfd.Gumbel(loc=1., scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.
@@ -95,6 +98,14 @@ class _Gumbel(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -123,22 +134,21 @@ class _Gumbel(distribution.Distribution):
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]) as ns:
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")
         self._scale = array_ops.identity(scale, name="scale")
-        contrib_tensor_util.assert_same_float_dtype([self._loc, self._scale])
+        check_ops.assert_same_float_dtype([self._loc, self._scale])
     super(_Gumbel, self).__init__(
         dtype=self._scale.dtype,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=[self._loc, self._scale],
-        name=ns)
+        name=name)
 
   @staticmethod
   def _param_shapes(sample_shape):
@@ -189,9 +199,6 @@ class _Gumbel(distribution.Distribution):
 
   def _log_prob(self, x):
     return self._log_unnormalized_prob(x) - self._log_normalization()
-
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
 
   def _log_cdf(self, x):
     return -math_ops.exp(-self._z(x))

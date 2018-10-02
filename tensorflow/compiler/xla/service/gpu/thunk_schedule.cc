@@ -79,7 +79,7 @@ ThunkSchedule::ThunkSchedule(
 
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
   std::unordered_map<const Thunk*, int> thunk_to_total_order;
-  for (auto i = 0; i < thunk_total_order_.size(); ++i) {
+  for (int i = 0; i < thunk_total_order_.size(); ++i) {
     InsertOrDie(&thunk_to_total_order, thunk_total_order_[i], i);
   }
 
@@ -144,16 +144,15 @@ const std::list<const Thunk*>& ThunkSchedule::DependsOn(
 string ThunkSchedule::ToString() const {
   string result = "Total order:\n";
   for (Thunk* thunk : thunk_total_order_) {
-    tensorflow::strings::StrAppend(&result, "\t",
-                                   thunk->hlo_instruction()->ToString(), "\n");
+    absl::StrAppend(&result, "\t", thunk->hlo_instruction()->ToString(), "\n");
   }
-  tensorflow::strings::StrAppend(&result, "Dependencies:\n");
+  absl::StrAppend(&result, "Dependencies:\n");
   for (const auto& entry : depends_on_) {
     const Thunk* dependent = entry.first;
     for (const Thunk* dependency : entry.second) {
-      tensorflow::strings::StrAppend(
-          &result, "\t", dependent->hlo_instruction()->name(), " depends on ",
-          dependency->hlo_instruction()->name(), "\n");
+      absl::StrAppend(&result, "\t", dependent->hlo_instruction()->name(),
+                      " depends on ", dependency->hlo_instruction()->name(),
+                      "\n");
     }
   }
   return result;

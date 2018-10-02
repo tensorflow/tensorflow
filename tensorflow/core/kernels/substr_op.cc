@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdlib>
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -25,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
@@ -64,26 +68,28 @@ class SubstrOp : public OpKernel {
         const T len =
             tensorflow::internal::SubtleMustCopy(len_tensor.scalar<T>()());
         for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
-          string in = input(i);
+          StringPiece in(input(i));
           OP_REQUIRES(
-              context, FastBoundsCheck(pos, in.size()),
+              context, FastBoundsCheck(std::abs(pos), in.size() + 1),
               errors::InvalidArgument("pos ", pos, " out of range for string",
                                       "b'", in, "' at index ", i));
-          output(i) = in.substr(pos, len);
+          StringPiece sub_in = in.substr(AdjustedPosIndex(pos, in), len);
+          output(i).assign(sub_in.data(), sub_in.size());
         }
       } else {
         // Perform Op element-wise with tensor pos/len
         auto pos_flat = pos_tensor.flat<T>();
         auto len_flat = len_tensor.flat<T>();
         for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
-          string in = input(i);
+          StringPiece in(input(i));
           const T pos = tensorflow::internal::SubtleMustCopy(pos_flat(i));
           const T len = tensorflow::internal::SubtleMustCopy(len_flat(i));
           OP_REQUIRES(
-              context, FastBoundsCheck(pos, in.size()),
+              context, FastBoundsCheck(std::abs(pos), in.size() + 1),
               errors::InvalidArgument("pos ", pos, " out of range for string",
                                       "b'", in, "' at index ", i));
-          output(i) = in.substr(pos, len);
+          StringPiece sub_in = in.substr(AdjustedPosIndex(pos, in), len);
+          output(i).assign(sub_in.data(), sub_in.size());
         }
       }
     } else {
@@ -95,9 +101,9 @@ class SubstrOp : public OpKernel {
       // Create BCast helper with shape of input and pos/len
       BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
       OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument("Incompatible shapes: ",
-                                          input_shape.DebugString(), " vs. ",
-                                          pos_shape.DebugString()));
+                  errors::InvalidArgument(
+                      "Incompatible shapes: ", input_shape.DebugString(),
+                      " vs. ", pos_shape.DebugString()));
       TensorShape output_shape = BCast::ToShape(bcast.result_shape());
       int ndims = output_shape.dims();
       Tensor* output_tensor = nullptr;
@@ -115,7 +121,7 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          typename TTypes<string, 1>::Tensor input_bcast =
+          TTypes<string, 1>::Tensor input_bcast =
               input_buffer.shaped<string, 1>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<1>(bcast.x_bcast()));
@@ -125,8 +131,8 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &pos_buffer));
-          typename TTypes<T, 1>::Tensor pos_bcast =
-              pos_buffer.shaped<T, 1>(bcast.result_shape());
+          typename TTypes<T, 1>::Tensor pos_bcast(
+              pos_buffer.shaped<T, 1>(bcast.result_shape()));
           pos_bcast =
               pos_shaped.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
 
@@ -135,21 +141,23 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &len_buffer));
-          typename TTypes<T, 1>::Tensor len_bcast =
-              len_buffer.shaped<T, 1>(bcast.result_shape());
+          typename TTypes<T, 1>::Tensor len_bcast(
+              len_buffer.shaped<T, 1>(bcast.result_shape()));
           len_bcast =
               len_shaped.broadcast(BCast::ToIndexArray<1>(bcast.y_bcast()));
 
           // Iterate through broadcasted tensors and perform substr
           for (int i = 0; i < output_shape.dim_size(0); ++i) {
-            string in = input_bcast(i);
+            StringPiece in(input_bcast(i));
             const T pos = tensorflow::internal::SubtleMustCopy(pos_bcast(i));
             const T len = tensorflow::internal::SubtleMustCopy(len_bcast(i));
             OP_REQUIRES(
-                context, FastBoundsCheck(pos, input_bcast(i).size()),
+                context,
+                FastBoundsCheck(std::abs(pos), input_bcast(i).size() + 1),
                 errors::InvalidArgument("pos ", pos, " out of range for string",
                                         "b'", in, "' at index ", i));
-            output(i) = in.substr(pos, len);
+            StringPiece sub_in = in.substr(AdjustedPosIndex(pos, in), len);
+            output(i).assign(sub_in.data(), sub_in.size());
           }
           break;
         }
@@ -164,7 +172,7 @@ class SubstrOp : public OpKernel {
           Tensor input_buffer;
           OP_REQUIRES_OK(context, context->allocate_temp(
                                       DT_STRING, output_shape, &input_buffer));
-          typename TTypes<string, 2>::Tensor input_bcast =
+          TTypes<string, 2>::Tensor input_bcast =
               input_buffer.shaped<string, 2>(bcast.result_shape());
           input_bcast =
               input.broadcast(BCast::ToIndexArray<2>(bcast.x_bcast()));
@@ -174,8 +182,8 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &pos_buffer));
-          typename TTypes<T, 2>::Tensor pos_bcast =
-              pos_buffer.shaped<T, 2>(bcast.result_shape());
+          typename TTypes<T, 2>::Tensor pos_bcast(
+              pos_buffer.shaped<T, 2>(bcast.result_shape()));
           pos_bcast =
               pos_shaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
 
@@ -184,24 +192,26 @@ class SubstrOp : public OpKernel {
           OP_REQUIRES_OK(context,
                          context->allocate_temp(DataTypeToEnum<T>::v(),
                                                 output_shape, &len_buffer));
-          typename TTypes<T, 2>::Tensor len_bcast =
-              len_buffer.shaped<T, 2>(bcast.result_shape());
+          typename TTypes<T, 2>::Tensor len_bcast(
+              len_buffer.shaped<T, 2>(bcast.result_shape()));
           len_bcast =
               len_shaped.broadcast(BCast::ToIndexArray<2>(bcast.y_bcast()));
 
           // Iterate through broadcasted tensors and perform substr
           for (int i = 0; i < output_shape.dim_size(0); ++i) {
             for (int j = 0; j < output_shape.dim_size(1); ++j) {
-              string in = input_bcast(i, j);
+              StringPiece in(input_bcast(i, j));
               const T pos =
                   tensorflow::internal::SubtleMustCopy(pos_bcast(i, j));
               const T len =
                   tensorflow::internal::SubtleMustCopy(len_bcast(i, j));
-              OP_REQUIRES(context, FastBoundsCheck(pos, in.size()),
-                          errors::InvalidArgument(
-                              "pos ", pos, " out of range for ", "string b'",
-                              in, "' at index (", i, ", ", j, ")"));
-              output(i, j) = in.substr(pos, len);
+              OP_REQUIRES(
+                  context, FastBoundsCheck(std::abs(pos), in.size() + 1),
+                  errors::InvalidArgument("pos ", pos, " out of range for ",
+                                          "string b'", in, "' at index (", i,
+                                          ", ", j, ")"));
+              StringPiece sub_in = in.substr(AdjustedPosIndex(pos, in), len);
+              output(i, j).assign(sub_in.data(), sub_in.size());
             }
           }
           break;
@@ -212,6 +222,16 @@ class SubstrOp : public OpKernel {
         }
       }
     }
+  }
+
+ private:
+  // This adjusts the requested position. Note it does not perform any bound
+  // checks.
+  T AdjustedPosIndex(const T pos_requested, const StringPiece s) {
+    if (pos_requested < 0) {
+      return s.size() + pos_requested;
+    }
+    return pos_requested;
   }
 };
 

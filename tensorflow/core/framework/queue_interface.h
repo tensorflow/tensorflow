@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_QUEUE_INTERFACE_H_
-#define TENSORFLOW_FRAMEWORK_QUEUE_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_QUEUE_INTERFACE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_QUEUE_INTERFACE_H_
 
 #include <string>
 #include <vector>
@@ -77,6 +77,9 @@ class QueueInterface : public ResourceBase {
   virtual void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
                      DoneCallback callback) = 0;
 
+  // Returns true if a given queue is closed and false if it is open.
+  virtual bool is_closed() const = 0;
+
   // Assuming *this represents a shared queue, verify that it matches
   // another instantiation indicated by node_def.
   virtual Status MatchesNodeDef(const NodeDef& node_def) = 0;
@@ -96,4 +99,4 @@ class QueueInterface : public ResourceBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_QUEUE_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_QUEUE_INTERFACE_H_

@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -121,6 +123,14 @@ func TestOutputDataTypeAndShape(t *testing.T) {
 			[]int64{2, 3},
 			Double,
 		},
+		{ // Matrix of Uint64
+			[][]uint64{
+				{1, 2, 3},
+				{4, 5, 6},
+			},
+			[]int64{2, 3},
+			Uint64,
+		},
 	}
 	for idx, test := range testdata {
 		t.Run(fmt.Sprintf("#%d Value %T", idx, test.Value), func(t *testing.T) {
@@ -153,6 +163,91 @@ func TestOutputDataTypeAndShape(t *testing.T) {
 	}
 	if shape := placeholder.Shape(); shape.NumDimensions() != -1 {
 		t.Errorf("Got shape %v, wanted an unknown number of dimensions", shape)
+	}
+}
+
+func TestOperationInputs(t *testing.T) {
+	g := NewGraph()
+	x, err := Placeholder(g, "x", Float)
+	if err != nil {
+		t.Fatal(err)
+	}
+	y, err := Placeholder(g, "y", Float)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add, err := Add(g, "add", x, y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addOp := add.Op
+
+	if out := addOp.NumInputs(); out != 2 {
+		t.Fatalf("Got %d inputs, wanted 2", out)
+	}
+}
+
+func TestOperationConsumers(t *testing.T) {
+	g := NewGraph()
+	x, err := Placeholder(g, "x", Float)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := Neg(g, "a", x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Neg(g, "b", x)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	consumers := []*Operation{a.Op, b.Op}
+
+	xConsumers := x.Consumers()
+	if out := len(xConsumers); out != 2 {
+		t.Fatalf("Got %d consumers, wanted 2", out)
+	}
+
+	for i, consumer := range xConsumers {
+		got := consumer.Op.Name()
+		want := consumers[i].Name()
+		if got != want {
+			t.Fatalf("%d. Got op name %q, wanted %q", i, got, want)
+		}
+
+		got = consumer.Producer().Op.Name()
+		want = x.Op.Name()
+		if got != want {
+			t.Fatalf("%d. Got op name %q, wanted %q", i, got, want)
+		}
+	}
+
+	if len(b.Consumers()) != 0 {
+		t.Fatalf("expected %+v to have no consumers", b)
+	}
+}
+
+func TestOperationDevice(t *testing.T) {
+	graph := NewGraph()
+	v, err := NewTensor(float32(1.0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := graph.AddOperation(OpSpec{
+		Type: "Const",
+		Name: "Const",
+		Attrs: map[string]interface{}{
+			"dtype": v.DataType(),
+			"value": v,
+		},
+		Device: "/device:GPU:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := op.Device(), "/device:GPU:0"; got != want {
+		t.Errorf("Got %q, want %q", got, want)
 	}
 }
 

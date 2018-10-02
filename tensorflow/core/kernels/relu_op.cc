@@ -29,6 +29,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_RELU_KERNELS(type)                                   \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -47,15 +50,21 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_RELU_KERNELS);
 #undef REGISTER_RELU_KERNELS
 
-#define REGISTER_ELU_KERNELS(type)                                  \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("Elu").Device(DEVICE_CPU).TypeConstraint<type>("T"),     \
-      EluOp<CPUDevice, type>);                                      \
-  REGISTER_KERNEL_BUILDER(                                          \
-      Name("EluGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      EluGradOp<CPUDevice, type>)
+#define REGISTER_ELU_KERNELS(type)                                   \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Elu").Device(DEVICE_CPU).TypeConstraint<type>("T"),      \
+      EluOp<CPUDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("EluGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"),  \
+      EluGradOp<CPUDevice, type>);                                   \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("Selu").Device(DEVICE_CPU).TypeConstraint<type>("T"),     \
+      SeluOp<CPUDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("SeluGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      SeluGradOp<CPUDevice, type>)
 
-// Elu only makes sense with float or double.
+// Elu and Selu only make sense with float or double.
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ELU_KERNELS);
 #undef REGISTER_ELU_KERNELS
 
@@ -100,7 +109,26 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
       typename TTypes<T>::ConstTensor activations,                             \
       typename TTypes<T>::Tensor backprops);                                   \
-  extern template struct EluGrad<GPUDevice, T>;
+  extern template struct EluGrad<GPUDevice, T>;                                \
+                                                                               \
+  template <>                                                                  \
+  void Selu<GPUDevice, T>::operator()(                                         \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor features,            \
+      typename TTypes<T>::Tensor activations);                                 \
+  extern template struct Selu<GPUDevice, T>;                                   \
+                                                                               \
+  template <>                                                                  \
+  void SeluGrad<GPUDevice, T>::operator()(                                     \
+      const GPUDevice& d, typename TTypes<T>::ConstTensor gradients,           \
+      typename TTypes<T>::ConstTensor activations,                             \
+      typename TTypes<T>::Tensor backprops);                                   \
+  extern template struct SeluGrad<GPUDevice, T>;
+
+template <>
+void Relu<GPUDevice, qint8>::operator()(
+    const GPUDevice& d, typename TTypes<qint8>::ConstTensor features,
+    typename TTypes<qint8>::Tensor activations);
+extern template struct Relu<GPUDevice, qint8>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 }  // namespace functor
@@ -124,11 +152,70 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
       EluOp<GPUDevice, type>);                                        \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("EluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),   \
-      EluGradOp<GPUDevice, type>)
+      EluGradOp<GPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("Selu").Device(DEVICE_GPU).TypeConstraint<type>("T"),      \
+      SeluOp<GPUDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("SeluGrad").Device(DEVICE_GPU).TypeConstraint<type>("T"),  \
+      SeluGradOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
+template <typename Device>
+class ReluOp<Device, qint8>
+    : public UnaryElementWiseOp<qint8, ReluOp<Device, qint8>> {
+ public:
+  using UnaryElementWiseOp<qint8, ReluOp<Device, qint8>>::UnaryElementWiseOp;
+
+  void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
+    auto flat_input = input.flat<qint8>();
+    OP_REQUIRES(context, (flat_input.size() % 4) == 0,
+                errors::InvalidArgument(
+                    "Tensor size must be a multiple of 4 for Relu<qint8>. Got ",
+                    flat_input.size()));
+    functor::Relu<Device, qint8> func;
+    func(context->eigen_device<Device>(), flat_input, output->flat<qint8>());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
+    ReluOp<GPUDevice, qint8>);
+
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+// Registration of the GPU implementations.
+#define REGISTER_SYCL_KERNELS(type)                                    \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),      \
+      ReluOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("ReluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+      ReluGradOp<SYCLDevice, type>);                                   \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu6").Device(DEVICE_SYCL).TypeConstraint<type>("T"),     \
+      Relu6Op<SYCLDevice, type>);                                      \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Relu6Grad").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      Relu6GradOp<SYCLDevice, type>);                                  \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Elu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),       \
+      EluOp<SYCLDevice, type>);                                        \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("EluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),   \
+      EluGradOp<SYCLDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("Selu").Device(DEVICE_SYCL).TypeConstraint<type>("T"),      \
+      SeluOp<SYCLDevice, type>);                                       \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("SeluGrad").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+      SeluGradOp<SYCLDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

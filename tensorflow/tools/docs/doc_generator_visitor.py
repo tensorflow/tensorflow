@@ -18,9 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import six
+
+from tensorflow.python.util import tf_export
+from tensorflow.python.util import tf_inspect
 
 
 class DocGeneratorVisitor(object):
@@ -30,7 +31,7 @@ class DocGeneratorVisitor(object):
     """Make a visitor.
 
     As this visitor is starting its traversal at a module or class, it will not
-    be old the name of that object during traversal. `root_name` is the name it
+    be told the name of that object during traversal. `root_name` is the name it
     should use for that object, effectively prefixing all names with
     "root_name.".
 
@@ -133,8 +134,8 @@ class DocGeneratorVisitor(object):
       parent_name: The fully qualified name of a symbol found during traversal.
       parent: The Python object referenced by `parent_name`.
       children: A list of `(name, py_object)` pairs enumerating, in alphabetical
-        order, the children (as determined by `inspect.getmembers`) of `parent`.
-        `name` is the local name of `py_object` in `parent`.
+        order, the children (as determined by `tf_inspect.getmembers`) of
+          `parent`. `name` is the local name of `py_object` in `parent`.
 
     Raises:
       RuntimeError: If this visitor is called with a `parent` that is not a
@@ -144,14 +145,68 @@ class DocGeneratorVisitor(object):
     self._index[parent_name] = parent
     self._tree[parent_name] = []
 
-    if not (inspect.ismodule(parent) or inspect.isclass(parent)):
-      raise RuntimeError('Unexpected type in visitor -- %s: %r' %
-                         (parent_name, parent))
+    if not (tf_inspect.ismodule(parent) or tf_inspect.isclass(parent)):
+      raise RuntimeError('Unexpected type in visitor -- %s: %r' % (parent_name,
+                                                                   parent))
 
-    for name, child in children:
+    for i, (name, child) in enumerate(list(children)):
+      # Don't document __metaclass__
+      if name in ['__metaclass__']:
+        del children[i]
+        continue
+
       full_name = '.'.join([parent_name, name]) if parent_name else name
       self._index[full_name] = child
       self._tree[parent_name].append(name)
+
+  def _score_name(self, name):
+    """Return a tuple of scores indicating how to sort for the best name.
+
+    This function is meant to be used as the `key` to the `sorted` function.
+
+    This sorting in order:
+      Prefers names refering to the defining class, over a subclass.
+      Prefers names that are not in "contrib".
+      prefers submodules to the root namespace.
+      Prefers short names `tf.thing` over `tf.a.b.c.thing`
+      Sorts lexicographically on name parts.
+
+    Args:
+      name: the full name to score, for example `tf.estimator.Estimator`
+
+    Returns:
+      A tuple of scores. When sorted the preferred name will have the lowest
+      value.
+    """
+    parts = name.split('.')
+    short_name = parts[-1]
+
+    container = self._index['.'.join(parts[:-1])]
+
+    defining_class_score = 1
+    if tf_inspect.isclass(container):
+      if short_name in container.__dict__:
+        # prefer the defining class
+        defining_class_score = -1
+
+    contrib_score = -1
+    if 'contrib' in parts:
+      contrib_score = 1
+
+    while parts:
+      parts.pop()
+      container = self._index['.'.join(parts)]
+      if tf_inspect.ismodule(container):
+        break
+    module_length = len(parts)
+    if len(parts) == 2:
+      # `tf.submodule.thing` is better than `tf.thing`
+      module_length_score = -1
+    else:
+      # shorter is better
+      module_length_score = module_length
+
+    return (defining_class_score, contrib_score, module_length_score, name)
 
   def _maybe_find_duplicates(self):
     """Compute data structures containing information about duplicates.
@@ -165,7 +220,7 @@ class DocGeneratorVisitor(object):
     master names to a lexicographically sorted list of all aliases for that name
     (incl. the master name).
 
-    All these are computed and set as fields if they haven't aready.
+    All these are computed and set as fields if they haven't already.
     """
     if self._reverse_index is not None:
       return
@@ -183,9 +238,10 @@ class DocGeneratorVisitor(object):
       # We cannot use the duplicate mechanism for some constants, since e.g.,
       # id(c1) == id(c2) with c1=1, c2=1. This is unproblematic since constants
       # have no usable docstring and won't be documented automatically.
-      if py_object is not None and not isinstance(
-          py_object, six.integer_types + six.string_types +
-          (six.binary_type, six.text_type, float, complex, bool)):
+      if (py_object is not None and
+          not isinstance(py_object, six.integer_types + six.string_types +
+                         (six.binary_type, six.text_type, float, complex, bool))
+          and py_object is not ()):  # pylint: disable=literal-comparison
         object_id = id(py_object)
         if object_id in reverse_index:
           master_name = reverse_index[object_id]
@@ -195,7 +251,6 @@ class DocGeneratorVisitor(object):
             raw_duplicates[master_name] = [master_name, full_name]
         else:
           reverse_index[object_id] = full_name
-
     # Decide on master names, rewire duplicates and make a duplicate_of map
     # mapping all non-master duplicates to the master name. The master symbol
     # does not have an entry in this map.
@@ -205,10 +260,15 @@ class DocGeneratorVisitor(object):
     duplicates = {}
     for names in raw_duplicates.values():
       names = sorted(names)
-
-      # Choose the lexicographically first name with the minimum number of
-      # submodules. This will prefer highest level namespace for any symbol.
-      master_name = min(names, key=lambda name: name.count('.'))
+      master_name = (
+          tf_export.get_canonical_name_for_symbol(self._index[names[0]])
+          if names else None)
+      if master_name:
+        master_name = 'tf.%s' % master_name
+      else:
+        # Choose the master name with a lexical sort on the tuples returned by
+        # by _score_name.
+        master_name = min(names, key=self._score_name)
 
       duplicates[master_name] = names
       for name in names:

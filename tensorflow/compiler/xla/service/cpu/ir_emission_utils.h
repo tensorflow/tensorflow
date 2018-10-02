@@ -16,15 +16,33 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_IR_EMISSION_UTILS_H_
 
+#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
-    const HloInstruction& convolution);
+    const HloInstruction& convolution,
+    const TargetMachineFeatures& target_machine_features);
 
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& dot);
+// Computes the minimum alignment guaranteed for a tensor of shape `shape` on
+// the target machine.
+int64 GetMinimumAlignmentForArray(
+    const Shape& shape, const TargetMachineFeatures& target_machine_features);
+
+// Dynamic loop bounds are specified as an array of dimension index
+// [start, limit) pairs of ir values (one for each partitioned outer dimension).
+//
+// EX: Let 'shape' = [8, 16, 32], with the loop bounds of the two-most major
+//     dimensions dynamic. Then 'dynamic_loop_bounds' will contain the
+//     following ir values for the two most-major dimensions:
+//       [dim0_index_start_ir_value, dim0_index_limit_ir_value]
+//       [dim1_index_start_ir_value, dim1_index_limit_ir_value]
+//
+// See IrFunction and ParallelLoopEmitter for details.
+using DynamicLoopBounds = std::vector<std::pair<llvm::Value*, llvm::Value*>>;
 
 }  // namespace cpu
 }  // namespace xla

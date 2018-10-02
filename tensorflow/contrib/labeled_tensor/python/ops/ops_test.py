@@ -121,6 +121,13 @@ class SelectTest(Base):
     golden_lt = core.LabeledTensor(self.tensor[1, 1, :, :], [self.a2, self.a3])
     self.assertLabeledTensorsEqual(select_lt, golden_lt)
 
+  def test_tuple(self):
+    original_lt = core.LabeledTensor(constant_op.constant([5, 6]),
+                                     [('x', [(1, 2), (3, 4)])])
+    select_lt = ops.select(original_lt, {'x': (1, 2)})
+    golden_lt = core.LabeledTensor(constant_op.constant(5), [])
+    self.assertLabeledTensorsEqual(select_lt, golden_lt)
+
   def test_invalid_input(self):
     with self.assertRaises(ValueError):
       ops.select(self.original_lt, {'foo': 1})
@@ -263,7 +270,7 @@ class ReshapeTest(Base):
         array_ops.placeholder(dtypes.float32, [None]), ['x'])
     reshape_lt = ops.reshape(orig_lt, ['x'], ['y', ('z', 1)])
     self.assertEqual(reshape_lt.axes, core.Axes([('y', None), ('z', 1)]))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result = sess.run(reshape_lt, feed_dict={orig_lt.tensor: [1, 2]})
       np.testing.assert_array_equal(result, [[1], [2]])
 
@@ -653,7 +660,7 @@ class ReduceSumTest(Base):
     sum_lt = ops.reduce_sum(self.original_lt, {('channel', 'hihowareyou')})
     golden_lt = core.LabeledTensor(
         math_ops.reduce_sum(
-            self.original_lt.tensor, 1, keep_dims=True),
+            self.original_lt.tensor, 1, keepdims=True),
         [self.a0, ('channel', ['hihowareyou']), self.a2, self.a3])
     self.assertLabeledTensorsEqual(sum_lt, golden_lt)
 
@@ -661,7 +668,7 @@ class ReduceSumTest(Base):
     sum_lt = ops.reduce_sum(self.original_lt, ('channel', 'hihowareyou'))
     golden_lt = core.LabeledTensor(
         math_ops.reduce_sum(
-            self.original_lt.tensor, 1, keep_dims=True),
+            self.original_lt.tensor, 1, keepdims=True),
         [self.a0, ('channel', ['hihowareyou']), self.a2, self.a3])
     self.assertLabeledTensorsEqual(sum_lt, golden_lt)
 
