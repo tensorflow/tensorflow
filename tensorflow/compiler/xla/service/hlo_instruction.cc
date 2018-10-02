@@ -2034,7 +2034,7 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
         options.is_in_nested_computation()) {
       str.push_back(PrintName(
           canonical_name_map->LookupOrInsert(operand->name()), options));
-    } else if (!options.compact_operands()) {
+    } else if (options.print_operand_names()) {
       str.push_back(PrintName(operand->name(), options));
     }
     StrAppend(out, StrJoin(str, " "));
