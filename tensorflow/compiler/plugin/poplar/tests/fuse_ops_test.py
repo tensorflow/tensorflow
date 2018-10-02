@@ -74,7 +74,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'Sigmoid/call/Nonlinearity',
-            'Copy_XLA_Args/arg0.*_to_Sigmoid/call/OnTileCopy-0',
+            'Copy_XLA_Args/arg0.*_to_Sigmoid/call.clone/OnTileCopy-0',
             'add/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -153,7 +153,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'Relu/call/Nonlinearity',
-            'Copy_XLA_Args/arg0.*_to_Relu/call/OnTileCopy-0',
+            'Copy_XLA_Args/arg0.*_to_Relu/call.clone/OnTileCopy-0',
             'add/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

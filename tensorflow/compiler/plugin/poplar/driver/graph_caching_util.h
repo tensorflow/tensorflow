@@ -57,7 +57,26 @@ poplar::Tensor DoCachedConvolution(
     const poplar::Tensor& weights, const poplin::ConvParams& params,
     const ConvClassificationType& conv_type, bool transpose_and_flip_weights,
     poplar::program::Sequence& prog, const std::string& debug_prefix);
-}
+
+// The weight update convolution key is:
+// * Shape of the input tensor
+// * Shape of the gradient tensor
+// * ConvolutionDimensionNumbers for the given convolution
+// * poplin ConvParams for the given convolution
+// * Enum for the type of convolution
+// * Learning rate constant
+using WeightUpdateConvolutionCacheKey =
+    std::tuple<PoplarTensorSignature, PoplarTensorSignature, poplin::ConvParams,
+               ConvClassificationType, double>;
+using WeightUpdateConvolutionGraphCache =
+    std::map<WeightUpdateConvolutionCacheKey, poputil::graphfn::VoidFunction>;
+
+Status DoCachedConvolutionWithScaledAdd(
+    poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& weights,
+    const poplar::Tensor& in, const poplar::Tensor& deltas,
+    const poplin::ConvParams& params, poplar::program::Sequence& prog,
+    const HloInstruction* root, const HloInstruction* conv);
+}  // namespace graph_caching_util
 
 }  // namespace poplarplugin
 }  // namespace xla

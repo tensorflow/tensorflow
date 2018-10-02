@@ -111,12 +111,7 @@ StatusOr<poplar::Tensor> GetInplaceOutputTensor(poplar::Graph& graph,
 
   if (requires_copy_inplace) {
     VLOG(1) << "Adding a copy for inplace op " << inst->name();
-    poplar::Tensor copy;
-    TF_ASSIGN_OR_RETURN(
-        copy, AddTensor(graph, std::make_pair(inst, 0),
-                        XlaShapeFromPoplarShape(output_shape.element_type(),
-                                                in0.shape()),
-                        res));
+    poplar::Tensor copy = graph.clone(in0, GetDebugName(inst) + ".clone");
     seq.add(poplar::program::Copy(in0, copy));
     in0 = copy;
   }
@@ -154,7 +149,7 @@ StatusOr<poplar::Tensor> AddOutputTensor(poplar::Graph& graph,
       }
       if (clone_output) {
         VLOG(1) << "Adding a clone for output tensor of " << inst->name();
-        out = graph.clone(tensor, inst->name() + ".clone");
+        out = graph.clone(tensor, GetDebugName(inst) + ".clone");
         seq.add(poplar::program::Copy(tensor, out));
       }
     }
@@ -237,27 +232,29 @@ void PrintTensorMapping(const poplar::Graph& graph,
          << "\"output_index\": " << output_index << ", "
          << "\"tiles\": [";
       const auto mapping = graph.getTileMapping(tensor);
+      const poplar::Type elementType = tensor.elementType();
       bool first_tile = true;
       unsigned tilesUsed = 0;
-      size_t totalMemory = 0;
+      size_t totalElements = 0;
       for (size_t tileIdx = 0; tileIdx < mapping.size(); tileIdx++) {
         const auto& tile = mapping[tileIdx];
         if (tile.size() != 0) {
           if (!first_tile) ss << ", ";
           tilesUsed++;
-          size_t tileMemSize = 0;
+          size_t tileElementCount = 0;
           for (const auto& interval : tile) {
-            tileMemSize += interval.size();
+            tileElementCount += interval.size();
           }
           ss << "{\"tile_id\": " << tileIdx << ", "
              << "\"num_intervals\": " << tile.size() << ", "
-             << "\"memory_size\": " << tileMemSize << "}";
+             << "\"num_elements\": " << tileElementCount << ", "
+             << "\"element_size\": " << elementType << "}";
           first_tile = false;
-          totalMemory += tileMemSize;
+          totalElements += tileElementCount;
         }
       }
       ss << "], "
-         << "\"total_memory_size\": " << totalMemory << ", "
+         << "\"total_elements\": " << totalElements << ", "
          << "\"tiles_used\": " << tilesUsed << " }";
       first_tensor = false;
     }

@@ -161,7 +161,7 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testConvolutionsMatchFwdBwd(self):
+  def testConvolutionsMatchFwdBwdWu(self):
     with ops.device("/device:IPU:0"):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
@@ -203,8 +203,7 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
             'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/convolution.*/Conv_4x4',
-            'gradients/vs/conv1/Conv2D_grad/Conv2DBackpropFilter/call*/AddTo',
-            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/call*/AddTo',]
+            'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

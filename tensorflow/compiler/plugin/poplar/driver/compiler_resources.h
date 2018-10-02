@@ -51,6 +51,8 @@ struct CompilerResources {
 
   graph_caching_util::BwdWeightGraphCache bwd_weight_graph_cache;
 
+  graph_caching_util::WeightUpdateConvolutionGraphCache wu_graph_cache;
+
   CompilerResources(uint64 seed, poprand::RandomGenMode mode)
       : random(mode, seed) {}
 };
