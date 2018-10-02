@@ -391,7 +391,7 @@ string FpToString(Fprint fp) {
 bool StringToFp(const string& s, Fprint* fp) {
   char junk;
   uint64_t result;
-  if (sscanf(s.c_str(), "%lx%c", &result, &junk) == 1) {
+  if (sscanf(s.c_str(), "%llx%c", &result, &junk) == 1) {
     *fp = result;
     return true;
   } else {
