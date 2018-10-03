@@ -391,7 +391,7 @@ Status HloParser::Run(HloModule* module) {
   // This means that the text is a single HLO instruction.
   if (!ParseSingleInstruction(module)) {
     return InvalidArgument(
-        "Syntax error when trying to parse the text as single "
+        "Syntax error when trying to parse the text as a single "
         "HloInstruction:\n%s",
         GetError());
   }
@@ -3348,14 +3348,14 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
 
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(
     absl::string_view str, const HloModuleConfig& config) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"", config);
+  auto module = absl::make_unique<HloModule>(/*name=*/"_", config);
   HloParser parser(str);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str) {
-  auto module = absl::make_unique<HloModule>(/*name=*/"", HloModuleConfig());
+  auto module = absl::make_unique<HloModule>(/*name=*/"_", HloModuleConfig());
   HloParser parser(str);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
