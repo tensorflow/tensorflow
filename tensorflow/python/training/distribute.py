@@ -436,6 +436,9 @@ class DistributionStrategy(object):
 
   def __init__(self):
     self._default_device = None
+    # This property is used to determine if we should set drop_remainder=True
+    # when creating Datasets from numpy array inputs.
+    self._require_static_shapes = False
 
   def scope(self):
     """Returns a context manager selecting this DistributionStrategy as current.
@@ -897,6 +900,10 @@ class DistributionStrategy(object):
       If `False`, `call_for_each_tower(fn)` may call `fn` multiple times.
     """
     raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def require_static_shapes(self):
+    return self._require_static_shapes
 
   @property
   def num_towers(self):
