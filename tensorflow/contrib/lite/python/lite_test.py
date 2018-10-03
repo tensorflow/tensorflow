@@ -1159,6 +1159,42 @@ class FromKerasFile(test_util.TensorFlowTestCase):
     interpreter = Interpreter(model_content=tflite_model)
     interpreter.allocate_tensors()
 
+  def testFunctionalModelWithCustomObject(self):
+    """Test a Functional tf.keras model with a custom object."""
+
+    class CustomRegularizer(keras.regularizers.Regularizer):
+      def __call__(self, x):
+        return super(CustomRegularizer, self).__call__(x)
+
+      def get_config(self):
+        return {}
+
+    with session.Session().as_default():
+      a = keras.layers.Input(shape=(3,), name='input_a')
+      dense = keras.layers.Dense(4, name='dense', activity_regularizer=CustomRegularizer())
+      b = dense(a)
+      c = keras.layers.Dropout(0.5, name='dropout')(b)
+
+      model = keras.models.Model([a], [c])
+      model.compile(
+        loss=keras.losses.MSE,
+        optimizer=keras.optimizers.RMSprop(),
+        metrics=[keras.metrics.mae])
+
+      input_a_np = np.random.random((10, 3))
+      model.predict(input_a_np)
+      fd, keras_file = tempfile.mkstemp('.h5')
+      try:
+        keras.models.save_model(model, keras_file)
+      finally:
+        os.close(fd)
+
+    # Convert to TFLite model.
+    converter = lite.TFLiteConverter.from_keras_model_file(keras_file,
+                                                           custom_objects={'CustomRegularizer': CustomRegularizer})
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
 
 if __name__ == '__main__':
   test.main()
