@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -256,10 +257,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!prefetch_thread_) {
+        prefetch_thread_ =
+            MakeUnique<BackgroundWorker>(ctx->env(), "prefetch_thread");
         std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-        prefetch_thread_.reset(ctx->env()->StartThread(
-            {}, "prefetch_thread",
-            [this, new_ctx]() { PrefetchThread(new_ctx); }));
+        prefetch_thread_->Schedule(
+            [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
       return Status::OK();
     }
@@ -363,7 +365,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     string prefix_end_;
     PrefetchAutotuner auto_tuner_ GUARDED_BY(mu_);
     std::deque<BufferElement> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(mu_);
+    std::unique_ptr<BackgroundWorker> prefetch_thread_ GUARDED_BY(mu_);
     bool cancelled_ GUARDED_BY(mu_) = false;
     bool prefetch_thread_finished_ GUARDED_BY(mu_) = false;
   };
