@@ -277,7 +277,7 @@ static Status CompileToLocalExecutable(
   compile_options.always_return_tuple = false;
 
   return cache->Compile(options, function, constant_args, *variables, ctx,
-                        kernel, executable, compile_options);
+                        compile_options, kernel, executable);
 }
 
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
