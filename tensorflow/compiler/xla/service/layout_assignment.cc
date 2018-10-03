@@ -792,21 +792,27 @@ StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
       << " instruction: " << instruction->ToString();
 
   if (ShapeUtil::IsTuple(instruction->shape())) {
-    // Deep-copy tuples.
+    // Copy tuple elements which have differing layouts.
     std::vector<HloInstruction*> element_copies;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          ++i) {
+      const Shape& target_shape =
+          ShapeUtil::GetSubshape(shape_with_layout, {i});
+      const Shape& instr_shape =
+          ShapeUtil::GetSubshape(instruction->shape(), {i});
       HloInstruction* gte = instruction->parent()->AddInstruction(
-          HloInstruction::CreateGetTupleElement(
-              ShapeUtil::GetSubshape(instruction->shape(), {i}), instruction,
-              i));
-      SetupCopiedInstruction(*instruction, gte, {i});
-      // Recurse to copy each elements.
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * element_copy,
-          CreateCopyWithNewLayout(
-              ShapeUtil::GetSubshape(shape_with_layout, {i}), gte));
-      element_copies.push_back(element_copy);
+          HloInstruction::CreateGetTupleElement(instr_shape, instruction, i));
+
+      if (ShapeUtil::Equal(target_shape, instr_shape)) {
+        // Shapes and layouts are equal, no need to copy.
+        element_copies.push_back(gte);
+      } else {
+        SetupCopiedInstruction(*instruction, gte, {i});
+        // Recurse to copy each element.
+        TF_ASSIGN_OR_RETURN(HloInstruction * element_copy,
+                            CreateCopyWithNewLayout(target_shape, gte));
+        element_copies.push_back(element_copy);
+      }
     }
     // Gather element copies into a tuple with a new Tuple instruction.
     HloInstruction* tuple_copy = instruction->parent()->AddInstruction(
