@@ -24,10 +24,10 @@ bb0(%a : f32):
   return
 }
 
-// CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32) {
-cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32) {
-// CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32):
-bb42(%t: tensor<4x4x?xf32>, %f: f32):
+// CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32) {
+cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32) {
+// CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32):
+bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
@@ -39,9 +39,30 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32):
 
   // CHECK: %3 = addf %2, %2 : f32
   %f3 = addf %f2, %f2 : f32
+   
+  // CHECK: %4 = addi %arg2, %arg2 : i32
+  %i2 = "addi"(%i, %i) : (i32,i32) -> i32
+
+  // CHECK: %5 = addi %4, %4 : i32
+  %i3 = addi %i2, %i2 : i32
   
-  // CHECK: %4 = mulf %2, %2 : f32
-  %f4 = mulf %f2, %f2 : f32
+  // CHECK: %6 = subf %arg1, %arg1 : f32
+  %f4 = "subf"(%f, %f) : (f32,f32) -> f32
+
+  // CHECK: %7 = subf %6, %6 : f32
+  %f5 = subf %f4, %f4 : f32
+ 
+  // CHECK: %8 = subi %arg2, %arg2 : i32
+  %i4 = "subi"(%i, %i) : (i32,i32) -> i32
+
+  // CHECK: %9 = subi %8, %8 : i32
+  %i5 = subi %i4, %i4 : i32
+ 
+  // CHECK: %10 = mulf %2, %2 : f32
+  %f6 = mulf %f2, %f2 : f32
+  
+  // CHECK: %11 = muli %4, %4 : i32
+  %i6 = muli %i2, %i2 : i32
 
   // CHECK: %c42_i32 = constant 42 : i32
   %x = "constant"(){value: 42} : () -> i32

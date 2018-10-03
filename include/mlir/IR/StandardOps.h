@@ -49,6 +49,25 @@ private:
   explicit AddFOp(const Operation *state) : BinaryOp(state) {}
 };
 
+/// The "addi" operation takes two operands and returns one result, each of
+/// these is required to be of the same type.  This type may be an integer
+/// scalar type, a vector whose element type is an integer type, or a
+/// integer tensor. For example:
+///
+///   %2 = addi %0, %1 : i32
+///
+class AddIOp : public BinaryOp<AddIOp, OpTrait::ResultsAreIntegerLike> {
+public:
+  static StringRef getOperationName() { return "addi"; }
+
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
+
+private:
+  friend class Operation;
+  explicit AddIOp(const Operation *state) : BinaryOp(state) {}
+};
+
 /// The "affine_apply" operation applies an affine map to a list of operands,
 /// yielding a list of results. The operand and result list sizes must be the
 /// same. All operands and results are of type 'AffineInt'. This operation
@@ -439,6 +458,25 @@ private:
   explicit MulFOp(const Operation *state) : BinaryOp(state) {}
 };
 
+/// The "muli" operation takes two operands and returns one result, each of
+/// these is required to be of the same type.  This type may be an integer
+/// scalar type, a vector whose element type is an integer type, or an
+/// integer tensor. For example:
+///
+///   %2 = muli %0, %1 : i32
+///
+class MulIOp : public BinaryOp<MulIOp, OpTrait::ResultsAreIntegerLike> {
+public:
+  static StringRef getOperationName() { return "muli"; }
+
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
+
+private:
+  friend class Operation;
+  explicit MulIOp(const Operation *state) : BinaryOp(state) {}
+};
+
 /// The "return" operation represents a return statement of an ML function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types must match the signature of the ML function
@@ -539,6 +577,44 @@ public:
 private:
   friend class Operation;
   explicit StoreOp(const Operation *state) : Op(state) {}
+};
+
+/// The "subf" operation takes two operands and returns one result, each of
+/// these is required to be of the same type.  This type may be a floating point
+/// scalar type, a vector whose element type is a floating point type, or a
+/// floating point tensor. For example:
+///
+///   %2 = subf %0, %1 : f32
+///
+class SubFOp : public BinaryOp<SubFOp, OpTrait::ResultsAreFloatLike> {
+public:
+  static StringRef getOperationName() { return "subf"; }
+
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
+
+private:
+  friend class Operation;
+  explicit SubFOp(const Operation *state) : BinaryOp(state) {}
+};
+
+/// The "subi" operation takes two operands and returns one result, each of
+/// these is required to be of the same type.  This type may be an integer
+/// scalar type, a vector whose element type is an integer type, or a
+/// integer tensor. For example:
+///
+///   %2 = subi %0, %1 : i32
+///
+class SubIOp : public BinaryOp<SubIOp, OpTrait::ResultsAreIntegerLike> {
+public:
+  static StringRef getOperationName() { return "subi"; }
+
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
+
+private:
+  friend class Operation;
+  explicit SubIOp(const Operation *state) : BinaryOp(state) {}
 };
 
 /// Install the standard operations in the specified operation set.

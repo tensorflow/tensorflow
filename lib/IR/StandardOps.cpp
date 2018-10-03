@@ -45,9 +45,9 @@ static void printDimAndSymbolList(Operation::const_operand_iterator begin,
 // Parses dimension and symbol list, and sets 'numDims' to the number of
 // dimension operands parsed.
 // Returns 'false' on success and 'true' on error.
-static bool
-parseDimAndSymbolList(OpAsmParser *parser,
-                      SmallVector<SSAValue *, 4> &operands, unsigned &numDims) {
+static bool parseDimAndSymbolList(OpAsmParser *parser,
+                                  SmallVector<SSAValue *, 4> &operands,
+                                  unsigned &numDims) {
   SmallVector<OpAsmParser::OperandType, 8> opInfos;
   if (parser->parseOperandList(opInfos, -1, OpAsmParser::Delimiter::Paren))
     return true;
@@ -74,6 +74,22 @@ Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
   if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
     if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
       return FloatAttr::get(lhs->getValue() + rhs->getValue(), context);
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// AddIOp
+//===----------------------------------------------------------------------===//
+
+Attribute *AddIOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "addi takes two operands");
+
+  if (auto *lhs = dyn_cast<IntegerAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<IntegerAttr>(operands[1]))
+      return IntegerAttr::get(lhs->getValue() + rhs->getValue(), context);
   }
 
   return nullptr;
@@ -791,6 +807,23 @@ Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
 }
 
 //===----------------------------------------------------------------------===//
+// MulIOp
+//===----------------------------------------------------------------------===//
+
+Attribute *MulIOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "muli takes two operands");
+
+  if (auto *lhs = dyn_cast<IntegerAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<IntegerAttr>(operands[1]))
+      // TODO: Handles the overflow case.
+      return IntegerAttr::get(lhs->getValue() * rhs->getValue(), context);
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // ReturnOp
 //===----------------------------------------------------------------------===//
 
@@ -959,13 +992,46 @@ bool StoreOp::verify() const {
 }
 
 //===----------------------------------------------------------------------===//
+// SubFOp
+//===----------------------------------------------------------------------===//
+
+Attribute *SubFOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "subf takes two operands");
+
+  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+      return FloatAttr::get(lhs->getValue() - rhs->getValue(), context);
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// SubIOp
+//===----------------------------------------------------------------------===//
+
+Attribute *SubIOp::constantFold(ArrayRef<Attribute *> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "subi takes two operands");
+
+  if (auto *lhs = dyn_cast<IntegerAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast<IntegerAttr>(operands[1]))
+      return IntegerAttr::get(lhs->getValue() - rhs->getValue(), context);
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // Register operations.
 //===----------------------------------------------------------------------===//
 
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
-  opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, CallOp, CallIndirectOp,
-                      ConstantOp, DeallocOp, DimOp, ExtractElementOp, LoadOp,
-                      MulFOp, ReturnOp, ShapeCastOp, StoreOp>(
+  opSet.addOperations<AddFOp, AddIOp, AffineApplyOp, AllocOp, CallOp,
+                      CallIndirectOp, ConstantOp, DeallocOp, DimOp,
+                      ExtractElementOp, LoadOp, MulFOp, MulIOp, ReturnOp,
+                      ShapeCastOp, StoreOp, SubFOp, SubIOp>(
       /*prefix=*/"");
 }
