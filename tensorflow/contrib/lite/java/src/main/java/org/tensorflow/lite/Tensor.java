@@ -23,13 +23,26 @@ import java.util.Arrays;
 /**
  * A typed multi-dimensional array used in Tensorflow Lite.
  *
- * <p>The native handle of a {@code Tensor} belongs to {@code NativeInterpreterWrapper}, thus not
- * needed to be closed here.
+ * <p>The native handle of a {@code Tensor} is managed by {@code NativeInterpreterWrapper}, and does
+ * not needed to be closed by the client. However, once the {@code NativeInterpreterWrapper} has
+ * been closed, the tensor handle will be invalidated.
  */
 public final class Tensor {
 
-  static Tensor fromHandle(long nativeHandle) {
-    return new Tensor(nativeHandle);
+  /**
+   * Creates a Tensor wrapper from the provided interpreter instance and tensor index.
+   *
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided
+   * native interpreter is valid until the tensor is closed.
+   */
+  static Tensor fromIndex(long nativeInterpreterHandle, int tensorIndex) {
+    return new Tensor(create(nativeInterpreterHandle, tensorIndex));
+  }
+
+  /** Disposes of any resources used by the Tensor wrapper. */
+  void close() {
+    delete(nativeHandle);
+    nativeHandle = 0;
   }
 
   /** Returns the {@link DataType} of elements stored in the Tensor. */
@@ -235,7 +248,7 @@ public final class Tensor {
     return o instanceof ByteBuffer;
   }
 
-  private final long nativeHandle;
+  private long nativeHandle;
   private final DataType dtype;
   private int[] shapeCopy;
 
@@ -248,6 +261,10 @@ public final class Tensor {
   private ByteBuffer buffer() {
     return buffer(nativeHandle).order(ByteOrder.nativeOrder());
   }
+
+  private static native long create(long interpreterHandle, int tensorIndex);
+
+  private static native void delete(long handle);
 
   private static native ByteBuffer buffer(long handle);
 
