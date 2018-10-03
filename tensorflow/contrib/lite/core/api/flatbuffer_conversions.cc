@@ -224,15 +224,26 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
-      TfLiteSequenceRNNParams* params =
-          allocator->AllocatePOD<TfLiteSequenceRNNParams>();
+      auto params = allocator->AllocatePOD<TfLiteSequenceRNNParams>();
       if (auto* sequence_rnn_params =
               op->builtin_options_as_SequenceRNNOptions()) {
         params->activation =
             parse_activation(sequence_rnn_params->fused_activation_function());
         params->time_major = sequence_rnn_params->time_major();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN: {
+      auto params =
+          allocator->AllocatePOD<TfLiteBidirectionalSequenceRNNParams>();
+      if (auto* bidi_sequence_rnn_params =
+              op->builtin_options_as_BidirectionalSequenceRNNOptions()) {
+        params->activation = parse_activation(
+            bidi_sequence_rnn_params->fused_activation_function());
+        params->time_major = bidi_sequence_rnn_params->time_major();
+        params->merge_outputs = bidi_sequence_rnn_params->merge_outputs();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -360,10 +371,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_LSTM: {
-      TfLiteLSTMParams* params = allocator->AllocatePOD<TfLiteLSTMParams>();
+      auto params = allocator->AllocatePOD<TfLiteLSTMParams>();
       if (auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
         params->activation =
             parse_activation(lstm_params->fused_activation_function());
@@ -377,6 +387,20 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             params->kernel_type = kTfLiteLSTMBasicKernel;
             break;
         }
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
+      auto params =
+          allocator->AllocatePOD<TfLiteBidirectionalSequenceLSTMParams>();
+      if (auto* bidi_lstm_params =
+              op->builtin_options_as_BidirectionalSequenceLSTMOptions()) {
+        params->activation =
+            parse_activation(bidi_lstm_params->fused_activation_function());
+        params->cell_clip = bidi_lstm_params->cell_clip();
+        params->proj_clip = bidi_lstm_params->proj_clip();
+        params->merge_outputs = bidi_lstm_params->merge_outputs();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;

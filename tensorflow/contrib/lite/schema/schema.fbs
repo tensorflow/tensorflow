@@ -248,6 +248,8 @@ union BuiltinOptions {
   SquareOptions,
   ZerosLikeOptions,
   FillOptions,
+  BidirectionalSequenceLSTMOptions,
+  BidirectionalSequenceRNNOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -327,6 +329,7 @@ table SequenceRNNOptions {
 table BidirectionalSequenceRNNOptions {
   time_major:bool;
   fused_activation_function:ActivationFunctionType;
+  merge_outputs: bool;
 }
 
 enum FullyConnectedOptionsWeightsFormat: byte {
@@ -389,6 +392,15 @@ table LSTMOptions {
   // Parameters for LSTM version 2 or above.
   // Basic kernel is only supported in version 2 or above.
   kernel_type: LSTMKernelType = FULL;
+}
+
+table BidirectionalSequenceLSTMOptions {
+  fused_activation_function:ActivationFunctionType;
+  cell_clip: float; // Optional, 0.0 means no clipping
+  proj_clip: float; // Optional, 0.0 means no clipping
+
+  // If true, store the outputs of both directions into the first output.
+  merge_outputs: bool;
 }
 
 table ResizeBilinearOptions {
