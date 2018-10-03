@@ -2999,7 +2999,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
-    tags = ["no_oss"],  # b/117185141
+    tags = [
+        "no_oss",  # b/117185141.
+        "nomsan",  # TODO(b/117236102): Re-enable in msan build.
+    ],
 )
 
 cuda_py_test(
@@ -3014,7 +3017,11 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 20,
-    tags = ["no_windows_gpu"],
+    # TODO(b/117236102): Re-enable in msan build.
+    tags = [
+        "no_windows_gpu",
+        "nomsan",
+    ],
 )
 
 cuda_py_test(
