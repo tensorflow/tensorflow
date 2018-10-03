@@ -387,8 +387,7 @@ def erf(x, name=None):
       return gen_math_ops.erf(x, name=name)
 
     
-@tf_export("math.erfinv", "erfinv")
-@deprecation.deprecated_endpoints("erfinv")    
+@tf_export("math.erfinv", "erfinv")  
 def erfinv(x, name="erfinv"):
   """The inverse function for erf, the error function.
   Args:
