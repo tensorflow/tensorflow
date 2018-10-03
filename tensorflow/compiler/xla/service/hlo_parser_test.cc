@@ -1835,7 +1835,7 @@ TEST(HloParserSingleOpTest, SingleOp) {
   const string text =
       "%multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0} %broadcast, "
       "f32[2,4]{1,0} %x)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
@@ -1844,7 +1844,7 @@ TEST(HloParserSingleOpTest, SingleOp) {
 
 TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
   const string text = "multiply(f32[2,4]{1,0} %broadcast, f32[2,4]{1,0} %x)";
-  StatusOr<std::unique_ptr<HloModule>> module = ParseHloOpToModule(text);
+  StatusOr<std::unique_ptr<HloModule>> module = ParseHloString(text);
   ASSERT_TRUE(!module.status().ok());
   LOG(INFO) << "Status: " << module.status();
   EXPECT_THAT(module.status().ToString(),
@@ -1853,7 +1853,7 @@ TEST(HloParserSingleOpTest, SingleOpNoShapeProducesError) {
 
 TEST(HloParserSingleOpTest, SingleOpNoOperandShapesProducesError) {
   const string text = "%multiply = f32[2,4]{1,0} multiply(%broadcast, %x)";
-  StatusOr<std::unique_ptr<HloModule>> module = ParseHloOpToModule(text);
+  StatusOr<std::unique_ptr<HloModule>> module = ParseHloString(text);
   ASSERT_TRUE(!module.status().ok());
   LOG(INFO) << "Status: " << module.status();
   EXPECT_THAT(module.status().ToString(),
@@ -1863,7 +1863,7 @@ TEST(HloParserSingleOpTest, SingleOpNoOperandShapesProducesError) {
 TEST(HloParserSingleOpTest, SingleOpNoNames) {
   const string text =
       "%multiply = f32[2,4]{1,0} multiply(f32[2,4]{1,0}, f32[2,4]{1,0})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
@@ -1872,7 +1872,7 @@ TEST(HloParserSingleOpTest, SingleOpNoNames) {
 
 TEST(HloParserSingleOpTest, CanonicalOp) {
   const string text = "f32[2,4]{1,0} multiply(f32[2,4]{1,0}, f32[2,4]{1,0})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
@@ -1908,7 +1908,7 @@ TEST(HloParserSingleOpTest, CanonicalOpWithNested) {
   }
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_EQ(
@@ -1926,7 +1926,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested) {
   ROOT %subtract = f32[3,2,1,1]{3,2,1,0} subtract(f32[3,2,1,1]{3,2,1,0} %param_0, f32[3,2,1,1]{3,2,1,0} %broadcast)
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
@@ -1939,7 +1939,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_DoesNotExist) {
 {
   result = f32[] add(f32[] x, f32[] y)
 })";
-  auto status = ParseHloOpToModule(text).status();
+  auto status = ParseHloString(text).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
               ::testing::HasSubstr("does not exist: x"));
@@ -1951,7 +1951,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoLhs) {
 {
   f32[] add(f32[] x, f32[] y)
 })";
-  auto status = ParseHloOpToModule(text).status();
+  auto status = ParseHloString(text).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("expects name"));
 }
@@ -1962,7 +1962,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoOperandName) {
 {
   result = f32[] add(f32[], f32[])
 })";
-  auto status = ParseHloOpToModule(text).status();
+  auto status = ParseHloString(text).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("expects name"));
 }
@@ -1970,7 +1970,7 @@ TEST(HloParserSingleOpTest, SingleOpWithNested_NoOperandName) {
 TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   const string text =
       R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloOpToModule(text));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
   const HloComputation* computation = module->entry_computation();
   ASSERT_NE(computation, nullptr);
   EXPECT_THAT(computation->root_instruction(),
