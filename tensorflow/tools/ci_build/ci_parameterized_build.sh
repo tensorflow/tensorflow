@@ -65,8 +65,6 @@
 #   TF_GPU_COUNT:
 #                      Run this many parallel tests for serial builds.
 #                      For now, only can be edited for PIP builds.
-#                      TODO(gunan): Find a way to pass this environment variable
-#                      to the script bazel runs (using --run_under).
 #   TF_BUILD_TEST_TUTORIALS:
 #                      If set to any non-empty and non-0 value, will perform
 #                      tutorials tests (Applicable only if TF_BUILD_IS_PIP is
@@ -149,6 +147,13 @@ ANDROID_FULL_CMD="${CI_BUILD_DIR}/builds/android_full.sh"
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute'
+
+# Environment variables to set when running bazel tests.  These are especially
+# important when using --run_under with parallel_gpu_execute.
+BAZEL_TEST_ENV=""\
+"--test_env=TF_GPU_COUNT=${TF_GPU_COUNT} "\
+"--test_env=TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU} "\
+"--test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB} "
 
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
@@ -410,13 +415,14 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
   if [[ ${CTYPE} == cpu* ]] || \
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
-    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
-"${BAZEL_TARGET}"
+    NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${BAZEL_TEST_ENV} ${OPT_FLAG} "\
+      "${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == gpu* ]]; then
     # GPU only command, run as many jobs as the GPU count only.
-    NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
+    NO_PIP_MAIN_CMD="${BAZEL_CMD} ${BAZEL_TEST_ENV} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
-"--run_under=${PARALLEL_GPU_TEST_CMD} ${EXTRA_ARGS} -- ${BAZEL_TARGET}"
+"--run_under=${PARALLEL_GPU_TEST_CMD} "\
+"${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == "android" ]]; then
     # Run android specific script for android build.
     NO_PIP_MAIN_CMD="${ANDROID_CMD} ${OPT_FLAG} "
