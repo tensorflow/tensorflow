@@ -223,40 +223,6 @@ AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, uint64_t rhs) {
                                  getConstantExpr(rhs), context);
 }
 
-/// Creates a sum of products affine expression from constant coefficients.
-/// If c_0, c_1, ... are the coefficients in the order corresponding to
-/// dimensions, symbols, and constant term, create the affine expression:
-/// expr = c_0*d0 + c_1*d1 + ... + c_{ndims-1}*d_{ndims-1} + c_{..}*s0 +
-/// c_{..}*s1 + ... + const
-AffineExpr *Builder::getAddMulPureAffineExpr(unsigned numDims,
-                                             unsigned numSymbols,
-                                             ArrayRef<int64_t> coeffs) {
-  assert(coeffs.size() == numDims + numSymbols + 1);
-
-  AffineExpr *expr = AffineConstantExpr::get(0, context);
-  // Dimensions.
-  for (unsigned j = 0; j < numDims; j++) {
-    if (coeffs[j] == 0)
-      continue;
-    AffineExpr *id = AffineDimExpr::get(j, context);
-    auto *term = AffineBinaryOpExpr::getMul(id, coeffs[j], context);
-    expr = AffineBinaryOpExpr::getAdd(expr, term, context);
-  }
-  // Symbols.
-  for (unsigned j = numDims; j < numDims + numSymbols; j++) {
-    if (coeffs[j] == 0)
-      continue;
-    AffineExpr *id = AffineSymbolExpr::get(j - numDims, context);
-    auto *term = AffineBinaryOpExpr::getMul(id, coeffs[j], context);
-    expr = AffineBinaryOpExpr::getAdd(expr, term, context);
-  }
-  // Constant term.
-  int64_t constTerm = coeffs[coeffs.size() - 1];
-  if (constTerm != 0)
-    expr = AffineBinaryOpExpr::getAdd(expr, constTerm, context);
-  return expr;
-}
-
 IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
                                    ArrayRef<AffineExpr *> constraints,
                                    ArrayRef<bool> isEq) {
@@ -279,9 +245,9 @@ AffineMap *Builder::getSymbolIdentityMap() {
 }
 
 AffineMap *Builder::getSingleDimShiftAffineMap(int64_t shift) {
-  // expr = 1*d0 + shift.
-  auto *expr = getAddMulPureAffineExpr(1, 0, {1, shift});
-  return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, expr, {}, context);
+  // expr = d0 + shift.
+  auto expr = AffineExprWrap(getDimExpr(0), context) + shift;
+  return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {expr}, {}, context);
 }
 
 AffineMap *Builder::getShiftedAffineMap(AffineMap *map, int64_t shift) {

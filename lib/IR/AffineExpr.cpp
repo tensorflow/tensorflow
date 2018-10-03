@@ -65,10 +65,22 @@ AffineExpr *AffineBinaryOpExpr::getMul(AffineExpr *expr, int64_t rhs,
              context);
 }
 
+AffineExpr *AffineBinaryOpExpr::getFloorDiv(AffineExpr *lhs, uint64_t rhs,
+                                            MLIRContext *context) {
+  return get(AffineExpr::Kind::FloorDiv, lhs,
+             AffineConstantExpr::get(rhs, context), context);
+}
+
 AffineExpr *AffineBinaryOpExpr::getCeilDiv(AffineExpr *lhs, uint64_t rhs,
                                            MLIRContext *context) {
   return get(AffineExpr::Kind::CeilDiv, lhs,
              AffineConstantExpr::get(rhs, context), context);
+}
+
+AffineExpr *AffineBinaryOpExpr::getMod(AffineExpr *lhs, uint64_t rhs,
+                                       MLIRContext *context) {
+  return get(AffineExpr::Kind::Mod, lhs, AffineConstantExpr::get(rhs, context),
+             context);
 }
 
 /// Returns true if this expression is made out of only symbols and

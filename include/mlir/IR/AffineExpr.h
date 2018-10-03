@@ -81,8 +81,8 @@ protected:
   ~AffineExpr() {}
 
 private:
-  AffineExpr(const AffineExpr&) = delete;
-  void operator=(const AffineExpr&) = delete;
+  AffineExpr(const AffineExpr &) = delete;
+  void operator=(const AffineExpr &) = delete;
 
   /// Classification of the subclass
   const Kind kind;
@@ -122,6 +122,8 @@ public:
                                  MLIRContext *context) {
     return get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
   }
+  static AffineExpr *getFloorDiv(AffineExpr *lhs, uint64_t rhs,
+                                 MLIRContext *context);
   static AffineExpr *getCeilDiv(AffineExpr *lhs, AffineExpr *rhs,
                                 MLIRContext *context) {
     return get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
@@ -132,6 +134,8 @@ public:
                             MLIRContext *context) {
     return get(AffineExpr::Kind::Mod, lhs, rhs, context);
   }
+  static AffineExpr *getMod(AffineExpr *lhs, uint64_t rhs,
+                            MLIRContext *context);
 
   AffineExpr *getLHS() const { return lhs; }
   AffineExpr *getRHS() const { return rhs; }
@@ -161,7 +165,6 @@ private:
   static AffineExpr *simplifyMod(AffineExpr *lhs, AffineExpr *rhs,
                                  MLIRContext *context);
 };
-
 
 /// A dimensional identifier appearing in an affine expression.
 ///
@@ -234,6 +237,104 @@ private:
   int64_t constant;
 };
 
+// Helper structure to build AffineExpr with intuitive operators instead of all
+// the IR boilerplate. To do this we need to operate on chainable, lightweight
+// value types instead of pointer types.
+// The more general proposal is that builders directly return such value type
+// objects for the cases where we want composition with operators.
+// Once these things are available, matchers and simplifiers can be written much
+// more nicely.
+// The base version of an operator is alway AffineExprWrap op AffineExpr.
+// The other versions reuse that base version.
+struct AffineExprWrap {
+  AffineExprWrap(int64_t v, MLIRContext *c)
+      : e(AffineConstantExpr::get(v, c)), context(c) {}
+
+  AffineExprWrap(mlir::AffineExpr *expr, MLIRContext *c)
+      : e(expr), context(c) {}
+
+  /* implicit */ operator mlir::AffineExpr *() { return e; }
+
+  bool operator!() { return e == nullptr; }
+
+  // Base version for operator+
+  inline AffineExprWrap operator+(mlir::AffineExpr *expr) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getAdd(e, expr, context),
+                          context);
+  }
+  inline AffineExprWrap operator+(int64_t v) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getAdd(e, v, context), context);
+  }
+  inline AffineExprWrap operator+(const AffineExprWrap &other) const {
+    return *this + other.e;
+  }
+
+  // Unary minus, delegate to operator*
+  inline AffineExprWrap operator-() const { return *this * (-1); }
+
+  // Base version for operator-, delegate to operator+
+  inline AffineExprWrap operator-(mlir::AffineExpr *expr) const {
+    return *this + (-AffineExprWrap(expr, context));
+  }
+  inline AffineExprWrap operator-(int64_t v) const { return *this + (-v); }
+  inline AffineExprWrap operator-(const AffineExprWrap &other) const {
+    return *this - other.e;
+  }
+
+  // Base version for operator*
+  inline AffineExprWrap operator*(mlir::AffineExpr *expr) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getMul(e, expr, context),
+                          context);
+  }
+  inline AffineExprWrap operator*(int64_t v) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getMul(e, v, context), context);
+  }
+  inline AffineExprWrap operator*(const AffineExprWrap &other) const {
+    return *this * other.e;
+  }
+
+  // Base version for floorDiv
+  inline AffineExprWrap floorDiv(AffineExpr *expr) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getFloorDiv(e, expr, context),
+                          context);
+  }
+  inline AffineExprWrap floorDiv(uint64_t v) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getFloorDiv(e, v, context),
+                          context);
+  }
+  inline AffineExprWrap floorDiv(const AffineExprWrap &other) const {
+    return this->floorDiv(other.e);
+  }
+
+  // Base version for ceilDiv
+  inline AffineExprWrap ceilDiv(AffineExpr *expr) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getCeilDiv(e, expr, context),
+                          context);
+  }
+  inline AffineExprWrap ceilDiv(uint64_t v) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getCeilDiv(e, v, context),
+                          context);
+  }
+  inline AffineExprWrap ceilDiv(const AffineExprWrap &other) const {
+    return this->ceilDiv(other.e);
+  }
+
+  // Base version for operator%
+  inline AffineExprWrap operator%(mlir::AffineExpr *expr) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getMod(e, expr, context),
+                          context);
+  }
+  inline AffineExprWrap operator%(uint64_t v) const {
+    return AffineExprWrap(AffineBinaryOpExpr::getMod(e, v, context), context);
+  }
+  inline AffineExprWrap operator%(const AffineExprWrap &other) const {
+    return *this % other.e;
+  }
+
+  AffineExpr *e;
+  MLIRContext *context;
+};
+
 } // end namespace mlir
 
-#endif  // MLIR_IR_AFFINE_EXPR_H
+#endif // MLIR_IR_AFFINE_EXPR_H

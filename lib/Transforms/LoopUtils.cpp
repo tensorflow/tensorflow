@@ -45,31 +45,17 @@ AffineMap *mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
     return nullptr;
 
   // Sometimes, the trip count cannot be expressed as an affine expression.
-  auto *tripCountExpr = getTripCountExpr(forStmt);
-  if (!tripCountExpr)
+  auto tripCount =
+      AffineExprWrap(getTripCountExpr(forStmt), builder->getContext());
+  if (!tripCount)
     return nullptr;
 
-  AffineExpr *newUbExpr;
-  auto *lbExpr = lbMap->getResult(0);
-  int64_t step = forStmt.getStep();
-  // lbExpr + (count - count % unrollFactor - 1) * step).
-  if (auto *cTripCountExpr = dyn_cast<AffineConstantExpr>(tripCountExpr)) {
-    uint64_t tripCount = static_cast<uint64_t>(cTripCountExpr->getValue());
-    newUbExpr = builder->getAddExpr(
-        lbExpr, builder->getConstantExpr(
-                    (tripCount - tripCount % unrollFactor - 1) * step));
-  } else {
-    newUbExpr = builder->getAddExpr(
-        lbExpr, builder->getMulExpr(
-                    builder->getSubExpr(
-                        builder->getSubExpr(
-                            tripCountExpr,
-                            builder->getModExpr(tripCountExpr, unrollFactor)),
-                        1),
-                    step));
-  }
+  auto lb = AffineExprWrap(lbMap->getResult(0), builder->getContext());
+  auto step = AffineExprWrap(forStmt.getStep(), builder->getContext());
+  auto newUb = lb + step * (tripCount - tripCount % unrollFactor - 1);
+
   return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),
-                               {newUbExpr}, {});
+                               {newUb}, {});
 }
 
 /// Returns the lower bound of the cleanup loop when unrolling a loop with lower
@@ -86,30 +72,16 @@ AffineMap *mlir::getCleanupLoopLowerBound(const ForStmt &forStmt,
     return nullptr;
 
   // Sometimes the trip count cannot be expressed as an affine expression.
-  auto *tripCountExpr = getTripCountExpr(forStmt);
-  if (!tripCountExpr)
+  auto tripCount =
+      AffineExprWrap(getTripCountExpr(forStmt), builder->getContext());
+  if (!tripCount)
     return nullptr;
 
-  AffineExpr *newLbExpr;
-  auto *lbExpr = lbMap->getResult(0);
-  int64_t step = forStmt.getStep();
-
-  // lbExpr + (count - count % unrollFactor) * step);
-  if (auto *cTripCountExpr = dyn_cast<AffineConstantExpr>(tripCountExpr)) {
-    uint64_t tripCount = static_cast<uint64_t>(cTripCountExpr->getValue());
-    newLbExpr = builder->getAddExpr(
-        lbExpr, builder->getConstantExpr(
-                    (tripCount - tripCount % unrollFactor) * step));
-  } else {
-    newLbExpr = builder->getAddExpr(
-        lbExpr, builder->getMulExpr(
-                    builder->getSubExpr(
-                        tripCountExpr,
-                        builder->getModExpr(tripCountExpr, unrollFactor)),
-                    step));
-  }
+  auto lb = AffineExprWrap(lbMap->getResult(0), builder->getContext());
+  auto step = AffineExprWrap(forStmt.getStep(), builder->getContext());
+  auto newLb = lb + (tripCount - tripCount % unrollFactor) * step;
   return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),
-                               {newLbExpr}, {});
+                               {newLb}, {});
 }
 
 /// Promotes the loop body of a forStmt to its containing block if the forStmt
