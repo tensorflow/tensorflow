@@ -351,6 +351,13 @@ class ControlFlowTest(test.TestCase):
     grad = gradients_impl.gradients(y, [v])
     self.assertAllEqual([None], grad)
 
+  def testCondOutputShape(self):
+    x = constant_op.constant(1.0)
+    b = control_flow_ops.cond(
+        constant_op.constant(True), lambda: math_ops.square(x),
+        lambda: math_ops.subtract(x, 1.))
+    self.assertEqual(b.shape, tensor_shape.scalar())
+
   def testFetchable(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
