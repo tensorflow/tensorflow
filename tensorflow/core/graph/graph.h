@@ -72,6 +72,7 @@ class Node {
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
   const string& name() const;
+  void set_name(string name);
   const string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
