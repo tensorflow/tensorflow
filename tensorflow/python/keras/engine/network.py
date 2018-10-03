@@ -1526,6 +1526,7 @@ class Network(base_layer.Layer):
         # Restore existing variables (if any) immediately, and set up a
         # streaming restore for any variables created in the future.
         checkpointable_utils.streaming_restore(status=status, session=session)
+      status.assert_nontrivial_match()
       return status
     if h5py is None:
       raise ImportError(

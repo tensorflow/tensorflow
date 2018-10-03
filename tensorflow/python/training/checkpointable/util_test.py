@@ -437,6 +437,7 @@ class CheckpointingTests(test.TestCase):
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
     status = on_create_root.restore(save_path=save_path)
+    status.assert_nontrivial_match()
     status.assert_existing_objects_matched()
     with self.assertRaises(AssertionError):
       status.assert_consumed()
@@ -1509,6 +1510,8 @@ class CheckpointCompatibilityTests(test.TestCase):
           status.assert_consumed()
         with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
           status.assert_existing_objects_matched()
+        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
+          status.assert_nontrivial_match()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
@@ -1516,6 +1519,8 @@ class CheckpointCompatibilityTests(test.TestCase):
           status.assert_consumed()
         with self.assertRaisesRegexp(AssertionError, "not restored"):
           status.assert_existing_objects_matched()
+        with self.assertRaisesRegexp(AssertionError, "not restored"):
+          status.assert_nontrivial_match()
       status.run_restore_ops()
       self._check_sentinels(root)
       self._set_sentinels(root)
