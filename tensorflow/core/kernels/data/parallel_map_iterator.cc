@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -181,10 +180,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     if (!runner_thread_) {
       std::shared_ptr<IteratorContext> ctx_copy(new IteratorContext(*ctx));
-      runner_thread_ =
-          MakeUnique<BackgroundWorker>(ctx->env(), "runner_thread");
-      runner_thread_->Schedule(
-          std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy));
+      runner_thread_.reset(ctx->env()->StartThread(
+          {}, "runner_thread",
+          std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy)));
     }
   }
 
@@ -332,7 +330,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   // Buffer for storing the invocation results.
   std::deque<std::shared_ptr<InvocationResult>> invocation_results_
       GUARDED_BY(*mu_);
-  std::unique_ptr<BackgroundWorker> runner_thread_ GUARDED_BY(*mu_);
+  std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
 };
 
