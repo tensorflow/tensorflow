@@ -323,21 +323,21 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
       const MklConvFwdParams& convFwdDims, bool do_not_cache) {
     MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>* conv_fwd = nullptr;
 
-    if (do_not_cache) { /* Always create new primitive */
+    if (do_not_cache) {/* Always create new primitive */
       conv_fwd = new MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>(
           convFwdDims);
     } else {
       // try to find a suitable one in pool
-      conv_fwd =
-          dynamic_cast<MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>*>(
-              MklConvFwdPrimitiveFactory<T, Tinput, Tfilter, Tbias,
-                                        Toutput>::GetInstance()
-                  .GetConvFwd(convFwdDims));
+      conv_fwd = dynamic_cast<
+          MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>*>(
+          MklConvFwdPrimitiveFactory<T, Tinput, Tfilter, Tbias,
+                                     Toutput>::GetInstance()
+              .GetConvFwd(convFwdDims));
       if (conv_fwd == nullptr) {
         conv_fwd = new MklConvFwdPrimitive<T, Tinput, Tfilter, Tbias, Toutput>(
             convFwdDims);
         MklConvFwdPrimitiveFactory<T, Tinput, Tfilter, Tbias,
-                                  Toutput>::GetInstance()
+                                   Toutput>::GetInstance()
             .SetConvFwd(convFwdDims, conv_fwd);
       }
     }
@@ -425,15 +425,16 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, strides_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+                errors::InvalidArgument(
+                    "Sliding window strides field must "
+                    "specify 4 dimensions"));
 
     const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
     const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(
-        context, stride_n == 1 && stride_c == 1,
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, stride_n == 1 && stride_c == 1,
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 
@@ -467,19 +468,18 @@ class MklConvOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
                             : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, input_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", input_depth,
-                    " vs ", filter.dim_size(2)));
+    OP_REQUIRES(
+        context, input_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                input_depth, " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -488,10 +488,9 @@ class MklConvOp : public OpKernel {
     const int64 input_rows_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
                             : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -500,10 +499,9 @@ class MklConvOp : public OpKernel {
     const int64 input_cols_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
                             : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -511,10 +509,9 @@ class MklConvOp : public OpKernel {
     const int64 input_batch_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
                             : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we
@@ -732,7 +729,7 @@ class MklConvOp : public OpKernel {
           mkl_prim_convert_input;
       dnnLayout_t mkl_lt_internal_filter, mkl_lt_internal_bias,
           mkl_lt_internal_input;
-      void *mkl_buf_convert_input, *mkl_buf_convert_filter,
+      void* mkl_buf_convert_input, *mkl_buf_convert_filter,
           *mkl_buf_convert_bias;
       mkl_prim_convert_filter = nullptr;
       mkl_prim_convert_bias = nullptr;
@@ -865,21 +862,23 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES(context, (strides_.size() == 4 || strides_.size() == 5),
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 or 5 dimensions"));
+                errors::InvalidArgument(
+                    "Sliding window strides field must "
+                    "specify 4 or 5 dimensions"));
 
     const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
     const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
-    OP_REQUIRES(
-        context, stride_n == 1 && stride_c == 1,
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, stride_n == 1 && stride_c == 1,
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
     if (strides_.size() == 4) {
       OP_REQUIRES(context, dilations_.size() == 4,
-                  errors::InvalidArgument("Sliding window dilations field must "
-                                          "specify 4 dimensions"));
+                  errors::InvalidArgument(
+                      "Sliding window dilations field must "
+                      "specify 4 dimensions"));
       const int64 dilation_n = GetTensorDim(dilations_, data_format_, 'N');
       const int64 dilation_c = GetTensorDim(dilations_, data_format_, 'C');
       const int64 dilation_h = GetTensorDim(dilations_, data_format_, 'H');
@@ -893,19 +892,18 @@ class MklConvOp : public OpKernel {
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     } else if (strides_.size() == 5) {
       OP_REQUIRES(context, dilations_.size() == 5,
-                  errors::InvalidArgument("Dilation rates field must "
-                                          "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+                  errors::InvalidArgument(
+                      "Dilation rates field must "
+                      "specify 5 dimensions"));
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -920,25 +918,26 @@ class MklConvOp : public OpKernel {
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape);
       OP_REQUIRES(context, filter_mkl_shape.IsMklTensor() == false,
-            errors::InvalidArgument("Filter should not be in "
-            "Mkl Layout"));
+                  errors::InvalidArgument(
+                      "Filter should not be in "
+                      "Mkl Layout"));
 
       MklDnnData<Tinput> src(&cpu_engine_);
       MklDnnData<Tfilter> filter(&cpu_engine_);
 
       memory::dims src_dims, filter_dims, padding_left, padding_right,
-                   dilations, strides;
+          dilations, strides;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
       // Get shapes of input tensors in MKL-DNN order
       MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_,
-                             dilations_);
+                              dilations_);
       auto src_tf_shape = GetTfShape(context, kInputIndex_Src);
       auto filter_tf_shape = GetTfShape(context, kInputIndex_Filter);
       conv_utl.GetConvFwdSizesInMklOrder(
-          src_tf_shape, filter_tf_shape, &src_dims, &filter_dims,
-          &strides, &dilations, &dst_dims_tf_order, &dst_dims_mkl_order,
-          &padding_left, &padding_right);
+          src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
+          &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
+          &padding_right);
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -946,21 +945,19 @@ class MklConvOp : public OpKernel {
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* dst_tensor = nullptr;
-      if (dst_tf_shape.num_elements() == 0 ||
-          dst_dims_tf_order[0] == 0) {
+      if (dst_tf_shape.num_elements() == 0 || dst_dims_tf_order[0] == 0) {
         MklDnnShape dst_mkl_shape;
         dst_mkl_shape.SetMklTensor(false);
-        AllocateOutputSetMklShape(context, kOutputIndex_Dst,
-                    &dst_tensor, src_tf_shape, dst_mkl_shape);
+        AllocateOutputSetMklShape(context, kOutputIndex_Dst, &dst_tensor,
+                                  src_tf_shape, dst_mkl_shape);
 
         // MklConv2D/3D also outputs converted filter
         // as 2nd output of Conv2D/3D.
         filter_mkl_shape.SetMklTensor(false);
         Tensor* output_filter_tensor = nullptr;
         // MklConv2D also outputs converted filter as 2nd output.
-        if (typeid(Tinput) == typeid(float) &&
-            typeid(Tfilter) == typeid(float) &&
-            typeid(Toutput) == typeid(float)) {
+        if (typeid(Tinput) == typeid(float)&&typeid(Tfilter) ==
+            typeid(float)&&typeid(Toutput) == typeid(float)) {
           filter_mkl_shape.SetMklTensor(false);
           AllocateOutputSetMklShape(context, kOutputIndex_Filter,
                                     &output_filter_tensor, filter_tf_shape,
@@ -1005,10 +1002,11 @@ class MklConvOp : public OpKernel {
       // in the following cases
       //   1. Legacy CPU without AVX512/AVX2, or
       //   2. 1x1 convolution with stride != 1
-      bool do_not_cache = MklPrimitiveFactory<Tinput>::IsPrimitiveMemOptEnabled() &&
-                    (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
-                    (MklPrimitiveFactory<Tinput>::IsLegacyPlatform() ||
-                     IsConv1x1StrideNot1(filter_dims, strides));
+      bool do_not_cache =
+          MklPrimitiveFactory<Tinput>::IsPrimitiveMemOptEnabled() &&
+          (src_dims[MklDnnDims::Dim_N] > kSmallBatchSize) &&
+          (MklPrimitiveFactory<Tinput>::IsLegacyPlatform() ||
+           IsConv1x1StrideNot1(filter_dims, strides));
 
       // get a conv2d fwd from primitive pool
       MklConvFwdPrimitive<float, Tinput, Tfilter, Tbias, Ttemp_output>*
@@ -1043,11 +1041,11 @@ class MklConvOp : public OpKernel {
       // allocate output tensors output_tensor and filter_out_tensor
       std::shared_ptr<mkldnn::convolution_forward::primitive_desc> conv_fwd_pd =
           conv_fwd->GetPrimitiveDesc();
-      AllocateOutputTensor(context, *conv_fwd_pd,
-                       dst_dims_mkl_order, tf_fmt, &dst_tensor);
+      AllocateOutputTensor(context, *conv_fwd_pd, dst_dims_mkl_order, tf_fmt,
+                           &dst_tensor);
       Tensor* filter_out_tensor = nullptr;
-      if (typeid(Tinput) == typeid(float) && typeid(Tfilter) == typeid(float) &&
-          typeid(Toutput) == typeid(float)) {
+      if (typeid(Tinput) == typeid(float)&&typeid(Tfilter) ==
+          typeid(float)&&typeid(Toutput) == typeid(float)) {
         AllocateFilterOutputTensor(context, *conv_fwd_pd,
                                    TFShapeToMklDnnDims(filter_tf_shape),
                                    &filter_out_tensor);
@@ -1071,10 +1069,11 @@ class MklConvOp : public OpKernel {
         filter.SetUsrMem(filter_md, &filter_tensor);
         filter.CheckReorderToOpMem(conv_fwd_pd.get()->weights_primitive_desc(),
                                    filter.GetTensorBuffer(filter_out_tensor));
-        filter_data = static_cast<Tfilter*>(filter.GetOpMem().get_data_handle());
-      } else {
         filter_data =
-            static_cast<Tfilter*>(const_cast<Tfilter*>(filter_tensor.flat<Tfilter>().data()));
+            static_cast<Tfilter*>(filter.GetOpMem().get_data_handle());
+      } else {
+        filter_data = static_cast<Tfilter*>(
+            const_cast<Tfilter*>(filter_tensor.flat<Tfilter>().data()));
       }
 
       // execute convolution
@@ -1089,12 +1088,14 @@ class MklConvOp : public OpKernel {
 
       // delete primitive since it is not cached.
       if (do_not_cache) delete conv_fwd;
-    } catch (mkldnn::error &e) {
+    }
+    catch (mkldnn::error& e) {
       string error_msg = tensorflow::strings::StrCat(
           "Status: ", e.status, ", message: ", string(e.message), ", in file ",
           __FILE__, ":", __LINE__);
-      OP_REQUIRES_OK(context,
-        errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 
@@ -1784,32 +1785,31 @@ REGISTER_KERNEL_BUILDER(
 #endif  // INTEL_MKL_ML
 
 // Register 2D operations
-#define REGISTER_MKL_CPU_2D(T)                                      \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<float>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, float, float, float, float, float, false>);          \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<float>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, float, float, float, float, float, true>);           \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")          \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
+#define REGISTER_MKL_CPU_2D(T)                                                \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklConv2D").Device(DEVICE_CPU).TypeConstraint<float>("T").Label( \
+          mkl_op_registry::kMklOpLabel),                                      \
+      MklConvOp<CPUDevice, float, float, float, float, float, false>);        \
+  REGISTER_KERNEL_BUILDER(                                                    \
+      Name("_MklConv2DWithBias")                                              \
+          .Device(DEVICE_CPU)                                                 \
+          .TypeConstraint<float>("T")                                         \
+          .Label(mkl_op_registry::kMklOpLabel),                               \
+      MklConvOp<CPUDevice, float, float, float, float, float, true>);         \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")                    \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklOpLabel),           \
                           MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
 
 // Register 3D operations
-#define REGISTER_MKL_CPU_3D(T)                                      \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv3D")                        \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, T, T, T, T, T, false>);
+#define REGISTER_MKL_CPU_3D(T)                                            \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("_MklConv3D").Device(DEVICE_CPU).TypeConstraint<T>("T").Label( \
+          mkl_op_registry::kMklOpLabel),                                  \
+      MklConvOp<CPUDevice, T, T, T, T, T, false>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 
 }  // namespace tensorflow
