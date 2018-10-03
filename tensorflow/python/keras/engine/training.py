@@ -814,6 +814,9 @@ class Model(Network):
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = x_shape[0] // steps
+      # We need to use the drop_remainder argument to allow for a static
+      # input shape which is required for TPUs.
+      drop_remainder = self._distribution_strategy.require_static_shapes
       if y is not None:
         var_x = distributed_training_utils.get_var_for_numpy(
             self._distribution_strategy, x)
@@ -824,9 +827,7 @@ class Model(Network):
         # TODO(anjalisridhar): What should the buffer size be?
         x = x.shuffle(10000)
         x = x.repeat()
-        # We need to use the drop_remainder argument to allow for a static
-        # input shape which is required for TPUs.
-        x = x.batch(batch_size, drop_remainder=True)
+        x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
       else:
         # This case is for the predict call where the dataset only contains
@@ -838,9 +839,7 @@ class Model(Network):
             self._distribution_strategy, x)
         x = dataset_ops.Dataset.from_tensor_slices(var_x)
         x = x.repeat()
-        # We need to use the drop_remainder argument to allow for a static
-        # input shape which is required for TPUs.
-        x = x.batch(batch_size, drop_remainder=True)
+        x = x.batch(batch_size, drop_remainder=drop_remainder)
 
     # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
     # We require users to pass Datasets since we distribute the dataset across
