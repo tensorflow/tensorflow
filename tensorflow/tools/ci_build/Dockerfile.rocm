@@ -64,6 +64,12 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+
+# Override the MIOpen install with a newer version that has fusion API fixes/updates
+RUN mkdir -p $HOME/pkgs/MIOpen
+RUN cd $HOME/pkgs/MIOpen && wget https://www.dropbox.com/s/5mf2u41tfgjq0qr/MIOpen-HIP-1.5.0-f29af54-Linux.deb && dpkg -i *.deb
+
+
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
 ENV OPENCL_ROOT=$ROCM_PATH/opencl
