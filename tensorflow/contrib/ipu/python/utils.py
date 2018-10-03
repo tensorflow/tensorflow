@@ -26,7 +26,8 @@ def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
                       num_ipus=None, tiles_per_ipu=None,
                       ipu_device_config_index=None,
                       use_poplar_text_report=False,
-                      report_every_nth_execution=0):
+                      report_every_nth_execution=0,
+                      compilation_options=None):
   """Create the IPU options for an IPU model device.
 
   The configuration describes a system connsisting of multiple Tensorflow
@@ -77,9 +78,17 @@ def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
     ```
 
     ```python
-    # Create four devices, using poplar device IDs 0, 1, 2, an 3
+    # Create four devices, using poplar device IDs 0, 1, 2, and 3
     # in the second device.
     opts = create_ipu_config(num_devices=2, ipu_device_config_index=[0, 1, 2, 3])
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+    ```python
+    # Create a device with debug execution profile flag set to "compute_sets"
+    opts = create_ipu_config(
+      compilation_options=dict([("debug.executionProfile", "compute_sets")]))
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```
@@ -99,6 +108,8 @@ def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
     :param report_every_nth_execution: Only produce an execution report on
                                        every Nth execution.  0=One report
                                        only.
+    :param compilation_options: A dictionary of poplar compilation option flags
+                                to be sent to the executor.
   Returns:
 
     :return: An IPUOptions configuration protobuf, suitable for using in the
@@ -126,6 +137,10 @@ def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
 
   if num_devices > 4:
     raise Exception("`num_devices` must not exceed 4")
+
+  if (compilation_options is not None) and not(isinstance(compilation_options, dict)):
+      raise Exception(
+        "`compilation_options` must either be None or a dictionary")
 
   opts = config_pb2.IPUOptions()
 
@@ -160,6 +175,12 @@ def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
 
     if isinstance(tiles_per_ipu, int):
       dev.ipu_model_config.tiles_per_ipu = tiles_per_ipu
+
+    if (compilation_options is not None):
+      for (option_name, value) in compilation_options.items():
+        compilation_option = dev.compilation_options.add()
+        compilation_option.option = option_name
+        compilation_option.value = value
 
   return opts
 

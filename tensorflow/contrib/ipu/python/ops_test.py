@@ -66,6 +66,14 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     self.assertTrue(cfg.device_config[0].ipu_model_config.num_ipus, 4)
     self.assertTrue(cfg.device_config[1].ipu_model_config.num_ipus, 4)
 
+    cfg = ipu.utils.create_ipu_config(compilation_options=dict([("A","B"),("C","D")]))
+    self.assertTrue(len(cfg.device_config), 1)
+    self.assertTrue(len(cfg.device_config[0].compilation_options), 2)
+    self.assertTrue(cfg.device_config[0].compilation_options[0].option, "A")
+    self.assertTrue(cfg.device_config[0].compilation_options[0].value, "B")
+    self.assertTrue(cfg.device_config[0].compilation_options[1].option, "C")
+    self.assertTrue(cfg.device_config[0].compilation_options[1].value, "D")
+
     with self.assertRaises(Exception):
       cfg = ipu.utils.create_ipu_config(type='Other')
 
