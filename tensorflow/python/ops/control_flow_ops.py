@@ -85,6 +85,11 @@ def _summarize_eager(tensor, summarize=None):
     tensor: EagerTensor to summarize
     summarize: Include these many first elements of `array`
   """
+  # Emulate the behavior of Tensor::SummarizeValue()
+  if summarize is None:
+    summarize = 3
+  elif summarize < 0:
+    summarize = array_ops.size(tensor)
   # reshape((-1,)) is the fastest way to get a flat array view
   if tensor._rank():  # pylint: disable=protected-access
     flat = tensor.numpy().reshape((-1,))
