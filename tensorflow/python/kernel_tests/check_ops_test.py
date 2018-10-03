@@ -240,6 +240,47 @@ First 2 elements of y:
       out = array_ops.identity(larry)
     self.evaluate(out)
 
+  def test_error_message_eager(self):
+    expected_error_msg_full = r"""Expected 'tf.Tensor(False, shape=(), dtype=bool)' to be true. Summarized data: b'This is the error message.'
+b'Condition x != y did not hold for every single element:'
+b'x (shape=(2, 3) dtype=float32) = '
+0.0, 1.0, 2.0, 3.0, 4.0, 5.0
+b'y (shape=(2, 3) dtype=float32) = '
+0.0, 1.0, 2.0, 3.0, 4.0, 5.0
+"""
+    expected_error_msg_default = r"""Expected 'tf.Tensor(False, shape=(), dtype=bool)' to be true. Summarized data: b'This is the error message.'
+b'Condition x != y did not hold for every single element:'
+b'x (shape=(2, 3) dtype=float32) = '
+0.0, 1.0, 2.0, ...
+b'y (shape=(2, 3) dtype=float32) = '
+0.0, 1.0, 2.0, ...
+"""
+    expected_error_msg_short = r"""Expected 'tf.Tensor(False, shape=(), dtype=bool)' to be true. Summarized data: b'This is the error message.'
+b'Condition x != y did not hold for every single element:'
+b'x (shape=(2, 3) dtype=float32) = '
+0.0, 1.0, ...
+b'y (shape=(2, 3) dtype=float32) = '
+0.0, 1.0, ...
+"""
+    with context.eager_mode():
+      t = tf.constant(np.array(range(6)), shape=[2,3], dtype=tf.float32)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_full):
+        check_ops.assert_none_equal(t, t, message="This is the error message.",
+                               summarize=10)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_full):
+        check_ops.assert_equal(t, t, message="This is the error message.",
+                               summarize=-1)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_default):
+        check_ops.assert_equal(t, t, message="This is the error message.")
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_short):
+        check_ops.assert_equal(t, t, message="This is the error message.",
+                               summarize=2)
+
+
 
 class AssertNoneEqualTest(test.TestCase):
 
