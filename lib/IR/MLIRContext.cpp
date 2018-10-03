@@ -838,9 +838,8 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
 /// present, return from the list. The stored expressions are unique: they are
 /// constructed and stored in a simplified/canonicalized form. The result after
 /// simplification could be any form of affine expression.
-AffineExprWrap AffineBinaryOpExpr::get(AffineExpr::Kind kind,
-                                       AffineExprWrap lhs, AffineExprWrap rhs,
-                                       MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExprRef lhs,
+                                      AffineExprRef rhs, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we already have this affine expression, and return it if we do.
@@ -888,7 +887,7 @@ AffineExprWrap AffineBinaryOpExpr::get(AffineExpr::Kind kind,
   return result;
 }
 
-AffineExprWrap AffineDimExpr::get(unsigned position, MLIRContext *context) {
+AffineExprRef AffineDimExpr::get(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we need to resize.
@@ -905,7 +904,7 @@ AffineExprWrap AffineDimExpr::get(unsigned position, MLIRContext *context) {
   return result;
 }
 
-AffineExprWrap AffineSymbolExpr::get(unsigned position, MLIRContext *context) {
+AffineExprRef AffineSymbolExpr::get(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we need to resize.
@@ -922,7 +921,7 @@ AffineExprWrap AffineSymbolExpr::get(unsigned position, MLIRContext *context) {
   return result;
 }
 
-AffineExprWrap AffineConstantExpr::get(int64_t constant, MLIRContext *context) {
+AffineExprRef AffineConstantExpr::get(int64_t constant, MLIRContext *context) {
   auto &impl = context->getImpl();
   auto *&result = impl.constExprs[constant];
 

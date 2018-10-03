@@ -82,21 +82,15 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
   // Fold successive additions like (d0 + 2) + 3 into d0 + 5.
   auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
   if (lBin && rhsConst && lBin->getKind() == Kind::Add) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS().expr))
-      return AffineBinaryOpExpr::getAdd(
-          lBin->getLHS(),
-          AffineConstantExpr::get(lrhs->getValue() + rhsConst->getValue(),
-                                  context),
-          context);
+    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS()))
+      return lBin->getLHS() + (lrhs->getValue() + rhsConst->getValue());
   }
 
   // When doing successive additions, bring constant to the right: turn (d0 + 2)
   // + d1 into (d0 + d1) + 2.
   if (lBin && lBin->getKind() == Kind::Add) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS().expr)) {
-      return AffineBinaryOpExpr::getAdd(
-          AffineBinaryOpExpr::getAdd(lBin->getLHS(), rhs, context), lrhs,
-          context);
+    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+      return lBin->getLHS() + rhs + lrhs;
     }
   }
 
@@ -137,21 +131,15 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   // Fold successive multiplications: eg: (d0 * 2) * 3 into d0 * 6.
   auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
   if (lBin && rhsConst && lBin->getKind() == Kind::Mul) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS().expr))
-      return AffineBinaryOpExpr::getMul(
-          lBin->getLHS(),
-          AffineConstantExpr::get(lrhs->getValue() * rhsConst->getValue(),
-                                  context),
-          context);
+    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS()))
+      return lBin->getLHS() * (lrhs->getValue() * rhsConst->getValue());
   }
 
   // When doing successive multiplication, bring constant to the right: turn (d0
   // * 2) * d1 into (d0 * d1) * 2.
   if (lBin && lBin->getKind() == Kind::Mul) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS().expr)) {
-      return AffineBinaryOpExpr::getMul(
-          AffineBinaryOpExpr::getMul(lBin->getLHS(), rhs, context), lrhs,
-          context);
+    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+      return (lBin->getLHS() * rhs) * lrhs;
     }
   }
 
@@ -176,14 +164,10 @@ AffineExpr *AffineBinaryOpExpr::simplifyFloorDiv(AffineExpr *lhs,
 
     auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
     if (lBin && lBin->getKind() == Kind::Mul) {
-      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS().expr)) {
+      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
-          return AffineBinaryOpExpr::getMul(
-              lBin->getLHS(),
-              AffineConstantExpr::get(lrhs->getValue() / rhsConst->getValue(),
-                                      context),
-              context);
+          return lBin->getLHS() * (lrhs->getValue() / rhsConst->getValue());
       }
     }
   }
@@ -209,14 +193,10 @@ AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
 
     auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
     if (lBin && lBin->getKind() == Kind::Mul) {
-      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS().expr)) {
+      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
-          return AffineBinaryOpExpr::getMul(
-              lBin->getLHS(),
-              AffineConstantExpr::get(lrhs->getValue() / rhsConst->getValue(),
-                                      context),
-              context);
+          return lBin->getLHS() * (lrhs->getValue() / rhsConst->getValue());
       }
     }
   }

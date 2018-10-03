@@ -28,15 +28,17 @@
 
 namespace mlir {
 
-class AffineExprWrap;
+class AffineExpr;
+template <typename T> class AffineExprBaseRef;
+using AffineExprRef = AffineExprBaseRef<AffineExpr>;
 class MLIRContext;
 
 /// Simplify an affine expression through flattening and some amount of
 /// simple analysis. This has complexity linear in the number of nodes in
 /// 'expr'. Returns the simplified expression, which is the same as the input
 //  expression if it can't be simplified.
-AffineExprWrap simplifyAffineExpr(AffineExprWrap expr, unsigned numDims,
-                                  unsigned numSymbols);
+AffineExprRef simplifyAffineExpr(AffineExprRef expr, unsigned numDims,
+                                 unsigned numSymbols);
 
 } // end namespace mlir
 

@@ -49,7 +49,7 @@ AffineMap *mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
   if (!tripCount)
     return nullptr;
 
-  AffineExprWrap lb(lbMap->getResult(0));
+  AffineExprRef lb(lbMap->getResult(0));
   unsigned step = forStmt.getStep();
   auto newUb = lb + (tripCount - tripCount % unrollFactor - 1) * step;
 
@@ -71,11 +71,11 @@ AffineMap *mlir::getCleanupLoopLowerBound(const ForStmt &forStmt,
     return nullptr;
 
   // Sometimes the trip count cannot be expressed as an affine expression.
-  AffineExprWrap tripCount(getTripCountExpr(forStmt));
+  AffineExprRef tripCount(getTripCountExpr(forStmt));
   if (!tripCount)
     return nullptr;
 
-  AffineExprWrap lb(lbMap->getResult(0));
+  AffineExprRef lb(lbMap->getResult(0));
   unsigned step = forStmt.getStep();
   auto newLb = lb + (tripCount - tripCount % unrollFactor) * step;
   return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),

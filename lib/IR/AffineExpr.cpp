@@ -21,8 +21,8 @@
 
 using namespace mlir;
 
-AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
-                                       AffineExpr *rhs, MLIRContext *context)
+AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExprRef lhs,
+                                       AffineExprRef rhs, MLIRContext *context)
     : AffineExpr(kind, context), lhs(lhs), rhs(rhs) {
   // We verify affine op expr forms at construction time.
   switch (kind) {
@@ -47,39 +47,38 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
   }
 }
 
-AffineExprWrap AffineBinaryOpExpr::getSub(AffineExprWrap lhs,
-                                          AffineExprWrap rhs,
-                                          MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::getSub(AffineExprRef lhs, AffineExprRef rhs,
+                                         MLIRContext *context) {
   return getAdd(lhs, getMul(rhs, AffineConstantExpr::get(-1, context), context),
                 context);
 }
 
-AffineExprWrap AffineBinaryOpExpr::getAdd(AffineExprWrap expr, int64_t rhs,
-                                          MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::getAdd(AffineExprRef expr, int64_t rhs,
+                                         MLIRContext *context) {
   return get(AffineExpr::Kind::Add, expr, AffineConstantExpr::get(rhs, context),
              context);
 }
 
-AffineExprWrap AffineBinaryOpExpr::getMul(AffineExprWrap expr, int64_t rhs,
-                                          MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::getMul(AffineExprRef expr, int64_t rhs,
+                                         MLIRContext *context) {
   return get(AffineExpr::Kind::Mul, expr, AffineConstantExpr::get(rhs, context),
              context);
 }
 
-AffineExprWrap AffineBinaryOpExpr::getFloorDiv(AffineExprWrap lhs, uint64_t rhs,
-                                               MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::getFloorDiv(AffineExprRef lhs, uint64_t rhs,
+                                              MLIRContext *context) {
   return get(AffineExpr::Kind::FloorDiv, lhs,
              AffineConstantExpr::get(rhs, context), context);
 }
 
-AffineExprWrap AffineBinaryOpExpr::getCeilDiv(AffineExprWrap lhs, uint64_t rhs,
-                                              MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::getCeilDiv(AffineExprRef lhs, uint64_t rhs,
+                                             MLIRContext *context) {
   return get(AffineExpr::Kind::CeilDiv, lhs,
              AffineConstantExpr::get(rhs, context), context);
 }
 
-AffineExprWrap AffineBinaryOpExpr::getMod(AffineExprWrap lhs, uint64_t rhs,
-                                          MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::getMod(AffineExprRef lhs, uint64_t rhs,
+                                         MLIRContext *context) {
   return get(AffineExpr::Kind::Mod, lhs, AffineConstantExpr::get(rhs, context),
              context);
 }
@@ -125,15 +124,15 @@ bool AffineExpr::isPureAffine() const {
     // possible, allowing this to merge into the next case.
     auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine() &&
-           (isa<AffineConstantExpr>(op->getLHS().expr) ||
-            isa<AffineConstantExpr>(op->getRHS().expr));
+           (isa<AffineConstantExpr>(op->getLHS()) ||
+            isa<AffineConstantExpr>(op->getRHS()));
   }
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
     auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() &&
-           isa<AffineConstantExpr>(op->getRHS().expr);
+           isa<AffineConstantExpr>(op->getRHS());
   }
   }
 }
@@ -201,44 +200,44 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
 
 MLIRContext *AffineExpr::getContext() const { return context; }
 
-AffineExprWrap AffineExprWrap::operator+(int64_t v) const {
+template <> AffineExprRef AffineExprRef::operator+(int64_t v) const {
   return AffineBinaryOpExpr::getAdd(expr, v, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::operator+(AffineExprWrap other) const {
-  return AffineBinaryOpExpr::getAdd(expr, other.expr, expr->getContext());
+template <> AffineExprRef AffineExprRef::operator+(AffineExprRef other) const {
+  return AffineBinaryOpExpr::getAdd(expr, other, expr->getContext());
 }
-
-// Unary minus, delegate to operator*.
-AffineExprWrap AffineExprWrap::operator-() const { return *this * (-1); }
-
-// Delegate to operator+.
-AffineExprWrap AffineExprWrap::operator-(int64_t v) const {
-  return *this + (-v);
-}
-AffineExprWrap AffineExprWrap::operator-(AffineExprWrap other) const {
-  return *this + (-other);
-}
-AffineExprWrap AffineExprWrap::operator*(int64_t v) const {
+template <> AffineExprRef AffineExprRef::operator*(int64_t v) const {
   return AffineBinaryOpExpr::getMul(expr, v, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::operator*(AffineExprWrap other) const {
-  return AffineBinaryOpExpr::getMul(expr, other.expr, expr->getContext());
+template <> AffineExprRef AffineExprRef::operator*(AffineExprRef other) const {
+  return AffineBinaryOpExpr::getMul(expr, other, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::floorDiv(uint64_t v) const {
+// Unary minus, delegate to operator*.
+template <> AffineExprRef AffineExprRef::operator-() const {
+  return *this * (-1);
+}
+// Delegate to operator+.
+template <> AffineExprRef AffineExprRef::operator-(int64_t v) const {
+  return *this + (-v);
+}
+template <> AffineExprRef AffineExprRef::operator-(AffineExprRef other) const {
+  return *this + (-other);
+}
+template <> AffineExprRef AffineExprRef::floorDiv(uint64_t v) const {
   return AffineBinaryOpExpr::getFloorDiv(expr, v, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::floorDiv(AffineExprWrap other) const {
-  return AffineBinaryOpExpr::getFloorDiv(expr, other.expr, expr->getContext());
+template <> AffineExprRef AffineExprRef::floorDiv(AffineExprRef other) const {
+  return AffineBinaryOpExpr::getFloorDiv(expr, other, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::ceilDiv(uint64_t v) const {
+template <> AffineExprRef AffineExprRef::ceilDiv(uint64_t v) const {
   return AffineBinaryOpExpr::getCeilDiv(expr, v, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::ceilDiv(AffineExprWrap other) const {
-  return AffineBinaryOpExpr::getCeilDiv(expr, other.expr, expr->getContext());
+template <> AffineExprRef AffineExprRef::ceilDiv(AffineExprRef other) const {
+  return AffineBinaryOpExpr::getCeilDiv(expr, other, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::operator%(uint64_t v) const {
+template <> AffineExprRef AffineExprRef::operator%(uint64_t v) const {
   return AffineBinaryOpExpr::getMod(expr, v, expr->getContext());
 }
-AffineExprWrap AffineExprWrap::operator%(AffineExprWrap other) const {
-  return AffineBinaryOpExpr::getMod(expr, other.expr, expr->getContext());
+template <> AffineExprRef AffineExprRef::operator%(AffineExprRef other) const {
+  return AffineBinaryOpExpr::getMod(expr, other, expr->getContext());
 }

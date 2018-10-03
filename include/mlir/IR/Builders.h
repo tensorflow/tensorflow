@@ -104,21 +104,21 @@ public:
   FunctionAttr *getFunctionAttr(const Function *value);
 
   // Affine expressions and affine maps.
-  AffineExprWrap getDimExpr(unsigned position);
-  AffineExprWrap getSymbolExpr(unsigned position);
-  AffineExprWrap getConstantExpr(int64_t constant);
-  AffineExprWrap getAddExpr(AffineExprWrap lhs, AffineExprWrap rhs);
-  AffineExprWrap getAddExpr(AffineExprWrap lhs, int64_t rhs);
-  AffineExprWrap getSubExpr(AffineExprWrap lhs, AffineExprWrap rhs);
-  AffineExprWrap getSubExpr(AffineExprWrap lhs, int64_t rhs);
-  AffineExprWrap getMulExpr(AffineExprWrap lhs, AffineExprWrap rhs);
-  AffineExprWrap getMulExpr(AffineExprWrap lhs, int64_t rhs);
-  AffineExprWrap getModExpr(AffineExprWrap lhs, AffineExprWrap rhs);
-  AffineExprWrap getModExpr(AffineExprWrap lhs, uint64_t rhs);
-  AffineExprWrap getFloorDivExpr(AffineExprWrap lhs, AffineExprWrap rhs);
-  AffineExprWrap getFloorDivExpr(AffineExprWrap lhs, uint64_t rhs);
-  AffineExprWrap getCeilDivExpr(AffineExprWrap lhs, AffineExprWrap rhs);
-  AffineExprWrap getCeilDivExpr(AffineExprWrap lhs, uint64_t rhs);
+  AffineExprRef getDimExpr(unsigned position);
+  AffineExprRef getSymbolExpr(unsigned position);
+  AffineExprRef getConstantExpr(int64_t constant);
+  AffineExprRef getAddExpr(AffineExprRef lhs, AffineExprRef rhs);
+  AffineExprRef getAddExpr(AffineExprRef lhs, int64_t rhs);
+  AffineExprRef getSubExpr(AffineExprRef lhs, AffineExprRef rhs);
+  AffineExprRef getSubExpr(AffineExprRef lhs, int64_t rhs);
+  AffineExprRef getMulExpr(AffineExprRef lhs, AffineExprRef rhs);
+  AffineExprRef getMulExpr(AffineExprRef lhs, int64_t rhs);
+  AffineExprRef getModExpr(AffineExprRef lhs, AffineExprRef rhs);
+  AffineExprRef getModExpr(AffineExprRef lhs, uint64_t rhs);
+  AffineExprRef getFloorDivExpr(AffineExprRef lhs, AffineExprRef rhs);
+  AffineExprRef getFloorDivExpr(AffineExprRef lhs, uint64_t rhs);
+  AffineExprRef getCeilDivExpr(AffineExprRef lhs, AffineExprRef rhs);
+  AffineExprRef getCeilDivExpr(AffineExprRef lhs, uint64_t rhs);
 
   /// Creates a sum of products affine expression from constant coefficients.
   /// If c_0, c_1, ... are the coefficients in the order corresponding to

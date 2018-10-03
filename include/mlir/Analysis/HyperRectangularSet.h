@@ -31,7 +31,6 @@
 
 namespace mlir {
 
-class AffineExprWrap;
 class AffineApplyOp;
 class AffineBound;
 class AffineCondition;
@@ -46,7 +45,7 @@ class HyperRectangleList;
 /// A list of affine bounds.
 // Not using a MutableAffineMap here since numSymbols is the same as the
 // containing HyperRectangularSet's numSymbols, and its numDims is 0.
-typedef SmallVector<AffineExprWrap, 4> AffineBoundExprList;
+typedef SmallVector<AffineExprRef, 4> AffineBoundExprList;
 
 /// A HyperRectangularSet is a symbolic set of integer points contained in a
 /// hyper-rectangular space. It supports set manipulation operations
@@ -94,8 +93,8 @@ public:
   getFromFlatAffineConstraints(const FlatAffineConstraints &cst);
 
   HyperRectangularSet(unsigned numDims, unsigned numSymbols,
-                      ArrayRef<ArrayRef<AffineExprWrap>> lbs,
-                      ArrayRef<ArrayRef<AffineExprWrap>> ubs,
+                      ArrayRef<ArrayRef<AffineExprRef>> lbs,
+                      ArrayRef<ArrayRef<AffineExprRef>> ubs,
                       MLIRContext *context,
                       IntegerSet *symbolContext = nullptr);
 
@@ -129,10 +128,10 @@ public:
   bool empty() const;
 
   /// Add a lower bound expression to dimension position 'idx'.
-  void addLowerBoundExpr(unsigned idx, AffineExprWrap expr);
+  void addLowerBoundExpr(unsigned idx, AffineExprRef expr);
 
   /// Add an upper bound expression to dimension position 'idx'.
-  void addUpperBoundExpr(unsigned idx, AffineExprWrap expr);
+  void addUpperBoundExpr(unsigned idx, AffineExprRef expr);
 
   /// Clear this set's context, i.e., make it the universal set.
   void clearContext() { context.clear(); }

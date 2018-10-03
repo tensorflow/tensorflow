@@ -155,71 +155,70 @@ AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
   return AffineMap::get(dimCount, symbolCount, results, rangeSizes, context);
 }
 
-AffineExprWrap Builder::getDimExpr(unsigned position) {
+AffineExprRef Builder::getDimExpr(unsigned position) {
   return AffineDimExpr::get(position, context);
 }
 
-AffineExprWrap Builder::getSymbolExpr(unsigned position) {
+AffineExprRef Builder::getSymbolExpr(unsigned position) {
   return AffineSymbolExpr::get(position, context);
 }
 
-AffineExprWrap Builder::getConstantExpr(int64_t constant) {
+AffineExprRef Builder::getConstantExpr(int64_t constant) {
   return AffineConstantExpr::get(constant, context);
 }
 
-AffineExprWrap Builder::getAddExpr(AffineExprWrap lhs, AffineExprWrap rhs) {
+AffineExprRef Builder::getAddExpr(AffineExprRef lhs, AffineExprRef rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Add, lhs, rhs, context);
 }
 
-AffineExprWrap Builder::getAddExpr(AffineExprWrap lhs, int64_t rhs) {
+AffineExprRef Builder::getAddExpr(AffineExprRef lhs, int64_t rhs) {
   return AffineBinaryOpExpr::getAdd(lhs, rhs, context);
 }
 
-AffineExprWrap Builder::getMulExpr(AffineExprWrap lhs, AffineExprWrap rhs) {
+AffineExprRef Builder::getMulExpr(AffineExprRef lhs, AffineExprRef rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs, rhs, context);
 }
 
 // Most multiply expressions are pure affine (rhs is a constant).
-AffineExprWrap Builder::getMulExpr(AffineExprWrap lhs, int64_t rhs) {
+AffineExprRef Builder::getMulExpr(AffineExprRef lhs, int64_t rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs,
                                  getConstantExpr(rhs), context);
 }
 
-AffineExprWrap Builder::getSubExpr(AffineExprWrap lhs, AffineExprWrap rhs) {
+AffineExprRef Builder::getSubExpr(AffineExprRef lhs, AffineExprRef rhs) {
   return getAddExpr(lhs, getMulExpr(rhs, getConstantExpr(-1)));
 }
 
-AffineExprWrap Builder::getSubExpr(AffineExprWrap lhs, int64_t rhs) {
+AffineExprRef Builder::getSubExpr(AffineExprRef lhs, int64_t rhs) {
   return AffineBinaryOpExpr::getAdd(lhs, -rhs, context);
 }
 
-AffineExprWrap Builder::getModExpr(AffineExprWrap lhs, AffineExprWrap rhs) {
+AffineExprRef Builder::getModExpr(AffineExprRef lhs, AffineExprRef rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs, rhs, context);
 }
 
 // Most modulo expressions are pure affine.
-AffineExprWrap Builder::getModExpr(AffineExprWrap lhs, uint64_t rhs) {
+AffineExprRef Builder::getModExpr(AffineExprRef lhs, uint64_t rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs,
                                  getConstantExpr(rhs), context);
 }
 
-AffineExprWrap Builder::getFloorDivExpr(AffineExprWrap lhs,
-                                        AffineExprWrap rhs) {
+AffineExprRef Builder::getFloorDivExpr(AffineExprRef lhs, AffineExprRef rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
 }
 
 // Most floordiv expressions are pure affine.
-AffineExprWrap Builder::getFloorDivExpr(AffineExprWrap lhs, uint64_t rhs) {
+AffineExprRef Builder::getFloorDivExpr(AffineExprRef lhs, uint64_t rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs,
                                  getConstantExpr(rhs), context);
 }
 
-AffineExprWrap Builder::getCeilDivExpr(AffineExprWrap lhs, AffineExprWrap rhs) {
+AffineExprRef Builder::getCeilDivExpr(AffineExprRef lhs, AffineExprRef rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
 }
 
 // Most ceildiv expressions are pure affine.
-AffineExprWrap Builder::getCeilDivExpr(AffineExprWrap lhs, uint64_t rhs) {
+AffineExprRef Builder::getCeilDivExpr(AffineExprRef lhs, uint64_t rhs) {
   return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs,
                                  getConstantExpr(rhs), context);
 }

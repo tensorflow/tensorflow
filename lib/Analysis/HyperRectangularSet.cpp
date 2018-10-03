@@ -38,7 +38,7 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
     unsigned j = 0;
     AffineBoundExprList::const_iterator it, e;
     for (it = ubs.begin(), e = ubs.end(); it != e; it++, j++) {
-      if (auto *cExpr = dyn_cast<AffineConstantExpr>(it->expr)) {
+      if (auto *cExpr = dyn_cast<AffineConstantExpr>(*it)) {
         if (val == None) {
           val = cExpr->getValue();
           *idx = j;
@@ -68,7 +68,7 @@ static void mergeBounds(const HyperRectangularSet &set,
     }
     if (it == lhsList.end()) {
       // There can only be one constant affine expr in this bound list.
-      if (auto *cExpr = dyn_cast<AffineConstantExpr>(expr.expr)) {
+      if (auto cExpr = dyn_cast<AffineConstantExpr>(expr)) {
         unsigned idx;
         if (lb) {
           auto cb = getReducedConstBound(
@@ -105,8 +105,8 @@ static void mergeBounds(const HyperRectangularSet &set,
 }
 
 HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
-                                         ArrayRef<ArrayRef<AffineExprWrap>> lbs,
-                                         ArrayRef<ArrayRef<AffineExprWrap>> ubs,
+                                         ArrayRef<ArrayRef<AffineExprRef>> lbs,
+                                         ArrayRef<ArrayRef<AffineExprRef>> ubs,
                                          MLIRContext *context,
                                          IntegerSet *symbolContext)
     : context(symbolContext ? MutableIntegerSet(symbolContext, context)

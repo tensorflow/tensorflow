@@ -32,10 +32,10 @@ using namespace mlir;
 /// and is substituted into. The ArrayRef 'eq' is expected to be in the format
 /// [dims, symbols, locals, constant term].
 //  TODO(bondhugula): refactor getAddMulPureAffineExpr to reuse it from here.
-static AffineExprWrap toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
-                                   unsigned numSymbols,
-                                   ArrayRef<AffineExprWrap> localExprs,
-                                   MLIRContext *context) {
+static AffineExprRef toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
+                                  unsigned numSymbols,
+                                  ArrayRef<AffineExprRef> localExprs,
+                                  MLIRContext *context) {
   // Assert expected numLocals = eq.size() - numDims - numSymbols - 1
   assert(eq.size() - numDims - numSymbols - 1 == localExprs.size() &&
          "unexpected number of local expressions");
@@ -69,7 +69,7 @@ static AffineExprWrap toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
 
 namespace {
 
-// This class is used to flatten a pure affine expression (AffineExprWrap,
+// This class is used to flatten a pure affine expression (AffineExprRef,
 // which is in a tree form) into a sum of products (w.r.t constants) when
 // possible, and in that process simplifying the expression. The simplification
 // performed includes the accumulation of contributions for each dimensional and
@@ -124,12 +124,12 @@ public:
   unsigned numLocals;
   // AffineExpr's corresponding to the floordiv/ceildiv/mod expressions for
   // which new identifiers were introduced; if the latter do not get canceled
-  // out, these expressions are needed to reconstruct the AffineExprWrap  / tree
+  // out, these expressions are needed to reconstruct the AffineExprRef / tree
   // form. Note that these expressions themselves would have been simplified
   // (recursively) by this pass. Eg. d0 + (d0 + 2*d1 + d0) ceildiv 4 will be
   // simplified to d0 + q, where q = (d0 + d1) ceildiv 2. (d0 + d1) ceildiv 2
   // would be the local expression stored for q.
-  SmallVector<AffineExprWrap, 4> localExprs;
+  SmallVector<AffineExprRef, 4> localExprs;
   MLIRContext *context;
 
   AffineExprFlattener(unsigned numDims, unsigned numSymbols,
@@ -142,7 +142,7 @@ public:
   void visitMulExpr(AffineBinaryOpExpr *expr) {
     assert(operandExprStack.size() >= 2);
     // This is a pure affine expr; the RHS will be a constant.
-    assert(isa<AffineConstantExpr>(expr->getRHS().expr));
+    assert(isa<AffineConstantExpr>(expr->getRHS()));
     // Get the RHS constant.
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     operandExprStack.pop_back();
@@ -169,7 +169,7 @@ public:
   void visitModExpr(AffineBinaryOpExpr *expr) {
     assert(operandExprStack.size() >= 2);
     // This is a pure affine expr; the RHS will be a constant.
-    assert(isa<AffineConstantExpr>(expr->getRHS().expr));
+    assert(isa<AffineConstantExpr>(expr->getRHS()));
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     operandExprStack.pop_back();
     auto &lhs = operandExprStack.back();
@@ -220,7 +220,7 @@ public:
 private:
   void visitDivExpr(AffineBinaryOpExpr *expr, bool isCeil) {
     assert(operandExprStack.size() >= 2);
-    assert(isa<AffineConstantExpr>(expr->getRHS().expr));
+    assert(isa<AffineConstantExpr>(expr->getRHS()));
     // This is a pure affine expr; the RHS is a positive constant.
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     // TODO(bondhugula): handle division by zero at the same time the issue is
@@ -259,9 +259,9 @@ private:
   }
 
   // Add an existential quantifier (used to flatten a mod, floordiv, ceildiv
-  // expr). localExpr is the simplified tree expression (AffineExprWrap )
+  // expr). localExpr is the simplified tree expression (AffineExprRef)
   // corresponding to the quantifier.
-  void addLocalId(AffineExprWrap localExpr) {
+  void addLocalId(AffineExprRef localExpr) {
     for (auto &subExpr : operandExprStack) {
       subExpr.insert(subExpr.begin() + getLocalVarStartIndex() + numLocals, 0);
     }
@@ -277,8 +277,8 @@ private:
 
 } // end anonymous namespace
 
-AffineExprWrap mlir::simplifyAffineExpr(AffineExprWrap expr, unsigned numDims,
-                                        unsigned numSymbols) {
+AffineExprRef mlir::simplifyAffineExpr(AffineExprRef expr, unsigned numDims,
+                                       unsigned numSymbols) {
   // TODO(bondhugula): only pure affine for now. The simplification here can be
   // extended to semi-affine maps in the future.
   if (!expr->isPureAffine())

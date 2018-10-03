@@ -43,7 +43,7 @@ struct MutableAffineMap {
 public:
   MutableAffineMap(AffineMap *map, MLIRContext *context);
 
-  AffineExprWrap getResult(unsigned idx) const { return results[idx]; }
+  AffineExprRef getResult(unsigned idx) const { return results[idx]; }
   unsigned getNumResults() const { return results.size(); }
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }
@@ -60,8 +60,8 @@ public:
 
 private:
   // Same meaning as AffineMap's fields.
-  SmallVector<AffineExprWrap, 8> results;
-  SmallVector<AffineExprWrap, 8> rangeSizes;
+  SmallVector<AffineExprRef, 8> results;
+  SmallVector<AffineExprRef, 8> rangeSizes;
   unsigned numDims;
   unsigned numSymbols;
   /// A pointer to the IR's context to store all newly created AffineExpr's.
@@ -90,7 +90,7 @@ private:
   unsigned numDims;
   unsigned numSymbols;
 
-  SmallVector<AffineExprWrap, 8> constraints;
+  SmallVector<AffineExprRef, 8> constraints;
   SmallVector<bool, 8> eqFlags;
   /// A pointer to the IR's context to store all newly created AffineExpr's.
   MLIRContext *context;
@@ -266,7 +266,7 @@ public:
     return ArrayRef<int64_t>(&inequalities[idx * getNumCols()], getNumCols());
   }
 
-  AffineExprWrap toAffineExpr(unsigned idx, MLIRContext *context);
+  AffineExprRef toAffineExpr(unsigned idx, MLIRContext *context);
 
   void addInequality(ArrayRef<int64_t> inEq);
   void addEquality(ArrayRef<int64_t> eq);

@@ -32,7 +32,7 @@ using namespace mlir;
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
-AffineExprWrap mlir::getTripCountExpr(const ForStmt &forStmt) {
+AffineExprRef mlir::getTripCountExpr(const ForStmt &forStmt) {
   // upper_bound - lower_bound + 1
   int64_t loopSpan;
 
@@ -56,12 +56,12 @@ AffineExprWrap mlir::getTripCountExpr(const ForStmt &forStmt) {
       return nullptr;
 
     // ub_expr - lb_expr + 1
-    AffineExprWrap lbExpr(lbMap->getResult(0));
-    AffineExprWrap ubExpr(ubMap->getResult(0));
+    AffineExprRef lbExpr(lbMap->getResult(0));
+    AffineExprRef ubExpr(ubMap->getResult(0));
     auto loopSpanExpr = simplifyAffineExpr(
         ubExpr - lbExpr + 1, std::max(lbMap->getNumDims(), ubMap->getNumDims()),
         std::max(lbMap->getNumSymbols(), ubMap->getNumSymbols()));
-    auto *cExpr = dyn_cast<AffineConstantExpr>(loopSpanExpr.expr);
+    auto *cExpr = dyn_cast<AffineConstantExpr>(loopSpanExpr);
     if (!cExpr)
       return AffineBinaryOpExpr::getCeilDiv(loopSpanExpr, step, context);
     loopSpan = cExpr->getValue();
@@ -81,8 +81,7 @@ AffineExprWrap mlir::getTripCountExpr(const ForStmt &forStmt) {
 llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForStmt &forStmt) {
   auto tripCountExpr = getTripCountExpr(forStmt);
 
-  if (auto *constExpr =
-          dyn_cast_or_null<AffineConstantExpr>(tripCountExpr.expr))
+  if (auto constExpr = dyn_cast_or_null<AffineConstantExpr>(tripCountExpr))
     return constExpr->getValue();
 
   return None;
@@ -97,7 +96,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   if (!tripCountExpr)
     return 1;
 
-  if (auto *constExpr = dyn_cast<AffineConstantExpr>(tripCountExpr.expr)) {
+  if (auto constExpr = dyn_cast<AffineConstantExpr>(tripCountExpr)) {
     uint64_t tripCount = constExpr->getValue();
 
     // 0 iteration loops (greatest divisor is 2^64 - 1).
@@ -109,5 +108,5 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   }
 
   // Trip count is not a known constant; return its largest known divisor.
-  return tripCountExpr.expr->getLargestKnownDivisor();
+  return tripCountExpr->getLargestKnownDivisor();
 }
