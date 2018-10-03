@@ -96,7 +96,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       pc = array_ops.placeholder(np.float32, [])
       a = array_ops.transpose(pa)
       b = pa + pb * pc
-      c = a * pb
+      c = a * pb + pc
       d = b / c
 
     with ops.device('cpu'):
@@ -109,7 +109,8 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
         pb: data_b,
         pc: data_c,
       }
-      np_result = (data_a + data_b * data_c) / (np.transpose(data_a) * data_b)
+      np_result = (data_a + data_b * data_c) / (np.transpose(data_a) * data_b +
+                                                data_c)
       result = sess.run(d, fd)
       self.assertAllClose(result, np_result)
 
@@ -123,6 +124,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
             'Copy_XLA_Args/arg0.*_to_transpose/transpose.*.clone/OnTileCopy',
             'mul/multiply.*/Op/Multiply',
             'add/add.*/AddTo',
+            'add_1/add.*/AddTo',
             'mul_1/multiply.*/Op/Multiply',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))

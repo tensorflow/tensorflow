@@ -25,44 +25,69 @@ namespace poplarplugin {
 
 namespace {
 
-class DepthFinder {
+class SequenceCosts {
  public:
-  DepthFinder(const std::vector<HloInstruction*> insts) {
-    for (auto i : insts) {
-      distance[i] = 0;
-    }
-  }
+  SequenceCosts() : max_root_cost(0) {}
 
-  int64 FindDepths(HloInstruction* inst) {
+  int64 FindCosts(HloInstruction* inst) {
     int64 cost = 0;
-    if (distance.find(inst) != distance.end()) {
-      return distance.at(inst);
+    if (costs.find(inst) != costs.end()) {
+      return costs.at(inst);
     }
 
     for (auto o : inst->operands()) {
-      int64 c = FindDepths(o);
+      int64 c = FindCosts(o);
       cost = std::max(cost, c);
     }
     cost += 1;
 
-    distance[inst] = cost;
+    costs[inst] = cost;
+    max_root_cost = std::max(max_root_cost, cost);
+
     return cost;
   }
 
+  void AddDisconnectedInstructions(const std::vector<HloInstruction*> insts) {
+    int64 cost = max_root_cost + 1;
+    for (auto* inst : insts) {
+      if (costs.find(inst) == costs.end()) {
+        costs[inst] = cost++;
+      }
+    }
+  }
+
   bool Compare(const HloInstruction* a, const HloInstruction* b) const {
-    return distance.at(a) < distance.at(b);
+    if (costs.at(a) > max_root_cost || costs.at(b) > max_root_cost) {
+      return costs.at(a) < costs.at(b);
+    }
+
+    unsigned int types = ((a->opcode() == HloOpcode::kParameter) ? 0x2 : 0x0) +
+                         ((b->opcode() == HloOpcode::kParameter) ? 0x1 : 0x0);
+
+    switch (types) {
+      case 0x0:
+        return costs.at(a) < costs.at(b);
+      case 0x1:
+        return true;
+      case 0x2:
+        return false;
+      case 0x3:
+        return costs.at(a) > costs.at(b);
+    }
   }
 
  private:
-  std::map<const HloInstruction*, int64> distance;
+  std::map<const HloInstruction*, int64> costs;
+  int64 max_root_cost;
 };
 
 }  // namespace
 
 StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(
     HloComputation* comp) {
-  DepthFinder depths(comp->MakeInstructionPostOrder());
-  depths.FindDepths(comp->root_instruction());
+  SequenceCosts costs;
+  costs.FindCosts(comp->root_instruction());
+  costs.AddDisconnectedInstructions(comp->MakeInstructionPostOrder());
 
   std::vector<const HloInstruction*> sequence;
   FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
@@ -70,8 +95,8 @@ StatusOr<std::vector<const HloInstruction*>> Scheduler::schedule(
     return Status::OK();
   });
   TF_RETURN_IF_ERROR(comp->AcceptWithOperandOrder(
-      &visitor, [&depths](const HloInstruction* a, const HloInstruction* b) {
-        return depths.Compare(a, b);
+      &visitor, [&costs](const HloInstruction* a, const HloInstruction* b) {
+        return costs.Compare(a, b);
       }));
 
   CHECK_EQ(sequence.size(), comp->instruction_count());

@@ -400,6 +400,17 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "scheduler_test",
+    srcs = ["tests/scheduler_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_test(
     name = "device_test",
     size = "small",
@@ -752,6 +763,7 @@ test_suite(
         "update_op_dependencies_test",
         "fuse_wide_const_test",
         "cache_graph_test",
+        "scheduler_test",
     ],
 )
 
@@ -788,6 +800,7 @@ test_suite(
         "update_op_dependencies_test",
         "fuse_wide_const_test",
         "cache_graph_test",
+        "scheduler_test",
     ],
 )
 

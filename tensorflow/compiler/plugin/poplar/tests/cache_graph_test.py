@@ -13,12 +13,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
@@ -172,6 +168,9 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
         y = convolutional.conv2d(y, 2, 1, use_bias=False,
                                  kernel_initializer=init_ops.ones_initializer(),
                                  name='conv2')
+        y = convolutional.conv2d(y, 2, 1, use_bias=False,
+                                 kernel_initializer=init_ops.ones_initializer(),
+                                 name='conv3')
 
       loss = math_ops.reduce_sum(y)
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
@@ -201,9 +200,9 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
             'vs/conv1/Conv2D/convolution.*/Conv_1x1',
             'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
-            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
-            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/convolution.*/Conv_4x4',
-            'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo']
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
+            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone/Conv_4x4',
+            'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
