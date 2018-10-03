@@ -355,48 +355,9 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase):
     gfile.DeleteRecursively(self._config.model_dir)
 
 
-class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
+class TestDistributionStrategyWithNumpyArrays(test.TestCase,
+                                              parameterized.TestCase):
 
-  def test_validating_dataset_input_tensors_with_shape_mismatch(self):
-    with self.cached_session():
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
-                                                     '/device:CPU:0'])
-      a = constant_op.constant([1, 2], shape=(1, 2))
-      b = constant_op.constant([[1, 2], [1, 2]], shape=(2, 2))
-      x = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': b})
-      y = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': a})
-      with strategy.scope():
-        # Removed device and input tensor shape details from the error message
-        # since the order of the device and the corresponding input tensor shape
-        # is not deterministic over different runs.
-        with self.assertRaisesRegexp(ValueError,
-                                     'Input tensor shapes do not match for '
-                                     'distributed tensor inputs '
-                                     'DistributedValues:.+'):
-          distributed_training_utils.validate_distributed_dataset_inputs(
-              strategy, x, y)
-
-  def test_validating_dataset_input_tensors_with_dtype_mismatch(self):
-    with self.cached_session():
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
-                                                     '/device:CPU:0'])
-      a = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.int32)
-      b = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.float64)
-      x = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': b})
-      y = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': a})
-      with strategy.scope():
-        # Removed device and input tensor dtype details from the error message
-        # since the order of the device and the corresponding input tensor dtype
-        # is not deterministic over different runs.
-        with self.assertRaisesRegexp(ValueError,
-                                     'Input tensor dtypes do not match for '
-                                     'distributed tensor inputs '
-                                     'DistributedValues:.+'):
-          distributed_training_utils.validate_distributed_dataset_inputs(
-              strategy, x, y)
-
-  # TODO(anjalisridhar): Move this test along with other numpy related tests to
-  # its own class.
   @combinations.generate(strategy_combinations())
   def test_creating_var_with_numpy_arrays(self, distribution):
     with self.cached_session():
@@ -478,6 +439,10 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       model.predict(inputs, steps=2)
       # with batch_size
       model.predict(inputs, batch_size=8)
+
+
+class TestDistributionStrategyWithDatasets(test.TestCase,
+                                           parameterized.TestCase):
 
   @combinations.generate(strategy_combinations())
   def test_calling_model_on_same_dataset(self, distribution):
@@ -572,86 +537,6 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       model.evaluate(dataset, steps=2, verbose=1)
       model.predict(get_predict_dataset(distribution), steps=2)
 
-  def test_unsupported_features(self):
-    with self.cached_session():
-      model = get_model()
-
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      loss = 'mse'
-      metrics = ['mae']
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
-                                                     '/device:GPU:0'])
-
-      model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
-
-      dataset = get_dataset(strategy)
-
-      # Test with validation split
-      with self.assertRaisesRegexp(
-          ValueError, '`validation_split` argument is not '
-                      'supported when input `x` is a dataset or a '
-                      'dataset iterator.+'):
-        model.fit(dataset,
-                  epochs=1, steps_per_epoch=2, verbose=0,
-                  validation_split=0.5, validation_steps=2)
-
-      # Test with sample weight.
-      sample_weight = np.random.random((10,))
-      with self.assertRaisesRegexp(
-          NotImplementedError, '`sample_weight` is currently not supported '
-                               'when using DistributionStrategy.'):
-        model.fit(
-            dataset,
-            epochs=1,
-            steps_per_epoch=2,
-            verbose=0,
-            sample_weight=sample_weight)
-
-      # Test with not specifying the `steps` argument.
-      with self.assertRaisesRegexp(
-          ValueError, 'you should specify the `steps_per_epoch` argument'):
-        model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'you should specify the `steps` argument'):
-        model.evaluate(dataset, verbose=0)
-
-      with self.assertRaisesRegexp(ValueError,
-                                   'you should specify the `steps` argument'):
-        model.predict(dataset, verbose=0)
-
-  def test_calling_with_unsupported_predefined_callbacks(self):
-    with self.cached_session():
-      model = get_model()
-
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      loss = 'mse'
-      metrics = ['mae']
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
-                                                     '/device:GPU:0'])
-      model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
-
-      dataset = get_dataset(strategy)
-
-      def schedule(_):
-        return 0.001
-      with self.assertRaisesRegexp(ValueError,
-                                   'LearningRateScheduler callback is not '
-                                   'supported with DistributionStrategy.'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
-                  callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-
-      with self.assertRaisesRegexp(ValueError,
-                                   'ReduceLROnPlateau callback is not '
-                                   'supported with DistributionStrategy.'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
-                  callbacks=[keras.callbacks.ReduceLROnPlateau()])
-      with self.assertRaisesRegexp(ValueError,
-                                   'histogram_freq in the TensorBoard callback '
-                                   'is not supported when using '
-                                   'DistributionStrategy.'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
-                  callbacks=[keras.callbacks.TensorBoard(histogram_freq=10)])
-
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
       model = get_model()
@@ -736,7 +621,128 @@ class TestWithDistributionStrategy(test.TestCase, parameterized.TestCase):
       self.assertNotEqual(np.mean(predict_output), 0)
 
 
-class LossMaskingWithDistributionStrategyTest(test.TestCase):
+class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
+
+  def test_validating_dataset_input_tensors_with_shape_mismatch(self):
+    with self.cached_session():
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0'])
+      a = constant_op.constant([1, 2], shape=(1, 2))
+      b = constant_op.constant([[1, 2], [1, 2]], shape=(2, 2))
+      x = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': b})
+      y = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': a})
+      with strategy.scope():
+        # Removed device and input tensor shape details from the error message
+        # since the order of the device and the corresponding input tensor shape
+        # is not deterministic over different runs.
+        with self.assertRaisesRegexp(ValueError,
+                                     'Input tensor shapes do not match for '
+                                     'distributed tensor inputs '
+                                     'DistributedValues:.+'):
+          distributed_training_utils.validate_distributed_dataset_inputs(
+              strategy, x, y)
+
+  def test_validating_dataset_input_tensors_with_dtype_mismatch(self):
+    with self.cached_session():
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0'])
+      a = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.int32)
+      b = constant_op.constant([1, 2], shape=(1, 2), dtype=dtypes.float64)
+      x = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': b})
+      y = values.DistributedValues({'/device:CPU:0': a, '/device:GPU:0': a})
+      with strategy.scope():
+        # Removed device and input tensor dtype details from the error message
+        # since the order of the device and the corresponding input tensor dtype
+        # is not deterministic over different runs.
+        with self.assertRaisesRegexp(ValueError,
+                                     'Input tensor dtypes do not match for '
+                                     'distributed tensor inputs '
+                                     'DistributedValues:.+'):
+          distributed_training_utils.validate_distributed_dataset_inputs(
+              strategy, x, y)
+
+  def test_unsupported_features(self):
+    with self.cached_session():
+      model = get_model()
+
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
+                                                     '/device:GPU:0'])
+
+      model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
+
+      dataset = get_dataset(strategy)
+
+      # Test with validation split
+      with self.assertRaisesRegexp(
+          ValueError, '`validation_split` argument is not '
+                      'supported when input `x` is a dataset or a '
+                      'dataset iterator.+'):
+        model.fit(dataset,
+                  epochs=1, steps_per_epoch=2, verbose=0,
+                  validation_split=0.5, validation_steps=2)
+
+      # Test with sample weight.
+      sample_weight = np.random.random((10,))
+      with self.assertRaisesRegexp(
+          NotImplementedError, '`sample_weight` is currently not supported '
+                               'when using DistributionStrategy.'):
+        model.fit(
+            dataset,
+            epochs=1,
+            steps_per_epoch=2,
+            verbose=0,
+            sample_weight=sample_weight)
+
+      # Test with not specifying the `steps` argument.
+      with self.assertRaisesRegexp(
+          ValueError, 'you should specify the `steps_per_epoch` argument'):
+        model.fit(dataset, epochs=1, verbose=0)
+      with self.assertRaisesRegexp(ValueError,
+                                   'you should specify the `steps` argument'):
+        model.evaluate(dataset, verbose=0)
+
+      with self.assertRaisesRegexp(ValueError,
+                                   'you should specify the `steps` argument'):
+        model.predict(dataset, verbose=0)
+
+  def test_calling_with_unsupported_predefined_callbacks(self):
+    with self.cached_session():
+      model = get_model()
+
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:1',
+                                                     '/device:GPU:0'])
+      model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
+
+      dataset = get_dataset(strategy)
+
+      def schedule(_):
+        return 0.001
+      with self.assertRaisesRegexp(ValueError,
+                                   'LearningRateScheduler callback is not '
+                                   'supported with DistributionStrategy.'):
+        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                  callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
+
+      with self.assertRaisesRegexp(ValueError,
+                                   'ReduceLROnPlateau callback is not '
+                                   'supported with DistributionStrategy.'):
+        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                  callbacks=[keras.callbacks.ReduceLROnPlateau()])
+      with self.assertRaisesRegexp(ValueError,
+                                   'histogram_freq in the TensorBoard callback '
+                                   'is not supported when using '
+                                   'DistributionStrategy.'):
+        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
+                  callbacks=[keras.callbacks.TensorBoard(histogram_freq=10)])
+
+
+class TestDistributionStrategyWithLossMasking(test.TestCase):
 
   # TODO(priyag): Enable all strategies for this test. Currently it does not
   # work for TPU due to some invalid datatype.
@@ -763,7 +769,7 @@ class LossMaskingWithDistributionStrategyTest(test.TestCase):
       self.assertEqual(hist.history['loss'][0], 0)
 
 
-class NormalizationLayerWithDistributionStrategyTest(
+class TestDistributionStrategyWithNormalizationLayer(
     test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_combinations())
@@ -795,8 +801,8 @@ class NormalizationLayerWithDistributionStrategyTest(
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 
-class CorrectnessWithDistributionStrategyTest(test.TestCase,
-                                              parameterized.TestCase):
+class TestDistributionStrategyCorrectness(test.TestCase,
+                                          parameterized.TestCase):
 
   @combinations.generate(strategy_combinations())
   def test_metric_correctness(self, distribution):
