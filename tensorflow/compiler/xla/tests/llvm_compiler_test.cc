@@ -18,7 +18,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#if GOOGLE_CUDA
+ #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+ #include "tensorflow/compiler/xla/service/gpu/amdgpu_compiler.h"
+#endif 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -137,7 +141,11 @@ class CpuCompilerTest : public LLVMCompilerTest {
 
 class GpuCompilerTest : public LLVMCompilerTest {
  public:
+#if GOOGLE_CUDA
   GpuCompilerTest() : LLVMCompilerTest("CUDA") {}
+#elif TENSORFLOW_USE_ROCM
+  GpuCompilerTest() : LLVMCompilerTest("ROCM") {}
+#endif 
 };
 
 TEST_F(CpuCompilerTest, HooksTest) {
@@ -146,7 +154,11 @@ TEST_F(CpuCompilerTest, HooksTest) {
 }
 
 TEST_F(GpuCompilerTest, HooksTest) {
+#if GOOGLE_CUDA 
   gpu::NVPTXCompiler compiler;
+#elif TENSORFLOW_USE_ROCM
+  gpu::AMDGPUCompiler compiler;
+#endif 
   TestCompilerHooks(&compiler);
 }
 
@@ -156,7 +168,11 @@ TEST_F(CpuCompilerTest, MultiModuleCompilation) {
 }
 
 TEST_F(GpuCompilerTest, MultModuleCompilation) {
+#if GOOGLE_CUDA 
   gpu::NVPTXCompiler compiler;
+#elif TENSORFLOW_USE_ROCM
+  gpu::AMDGPUCompiler compiler;
+#endif 
   TestMultiModuleCompilation(&compiler);
 }
 }  // namespace
