@@ -286,6 +286,11 @@ class LayoutAssignment : public HloModulePass {
   // entry_computation_layout is modified to populate a layout for the result in
   // the case that no particular layout is requested.
   //
+  // instruction_can_change_layout_func is a function object that determines
+  // whether an instruction can change layouts. An instruction not being able to
+  // change layout means that it requires operands with the same rank as the
+  // output to have the same layout as the output.
+  //
   // channel_constraints is both an input and output. Any sends or recvs that
   // are present in channel_constraints will be laid out as constrained. Any
   // unconstrained sends or recvs will be laid out as locally optimal and their
@@ -295,6 +300,8 @@ class LayoutAssignment : public HloModulePass {
   // within any module passed to `Run`.
   explicit LayoutAssignment(
       ComputationLayout* entry_computation_layout,
+      std::function<bool(const HloInstruction*)>
+          instruction_can_change_layout_func = InstructionCanChangeLayout,
       ChannelLayoutConstraints* channel_constraints = nullptr);
   ~LayoutAssignment() override {}
   absl::string_view name() const override { return "layout-assignment"; }
@@ -303,10 +310,10 @@ class LayoutAssignment : public HloModulePass {
   // (any layouts were changed).
   StatusOr<bool> Run(HloModule* module) override;
 
-  // Returns true if the instruction requires that operands with the same rank
-  // as the output have to have the same layout as the output.
-  virtual bool InstructionRequiresInputLayoutEqualToOutputLayout(
-      const HloInstruction* instruction);
+  // Determines whether an instruction can change layouts. An instruction not
+  // being able to change layout means that it requires operands with the same
+  // rank as the output to have the same layout as the output.
+  static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -522,6 +529,9 @@ class LayoutAssignment : public HloModulePass {
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.
   absl::flat_hash_set<const HloInstruction*> unconstrained_layout_instructions_;
+
+  std::function<bool(const HloInstruction*)>
+      instruction_can_change_layout_func_;
 };
 
 }  // namespace xla
