@@ -2999,6 +2999,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = ["no_oss"],  # b/117185141
 )
 
 cuda_py_test(
