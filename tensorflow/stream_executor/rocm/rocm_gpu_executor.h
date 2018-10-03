@@ -60,6 +60,13 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
   bool GetKernel(const MultiKernelLoaderSpec &spec,
                  KernelBase *kernel) override;
 
+  bool LoadModule(const MultiModuleLoaderSpec &spec,
+                  ModuleHandle *module_handle) override;
+
+  bool UnloadModule(ModuleHandle module_handle) override;
+  bool UnloadGpuBinary(const void *gpu_binary)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
               const KernelArgsArrayBase &args) override;
@@ -226,6 +233,9 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
   void VlogOccupancyInfo(const KernelBase &kernel, const ThreadDim &thread_dims,
                          const BlockDim &block_dims);
 
+  bool LoadModuleFromHsaco(const char *hsaco, hipModule_t *module)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
   // Guards the on-disk-module mapping.
   mutex disk_modules_mu_;
 
@@ -239,6 +249,10 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
 
   std::map<const char *, hipModule_t> in_memory_modules_
       GUARDED_BY(in_memory_modules_mu_);
+
+  // HSACO Binary -> {Hip module, reference count}.
+  std::unordered_map<const void *, std::pair<hipModule_t, uint64>>
+      gpu_binary_to_module_ GUARDED_BY(in_memory_modules_mu_);
 
   // Guards the launched kernel set.
   mutex launched_kernels_mu_;
