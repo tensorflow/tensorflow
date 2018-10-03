@@ -75,7 +75,7 @@ class _BoostedTreesEstimator(canned_boosted_trees._BoostedTreesBase):  # pylint:
         layer.
       head: the `Head` instance defined for Estimator.
       model_dir: Directory to save model parameters, graph and etc. This can
-        also be used to load checkpoints from the directory into a estimator
+        also be used to load checkpoints from the directory into an estimator
         to continue training a previously saved model.
       weight_column: A string or a `_NumericColumn` created by
         `tf.feature_column.numeric_column` defining feature column representing
@@ -199,7 +199,7 @@ def boosted_trees_classifier_train_in_memory(
       the model. All items in the set should be instances of classes derived
       from `FeatureColumn`.
     model_dir: Directory to save model parameters, graph and etc. This can
-      also be used to load checkpoints from the directory into a estimator
+      also be used to load checkpoints from the directory into an estimator
       to continue training a previously saved model.
     n_classes: number of label classes. Default is binary classification.
       Multiclass support is not yet implemented.
@@ -345,7 +345,7 @@ def boosted_trees_regressor_train_in_memory(
       the model. All items in the set should be instances of classes derived
       from `FeatureColumn`.
     model_dir: Directory to save model parameters, graph and etc. This can
-      also be used to load checkpoints from the directory into a estimator
+      also be used to load checkpoints from the directory into an estimator
       to continue training a previously saved model.
     label_dimension: Number of regression targets per example.
       Multi-dimensional support is not yet implemented.
