@@ -55,7 +55,8 @@ class LayoutAssignmentTest : public HloVerifiedTestBase {
                      ComputationLayout* entry_computation_layout,
                      ChannelLayoutConstraints* channel_constraints = nullptr) {
     LayoutAssignment layout_assignment(
-        entry_computation_layout, /*channel_constraints=*/channel_constraints);
+        entry_computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+        /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 
