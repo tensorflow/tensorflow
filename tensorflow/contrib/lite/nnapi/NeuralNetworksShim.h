@@ -180,6 +180,14 @@ enum {
 };
 
 /**
+ * Implicit padding algorithms.
+ */
+enum {
+  ANEURALNETWORKS_PADDING_SAME = 1,
+  ANEURALNETWORKS_PADDING_VALID = 2,
+};
+
+/**
  * ANeuralNetworksMemory is an opaque type that represents memory.
  *
  * This type is used to represent shared memory, memory mapped files,
