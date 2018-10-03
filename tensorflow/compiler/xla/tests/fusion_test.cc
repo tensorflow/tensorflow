@@ -764,8 +764,9 @@ XLA_TEST_F(FusionTest, Clamp2D) {
   TestElementwise2D<float, 3>(HloOpcode::kClamp);
 }
 
-// TODO(b/73903144): Enable on interpreter once interpreter supports bitcast.
-XLA_TEST_F(FusionTest, DISABLED_ON_INTERPRETER(FusionWithLayout)) {
+// TODO(b/117156505): Remove this test when the bug is fixed.
+XLA_TEST_F(FusionTest, DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
+                           LayoutChangingElementWiseOp))) {
   const string hlo_text = R"(
 HloModule Cluster
 
