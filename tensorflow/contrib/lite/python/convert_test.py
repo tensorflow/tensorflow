@@ -138,6 +138,13 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
     self.assertTrue(output_details[0]["quantization"][0] > 0)  # scale
 
+  def testFailureMessage(self):
+    with self.assertRaisesRegexp(RuntimeError, "TOCO failed. See console for info.") as exc:
+      convert.toco_convert_protos(b'model_flags', b'toco_flags', b'graph_def')
+
+    # Check that output has no byte strings.
+    self.assertNotIn('\'b', str(exc.exception))
+
 
 class ConvertTestOpHint(test_util.TensorFlowTestCase):
   """Test the hint to stub functionality."""

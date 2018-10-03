@@ -145,8 +145,9 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
       with open(output_filename, "rb") as fp:
         return fp.read()
     else:
-      raise RuntimeError(
-          "TOCO failed see console for info.\n%s\n%s\n" % (stdout, stderr))
+      info = '\n'.join([s.decode() for s in [stdout, stderr] if s is not None])
+      raise RuntimeError("TOCO failed. See console for info.%s\n" % info)
+
   finally:
     # Must manually cleanup files.
     for filename in [
