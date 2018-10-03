@@ -180,7 +180,7 @@ Status XlaCompileOnDemandOp::Compile(
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                result, executable, compile_options);
+                                compile_options, result, executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

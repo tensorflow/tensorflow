@@ -68,9 +68,9 @@ class XlaCompilationCache : public ResourceBase {
                  const std::map<int, Tensor>& constant_args,
                  const std::map<int, OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
-                 const XlaCompiler::CompilationResult** compilation_result,
-                 xla::LocalExecutable** executable,
-                 const XlaCompiler::CompileOptions& compile_options);
+                 const XlaCompiler::CompileOptions& compile_options,
+                 const XlaCompiler::CompilationResult** out_compilation_result,
+                 xla::LocalExecutable** out_executable);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
   // XlaCompiler::CompileFunction.
@@ -78,9 +78,9 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::Options& options,
       const std::map<int, Tensor>& constant_args,
       const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-      const XlaCompiler::CompilationResult** compilation_result,
-      xla::LocalExecutable** executable,
-      const XlaCompiler::CompileOptions& compile_options);
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
@@ -89,15 +89,14 @@ class XlaCompilationCache : public ResourceBase {
 
  private:
   // Common implementation of Compile and CompileSingleOp.
-  Status CompileImpl(const XlaCompiler::Options& options,
-                     const NameAttrList& function,
-                     const std::map<int, Tensor>& constant_args,
-                     const std::map<int, OptionalTensor>& variable_args,
-                     OpKernelContext* ctx,
-                     const XlaCompiler::CompilationResult** compilation_result,
-                     xla::LocalExecutable** executable,
-                     const XlaCompiler::CompileOptions& compile_options,
-                     bool compile_single_op);
+  Status CompileImpl(
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const std::map<int, Tensor>& constant_args,
+      const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+      const XlaCompiler::CompileOptions& compile_options,
+      bool compile_single_op,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   // Takes `result` which has been compiled from a Tensorflow subgraph to a
   // XLA computation already, and generates an XLA LocalExecutable `executable`.
