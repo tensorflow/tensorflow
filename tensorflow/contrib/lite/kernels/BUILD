@@ -337,7 +337,10 @@ tf_cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
-    tags = ["tflite_not_portable_ios"],
+    tags = [
+        "nomac",
+        "tflite_not_portable_ios",
+    ],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
