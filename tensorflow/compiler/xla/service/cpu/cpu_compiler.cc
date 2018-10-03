@@ -308,7 +308,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features);
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
   return pipeline.Run(module).status();
 }
 
