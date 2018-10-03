@@ -83,8 +83,8 @@ TEST(ProfilingTest, ProfilesAreCollected) {
   EXPECT_EQ("SleepForQuarter", profile_events[4]->tag);
 
 #ifndef ADDRESS_SANITIZER
-  // ASAN build is sometimes very slow.
-  const int eps_ms = 10;
+  // ASAN build is sometimes very slow. Set a large epsilon to avoid flakiness.
+  const int eps_ms = 50;
   AssertDurationOfEventAroundMs(profile_events[0], /*expected_ms*/ 500, eps_ms);
   AssertDurationOfEventAroundMs(profile_events[1], /*expected_ms*/ 250, eps_ms);
   AssertDurationOfEventAroundMs(profile_events[2], /*expected_ms*/ 250, eps_ms);
