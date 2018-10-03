@@ -1992,9 +1992,11 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      # Disable Grappler constant folding since some tests & benchmarks
+      # use constant input and become meaningless after constant folding.
+      # DO NOT DISABLE GRAPPLER OPTIMIZERS WITHOUT CONSULTING WITH THE
+      # GRAPPLER TEAM.
       config.graph_options.rewrite_options.constant_folding = (
-          rewriter_config_pb2.RewriterConfig.OFF)
-      config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
