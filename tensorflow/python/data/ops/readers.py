@@ -74,7 +74,7 @@ class TextLineDataset(dataset_ops.DatasetSource):
     return dtypes.string
 
 
-class _TFRecordDataset(dataset_ops.Dataset):
+class _TFRecordDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -104,9 +104,6 @@ class _TFRecordDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
-
-  def _inputs(self):
-    return []
 
   @property
   def output_classes(self):
