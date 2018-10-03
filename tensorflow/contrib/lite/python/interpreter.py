@@ -129,6 +129,23 @@ class Interpreter(object):
 
     return details
 
+  def get_tensor_details(self):
+    """Gets tensor details for every tensor with valid tensor details.
+
+    Tensors where required information about the tensor is not found are not
+    added to the list. This includes temporary tensors without a name.
+
+    Returns:
+      A list of dictionaries containing tensor information.
+    """
+    tensor_details = []
+    for idx in range(self._interpreter.NumTensors()):
+      try:
+        tensor_details.append(self._get_tensor_details(idx))
+      except ValueError:
+        pass
+    return tensor_details
+
   def get_input_details(self):
     """Gets model input details.
 
