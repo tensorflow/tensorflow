@@ -974,10 +974,15 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
 
 LayoutAssignment::LayoutAssignment(
     ComputationLayout* entry_computation_layout,
+    std::function<bool(const HloInstruction*)>
+        instruction_can_change_layout_func,
     ChannelLayoutConstraints* channel_constraints)
     : entry_computation_layout_(entry_computation_layout),
+
       saved_entry_computation_layout_(*entry_computation_layout),
-      channel_layout_constraints_(channel_constraints) {
+      channel_layout_constraints_(channel_constraints),
+      instruction_can_change_layout_func_(
+          std::move(instruction_can_change_layout_func)) {
   if (channel_layout_constraints_ != nullptr) {
     // Save a copy of the input ChannelLayoutConstraints so that we can reset it
     // if we have to undo previous operations (ClearPreviousPassSideEffects()).
@@ -998,7 +1003,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
           ShapeUtil::Rank(instruction->shape()) &&
-      InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) {
+      !instruction_can_change_layout_func_(instruction)) {
     // Propagate the result layout to the operand layout if the instruction
     // requires the same layout out for the result and the operand.
     //
@@ -1076,7 +1081,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
 
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape()) &&
-      InstructionRequiresInputLayoutEqualToOutputLayout(user)) {
+      !instruction_can_change_layout_func_(user)) {
     // Assign users the same layout as the operand.
     return absl::make_unique<Layout>(operand_layout);
   }
@@ -1842,7 +1847,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   return true;
 }
 
-bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
+/* static */
+bool LayoutAssignment::InstructionCanChangeLayout(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAbs:
@@ -1908,7 +1914,7 @@ bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
     case HloOpcode::kTanh:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
-      return true;
+      return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -1939,7 +1945,7 @@ bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
     case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
-      return false;
+      return true;
   }
 }
 

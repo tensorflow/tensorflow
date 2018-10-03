@@ -232,7 +232,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // a layout-sensitive verifier!
     HloPassPipeline pipeline("layout assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(),
+        LayoutAssignment::InstructionCanChangeLayout, stream_exec);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
