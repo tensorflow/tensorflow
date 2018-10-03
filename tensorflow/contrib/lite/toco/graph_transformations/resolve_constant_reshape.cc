@@ -33,6 +33,13 @@ bool ResolveConstantReshape::Run(Model* model, std::size_t op_index) {
   CHECK_EQ(op->inputs.size(), 2);
   CHECK_EQ(op->outputs.size(), 1);
 
+  // If the output of this op is a non-discardable array such as an input_array
+  // or a state array of the model, then this is a job for RemoveUnusedOp, not
+  // for constants-propagation.
+  if (!IsDiscardableArray(*model, op->outputs[0])) {
+    return false;
+  }
+
   // We require constant inputs.
   if (!IsConstantParameterArray(*model, op->inputs[0]) ||
       !IsConstantParameterArray(*model, op->inputs[1])) {

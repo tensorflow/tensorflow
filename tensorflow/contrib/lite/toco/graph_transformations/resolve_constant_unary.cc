@@ -48,6 +48,14 @@ bool CopyMinMaxFromFirstInput(const Operator& op, Model* model) {
 bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   const auto unary_it = model->operators.begin() + op_index;
   const auto* unary_op = unary_it->get();
+
+  // If the output of this op is a non-discardable array such as an input_array
+  // or a state array of the model, then this is a job for RemoveUnusedOp, not
+  // for constants-propagation.
+  if (!IsDiscardableArray(*model, unary_op->outputs[0])) {
+    return false;
+  }
+
   // Test for unary ops of types that we know how to resolve.
   switch (unary_op->type) {
     case OperatorType::kCast:
