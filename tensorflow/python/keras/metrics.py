@@ -71,6 +71,22 @@ def check_is_tensor_or_operation(x, name):
         name, x))
 
 
+def clone_metric(metric):
+  """Returns a clone of the metric if stateful, otherwise returns it as is."""
+  if isinstance(metric, Metric):
+    return metric.__class__.from_config(metric.get_config())
+  return metric
+
+
+def clone_metrics(metrics):
+  """Clones the given metric list/dict."""
+  if metrics is None:
+    return None
+  if isinstance(metrics, dict):
+    return {key: clone_metric(value) for key, value in metrics.items()}
+  return [clone_metric(metric) for metric in metrics]
+
+
 def update_state_wrapper(update_state_fn):
   """Decorator to wrap metric `update_state()` with `add_update()`.
 

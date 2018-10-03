@@ -19,9 +19,7 @@ from __future__ import print_function
 
 import warnings
 
-from tensorflow.contrib.data.python.ops import contrib_op_loader  # pylint: disable=unused-import
-from tensorflow.contrib.data.python.ops import gen_dataset_ops
-from tensorflow.contrib.data.python.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest as data_nest
@@ -30,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util import nest
 
 
@@ -42,10 +41,9 @@ class _PrefetchToDeviceIterator(object):
     one_shot: If true, we make a one shot iterator that's already initialized.
     devices: Devices on which to prefetch.
     buffer_size: Size of the prefetching buffer.
-    shared_name: (Optional.) If non-empty, the returned iterator will be
-        shared under the given name across multiple sessions that share the
-        same devices (e.g. when using a remote server). Only used if one_shot
-        is False.
+    shared_name: (Optional.) If non-empty, the returned iterator will be shared
+      under the given name across multiple sessions that share the same devices
+      (e.g. when using a remote server). Only used if one_shot is False.
 
   Returns:
     An Iterator type object.
@@ -82,7 +80,7 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    target_device = gen_dataset_ops.iterator_get_device(
+    target_device = ged_ops.experimental_iterator_get_device(
         self._input_iterator._iterator_resource)
     self._buffering_resources = []
     for device in nest.flatten(self._devices):
@@ -102,7 +100,8 @@ class _PrefetchToDeviceIterator(object):
       reset_ops = []
       for buffer_resource in self._buffering_resources:
         reset_ops.append(
-            prefetching_ops.function_buffering_resource_reset(buffer_resource))
+            ged_ops.experimental_function_buffering_resource_reset(
+                buffer_resource))
       with ops.control_dependencies(reset_ops):
         self._initializer = self._input_iterator.make_initializer(
             self._input_dataset)
@@ -118,10 +117,11 @@ class _PrefetchToDeviceIterator(object):
     # batches) is not divisible by number of devices.
     # How do we handle that more gracefully / let the user know?
     for buffer_resource in self._buffering_resources:
-      flat_ret = gen_dataset_ops.function_buffering_resource_get_next(
+      flat_ret = ged_ops.experimental_function_buffering_resource_get_next(
           buffer_resource,
-          output_types=data_nest.flatten(sparse.as_dense_types(
-              self.output_types, self.output_classes)), name=name)
+          output_types=data_nest.flatten(
+              sparse.as_dense_types(self.output_types, self.output_classes)),
+          name=name)
 
       ret = sparse.deserialize_sparse_tensors(
           data_nest.pack_sequence_as(self.output_types, flat_ret),
@@ -152,13 +152,16 @@ class _PrefetchToDeviceIterator(object):
   @property
   def output_types(self):
     return self._input_dataset.output_types
+
+
 # pylint: enable=protected-access
 
 
-class _PrefetchToDeviceDataset(dataset_ops.Dataset):
+class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
   """A `Dataset` whose iterator prefetches elements to other device(s)."""
 
   def __init__(self, input_dataset, devices, buffer_size):
+    super(_PrefetchToDeviceDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._devices = devices
     self._buffer_size = buffer_size if buffer_size is not None else 1
@@ -222,6 +225,7 @@ def prefetch_to_devices(devices, buffer_size=None):
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
   """
+
   def _apply_fn(dataset):
     return _PrefetchToDeviceDataset(dataset, devices, buffer_size)
 

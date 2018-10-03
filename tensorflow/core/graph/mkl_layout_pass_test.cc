@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
@@ -3510,6 +3510,26 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_DeviceTest) {
             "B->C:1;C->E;D->E:1;E->Z;M->C:2;N->C:3;Y->Z:1");
 }
 
+TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Int32Input'}"
+      "node { name: 'D' op: 'Slice'"
+      " attr { key: 'T'            value { type: DT_FLOAT } }"
+      " attr { key: 'Index'        value { type: DT_INT32 } }"
+      " input: ['A', 'B', 'C'] }"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);C(Int32Input);"
+            "D(_MklSlice);DMT/_0(Const);DMT/_1(Const);DMT/"
+            "_2(Const);E(Zeta)|A->D;A->E;"
+            "A:control->DMT/_0:control;A:control->DMT/"
+            "_1:control;A:control->DMT/_2:control;"
+            "B->D:1;C->D:2;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
 /////////////////////////////////////////////////////////////////////
 //         Post-rewrite fixup pass test
 
@@ -3586,4 +3606,4 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 }  // namespace tensorflow
 
-#endif /* INTEL_MKL */
+#endif  // INTEL_MKL && ENABLE_MKL

@@ -112,29 +112,22 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
-        "//tensorflow:with_kafka_support_windows_override": [],
-        "//tensorflow:with_kafka_support": [
-            "//tensorflow/contrib/kafka",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support": [
-            "//tensorflow/contrib/kinesis",
-        ],
-        "//conditions:default": [],
-    }) + if_not_windows_cuda([
-        "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
-    ]) + if_not_windows([
-    ]) + select({
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "//tensorflow/contrib/bigtable",
             "//tensorflow/contrib/cloud:cloud_py",
+            "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
+            "//tensorflow/contrib/kafka",
+            "//tensorflow/contrib/kinesis",
             "//tensorflow/contrib/tensorrt:init_py",
             "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         ],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -144,7 +137,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
-        "//tensorflow/contrib/data/kernels:dataset_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/hadoop:dataset_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
@@ -159,20 +151,14 @@ cc_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
         "//tensorflow/contrib/nccl:nccl_kernels",
     ]) + select({
-        "//tensorflow:with_kafka_support_windows_override": [],
-        "//tensorflow:with_kafka_support": [
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_kernels",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis:dataset_kernels",
+            "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
         ],
-        "//conditions:default": [],
-    }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_kernel",
-    ]),
+    }),
 )
 
 cc_library(
@@ -181,8 +167,6 @@ cc_library(
     deps = [
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
-        "//tensorflow/contrib/data:dataset_ops_op_lib",
-        "//tensorflow/contrib/data:indexed_dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",
@@ -198,18 +182,17 @@ cc_library(
         "//tensorflow/contrib/text:all_ops",
         "//tensorflow/contrib/tpu:all_ops",
     ] + select({
-        "//tensorflow:with_kafka_support_windows_override": [],
-        "//tensorflow:with_kafka_support": [
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
+            "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
+        ],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
         ],
         "//conditions:default": [],
-    }) + if_not_windows([
-        "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
-    ]),
+    }),
 )

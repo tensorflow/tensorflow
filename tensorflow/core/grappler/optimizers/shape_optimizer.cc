@@ -33,7 +33,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
 
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically(false));
+  bool inferred_properties = false;
   GraphView graph(optimized_graph);
 
   // The product of all the dimensions in a tensor shape can be expressed more
@@ -55,6 +55,11 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
       const GraphView::OutputPort reduce_indices =
           graph.GetRegularFanin(GraphView::InputPort(fanout.node, 1));
+      if (!inferred_properties) {
+        // Infer properties lazily in case they are not needed.
+        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        inferred_properties = true;
+      }
       const auto& prop =
           properties.GetOutputProperties(reduce_indices.node->name());
       if (prop.size() < reduce_indices.port_id) {
@@ -91,6 +96,11 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           graph.GetRegularFanin(GraphView::InputPort(&node, 1));
       if (!IsSize(*input1.node) || !IsSize(*input2.node)) {
         continue;
+      }
+      if (!inferred_properties) {
+        // Infer properties lazily in case they are not needed.
+        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        inferred_properties = true;
       }
       const auto& prop1 = properties.GetInputProperties(input1.node->name());
       const auto& prop2 = properties.GetInputProperties(input2.node->name());

@@ -1,10 +1,10 @@
 op {
   graph_op_name: "GatherNd"
   endpoint {
-    name: "manip.gather_nd"
+    name: "gather_nd"
   }
   endpoint {
-    name: "gather_nd"
+    name: "manip.gather_nd"
     deprecated: true
   }
 }

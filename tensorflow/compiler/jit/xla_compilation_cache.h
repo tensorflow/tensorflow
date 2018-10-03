@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -152,7 +152,7 @@ class XlaCompilationCache : public ResourceBase {
   };
 
   mutex compile_cache_mu_;
-  gtl::FlatMap<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
+  absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
       GUARDED_BY(compile_cache_mu_);
 
   struct CompileStats {
@@ -165,7 +165,7 @@ class XlaCompilationCache : public ResourceBase {
   mutex compile_stats_mu_;
 
   // Maps cluster names to compilation statistics for said cluster.
-  gtl::FlatMap<string, CompileStats> compile_stats_
+  absl::flat_hash_map<string, CompileStats> compile_stats_
       GUARDED_BY(compile_stats_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);

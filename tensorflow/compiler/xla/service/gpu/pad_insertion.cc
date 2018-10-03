@@ -30,7 +30,8 @@ namespace gpu {
 
 namespace {
 bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
-  CHECK_EQ(conv.custom_call_target(), kCudnnConvForwardCallTarget);
+  CHECK(conv.custom_call_target() == kCudnnConvForwardCallTarget ||
+        conv.custom_call_target() == kCudnnConvBiasActivationForwardCallTarget);
   return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
          !window_util::HasDilation(conv.window());
@@ -385,7 +386,8 @@ StatusOr<bool> PadInsertion::RunOnComputation(HloComputation* computation) {
   }
   for (HloInstruction* instruction : convs) {
     const auto& target = instruction->custom_call_target();
-    if (target == kCudnnConvForwardCallTarget) {
+    if (target == kCudnnConvForwardCallTarget ||
+        target == kCudnnConvBiasActivationForwardCallTarget) {
       changed |= CanonicalizeForwardConvolution(instruction);
     } else if (target == kCudnnConvBackwardFilterCallTarget) {
       changed |= CanonicalizeBackwardFilterConvolution(instruction);

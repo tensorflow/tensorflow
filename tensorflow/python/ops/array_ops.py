@@ -1204,7 +1204,8 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     return _apply_mask_1d(tensor, mask, axis)
 
 
-@tf_export("sparse_mask")
+@tf_export("sparse.mask", "sparse_mask")
+@deprecation.deprecated_endpoints("sparse_mask")
 def sparse_mask(a, mask_indices, name=None):
   """Masks elements of `IndexedSlices`.
 
@@ -1226,7 +1227,7 @@ def sparse_mask(a, mask_indices, name=None):
   # `b` will be the subset of `a` slices at its second and third indices, so
   # we want to mask its first and last indices (which are at absolute
   # indices 12, 45)
-  b = tf.sparse_mask(a, [12, 45])
+  b = tf.sparse.mask(a, [12, 45])
 
   b.indices  # [26, 37]
   tf.shape(b.values)  # [2, 10]
@@ -1382,7 +1383,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
                     [10, 11, 12]]])
 
   # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `matrix_transpose`)
+  # (this common operation has a shorthand `linalg.transpose`)
   tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
                                    #   [2,  5],
                                    #   [3,  6]],
@@ -1421,7 +1422,8 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
 
 # pylint: disable=invalid-name
-@tf_export("matrix_transpose", "linalg.transpose")
+@tf_export("linalg.transpose", "matrix_transpose")
+@deprecation.deprecated_endpoints("matrix_transpose")
 def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   """Transposes last two dimensions of tensor `a`.
 
@@ -1429,19 +1431,19 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
   ```python
   x = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.matrix_transpose(x)  # [[1, 4],
+  tf.linalg.transpose(x)  # [[1, 4],
                           #  [2, 5],
                           #  [3, 6]]
 
   x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
                    [4 + 4j, 5 + 5j, 6 + 6j]])
-  tf.matrix_transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
+  tf.linalg.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
                                           #  [2 - 2j, 5 - 5j],
                                           #  [3 - 3j, 6 - 6j]]
 
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
-  # tf.matrix_transpose(x) is shape [1, 2, 4, 3]
+  # tf.linalg.transpose(x) is shape [1, 2, 4, 3]
   ```
 
   Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
@@ -1452,14 +1454,14 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   tf.matmul(matrix, b, transpose_b=True)
 
   # Inefficient!
-  tf.matmul(matrix, tf.matrix_transpose(b))
+  tf.matmul(matrix, tf.linalg.transpose(b))
   ```
 
   @compatibility(numpy)
   In `numpy` transposes are memory-efficient constant time operations as they
   simply return a new view of the same data with adjusted `strides`.
 
-  TensorFlow does not support strides, `matrix_transposes` return a new tensor
+  TensorFlow does not support strides, `linalg.transposes` return a new tensor
   with the items permuted.
   @end_compatibility
 
@@ -1467,7 +1469,7 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
     a: A `Tensor` with `rank >= 2`.
     name: A name for the operation (optional).
     conjugate: Optional bool. Setting it to `True` is mathematically equivalent
-      to tf.conj(tf.matrix_transpose(input)).
+      to tf.conj(tf.linalg.transpose(input)).
 
   Returns:
     A transposed batch matrix `Tensor`.
@@ -1756,7 +1758,8 @@ def _normalize_sparse_shape(shape, name):
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
-@tf_export("sparse_placeholder")
+@tf_export("sparse.placeholder", "sparse_placeholder")
+@deprecation.deprecated_endpoints("sparse_placeholder")
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
 
@@ -1767,8 +1770,8 @@ def sparse_placeholder(dtype, shape=None, name=None):
   For example:
 
   ```python
-  x = tf.sparse_placeholder(tf.float32)
-  y = tf.sparse_reduce_sum(x)
+  x = tf.sparse.placeholder(tf.float32)
+  y = tf.sparse.reduce_sum(x)
 
   with tf.Session() as sess:
     print(sess.run(y))  # ERROR: will fail because x was not fed.
@@ -2250,7 +2253,8 @@ def required_space_to_batch_paddings(input_shape,
     return result_paddings, result_crops
 
 
-@tf_export("space_to_batch")
+@tf_export("nn.space_to_batch", "space_to_batch")
+@deprecation.deprecated_endpoints("space_to_batch")
 def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
   result = space_to_batch_nd(
       input,
@@ -2264,7 +2268,8 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 space_to_batch.__doc__ = gen_array_ops.space_to_batch.__doc__
 
 
-@tf_export("space_to_depth")
+@tf_export("nn.space_to_depth", "space_to_depth")
+@deprecation.deprecated_endpoints("space_to_depth")
 def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.space_to_depth(input, block_size, data_format, name=name)
 
@@ -2272,7 +2277,8 @@ def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint:
 space_to_depth.__doc__ = gen_array_ops.space_to_depth.__doc__
 
 
-@tf_export("depth_to_space")
+@tf_export("nn.depth_to_space", "depth_to_space")
+@deprecation.deprecated_endpoints("depth_to_space")
 def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.depth_to_space(input, block_size, data_format, name=name)
 
@@ -2747,7 +2753,8 @@ def batch_gather(params, indices, name=None):
 @tf_export("quantize_v2")
 @deprecation.deprecated(
     "2017-10-25",
-    "`tf.quantize_v2` is deprecated, please use `tf.quantize` instead.")
+    "`tf.quantize_v2` is deprecated, please use `tf.quantization.quantize` "
+    "instead.")  # pylint: disable=missing-docstring
 def quantize_v2(input,  # pylint: disable=redefined-builtin
                 min_range,
                 max_range,
@@ -2769,7 +2776,8 @@ quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
 
 # We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate
 # tf.quantize_v2 in next version of TensorFlow.
-@tf_export("quantize")
+@tf_export("quantization.quantize", "quantize")
+@deprecation.deprecated_endpoints("quantize")
 def quantize(input,  # pylint: disable=redefined-builtin
              min_range,
              max_range,

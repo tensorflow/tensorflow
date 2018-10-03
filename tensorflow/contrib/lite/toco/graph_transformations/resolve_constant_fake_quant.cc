@@ -69,6 +69,13 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
   const auto* fakequant_op =
       static_cast<const FakeQuantOperator*>(fakequant_base_op);
 
+  // If the output of this op is a non-discardable array such as an input_array
+  // or a state array of the model, then this is a job for RemoveUnusedOp, not
+  // for constants-propagation.
+  if (!IsDiscardableArray(*model, fakequant_op->outputs[0])) {
+    return false;
+  }
+
   // Yield until the fakequant MinMax has been resolved.
   if (!fakequant_op->minmax) {
     return false;

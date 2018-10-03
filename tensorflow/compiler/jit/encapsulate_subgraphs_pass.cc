@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/session_options.h"
@@ -78,7 +78,8 @@ void SortControlInputs(GraphDef* gdef) {
 namespace {
 
 bool AreAllParentsGuaranteedConst(
-    const Node& n, const gtl::FlatSet<const Node*>& runtime_const_nodes) {
+    const Node& n,
+    const absl::flat_hash_set<const Node*>& runtime_const_nodes) {
   if (n.type_string() == "GuaranteeConst") {
     // If the current node is itself a cast-to-const, no need
     // to look at the incoming edges.
@@ -101,7 +102,7 @@ bool AreAllParentsGuaranteedConst(
 void MarkGuaranteedConstants(
     const Graph& graph,
     const std::vector<std::pair<const Node*, Node*>>& src_arg_pairs) {
-  gtl::FlatSet<const Node*> guaranteed_const_nodes;
+  absl::flat_hash_set<const Node*> guaranteed_const_nodes;
   std::vector<const Node*> srcs;
   srcs.reserve(src_arg_pairs.size());
   for (const auto& src_arg : src_arg_pairs) {
@@ -748,6 +749,12 @@ Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
     graph_->set_versions(graph_in->versions());
   }
 
+  // TODO(b/116981129): Enhance how the device for the encapsulated subgraph is
+  // determined. In case of hard placement, ensure all the encapsulated nodes
+  // have the same requested device, which in turn will be the requested device
+  // for the entire encapsulated subgraph. In case of soft placement, use a
+  // deterministic approach to fill in the requested device. Handle co-location
+  // constraints similarly if they exist.
   if (device_.empty()) {
     device_ = node->assigned_device_name().empty()
                   ? node->requested_device()
@@ -1357,28 +1364,31 @@ void Encapsulator::Subgraph::GetOutsideCompilationSubgraphNames(
 
 Status Encapsulator::GetFunctionNameAttr(
     Node const* node, string* attr, string* outside_compilation_attr) const {
-  Status s = GetNodeAttr(node->attrs(), group_attribute_, attr);
-  if (s.code() == error::Code::NOT_FOUND) {
-    // Return empty attr if there's no group_attribute.
-    attr->clear();
-  } else {
-    TF_RETURN_IF_ERROR(s);
-  }
-  bool has_group_attr = s.ok();
-  s = GetNodeAttr(node->attrs(), outside_compilation_attribute_,
-                  outside_compilation_attr);
-  if (s.code() == error::Code::NOT_FOUND) {
-    // Return empty attr if there's no outside_compilation attribute.
-    outside_compilation_attr->clear();
-  } else {
-    TF_RETURN_IF_ERROR(s);
-    if (!has_group_attr) {
-      return errors::InvalidArgument(
-          "Node ", node->name(), " has ", outside_compilation_attribute_,
-          " attribute but no ", group_attribute_, " attribute.");
+  AttrSlice attrs = node->attrs();
+  attr->clear();
+  outside_compilation_attr->clear();
+  bool found_group_attribute = false;
+  bool found_outside_compilation_attribute = false;
+  for (const auto& node_attr : attrs) {
+    if (node_attr.first == group_attribute_) {
+      TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
+      *attr = node_attr.second.s();
+      found_group_attribute = true;
+    } else if (node_attr.first == outside_compilation_attribute_) {
+      TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
+      *outside_compilation_attr = node_attr.second.s();
+      found_outside_compilation_attribute = true;
     }
+    if (found_group_attribute && found_outside_compilation_attribute) break;
   }
-  return Status::OK();
+
+  if (found_outside_compilation_attribute && !found_group_attribute) {
+    return errors::InvalidArgument(
+        "Node ", node->name(), " has ", outside_compilation_attribute_,
+        " attribute but no ", group_attribute_, " attribute.");
+  } else {
+    return Status::OK();
+  }
 }
 
 bool IsInSubgraph(const string& func_id, const string& outside_compilation_id) {

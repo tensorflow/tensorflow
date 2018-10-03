@@ -813,7 +813,7 @@ Tensor Tensor::Slice(int64 start, int64 limit) const {
 }
 
 Tensor Tensor::SubSlice(int64 index) const {
-  CHECK_GE(dims(), 2);  // Crash ok.
+  CHECK_GE(dims(), 1);  // Crash ok.
   CHECK_LE(0, index);   // Crash ok.
   int64 dim0_size = shape_.dim_size(0);
   CHECK_LE(index, dim0_size);  // Crash ok.

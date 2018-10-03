@@ -43,14 +43,14 @@ class VariablesTestCase(test.TestCase):
 
   def testInitialization(self):
     with self.cached_session():
-      var0 = variables.Variable(0.0)
+      var0 = variables.VariableV1(0.0)
       self.assertEqual("Variable:0", var0.name)
       self.assertEqual("Variable", var0._shared_name)
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.get_shape())
       self.assertEqual([], var0.shape)
 
-      var1 = variables.Variable(1.1)
+      var1 = variables.VariableV1(1.1)
       self.assertEqual("Variable_1:0", var1.name)
       self.assertEqual("Variable_1", var1._shared_name)
       self.assertEqual([], var1.get_shape())
@@ -143,7 +143,7 @@ class VariablesTestCase(test.TestCase):
 
   def testZeroSizeStringAssign(self):
     with self.cached_session() as sess:
-      array = variables.Variable(
+      array = variables.VariableV1(
           initial_value=array_ops.zeros((0,), dtype=dtypes.string),
           name="foo",
           trainable=False,
@@ -192,7 +192,7 @@ class VariablesTestCase(test.TestCase):
         # d get the control dep.
         d = constant_op.constant(2.0)
         # variables do not.
-        var_x = variables.Variable(2.0)
+        var_x = variables.VariableV1(2.0)
       self.assertEqual([c.op], d.op.control_inputs)
       self.assertEqual([], var_x.initializer.control_inputs)
       self.assertEqual([], var_x.value().op.control_inputs)
@@ -280,10 +280,10 @@ class VariablesTestCase(test.TestCase):
 
   def testCollections(self):
     with self.cached_session():
-      var_x = variables.Variable(2.0)
-      var_y = variables.Variable(2.0, trainable=False)
-      var_z = variables.Variable(2.0, trainable=True)
-      var_t = variables.Variable(
+      var_x = variables.VariableV1(2.0)
+      var_y = variables.VariableV1(2.0, trainable=False)
+      var_z = variables.VariableV1(2.0, trainable=True)
+      var_t = variables.VariableV1(
           2.0,
           trainable=True,
           collections=[
@@ -296,9 +296,9 @@ class VariablesTestCase(test.TestCase):
   def testCollectionsWithScope(self):
     with self.cached_session():
       with ops.name_scope("scope_1"):
-        var_x = variables.Variable(2.0)
+        var_x = variables.VariableV1(2.0)
       with ops.name_scope("scope_2"):
-        var_y = variables.Variable(2.0)
+        var_y = variables.VariableV1(2.0)
 
       self.assertEqual([var_x, var_y], variables.global_variables())
       self.assertEqual([var_x], variables.global_variables("scope_1"))
@@ -399,7 +399,7 @@ class VariablesTestCase(test.TestCase):
 
   def testColocation(self):
     with ops.device("/job:ps"):
-      var = variables.Variable(0, name="v")
+      var = variables.VariableV1(0, name="v")
     with ops.device("/job:worker/task:7"):
       assign_op = var.assign(1)
     self.assertDeviceEqual("/job:ps", assign_op.device)
@@ -522,7 +522,7 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
 
   def testRepr(self):
-    var = variables.Variable(np.zeros((5, 5), np.float32), name="noop")
+    var = variables.VariableV1(np.zeros((5, 5), np.float32), name="noop")
     self.assertEqual(
         "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
         repr(var))
@@ -556,8 +556,8 @@ class IsInitializedTest(test.TestCase):
 
   def testVariableList(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
-      v = variables.Variable([1, 2], name="v")
-      w = variables.Variable([3, 4], name="w")
+      v = variables.VariableV1([1, 2], name="v")
+      w = variables.VariableV1([3, 4], name="w")
       uninited = variables.report_uninitialized_variables()
       self.assertAllEqual(np.array([b"v", b"w"]), sess.run(uninited))
       sess.run(w.initializer)
@@ -593,8 +593,8 @@ class ObsoleteIsInitializedTest(test.TestCase):
 
   def testVariables(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
-      v = variables.Variable([1, 2])
-      w = variables.Variable([3, 4])
+      v = variables.VariableV1([1, 2])
+      w = variables.VariableV1([3, 4])
       _ = v, w
       inited = variables.assert_variables_initialized()
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
@@ -604,8 +604,8 @@ class ObsoleteIsInitializedTest(test.TestCase):
 
   def testVariableList(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
-      v = variables.Variable([1, 2])
-      w = variables.Variable([3, 4])
+      v = variables.VariableV1([1, 2])
+      w = variables.VariableV1([3, 4])
       inited = variables.assert_variables_initialized([v])
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         inited.op.run()
@@ -695,6 +695,48 @@ class PartitionedVariableTest(test.TestCase):
             dtype=v0.dtype,
             variable_list=[v0],
             partitions=partitions)
+
+  def testPartitionedVariableAssignments(self):
+    with ops.Graph().as_default(), self.cached_session() as sess:
+      v0 = variables.Variable(initial_value=[0.0])
+      v1 = variables.Variable(initial_value=[1.0])
+      v0._set_save_slice_info(
+          variables.Variable.SaveSliceInfo(v0.name, [2], [0], [1]))
+      v1._set_save_slice_info(
+          variables.Variable.SaveSliceInfo(v0.name, [2], [1], [1]))
+      partitions = [2]
+
+      # Pass variable_list as [v1, v0] to ensure they are properly
+      # re-sorted to [v0, v1] based on their slice info offsets.
+      partitioned_variable = variables.PartitionedVariable(
+          name="two_vars",
+          shape=[2],
+          dtype=v0.dtype,
+          variable_list=[v0, v1],
+          partitions=partitions)
+
+      deltas_a = constant_op.constant([1.0, 2.0])
+      deltas_b = constant_op.constant([3.0, 4.0])
+      ones = array_ops.ones([2])
+      plus_delta = partitioned_variable.assign_add(deltas_a)
+      minus_delta = partitioned_variable.assign_sub(deltas_b)
+      assign_ones = partitioned_variable.assign(ones)
+      variables.global_variables_initializer().run()
+
+      self.assertEqual([1.0], plus_delta[0].eval())
+      self.assertEqual([1.0], v0.eval())
+      self.assertEqual([3.0], plus_delta[1].eval())
+      self.assertEqual([3.0], v1.eval())
+
+      self.assertEqual([-2.0], minus_delta[0].eval())
+      self.assertEqual([-2.0], v0.eval())
+      self.assertEqual([-1.0], minus_delta[1].eval())
+      self.assertEqual([-1.0], v1.eval())
+
+      self.assertEqual([1.0], assign_ones[0].eval())
+      self.assertEqual([1.0], v0.eval())
+      self.assertEqual([1.0], assign_ones[1].eval())
+      self.assertEqual([1.0], v1.eval())
 
 
 class VariableContainerTest(test.TestCase):

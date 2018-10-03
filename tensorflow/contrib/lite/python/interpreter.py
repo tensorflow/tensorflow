@@ -253,5 +253,5 @@ class Interpreter(object):
     self._ensure_safe()
     self._interpreter.Invoke()
 
-  def reset_all_variables_to_zero(self):
-    return self._interpreter.ResetVariableTensorsToZero()
+  def reset_all_variables(self):
+    return self._interpreter.ResetVariableTensors()

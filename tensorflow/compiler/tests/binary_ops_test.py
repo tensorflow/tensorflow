@@ -1445,6 +1445,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([4, 0], dtype=np.int32),
           expected=np.zeros([4, 0], dtype=dtype))
 
+      x = np.arange(3).reshape((3, 1, 1, 1)).astype(dtype)
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array((3, 7, 8, 9), dtype=np.int32),
+          expected=np.tile(x, (1, 7, 8, 9)))
+
 
 if __name__ == "__main__":
   googletest.main()

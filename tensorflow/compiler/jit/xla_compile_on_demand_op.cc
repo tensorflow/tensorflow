@@ -34,6 +34,7 @@ std::map<int, OptionalTensor> GetVariables(OpKernelContext* ctx) {
       OptionalTensor& optional = variables[i];
       optional.name = handle.name();
       if (LookupResource(ctx, handle, &variable).ok()) {
+        core::ScopedUnref scoped_unref(variable);
         tf_shared_lock lock(*variable->mu());
         optional.present = true;
         optional.value = *variable->tensor();

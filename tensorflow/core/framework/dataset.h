@@ -657,15 +657,15 @@ class DatasetBaseIterator : public IteratorBase {
   // When performance modeling is enabled, this method adds a tunable parameter
   // to the model node corresponding to this iterator.
   //
-  // The performance modeling logic may use `value` to set the value of the
+  // The performance modeling logic may use `state` to set the value of the
   // tunable parameter at any point during the lifetime of this iterator. When
-  // it does, it notifies `cond_var`.
+  // it does, it acquires `state->mu` and notifies `state->cond_var`.
   void AddTunableParameter(IteratorContext* ctx, const string& name,
-                           std::atomic<int64>* value, int64 min, int64 max,
-                           condition_variable* cond_var) {
+                           std::shared_ptr<model::SharedState> state, int64 min,
+                           int64 max) {
     if (ctx->model()) {
-      ctx->model()->AddTunableParameter(prefix(), name, value, min, max,
-                                        cond_var);
+      ctx->model()->AddTunableParameter(prefix(), name, std::move(state), min,
+                                        max);
     }
   }
 

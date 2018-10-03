@@ -26,12 +26,12 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util import deprecation
 
 
-class _SlideDataset(dataset_ops.Dataset):
+class _SlideDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that passes a sliding window over its input."""
 
   def __init__(self, input_dataset, window_size, window_shift, window_stride):
     """See `sliding_window_batch` for details."""
-    super(_SlideDataset, self).__init__()
+    super(_SlideDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
         window_size, dtype=dtypes.int64, name="window_stride")

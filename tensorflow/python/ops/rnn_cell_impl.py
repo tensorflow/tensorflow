@@ -370,7 +370,7 @@ class LayerRNNCell(RNNCell):
                                      *args, **kwargs)
 
 
-@tf_export("nn.rnn_cell.BasicRNNCell")
+@tf_export(v1=["nn.rnn_cell.BasicRNNCell"])
 class BasicRNNCell(LayerRNNCell):
   """The most basic RNN cell.
 
@@ -393,6 +393,8 @@ class BasicRNNCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.SimpleRNNCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -611,7 +613,7 @@ class LSTMStateTuple(_LSTMStateTuple):
 # TODO(scottzhu): Stop exporting this class in TF 2.0.
 @tf_export("nn.rnn_cell.BasicLSTMCell")
 class BasicLSTMCell(LayerRNNCell):
-  """DEPRECATED: Please use @{tf.nn.rnn_cell.LSTMCell} instead.
+  """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
   Basic LSTM recurrent network cell.
 

@@ -231,83 +231,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Conv(const float* input_data, const Dims<4>& input_dims,
-                 const float* filter_data, const Dims<4>& filter_dims,
-                 const float* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int dilation_width_factor,
-                 int dilation_height_factor, int pad_width, int pad_height,
-                 float output_activation_min, float output_activation_max,
-                 float* output_data, const Dims<4>& output_dims,
-                 float* im2col_data, const Dims<4>& im2col_dims) {
-  tflite::ConvParams op_params;
-  // Padding type is ignored, but still set.
-  op_params.padding_type = PaddingType::kSame;
-  op_params.padding_values.width = pad_width;
-  op_params.padding_values.height = pad_height;
-  op_params.stride_width = stride_width;
-  op_params.stride_height = stride_height;
-  op_params.dilation_width_factor = dilation_width_factor;
-  op_params.dilation_height_factor = dilation_height_factor;
-  op_params.float_activation_min = output_activation_min;
-  op_params.float_activation_max = output_activation_max;
-
-  Conv(op_params, DimsToShape(input_dims), input_data, DimsToShape(filter_dims),
-       filter_data, DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-       output_data, DimsToShape(im2col_dims), im2col_data);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <FusedActivationFunctionType Ac>
-void Conv(const float* input_data, const Dims<4>& input_dims,
-          const float* filter_data, const Dims<4>& filter_dims,
-          const float* bias_data, const Dims<4>& bias_dims, int stride_width,
-          int stride_height, int dilation_width_factor,
-          int dilation_height_factor, int pad_width, int pad_height,
-          float* output_data, const Dims<4>& output_dims, float* im2col_data,
-          const Dims<4>& im2col_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-  Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
-       stride_width, stride_height, dilation_width_factor,
-       dilation_height_factor, pad_width, pad_height, output_activation_min,
-       output_activation_max, output_data, output_dims, im2col_data,
-       im2col_dims);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void Conv(const float* input_data, const Dims<4>& input_dims,
-          const float* filter_data, const Dims<4>& filter_dims,
-          const float* bias_data, const Dims<4>& bias_dims, int stride_width,
-          int stride_height, int pad_width, int pad_height, float* output_data,
-          const Dims<4>& output_dims, float* im2col_data,
-          const Dims<4>& im2col_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-  Conv(input_data, input_dims, filter_data, filter_dims, bias_data, bias_dims,
-       stride_width, stride_height, 1, 1, pad_width, pad_height,
-       output_activation_min, output_activation_max, output_data, output_dims,
-       im2col_data, im2col_dims);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void Conv(const float* input_data, const Dims<4>& input_dims,
-          const float* filter_data, const Dims<4>& filter_dims,
-          const float* bias_data, const Dims<4>& bias_dims, int stride,
-          int pad_width, int pad_height, float* output_data,
-          const Dims<4>& output_dims, float* im2col_data,
-          const Dims<4>& im2col_dims) {
-  Conv<Ac>(input_data, input_dims, filter_data, filter_dims, bias_data,
-           bias_dims, stride, stride, 1, 1, pad_width, pad_height, output_data,
-           output_dims, im2col_data, im2col_dims);
-}
-
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                  const uint8* input_data, const RuntimeShape& filter_shape,
                  const uint8* filter_data, const RuntimeShape& bias_shape,
@@ -389,111 +312,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
       }
     }
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_offset, const uint8* filter_data,
-                 const Dims<4>& filter_dims, int32 filter_offset,
-                 const int32* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int dilation_width_factor,
-                 int dilation_height_factor, int pad_width, int pad_height,
-                 int32 output_offset, int32 output_multiplier, int output_shift,
-                 int32 output_activation_min, int32 output_activation_max,
-                 uint8* output_data, const Dims<4>& output_dims,
-                 uint8* im2col_data, const Dims<4>& im2col_dims,
-                 gemmlowp::GemmContext* gemm_context) {
-  tflite::ConvParams op_params;
-  // Padding type is ignored, but still set.
-  op_params.padding_type = PaddingType::kSame;
-  op_params.padding_values.width = pad_width;
-  op_params.padding_values.height = pad_height;
-  op_params.stride_width = stride_width;
-  op_params.stride_height = stride_height;
-  op_params.dilation_width_factor = dilation_width_factor;
-  op_params.dilation_height_factor = dilation_height_factor;
-  op_params.input_offset = input_offset;
-  op_params.weights_offset = filter_offset;
-  op_params.output_offset = output_offset;
-  op_params.output_multiplier = output_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.output_shift = kReverseShift * output_shift;
-  op_params.quantized_activation_min = output_activation_min;
-  op_params.quantized_activation_max = output_activation_max;
-
-  Conv(op_params, DimsToShape(input_dims), input_data, DimsToShape(filter_dims),
-       filter_data, DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-       output_data, DimsToShape(im2col_dims), im2col_data, gemm_context);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_offset, const uint8* filter_data,
-                 const Dims<4>& filter_dims, int32 filter_offset,
-                 const int32* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, int32 output_offset, int32 output_multiplier,
-                 int output_shift, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims, uint8* im2col_data,
-                 const Dims<4>& im2col_dims,
-                 gemmlowp::GemmContext* gemm_context) {
-  Conv(input_data, input_dims, input_offset, filter_data, filter_dims,
-       filter_offset, bias_data, bias_dims, stride_width, stride_height, 1, 1,
-       pad_width, pad_height, output_offset, output_multiplier, output_shift,
-       output_activation_min, output_activation_max, output_data, output_dims,
-       im2col_data, im2col_dims, gemm_context);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_offset, const uint8* filter_data,
-                 const Dims<4>& filter_dims, int32 filter_offset,
-                 const int32* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, int32 output_offset, int32 output_multiplier,
-                 int output_shift, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims, uint8* im2col_data,
-                 const Dims<4>& im2col_dims,
-                 gemmlowp::GemmContext* gemm_context) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  Conv(input_data, input_dims, input_offset, filter_data, filter_dims,
-       filter_offset, bias_data, bias_dims, stride_width, stride_height,
-       pad_width, pad_height, output_offset, output_multiplier, output_shift,
-       output_activation_min, output_activation_max, output_data, output_dims,
-       im2col_data, im2col_dims, gemm_context);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void Conv(const uint8* input_data, const Dims<4>& input_dims,
-          int32 input_offset, const uint8* filter_data,
-          const Dims<4>& filter_dims, int32 filter_offset,
-          const int32* bias_data, const Dims<4>& bias_dims, int stride,
-          int pad_width, int pad_height, int32 output_offset,
-          int32 output_multiplier, int output_shift,
-          int32 output_activation_min, int32 output_activation_max,
-          uint8* output_data, const Dims<4>& output_dims, uint8* im2col_data,
-          const Dims<4>& im2col_dims, gemmlowp::GemmContext* gemm_context) {
-  Conv<Ac>(input_data, input_dims, input_offset, filter_data, filter_dims,
-           filter_offset, bias_data, bias_dims, stride, stride, pad_width,
-           pad_height, output_offset, output_multiplier, output_shift,
-           output_activation_min, output_activation_max, output_data,
-           output_dims, im2col_data, im2col_dims, gemm_context);
 }
 
 template <typename T>
@@ -1385,21 +1203,6 @@ void BroadcastDiv4DSlow(const ArithmeticParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-template <typename T>
-void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
-                  const T* input2_data, const Dims<4>& input2_dims,
-                  T output_activation_min, T output_activation_max,
-                  T* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  SetActivationParams(output_activation_min, output_activation_max, &op_params);
-
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
-}
-
 template <typename T>
 inline void Div(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const T* input1_data,
@@ -1416,21 +1219,6 @@ inline void Div(const ArithmeticParams& params,
         input1_data[i] / input2_data[i], output_activation_min,
         output_activation_max);
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-template <typename T>
-inline void Div(const T* input1_data, const Dims<4>& input1_dims,
-                const T* input2_data, const Dims<4>& input2_dims,
-                T output_activation_min, T output_activation_max,
-                T* output_data, const Dims<4>& output_dims) {
-  tflite::ArithmeticParams op_params;
-  SetActivationParams(output_activation_min, output_activation_max, &op_params);
-
-  Div(op_params, DimsToShape(input1_dims), input1_data,
-      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
-      output_data);
 }
 
 inline void SubNonBroadcast(const ArithmeticParams& params,
@@ -1772,35 +1560,10 @@ inline void Concatenation(const ConcatenationParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-template <FusedActivationFunctionType Ac, typename Scalar>
-inline void Concatenation(int concat_dim, const Scalar* const* input_data,
-                          const Dims<4>* const* input_dims, int inputs_count,
-                          Scalar* output_data, const Dims<4>& output_dims) {
-  // For now we don't have a model with a Concatenation with fused activation.
-  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
-
-  std::vector<RuntimeShape> input_shapes(inputs_count);
-  std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
-  for (int i = 0; i < inputs_count; ++i) {
-    ShapeFromDims(*input_dims[i], &input_shapes[i]);
-    input_shapes_indirect[i] = &input_shapes[i];
-  }
-  tflite::ConcatenationParams op_params;
-  op_params.axis = 3 - concat_dim;
-  op_params.inputs_count = inputs_count;
-
-  Concatenation(op_params, input_shapes_indirect.data(), input_data,
-                DimsToShape(output_dims), output_data);
-}
-
 // TODO(prabhumk): This is the same as the optimized implementation.
 // TODO(prabhumk): The quantized implementation of concatentation isn't fully
 // quantized as it takes scale as a floating point value. This should be fixed
 // when optimizng this routine further.
-
-// template <>
 inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const RuntimeShape* const* input_shapes,
                                      const uint8* const* input_data,
@@ -1813,15 +1576,13 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   const int32 output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
 
-  // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization parameters for all the inputs to the concat
-  // operator.
-  TFLITE_DCHECK_GT(inputs_count, 1);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int concat_dimensions = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LT(axis, concat_dimensions);
+
   int64_t concat_size = 0;
   for (int i = 0; i < inputs_count; i++) {
-    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), 4);
-    for (int j = 0; j < 4; j++) {
+    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
+    for (int j = 0; j < concat_dimensions; j++) {
       if (j != axis) {
         MatchingDim(*input_shapes[i], j, output_shape, j);
       }
@@ -1836,9 +1597,10 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   // For all input arrays,
   // FlatSize() = outer_size * Dims(axis) * base_inner_size;
   int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < 4; ++i) {
+  for (int i = axis + 1; i < concat_dimensions; ++i) {
     base_inner_size *= output_shape.Dims(i);
   }
+
   const float inverse_output_scale = 1.f / output_scale;
   uint8* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
@@ -1864,65 +1626,52 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-inline void Concatenation(int concat_dim, const uint8* const* input_data,
-                          const Dims<4>* const* input_dims,
-                          const int32* input_zeropoint,
-                          const float* input_scale, int inputs_count,
-                          uint8* output_data, const Dims<4>& output_dims,
-                          const int32 output_zeropoint,
-                          const float output_scale) {
-  std::vector<RuntimeShape> input_shapes(inputs_count);
-  std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
-  for (int i = 0; i < inputs_count; ++i) {
-    ShapeFromDims(*input_dims[i], &input_shapes[i]);
-    input_shapes_indirect[i] = &input_shapes[i];
-  }
-  tflite::ConcatenationParams op_params;
-  op_params.axis = 3 - concat_dim;
-  op_params.input_zeropoint = input_zeropoint;
-  op_params.input_scale = input_scale;
-  op_params.inputs_count = inputs_count;
-  op_params.output_zeropoint = output_zeropoint;
-  op_params.output_scale = output_scale;
-
-  ConcatenationWithScaling(op_params, input_shapes_indirect.data(), input_data,
-                           DimsToShape(output_dims), output_data);
-}
-
 template <typename Scalar>
-void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, int inputs_count,
-          Scalar* output_data, const Dims<4>& output_dims) {
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
+          const Scalar* const* input_data, const RuntimeShape& output_shape,
+          Scalar* output_data) {
+  const int dimensions = output_shape.DimensionsCount();
+  int axis = params.axis;
+  int inputs_count = params.inputs_count;
+
   int outer_size = 1;
-  for (int i = dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
+  for (int i = 0; i < axis; i++) {
+    outer_size *= output_shape.Dims(i);
   }
-  Scalar* output_ptr = output_data;
-  const int copy_size = FlatSize(**input_dims) / outer_size;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      memcpy(output_ptr, input_data[i] + k * copy_size,
-             copy_size * sizeof(Scalar));
-      output_ptr += copy_size;
+  int copy_size = 1;
+  for (int i = params.axis + 1; i < dimensions; i++) {
+    copy_size *= output_shape.Dims(i);
+  }
+  TFLITE_DCHECK_EQ((**input_shapes).FlatSize(), copy_size * outer_size);
+
+  for (int i = 0; i < inputs_count; ++i) {
+    for (int k = 0; k < outer_size; k++) {
+      const Scalar* input_ptr = input_data[i] + copy_size * k;
+      int loc = k * inputs_count * copy_size + i * copy_size;
+      memcpy(output_data + loc, input_ptr, copy_size * sizeof(Scalar));
     }
   }
 }
 
 template <typename Scalar>
-void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
-            int dimensions, int outputs_count, Scalar* const* output_datas,
-            const Dims<4>& output_dims) {
-  int outer_size = 1;
-  for (int i = dimensions - axis; i < 4; i++) {
-    outer_size *= input_dims.sizes[i];
-  }
+void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
+            const Scalar* input_data, const RuntimeShape& output_shape,
+            Scalar* const* output_datas) {
+  const int dimensions = input_shape.DimensionsCount();
+  const int outputs_count = params.num_split;
 
-  const int copy_size = FlatSize(input_dims) / outer_size / outputs_count;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < outputs_count; ++i) {
+  int outer_size = 1;
+  for (int i = 0; i < params.axis; i++) {
+    outer_size *= input_shape.Dims(i);
+  }
+  int copy_size = 1;
+  for (int i = params.axis + 1; i < dimensions; i++) {
+    copy_size *= input_shape.Dims(i);
+  }
+  TFLITE_DCHECK_EQ(output_shape.FlatSize(), copy_size * outer_size);
+
+  for (int i = 0; i < outputs_count; ++i) {
+    for (int k = 0; k < outer_size; k++) {
       Scalar* output_ptr = output_datas[i] + copy_size * k;
       int loc = k * outputs_count * copy_size + i * copy_size;
       memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
@@ -1931,18 +1680,29 @@ void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
 }
 
 template <typename Scalar>
-void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, const int32* input_zeropoint,
-          const float* input_scale, int inputs_count, Scalar* output_data,
-          const Dims<4>& output_dims, const int32 output_zeropoint,
-          const float output_scale) {
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+void PackWithScaling(const PackParams& params,
+                     const RuntimeShape* const* input_shapes,
+                     const uint8* const* input_data,
+                     const RuntimeShape& output_shape, uint8* output_data) {
+  const int dimensions = output_shape.DimensionsCount();
+  int axis = params.axis;
+  const int32* input_zeropoint = params.input_zeropoint;
+  const float* input_scale = params.input_scale;
+  int inputs_count = params.inputs_count;
+  const int32 output_zeropoint = params.output_zeropoint;
+  const float output_scale = params.output_scale;
+
   int outer_size = 1;
-  for (int i = dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
+  for (int i = 0; i < axis; i++) {
+    outer_size *= output_shape.Dims(i);
   }
+  int copy_size = 1;
+  for (int i = axis + 1; i < dimensions; i++) {
+    copy_size *= output_shape.Dims(i);
+  }
+  TFLITE_DCHECK_EQ((**input_shapes).FlatSize(), copy_size * outer_size);
+
   Scalar* output_ptr = output_data;
-  const int copy_size = FlatSize(**input_dims) / outer_size;
   const float inverse_output_scale = 1.f / output_scale;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
@@ -1968,12 +1728,15 @@ void Pack(int dim, const Scalar* const* input_data,
   }
 }
 
-template <FusedActivationFunctionType Ac, typename Scalar>
-void DepthConcatenation(const Scalar* const* input_data,
-                        const Dims<4>* const* input_dims, int inputs_count,
-                        Scalar* output_data, const Dims<4>& output_dims) {
-  Concatenation<Ac, Scalar>(0, input_data, input_dims, inputs_count,
-                            output_data, output_dims);
+template <typename Scalar>
+void DepthConcatenation(const ConcatenationParams& params,
+                        const RuntimeShape* const* input_shapes,
+                        const Scalar* const* input_data,
+                        const RuntimeShape& output_shape, Scalar* output_data) {
+  auto params_copy = params;
+  params_copy.axis = 3;
+  Concatenation(params_copy, input_shapes, input_data, output_shape,
+                output_data);
 }
 
 inline void LstmCell(
@@ -2091,31 +1854,6 @@ inline void LstmCell(
       }
     }
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
-                     const float* prev_activ_data,
-                     const Dims<4>& prev_activ_dims, const float* weights_data,
-                     const Dims<4>& weights_dims, const float* bias_data,
-                     const Dims<4>& bias_dims, const float* prev_state_data,
-                     const Dims<4>& prev_state_dims, float* output_state_data,
-                     const Dims<4>& output_state_dims, float* output_activ_data,
-                     const Dims<4>& output_activ_dims, float* concat_temp_data,
-                     const Dims<4>& concat_temp_dims, float* activ_temp_data,
-                     const Dims<4>& activ_temp_dims) {
-  tflite::LstmCellParams op_params;
-  // Float LSTM cell does not need parameters to be set: leave untouched.
-
-  LstmCell(op_params, DimsToShape(input_dims), input_data,
-           DimsToShape(prev_activ_dims), prev_activ_data,
-           DimsToShape(weights_dims), weights_data, DimsToShape(bias_dims),
-           bias_data, DimsToShape(prev_state_dims), prev_state_data,
-           DimsToShape(output_state_dims), output_state_data,
-           DimsToShape(output_activ_dims), output_activ_data,
-           DimsToShape(concat_temp_dims), concat_temp_data,
-           DimsToShape(activ_temp_dims), activ_temp_data);
 }
 
 // Quantized LSTM cell implementation.
@@ -2392,37 +2130,6 @@ inline void LstmCell(
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <int StateIntegerBits>
-void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
-              const uint8* prev_activ_data_uint8,
-              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
-              const Dims<4>& weights_dims, const int32* bias_data_int32,
-              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
-              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
-              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
-              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
-              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
-              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift,
-              gemmlowp::GemmContext* gemm_context) {
-  tflite::LstmCellParams op_params;
-  op_params.weights_zero_point = weights_zero_point;
-  op_params.accum_multiplier = accum_multiplier;
-  op_params.accum_shift = accum_shift;
-
-  LstmCell<StateIntegerBits>(
-      op_params, DimsToShape(input_dims), input_data_uint8,
-      DimsToShape(prev_activ_dims), prev_activ_data_uint8,
-      DimsToShape(weights_dims), weights_data_uint8, DimsToShape(bias_dims),
-      bias_data_int32, DimsToShape(prev_state_dims), prev_state_data_int16,
-      DimsToShape(output_state_dims), output_state_data_int16,
-      DimsToShape(output_activ_dims), output_activ_data_uint8,
-      DimsToShape(concat_temp_dims), concat_temp_data_uint8,
-      DimsToShape(activ_temp_dims), activ_temp_data_int16, gemm_context);
-}
-
 template <typename Scalar>
 void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
@@ -2463,45 +2170,6 @@ void Split(const SplitParams& params, const RuntimeShape& input_shape,
       input_ptr += copy_size;
     }
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-template <typename Scalar>
-void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
-                     int axis, int outputs_count, Scalar* const* output_data,
-                     const Dims<4>* const* output_dims) {
-  std::vector<RuntimeShape> output_shapes(outputs_count);
-  std::vector<const RuntimeShape*> output_shapes_indirect(outputs_count);
-  for (int i = 0; i < outputs_count; ++i) {
-    ShapeFromDims(*output_dims[i], &output_shapes[i]);
-    output_shapes_indirect[i] = &output_shapes[i];
-  }
-  tflite::SplitParams op_params;
-  op_params.axis = 3 - axis;
-  op_params.num_split = outputs_count;
-
-  Split(op_params, DimsToShape(input_dims), input_data,
-        output_shapes_indirect.data(), output_data);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-template <FusedActivationFunctionType Ac, typename Scalar>
-void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
-                     int outputs_count, Scalar* const* output_data,
-                     const Dims<4>* const* output_dims) {
-  TFLITE_DCHECK_GE(outputs_count, 1);
-  for (int i = 0; i < outputs_count; i++) {
-    /* batches = */ MatchingArraySize(*output_dims[i], 3, input_dims, 3);
-    /* height = */ MatchingArraySize(*output_dims[i], 2, input_dims, 2);
-    /* width = */ MatchingArraySize(*output_dims[i], 1, input_dims, 1);
-  }
-  // For now we don't have a model with a Split with fused activation.
-  TFLITE_DCHECK_EQ(Ac, FusedActivationFunctionType::kNone);
-
-  TensorFlowSplit(input_data, input_dims, /*axis=*/0, outputs_count,
-                  output_data, output_dims);
 }
 
 inline int NodeOffset(int b, int h, int w, int height, int width) {
@@ -2834,15 +2502,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy
-inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
-                       float* output_data, const RuntimeShape& output_shape) {
-  SoftmaxParams params;
-  // No params currently used for float LogSoftmax.
-  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
-}
-
 // Although currently the name of this function says that it cannot handle
 // values less than 1, in practice it can handle as low as 1/x_max, where
 // x_max is the largest representable input.  In other words, the output range
@@ -3047,22 +2706,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
-                       int32 input_multiplier, int32 input_left_shift,
-                       int32 reverse_scaling_divisor,
-                       int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const RuntimeShape& output_shape) {
-  SoftmaxParams params;
-  params.input_multiplier = input_multiplier;
-  params.input_left_shift = input_left_shift;
-  params.reverse_scaling_divisor = reverse_scaling_divisor;
-  params.reverse_scaling_right_shift = reverse_scaling_right_shift;
-  params.diff_min = diff_min;
-  LogSoftmax(params, input_shape, input_data, output_shape, output_data);
-}
-
 inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
                      const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -3124,20 +2767,6 @@ inline void Logistic(const LogisticParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
-                     int32 input_zero_point, int32 input_range_radius,
-                     int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const RuntimeShape& output_shape) {
-  LogisticParams params;
-  params.input_zero_point = input_zero_point;
-  params.input_range_radius = input_range_radius;
-  params.input_multiplier = input_multiplier;
-  params.input_left_shift = input_left_shift;
-  Logistic(params, input_shape, input_data, output_shape, output_data);
-}
-
 inline void Logistic(const LogisticParams& params,
                      const RuntimeShape& input_shape, const int16* input_data,
                      const RuntimeShape& output_shape, int16* output_data) {
@@ -3155,15 +2784,6 @@ inline void Logistic(const LogisticParams& params,
     F0 output = gemmlowp::logistic(input);
     output_data[i] = output.raw();
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
-                     const RuntimeShape& output_shape, int16* output_data) {
-  LogisticParams params;
-  // No params currently needed by int16 Logistic.
-  Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
 inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
@@ -3229,20 +2849,6 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
-                 int32 input_zero_point, int32 input_range_radius,
-                 int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const RuntimeShape& output_shape) {
-  TanhParams params;
-  params.input_zero_point = input_zero_point;
-  params.input_range_radius = input_range_radius;
-  params.input_multiplier = input_multiplier;
-  params.input_left_shift = input_left_shift;
-  Tanh(params, input_shape, input_data, output_shape, output_data);
-}
-
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
                  const int16* input_data, const RuntimeShape& output_shape,
                  int16* output_data) {
@@ -3277,16 +2883,6 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
-                 int input_left_shift, int16* output_data,
-                 const RuntimeShape& output_shape) {
-  TanhParams params;
-  params.input_left_shift = input_left_shift;
-  Tanh(params, input_shape, input_data, output_shape, output_data);
-}
-
 inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
@@ -3299,19 +2895,6 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
     float result = static_cast<float>(scale * (val - zero_point));
     output_data[i] = result;
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
-                       int32 zero_point, double scale, float* output_data,
-                       const Dims<4>& output_dims) {
-  tflite::DequantizationParams op_params;
-  op_params.zero_point = zero_point;
-  op_params.scale = scale;
-
-  Dequantize(op_params, DimsToShape(input_dims), input_data,
-             DimsToShape(output_dims), output_data);
 }
 
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
@@ -3337,20 +2920,6 @@ inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                     output_data, flat_size);
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
-                      float rmin, float rmax, int num_bits, float* output_data,
-                      const Dims<4>& output_dims) {
-  tflite::FakeQuantParams op_params;
-  op_params.num_bits = num_bits;
-  op_params.minmax.min = rmin;
-  op_params.minmax.max = rmax;
-
-  FakeQuant(op_params, DimsToShape(input_dims), input_data,
-            DimsToShape(output_dims), output_data);
-}
-
 template <typename SrcT, typename DstT>
 inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
                  const RuntimeShape& output_shape, DstT* output_data) {
@@ -3374,15 +2943,21 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
 
 template <typename T>
 inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const int32* coords_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  // Enable these checks when moving legacy ops to legacy_reference_ops.
-  //
-  // TFLITE_DCHECK_EQ(coords_shape.DimensionsCount(), 1);
+                   const RuntimeShape& unextended_input_shape,
+                   const T* input_data, const RuntimeShape& coords_shape,
+                   const int32* coords_data,
+                   const RuntimeShape& unextended_output_shape,
+                   T* output_data) {
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
   const int input_rank = op_params.input_rank;
   const int gather_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(input_shape.DimensionsCount(), gather_dimensions);
+  TFLITE_DCHECK_GE(input_shape.DimensionsCount(), gather_dimensions);
   const int axis = gather_dimensions - input_rank;
   TFLITE_DCHECK_LT(axis, gather_dimensions);
   TFLITE_DCHECK_GE(axis, 0);
@@ -3402,23 +2977,6 @@ inline void Gather(const tflite::GatherParams& op_params,
     memcpy(out, in, sizeof(T) * stride);
     out += stride;
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4> version.
-// When moving legacy ops to legacy_reference_ops, replace content with looser
-// implementation.
-template <typename T>
-inline void Gather(const T* input_data, const Dims<4>& input_dims,
-                   int input_rank, const int32* coords_data,
-                   const Dims<4>& coords_dims, T* output_data,
-                   const Dims<4>& output_dims) {
-  tflite::GatherParams op_params;
-  op_params.input_rank = input_rank;
-
-  Gather(op_params, DimsToShape(input_dims), input_data,
-         DimsToShape(coords_dims), coords_data, DimsToShape(output_dims),
-         output_data);
 }
 
 template <typename T>
@@ -3750,58 +3308,6 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline uint32 LegacyReverseBits32(uint32 n) {
-  n = ((n >> 1) & 0x55555555) | ((n & 0x55555555) << 1);
-  n = ((n >> 2) & 0x33333333) | ((n & 0x33333333) << 2);
-  n = ((n >> 4) & 0x0F0F0F0F) | ((n & 0x0F0F0F0F) << 4);
-  return (((n & 0xFF) << 24) | ((n & 0xFF00) << 8) | ((n & 0xFF0000) >> 8) |
-          ((n & 0xFF000000) >> 24));
-}
-
-inline void StridedSliceReverseIndices(tflite::StridedSliceParams* p) {
-  TFLITE_CHECK_EQ(p->start_indices_count, p->stop_indices_count);
-  TFLITE_CHECK_EQ(p->stop_indices_count, p->strides_count);
-
-  std::reverse(p->start_indices, p->start_indices + p->start_indices_count);
-  std::reverse(p->stop_indices, p->stop_indices + p->stop_indices_count);
-  std::reverse(p->strides, p->strides + p->strides_count);
-
-  p->begin_mask = LegacyReverseBits32(static_cast<uint32>(p->begin_mask)) >>
-                  (32 - p->start_indices_count);
-  p->ellipsis_mask =
-      LegacyReverseBits32(static_cast<uint32>(p->ellipsis_mask)) >>
-      (32 - p->start_indices_count);
-  p->end_mask = LegacyReverseBits32(static_cast<uint32>(p->end_mask)) >>
-                (32 - p->start_indices_count);
-  p->new_axis_mask =
-      LegacyReverseBits32(static_cast<uint32>(p->new_axis_mask)) >>
-      (32 - p->start_indices_count);
-  p->shrink_axis_mask =
-      LegacyReverseBits32(static_cast<uint32>(p->shrink_axis_mask)) >>
-      (32 - p->start_indices_count);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T>
-inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
-                         int begin_mask, int end_mask, int shrink_axis_mask,
-                         const std::vector<int>& start_indices,
-                         const std::vector<int>& stop_indices,
-                         const std::vector<int>& strides, T* output_data,
-                         const Dims<4>& output_dims) {
-  TFLITE_DCHECK_EQ(start_indices.size(), 4);
-  auto op_params = strided_slice::BuildStridedSliceParams(
-      begin_mask, end_mask, shrink_axis_mask, start_indices, stop_indices,
-      strides);
-  StridedSliceReverseIndices(&op_params);
-
-  StridedSlice(op_params, DimsToShape(input_dims), input_data,
-               DimsToShape(output_dims), output_data);
-}
-
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape, const T* input_data,
@@ -4067,22 +3573,6 @@ inline void Mean(const tflite::MeanParams& op_params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy Dims<4>.
-template <typename T>
-inline void Mean(const T* input_data, const Dims<4>& input_dims,
-                 const std::vector<int>& reduction_indices, T* output_data,
-                 const Dims<4>& output_dims) {
-  tflite::MeanParams op_params;
-  op_params.axis_count = reduction_indices.size();
-  for (int i = 0; i < op_params.axis_count; ++i) {
-    op_params.axis[i] = reduction_indices[op_params.axis_count - 1 - i];
-  }
-
-  Mean(op_params, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
-       output_data);
-}
-
 // Computes the mean of elements across dimensions given in axis.
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis for quantized values.
@@ -4340,20 +3830,6 @@ void Transpose(const TransposeParams& params,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T>
-void Transpose(const T* input, const Dims<4>& input_dims, T* output,
-               const Dims<4>& output_dims, const int* permuted_axes) {
-  TransposeParams params;
-  params.perm_count = 4;
-  for (int i = 0; i < 4; ++i) {
-    params.perm[i] = 3 - permuted_axes[3 - i];
-  }
-  Transpose(params, DimsToShape(input_dims), input, DimsToShape(output_dims),
-            output);
-}
-
 inline void TransposeConv(
     const ConvParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& filter_shape,
@@ -4427,27 +3903,6 @@ inline void TransposeConv(
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
-                          const float* filter_data, const Dims<4>& filter_dims,
-                          int stride_width, int stride_height, int pad_width,
-                          int pad_height, float* output_data,
-                          const Dims<4>& output_dims, float* im2col_data,
-                          const Dims<4>& im2col_dims) {
-  tflite::ConvParams op_params;
-  // Padding type is ignored, but still set.
-  op_params.padding_type = PaddingType::kSame;
-  op_params.padding_values.width = pad_width;
-  op_params.padding_values.height = pad_height;
-  op_params.stride_width = stride_width;
-  op_params.stride_height = stride_height;
-
-  TransposeConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(output_dims),
-                output_data, DimsToShape(im2col_dims), im2col_data);
-}
-
 template <typename T>
 inline bool EqualFn(T lhs, T rhs) {
   return lhs == rhs;
@@ -4501,19 +3956,6 @@ inline void Comparison(const ComparisonParams& op_params,
                            input2_data, output_shape, output_data);
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T, ComparisonFn<T> F>
-inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
-                       const T* input2_data, const Dims<4>& input2_dims,
-                       bool* output_data, const Dims<4>& output_dims) {
-  ComparisonParams op_params;
-  // No parameters needed.
-  ComparisonImpl<T, F>(op_params, DimsToShape(input1_dims), input1_data,
-                       DimsToShape(input2_dims), input2_data,
-                       DimsToShape(output_dims), output_data);
-}
-
 template <typename T, ComparisonFn<int32> F>
 inline void ComparisonWithScaling(
     const ComparisonParams& op_params, const RuntimeShape& input1_shape,
@@ -4542,32 +3984,6 @@ inline void ComparisonWithScaling(
             shifted_input2_val, input2_multiplier, input2_shift);
     output_data[i] = F(scaled_input1_val, scaled_input2_val);
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T, ComparisonFn<int32> F>
-inline void Comparison(int left_shift, const T* input1_data,
-                       const Dims<4>& input1_dims, int32 input1_offset,
-                       int32 input1_multiplier, int input1_shift,
-                       const T* input2_data, const Dims<4>& input2_dims,
-                       int32 input2_offset, int32 input2_multiplier,
-                       int input2_shift, bool* output_data,
-                       const Dims<4>& output_dims) {
-  tflite::ComparisonParams op_params;
-  op_params.left_shift = left_shift;
-  op_params.input1_offset = input1_offset;
-  op_params.input1_multiplier = input1_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.input1_shift = kReverseShift * input1_shift;
-  op_params.input2_offset = input2_offset;
-  op_params.input2_multiplier = input2_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.input2_shift = kReverseShift * input2_shift;
-
-  ComparisonWithScaling<T, F>(op_params, DimsToShape(input1_dims), input1_data,
-                              DimsToShape(input2_dims), input2_data,
-                              DimsToShape(output_dims), output_data);
 }
 
 template <typename T, ComparisonFn<T> F>
@@ -4611,22 +4027,6 @@ inline void BroadcastComparison4DSlow(const ComparisonParams& op_params,
   BroadcastComparison4DSlowImpl<float, F>(op_params, input1_shape, input1_data,
                                           input2_shape, input2_data,
                                           output_shape, output_data);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T, ComparisonFn<T> F>
-inline void BroadcastComparison(const T* input1_data,
-                                const Dims<4>& input1_dims,
-                                const T* input2_data,
-                                const Dims<4>& input2_dims, bool* output_data,
-                                const Dims<4>& output_dims) {
-  ComparisonParams op_params;
-  // No parameters needed.
-  BroadcastComparison4DSlowImpl<T, F>(op_params, DimsToShape(input1_dims),
-                                      input1_data, DimsToShape(input2_dims),
-                                      input2_data, DimsToShape(output_dims),
-                                      output_data);
 }
 
 template <typename T, ComparisonFn<int32> F>
@@ -4679,80 +4079,7 @@ inline void BroadcastComparison4DSlowWithScaling(
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T, ComparisonFn<int32> F>
-inline void BroadcastComparison(int left_shift, const T* input1_data,
-                                const Dims<4>& input1_dims, int32 input1_offset,
-                                int32 input1_multiplier, int input1_shift,
-                                const T* input2_data,
-                                const Dims<4>& input2_dims, int32 input2_offset,
-                                int32 input2_multiplier, int input2_shift,
-                                bool* output_data, const Dims<4>& output_dims) {
-  ComparisonParams op_params;
-
-  op_params.left_shift = left_shift;
-  op_params.input1_offset = input1_offset;
-  op_params.input1_multiplier = input1_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.input1_shift = kReverseShift * input1_shift;
-  op_params.input2_offset = input2_offset;
-  op_params.input2_multiplier = input2_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.input2_shift = kReverseShift * input2_shift;
-
-  BroadcastComparison4DSlowWithScaling<T, F>(
-      op_params, DimsToShape(input1_dims), input1_data,
-      DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
-      output_data);
-}
-
 #define TFLITE_COMPARISON_OP(name)                                             \
-  template <typename T>                                                        \
-  inline void name(const T* input1_data, const Dims<4>& input1_dims,           \
-                   const T* input2_data, const Dims<4>& input2_dims,           \
-                   bool* output_data, const Dims<4>& output_dims) {            \
-    gemmlowp::ScopedProfilingLabel label(#name);                               \
-    Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,             \
-                            input2_dims, output_data, output_dims);            \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void name(                                                            \
-      int left_shift, const T* input1_data, const Dims<4>& input1_dims,        \
-      int32 input1_offset, int32 input1_multiplier, int input1_shift,          \
-      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,   \
-      int32 input2_multiplier, int input2_shift, bool* output_data,            \
-      const Dims<4>& output_dims) {                                            \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                       \
-    Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,              \
-                            input1_offset, input1_multiplier, input1_shift,    \
-                            input2_data, input2_dims, input2_offset,           \
-                            input2_multiplier, input2_shift, output_data,      \
-                            output_dims);                                      \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void Broadcast##name(                                                 \
-      const T* input1_data, const Dims<4>& input1_dims, const T* input2_data,  \
-      const Dims<4>& input2_dims, bool* output_data,                           \
-      const Dims<4>& output_dims) {                                            \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                   \
-    BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,    \
-                                     input2_dims, output_data, output_dims);   \
-  }                                                                            \
-  template <typename T>                                                        \
-  inline void Broadcast##name(                                                 \
-      int left_shift, const T* input1_data, const Dims<4>& input1_dims,        \
-      int32 input1_offset, int32 input1_multiplier, int input1_shift,          \
-      const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,   \
-      int32 input2_multiplier, int input2_shift, bool* output_data,            \
-      const Dims<4>& output_dims) {                                            \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");           \
-    BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,     \
-                                     input1_offset, input1_multiplier,         \
-                                     input1_shift, input2_data, input2_dims,   \
-                                     input2_offset, input2_multiplier,         \
-                                     input2_shift, output_data, output_dims);  \
-  }                                                                            \
   inline void name(const ComparisonParams& op_params,                          \
                    const RuntimeShape& input1_shape, const float* input1_data, \
                    const RuntimeShape& input2_shape, const float* input2_data, \
@@ -4762,22 +4089,44 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
                          input2_data, output_shape, output_data);              \
   }                                                                            \
   template <typename T>                                                        \
+  inline void name##NoScaling(                                                 \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const T* input1_data, const RuntimeShape& input2_shape,                  \
+      const T* input2_data, const RuntimeShape& output_shape,                  \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label(#name "NoScaling");                   \
+    ComparisonImpl<T, name##Fn>(op_params, input1_shape, input1_data,          \
+                                input2_shape, input2_data, output_shape,       \
+                                output_data);                                  \
+  }                                                                            \
+  template <typename T>                                                        \
   inline void name##WithScaling(                                               \
       const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
       const T* input1_data, const RuntimeShape& input2_shape,                  \
       const T* input2_data, const RuntimeShape& output_shape,                  \
       bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                       \
+    gemmlowp::ScopedProfilingLabel label(#name "WithScaling/8bit");            \
     ComparisonWithScaling<T, name##Fn>(op_params, input1_shape, input1_data,   \
                                        input2_shape, input2_data,              \
                                        output_shape, output_data);             \
+  }                                                                            \
+  template <typename T>                                                        \
+  inline void Broadcast4DSlow##name##NoScaling(                                \
+      const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
+      const T* input1_data, const RuntimeShape& input2_shape,                  \
+      const T* input2_data, const RuntimeShape& output_shape,                  \
+      bool* output_data) {                                                     \
+    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name "NoScaling"); \
+    BroadcastComparison4DSlowImpl<T, name##Fn>(                                \
+        op_params, input1_shape, input1_data, input2_shape, input2_data,       \
+        output_shape, output_data);                                            \
   }                                                                            \
   inline void Broadcast4DSlow##name(                                           \
       const ComparisonParams& op_params, const RuntimeShape& input1_shape,     \
       const float* input1_data, const RuntimeShape& input2_shape,              \
       const float* input2_data, const RuntimeShape& output_shape,              \
       bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                   \
+    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name);             \
     BroadcastComparison4DSlow<name##Fn>(op_params, input1_shape, input1_data,  \
                                         input2_shape, input2_data,             \
                                         output_shape, output_data);            \
@@ -4788,7 +4137,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input1_data, const RuntimeShape& input2_shape,                  \
       const T* input2_data, const RuntimeShape& output_shape,                  \
       bool* output_data) {                                                     \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");           \
+    gemmlowp::ScopedProfilingLabel label("Broadcast4DSlow" #name "/8bit");     \
     BroadcastComparison4DSlowWithScaling<T, name##Fn>(                         \
         op_params, input1_shape, input1_data, input2_shape, input2_data,       \
         output_shape, output_data);                                            \
@@ -4815,19 +4164,6 @@ void Select(const RuntimeShape& input_condition_shape,
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename D, typename T>
-inline void Select(const D* input_condition_data,
-                   const Dims<4>& input_condition_dims, const T* input_x_data,
-                   const Dims<4>& input_x_dims, const T* input_y_data,
-                   const Dims<4>& input_y_dims, T* output_data,
-                   const Dims<4>& output_dims) {
-  Select(DimsToShape(input_condition_dims), input_condition_data,
-         DimsToShape(input_x_dims), input_x_data, DimsToShape(input_y_dims),
-         input_y_data, DimsToShape(output_dims), output_data);
-}
-
 template <typename D, typename T>
 void RankOneSelect(const RuntimeShape& input_condition_shape,
                    const D* input_condition_data,
@@ -4847,20 +4183,6 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
     memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
     offset += inner_size;
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename D, typename T>
-inline void RankOneSelect(const D* input_condition_data,
-                          const Dims<4>& input_condition_dims,
-                          const T* input_x_data, const Dims<4>& input_x_dims,
-                          const T* input_y_data, const Dims<4>& input_y_dims,
-                          T* output_data, const Dims<4>& output_dims) {
-  RankOneSelect(DimsToShape(input_condition_dims), input_condition_data,
-                DimsToShape(input_x_dims), input_x_data,
-                DimsToShape(input_y_dims), input_y_data,
-                DimsToShape(output_dims), output_data);
 }
 
 // For easy implementation, the indices is always a vector of size-4 vectors.
@@ -4902,16 +4224,6 @@ inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
     output_data[Offset(output_shape, index[0], index[1], index[2], index[3])] =
         value;
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-template <typename T, typename TI>
-inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
-                          const T* values, T default_value, T* output_data,
-                          const Dims<4>& output_dims, bool value_is_scalar) {
-  SparseToDense(indices, values, default_value, value_is_scalar,
-                DimsToShape(output_dims), output_data);
 }
 
 template <typename T>

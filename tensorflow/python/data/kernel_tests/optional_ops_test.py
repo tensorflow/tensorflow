@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import optional_ops
@@ -35,7 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class OptionalTest(test.TestCase, parameterized.TestCase):
+class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFromValue(self):

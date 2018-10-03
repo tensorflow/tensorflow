@@ -18,9 +18,9 @@ limitations under the License.
 
 namespace tflite {
 
-bool IsEagerOp(const char* custom_name) {
-  return custom_name && strncmp(custom_name, kEagerCustomCodePrefix,
-                                strlen(kEagerCustomCodePrefix)) == 0;
+bool IsFlexOp(const char* custom_name) {
+  return custom_name && strncmp(custom_name, kFlexCustomCodePrefix,
+                                strlen(kFlexCustomCodePrefix)) == 0;
 }
 
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {

@@ -19,14 +19,14 @@ from __future__ import print_function
 
 from tensorflow.contrib.hadoop.python.ops import gen_dataset_ops
 from tensorflow.contrib.hadoop.python.ops import hadoop_op_loader  # pylint: disable=unused-import
-from tensorflow.python.data.ops.dataset_ops import Dataset
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 
-class SequenceFileDataset(Dataset):
+class SequenceFileDataset(dataset_ops.DatasetSource):
   """A Sequence File Dataset that reads the sequence file."""
 
   def __init__(self, filenames):

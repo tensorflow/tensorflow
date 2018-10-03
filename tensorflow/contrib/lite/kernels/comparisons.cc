@@ -83,20 +83,24 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
       QuantizeMultiplierSmallerThanOneExp(real_input2_multiplier,              \
                                           &input2_multiplier, &input2_shift);  \
                                                                                \
+      ComparisonParams op_params;                                              \
+      op_params.left_shift = left_shift;                                       \
+      op_params.input1_offset = input1_offset;                                 \
+      op_params.input1_multiplier = input1_multiplier;                         \
+      op_params.input1_shift = -input1_shift;                                  \
+      op_params.input2_offset = input2_offset;                                 \
+      op_params.input2_multiplier = input2_multiplier;                         \
+      op_params.input2_shift = -input2_shift;                                  \
       if (requires_broadcast) {                                                \
-        reference_ops::Broadcast##opname(                                      \
-            left_shift, GetTensorData<uint8_t>(input1), GetTensorDims(input1), \
-            input1_offset, input1_multiplier, input1_shift,                    \
-            GetTensorData<uint8_t>(input2), GetTensorDims(input2),             \
-            input2_offset, input2_multiplier, input2_shift,                    \
-            GetTensorData<bool>(output), GetTensorDims(output));               \
+        reference_ops::Broadcast4DSlow##opname##WithScaling(                   \
+            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1), \
+            GetTensorShape(input2), GetTensorData<uint8_t>(input2),            \
+            GetTensorShape(output), GetTensorData<bool>(output));              \
       } else {                                                                 \
-        reference_ops::opname(                                                 \
-            left_shift, GetTensorData<uint8_t>(input1), GetTensorDims(input1), \
-            input1_offset, input1_multiplier, input1_shift,                    \
-            GetTensorData<uint8_t>(input2), GetTensorDims(input2),             \
-            input2_offset, input2_multiplier, input2_shift,                    \
-            GetTensorData<bool>(output), GetTensorDims(output));               \
+        reference_ops::opname##WithScaling(                                    \
+            op_params, GetTensorShape(input1), GetTensorData<uint8_t>(input1), \
+            GetTensorShape(input2), GetTensorData<uint8_t>(input2),            \
+            GetTensorShape(output), GetTensorData<bool>(output));              \
       }                                                                        \
     }                                                                          \
   }
@@ -108,16 +112,19 @@ TF_LITE_QUANTIZE_COMPARISON(Less);
 TF_LITE_QUANTIZE_COMPARISON(LessEqual);
 #undef TF_LITE_QUANTIZE_COMPARISON
 
-#define TF_LITE_COMPARISON(type, opname, requires_broadcast)    \
-  requires_broadcast                                            \
-      ? reference_ops::Broadcast##opname(                       \
-            GetTensorData<type>(input1), GetTensorDims(input1), \
-            GetTensorData<type>(input2), GetTensorDims(input2), \
-            GetTensorData<bool>(output), GetTensorDims(output)) \
-      : reference_ops::opname(                                  \
-            GetTensorData<type>(input1), GetTensorDims(input1), \
-            GetTensorData<type>(input2), GetTensorDims(input2), \
-            GetTensorData<bool>(output), GetTensorDims(output));
+#define TF_LITE_COMPARISON(type, opname, requires_broadcast)                  \
+  {                                                                           \
+    ComparisonParams op_params;                                               \
+    requires_broadcast                                                        \
+        ? reference_ops::Broadcast4DSlow##opname##NoScaling(                  \
+              op_params, GetTensorShape(input1), GetTensorData<type>(input1), \
+              GetTensorShape(input2), GetTensorData<type>(input2),            \
+              GetTensorShape(output), GetTensorData<bool>(output))            \
+        : reference_ops::opname##NoScaling(                                   \
+              op_params, GetTensorShape(input1), GetTensorData<type>(input1), \
+              GetTensorShape(input2), GetTensorData<type>(input2),            \
+              GetTensorShape(output), GetTensorData<bool>(output));           \
+  }
 
 TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);

@@ -49,6 +49,8 @@ struct ItemConfig {
   bool prune_graph = false;
   // Override feed nodes list.
   std::set<string> feed_nodes;
+  // Override fetch nodes list.
+  std::set<string> fetch_nodes;
 };
 
 // Factory method for creating a GrapplerItem from a MetaGraphDef.

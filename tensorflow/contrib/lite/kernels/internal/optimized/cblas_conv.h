@@ -31,20 +31,29 @@ limitations under the License.
 namespace tflite {
 namespace cblas_ops {
 
-inline void Conv(const float* input_data, const Dims<4>& input_dims,
-                 const float* filter_data, const Dims<4>& filter_dims,
-                 const float* bias_data, const Dims<4>& bias_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, float output_activation_min,
-                 float output_activation_max, float* output_data,
-                 const Dims<4>& output_dims, float* im2col_data,
-                 const Dims<4>& im2col_dims) {
+inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& filter_shape,
+                 const float* filter_data, const RuntimeShape& bias_shape,
+                 const float* bias_data, const RuntimeShape& output_shape,
+                 float* output_data, const RuntimeShape& im2col_shape,
+                 float* im2col_data) {
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   gemmlowp::ScopedProfilingLabel label("Conv/cblas");
 
   const float* gemm_input_data = nullptr;
-  const Dims<4>* gemm_input_dims = nullptr;
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int filter_height = ArraySize(filter_dims, 2);
+  const RuntimeShape* gemm_input_shape = nullptr;
+  const int filter_width = filter_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
   if (need_im2col) {
@@ -55,18 +64,17 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
     op_params.padding_values.height = pad_height;
     op_params.stride_width = stride_width;
     op_params.stride_height = stride_height;
-    op_params.dilation_width_factor = 1;
-    op_params.dilation_height_factor = 1;
+    op_params.dilation_width_factor = dilation_width_factor;
+    op_params.dilation_height_factor = dilation_height_factor;
     optimized_ops::Im2col(op_params, filter_height, filter_width, 0,
-                          DimsToShape(input_dims), input_data,
-                          DimsToShape(im2col_dims), im2col_data);
+                          input_shape, input_data, im2col_shape, im2col_data);
 
     gemm_input_data = im2col_data;
-    gemm_input_dims = &im2col_dims;
+    gemm_input_shape = &im2col_shape;
   } else {
     TFLITE_DCHECK(!im2col_data);
     gemm_input_data = input_data;
-    gemm_input_dims = &input_dims;
+    gemm_input_shape = &input_shape;
   }
 
   // The following code computes matrix multiplication c = a * transponse(b)
@@ -78,10 +86,10 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
   const float* a = gemm_input_data;
   const float* b = filter_data;
   float* c = output_data;
-  int m = gemm_input_dims->sizes[1] * gemm_input_dims->sizes[2] *
-          gemm_input_dims->sizes[3];
-  int n = output_dims.sizes[0];
-  int k = gemm_input_dims->sizes[0];
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(3);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
   // The stride of matrix a, b and c respectively.
   int stride_a = k;
   int stride_b = k;
@@ -91,8 +99,8 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
               stride_a, b, stride_b, 0.0f, c, stride_c);
 
   optimized_ops::AddBiasAndEvalActivationFunction(
-      output_activation_min, output_activation_max, DimsToShape(bias_dims),
-      bias_data, DimsToShape(output_dims), output_data);
+      output_activation_min, output_activation_max, bias_shape, bias_data,
+      output_shape, output_data);
 }
 
 }  // namespace cblas_ops

@@ -257,7 +257,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       with self.cached_session():
         est_keras = keras_lib.model_to_estimator(
@@ -281,7 +281,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer=rmsprop.RMSPropOptimizer(1e-3),
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       my_hook = MyHook()
       with self.cached_session():
@@ -306,7 +306,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
     my_hook = MyHook()
     with self.cached_session():
       keras_model.fit(x_train, y_train, epochs=1)
@@ -328,7 +328,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer=rmsprop.RMSPropOptimizer(1e-3),
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       with self.cached_session():
         est_keras = keras_lib.model_to_estimator(
@@ -351,7 +351,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
@@ -370,7 +370,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       # Create state
@@ -581,12 +581,6 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'compiled'):
         keras_lib.model_to_estimator(keras_model=keras_model)
 
-    with self.cached_session():
-      keras_model = simple_sequential_model()
-      with self.assertRaisesRegexp(ValueError, 'not a local path'):
-        keras_lib.model_to_estimator(
-            keras_model_path='gs://bucket/object')
-
   def test_invalid_ionames_error(self):
     (x_train, y_train), (_, _) = testing_utils.get_test_data(
         train_samples=_TRAIN_SIZE,
@@ -662,7 +656,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     tf_config = json.dumps({
         'cluster': {
@@ -687,7 +681,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
       gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.3)
       sess_config = config_pb2.ConfigProto(gpu_options=gpu_options)
@@ -706,7 +700,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       est_keras = keras_lib.model_to_estimator(
@@ -736,7 +730,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
@@ -751,7 +745,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer='rmsprop',
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
 
     with self.cached_session():
       with self.assertRaisesRegexp(ValueError, '`model_dir` are set both in '
@@ -765,7 +759,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=rmsprop.RMSPropOptimizer(1e-3),
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
     with self.cached_session():
       keras_model.train_on_batch(
           np.random.random((10,) + _INPUT_SIZE),
@@ -776,7 +770,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       keras_model.compile(
           loss='categorical_crossentropy',
           optimizer=SGD(lr=0.0001, momentum=0.9),
-          metrics=['mse', keras.metrics.categorical_accuracy])
+          metrics=['mse', keras.metrics.CategoricalAccuracy()])
       keras_lib.model_to_estimator(
           keras_model=keras_model, config=self._config)
 
@@ -786,7 +780,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_model.compile(
         loss='categorical_crossentropy',
         optimizer=optimizer,
-        metrics=['mse', keras.metrics.categorical_accuracy])
+        metrics=['mse', keras.metrics.CategoricalAccuracy()])
     with self.cached_session() as sess:
       keras_model_fn = keras_lib._create_keras_model_fn(keras_model)
       global_step = training_util.create_global_step()

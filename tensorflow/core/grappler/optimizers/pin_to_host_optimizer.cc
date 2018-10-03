@@ -169,7 +169,13 @@ bool IsTPUGraphDef(const GraphDef& def) {
 }
 
 // All the nodes that should be blacklisted and not swapped.
-bool IsBlacklisted(const NodeDef& node) { return IsCollective(node); }
+bool IsBlacklisted(const NodeDef& node) {
+  return
+      // Collective ops should not be swapped.
+      IsCollective(node) ||
+      // NoOp breaks perf regression tests (probably due to group dependencies).
+      IsNoOp(node);
+}
 }  // end namespace internal
 
 Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,

@@ -84,9 +84,6 @@ Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* parallel_map = graph.AddNode(MakeParallelMap(*map_node, &graph));
     graph.ReplaceInput(*map_node, *parallel_map);
-
-    // TODO(prazek): we could also remove map functions from library if they
-    // are not used anymore.
     nodes_to_delete.insert(map_node->name());
   }
 

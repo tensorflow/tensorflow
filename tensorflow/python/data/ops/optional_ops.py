@@ -31,7 +31,7 @@ class Optional(object):
 
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
-  `tf.contrib.data.get_next_as_optional` returns an `Optional` that either
+  `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
   contains the next value from a `tf.data.Iterator` if one exists, or a "none"
   value that indicates the end of the sequence has been reached.
   """
@@ -111,7 +111,7 @@ class Optional(object):
 
 
 class _OptionalImpl(Optional):
-  """Concrete implementation of `tf.contrib.data.Optional`.
+  """Concrete implementation of `tf.data.experimental.Optional`.
 
   NOTE(mrry): This implementation is kept private, to avoid defining
   `Optional.__init__()` in the public API.

@@ -23,10 +23,12 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_candidate_sampling_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('nn.uniform_candidate_sampler')
+@tf_export('random.uniform_candidate_sampler', 'nn.uniform_candidate_sampler')
+@deprecation.deprecated_endpoints('nn.uniform_candidate_sampler')
 def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                               range_max, seed=None, name=None):
   """Samples a set of classes using a uniform base distribution.
@@ -82,7 +84,9 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       seed2=seed2, name=name)
 
 
-@tf_export('nn.log_uniform_candidate_sampler')
+@tf_export('random.log_uniform_candidate_sampler',
+           'nn.log_uniform_candidate_sampler')
+@deprecation.deprecated_endpoints('nn.log_uniform_candidate_sampler')
 def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                                   range_max, seed=None, name=None):
   """Samples a set of classes using a log-uniform (Zipfian) base distribution.
