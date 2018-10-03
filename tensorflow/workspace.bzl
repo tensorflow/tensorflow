@@ -888,7 +888,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # why we can't depend on the canonical build target.
 
     # gRPC wants a cares dependency but its contents is not actually
-    # important since we have set GRPC_ARES=0 in tools/bazel.rc
+    # important since we have set GRPC_ARES=0 in .bazelrc
     native.bind(
         name = "cares",
         actual = "@grpc//third_party/nanopb:nanopb",
