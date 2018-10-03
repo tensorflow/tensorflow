@@ -838,12 +838,15 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
 /// present, return from the list. The stored expressions are unique: they are
 /// constructed and stored in a simplified/canonicalized form. The result after
 /// simplification could be any form of affine expression.
-AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
-                                    AffineExpr *rhs, MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::get(AffineExpr::Kind kind,
+                                       AffineExprWrap lhs, AffineExprWrap rhs,
+                                       MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we already have this affine expression, and return it if we do.
-  auto keyValue = std::make_tuple((unsigned)kind, lhs, rhs);
+  AffineExpr *lhsExpr = lhs;
+  AffineExpr *rhsExpr = rhs;
+  auto keyValue = std::make_tuple((unsigned)kind, lhsExpr, rhsExpr);
   auto cached = impl.affineExprs.find(keyValue);
   if (cached != impl.affineExprs.end())
     return cached->second;
@@ -885,7 +888,7 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
   return result;
 }
 
-AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
+AffineExprWrap AffineDimExpr::get(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we need to resize.
@@ -902,8 +905,7 @@ AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
   return result;
 }
 
-AffineSymbolExpr *AffineSymbolExpr::get(unsigned position,
-                                        MLIRContext *context) {
+AffineExprWrap AffineSymbolExpr::get(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we need to resize.
@@ -920,8 +922,7 @@ AffineSymbolExpr *AffineSymbolExpr::get(unsigned position,
   return result;
 }
 
-AffineConstantExpr *AffineConstantExpr::get(int64_t constant,
-                                            MLIRContext *context) {
+AffineExprWrap AffineConstantExpr::get(int64_t constant, MLIRContext *context) {
   auto &impl = context->getImpl();
   auto *&result = impl.constExprs[constant];
 

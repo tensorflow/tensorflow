@@ -27,12 +27,12 @@
 #include "mlir/IR/Statements.h"
 #include "mlir/Support/MathExtras.h"
 
-using mlir::AffineExpr;
+using namespace mlir;
 
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
-AffineExpr *mlir::getTripCountExpr(const ForStmt &forStmt) {
+AffineExprWrap mlir::getTripCountExpr(const ForStmt &forStmt) {
   // upper_bound - lower_bound + 1
   int64_t loopSpan;
 
@@ -56,16 +56,12 @@ AffineExpr *mlir::getTripCountExpr(const ForStmt &forStmt) {
       return nullptr;
 
     // ub_expr - lb_expr + 1
-    auto *lbExpr = lbMap->getResult(0);
-    auto *ubExpr = ubMap->getResult(0);
-    auto *loopSpanExpr = AffineBinaryOpExpr::getAdd(
-        AffineBinaryOpExpr::getSub(ubExpr, lbExpr, context), 1, context);
-
-    if (auto *expr = simplifyAffineExpr(loopSpanExpr, lbMap->getNumDims(),
-                                        lbMap->getNumSymbols(), context))
-      loopSpanExpr = expr;
-
-    auto *cExpr = dyn_cast<AffineConstantExpr>(loopSpanExpr);
+    AffineExprWrap lbExpr(lbMap->getResult(0));
+    AffineExprWrap ubExpr(ubMap->getResult(0));
+    auto loopSpanExpr = simplifyAffineExpr(
+        ubExpr - lbExpr + 1, std::max(lbMap->getNumDims(), ubMap->getNumDims()),
+        std::max(lbMap->getNumSymbols(), ubMap->getNumSymbols()));
+    auto *cExpr = dyn_cast<AffineConstantExpr>(loopSpanExpr.expr);
     if (!cExpr)
       return AffineBinaryOpExpr::getCeilDiv(loopSpanExpr, step, context);
     loopSpan = cExpr->getValue();
@@ -83,9 +79,10 @@ AffineExpr *mlir::getTripCountExpr(const ForStmt &forStmt) {
 /// method uses affine expression analysis (in turn using getTripCount) and is
 /// able to determine constant trip count in non-trivial cases.
 llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForStmt &forStmt) {
-  AffineExpr *tripCountExpr = getTripCountExpr(forStmt);
+  auto tripCountExpr = getTripCountExpr(forStmt);
 
-  if (auto *constExpr = dyn_cast_or_null<AffineConstantExpr>(tripCountExpr))
+  if (auto *constExpr =
+          dyn_cast_or_null<AffineConstantExpr>(tripCountExpr.expr))
     return constExpr->getValue();
 
   return None;
@@ -95,12 +92,12 @@ llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForStmt &forStmt) {
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
 uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
-  AffineExpr *tripCountExpr = getTripCountExpr(forStmt);
+  auto tripCountExpr = getTripCountExpr(forStmt);
 
   if (!tripCountExpr)
     return 1;
 
-  if (auto *constExpr = dyn_cast<AffineConstantExpr>(tripCountExpr)) {
+  if (auto *constExpr = dyn_cast<AffineConstantExpr>(tripCountExpr.expr)) {
     uint64_t tripCount = constExpr->getValue();
 
     // 0 iteration loops (greatest divisor is 2^64 - 1).
@@ -112,5 +109,5 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   }
 
   // Trip count is not a known constant; return its largest known divisor.
-  return tripCountExpr->getLargestKnownDivisor();
+  return tripCountExpr.expr->getLargestKnownDivisor();
 }

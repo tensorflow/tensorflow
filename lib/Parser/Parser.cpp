@@ -1020,7 +1020,7 @@ AffineExpr *AffineParser::parseNegateExpression(AffineExpr *lhs) {
     // Extra error message although parseAffineOperandExpr would have
     // complained. Leads to a better diagnostic.
     return (emitError("missing operand of negation"), nullptr);
-  auto *minusOne = builder.getConstantExpr(-1);
+  auto minusOne = builder.getConstantExpr(-1);
   return builder.getMulExpr(minusOne, operand);
 }
 
@@ -1195,7 +1195,7 @@ ParseResult AffineParser::parseIdentifierDefinition(AffineExpr *idExpr) {
 ParseResult AffineParser::parseSymbolIdList(unsigned &numSymbols) {
   consumeToken(Token::l_square);
   auto parseElt = [&]() -> ParseResult {
-    auto *symbol = AffineSymbolExpr::get(numSymbols++, getContext());
+    auto symbol = AffineSymbolExpr::get(numSymbols++, getContext());
     return parseIdentifierDefinition(symbol);
   };
   return parseCommaSeparatedListUntil(Token::r_square, parseElt);
@@ -1208,7 +1208,7 @@ ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
     return ParseFailure;
 
   auto parseElt = [&]() -> ParseResult {
-    auto *dimension = AffineDimExpr::get(numDims++, getContext());
+    auto dimension = AffineDimExpr::get(numDims++, getContext());
     return parseIdentifierDefinition(dimension);
   };
   return parseCommaSeparatedListUntil(Token::r_paren, parseElt);

@@ -628,9 +628,11 @@ void ModulePrinter::printAffineExprInternal(
 
   // Pretty print addition to a product that has a negative operand as a
   // subtraction.
-  if (auto *rhs = dyn_cast<AffineBinaryOpExpr>(binOp->getRHS())) {
+  AffineExpr *rhsExpr = binOp->getRHS();
+  if (auto *rhs = dyn_cast<AffineBinaryOpExpr>(rhsExpr)) {
     if (rhs->getKind() == AffineExpr::Kind::Mul) {
-      if (auto *rrhs = dyn_cast<AffineConstantExpr>(rhs->getRHS())) {
+      AffineExpr *rrhsExpr = rhs->getRHS();
+      if (auto *rrhs = dyn_cast<AffineConstantExpr>(rrhsExpr)) {
         if (rrhs->getValue() == -1) {
           printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
           os << " - ";
@@ -655,7 +657,7 @@ void ModulePrinter::printAffineExprInternal(
   }
 
   // Pretty print addition to a negative number as a subtraction.
-  if (auto *rhs = dyn_cast<AffineConstantExpr>(binOp->getRHS())) {
+  if (auto *rhs = dyn_cast<AffineConstantExpr>(rhsExpr)) {
     if (rhs->getValue() < 0) {
       printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
       os << " - " << -rhs->getValue();

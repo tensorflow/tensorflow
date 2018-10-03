@@ -18,6 +18,7 @@
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
@@ -103,21 +104,21 @@ public:
   FunctionAttr *getFunctionAttr(const Function *value);
 
   // Affine expressions and affine maps.
-  AffineDimExpr *getDimExpr(unsigned position);
-  AffineSymbolExpr *getSymbolExpr(unsigned position);
-  AffineConstantExpr *getConstantExpr(int64_t constant);
-  AffineExpr *getAddExpr(AffineExpr *lhs, AffineExpr *rhs);
-  AffineExpr *getAddExpr(AffineExpr *lhs, int64_t rhs);
-  AffineExpr *getSubExpr(AffineExpr *lhs, AffineExpr *rhs);
-  AffineExpr *getSubExpr(AffineExpr *lhs, int64_t rhs);
-  AffineExpr *getMulExpr(AffineExpr *lhs, AffineExpr *rhs);
-  AffineExpr *getMulExpr(AffineExpr *lhs, int64_t rhs);
-  AffineExpr *getModExpr(AffineExpr *lhs, AffineExpr *rhs);
-  AffineExpr *getModExpr(AffineExpr *lhs, uint64_t rhs);
-  AffineExpr *getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs);
-  AffineExpr *getFloorDivExpr(AffineExpr *lhs, uint64_t rhs);
-  AffineExpr *getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs);
-  AffineExpr *getCeilDivExpr(AffineExpr *lhs, uint64_t rhs);
+  AffineExprWrap getDimExpr(unsigned position);
+  AffineExprWrap getSymbolExpr(unsigned position);
+  AffineExprWrap getConstantExpr(int64_t constant);
+  AffineExprWrap getAddExpr(AffineExprWrap lhs, AffineExprWrap rhs);
+  AffineExprWrap getAddExpr(AffineExprWrap lhs, int64_t rhs);
+  AffineExprWrap getSubExpr(AffineExprWrap lhs, AffineExprWrap rhs);
+  AffineExprWrap getSubExpr(AffineExprWrap lhs, int64_t rhs);
+  AffineExprWrap getMulExpr(AffineExprWrap lhs, AffineExprWrap rhs);
+  AffineExprWrap getMulExpr(AffineExprWrap lhs, int64_t rhs);
+  AffineExprWrap getModExpr(AffineExprWrap lhs, AffineExprWrap rhs);
+  AffineExprWrap getModExpr(AffineExprWrap lhs, uint64_t rhs);
+  AffineExprWrap getFloorDivExpr(AffineExprWrap lhs, AffineExprWrap rhs);
+  AffineExprWrap getFloorDivExpr(AffineExprWrap lhs, uint64_t rhs);
+  AffineExprWrap getCeilDivExpr(AffineExprWrap lhs, AffineExprWrap rhs);
+  AffineExprWrap getCeilDivExpr(AffineExprWrap lhs, uint64_t rhs);
 
   /// Creates a sum of products affine expression from constant coefficients.
   /// If c_0, c_1, ... are the coefficients in the order corresponding to

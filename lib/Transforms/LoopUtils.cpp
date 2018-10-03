@@ -45,7 +45,7 @@ AffineMap *mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
     return nullptr;
 
   // Sometimes, the trip count cannot be expressed as an affine expression.
-  AffineExprWrap tripCount(getTripCountExpr(forStmt));
+  auto tripCount = getTripCountExpr(forStmt);
   if (!tripCount)
     return nullptr;
 

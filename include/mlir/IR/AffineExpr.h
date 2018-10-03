@@ -107,6 +107,9 @@ struct AffineExprWrap {
     expr = other.expr;
     return *this;
   };
+  bool operator==(AffineExprWrap other) { return expr == other.expr; };
+  mlir::AffineExpr *operator->() { return expr; }
+  const mlir::AffineExpr *operator->() const { return expr; }
   /* implicit */ operator mlir::AffineExpr *() { return expr; }
 
   bool operator!() { return expr == nullptr; }
@@ -136,44 +139,44 @@ struct AffineExprWrap {
 /// the op type: see checks in the constructor.
 class AffineBinaryOpExpr : public AffineExpr {
 public:
-  static AffineExpr *get(Kind kind, AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-  static AffineExpr *getAdd(AffineExpr *lhs, AffineExpr *rhs,
-                            MLIRContext *context) {
+  static AffineExprWrap get(Kind kind, AffineExprWrap lhs, AffineExprWrap rhs,
+                            MLIRContext *context);
+  static AffineExprWrap getAdd(AffineExprWrap lhs, AffineExprWrap rhs,
+                               MLIRContext *context) {
     return get(AffineExpr::Kind::Add, lhs, rhs, context);
   }
-  static AffineExpr *getAdd(AffineExpr *expr, int64_t rhs,
-                            MLIRContext *context);
-  static AffineExpr *getSub(AffineExpr *lhs, AffineExpr *rhs,
-                            MLIRContext *context);
+  static AffineExprWrap getAdd(AffineExprWrap expr, int64_t rhs,
+                               MLIRContext *context);
+  static AffineExprWrap getSub(AffineExprWrap lhs, AffineExprWrap rhs,
+                               MLIRContext *context);
 
-  static AffineExpr *getMul(AffineExpr *lhs, AffineExpr *rhs,
-                            MLIRContext *context) {
+  static AffineExprWrap getMul(AffineExprWrap lhs, AffineExprWrap rhs,
+                               MLIRContext *context) {
     return get(AffineExpr::Kind::Mul, lhs, rhs, context);
   }
-  static AffineExpr *getMul(AffineExpr *expr, int64_t rhs,
-                            MLIRContext *context);
-  static AffineExpr *getFloorDiv(AffineExpr *lhs, AffineExpr *rhs,
-                                 MLIRContext *context) {
+  static AffineExprWrap getMul(AffineExprWrap expr, int64_t rhs,
+                               MLIRContext *context);
+  static AffineExprWrap getFloorDiv(AffineExprWrap lhs, AffineExprWrap rhs,
+                                    MLIRContext *context) {
     return get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
   }
-  static AffineExpr *getFloorDiv(AffineExpr *lhs, uint64_t rhs,
-                                 MLIRContext *context);
-  static AffineExpr *getCeilDiv(AffineExpr *lhs, AffineExpr *rhs,
-                                MLIRContext *context) {
+  static AffineExprWrap getFloorDiv(AffineExprWrap lhs, uint64_t rhs,
+                                    MLIRContext *context);
+  static AffineExprWrap getCeilDiv(AffineExprWrap lhs, AffineExprWrap rhs,
+                                   MLIRContext *context) {
     return get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
   }
-  static AffineExpr *getCeilDiv(AffineExpr *lhs, uint64_t rhs,
-                                MLIRContext *context);
-  static AffineExpr *getMod(AffineExpr *lhs, AffineExpr *rhs,
-                            MLIRContext *context) {
+  static AffineExprWrap getCeilDiv(AffineExprWrap lhs, uint64_t rhs,
+                                   MLIRContext *context);
+  static AffineExprWrap getMod(AffineExprWrap lhs, AffineExprWrap rhs,
+                               MLIRContext *context) {
     return get(AffineExpr::Kind::Mod, lhs, rhs, context);
   }
-  static AffineExpr *getMod(AffineExpr *lhs, uint64_t rhs,
-                            MLIRContext *context);
+  static AffineExprWrap getMod(AffineExprWrap lhs, uint64_t rhs,
+                               MLIRContext *context);
 
-  AffineExpr *getLHS() const { return lhs; }
-  AffineExpr *getRHS() const { return rhs; }
+  AffineExprWrap getLHS() const { return lhs; }
+  AffineExprWrap getRHS() const { return rhs; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const AffineExpr *expr) {
@@ -209,7 +212,7 @@ private:
 /// almost all clients.
 class AffineDimExpr : public AffineExpr {
 public:
-  static AffineDimExpr *get(unsigned position, MLIRContext *context);
+  static AffineExprWrap get(unsigned position, MLIRContext *context);
 
   unsigned getPosition() const { return position; }
 
@@ -234,7 +237,7 @@ private:
 /// almost all clients.
 class AffineSymbolExpr : public AffineExpr {
 public:
-  static AffineSymbolExpr *get(unsigned position, MLIRContext *context);
+  static AffineExprWrap get(unsigned position, MLIRContext *context);
 
   unsigned getPosition() const { return position; }
 
@@ -255,7 +258,7 @@ private:
 /// An integer constant appearing in affine expression.
 class AffineConstantExpr : public AffineExpr {
 public:
-  static AffineConstantExpr *get(int64_t constant, MLIRContext *context);
+  static AffineExprWrap get(int64_t constant, MLIRContext *context);
 
   int64_t getValue() const { return constant; }
 

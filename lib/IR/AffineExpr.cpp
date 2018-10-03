@@ -47,38 +47,39 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
   }
 }
 
-AffineExpr *AffineBinaryOpExpr::getSub(AffineExpr *lhs, AffineExpr *rhs,
-                                       MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::getSub(AffineExprWrap lhs,
+                                          AffineExprWrap rhs,
+                                          MLIRContext *context) {
   return getAdd(lhs, getMul(rhs, AffineConstantExpr::get(-1, context), context),
                 context);
 }
 
-AffineExpr *AffineBinaryOpExpr::getAdd(AffineExpr *expr, int64_t rhs,
-                                       MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::getAdd(AffineExprWrap expr, int64_t rhs,
+                                          MLIRContext *context) {
   return get(AffineExpr::Kind::Add, expr, AffineConstantExpr::get(rhs, context),
              context);
 }
 
-AffineExpr *AffineBinaryOpExpr::getMul(AffineExpr *expr, int64_t rhs,
-                                       MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::getMul(AffineExprWrap expr, int64_t rhs,
+                                          MLIRContext *context) {
   return get(AffineExpr::Kind::Mul, expr, AffineConstantExpr::get(rhs, context),
              context);
 }
 
-AffineExpr *AffineBinaryOpExpr::getFloorDiv(AffineExpr *lhs, uint64_t rhs,
-                                            MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::getFloorDiv(AffineExprWrap lhs, uint64_t rhs,
+                                               MLIRContext *context) {
   return get(AffineExpr::Kind::FloorDiv, lhs,
              AffineConstantExpr::get(rhs, context), context);
 }
 
-AffineExpr *AffineBinaryOpExpr::getCeilDiv(AffineExpr *lhs, uint64_t rhs,
-                                           MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::getCeilDiv(AffineExprWrap lhs, uint64_t rhs,
+                                              MLIRContext *context) {
   return get(AffineExpr::Kind::CeilDiv, lhs,
              AffineConstantExpr::get(rhs, context), context);
 }
 
-AffineExpr *AffineBinaryOpExpr::getMod(AffineExpr *lhs, uint64_t rhs,
-                                       MLIRContext *context) {
+AffineExprWrap AffineBinaryOpExpr::getMod(AffineExprWrap lhs, uint64_t rhs,
+                                          MLIRContext *context) {
   return get(AffineExpr::Kind::Mod, lhs, AffineConstantExpr::get(rhs, context),
              context);
 }
@@ -99,7 +100,7 @@ bool AffineExpr::isSymbolicOrConstant() const {
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
-    auto expr = cast<AffineBinaryOpExpr>(this);
+    auto *expr = cast<AffineBinaryOpExpr>(this);
     return expr->getLHS()->isSymbolicOrConstant() &&
            expr->getRHS()->isSymbolicOrConstant();
   }
@@ -124,15 +125,15 @@ bool AffineExpr::isPureAffine() const {
     // possible, allowing this to merge into the next case.
     auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine() &&
-           (isa<AffineConstantExpr>(op->getLHS()) ||
-            isa<AffineConstantExpr>(op->getRHS()));
+           (isa<AffineConstantExpr>(op->getLHS().expr) ||
+            isa<AffineConstantExpr>(op->getRHS().expr));
   }
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
     auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() &&
-           isa<AffineConstantExpr>(op->getRHS());
+           isa<AffineConstantExpr>(op->getRHS().expr);
   }
   }
 }
@@ -147,19 +148,21 @@ uint64_t AffineExpr::getLargestKnownDivisor() const {
     return 1;
   case Kind::Constant:
     return std::abs(cast<AffineConstantExpr>(this)->getValue());
-  case Kind::Mul:
+  case Kind::Mul: {
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
     return binExpr->getLHS()->getLargestKnownDivisor() *
            binExpr->getRHS()->getLargestKnownDivisor();
+  }
   case Kind::Add:
     LLVM_FALLTHROUGH;
   case Kind::FloorDiv:
   case Kind::CeilDiv:
-  case Kind::Mod:
+  case Kind::Mod: {
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
     return llvm::GreatestCommonDivisor64(
         binExpr->getLHS()->getLargestKnownDivisor(),
         binExpr->getRHS()->getLargestKnownDivisor());
+  }
   }
 }
 
@@ -173,7 +176,7 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
     return factor * factor == 1;
   case Kind::Constant:
     return cast<AffineConstantExpr>(this)->getValue() % factor == 0;
-  case Kind::Mul:
+  case Kind::Mul: {
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
     // It's probably not worth optimizing this further (to not traverse the
     // whole sub-tree under - it that would require a version of isMultipleOf
@@ -181,16 +184,18 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
     return (l = binExpr->getLHS()->getLargestKnownDivisor()) % factor == 0 ||
            (u = binExpr->getRHS()->getLargestKnownDivisor()) % factor == 0 ||
            (l * u) % factor == 0;
+  }
   case Kind::Add:
   case Kind::FloorDiv:
   case Kind::CeilDiv:
-  case Kind::Mod:
+  case Kind::Mod: {
     binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
     return llvm::GreatestCommonDivisor64(
                binExpr->getLHS()->getLargestKnownDivisor(),
                binExpr->getRHS()->getLargestKnownDivisor()) %
                factor ==
            0;
+  }
   }
 }
 

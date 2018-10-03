@@ -38,7 +38,7 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
     unsigned j = 0;
     AffineBoundExprList::const_iterator it, e;
     for (it = ubs.begin(), e = ubs.end(); it != e; it++, j++) {
-      if (auto *cExpr = dyn_cast<AffineConstantExpr>(*it)) {
+      if (auto *cExpr = dyn_cast<AffineConstantExpr>(it->expr)) {
         if (val == None) {
           val = cExpr->getValue();
           *idx = j;
@@ -60,7 +60,7 @@ static void mergeBounds(const HyperRectangularSet &set,
                         const AffineBoundExprList &rhsList, bool lb) {
   // The list of bounds is going to be small. Just a linear search
   // should be enough to create a list without duplicates.
-  for (auto *expr : rhsList) {
+  for (auto expr : rhsList) {
     AffineBoundExprList::const_iterator it;
     for (it = lhsList.begin(); it != lhsList.end(); it++) {
       if (expr == *it)
@@ -68,7 +68,7 @@ static void mergeBounds(const HyperRectangularSet &set,
     }
     if (it == lhsList.end()) {
       // There can only be one constant affine expr in this bound list.
-      if (auto *cExpr = dyn_cast<AffineConstantExpr>(expr)) {
+      if (auto *cExpr = dyn_cast<AffineConstantExpr>(expr.expr)) {
         unsigned idx;
         if (lb) {
           auto cb = getReducedConstBound(
@@ -105,8 +105,8 @@ static void mergeBounds(const HyperRectangularSet &set,
 }
 
 HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
-                                         ArrayRef<ArrayRef<AffineExpr *>> lbs,
-                                         ArrayRef<ArrayRef<AffineExpr *>> ubs,
+                                         ArrayRef<ArrayRef<AffineExprWrap>> lbs,
+                                         ArrayRef<ArrayRef<AffineExprWrap>> ubs,
                                          MLIRContext *context,
                                          IntegerSet *symbolContext)
     : context(symbolContext ? MutableIntegerSet(symbolContext, context)
@@ -114,7 +114,7 @@ HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
   unsigned d = 0;
   for (auto boundList : lbs) {
     AffineBoundExprList lb;
-    for (auto *expr : boundList) {
+    for (auto expr : boundList) {
       assert(expr->isSymbolicOrConstant() &&
              "bound expression should be symbolic or constant");
       lb.push_back(expr);
@@ -125,7 +125,7 @@ HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
   d = 0;
   for (auto boundList : ubs) {
     AffineBoundExprList ub;
-    for (auto *expr : boundList) {
+    for (auto expr : boundList) {
       assert(expr->isSymbolicOrConstant() &&
              "bound expression should be symbolic or constant");
       ub.push_back(expr);
@@ -161,7 +161,7 @@ void HyperRectangularSet::print(raw_ostream &os) const {
   unsigned d = 0;
   for (auto &lb : lowerBounds) {
     os << "Dim " << d++ << "\n";
-    for (auto *expr : lb) {
+    for (auto expr : lb) {
       expr->print(os);
     }
   }
@@ -169,7 +169,7 @@ void HyperRectangularSet::print(raw_ostream &os) const {
   os << "Upper bounds\n";
   for (auto &lb : upperBounds) {
     os << "Dim " << d++ << "\n";
-    for (auto *expr : lb) {
+    for (auto expr : lb) {
       expr->print(os);
     }
   }

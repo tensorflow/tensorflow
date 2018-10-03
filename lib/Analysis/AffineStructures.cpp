@@ -49,11 +49,9 @@ bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
 // be pure for the simplification implemented.
 void MutableAffineMap::simplify() {
   // Simplify each of the results if possible.
+  // TODO(ntv): functional-style map
   for (unsigned i = 0, e = getNumResults(); i < e; i++) {
-    AffineExpr *sExpr =
-        simplifyAffineExpr(getResult(i), numDims, numSymbols, context);
-    if (sExpr)
-      results[i] = sExpr;
+    results[i] = simplifyAffineExpr(getResult(i), numDims, numSymbols);
   }
 }
 

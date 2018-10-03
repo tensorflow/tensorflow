@@ -22,13 +22,13 @@
 #ifndef MLIR_ANALYSIS_AFFINE_STRUCTURES_H
 #define MLIR_ANALYSIS_AFFINE_STRUCTURES_H
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
 
-class AffineExpr;
 class AffineApplyOp;
 class AffineBound;
 class AffineCondition;
@@ -43,7 +43,7 @@ struct MutableAffineMap {
 public:
   MutableAffineMap(AffineMap *map, MLIRContext *context);
 
-  AffineExpr *getResult(unsigned idx) const { return results[idx]; }
+  AffineExprWrap getResult(unsigned idx) const { return results[idx]; }
   unsigned getNumResults() const { return results.size(); }
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }
@@ -60,8 +60,8 @@ public:
 
 private:
   // Same meaning as AffineMap's fields.
-  SmallVector<AffineExpr *, 8> results;
-  SmallVector<AffineExpr *, 8> rangeSizes;
+  SmallVector<AffineExprWrap, 8> results;
+  SmallVector<AffineExprWrap, 8> rangeSizes;
   unsigned numDims;
   unsigned numSymbols;
   /// A pointer to the IR's context to store all newly created AffineExpr's.
@@ -90,7 +90,7 @@ private:
   unsigned numDims;
   unsigned numSymbols;
 
-  SmallVector<AffineExpr *, 8> constraints;
+  SmallVector<AffineExprWrap, 8> constraints;
   SmallVector<bool, 8> eqFlags;
   /// A pointer to the IR's context to store all newly created AffineExpr's.
   MLIRContext *context;
@@ -266,7 +266,7 @@ public:
     return ArrayRef<int64_t>(&inequalities[idx * getNumCols()], getNumCols());
   }
 
-  AffineExpr *toAffineExpr(unsigned idx, MLIRContext *context);
+  AffineExprWrap toAffineExpr(unsigned idx, MLIRContext *context);
 
   void addInequality(ArrayRef<int64_t> inEq);
   void addEquality(ArrayRef<int64_t> eq);
