@@ -352,6 +352,8 @@ Status Vectorization::Initialize(const FunctionDef& outer_scope,
 
 Status Vectorization::GetResult(FunctionDef** vectorized_function) {
   TF_RETURN_IF_ERROR(status_);
+  TF_RETURN_IF_ERROR(graph_utils::EnsureNodeNamesUnique(outer_scope_.get()));
+  TF_RETURN_IF_ERROR(graph_utils::EnsureNodeNamesUnique(map_defun_fn_->graph));
 
   if (!map_defun_fn_->ret_nodes.empty()) {
     FunctionDef* map_defun_fn = lib_->add_function();

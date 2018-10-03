@@ -192,6 +192,11 @@ void Node::ClearAttr(const string& name) {
   (*props_->node_def.mutable_attr()).erase(name);
 }
 
+void Node::set_name(string name) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_name(std::move(name));
+}
+
 void Node::set_requested_device(const string& device) {
   MaybeCopyOnWrite();
   props_->node_def.set_device(device);
