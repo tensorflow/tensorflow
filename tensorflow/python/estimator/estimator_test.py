@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import glob
+import json
 import os
 import tempfile
 
@@ -968,6 +969,99 @@ class EstimatorTrainTest(test.TestCase):
         model_fn=dummy_model_fn, config=FakeEvaluatorConfig())
     with self.assertRaisesRegexp(ValueError, 'train_and_evaluate'):
       est.train(dummy_input_fn, steps=1)
+
+  def test_master_distributed_hooks(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.PS: ['localhost:1234'],
+            run_config.TaskType.WORKER: ['localhost:1235'],
+            run_config.TaskType.MASTER: ['localhost:1236']
+        },
+        'task': {
+            'type': run_config.TaskType.MASTER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig())
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
+
+  def test_master_distributed_hooks_for_worker_0(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.PS: ['localhost:1234'],
+            run_config.TaskType.WORKER: ['localhost:1235'],
+            run_config.TaskType.MASTER: ['localhost:1236']
+        },
+        'task': {
+            'type': run_config.TaskType.WORKER,
+            'index': 0
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig())
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertTrue(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertTrue(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
+
+  def test_master_distributed_hooks_for_worker_nonzero(self):
+    tf_config = json.dumps({
+        'cluster': {
+            run_config.TaskType.PS: ['localhost:1234'],
+            run_config.TaskType.WORKER: ['localhost:1235', 'localhost:1237'],
+            run_config.TaskType.MASTER: ['localhost:1236']
+        },
+        'task': {
+            'type': run_config.TaskType.WORKER,
+            'index': 1
+        }
+    })
+    with test.mock.patch.dict('os.environ', {'TF_CONFIG': tf_config}):
+      est = estimator.Estimator(
+          model_fn=model_fn_global_step_incrementer,
+          config=run_config.RunConfig())
+
+    with test.mock.patch.object(training,
+                                'MonitoredTrainingSession') as mock_sess:
+      est.train(dummy_input_fn, steps=1)
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.SummarySaverHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertFalse(
+          any(
+              isinstance(hook, basic_session_run_hooks.StepCounterHook)
+              for hook in mock_sess.call_args[1]['hooks']))
+      self.assertEqual(0, mock_sess.call_args[1]['save_summaries_steps'])
+      self.assertIsNone(mock_sess.call_args[1]['log_step_count_steps'])
 
 
 def _model_fn_with_eval_metric_ops(features, labels, mode, params):

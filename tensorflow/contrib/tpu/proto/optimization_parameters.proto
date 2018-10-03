@@ -22,57 +22,79 @@ message LearningRate {
   }
 }
 
+// Each optimizer's parameter proto has a link to its documentation and CPU
+// implementation (if available) for user reference.
+
+// https://www.tensorflow.org/api_docs/python/tf/train/AdagradOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L151
 message AdagradParameters {
-  float initial_accumulator = 1;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L423
 message StochasticGradientDescentParameters {
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/FtrlOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L192
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
-  float initial_accum = 4;
-  float initial_linear = 5;
 }
 
 // The Adam optimizer does not implement hyper-parameter update; use the dynamic
 // learning rate feature instead, setting the learning rate to:
 // user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
 // Here, t is the current timestep.
+//
+// https://www.tensorflow.org/api_docs/python/tf/train/AdamOptimizer
 // https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L54
+//
+// Note that the code by default implements the lazy version of Adam
+// (https://www.tensorflow.org/api_docs/python/tf/contrib/opt/LazyAdamOptimizer)
+// unless the use_non_lazy_adam parameter is set, in which case it implements
+// the normal version of Adam that updates all parameters in the embedding
+// table, even for entries that are not used in the current minibatch
+// (https://www.tensorflow.org/api_docs/python/tf/contrib/opt/AdamOptimizer). If
+// use_non_lazy_adam is enabled, use_gradient_accumulation is also required in
+// order to get correct results; a warning will be printed otherwise (which may
+// change to an error in the future). If use_max_with_epsilon is set, the Adam
+// variable update formula will be changed from m / (sqrt(v) + epsilon) to
+// m / max(sqrt(v), abs(epsilon)); this option improves the performance of TPU
+// training and is not expected to harm model quality.
 message AdamParameters {
   float beta1 = 3;
   float beta2 = 4;
   float epsilon = 5;
-  float initial_m = 6;
-  float initial_v = 7;
+  bool use_non_lazy_adam = 8;
+  bool use_max_with_epsilon = 9;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/MomentumOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L271
 message MomentumParameters {
   float momentum = 1;
   bool use_nesterov = 2;
-  float initial_accum = 3;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L356
 message RmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
-  float initial_ms = 4;
-  float initial_mom = 5;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L372
 message CenteredRmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
-  float initial_ms = 4;
-  float initial_mom = 5;
-  float initial_mg = 6;
 }
 
+// Variant of algorithm in http://proceedings.mlr.press/v44/shamir15.pdf
 message MdlAdagradLightParameters {
   float l2 = 1;
   float lr_power = 2;
@@ -86,22 +108,20 @@ message MdlAdagradLightParameters {
   float mdl_hard_limit = 10;
   bool hard_limit_min_benefit = 11;
   bool mdl_regularize = 12;
-  float initial_accumulator = 13;
-  float initial_weight = 14;
-  float initial_benefit = 15;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L68
 message AdadeltaParameters {
   float rho = 1;
   float epsilon = 2;
-  float initial_accumulator = 3;
-  float initial_update = 4;
 }
 
+// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L164
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
-  float initial_accumulator = 3;
 }
 
 message OptimizationParameters {

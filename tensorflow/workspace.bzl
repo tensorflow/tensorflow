@@ -110,11 +110,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "278a1af58b633be886fe81bf7061dca6b5fea99566850d1319fffdaa1a061792",
-        strip_prefix = "abseil-cpp-e291c279e458761e77a69b09b129d3d1e81f1e80",
+        sha256 = "7dd09690ae7ca4551de3111d4a86b75b23ec17445f273d3c42bdcdc1c7b02e4e",
+        strip_prefix = "abseil-cpp-48cd2c3f351ff188bc85684b84a91b6e6d17d896",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/e291c279e458761e77a69b09b129d3d1e81f1e80.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/e291c279e458761e77a69b09b129d3d1e81f1e80.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/48cd2c3f351ff188bc85684b84a91b6e6d17d896.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/48cd2c3f351ff188bc85684b84a91b6e6d17d896.tar.gz",
         ],
     )
 
@@ -640,18 +640,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
         licenses = ["notice"],  # New BSD License
         testonly_ = True,
-    )
-
-    tf_http_archive(
-        name = "jemalloc",
-        build_file = clean_dep("//third_party:jemalloc.BUILD"),
-        sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
-        strip_prefix = "jemalloc-4.4.0",
-        system_build_file = clean_dep("//third_party/systemlibs:jemalloc.BUILD"),
-        urls = [
-            "https://mirror.bazel.build/github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
-            "https://github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
-        ],
     )
 
     java_import_external(

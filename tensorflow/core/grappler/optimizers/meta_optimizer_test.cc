@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -81,6 +82,48 @@ class TestOptimizerWithParams : public TestOptimizer {
 };
 
 REGISTER_GRAPH_OPTIMIZER(TestOptimizerWithParams);
+
+// Record various properties of the GrapplerItems passed for optimization.
+class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
+ public:
+  static void SetAllowedOptimizations(
+      gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
+          allowed_optimizations) {
+    allowed_optimizations_ = allowed_optimizations;
+  }
+  static void ResetAllowedOptimizations() { allowed_optimizations_ = nullptr; }
+
+  GrapplerItemPropertiesAccumulator() {}
+  string name() const override {
+    return "grappler_item_properties_accumulator";
+  }
+
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return Status::OK();
+  }
+
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override {
+    *optimized_graph = item.graph;
+    if (allowed_optimizations_) {
+      allowed_optimizations_->insert({item.id, item.allowed_optimizations});
+    }
+    return Status::OK();
+  }
+
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override {}
+
+ private:
+  static gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
+      allowed_optimizations_;
+};
+
+gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>*
+    GrapplerItemPropertiesAccumulator::allowed_optimizations_;
+
+REGISTER_GRAPH_OPTIMIZER(GrapplerItemPropertiesAccumulator);
 
 class MetaOptimizerTest : public GrapplerTest {};
 
@@ -333,6 +376,89 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
 
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
   test::ExpectTensorEqual<int>(tensors_expected[1], tensors[1]);
+}
+
+TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+
+  // We will record what type of optimizations meta optimizer allows for each
+  // GrapplerItem (main graph and graphs for each function).
+  gtl::FlatMap<string, GrapplerItem::AllowedOptimizations>
+      allowed_optimizations;
+  GrapplerItemPropertiesAccumulator::SetAllowedOptimizations(
+      &allowed_optimizations);
+
+  // Just record properties of optimized Grappler items.
+  RewriterConfig rewriter_config;
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+  rewriter_config.add_optimizers("GrapplerItemPropertiesAccumulator");
+  rewriter_config.set_min_graph_nodes(-1);
+
+  MetaOptimizer optimizer(nullptr, rewriter_config);
+
+  // Define simple function library with two identical mul functions.
+  FunctionDef mul_func_1 = FunctionDefHelper::Create(
+      "MyMul1", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "mul:z:0"}});
+
+  FunctionDef mul_func_2 = FunctionDefHelper::Create(
+      "MyMul2", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "mul:z:0"}});
+
+  // Tensorflow graph:
+  //
+  //   x0 = tf.Placeholder(tf.float);
+  //   x1 = tf.Placeholder(tf.float);
+  //   dy = tf.Placeholder(tf.float);
+  //
+  //   mul_1 = MyMul1(x0, x1);
+  //   mul_2 = MyMul2(x0, x1);
+  //   dx = SymbolicGradient({x0, x1, dy}, f=MyMul2)
+  GrapplerItem item;
+  item.id = "main";
+  item.graph = test::function::GDef(
+      {NDef("x0", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("x1", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("dy", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("mul_1", "MyMul1", {"x0", "x1"}, {}, kDevice),
+       NDef("mul_2", "MyMul2", {"x0", "x1"}, {}, kDevice),
+       // Symbolic gradient of a MyMul2
+       NDef("dx", "SymbolicGradient", {"x0", "x1", "dy"},
+            {{"f", FDH::FunctionRef("MyMul2", {})},
+             {"Tin", DataTypeSlice{DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT, DT_FLOAT}}},
+            kDevice)},
+      // FunctionLib
+      {mul_func_1, mul_func_2});
+  item.fetch = {"mul_1", "mul_2", "dx"};
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Our custom optimizer must be called for the main graph and for the two
+  // functions.
+  ASSERT_EQ(allowed_optimizations.size(), 3);
+
+  auto allowed_optimizations_main =
+      gtl::FindOrNull(allowed_optimizations, "main");
+  ASSERT_NE(allowed_optimizations_main, nullptr);
+  EXPECT_TRUE(allowed_optimizations_main->non_differentiable_rewrites);
+
+  auto allowed_optimizations_my_mul_1 =
+      gtl::FindOrNull(allowed_optimizations, "MyMul1");
+  ASSERT_NE(allowed_optimizations_my_mul_1, nullptr);
+  EXPECT_TRUE(allowed_optimizations_my_mul_1->non_differentiable_rewrites);
+
+  auto allowed_optimizations_my_mul_2 =
+      gtl::FindOrNull(allowed_optimizations, "MyMul2");
+  ASSERT_NE(allowed_optimizations_my_mul_2, nullptr);
+  EXPECT_FALSE(allowed_optimizations_my_mul_2->non_differentiable_rewrites);
 }
 
 }  // namespace

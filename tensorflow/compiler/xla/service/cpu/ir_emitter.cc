@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -67,8 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -1398,10 +1398,10 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   //
   // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
   // [0->0, 3->1].
-  gtl::FlatMap<int64, int64> unreduced_dim_map;
+  absl::flat_hash_map<int64, int64> unreduced_dim_map;
 
-  gtl::FlatSet<int64> reduced_dims(reduce.dimensions().begin(),
-                                   reduce.dimensions().end());
+  absl::flat_hash_set<int64> reduced_dims(reduce.dimensions().begin(),
+                                          reduce.dimensions().end());
 
   const Shape& operand_shape = reduce.operand(0)->shape();
   const Shape& result_shape = reduce.shape();
@@ -1977,7 +1977,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  gtl::FlatSet<int64> inner_dims;
+  absl::flat_hash_set<int64> inner_dims;
   for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;

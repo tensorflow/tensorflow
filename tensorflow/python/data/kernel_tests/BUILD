@@ -115,8 +115,10 @@ tf_py_test(
     srcs = ["dataset_ops_test.py"],
     additional_deps = [
         ":test_base",
-        "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -168,20 +170,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
-    name = "inputs_test",
-    size = "small",
-    srcs = ["inputs_test.py"],
-    additional_deps = [
-        ":test_base",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -471,6 +459,9 @@ py_library(
     srcs = ["test_base.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/util:nest",
     ],
 )
 

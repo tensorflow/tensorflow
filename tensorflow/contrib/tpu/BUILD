@@ -133,6 +133,12 @@ tf_custom_op_library(
 
 tf_gen_op_wrapper_py(
     name = "tpu_ops",
+    hidden = [
+        "SendTPUEmbeddingGradients",
+        "EnqueueTPUEmbeddingIntegerBatch",
+        "EnqueueTPUEmbeddingSparseBatch",
+        "EnqueueTPUEmbeddingSparseTensorBatch",
+    ],
     deps = [
         ":cross_replica_ops_op_lib",
         ":heartbeat_ops_op_lib",

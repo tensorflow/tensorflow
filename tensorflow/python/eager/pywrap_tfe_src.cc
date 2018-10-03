@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
+#include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -567,11 +568,8 @@ bool SetOpAttrScalar(
         return false;
       }
     }
-    TFE_Op* func = TFE_NewOp(
-        ctx, string(func_name.data(), func_name.size()).c_str(), status);
-    if (TF_GetCode(status) != TF_OK) return false;
-    TFE_OpSetAttrFunction(op, key, func);
-    TFE_DeleteOp(func);
+    TF_SetStatus(status, TF_OK, "");
+    TFE_OpSetAttrFunctionName(op, key, func_name.data(), func_name.size());
   } else {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
@@ -1569,9 +1567,8 @@ void TapeSetRecordOperation(
   }
 
   for (TFE_Py_Tape* tape : SafeTapeSet()) {
-    auto* function = backward_function_getter();
     tape->tape->RecordOperation(op_type_str, output_info, input_ids,
-                                input_dtypes, function,
+                                input_dtypes, backward_function_getter,
                                 backward_function_killer);
   }
 }
@@ -2747,4 +2744,219 @@ PyObject* TFE_Py_RecordGradient(PyObject* op_name, PyObject* inputs,
   }
 
   return RecordGradient(op_name, inputs, attrs, results, name);
+}
+
+namespace {
+
+tensorflow::int64 GetPyNoneHash() {
+  tensorflow::int64 py_none_hash = PyObject_Hash(Py_None);
+  return py_none_hash;
+}
+
+struct EncodeResult {
+  string str;
+  std::vector<PyObject*> objects;
+
+  PyObject* ToPyTuple() {
+    PyObject* result = PyTuple_New(2);
+
+    PyTuple_SET_ITEM(result, 0, GetPythonObjectFromString(str.c_str()));
+
+    if (objects.empty()) {
+      Py_INCREF(Py_None);
+      PyTuple_SET_ITEM(result, 1, Py_None);
+    } else {
+      PyObject* objects_tuple = PyTuple_New(objects.size());
+
+      for (int i = 0; i < objects.size(); i++) {
+        PyTuple_SET_ITEM(objects_tuple, i, objects[i]);
+      }
+
+      PyTuple_SET_ITEM(result, 1, objects_tuple);
+    }
+
+    return result;
+  }
+};
+
+tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
+  if (EagerTensor_CheckExact(arg)) {
+    TFE_TensorHandle* t = EagerTensor_Handle(arg);
+    tensorflow::TensorShape tensor_shape;
+    TF_RETURN_IF_ERROR(t->handle->Shape(&tensor_shape));
+    absl::StrAppend(&result->str, t->handle->dtype);
+
+    for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
+      absl::StrAppend(&result->str, dim_size);
+    }
+
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Safe_PyObjectPtr dtype_object(
+      PyObject_GetAttrString(arg, "dtype"));
+
+  if (dtype_object == nullptr) {
+    return tensorflow::errors::InvalidArgument(
+        "ops.Tensor object doesn't have dtype() attr.");
+  }
+
+  tensorflow::Safe_PyObjectPtr dtype_enum(
+      PyObject_GetAttrString(dtype_object.get(), "_type_enum"));
+
+  if (dtype_enum == nullptr) {
+    return tensorflow::errors::InvalidArgument(
+        "ops.Tensor's dtype object doesn't have _type_enum() attr.");
+  }
+
+  tensorflow::DataType dtype =
+      static_cast<tensorflow::DataType>(MakeInt(dtype_enum.get()));
+
+  absl::StrAppend(&result->str, dtype);
+  static char _shape_tuple[] = "_shape_tuple";
+  tensorflow::Safe_PyObjectPtr shape_tuple(
+      PyObject_CallMethod(arg, _shape_tuple, nullptr));
+
+  if (shape_tuple == nullptr) {
+    return tensorflow::errors::InvalidArgument(
+        "ops.Tensor object doesn't have _shape_tuple() method.");
+  }
+
+  if (shape_tuple.get() == Py_None) {
+    // Unknown shape, encode that directly.
+    absl::StrAppend(&result->str, GetPyNoneHash());
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Safe_PyObjectPtr shape_seq(PySequence_Fast(
+      shape_tuple.get(), "shape_tuple didn't return a sequence"));
+
+  int len = PySequence_Fast_GET_SIZE(shape_seq.get());
+  for (int i = 0; i < len; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(shape_seq.get(), i);
+    if (item == Py_None) {
+      absl::StrAppend(&result->str, GetPyNoneHash());
+    } else {
+      absl::StrAppend(&result->str, MakeInt(item));
+    }
+  }
+
+  return tensorflow::Status::OK();
+}
+
+const char kTensor[] = "T";
+const char kIndexedSlices[] = "I";
+const char kList[] = "L";
+const char kTuple[] = "t";
+const char kDict[] = "D";
+const char kRaw[] = "R";
+
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result);
+
+// This function doesn't set the type of sequence before
+tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
+                                         EncodeResult* result) {
+  tensorflow::Safe_PyObjectPtr arg_seq(
+      PySequence_Fast(arg, "unable to create seq from list/tuple"));
+
+  absl::StrAppend(&result->str, type);
+  int len = PySequence_Fast_GET_SIZE(arg_seq.get());
+  for (int i = 0; i < len; ++i) {
+    PyObject* item = PySequence_Fast_GET_ITEM(arg_seq.get(), i);
+    if (item == Py_None) {
+      absl::StrAppend(&result->str, GetPyNoneHash());
+    } else {
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(item, result));
+    }
+  }
+
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
+  if (tensorflow::swig::IsTensor(arg)) {
+    absl::StrAppend(&result->str, kTensor);
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(arg, result));
+  } else if (tensorflow::swig::IsIndexedSlices(arg)) {
+    absl::StrAppend(&result->str, kIndexedSlices);
+    tensorflow::Safe_PyObjectPtr values(PyObject_GetAttrString(arg, "values"));
+    if (values == nullptr) {
+      PyErr_Clear();
+      return tensorflow::errors::InvalidArgument(
+          "IndexedSlices does not have a values attr");
+    }
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(values.get(), result));
+
+    tensorflow::Safe_PyObjectPtr indices(
+        PyObject_GetAttrString(arg, "indices"));
+    if (indices == nullptr) {
+      PyErr_Clear();
+      return tensorflow::errors::InvalidArgument(
+          "IndexedSlices does not have a indices attr");
+    }
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(indices.get(), result));
+
+    tensorflow::Safe_PyObjectPtr dense_shape(
+        PyObject_GetAttrString(arg, "dense_shape"));
+    if (dense_shape == nullptr) {
+      PyErr_Clear();
+      return tensorflow::errors::InvalidArgument(
+          "IndexedSlices does not have a dense_shape attr");
+    }
+    if (dense_shape.get() != Py_None) {
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(dense_shape.get(), result));
+    }
+  } else if (PyList_Check(arg)) {
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, result));
+  } else if (PyTuple_Check(arg)) {
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, result));
+  } else if (PyDict_Check(arg)) {
+    tensorflow::Safe_PyObjectPtr keys(PyDict_Keys(arg));
+    if (PyList_Sort(keys.get()) == -1) {
+      return tensorflow::errors::Internal("Unable to sort keys");
+    }
+
+    absl::StrAppend(&result->str, kDict);
+    int len = PyList_Size(keys.get());
+
+    for (int i = 0; i < len; i++) {
+      PyObject* key = PyList_GetItem(keys.get(), i);
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(key, result));
+      PyObject* value = PyDict_GetItem(arg, key);
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(value, result));
+    }
+  } else {
+    PyObject* object = PyWeakref_NewRef(arg, nullptr);
+
+    if (object == nullptr) {
+      PyErr_Clear();
+
+      object = arg;
+      Py_INCREF(object);
+    }
+
+    absl::StrAppend(&result->str, kRaw);
+    result->objects.push_back(object);
+  }
+
+  return tensorflow::Status::OK();
+}
+
+}  // namespace
+
+// `defun` uses dtypes and shapes instead of `Tensors` as cache keys. Dtypes
+// are used because TensorFlow graphs are not parametric w.r.t. dtypes. Shapes
+// are used for both performance reasons, as much TensorFlow code specializes
+// on known shapes to produce slimmer graphs, and correctness, as some
+// high-level APIs require shapes to be fully-known.
+//
+// TODO(nareshmodi): Add support for sparse tensors.
+PyObject* TFE_Py_EncodeArg(PyObject* arg) {
+  EncodeResult result;
+  const auto status = TFE_Py_EncodeArgHelper(arg, &result);
+  if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
+    return nullptr;
+  }
+
+  return result.ToPyTuple();
 }

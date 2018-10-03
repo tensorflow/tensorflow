@@ -296,12 +296,12 @@ void Model::AddProcessingTime(const string& name, int64 delta) {
 
 void Model::AddTunableParameter(const string& node_name,
                                 const string& parameter_name,
-                                std::atomic<int64>* value, int64 min, int64 max,
-                                condition_variable* cond_var) {
+                                std::shared_ptr<SharedState> state, int64 min,
+                                int64 max) {
   tf_shared_lock l(mu_);
   auto node = *gtl::FindOrNull(lookup_table_, node_name);
   DCHECK(node);
-  node->add_tunable_param(parameter_name, value, min, max, cond_var);
+  node->add_tunable_param(parameter_name, std::move(state), min, max);
 }
 
 // The optimization algorithm starts by setting all tunable parallelism
@@ -311,54 +311,55 @@ void Model::AddTunableParameter(const string& node_name,
 // is less than or equal to the processing time needed to produce an element
 // divided by CPU budget.
 void Model::Optimize(int64 cpu_budget) {
-  tf_shared_lock lock(mu_);
   std::vector<std::shared_ptr<Model::Node::Tunable>> tunables;
-  const int64 processing_time = ProcessingTime();
-  tunables = CollectTunables();
-  for (auto tunable : tunables) {
-    tunable->value = 1;
-  }
-  while (true) {
-    const int64 output_time = OutputTime();
-    bool all_tunables = true;
-    for (auto& tunable : tunables) {
-      if (tunable->value < tunable->max) {
-        all_tunables = false;
+  {
+    tf_shared_lock lock(mu_);
+    const int64 processing_time = ProcessingTime();
+    tunables = CollectTunables();
+    for (auto tunable : tunables) {
+      tunable->value = 1;
+    }
+    while (true) {
+      const int64 output_time = OutputTime();
+      bool all_tunables = true;
+      for (auto& tunable : tunables) {
+        if (tunable->value < tunable->max) {
+          all_tunables = false;
+          break;
+        }
+      }
+      if (output_time < processing_time / cpu_budget || all_tunables) {
         break;
       }
-    }
-    if (output_time < processing_time / cpu_budget || all_tunables) {
-      break;
-    }
-    int64 best_delta = -1;
-    Model::Node::Tunable* best_tunable = nullptr;
-    for (auto& tunable : tunables) {
-      if (tunable->value == tunable->max) {
-        continue;
+      int64 best_delta = -1;
+      Model::Node::Tunable* best_tunable = nullptr;
+      for (auto& tunable : tunables) {
+        if (tunable->value == tunable->max) {
+          continue;
+        }
+        tunable->value++;
+        int64 delta = output_time - OutputTime();
+        if (delta > best_delta) {
+          best_delta = delta;
+          best_tunable = tunable.get();
+        }
+        tunable->value--;
       }
-      tunable->value++;
-      int64 delta = output_time - OutputTime();
-      if (delta > best_delta) {
-        best_delta = delta;
-        best_tunable = tunable.get();
+      if (!best_tunable) {
+        // NOTE: This can happen because we are performing the optimization
+        // while the model data is changing. If this becomes an issue, we should
+        // look into performing the optimization using a model snapshot.
+        break;
       }
-      tunable->value--;
+      best_tunable->value++;
     }
-    if (!best_tunable) {
-      // NOTE: This can happen because we are performing the optimization
-      // while the model data is changing. If this becomes an issue, we should
-      // look into performing the optimization using a model snapshot.
-      break;
-    }
-    best_tunable->value++;
   }
   VLOG(2) << "Number of knobs: " << tunables.size();
   for (auto& tunable : tunables) {
     VLOG(2) << "Setting tunable parameter: " << tunable->value;
-    tunable->value_ptr->store(tunable->value);
-    if (tunable->cond_var) {
-      tunable->cond_var->notify_all();
-    }
+    mutex_lock l(*tunable->state->mu);
+    tunable->state->value = tunable->value;
+    tunable->state->cond_var->notify_all();
   }
 }
 

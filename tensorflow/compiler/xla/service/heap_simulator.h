@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -30,8 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -58,7 +58,7 @@ class HeapSimulator {
   // Result represents the result of the heap simulation.
   struct Result {
     // The assignment of buffers to chunks.
-    tensorflow::gtl::FlatMap<const BufferValue*, Chunk> chunk_map;
+    absl::flat_hash_map<const BufferValue*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
     int64 heap_size = 0;
@@ -100,7 +100,7 @@ class HeapSimulator {
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const LogicalBuffer::SizeFunction& size_function,
-      const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+      const absl::flat_hash_map<const HloComputation*, int64>*
           memory_by_computation = nullptr);
 
   // Run the heap simulation with the given algorithm, assuming the given
@@ -130,7 +130,7 @@ class HeapSimulator {
       const TuplePointsToAnalysis& points_to_analysis,
       const BufferValue::SizeFunction& size_fn,
       const Options& options = Options(),
-      const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+      const absl::flat_hash_map<const HloComputation*, int64>*
           memory_by_computation = nullptr);
 
  private:
@@ -140,7 +140,7 @@ class HeapSimulator {
   HeapSimulator(std::unique_ptr<HeapAlgorithm> algorithm,
                 const BufferValue::SizeFunction& size_fn,
                 const Options& options, const HloSchedule* schedule = nullptr,
-                const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+                const absl::flat_hash_map<const HloComputation*, int64>*
                     memory_by_computation = nullptr);
   ~HeapSimulator();
 
@@ -172,7 +172,7 @@ class HeapSimulator {
   // handle subcomputations. It would be good to unify the handling of
   // subcomputations, but it's not clear how.
   const HloSchedule* schedule_;
-  const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+  const absl::flat_hash_map<const HloComputation*, int64>*
       memory_by_computation_;
 
   // In addition to Alloc and Free, the heap simulator exposes a concept of
@@ -193,12 +193,12 @@ class HeapSimulator {
     const BufferValue* canonical = nullptr;
     int64 refcount = 0;
   };
-  tensorflow::gtl::FlatMap<const BufferValue*, std::shared_ptr<SharedGroup>>
+  absl::flat_hash_map<const BufferValue*, std::shared_ptr<SharedGroup>>
       shared_buffers_;
 
   // Hold some sets for error-checking the sequence of Alloc and Free calls.
-  tensorflow::gtl::FlatSet<const BufferValue*> allocated_buffers_;
-  tensorflow::gtl::FlatSet<const BufferValue*> freed_buffers_;
+  absl::flat_hash_set<const BufferValue*> allocated_buffers_;
+  absl::flat_hash_set<const BufferValue*> freed_buffers_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;
@@ -235,7 +235,7 @@ class HeapAlgorithm {
   // analysis, it's not worth making major changes to HeapSimulator now.
   virtual void AccountForSubcomputationMemory(
       const HloInstruction* instruction,
-      const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+      const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) {}
 
   // Free de-allocates a previously allocated buffer.
@@ -262,7 +262,7 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
 
   void AccountForSubcomputationMemory(
       const HloInstruction* instruction,
-      const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+      const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) override;
 
   void Free(const BufferValue* buffer, int64 size) override;
@@ -382,8 +382,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     // Free time of the buffer.
     int64 end;
   };
-  tensorflow::gtl::FlatMap<const BufferValue*, BufferInterval>
-      buffer_intervals_;
+  absl::flat_hash_map<const BufferValue*, BufferInterval> buffer_intervals_;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to

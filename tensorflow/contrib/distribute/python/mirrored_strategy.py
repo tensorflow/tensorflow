@@ -484,8 +484,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           self._prefetch_on_device, self._auto_shard_dataset)
     else:
       return values.PerDeviceDataset(
-          self._call_dataset_fn(dataset_fn),
-          self._devices,
+          self._call_dataset_fn(dataset_fn), self._devices,
           self._prefetch_on_device)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
@@ -628,9 +627,11 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._get_cross_tower_ops().batch_reduce(aggregation,
                                                     value_destination_pairs)
 
-  def _update(self, var, fn, *args, **kwargs):
+  def _update(self, var, options, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
@@ -639,10 +640,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.regroup(updates, values.Mirrored)
+    return values.update_regroup(self, updates, should_group)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
     assert isinstance(colocate_with, list)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -650,7 +653,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
         updates[d] = fn(*values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.regroup(updates, values.Mirrored)
+    return values.update_regroup(self, updates, should_group)
 
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""

@@ -343,21 +343,33 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
     return nest.map_structure(_select_fn, structured)
 
-  def _update(self, var, fn, *args, **kwargs):
+  def _update(self, var, options, fn, *args, **kwargs):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
     if not isinstance(var, resource_variable_ops.ResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):
-      return fn(var, *self._select_single_value(args),
-                **self._select_single_value(kwargs))
+      result = fn(var, *self._select_single_value(args),
+                  **self._select_single_value(kwargs))
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     with ops.device(
         colocate_with.device), distribute_lib.UpdateContext(colocate_with):
-      return fn(*args, **kwargs)
+      result = fn(*args, **kwargs)
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
 
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):

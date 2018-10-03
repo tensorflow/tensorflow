@@ -48,10 +48,13 @@ _SUPPORTED_ANDROID_NDK_VERSIONS = [10, 11, 12, 13, 14, 15, 16]
 
 _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 
-_TF_WORKSPACE_ROOT = os.path.abspath(os.path.dirname(__file__))
 _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
-_TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
-_TF_WORKSPACE = os.path.join(_TF_WORKSPACE_ROOT, 'WORKSPACE')
+_TF_WORKSPACE_ROOT = ''
+_TF_BAZELRC = ''
+
+NCCL_LIB_PATHS = [
+    'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
+]
 
 if platform.machine() == 'ppc64le':
   _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/powerpc64le-linux-gnu/'
@@ -224,7 +227,7 @@ def setup_python(environ_cp):
         python_lib_path = default_python_lib_path
     environ_cp['PYTHON_LIB_PATH'] = python_lib_path
 
-  python_major_version = get_python_major_version(python_bin_path)
+  _ = get_python_major_version(python_bin_path)
 
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows() or is_cygwin():
@@ -243,10 +246,10 @@ def setup_python(environ_cp):
     f.write('export PYTHON_BIN_PATH="%s"' % python_bin_path)
 
 
-def reset_tf_configure_bazelrc(workspace_path):
+def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
-  bazelrc_path = os.path.join(workspace_path, '.bazelrc')
+  bazelrc_path = os.path.join(_TF_WORKSPACE_ROOT, '.bazelrc')
 
   data = []
   if os.path.exists(bazelrc_path):
@@ -257,12 +260,7 @@ def reset_tf_configure_bazelrc(workspace_path):
       if _TF_BAZELRC_FILENAME in l:
         continue
       f.write('%s\n' % l)
-    if is_windows():
-      tf_bazelrc_path = _TF_BAZELRC.replace('\\', '/')
-    else:
-      tf_bazelrc_path = _TF_BAZELRC
-    f.write('import %s\n' % tf_bazelrc_path)
-
+    f.write('import %%workspace%%/%s\n' % _TF_BAZELRC_FILENAME)
 
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
@@ -885,7 +883,7 @@ def set_tf_cudnn_version(environ_cp):
   """Set CUDNN_INSTALL_PATH and TF_CUDNN_VERSION."""
   ask_cudnn_version = (
       'Please specify the cuDNN version you want to use. '
-      '[Leave empty to default to cuDNN %s.0]: ') % _DEFAULT_CUDNN_VERSION
+      '[Leave empty to default to cuDNN %s]: ') % _DEFAULT_CUDNN_VERSION
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_cudnn_version = get_from_env_or_user_or_default(
@@ -1042,7 +1040,7 @@ def set_tf_tensorrt_install_path(environ_cp):
     for lib_file in possible_files:
       if is_cuda_compatible(lib_file, cuda_ver, cudnn_ver):
         matches = nvinfer_pattern.search(lib_file)
-        if len(matches.groups()) == 0:
+        if not matches.groups():
           continue
         ver_str = matches.group(1)
         ver = convert_version_to_int(ver_str) if len(ver_str) else 0
@@ -1098,7 +1096,7 @@ def set_tf_tensorrt_install_path(environ_cp):
 
 
 def set_tf_nccl_install_path(environ_cp):
-  """Set NCCL_INSTALL_PATH and TF_NCCL_VERSION.
+  """Set NCCL_INSTALL_PATH, NCCL_HDR_PATH and TF_NCCL_VERSION.
 
   Args:
     environ_cp: copy of the os.environ.
@@ -1124,46 +1122,107 @@ def set_tf_nccl_install_path(environ_cp):
     if tf_nccl_version == '1':
       break  # No need to get install path, NCCL 1 is a GitHub repo.
 
-    # TODO(csigg): Look with ldconfig first if we can find the library in paths
+    # Look with ldconfig first if we can find the library in paths
     # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
     # include directory. This is where the NCCL .deb packages install them.
-    # Then ask the user if we should use that. Instead of a single
-    # NCCL_INSTALL_PATH, pass separate NCCL_LIB_PATH and NCCL_HDR_PATH to
-    # nccl_configure.bzl
-    default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
-    ask_nccl_path = (r'Please specify the location where NCCL %s library is '
-                     'installed. Refer to README.md for more details. [Default '
-                     'is %s]:') % (tf_nccl_version, default_nccl_path)
-    nccl_install_path = get_from_env_or_user_or_default(
-        environ_cp, 'NCCL_INSTALL_PATH', ask_nccl_path, default_nccl_path)
 
-    # Result returned from "read" will be used unexpanded. That make "~"
-    # unusable. Going through one more level of expansion to handle that.
-    nccl_install_path = os.path.realpath(os.path.expanduser(nccl_install_path))
-    if is_windows() or is_cygwin():
-      nccl_install_path = cygpath(nccl_install_path)
+    # First check to see if NCCL is in the ldconfig.
+    # If its found, use that location.
+    if is_linux():
+      ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+      nccl2_path_from_ldconfig = run_shell([ldconfig_bin, '-p'])
+      nccl2_path_from_ldconfig = re.search('.*libnccl.so .* => (.*)',
+                                           nccl2_path_from_ldconfig)
+    if nccl2_path_from_ldconfig:
+      nccl2_path_from_ldconfig = nccl2_path_from_ldconfig.group(1)
+      if os.path.exists('%s.%s' % (nccl2_path_from_ldconfig, tf_nccl_version)):
+        nccl_install_path = os.path.dirname(nccl2_path_from_ldconfig)
+        print('NCCL libraries found in ' + nccl2_path_from_ldconfig)
 
-    if is_windows():
-      nccl_lib_path = 'lib/x64/nccl.lib'
-    elif is_linux():
-      nccl_lib_path = 'lib/libnccl.so.%s' % tf_nccl_version
-    elif is_macos():
-      nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
+        # Check if this is the main system lib location
+        if re.search('.*linux-gnu', nccl_install_path):
+          trunc_nccl_install_path = '/usr'
+          print('This looks like a system path.')
+        else:
+          trunc_nccl_install_path = nccl_install_path + '/..'
 
-    nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
-    nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
-    if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
-      # Set NCCL_INSTALL_PATH
-      environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
-      write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
-      break
+        # Look for header
+        nccl_hdr_path = trunc_nccl_install_path + '/include'
+        print('Assuming NCCL header path is ' + nccl_hdr_path)
+        if os.path.exists(nccl_hdr_path + '/nccl.h'):
+          # Set NCCL_INSTALL_PATH
+          environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
+          write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
 
-    # Reset and Retry
-    print('Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
+          # Set NCCL_HDR_PATH
+          environ_cp['NCCL_HDR_PATH'] = nccl_hdr_path
+          write_action_env_to_bazelrc('NCCL_HDR_PATH', nccl_hdr_path)
+          break
+        else:
+          print(
+              'The header for NCCL2 cannot be found. Please install the libnccl-dev package.'
+          )
+      else:
+        print('NCCL2 is listed by ldconfig but the library is not found. '
+              'Your ldconfig is out of date. Please run sudo ldconfig.')
+    else:
+      # NCCL is not found in ldconfig. Ask the user for the location.
+      default_nccl_path = environ_cp.get('CUDA_TOOLKIT_PATH')
+      ask_nccl_path = (
+          r'Please specify the location where NCCL %s library is '
+          'installed. Refer to README.md for more details. [Default '
+          'is %s]:') % (tf_nccl_version, default_nccl_path)
+      nccl_install_path = get_from_env_or_user_or_default(
+          environ_cp, 'NCCL_INSTALL_PATH', ask_nccl_path, default_nccl_path)
+
+      # Result returned from "read" will be used unexpanded. That make "~"
+      # unusable. Going through one more level of expansion to handle that.
+      nccl_install_path = os.path.realpath(
+          os.path.expanduser(nccl_install_path))
+      if is_windows() or is_cygwin():
+        nccl_install_path = cygpath(nccl_install_path)
+
+      if is_windows():
+        nccl_lib_path = 'lib/x64/nccl.lib'
+      elif is_linux():
+        nccl_lib_filename = 'libnccl.so.%s' % tf_nccl_version
+        nccl_lpath = '%s/lib/%s' % (nccl_install_path, nccl_lib_filename)
+        if not os.path.exists(nccl_lpath):
+          for relative_path in NCCL_LIB_PATHS:
+            path = '%s/%s%s' % (nccl_install_path, relative_path,
+                                nccl_lib_filename)
+            if os.path.exists(path):
+              print('NCCL found at ' + path)
+              nccl_lib_path = path
+              break
+        else:
+          nccl_lib_path = nccl_lpath
+      elif is_macos():
+        nccl_lib_path = 'lib/libnccl.%s.dylib' % tf_nccl_version
+
+      nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
+      nccl_hdr_path = os.path.join(
+          os.path.dirname(nccl_lib_path), '../include/nccl.h')
+      print('Assuming NCCL header path is ' + nccl_hdr_path)
+      if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
+        # Set NCCL_INSTALL_PATH
+        environ_cp['NCCL_INSTALL_PATH'] = os.path.dirname(nccl_lib_path)
+        write_action_env_to_bazelrc('NCCL_INSTALL_PATH',
+                                    os.path.dirname(nccl_lib_path))
+
+        # Set NCCL_HDR_PATH
+        environ_cp['NCCL_HDR_PATH'] = os.path.dirname(nccl_hdr_path)
+        write_action_env_to_bazelrc('NCCL_HDR_PATH',
+                                    os.path.dirname(nccl_hdr_path))
+        break
+
+      # Reset and Retry
+      print(
+          'Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
           'O/S agnostic package of NCCL 2' % (tf_nccl_version, nccl_lib_path,
                                               nccl_hdr_path))
 
-    environ_cp['TF_NCCL_VERSION'] = ''
+      environ_cp['TF_NCCL_VERSION'] = ''
   else:
     raise UserInputError('Invalid TF_NCCL setting was provided %d '
                          'times in a row. Assuming to be a scripting mistake.' %
@@ -1410,7 +1469,7 @@ def set_other_mpi_vars(environ_cp):
 
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
-  if syslibs and syslibs != '':
+  if syslibs:
     if ',' in syslibs:
       syslibs = ','.join(sorted(syslibs.split(',')))
     else:
@@ -1469,13 +1528,19 @@ def config_info_line(name, help_text):
 
 
 def main():
+  global _TF_WORKSPACE_ROOT
+  global _TF_BAZELRC
+
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--workspace',
       type=str,
-      default=_TF_WORKSPACE_ROOT,
+      default=os.path.abspath(os.path.dirname(__file__)),
       help='The absolute path to your active Bazel workspace.')
   args = parser.parse_args()
+
+  _TF_WORKSPACE_ROOT = args.workspace
+  _TF_BAZELRC = os.path.join(_TF_WORKSPACE_ROOT, _TF_BAZELRC_FILENAME)
 
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
@@ -1483,12 +1548,11 @@ def main():
 
   check_bazel_version('0.15.0')
 
-  reset_tf_configure_bazelrc(args.workspace)
+  reset_tf_configure_bazelrc()
   cleanup_makefile()
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
@@ -1502,7 +1566,6 @@ def main():
     environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
-    environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
     environ_cp['TF_ENABLE_XLA'] = '0'
 
@@ -1513,11 +1576,10 @@ def main():
   if is_ppc64le():
     write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
-  set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
-                'with_jemalloc', True)
+  set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite',
+                'with_ignite_support', True, 'ignite')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 True, 'xla')
-
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':

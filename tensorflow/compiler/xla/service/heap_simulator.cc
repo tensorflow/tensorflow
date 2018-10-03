@@ -18,14 +18,16 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
-using tensorflow::gtl::FlatMap;
-using tensorflow::gtl::FlatSet;
+using absl::flat_hash_map;
+using absl::flat_hash_set;
 
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
@@ -56,7 +58,7 @@ StatusOr<int64> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+    const absl::flat_hash_map<const HloComputation*, int64>*
         memory_by_computation) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result result,
@@ -88,7 +90,7 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     const HloInstructionSequence& instruction_sequence,
     const TuplePointsToAnalysis& points_to_analysis,
     const BufferValue::SizeFunction& size_fn, const Options& options,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+    const absl::flat_hash_map<const HloComputation*, int64>*
         memory_by_computation) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/nullptr, memory_by_computation);
@@ -115,8 +117,10 @@ Status HeapSimulator::RunComputation(
   // 'used_buffers' is the reverse map - it tracks which buffers were used by an
   // instruction, so that we can remove the instructions from a buffer's live
   // set after they are visited.
-  FlatMap<const BufferValue*, FlatSet<const HloInstruction*>> live_buffers;
-  FlatMap<const HloInstruction*, FlatSet<const BufferValue*>> used_buffers;
+  flat_hash_map<const BufferValue*, flat_hash_set<const HloInstruction*>>
+      live_buffers;
+  flat_hash_map<const HloInstruction*, flat_hash_set<const BufferValue*>>
+      used_buffers;
   auto add_user_to_buffer = [this, &live_buffers, &used_buffers](
                                 const HloInstruction* user,
                                 const BufferValue* buffer) {
@@ -213,7 +217,7 @@ Status HeapSimulator::RunComputation(
       VLOG(4) << "  Removing user " << instruction->name() << " from buffer "
               << operand_buffer->ToString();
       auto it = live_buffers.find(operand_buffer);
-      FlatSet<const HloInstruction*>* live_set = &it->second;
+      flat_hash_set<const HloInstruction*>* live_set = &it->second;
       live_set->erase(instruction);
       if (live_set->empty()) {
         live_buffers.erase(it);
@@ -235,7 +239,7 @@ Status HeapSimulator::RunComputation(
     // that we should assign.
 
     // Make sure each buffer get reused at most once.
-    FlatSet<const BufferValue*> reused_buffers;
+    flat_hash_set<const BufferValue*> reused_buffers;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -323,7 +327,7 @@ Status HeapSimulator::RunComputation(
   to_free.reserve(live_buffers.size());
   for (const auto& buffer_pending : live_buffers) {
     const BufferValue* buffer = buffer_pending.first;
-    const FlatSet<const HloInstruction*>& pending = buffer_pending.second;
+    const flat_hash_set<const HloInstruction*>& pending = buffer_pending.second;
     CHECK_EQ(pending.size(), 1) << *buffer;
     CHECK(*pending.begin() == nullptr) << *buffer;
     to_free.push_back(buffer);
@@ -345,7 +349,7 @@ HeapSimulator::HeapSimulator(
     std::unique_ptr<HeapAlgorithm> algorithm,
     const BufferValue::SizeFunction& size_fn, const Options& options,
     const HloSchedule* schedule,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>*
+    const absl::flat_hash_map<const HloComputation*, int64>*
         memory_by_computation)
     : no_fragmentation_stats_(absl::make_unique<NoFragmentationStatsHeap>()),
       algorithm_(std::move(algorithm)),
@@ -536,7 +540,7 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
 
 void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
     const HloInstruction* instruction,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // We only count the memory usage of the largest subcomputation, instead of
   // adding them all, because subcomputations won't execute in parallel.

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
@@ -37,7 +38,7 @@ namespace xla {
 typedef std::function<StatusOr<HloInstructionSequence>(
     const HloComputation&, const TuplePointsToAnalysis&,
     const LogicalBuffer::SizeFunction&,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&)>
+    const absl::flat_hash_map<const HloComputation*, int64>&)>
     MemorySchedulerAlgorithm;
 
 // List scheduler
@@ -45,7 +46,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // DFS-order scheduler
@@ -53,7 +54,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // Naive Post Order scheduler
@@ -61,7 +62,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // The default scheduling algorithm. Runs both the list scheduler
@@ -71,7 +72,7 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
-    const tensorflow::gtl::FlatMap<const HloComputation*, int64>&
+    const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation);
 
 // Returns an HloSchedule which seeks to minimize the memory required for

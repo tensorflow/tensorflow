@@ -19,6 +19,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -91,7 +92,7 @@ HloDataflowAnalysis::HloDataflowAnalysis(
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
-  tensorflow::gtl::FlatSet<const HloInstruction*> visited;
+  absl::flat_hash_set<const HloInstruction*> visited;
   absl::InlinedVector<const HloInstruction*, 4> stack;
   stack.push_back(inst);
   while (!stack.empty()) {
@@ -159,8 +160,8 @@ void HloDataflowAnalysis::MarkValueForDeletion(HloValue::Id value_id) {
 void HloDataflowAnalysis::DeleteMarkedValues() {
 #ifndef NDEBUG
   // Verify that no marked-for-deletion values are in any of the value sets.
-  tensorflow::gtl::FlatSet<HloValue::Id> id_set(value_ids_to_delete_.begin(),
-                                                value_ids_to_delete_.end());
+  absl::flat_hash_set<HloValue::Id> id_set(value_ids_to_delete_.begin(),
+                                           value_ids_to_delete_.end());
   for (const auto& pair : value_sets_) {
     const HloInstruction* instruction = pair.first;
     const InstructionValueSet& instruction_value_set = pair.second;
@@ -673,7 +674,7 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 
 void HloDataflowAnalysis::Propagate() {
   std::queue<HloInstruction*> worklist;
-  tensorflow::gtl::FlatSet<HloInstruction*> workset;
+  absl::flat_hash_set<HloInstruction*> workset;
   auto add_to_worklist = [&worklist, &workset](HloInstruction* instruction) {
     if (workset.insert(instruction).second) {
       worklist.push(instruction);

@@ -5,10 +5,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "BasicRNNCell"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "DeviceWrapper"
     mtype: "<type \'type\'>"
   }

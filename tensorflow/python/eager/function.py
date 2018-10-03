@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import re
 import sys
 import threading
 import weakref
@@ -61,9 +62,15 @@ cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-acce
 # This is to avoid a circular dependency with gradients_impl
 gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
+FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
+BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 # TODO(scottzhu): Update this to allow arbitrary attribute names in future.
-WHITELIST_FUNCTION_ATTRIBUTE_PREFIX = "experimental_"
+WHITELIST_FUNCTION_ATTRIBUTE_REGEX = [
+    "experimental_.*",
+    FORWARD_FUNCTION_ATTRIBUTE_NAME,
+    BACKWARD_FUNCTION_ATTRIBUTE_NAME
+]
 
 
 def _create_substitute_placeholder(value, name=None, dtype=None):
@@ -140,10 +147,11 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
-    if not key.startswith(WHITELIST_FUNCTION_ATTRIBUTE_PREFIX):
+    if not any([re.match(reg, key)
+                for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX]):
       raise ValueError("Attribute name is not whitelisted. "
                        "Whitelisted: prefix %s, got: %s" %
-                       (WHITELIST_FUNCTION_ATTRIBUTE_PREFIX, key))
+                       (WHITELIST_FUNCTION_ATTRIBUTE_REGEX, key))
 
     if isinstance(value, attr_value_pb2.AttrValue):
       attrs[key] = value
@@ -154,7 +162,7 @@ def _parse_func_attrs(attributes):
       attrs[key] = attr_value_pb2.AttrValue(i=value)
     elif isinstance(value, float):
       attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, str):
+    elif isinstance(value, (str, bytes)):
       attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
     else:
       raise ValueError("Unsupported attribute type for %s with type %s" %
@@ -260,6 +268,15 @@ class FuncGraph(ops.Graph):
   @variables.setter
   def variables(self, var_list):
     self._weak_variables = [weakref.ref(v) for v in var_list]
+
+  def control_dependencies(self, control_inputs):
+    # Drop control dependencies to outside of the graph. TODO(b/117109273)
+    # unclear how to capture an op, not a tensor.
+    if not control_inputs:
+      return super(FuncGraph, self).control_dependencies(control_inputs)
+    return super(FuncGraph, self).control_dependencies(
+        [c for c in control_inputs
+         if getattr(c, "graph", None) is self])
 
   def create_op(
       self,
@@ -646,6 +663,11 @@ class Function(object):
     return self._build_call_outputs(outputs)
 
   @property
+  def name(self):
+    """Function name."""
+    return self._inference_function.name
+
+  @property
   def graph(self):
     """Returns the graph from which this function was constructed."""
     return self._func_graph
@@ -702,9 +724,14 @@ class Function(object):
     return nest.map_structure(lambda x: x.dtype if x is not None else None,
                               self._func_graph.structured_outputs)
 
+  def add_to_graph(self, g):
+    """Adds this function into the graph g."""
+    return self._inference_function.add_to_graph(g)
+
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     backwards_graph = FuncGraph(_backward_name(self._func_graph.name))
+    forward_function_name = _forward_name(self._func_graph.name)
     with backwards_graph.as_default():
       gradients_wrt_outputs = [
           graph_placeholder(x.dtype, x.shape) for x in self._func_graph.outputs
@@ -715,11 +742,11 @@ class Function(object):
           grad_ys=gradients_wrt_outputs,
           src_graph=self._func_graph)
 
-    self._forward_function = _EagerDefinedFunction(
-        _forward_name(
-            self._func_graph.name), self._func_graph, self._func_graph.inputs,
-        self._func_graph.outputs + list(backwards_graph.captures.keys()),
-        self._attrs)
+    backwards_graph_captures = list(backwards_graph.captures.keys())
+
+    backward_function_attr = _parse_func_attrs(
+        {FORWARD_FUNCTION_ATTRIBUTE_NAME: forward_function_name})
+    backward_function_attr.update(self._attrs)
 
     # The ordering of `backwards_graph.inputs` is important: inputs of
     # `self._backward_graph_function` correspond to outputs of
@@ -732,7 +759,17 @@ class Function(object):
         grad for grad in _flatten(gradients_wrt_inputs) if grad is not None)
     backwards_graph.structured_outputs = gradients_wrt_inputs
     self._backward_graph_function = Function(
-        backwards_graph, attrs=self._attrs)
+        backwards_graph, attrs=backward_function_attr)
+
+    forward_function_attr = _parse_func_attrs({
+        BACKWARD_FUNCTION_ATTRIBUTE_NAME:
+            self._backward_graph_function._inference_function.name})  # pylint: disable=protected-access
+    forward_function_attr.update(self._attrs)
+
+    self._forward_function = _EagerDefinedFunction(
+        forward_function_name, self._func_graph, self._func_graph.inputs,
+        self._func_graph.outputs + backwards_graph_captures,
+        forward_function_attr)
 
   def _backprop_call(self, args):
     """Calls the forward function and records the result on a tape.
@@ -986,52 +1023,8 @@ def func_graph_from_py_func(name,
   return func_graph
 
 
-_TensorType = collections.namedtuple("_TensorType", ["dtype", "shape"])
-
-
-def _encode_arg(arg):
-  """A canonical representation for this argument, for use in a cache key."""
-
-  # `defun` uses dtypes and shapes instead of `Tensors` as cache keys. Dtypes
-  # are used because TensorFlow graphs are not parametric w.r.t. dtypes. Shapes
-  # are used for both performance reasons, as much TensorFlow code specializes
-  # on known shapes to produce slimmer graphs, and correctness, as some
-  # high-level APIs require shapes to be fully-known.
-  #
-  # TODO(akshayka): Add support for sparse tensors.
-  #
-  # pylint: disable=protected-access
-  if isinstance(arg, ops.Tensor):
-    return _TensorType(arg.dtype, arg._shape_tuple())
-  elif isinstance(arg, ops.IndexedSlices):
-    if arg.dense_shape is not None:
-      return tuple([
-          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
-          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
-          _TensorType(arg.dense_shape.dtype, arg.dense_shape._shape_tuple()),
-      ])
-    else:
-      return tuple([
-          _TensorType(arg.values.dtype, arg.values._shape_tuple()),
-          _TensorType(arg.indices.dtype, arg.indices._shape_tuple()),
-      ])
-  # pylint: enable=protected-access
-  elif isinstance(arg, (list, tuple)):
-    return tuple([_encode_arg(elem) for elem in arg])
-  elif isinstance(arg, dict):
-    return tuple(
-        (_encode_arg(key), _encode_arg(arg[key])) for key in sorted(arg))
-  else:
-    try:
-      # If possible, keep only a weak reference to Python objects. Weak
-      # references hash to the same value as the original object.
-      # TODO(allenl): Clean up dead functions and their cache keys if the cache
-      # gets large. Right now creating objects with a defunned method, calling
-      # the method, and losing a reference to the object in a loop will leak
-      # memory here.
-      return weakref.ref(arg)
-    except TypeError:
-      return arg
+pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
+pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
@@ -1101,6 +1094,8 @@ class PolymorphicFunction(object):
         offset + index: default
         for index, default in enumerate(fullargspec.defaults or [])
     }
+    self._default_values = fullargspec.defaults
+    self._default_values_start_index = offset
     if input_signature is None:
       self._input_signature = None
     else:
@@ -1136,6 +1131,8 @@ class PolymorphicFunction(object):
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
+    if self._input_signature:
+      args, kwargs = None, None
     graph_function, _ = self._maybe_define_function(args, kwargs)
     return graph_function
 
@@ -1161,7 +1158,7 @@ class PolymorphicFunction(object):
     """Computes the cache key given inputs and execution context."""
     if self._input_signature is None:
       inputs = (args, kwargs) if kwargs else args
-      cache_key = tuple(_encode_arg(arg) for arg in inputs)
+      cache_key = pywrap_tensorflow.TFE_Py_EncodeArg(inputs)
     else:
       del args, kwargs
       cache_key = self._flat_input_signature
@@ -1184,7 +1181,7 @@ class PolymorphicFunction(object):
     colocation_stack = (() if executing_eagerly else
                         tuple(default_graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
 
-    return cache_key + (execution_context, device_functions, colocation_stack)
+    return (cache_key, execution_context, device_functions, colocation_stack)
 
   def _canonicalize_function_inputs(self, *args, **kwargs):
     """Canonicalizes `args` and `kwargs`.
@@ -1212,26 +1209,32 @@ class PolymorphicFunction(object):
     # Maps from index of arg to its corresponding value, according to `args`
     # and `kwargs`; seeded with the default values for the named args that
     # aren't in `args`.
-    arg_indices_to_values = {
-        index: default
-        for index, default in six.iteritems(self._arg_indices_to_default_values)
-        if index >= len(args)
-    }
-    consumed_args = []
-    for arg, value in six.iteritems(kwargs):
-      index = self._args_to_indices.get(arg, None)
-      if index is not None:
-        arg_indices_to_values[index] = value
-        consumed_args.append(arg)
-      elif self._input_signature is not None:
-        raise ValueError("Cannot define a TensorFlow function from a Python "
-                         "function with keyword arguments when "
-                         "input_signature is provided.")
-    for arg in consumed_args:
-      # After this loop, `kwargs` will only contain true keyword arguments, as
-      # opposed to named arguments called in a keyword-like fashion.
-      kwargs.pop(arg)
-    inputs = args + _deterministic_dict_values(arg_indices_to_values)
+    if not kwargs:
+      if self._default_values:
+        inputs = args + self._default_values[len(args) -
+                                             self._default_values_start_index:]
+      else:
+        inputs = args
+    else:
+      arg_indices_to_values = {
+          index: default for index, default in six.iteritems(
+              self._arg_indices_to_default_values) if index >= len(args)
+      }
+      consumed_args = []
+      for arg, value in six.iteritems(kwargs):
+        index = self._args_to_indices.get(arg, None)
+        if index is not None:
+          arg_indices_to_values[index] = value
+          consumed_args.append(arg)
+        elif self._input_signature is not None:
+          raise ValueError("Cannot define a TensorFlow function from a Python "
+                           "function with keyword arguments when "
+                           "input_signature is provided.")
+      for arg in consumed_args:
+        # After this loop, `kwargs` will only contain true keyword arguments, as
+        # opposed to named arguments called in a keyword-like fashion.
+        kwargs.pop(arg)
+      inputs = args + _deterministic_dict_values(arg_indices_to_values)
     flat_inputs = nest.flatten(inputs)
 
     # Check for NumPy arrays in arguments and convert them to Tensors.
@@ -1311,6 +1314,9 @@ def register(func, *args, **kwargs):
   This won't actually call the function with the inputs, and only put the
   function definition into graph. Register function with different input param
   will result into multiple version of functions registered in graph.
+
+  Also, `args` and `kwargs` are ignored if this `PolymorphicFunction` was
+  created with an `input_signature`.
 
   Args:
     func: the PolymorphicFunction instance that generated by a @defun

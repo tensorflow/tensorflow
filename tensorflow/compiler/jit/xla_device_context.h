@@ -67,7 +67,8 @@ class XlaTransferManager {
 
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
-                                 Tensor* device_tensor) const;
+                                 Tensor* device_tensor,
+                                 bool buffer_is_fresh) const;
   void TransferLiteralFromDevice(Tensor* host_tensor,
                                  const Tensor& device_tensor,
                                  const StatusCallback& done) const;

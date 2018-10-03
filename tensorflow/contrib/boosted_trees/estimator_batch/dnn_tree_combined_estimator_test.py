@@ -188,8 +188,7 @@ class CoreDNNBoostedTreeCombinedTest(test_util.TensorFlowTestCase):
 
     # Train for a few steps.
     est.train(input_fn=_train_input_fn, steps=1000)
-    # 10 steps for dnn + 3 for 1 tree of depth 3 + 1 after the tree finished
-    # + 1 for resource variables.
+    # 10 steps for dnn, 3  for 1 tree of depth 3 + 1 after the tree finished
     self._assert_checkpoint(est.model_dir, global_step=14)
     res = est.evaluate(input_fn=_eval_input_fn, steps=1)
     self.assertLess(0.5, res["auc"])

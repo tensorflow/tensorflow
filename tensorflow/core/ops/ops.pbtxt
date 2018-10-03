@@ -36935,6 +36935,14 @@ op {
     name: "body"
     type: "func"
   }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {

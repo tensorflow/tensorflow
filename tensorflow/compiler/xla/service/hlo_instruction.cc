@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
@@ -37,14 +39,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/human_readable_json.h"
 #include "tensorflow/core/platform/logging.h"
@@ -59,8 +60,8 @@ using absl::StrJoin;
 /* static */
 StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
-    const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
-    const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map) {
+    const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
+    const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
   TF_RET_CHECK(proto.has_shape());
@@ -80,6 +81,20 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   const auto computations = [&computation_map, &proto](int index) {
     return computation_map.at(proto.called_computation_ids(index));
   };
+
+  TF_RET_CHECK(std::all_of(
+      proto.operand_ids().begin(), proto.operand_ids().end(),
+      [&instruction_map](int64 id) { return instruction_map.contains(id); }))
+      << proto.name() << " instruction contains invalid operand id(s)";
+
+  TF_RET_CHECK(std::all_of(
+      proto.called_computation_ids().begin(),
+      proto.called_computation_ids().end(),
+      [&computation_map](int64 id) { return computation_map.contains(id); }))
+      << proto.name() << " instruction references invalid computation id(s)";
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(proto.shape()));
+
   switch (opcode) {
     // Ops migrated to subclasses.
     case HloOpcode::kBatchNormTraining:
@@ -266,7 +281,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Expect 1 called computation for fusion instruction but sees "
           << proto.called_computation_ids_size();
       const int64 fusion_id = proto.called_computation_ids(0);
-      auto* fused_computation = FindPtrOrNull(computation_map, fusion_id);
+      auto* fused_computation =
+          tensorflow::gtl::FindPtrOrNull(computation_map, fusion_id);
       TF_RET_CHECK(fused_computation != nullptr)
           << "No fusion computation with id " << fusion_id;
       instruction = CreateFusion(proto.shape(), fusion_kind, all_operands(),
@@ -302,6 +318,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     } break;
     case HloOpcode::kOutfeed:
       TF_RET_CHECK(proto.operand_ids_size() == 2);
+      TF_RETURN_IF_ERROR(
+          ShapeUtil::ValidateShapeWithOptionalLayout(proto.outfeed_shape()));
       instruction = CreateOutfeed(proto.outfeed_shape(), operands(0),
                                   operands(1), proto.outfeed_config());
       break;
@@ -466,31 +484,34 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.dot_dimension_numbers(), precision_config);
       break;
     }
-    case HloOpcode::kDomain:
+    case HloOpcode::kDomain: {
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Domain instruction should have 1 operands but sees "
           << proto.operand_ids_size();
+      TF_RET_CHECK(proto.has_domain_entry_sharding())
+          << "Domain instruction must domain_entry_sharding";
+      TF_RET_CHECK(proto.has_domain_exit_sharding())
+          << "Domain instruction must domain_exit_sharding";
+      TF_ASSIGN_OR_RETURN(
+          HloSharding entry_hlo_sharding,
+          HloSharding::FromProto(proto.domain_entry_sharding()));
+      TF_ASSIGN_OR_RETURN(HloSharding exit_hlo_sharding,
+                          HloSharding::FromProto(proto.domain_exit_sharding()));
       instruction = absl::make_unique<HloDomainInstruction>(
-          proto.shape(), operands(0), /*operand_side_metadata=*/nullptr,
-          /*user_side_metadata=*/nullptr);
+          proto.shape(), operands(0),
+          absl::make_unique<ShardingMetadata>(
+              std::make_shared<const HloSharding>(entry_hlo_sharding)),
+          absl::make_unique<ShardingMetadata>(
+              std::make_shared<const HloSharding>(exit_hlo_sharding)));
       break;
+    }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
-        TF_RET_CHECK(ContainsKey(instruction_map, operand_id))
-            << "No instruction with id " << operand_id;
         instruction->AppendOperand(instruction_map.at(operand_id));
-      }
-      for (const int64 predecessor_id : proto.control_predecessor_ids()) {
-        TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
-            << "No instruction with id " << predecessor_id;
-        TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
-                               ->AddControlDependencyTo(instruction.get()));
       }
       if (instruction->opcode() != HloOpcode::kFusion) {
         for (const int64 computation_id : proto.called_computation_ids()) {
-          TF_RET_CHECK(ContainsKey(computation_map, computation_id))
-              << "No computation with id " << computation_id;
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));
         }
@@ -500,6 +521,13 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
       break;
     }
+  }
+
+  for (const int64 predecessor_id : proto.control_predecessor_ids()) {
+    TF_RET_CHECK(ContainsKey(instruction_map, predecessor_id))
+        << "No instruction with id " << predecessor_id;
+    TF_RETURN_IF_ERROR(instruction_map.at(predecessor_id)
+                           ->AddControlDependencyTo(instruction.get()));
   }
 
   TF_RET_CHECK(!proto.name().empty());
@@ -1432,7 +1460,7 @@ int64 HloInstruction::operand_index(const HloInstruction* target) const {
 
 HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   InstructionVector unique;
-  tensorflow::gtl::FlatSet<const HloInstruction*> seen;
+  absl::flat_hash_set<const HloInstruction*> seen;
   for (HloInstruction* operand : operands()) {
     if (seen.insert(operand).second) {
       unique.push_back(operand);
@@ -2006,7 +2034,7 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
         options.is_in_nested_computation()) {
       str.push_back(PrintName(
           canonical_name_map->LookupOrInsert(operand->name()), options));
-    } else if (!options.compact_operands()) {
+    } else if (options.print_operand_names()) {
       str.push_back(PrintName(operand->name(), options));
     }
     StrAppend(out, StrJoin(str, " "));
@@ -2661,14 +2689,14 @@ class HloInstruction::FusionReusesParamElements {
   // the value of this parameter, which would save stack space but not allow us
   // to finish early if we find a reuse.
   static UseKind Compute(int64 i, const HloInstruction& hlo) {
-    tensorflow::gtl::FlatMap<const HloInstruction*, UseKind> memoization_cache;
+    absl::flat_hash_map<const HloInstruction*, UseKind> memoization_cache;
     return ComputeInternal(i, hlo, &memoization_cache);
   }
 
  private:
   static UseKind ComputeInternal(
       int64 i, const HloInstruction& hlo,
-      tensorflow::gtl::FlatMap<const HloInstruction*, UseKind>* cache) {
+      absl::flat_hash_map<const HloInstruction*, UseKind>* cache) {
     if (auto hlo_param = DynCast<HloParameterInstruction>(&hlo)) {
       if (hlo_param->parameter_number() == i) {
         return UseKind::kUse;

@@ -22,11 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -189,7 +189,7 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
 bool InstructionFusion::CanFuseOnAllPaths(
     HloInstruction* producer, HloInstruction* consumer,
     const HloInstructionSet& do_not_fuse,
-    tensorflow::gtl::FlatMap<std::pair<HloInstruction*, HloInstruction*>, bool>*
+    absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>*
         result_cache) {
   if (consumer == producer) {
     return true;
@@ -241,7 +241,7 @@ InstructionFusion::ComputeGloballyUnfusible(
   // fusing operations that require duplication later depending on
   // is_expensive_().
   HloInstructionSet do_not_duplicate;
-  tensorflow::gtl::FlatMap<std::pair<HloInstruction*, HloInstruction*>, bool>
+  absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>
       can_fuse_on_all_paths_result_cache;
   for (HloInstruction* consumer : post_order) {
     for (HloInstruction* producer : consumer->operands()) {
@@ -430,7 +430,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
 
  private:
   std::vector<HloInstruction*> post_order_;
-  tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index_;
+  absl::flat_hash_map<HloInstruction*, int> post_order_index_;
 };
 
 }  // namespace

@@ -269,6 +269,13 @@ def dropout(inputs,
 class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
+  Arguments:
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, ...)`.
+
   Examples:
 
   ```
@@ -285,12 +292,17 @@ class Flatten(keras_layers.Flatten, base.Layer):
 
 
 @tf_export('layers.flatten')
-def flatten(inputs, name=None):
+def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
   Arguments:
     inputs: Tensor input.
     name: The name of the layer (string).
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, height, width, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, height, width)`.
 
   Returns:
     Reshaped tensor.
@@ -307,7 +319,7 @@ def flatten(inputs, name=None):
     # now `y` has shape `(None, None)`
   ```
   """
-  layer = Flatten(name=name)
+  layer = Flatten(name=name, data_format=data_format)
   return layer.apply(inputs)
 
 

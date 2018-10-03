@@ -239,7 +239,6 @@ tf_proto_library(
     srcs = [],
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
     js_api_version = 2,
     protodeps = [
         ":protos_all_proto",
@@ -270,6 +269,12 @@ proto_library(
         "example/feature.proto",
     ],
     visibility = ["//visibility:public"],
+)
+
+java_proto_library(
+    name = "example_java_proto",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
 )
 
 closure_proto_library(
@@ -2385,7 +2390,6 @@ tf_proto_library(
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
     js_api_version = 2,
     provide_cc_alias = True,
 )
@@ -2406,7 +2410,6 @@ tf_proto_library(
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    java_api_version = 2,
     js_api_version = 2,
     protodeps = [
         ":error_codes_proto",
@@ -2486,6 +2489,8 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
     "framework/resource_var.h",
+    "framework/run_handler.h",
+    "framework/run_handler_util.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -2972,6 +2977,7 @@ tf_cuda_library(
         ":core_cpu_internal",
         ":device_tracer",
         ":framework",
+        ":framework_internal",
         ":graph",
         ":lib",
         ":lib_internal",
@@ -4113,6 +4119,19 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":core_cpu_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_run_handler_util_test",
+    size = "small",
+    srcs = ["framework/run_handler_util_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":framework_internal",
         ":lib",
         ":test",
         ":test_main",

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -577,7 +577,7 @@ Status ValidateDotDimensionNumbers(
   // Check that dimension numbers are unique.
   auto dims_unique = [](absl::Span<const int64> contracting_dims,
                         absl::Span<const int64> batch_dims) -> bool {
-    tensorflow::gtl::FlatSet<int64> dim_set;
+    absl::flat_hash_set<int64> dim_set;
     auto is_unique = [&dim_set](int64 i) -> bool {
       return dim_set.insert(i).second;
     };
@@ -2380,7 +2380,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Transpose dimensions not a permutation of the operand dimensions.");
+        "Transpose dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,

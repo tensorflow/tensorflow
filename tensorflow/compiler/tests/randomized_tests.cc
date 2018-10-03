@@ -45,6 +45,7 @@ limitations under the License.
 #include <random>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
@@ -63,7 +64,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -457,7 +457,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
   Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
     case DT_FLOAT: {
-      gtl::FlatSet<float> already_generated;
+      absl::flat_hash_set<float> already_generated;
       std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
       test::FillFn<float>(&tensor, [&](int i) -> float {
         float generated;
@@ -470,7 +470,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       break;
     }
     case DT_DOUBLE: {
-      gtl::FlatSet<double> already_generated;
+      absl::flat_hash_set<double> already_generated;
       std::uniform_real_distribution<double> distribution(-1.0, 1.0);
       test::FillFn<double>(&tensor, [&](int i) -> double {
         double generated;
@@ -483,7 +483,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       break;
     }
     case DT_COMPLEX64: {
-      gtl::FlatSet<std::pair<float, float>> already_generated;
+      absl::flat_hash_set<std::pair<float, float>> already_generated;
       std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
       test::FillFn<complex64>(&tensor, [&](int i) {
         complex64 generated;
@@ -500,7 +500,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       break;
     }
     case DT_INT32: {
-      gtl::FlatSet<int32> already_generated;
+      absl::flat_hash_set<int32> already_generated;
       std::uniform_int_distribution<int32> distribution(-(1 << 20), 1 << 20);
       test::FillFn<int32>(&tensor, [&](int i) -> int32 {
         int32 generated;
@@ -513,7 +513,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       break;
     }
     case DT_INT64: {
-      gtl::FlatSet<int64> already_generated;
+      absl::flat_hash_set<int64> already_generated;
       std::uniform_int_distribution<int64> distribution(-(1LL << 40),
                                                         1LL << 40);
       test::FillFn<int64>(&tensor, [&](int i) -> int64 {
@@ -527,7 +527,7 @@ Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
       break;
     }
     case DT_BOOL: {
-      gtl::FlatSet<bool> already_generated;
+      absl::flat_hash_set<bool> already_generated;
       std::bernoulli_distribution distribution;
       test::FillFn<bool>(&tensor, [&](int i) -> bool {
         bool generated;

@@ -1237,6 +1237,24 @@ class FunctionTest(test.TestCase):
     x = constant_op.constant([1.0, 2.0])
     self.assertAllEqual([2., 4.], self.evaluate(defined(x)))
 
+  def testCacheObjectHashCollisions(self):
+
+    class Foo(object):
+
+      def __hash__(self):
+        return 42
+
+    def func(foo):
+      del foo
+      return
+
+    defined = function.defun(func)
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 1)
+
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 2)
+
   def testPythonFunctionWithDefaultArgs(self):
 
     def func(foo, bar=1, baz=2):
@@ -1250,20 +1268,20 @@ class FunctionTest(test.TestCase):
 
     def cache_keys():
       """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[:3] for key in defined._function_cache)
+      return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn((0, 1, 20), cache_keys())
+    self.assertIn(('tRRR', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn((1, 1, 2), cache_keys())
+    self.assertIn(('tRRR', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
-    self.assertIn((1, 2, 3), cache_keys())
+    self.assertIn(('tRRR', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -1687,6 +1705,21 @@ class FunctionTest(test.TestCase):
           self.assertRegexpMatches(captured_function_names[i],
                                    expected_func_name_regex[i])
 
+        # Check the forward and backward function has the correct attributes.
+        self.assertEquals(
+            functions[1].definition.attr['backward_function_name'].s,
+            functions[2].name)
+        self.assertEquals(
+            functions[2].definition.attr['forward_function_name'].s,
+            functions[1].name)
+
+        self.assertEquals(
+            functions[4].definition.attr['backward_function_name'].s,
+            functions[5].name)
+        self.assertEquals(
+            functions[5].definition.attr['forward_function_name'].s,
+            functions[4].name)
+
         sq = defun_matmul(t, t)
         double = add(t, t)
         self.assertAllEqual(sq.eval().reshape(-1), [7, 10, 15, 22])
@@ -1717,11 +1750,10 @@ class FunctionTest(test.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 3)
 
-        # Test input param shape mismatch
-        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        with self.assertRaisesRegexp(
-            ValueError, 'Python inputs incompatible with input_signature'):
-          function.register(defun_matmul, t2, t2)
+        # Test register function with cache, note inputs are ignored.
+        function.register(defun_matmul)
+        graph = ops.get_default_graph()
+        self.assertEqual(len(graph._functions), 3)
 
   def testRegisterFunctionWithCache(self):
     def matmul(x, y):

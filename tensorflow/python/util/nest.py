@@ -819,5 +819,5 @@ def flatten_with_joined_string_paths(structure, separator="/"):
   return list(zip(flat_string_paths, flatten(structure)))
 
 
-_pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
-_pywrap_tensorflow.RegisterMappingClass(_collections.Mapping)
+_pywrap_tensorflow.RegisterType("Mapping", _collections.Mapping)
+_pywrap_tensorflow.RegisterType("Sequence", _collections.Sequence)

@@ -248,10 +248,16 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle);
 
 // Create a resource pointed by a given resource handle.
+//
+// If successful, the caller transfers the ownership of one ref on `resource` to
+// `ctx->resource_mgr()`.
 template <typename T>
 Status CreateResource(OpKernelContext* ctx, const ResourceHandle& p, T* value);
 
 // Looks up a resource pointed by a given resource handle.
+//
+// If the lookup is successful, the caller takes the ownership of one ref on
+// `*value`, and must call its `Unref()` method when it has finished using it.
 template <typename T>
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p, T** value);
 
@@ -262,6 +268,11 @@ Status LookupResources(
     std::vector<std::unique_ptr<T, core::RefCountDeleter>>* values);
 
 // Looks up or creates a resource.
+//
+// If successful, the caller takes the ownership of one ref on `*value`, and
+// must call its `Unref()` method when it has finished using it. If the
+// `creator` is invoked, its reference on the created resource is transferred
+// to `ctx->resource_mgr()`.
 template <typename T>
 Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
                               T** value, std::function<Status(T**)> creator);

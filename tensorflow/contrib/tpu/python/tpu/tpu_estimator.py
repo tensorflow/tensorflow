@@ -231,7 +231,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
   `Tensor`s transferred from TPU system to CPU host and passed to `metric_fn`.
   To be precise, TPU evaluation expects a slightly different signature from the
-  @{tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  `tf.estimator.Estimator`. While `EstimatorSpec.eval_metric_ops` expects a
   dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
   The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
   `tensors` usually specify the model logits, which are transferred back from
@@ -254,7 +254,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   sending tensors from TPU to CPU. To reduce the overhead, try reducing the
   size of the tensors. The `tensors` are concatenated along their major (batch)
   dimension, and so must be >= rank 1. The `host_call` is useful for writing
-  summaries with @{tf.contrib.summary.create_file_writer}.
+  summaries with `tf.contrib.summary.create_file_writer`.
   """
 
   def __new__(cls,
@@ -404,12 +404,17 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     self._feed_error = None
     self._finished = False
+    self._should_initialize_tpu = True
 
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
-    self._init_ops = [tpu.initialize_system(job=self._master_job)]
-    self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
+    if self._should_initialize_tpu:
+      self._init_ops = [tpu.initialize_system(job=self._master_job)]
+      self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
+    else:
+      self._init_ops = []
+      self._finalize_ops = []
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
     self._init_ops.extend(summary_writer_init_ops)
@@ -421,10 +426,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def _run_infeed(self, queue_ctx, session):
     logging.info('Starting infeed thread controller.')
     if self._initial_infeed_sleep_secs:
-      logging.info('%s thread sleeping for %d seconds.', self._name,
+      logging.info('Infeed thread sleeping for %d seconds.',
                    self._initial_infeed_sleep_secs)
       time.sleep(self._initial_infeed_sleep_secs)
-      logging.info('%s thread starting after sleep', self._name)
+      logging.info('Infeed thread starting after sleep')
 
     with self._rendezvous.catch_errors(source='infeed', session=session):
       if self._run_infeed_loop_on_coordinator:

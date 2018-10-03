@@ -619,7 +619,7 @@ pywrap_tensorflow.TFE_Py_RegisterVSpace(_default_vspace)
 
 def _handle_or_self(x):
   """If x is ResourceVariable, return its handle, else x."""
-  if isinstance(x, resource_variable_ops.ResourceVariable):
+  if resource_variable_ops.is_resource_variable(x):
     x = x.handle
   return x
 

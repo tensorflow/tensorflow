@@ -151,7 +151,7 @@ def make_input_layer_with_layer_annotations(original_input_layer):
     # spec and looking at the keys.
     spec = feature_column_lib.make_parse_example_spec(feature_columns)
     for key in spec.keys():
-      tensor = ops.convert_to_tensor(features[key])
+      tensor = ops.convert_to_tensor_or_indexed_slices(features[key])
       ops.add_to_collection(
           LayerAnnotationsCollectionNames.keys(
               LayerAnnotationsCollectionNames.UNPROCESSED_FEATURES), key)
