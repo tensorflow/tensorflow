@@ -24,8 +24,10 @@ easy_install3 -U pip==9.0.3
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
-pip2 install wheel
-pip3 install wheel
+# Pin wheel==0.31.1 to work around issue
+# https://github.com/pypa/auditwheel/issues/102
+pip2 install wheel==0.31.1
+pip3 install wheel==0.31.1
 
 pip2 install virtualenv
 pip3 install virtualenv
