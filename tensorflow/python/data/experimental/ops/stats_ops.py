@@ -89,15 +89,19 @@ class StatsAggregator(object):
 class _SetStatsAggregatorDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that acts as an identity, and sets given stats_aggregator."""
 
-  def __init__(self, input_dataset, stats_aggregator):
+  def __init__(self, input_dataset, stats_aggregator, tag, prefix):
     super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._stats_aggregator = stats_aggregator
+    self._tag = tag
+    self._prefix = prefix
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.set_stats_aggregator_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         self._stats_aggregator._resource,  # pylint: disable=protected-access
+        self._tag,
+        self._prefix,
         **dataset_ops.flat_structure(self))
 
   @property
@@ -114,11 +118,15 @@ class _SetStatsAggregatorDataset(dataset_ops.UnaryDataset):
 
 
 @tf_export("data.experimental.set_stats_aggregator")
-def set_stats_aggregator(stats_aggregator):
+def set_stats_aggregator(stats_aggregator, tag="", counter_prefix=""):
   """Set the given `stats_aggregator` for aggregating the input dataset stats.
 
   Args:
-    stats_aggregator: A `tf.data.experimental.StatsAggregator` object.
+    stats_aggregator: A `tf.contrib.data.StatsAggregator` object.
+    tag: (Optional) String, all statistics recorded for the input `dataset`
+      will have given `tag` prepend with the name.
+    counter_prefix: (Optional) String, all statistics recorded as `counters`
+      will have the given `prefix` for the counter. Defaults to "/tesorflow".
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -126,7 +134,8 @@ def set_stats_aggregator(stats_aggregator):
   """
 
   def _apply_fn(dataset):
-    return _SetStatsAggregatorDataset(dataset, stats_aggregator)
+    return _SetStatsAggregatorDataset(dataset, stats_aggregator, tag,
+                                      counter_prefix)
 
   return _apply_fn
 

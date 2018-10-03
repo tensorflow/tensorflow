@@ -59785,6 +59785,14 @@ op {
     name: "stats_aggregator"
     type: DT_RESOURCE
   }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "counter_prefix"
+    type: DT_STRING
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
