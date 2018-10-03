@@ -25,6 +25,23 @@ extern "C" {
 
 /*
  * Class:     org_tensorflow_lite_Tensor
+ * Method:    create
+ * Signature: (JI)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
+    JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index);
+
+/*
+ * Class:     org_tensorflow_lite_Tensor
+ * Method:    delete
+ * Signature: (J)
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_Tensor_delete(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle);
+
+/*
+ * Class:     org_tensorflow_lite_Tensor
  * Method:    buffer
  * Signature: (J)Ljava/nio/ByteBuffer;
  */
