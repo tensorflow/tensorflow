@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import sys
 import time
 
 from tensorflow.python.framework import dtypes
@@ -164,9 +165,12 @@ class _StopAfterNEvalsHook(session_run_hook.SessionRunHook):
       if self._num_evals is None:
         logging.info('Evaluation [%d]', evals_completed)
       else:
-        if ((evals_completed % self._log_frequency) == 0 or
-            (self._num_evals == evals_completed)):
-          logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
+        sys.stdout.write('\rEvaluation [%d/%d]' % (evals_completed, self._num_evals))
+        sys.stdout.flush()
+        if self._num_evals == evals_completed:
+          sys.stdout.write('\n')
+          sys.stdout.flush()
+          logging.info('Evaluation completed')
     if self._num_evals is not None and evals_completed >= self._num_evals:
       run_context.request_stop()
 

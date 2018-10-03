@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import training_util
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
@@ -183,6 +184,7 @@ class SessionManager(object):
     """
     self._target = master
     sess = session.Session(self._target, graph=self._graph, config=config)
+    sess.run(training_util.get_or_create_global_step().initializer)
     # TODO(jhseu): Delete once tpu.initialize_system() goes away.
     initialize_ops = (
         distribution_strategy_context.get_distribution_strategy().initialize()
