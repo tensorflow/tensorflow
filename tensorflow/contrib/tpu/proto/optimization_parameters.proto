@@ -28,6 +28,7 @@ message LearningRate {
 // https://www.tensorflow.org/api_docs/python/tf/train/AdagradOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L151
 message AdagradParameters {
+  float initial_accumulator = 1;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
@@ -41,6 +42,8 @@ message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
+  float initial_accum = 4;
+  float initial_linear = 5;
 }
 
 // The Adam optimizer does not implement hyper-parameter update; use the dynamic
@@ -67,6 +70,8 @@ message AdamParameters {
   float beta1 = 3;
   float beta2 = 4;
   float epsilon = 5;
+  float initial_m = 6;
+  float initial_v = 7;
   bool use_non_lazy_adam = 8;
   bool use_max_with_epsilon = 9;
 }
@@ -76,6 +81,7 @@ message AdamParameters {
 message MomentumParameters {
   float momentum = 1;
   bool use_nesterov = 2;
+  float initial_accum = 3;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
@@ -84,6 +90,8 @@ message RmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
+  float initial_ms = 4;
+  float initial_mom = 5;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
@@ -92,6 +100,9 @@ message CenteredRmsPropParameters {
   float rho = 1;
   float momentum = 2;
   float epsilon = 3;
+  float initial_ms = 4;
+  float initial_mom = 5;
+  float initial_mg = 6;
 }
 
 // Variant of algorithm in http://proceedings.mlr.press/v44/shamir15.pdf
@@ -108,6 +119,9 @@ message MdlAdagradLightParameters {
   float mdl_hard_limit = 10;
   bool hard_limit_min_benefit = 11;
   bool mdl_regularize = 12;
+  float initial_accumulator = 13;
+  float initial_weight = 14;
+  float initial_benefit = 15;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
@@ -115,6 +129,8 @@ message MdlAdagradLightParameters {
 message AdadeltaParameters {
   float rho = 1;
   float epsilon = 2;
+  float initial_accumulator = 3;
+  float initial_update = 4;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
@@ -122,6 +138,7 @@ message AdadeltaParameters {
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
+  float initial_accumulator = 3;
 }
 
 message OptimizationParameters {
