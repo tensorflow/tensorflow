@@ -278,15 +278,8 @@ class IteratorContext {
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
 
-    // A function that returns the current `StatsAggregator` instance to be
-    // used when recording statistics about the iterator.
-    //
-    // NOTE(mrry): This is somewhat awkward, because (i) the `StatsAggregator`
-    // is a property of the `IteratorResource` (which this class does not know
-    // about), and (ii) it can change after the `IteratorContext` has been
-    // created. Better suggestions are welcome!
-    std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
-        nullptr;
+    // The `StatsAggregator` object to record statistics about the iterator.
+    std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* lib = nullptr;
@@ -320,13 +313,6 @@ class IteratorContext {
     return &params_.runner;
   }
 
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    if (params_.stats_aggregator_getter) {
-      return params_.stats_aggregator_getter();
-    } else {
-      return nullptr;
-    }
-  }
 
   std::shared_ptr<const FunctionLibraryDefinition> function_library() {
     return params_.function_library;
@@ -344,8 +330,8 @@ class IteratorContext {
     return params_.allocator_getter;
   }
 
-  std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter() {
-    return params_.stats_aggregator_getter;
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    return params_.stats_aggregator;
   }
 
   std::shared_ptr<model::Model> model() { return params_.model; }
