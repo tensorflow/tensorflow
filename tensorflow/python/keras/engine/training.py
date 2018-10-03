@@ -2362,6 +2362,6 @@ class DistributedCallbackModel(Model):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
     if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + 'of the '
+      logging.warning('You are accessing attribute ' + item + ' of the '
                       'DistributedCallbackModel that may not have been set '
                       'correctly.')
