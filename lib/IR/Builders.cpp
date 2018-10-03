@@ -246,7 +246,7 @@ AffineMap *Builder::getSymbolIdentityMap() {
 
 AffineMap *Builder::getSingleDimShiftAffineMap(int64_t shift) {
   // expr = d0 + shift.
-  auto expr = AffineExprWrap(getDimExpr(0), context) + shift;
+  auto expr = AffineExprWrap(getDimExpr(0)) + shift;
   return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {expr}, {}, context);
 }
 

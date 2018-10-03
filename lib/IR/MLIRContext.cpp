@@ -278,8 +278,7 @@ public:
 
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
-  template <typename T>
-  ArrayRef<T> copyInto(ArrayRef<T> elements) {
+  template <typename T> ArrayRef<T> copyInto(ArrayRef<T> elements) {
     auto result = allocator.Allocate<T>(elements.size());
     std::uninitialized_copy(elements.begin(), elements.end(), result);
     return ArrayRef<T>(result, elements.size());
@@ -879,7 +878,7 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
   // simplified/canonical form. Create and store it.
   auto *result = impl.allocator.Allocate<AffineBinaryOpExpr>();
   // Initialize the memory using placement new.
-  new (result) AffineBinaryOpExpr(kind, lhs, rhs);
+  new (result) AffineBinaryOpExpr(kind, lhs, rhs, context);
   bool inserted = impl.affineExprs.insert({keyValue, result}).second;
   assert(inserted && "the expression shouldn't already exist in the map");
   (void)inserted;
@@ -899,7 +898,7 @@ AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
 
   result = impl.allocator.Allocate<AffineDimExpr>();
   // Initialize the memory using placement new.
-  new (result) AffineDimExpr(position);
+  new (result) AffineDimExpr(position, context);
   return result;
 }
 
@@ -917,7 +916,7 @@ AffineSymbolExpr *AffineSymbolExpr::get(unsigned position,
 
   result = impl.allocator.Allocate<AffineSymbolExpr>();
   // Initialize the memory using placement new.
-  new (result) AffineSymbolExpr(position);
+  new (result) AffineSymbolExpr(position, context);
   return result;
 }
 
@@ -931,7 +930,7 @@ AffineConstantExpr *AffineConstantExpr::get(int64_t constant,
 
   result = impl.allocator.Allocate<AffineConstantExpr>();
   // Initialize the memory using placement new.
-  new (result) AffineConstantExpr(constant);
+  new (result) AffineConstantExpr(constant, context);
   return result;
 }
 
