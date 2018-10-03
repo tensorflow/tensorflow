@@ -240,6 +240,7 @@ Status HeapSimulator::RunComputation(
 
     // Make sure each buffer get reused at most once.
     flat_hash_set<const BufferValue*> reused_buffers;
+    int64 alloc_size_by_instruction = 0;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -272,14 +273,15 @@ Status HeapSimulator::RunComputation(
 
       if (!shared) {
         VLOG(3) << "  Allocating: " << buffer->ToString();
+        alloc_size_by_instruction += size_fn_(*buffer);
         Alloc(buffer, instruction);
       }
     }
     // Account for the memory used by subcomputations when estimating the
     // current heap size.
     if (memory_by_computation_ != nullptr) {
-      algorithm_->AccountForSubcomputationMemory(instruction,
-                                                 *memory_by_computation_);
+      algorithm_->AccountForSubcomputationMemory(
+          instruction, alloc_size_by_instruction, *memory_by_computation_);
     }
 
     // If all computations in the module have been scheduled, we can save memory
@@ -385,10 +387,8 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 
   allocated_buffers_.insert(buffer);
   const int64 size = size_fn_(*buffer);
-  const HloInstruction* instruction_to_calc_aliasing =
-      memory_by_computation_ == nullptr ? nullptr : instruction;
-  algorithm_->Alloc(buffer, size, instruction_to_calc_aliasing);
-  no_fragmentation_stats_->Alloc(buffer, size, instruction_to_calc_aliasing);
+  algorithm_->Alloc(buffer, size);
+  no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
                  nullptr);
 }
@@ -526,20 +526,8 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
-                                     const HloInstruction* instruction) {
-  // The output buffer of while/call/conditional is always aliased with the
-  // output buffer of the root instruction in the body. Don't double count.
-  if (instruction == nullptr ||
-      (instruction->opcode() != HloOpcode::kWhile &&
-       instruction->opcode() != HloOpcode::kCall &&
-       instruction->opcode() != HloOpcode::kConditional)) {
-    Alloc(buffer, size);
-  }
-}
-
 void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
-    const HloInstruction* instruction,
+    const HloInstruction* instruction, int64 alloc_size_by_instruction,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // We only count the memory usage of the largest subcomputation, instead of
@@ -553,6 +541,14 @@ void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
         max_subcomputation_bytes = subcomputation_bytes;
       }
     }
+  }
+  if (max_subcomputation_bytes > 0 &&
+      (instruction->opcode() == HloOpcode::kWhile ||
+       instruction->opcode() == HloOpcode::kCall ||
+       instruction->opcode() == HloOpcode::kConditional)) {
+    // The output buffer of while/call/conditional is always aliased with the
+    // output buffer of the root instruction in the body. Don't double count.
+    max_subcomputation_bytes -= alloc_size_by_instruction;
   }
   max_heap_size_ =
       std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);
