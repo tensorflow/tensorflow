@@ -1419,6 +1419,8 @@ class Model(Network):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset or a dataset iterator
+            For the first two cases, `batch_size` must be provided.
+            For the last case, `validation_steps` must be provided.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -1454,9 +1456,10 @@ class Model(Network):
             TensorFlow data tensors, the default `None` is equal to
             the number of samples in your dataset divided by
             the batch size, or 1 if that cannot be determined.
-        validation_steps: Only relevant if `steps_per_epoch`
-            is specified. Total number of steps (batches of samples)
-            to validate before stopping.
+        validation_steps: Only relevant if `validation_data` is provided and
+            is a dataset or dataset iterator. Total number of steps (batches of
+            samples) to draw before stopping when performing validation
+            at the end of every epoch.
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
