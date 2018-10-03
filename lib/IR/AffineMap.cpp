@@ -17,8 +17,8 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/MathExtras.h"
 
 using namespace mlir;
 
@@ -165,8 +165,8 @@ AffineExpr *AffineBinaryOpExpr::simplifyFloorDiv(AffineExpr *lhs,
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 
   if (lhsConst && rhsConst)
-    return AffineConstantExpr::get(lhsConst->getValue() / rhsConst->getValue(),
-                                   context);
+    return AffineConstantExpr::get(
+        floorDiv(lhsConst->getValue(), rhsConst->getValue()), context);
 
   // Fold floordiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) floordiv 64 = i * 2.
@@ -199,9 +199,7 @@ AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
 
   if (lhsConst && rhsConst)
     return AffineConstantExpr::get(
-        (int64_t)llvm::divideCeil((uint64_t)lhsConst->getValue(),
-                                  (uint64_t)rhsConst->getValue()),
-        context);
+        ceilDiv(lhsConst->getValue(), rhsConst->getValue()), context);
 
   // Fold ceildiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) ceildiv 64 = i * 2.
@@ -232,8 +230,8 @@ AffineExpr *AffineBinaryOpExpr::simplifyMod(AffineExpr *lhs, AffineExpr *rhs,
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 
   if (lhsConst && rhsConst)
-    return AffineConstantExpr::get(lhsConst->getValue() % rhsConst->getValue(),
-                                   context);
+    return AffineConstantExpr::get(
+        mod(lhsConst->getValue(), rhsConst->getValue()), context);
 
   // Fold modulo of an expression that is known to be a multiple of a constant
   // to zero if that constant is a multiple of the modulo factor. Eg: (i * 128)

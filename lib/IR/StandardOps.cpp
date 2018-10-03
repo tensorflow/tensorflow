@@ -23,6 +23,7 @@
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -201,17 +202,14 @@ public:
       return constantFoldBinExpr(
           expr, [](int64_t lhs, int64_t rhs) { return lhs * rhs; });
     case AffineExpr::Kind::Mod:
-      return constantFoldBinExpr(expr, [](int64_t lhs, uint64_t rhs) {
-        return lhs % rhs < 0 ? lhs % rhs + rhs : lhs % rhs;
-      });
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, uint64_t rhs) { return mod(lhs, rhs); });
     case AffineExpr::Kind::FloorDiv:
-      return constantFoldBinExpr(expr, [](int64_t lhs, uint64_t rhs) {
-        return lhs % rhs < 0 ? lhs / rhs - 1 : lhs / rhs;
-      });
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, uint64_t rhs) { return floorDiv(lhs, rhs); });
     case AffineExpr::Kind::CeilDiv:
-      return constantFoldBinExpr(expr, [](int64_t lhs, uint64_t rhs) {
-        return lhs % rhs == 0 ? lhs / rhs : lhs / rhs + 1;
-      });
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExpr::Kind::Constant:
       return IntegerAttr::get(cast<AffineConstantExpr>(expr)->getValue(),
                               context);

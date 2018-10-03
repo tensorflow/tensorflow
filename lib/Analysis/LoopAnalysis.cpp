@@ -25,6 +25,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/Support/MathExtras.h"
 
 using mlir::AffineExpr;
 
@@ -74,10 +75,8 @@ AffineExpr *mlir::getTripCountExpr(const ForStmt &forStmt) {
   if (loopSpan < 0)
     return 0;
 
-  return AffineConstantExpr::get(
-      static_cast<uint64_t>(loopSpan % step == 0 ? loopSpan / step
-                                                 : loopSpan / step + 1),
-      context);
+  return AffineConstantExpr::get(static_cast<uint64_t>(ceilDiv(loopSpan, step)),
+                                 context);
 }
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This

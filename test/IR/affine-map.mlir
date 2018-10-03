@@ -171,6 +171,10 @@
 // CHECK: #map{{[0-9]+}} = (d0, d1)[s0] -> (d0 * 2 + 1, d1 + s0)
 #map50 = (i, j)[s0] -> ( (i * 2 + 1) ceildiv 1, (j + s0) floordiv 1)
 
+// floordiv, ceildiv, and mod where LHS is negative.
+// CHECK: #map{{[0-9]+}} = (d0) -> (-2, 1, -1)
+#map51 = (i) -> (-5 floordiv 3, -5 mod 3, -5 ceildiv 3)
+
 // CHECK: extfunc @f0(memref<2x4xi8, #map{{[0-9]+}}, 1>)
 extfunc @f0(memref<2x4xi8, #map0, 1>)
 
@@ -338,3 +342,6 @@ extfunc @f49(memref<100x100xi8, #map49>)
 
 // CHECK: extfunc @f50(memref<100x100xi8, #map{{[0-9]+}}>)
 extfunc @f50(memref<100x100xi8, #map50>)
+
+// CHECK: extfunc @f51(memref<1xi8, #map{{[0-9]+}}>)
+extfunc @f51(memref<1xi8, #map51>)
