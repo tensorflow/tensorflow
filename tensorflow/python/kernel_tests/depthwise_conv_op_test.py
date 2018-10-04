@@ -131,7 +131,7 @@ class DepthwiseConv2DTest(test.TestCase):
     with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
           dtypes.float16: 4e-2,
-          dtypes.float32: 1e-6,
+          dtypes.float32: 1e-5,
           dtypes.float64: 1e-12,
       }[data_type]
 
