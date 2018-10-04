@@ -2,8 +2,12 @@
 # The functions in this file might be referred by tensorflow.bzl. They have to
 # be separate to avoid cyclic references.
 
-def tf_cuda_tests_tags():
+def tf_gpu_tests_tags():
     return ["requires-gpu", "local", "gpu"]
+
+# terminology changes: saving tf_cuda_* for compatibility
+def tf_cuda_tests_tags():
+    return tf_gpu_tests_tags()
 
 def tf_sycl_tests_tags():
     return ["requires-gpu", "local", "gpu"]
