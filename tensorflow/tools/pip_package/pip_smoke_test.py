@@ -142,7 +142,7 @@ def main():
 
   missing_dependencies = []
   # File extensions and endings to ignore
-  ignore_extensions = ["_test", "_test.py", "_test_gpu", "_test_gpu.py"]
+  ignore_extensions = ["_test", "_test.py"]
 
   ignored_files = 0
   blacklisted_files = len(BLACKLIST)

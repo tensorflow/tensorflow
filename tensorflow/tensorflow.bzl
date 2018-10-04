@@ -1898,29 +1898,22 @@ def gpu_py_test(
         flaky = 0,
         xla_enabled = False,
         grpc_enabled = False):
-    if main == None:
-        main = name + ".py"
-    for config in ["cpu", "gpu"]:
-        test_name = name
-        test_tags = tags
-        if config == "gpu":
-            test_name += "_gpu"
-            test_tags = test_tags + tf_gpu_tests_tags()
-        tf_py_test(
-            name = test_name,
-            size = size,
-            srcs = srcs,
-            data = data,
-            main = main,
-            args = args,
-            tags = test_tags,
-            shard_count = shard_count,
-            additional_deps = additional_deps,
-            kernels = kernels,
-            flaky = flaky,
-            xla_enabled = xla_enabled,
-            grpc_enabled = grpc_enabled,
-        )
+    test_tags = tags + tf_gpu_tests_tags()
+    tf_py_test(
+        name = name,
+        size = size,
+        srcs = srcs,
+        data = data,
+        main = main,
+        args = args,
+        tags = test_tags,
+        shard_count = shard_count,
+        additional_deps = additional_deps,
+        kernels = kernels,
+        flaky = flaky,
+        xla_enabled = xla_enabled,
+        grpc_enabled = grpc_enabled,
+    )
 
 register_extension_info(
     extension_name = "gpu_py_test",

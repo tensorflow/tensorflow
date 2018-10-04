@@ -67,6 +67,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
     map_defun_node->add_input(input.name());
   }
   (*map_defun_node->mutable_attr())["Targuments"] = t_args;
+  AddNodeAttr("Tcaptured", DataTypeVector(), map_defun_node);
 
   // Set return values to match output names
   string output_prefix = strings::StrCat(map_defun_node->name(), ":output:");
