@@ -347,6 +347,22 @@ def string_length(input, name=None, unit="BYTE"):
 string_length.__doc__ = gen_string_ops.string_length.__doc__
 
 
+@tf_export("substr")
+@deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
+def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
+  return substr(input, pos, len, name=name, unit=unit)
+
+substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
+
+
+@tf_export("strings.substr")
+def substr(input, pos, len, name=None, unit="BYTE"):
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+
+substr.__doc__ = gen_string_ops.substr.__doc__
+
+
 ops.NotDifferentiable("RegexReplace")
 ops.NotDifferentiable("StringToHashBucket")
 ops.NotDifferentiable("StringToHashBucketFast")
