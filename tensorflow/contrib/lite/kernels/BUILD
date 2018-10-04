@@ -210,6 +210,7 @@ cc_library(
         "slice.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "sparse_output_fully_connected.cc",
         "sparse_to_dense.cc",
         "split.cc",
         "squeeze.cc",
@@ -320,6 +321,23 @@ tf_cc_test(
     name = "relu1_test",
     size = "small",
     srcs = ["relu1_test.cc"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_output_fully_connected_test",
+    size = "small",
+    srcs = ["sparse_output_fully_connected_test.cc"],
     tags = [
         "no_oss",
         "tflite_not_portable_ios",
