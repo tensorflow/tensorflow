@@ -522,7 +522,6 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
   InitInstanceSharedParams(
       gr, cp, ir,
       [this, ir, done](const Status& s) UNLOCK_FUNCTION(ir->out_mu) {
-        DCHECK(!ir->out_mu.try_lock());
         DCHECK(ir->out_mu_available);
         ir->status.Update(s);
         ir->out_mu.unlock();
