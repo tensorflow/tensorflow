@@ -64,7 +64,7 @@ TF_LITE_MICRO_TEST(SimpleTest) {
 TF_LITE_MICRO_TESTS_END
 ```
 
-These macros work a lot like [the Google test framework](https://github.com/google/googletest), but they don't require any dependencies and just write results to stderr, rather than aborting the program. If all the tests pass, then "~~~ALL TESTS PASSED~~~" is output, and the test harness that runs the binary during the make process knows that everything ran correctly. If there's an error, the lack of the expected string lets the harness know that the test failed.
+These macros work a lot like [the Google test framework](https://github.com/google/googletest), but they don't require any dependencies and just write results to stderr, rather than aborting the program. If all the tests pass, then `~~~ALL TESTS PASSED~~~` is output, and the test harness that runs the binary during the make process knows that everything ran correctly. If there's an error, the lack of the expected string lets the harness know that the test failed.
 
 So, why are we running tests in this complicated way? So far, we've been building binaries that run locally on the Mac OS or Linux machine you're building on, but this approach becomes important when we're targeting simple micro controller devices.
 
