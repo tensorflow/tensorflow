@@ -113,6 +113,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // input configuration.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
 
+  TF_LITE_ENSURE_EQ(context, input->dims->size, 3);
   const int batch_size = input->dims->data[0];
   const int max_time = input->dims->data[1];
   const int fw_num_units = fw_input_weights->dims->data[0];
