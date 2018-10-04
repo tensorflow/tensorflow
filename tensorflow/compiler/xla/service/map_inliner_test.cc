@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/inliner.h"
+#include "tensorflow/compiler/xla/service/map_inliner.h"
 
 #include <memory>
 #include <utility>
@@ -35,10 +35,10 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-using InlinerTest = HloVerifiedTestBase;
+using MapInlinerTest = HloVerifiedTestBase;
 
 // Test that `map` with `max` is transformed to `max`
-TEST_F(InlinerTest, MapMax) {
+TEST_F(MapInlinerTest, MapMax) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
 
   auto max_builder = HloComputation::Builder(TestName());
@@ -63,7 +63,7 @@ TEST_F(InlinerTest, MapMax) {
   hlo_module->AddEmbeddedComputation(std::move(max_f32));
   hlo_module->AddEntryComputation(std::move(computation));
 
-  Inliner inliner;
+  MapInliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module).ValueOrDie());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
               op::Maximum(lhs, rhs));
@@ -75,7 +75,7 @@ TEST_F(InlinerTest, MapMax) {
 }
 
 // Test that `constant` function is changed to `broadcast`.
-TEST_F(InlinerTest, MapConstant) {
+TEST_F(MapInlinerTest, MapConstant) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
 
   auto const2_builder = HloComputation::Builder(TestName());
@@ -97,7 +97,7 @@ TEST_F(InlinerTest, MapConstant) {
   hlo_module->AddEmbeddedComputation(std::move(const2_f32));
   hlo_module->AddEntryComputation(std::move(computation));
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
-  Inliner inliner;
+  MapInliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module).ValueOrDie());
   root = hlo_module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
@@ -108,7 +108,7 @@ TEST_F(InlinerTest, MapConstant) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
 
-TEST_F(InlinerTest, MapSubtractOppositeOrder) {
+TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
 
   // Note that the parameter ordinals are in the opposite order to their
@@ -135,7 +135,7 @@ TEST_F(InlinerTest, MapSubtractOppositeOrder) {
   hlo_module->AddEmbeddedComputation(std::move(max_f32));
   hlo_module->AddEntryComputation(std::move(computation));
 
-  Inliner inliner;
+  MapInliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module).ValueOrDie());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
           op::Subtract(rhs, lhs));
@@ -146,7 +146,7 @@ TEST_F(InlinerTest, MapSubtractOppositeOrder) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
 
-TEST_F(InlinerTest, MapParameter) {
+TEST_F(MapInlinerTest, MapParameter) {
   Shape r0f32 = ShapeUtil::MakeShape(F32, {});
 
   auto param_builder = HloComputation::Builder(TestName());
@@ -167,7 +167,7 @@ TEST_F(InlinerTest, MapParameter) {
   hlo_module->AddEmbeddedComputation(std::move(param_f32));
   hlo_module->AddEntryComputation(std::move(computation));
 
-  Inliner inliner;
+  MapInliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), rhs);
 

@@ -1842,42 +1842,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "inliner",
-    srcs = ["inliner.cc"],
-    hdrs = ["inliner.h"],
-    deps = [
-        ":hlo",
-        ":hlo_pass",
-        ":hlo_query",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "inliner_test",
-    srcs = ["inliner_test.cc"],
-    deps = [
-        ":cpu_plugin",
-        ":hlo",
-        ":hlo_matchers",
-        ":inliner",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_library(
     name = "computation_placer",
     srcs = ["computation_placer.cc"],
     hdrs = ["computation_placer.h"],
@@ -3490,6 +3454,39 @@ cc_library(
     name = "hlo_casting_utils",
     hdrs = ["hlo_casting_utils.h"],
     deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
+    name = "map_inliner",
+    srcs = ["map_inliner.cc"],
+    hdrs = ["map_inliner.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":hlo_query",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "map_inliner_test",
+    srcs = ["map_inliner_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_matchers",
+        ":map_inliner",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 tf_cc_test(
