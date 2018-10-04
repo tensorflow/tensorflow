@@ -1324,10 +1324,19 @@ cc_library(
 )
 
 cc_library(
+    name = "fusion_queue",
+    hdrs = ["fusion_queue.h"],
+    deps = [
+        ":hlo",
+    ],
+)
+
+cc_library(
     name = "instruction_fusion",
     srcs = ["instruction_fusion.cc"],
     hdrs = ["instruction_fusion.h"],
     deps = [
+        ":fusion_queue",
         ":hlo",
         ":hlo_pass",
         "//tensorflow/compiler/xla:util",
