@@ -246,22 +246,19 @@ b'Condition x != y did not hold for every single element:'
 b'x (shape=(2, 3) dtype=float32) = '
 0.0, 1.0, 2.0, 3.0, 4.0, 5.0
 b'y (shape=(2, 3) dtype=float32) = '
-0.0, 1.0, 2.0, 3.0, 4.0, 5.0
-"""
+0.0, 1.0, 2.0, 3.0, 4.0, 5.0"""
     expected_error_msg_default = r"""Expected 'tf.Tensor(False, shape=(), dtype=bool)' to be true. Summarized data: b'This is the error message.'
 b'Condition x != y did not hold for every single element:'
 b'x (shape=(2, 3) dtype=float32) = '
 0.0, 1.0, 2.0, ...
 b'y (shape=(2, 3) dtype=float32) = '
-0.0, 1.0, 2.0, ...
-"""
+0.0, 1.0, 2.0, ..."""
     expected_error_msg_short = r"""Expected 'tf.Tensor(False, shape=(), dtype=bool)' to be true. Summarized data: b'This is the error message.'
 b'Condition x != y did not hold for every single element:'
 b'x (shape=(2, 3) dtype=float32) = '
 0.0, 1.0, ...
 b'y (shape=(2, 3) dtype=float32) = '
-0.0, 1.0, ...
-"""
+0.0, 1.0, ..."""
     with context.eager_mode():
       t = constant_op.constant(np.array(range(6)), shape=[2,3], dtype=np.float32)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
