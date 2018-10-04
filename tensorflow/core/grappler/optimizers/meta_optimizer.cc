@@ -272,7 +272,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   }
 
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  if (cfg_.optimizers().empty()) {
+  if (cfg_.optimizers().empty() && cfg_.custom_optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
   } else {
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
