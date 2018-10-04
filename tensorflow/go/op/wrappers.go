@@ -29094,6 +29094,17 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 	return op.Output(0)
 }
 
+// SubstrAttr is an optional argument to Substr.
+type SubstrAttr func(optionalAttr)
+
+// SubstrUnit sets the optional unit attribute to value.
+// If not specified, defaults to "BYTE"
+func SubstrUnit(value string) SubstrAttr {
+	return func(m optionalAttr) {
+		m["unit"] = value
+	}
+}
+
 // Return substrings from `Tensor` of strings.
 //
 // For each string in the input `Tensor`, creates a substring starting at index
@@ -29178,15 +29189,20 @@ func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source
 //	len: Scalar defining the number of characters to include in each substring
 //
 // Returns Tensor of substrings
-func Substr(scope *Scope, input tf.Output, pos tf.Output, len tf.Output) (output tf.Output) {
+func Substr(scope *Scope, input tf.Output, pos tf.Output, len tf.Output, optional ...SubstrAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "Substr",
 		Input: []tf.Input{
 			input, pos, len,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
