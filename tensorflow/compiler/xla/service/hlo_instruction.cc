@@ -3076,10 +3076,6 @@ const std::vector<int64>& HloInstruction::slice_strides() const {
   return Cast<HloSliceInstruction>(this)->slice_strides();
 }
 
-bool HloInstruction::IsInPlaceSlice() const {
-  return Cast<HloSliceInstruction>(this)->IsInPlaceSlice();
-}
-
 const Literal& HloInstruction::literal() const {
   return Cast<HloConstantInstruction>(this)->literal();
 }

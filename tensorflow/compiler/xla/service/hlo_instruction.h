@@ -1330,9 +1330,6 @@ class HloInstruction {
   int64 slice_strides(int64 dimension) const;
   const std::vector<int64>& slice_strides() const;
 
-  // Delegates to HloSliceInstruction::IsInPlaceSlice.
-  bool IsInPlaceSlice() const;
-
   // Returns the literal associated with this instruction.
   const Literal& literal() const;
 
