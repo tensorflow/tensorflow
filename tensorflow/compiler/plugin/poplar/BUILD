@@ -13,7 +13,7 @@ genrule(
     srcs = ["vertices/tf.cpp"],
     outs = ["tf.gp"],
     tools = ["@local_config_poplar//poplar:popc"],
-    cmd = "$(location @local_config_poplar//poplar:popc) -I . -o $@ $<",
+    cmd = "$(location @local_config_poplar//poplar:popc) -DNDEBUG -O3 -I . -o $@ $<",
 )
 
 tf_proto_library(
