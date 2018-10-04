@@ -76,6 +76,7 @@ tf_py_test(
     name = "batch_gather_op_test",
     srcs = ["batch_gather_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
