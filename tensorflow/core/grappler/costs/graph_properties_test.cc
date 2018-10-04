@@ -1340,6 +1340,8 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
   Output g = ops::Shape(s.WithOpName("g"), c);
   Output h = ops::Fill(s.WithOpName("h"), g, zero);
+  Output zero_idx = ops::Const(s.WithOpName("zero_idx"), {0}, {1});
+  Output j = ops::Sum(s.WithOpName("j"), a, zero_idx);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -1382,6 +1384,10 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   ASSERT_EQ(2, shape_f.dim_size());
   EXPECT_EQ(shape_h.dim(0).size(), shape_c.dim(0).size());
   EXPECT_EQ(shape_h.dim(1).size(), shape_c.dim(1).size());
+
+  const auto shape_j = properties.GetOutputProperties("j").at(0).shape();
+  ASSERT_EQ(1, shape_j.dim_size());
+  EXPECT_EQ(shape_j.dim(0).size(), shape_a.dim(1).size());
 }
 
 TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {
