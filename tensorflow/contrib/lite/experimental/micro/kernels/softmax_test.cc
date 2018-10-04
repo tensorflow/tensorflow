@@ -160,7 +160,7 @@ void TestSoftmaxQuantized(std::initializer_list<int> input_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SimpleTest) {
-  const int output_dims_count = 6;
+  const int output_dims_count = 10;
   float output_data[output_dims_count];
   tflite::testing::TestSoftmaxFloat(  //
       {2, 2, 5},                      // Input shape.
@@ -181,7 +181,7 @@ TF_LITE_MICRO_TEST(SimpleTest) {
           0.031684921,
           0.011656231,
       },
-      {2, 2, 3},  // Output shape.
+      {2, 2, 5},  // Output shape.
       output_data);
 }
 
@@ -192,7 +192,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
   const float input_max = 64.0f;
   const float output_min = 0.0f;
   const float output_max = (255.0f / 256.0f);
-  const int output_dims_count = 6;
+  const int output_dims_count = 5;
   uint8_t output_data[output_dims_count];
   tflite::testing::TestSoftmaxQuantized(  //
       {2, 1, 5},                          // Input shape.
@@ -212,7 +212,7 @@ TF_LITE_MICRO_TEST(SimpleTestQuantized) {
           F2Q(0.234121657, output_min, output_max),
           F2Q(0.636408647, output_min, output_max),
       },
-      {2, 1, 3},               // Output shape.
+      {2, 1, 5},               // Output shape.
       output_min, output_max,  // Output quantized range.
       output_data);
 }
