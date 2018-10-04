@@ -843,24 +843,43 @@ void CheckNonAsciiIOArrays(const ModelFlags& model_flags) {
 }
 
 void CheckNonExistentIOArrays(const Model& model) {
+  // "non-existent" is interpreted in the stronger sense of
+  // "not actually produced/consumed by an op".
+  // Rationale: we have to artificially fix up TensorFlow graphs by creating
+  // any array that it refers to, so just checking that arrays exist isn't
+  // sufficient. The real invariant here is whether arrays are produced/consumed
+  // by something.
   if (model.flags.allow_nonexistent_arrays()) {
     return;
   }
+  static constexpr char general_comment[] =
+      "Is it a typo? To silence this message, pass this flag:  "
+      "allow_nonexistent_arrays";
   for (const auto& input_array : model.flags.input_arrays()) {
-    CHECK(model.HasArray(input_array.name()))
-        << "Input array not found: " << input_array.name();
+    QCHECK(GetOpWithInput(model, input_array.name()))
+        << "Specified input array \"" << input_array.name()
+        << "\" is not consumed by any op in this graph. " << general_comment;
   }
   for (const string& output_array : model.flags.output_arrays()) {
-    CHECK(model.HasArray(output_array))
-        << "Output array not found: " << output_array;
+    QCHECK(GetOpWithOutput(model, output_array))
+        << "Specified output array \"" << output_array
+        << "\" is not produced by any op in this graph. " << general_comment;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
-      CHECK(model.HasArray(rnn_state.state_array()));
-      CHECK(model.HasArray(rnn_state.back_edge_source_array()));
+      // Check that all RNN states are consumed
+      QCHECK(GetOpWithInput(model, rnn_state.state_array()))
+          << "Specified RNN state \"" << rnn_state.state_array()
+          << "\" is not consumed by any op in this graph. " << general_comment;
+      // Check that all RNN back-edge source arrays are produced
+      QCHECK(GetOpWithOutput(model, rnn_state.back_edge_source_array()))
+          << "Specified RNN back-edge source array \""
+          << rnn_state.back_edge_source_array()
+          << "\" is not produced by any op in this graph. " << general_comment;
     }
   }
 }
+
 }  // namespace
 
 void CheckNoMissingArray(const Model& model) {
@@ -1597,6 +1616,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
+
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),

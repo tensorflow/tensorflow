@@ -11,6 +11,11 @@ py_test(
     size = "medium",
     srcs = ["assert_next_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -25,6 +30,11 @@ py_test(
     size = "small",
     srcs = ["hoist_random_uniform_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -43,6 +53,11 @@ py_test(
     size = "small",
     srcs = ["latency_all_edges_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -58,6 +73,11 @@ py_test(
     size = "small",
     srcs = ["map_vectorization_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
@@ -80,6 +100,11 @@ py_test(
     size = "medium",
     srcs = ["map_and_filter_fusion_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -98,6 +123,11 @@ py_test(
     size = "small",
     srcs = ["map_parallelization_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -117,6 +147,9 @@ py_test(
     srcs = ["model_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
         "optonly",
     ],
     deps = [
@@ -136,6 +169,11 @@ py_test(
     size = "small",
     srcs = ["noop_elimination_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -153,6 +191,11 @@ py_test(
     size = "small",
     srcs = ["optimize_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",

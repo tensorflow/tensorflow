@@ -82,11 +82,12 @@ class StatsAggregatorImpl : public StatsAggregator {
     auto counters_map = get_counters_map();
     if (counters_map->find(name) == counters_map->end()) {
       counters_map->emplace(
-          name, monitoring::Counter<1>::New(
-                    /*streamz name*/ "/tensorflow/" + name,
-                    /*streamz description*/
-                    name + " generated or consumed by the component.",
-                    /*streamz label name*/ "component_descriptor"));
+          name,
+          monitoring::Counter<1>::New(
+              /*streamz name*/ name,
+              /*streamz description*/
+              strings::StrCat(name, " generated or consumed by the component."),
+              /*streamz label name*/ "component_descriptor"));
     }
     counters_map->at(name)->GetCell(label)->IncrementBy(val);
   }

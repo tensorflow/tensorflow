@@ -476,6 +476,40 @@ class FlattenTest(test.TestCase):
     shape = core_layers.Flatten().compute_output_shape((None, 3, None))
     self.assertEqual(shape.as_list(), [None, None])
 
+  def testDataFormat5d(self):
+    np_input_channels_last = np.arange(
+        120, dtype='float32').reshape([1, 5, 4, 3, 2])
+
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(1, 5, 4, 3, 2), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_last')(x)
+      np_output_cl = sess.run(y, feed_dict={x: np_input_channels_last})
+
+      x = array_ops.placeholder(shape=(1, 2, 5, 4, 3), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_first')(x)
+      np_input_channels_first = np.transpose(np_input_channels_last,
+                                             [0, 4, 1, 2, 3])
+      np_output_cf = sess.run(y, feed_dict={x: np_input_channels_first})
+
+      self.assertAllEqual(np_output_cl, np_output_cf)
+
+  def testDataFormat4d(self):
+    np_input_channels_last = np.arange(
+        24, dtype='float32').reshape([1, 4, 3, 2])
+
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(1, 4, 3, 2), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_last')(x)
+      np_output_cl = sess.run(y, feed_dict={x: np_input_channels_last})
+
+      x = array_ops.placeholder(shape=(1, 2, 4, 3), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_first')(x)
+      np_input_channels_first = np.transpose(np_input_channels_last,
+                                             [0, 3, 1, 2])
+      np_output_cf = sess.run(y, feed_dict={x: np_input_channels_first})
+
+      self.assertAllEqual(np_output_cl, np_output_cf)
+
   def testFunctionalFlatten(self):
     x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
     y = core_layers.flatten(x, name='flatten')

@@ -46,6 +46,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=redefined-builtin
+@tf_export("strings.regex_full_match")
 def regex_full_match(input, pattern, name=None):
   r"""Match elements of `input` with regex `pattern`.
 
@@ -73,15 +74,14 @@ def regex_full_match(input, pattern, name=None):
 
 regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 
-# Expose regex_full_match in strings namespace
-tf_export("strings.regex_full_match")(regex_full_match)
 
-
-def regex_replace(source, pattern, rewrite, replace_global=True):
-  r"""Replace elements of `source` matching regex `pattern` with `rewrite`.
+@tf_export("strings.regex_replace", "regex_replace")
+@deprecation.deprecated_endpoints("regex_replace")
+def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
+  r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
   Args:
-    source: string `Tensor`, the source strings to process.
+    input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,
       see more details at https://github.com/google/re2/wiki/Syntax
     rewrite: string or scalar string `Tensor`, value to use in match
@@ -89,9 +89,10 @@ def regex_replace(source, pattern, rewrite, replace_global=True):
       text matching corresponding parenthesized group.
     replace_global: `bool`, if `True` replace all non-overlapping matches,
       else replace only the first match.
+    name: A name for the operation (optional).
 
   Returns:
-    string `Tensor` of the same shape as `source` with specified replacements.
+    string `Tensor` of the same shape as `input` with specified replacements.
   """
   if (isinstance(pattern, util_compat.bytes_or_text_types) and
       isinstance(rewrite, util_compat.bytes_or_text_types)):
@@ -99,11 +100,13 @@ def regex_replace(source, pattern, rewrite, replace_global=True):
     # use a version which performs the expensive regex compilation once at
     # creation time.
     return gen_string_ops.static_regex_replace(
-        input=source, pattern=pattern,
-        rewrite=rewrite, replace_global=replace_global)
+        input=input, pattern=pattern,
+        rewrite=rewrite, replace_global=replace_global,
+        name=name)
   return gen_string_ops.regex_replace(
-      input=source, pattern=pattern,
-      rewrite=rewrite, replace_global=replace_global)
+      input=input, pattern=pattern,
+      rewrite=rewrite, replace_global=replace_global,
+      name=name)
 
 
 @tf_export("strings.format")

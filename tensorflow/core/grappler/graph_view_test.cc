@@ -26,7 +26,7 @@ namespace {
 
 class GraphViewTest : public ::testing::Test {};
 
-TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
+TEST_F(GraphViewTest, OpPortIdToArgIdShapeN) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
   ops::ShapeN b(s.WithOpName("b"), {a, a, a});
@@ -45,9 +45,16 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
   EXPECT_TRUE(
       OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
 
-  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *a_op_def, 0));
-  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *a_op_def, 1));
+  // Const has 0 inputs, 1 output.
+  EXPECT_EQ(-1, OpInputPortIdToArgId(a_node_def, *a_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(a_node_def, *a_op_def, 0));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(a_node_def, *a_op_def, 1));
 
+  // ShapeN has N=3 inputs and outputs.
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
+  EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
   EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 0));
   EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 1));
   EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 2));
@@ -55,7 +62,7 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
   EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 4));
 }
 
-TEST_F(GraphViewTest, OpOutputPortIdToArgIdSparseSplit) {
+TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
   for (int num_splits : {1, 2}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
     Output a = ops::Const<int64>(s.WithOpName("a"), 1, {10, 10});
@@ -69,6 +76,13 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdSparseSplit) {
     const OpDef* b_op_def = nullptr;
     EXPECT_TRUE(
         OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+
+    // We have 4 inputs.
+    EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
+    EXPECT_EQ(1, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
+    EXPECT_EQ(2, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
+    EXPECT_EQ(3, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
+    EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 4));
 
     for (int port_id = 0; port_id <= num_splits * 3; ++port_id) {
       int arg_id = -1;

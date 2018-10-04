@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.ops import add_arg_scope
-from tensorflow.contrib.framework.python.ops import model_variable
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -29,7 +27,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import moving_averages
 
 
-@add_arg_scope
 def FixedQuantize(inputs, init_min=-6.0, init_max=6.0, scope=None):
   """Adds a fake quantize layer with fixed quantization interval.
 
@@ -46,7 +43,21 @@ def FixedQuantize(inputs, init_min=-6.0, init_max=6.0, scope=None):
         inputs, min=init_min, max=init_max)
 
 
-@add_arg_scope
+def _ModelVariable(name,
+                   shape=None,
+                   initializer=None,
+                   collections=None,
+                   trainable=None):
+  collections = list(collections or [])
+  collections += [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
+  return variable_scope.get_variable(
+      name,
+      shape=shape,
+      initializer=initializer,
+      collections=collections,
+      trainable=trainable)
+
+
 def LastValueQuantize(inputs,
                       per_channel=False,
                       init_min=-6.0,
@@ -93,13 +104,13 @@ def LastValueQuantize(inputs,
     else:
       min_max_shape = []
 
-    min_var = model_variable(
+    min_var = _ModelVariable(
         'min',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_min),
         collections=[vars_collection],
         trainable=False)
-    max_var = model_variable(
+    max_var = _ModelVariable(
         'max',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_max),
@@ -153,7 +164,6 @@ def LastValueQuantize(inputs,
         narrow_range=narrow_range)
 
 
-@add_arg_scope
 def MovingAvgQuantize(inputs,
                       per_channel=False,
                       init_min=-6.0,
@@ -202,13 +212,13 @@ def MovingAvgQuantize(inputs,
     else:
       min_max_shape = []
 
-    min_var = model_variable(
+    min_var = _ModelVariable(
         'min',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_min),
         collections=[vars_collection],
         trainable=False)
-    max_var = model_variable(
+    max_var = _ModelVariable(
         'max',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_max),

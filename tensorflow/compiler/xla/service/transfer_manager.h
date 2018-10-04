@@ -89,6 +89,16 @@ class TransferManager {
                                          const LiteralSlice& literal,
                                          const ShapedBuffer& device_buffer);
 
+  // Hint type given to TransferLiteralToDeviceAsync.
+  enum TransferToDeviceHint {
+    // No hint available.
+    kNoHint,
+
+    // The destination buffer is undefined on the device, meaning it can be
+    // transferred to eagerly rather than waiting for Stream ordering.
+    kBufferUndefined,
+  };
+
   // Transfers the given literal into the previously allocated device memory
   // represented by the given ShapedBuffer using the given executor. The shape
   // of the ShapedBuffer and DeviceShape(literal.shape()) must be compatible,
@@ -96,9 +106,13 @@ class TransferManager {
   //
   // This operation is performed asynchronously on the given stream. It returns
   // once the transfer is enqueued.
+  //
+  // The optional hint can allow implementations to optimize transfers. It is
+  // not mandatory for an implementation to obey the hint.
   virtual Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
-      const ShapedBuffer& device_buffer) = 0;
+      const ShapedBuffer& device_buffer,
+      TransferToDeviceHint hint = kNoHint) = 0;
 
   // Convenience methods for transferring an array to or from the device at a
   // known address. This avoids having to construct a ShapedBuffer just to

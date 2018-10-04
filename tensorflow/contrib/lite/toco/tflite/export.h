@@ -81,11 +81,21 @@ using TensorsMap = std::unordered_map<string, int>;
 // Only when `type` is `kUnsupported`, `custom_code` is filled to
 // identify which operation is used.
 struct OperatorKey {
-  OperatorKey(OperatorType type, const std::string& custom_code, int version)
-      : type(type), custom_code(custom_code), version(version) {}
-  const OperatorType type;
-  const std::string custom_code;
-  const int version;
+  OperatorKey(OperatorType type, const std::string& custom_code, int version,
+              bool allow_flex_ops = false);
+
+  // Only `type`, `custom_code` and `version` is used to compute hash and
+  // identity.
+  OperatorType type;
+  std::string custom_code;
+  int version;
+
+  // THe fields below are not used to compute hash and identity.
+  bool is_flex_op = false;
+  bool is_unsupported_flex_op = false;
+  // The original TensorFlow op name for the flex op. Filled only when
+  // `is_flex_op` is true.
+  std::string flex_tensorflow_op;
 
   bool operator<(const OperatorKey& other) const {
     if (type < other.type) return true;

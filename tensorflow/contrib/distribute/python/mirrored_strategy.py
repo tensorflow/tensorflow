@@ -318,12 +318,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
   The distribution strategy inherits these concepts as well and in addition to
   that we also clarify several more concepts:
-    * **In-graph replication**: the `client` creates a single `tf.Graph` that
+
+  * **In-graph replication**: the `client` creates a single `tf.Graph` that
     specifies tasks for devices on all workers. The `client` then creates a
     client session which will talk to the `master` service of a `worker`. Then
     the `master` will partition the graph and distribute the work to all
     participating workers.
-    * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
+  * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
     physical machine. We will have multiple `worker`s with different `task`
     index. They all do similar things except for one worker checkpointing model
     variables, writing summaries, etc. in addition to its ordinary work.
