@@ -1028,7 +1028,10 @@ class Network(base_layer.Layer):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensor, **kwargs)
               else:
-                output_tensors = layer.call(computed_tensor, **kwargs)
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensor, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensor, **kwargs)
                 if hasattr(layer, 'compute_mask'):
                   output_masks = layer.compute_mask(computed_tensor,
                                                     computed_mask)
@@ -1049,7 +1052,10 @@ class Network(base_layer.Layer):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensors, **kwargs)
               else:
-                output_tensors = layer.call(computed_tensors, **kwargs)
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensors, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensors, **kwargs)
                 if hasattr(layer, 'compute_mask'):
                   output_masks = layer.compute_mask(computed_tensors,
                                                     computed_masks)
