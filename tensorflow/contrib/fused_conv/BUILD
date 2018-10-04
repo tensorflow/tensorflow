@@ -145,6 +145,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
+        "manual",  # TODO(b/117128481): re-enable after fixing OSS build
         "no_pip",
         "requires-gpu-sm70",
     ],
@@ -169,6 +170,7 @@ cuda_py_test(
     ],
     main = "python/ops/fused_conv2d_bias_activation_benchmark.py",
     tags = [
+        "manual",  # TODO(b/117128481): re-enable after fixing OSS build
         "requires-gpu-sm70",
     ],
 )

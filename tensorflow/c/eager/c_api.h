@@ -313,6 +313,9 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunction(TFE_Op* op,
                                                  const char* attr_name,
                                                  const TFE_Op* value);
 
+TF_CAPI_EXPORT void TFE_OpSetAttrFunctionName(TFE_Op* op, const char* attr_name,
+                                              const char* data, size_t length);
+
 TF_CAPI_EXPORT extern void TFE_OpSetAttrTensor(TFE_Op* op,
                                                const char* attr_name,
                                                TF_Tensor* tensor,

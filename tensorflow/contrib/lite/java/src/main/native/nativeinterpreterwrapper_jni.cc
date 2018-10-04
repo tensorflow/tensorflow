@@ -159,26 +159,20 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
   }
 }
 
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensor(JNIEnv* env,
-                                                                 jclass clazz,
-                                                                 jlong handle,
-                                                                 jint index) {
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint input_index) {
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return 0;
-  return reinterpret_cast<jlong>(
-      interpreter->tensor(interpreter->inputs()[index]));
+  return interpreter->inputs()[input_index];
 }
 
-JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensor(JNIEnv* env,
-                                                                  jclass clazz,
-                                                                  jlong handle,
-                                                                  jint index) {
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputTensorIndex(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_index) {
   tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return 0;
-  return reinterpret_cast<jlong>(
-      interpreter->tensor(interpreter->outputs()[index]));
+  return interpreter->outputs()[output_index];
 }
 
 JNIEXPORT jint JNICALL

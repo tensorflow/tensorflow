@@ -13176,6 +13176,14 @@ op {
     name: "else_branch"
     type: "func"
   }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -28595,6 +28603,14 @@ op {
     name: "stats_aggregator"
     type: DT_RESOURCE
   }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "counter_prefix"
+    type: DT_STRING
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -36934,6 +36950,14 @@ op {
   attr {
     name: "body"
     type: "func"
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
   }
   is_stateful: true
 }

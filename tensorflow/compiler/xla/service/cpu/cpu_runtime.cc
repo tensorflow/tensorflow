@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
@@ -30,8 +31,7 @@ namespace cpu {
 namespace runtime {
 
 XfeedManager* GetXfeedManager(int device_ordinal) {
-  static tensorflow::gtl::FlatMap<int, XfeedManager*>* managers =
-      new tensorflow::gtl::FlatMap<int, XfeedManager*>();
+  static auto* managers = new absl::flat_hash_map<int, XfeedManager*>();
   static absl::Mutex* mutex = new absl::Mutex();
 
   absl::MutexLock lock(mutex);

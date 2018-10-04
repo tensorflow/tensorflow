@@ -826,7 +826,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       with dist.scope():
         ret_v_sum = dist.call_for_each_tower(model_fn, run_concurrently=False)
-        update_ops = dist.unwrap(dist.update(ret_v_sum, update, 5.0))
+        update_ops = dist.update(ret_v_sum, update, 5.0, grouped=False)
 
         # Initialize variables.
         self.evaluate(variables.global_variables_initializer())

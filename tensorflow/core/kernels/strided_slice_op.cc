@@ -149,7 +149,7 @@ class StridedSliceOp : public OpKernel {
       // NDIM and T
       if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
           input_dims == 2 && processing_shape.dims() == 2 &&
-          final_shape.dims() == 2) {
+          final_shape.dims() == 2 && new_axis_mask == 0) {
         MemCpyFunctor<T> functor;
         if (functor.Copy(input, begin, end, result)) {
           return;

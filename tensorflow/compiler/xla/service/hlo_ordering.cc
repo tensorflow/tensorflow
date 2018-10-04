@@ -92,12 +92,16 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
 }
 
 bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
-  // If 'b' is an entry param then 'a' cannot be defined before 'b' because 'b'
-  // is live into the module.
+  // Entry parameter should always be defined before other instructions.
   const HloModule* module = b.defining_instruction()->parent()->parent();
   if (b.defining_instruction()->parent() == module->entry_computation() &&
       b.defining_instruction()->opcode() == HloOpcode::kParameter) {
     return false;
+  }
+
+  if (a.defining_instruction()->parent() == module->entry_computation() &&
+      a.defining_instruction()->opcode() == HloOpcode::kParameter) {
+    return true;
   }
 
   // Phi values require special handling. Because XLA does not have a phi
@@ -316,7 +320,7 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
       for (auto predecessor : all) {
         if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
-          pieces.push_back(absl::StrFormat("  %s", predecessor->name()));
+          pieces.push_back(absl::StrFormat("    %s", predecessor->name()));
         }
       }
     }

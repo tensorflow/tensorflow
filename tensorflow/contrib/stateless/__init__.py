@@ -32,10 +32,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=wildcard-import
-from tensorflow.contrib.stateless.gen_stateless_random_ops import *
-
 from tensorflow.python.framework import ops
+
+# pylint: disable=wildcard-import
+from tensorflow.python.ops.gen_stateless_random_ops import *
+
 from tensorflow.python.util.all_util import remove_undocumented
 
 ops.NotDifferentiable("StatelessMultinomial")

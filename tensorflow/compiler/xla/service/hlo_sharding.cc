@@ -369,10 +369,14 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     return HloSharding(tuple_shardings);
   } else if (proto.type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
     return Replicate();
-  } else if (proto.type() == OpSharding::Type::OpSharding_Type_MAXIMAL ||
-             proto.tile_assignment_devices().size() == 1) {
+  } else if (proto.tile_assignment_devices().size() == 1) {
     return HloSharding(proto.tile_assignment_devices(0));
   }
+
+  TF_RET_CHECK(proto.type() != OpSharding::Type::OpSharding_Type_MAXIMAL)
+      << "Maximal sharding is expected to have single device assignment, but "
+      << proto.tile_assignment_devices().size() << " has provided.";
+
   // Some versions of gcc cannot infer the TileAssignment constructor from a
   // braced initializer-list, so create one manually.
   std::vector<int64> devices(proto.tile_assignment_devices().begin(),

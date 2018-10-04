@@ -13,11 +13,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Options"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TFRecordDataset"
     mtype: "<class \'abc.ABCMeta\'>"
   }
   member {
     name: "TextLineDataset"
     mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
   }
 }

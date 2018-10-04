@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -27,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace {
@@ -213,6 +214,7 @@ HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
 HloInstructionProto HloSendRecvInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_channel_id(channel_id_);
+  proto.set_is_host_transfer(is_host_transfer_);
   return proto;
 }
 
@@ -1042,7 +1044,8 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
   const int64 param_no = operand_count();
   // Name the parameter after the instruction it represents in the outer
   // (non-fusion) computation.
-  string param_name = StrCat(new_operand->name(), ".param_", param_no);
+  // string param_name = StrCat(new_operand->name(), ".param_", param_no);
+  string param_name = StrCat("param_", param_no);
   HloInstruction* fused_parameter =
       fused_instructions_computation()->AddParameter(
           HloInstruction::CreateParameter(param_no, new_operand->shape(),
@@ -1098,7 +1101,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
   // Note that we add the unfused instructions to this->parent_ computation.
   // This is necessary because the unique_id needs for an instruction and
   // it's only added when inserting to the computation.
-  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> old_to_new;
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> old_to_new;
   std::vector<HloInstruction*> unfused_instructions;
   auto computation_to_merge =
       instruction_to_merge->fused_instructions_computation();
@@ -1391,7 +1394,7 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
-  tensorflow::gtl::FlatMap<const HloInstruction*, int> operand_indices;
+  absl::flat_hash_map<const HloInstruction*, int> operand_indices;
   std::vector<int> operands_to_remove;
   for (int i = 0; i < operand_count(); ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
@@ -2308,5 +2311,24 @@ std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloDomainInstruction>(
       shape, new_operands[0], operand_side_metadata_->Clone(),
       user_side_metadata_->Clone());
+}
+
+HloInstructionProto HloDomainInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  auto operand_side_sharding =
+      dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
+  if (operand_side_sharding) {
+    *proto.mutable_domain_entry_sharding() =
+        operand_side_sharding->sharding()->ToProto();
+  }
+
+  auto user_side_sharding =
+      dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
+  if (user_side_sharding) {
+    *proto.mutable_domain_exit_sharding() =
+        user_side_sharding->sharding()->ToProto();
+  }
+
+  return proto;
 }
 }  // namespace xla

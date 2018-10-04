@@ -30,14 +30,14 @@
     android:layout_height="wrap_content"
     android:text="@string/initial_status_msg"
     android:id="@+id/textView"
-    android:layout_above="@+id/button_start"
+    android:layout_above="@+id/button_clf_start"
     android:layout_alignParentTop="true"/>
 
   <Button
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:text="@string/start_label"
-    android:id="@id/button_start"
+    android:text="@string/start_clf_label"
+    android:id="@id/button_clf_start"
     android:layout_alignParentBottom="true"
     android:layout_alignParentLeft="true"
     android:background="@drawable/start_button_color"
@@ -49,6 +49,25 @@
     android:textColor="#ffffff"
     android:enabled="true"
     style="?android:attr/buttonBarButtonStyle"
-    android:onClick="startPressed"/>
+    android:onClick="classifyPressed"/>
+
+  <Button
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="@string/start_det_label"
+    android:id="@+id/button_det_start"
+    android:layout_alignParentBottom="true"
+    android:layout_alignParentRight="true"
+    android:layout_toRightOf="@id/button_clf_start"
+    android:background="@drawable/start_button_color"
+    android:padding="10dp"
+    android:layout_marginRight="100dp"
+    android:layout_marginLeft="30dp"
+    android:layout_marginTop="10dp"
+    android:foreground="#000000"
+    android:textColor="#ffffff"
+    android:enabled="true"
+    style="?android:attr/buttonBarButtonStyle"
+    android:onClick="detectPressed"/>
 
 </RelativeLayout>

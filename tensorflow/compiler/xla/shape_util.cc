@@ -831,7 +831,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
-  if (shape.element_type() == PRIMITIVE_TYPE_INVALID) {
+  if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
+      !PrimitiveType_IsValid(shape.element_type())) {
     return InvalidArgument("shape has invalid element type: %s",
                            shape.ShortDebugString());
   }

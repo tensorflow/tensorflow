@@ -271,6 +271,12 @@ proto_library(
     visibility = ["//visibility:public"],
 )
 
+java_proto_library(
+    name = "example_java_proto",
+    visibility = ["//visibility:public"],
+    deps = [":example_protos"],
+)
+
 closure_proto_library(
     name = "example_protos_closure",
     visibility = ["//visibility:public"],
@@ -3744,7 +3750,7 @@ tf_cc_tests_gpu(
 
 tf_cc_tests_gpu(
     name = "hierarchical_tree_broadcaster_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],

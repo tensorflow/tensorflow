@@ -318,12 +318,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
   The distribution strategy inherits these concepts as well and in addition to
   that we also clarify several more concepts:
-    * **In-graph replication**: the `client` creates a single `tf.Graph` that
+
+  * **In-graph replication**: the `client` creates a single `tf.Graph` that
     specifies tasks for devices on all workers. The `client` then creates a
     client session which will talk to the `master` service of a `worker`. Then
     the `master` will partition the graph and distribute the work to all
     participating workers.
-    * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
+  * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
     physical machine. We will have multiple `worker`s with different `task`
     index. They all do similar things except for one worker checkpointing model
     variables, writing summaries, etc. in addition to its ordinary work.
@@ -627,9 +628,11 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._get_cross_tower_ops().batch_reduce(aggregation,
                                                     value_destination_pairs)
 
-  def _update(self, var, fn, *args, **kwargs):
+  def _update(self, var, options, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
@@ -638,10 +641,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.regroup(updates, values.Mirrored)
+    return values.update_regroup(self, updates, should_group)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
     assert isinstance(colocate_with, list)
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -649,7 +654,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
         updates[d] = fn(*values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.regroup(updates, values.Mirrored)
+    return values.update_regroup(self, updates, should_group)
 
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""

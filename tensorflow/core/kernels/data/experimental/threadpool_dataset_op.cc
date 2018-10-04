@@ -191,7 +191,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
-        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        params.stats_aggregator = ctx->stats_aggregator();
         params.lib = ctx->lib();
         params.function_library = ctx->function_library();
         params.allocator_getter = ctx->allocator_getter();

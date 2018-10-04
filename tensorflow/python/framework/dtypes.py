@@ -26,7 +26,7 @@ from tensorflow.python.util.tf_export import tf_export
 _np_bfloat16 = pywrap_tensorflow.TF_bfloat16_type()
 
 
-@tf_export("DType")
+@tf_export("dtypes.DType", "DType")
 class DType(object):
   """Represents the type of the elements in a `Tensor`.
 
@@ -658,7 +658,7 @@ _PYTHON_TO_TF = {
 }
 
 
-@tf_export("as_dtype")
+@tf_export("dtypes.as_dtype", "as_dtype")
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
 

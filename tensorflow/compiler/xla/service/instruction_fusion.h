@@ -1,3 +1,4 @@
+#include "absl/container/flat_hash_map.h"
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -158,8 +159,8 @@ class InstructionFusion : public HloModulePass {
   bool CanFuseOnAllPaths(
       HloInstruction* producer, HloInstruction* consumer,
       const HloInstructionSet& do_not_fuse,
-      tensorflow::gtl::FlatMap<std::pair<HloInstruction*, HloInstruction*>,
-                               bool>* result_cache);
+      absl::flat_hash_map<std::pair<HloInstruction*, HloInstruction*>, bool>*
+          result_cache);
 
   // Computes the set of nodes that we do not want to fuse into any of their
   // consumers based on a global analysis of the HLO graph.

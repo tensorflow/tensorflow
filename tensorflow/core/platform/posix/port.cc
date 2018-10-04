@@ -13,10 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef TENSORFLOW_USE_JEMALLOC
-#include "jemalloc/jemalloc.h"
-#endif
-
 #include "absl/base/internal/sysinfo.h"
 
 #include "tensorflow/core/platform/cpu_info.h"
@@ -101,11 +97,7 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
   // memory aligned to at least the size of a pointer.
   const int required_alignment = sizeof(void*);
   if (minimum_alignment < required_alignment) return Malloc(size);
-#ifdef TENSORFLOW_USE_JEMALLOC
-  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
-#else
   int err = posix_memalign(&ptr, minimum_alignment, size);
-#endif
   if (err != 0) {
     return nullptr;
   } else {
@@ -116,29 +108,11 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
 
 void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
 
-void* Malloc(size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_malloc(size);
-#else
-  return malloc(size);
-#endif
-}
+void* Malloc(size_t size) { return malloc(size); }
 
-void* Realloc(void* ptr, size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_realloc(ptr, size);
-#else
-  return realloc(ptr, size);
-#endif
-}
+void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
-void Free(void* ptr) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  jemalloc_free(ptr);
-#else
-  free(ptr);
-#endif
-}
+void Free(void* ptr) { free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
   return AlignedMalloc(size, minimum_alignment);
@@ -146,9 +120,7 @@ void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
 
 void NUMAFree(void* ptr, size_t size) { Free(ptr); }
 
-int NUMAGetMemAffinity(const void* addr) {
-  return kNUMANoAffinity;
-}
+int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
