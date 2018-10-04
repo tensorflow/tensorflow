@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// Map a node/op's output port_id to arg_id.
+// Map a node/op's input/output port_id to arg_id.
 //
 // The port_id refers to the n-th tensor of the node, while the arg_id refers to
 // the n-th arg of the op. These two can be different if an op's arg is a list
@@ -34,6 +34,7 @@ namespace grappler {
 //
 // We return -1 for any invalid port_id (i.e., no corresponding arg_id).
 int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id);
+int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id);
 
 // A utility class to simplify the traversal of a GraphDef.
 class GraphView {

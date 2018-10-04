@@ -160,6 +160,48 @@ TEST_F(PinToHostOptimizerTest, NoSwap) {
   EXPECT_EQ(found, 3);
 }
 
+TEST_F(PinToHostOptimizerTest, Identity) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  // `a,c` is on GPU, `e` is on CPU, consequently `e` should not be swapped.
+  // `b` should be placed onto Host since `c` pins the input to Host memory.
+  Output a =
+      ops::Const(s.WithOpName("a").WithDevice("/device:GPU:0"), 1, {64, 64});
+  Output b = ops::Const(s.WithOpName("b"), {0, 1}, {2});
+  Output c =
+      ops::ReduceProd(s.WithOpName("c").WithDevice("/device:GPU:0"), a, b);
+  Output d = ops::Identity(s.WithDevice("/device:CPU:0").WithOpName("d"), c);
+  Output e = ops::Multiply(s.WithOpName("e"), d, d);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  GraphDef output;
+  PinToHostOptimizer optimizer(RewriterConfig::ON);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "a" || node.name() == "c") {
+      EXPECT_EQ(node.device(), "/device:GPU:0");
+    } else if (node.name() == "b") {
+      // If CUDA, then there is a GPU kernel registration that is pinned to Host
+      // memory. Consequently, `b` will be mapped to Host correct if there is
+      // a GPU kernel registered.
+#if GOOGLE_CUDA
+      EXPECT_EQ(node.device(), "/device:CPU:0");
+#else
+      EXPECT_TRUE(node.device().empty());
+#endif
+    } else if (node.name() == "d") {
+      EXPECT_EQ(node.device(), "/device:CPU:0");
+    } else if (node.name() == "e") {
+      EXPECT_TRUE(node.device().empty());
+    }
+    ++found;
+  }
+  EXPECT_EQ(found, 5);
+}
+
 TEST_F(PinToHostOptimizerTest, PortIdToArgId) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 1, {1, 2, 3});
