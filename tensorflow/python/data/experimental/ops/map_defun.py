@@ -47,10 +47,12 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
   if not isinstance(elems, list):
     raise ValueError("`elems` must be a list of tensors.")
   if not isinstance(output_dtypes, list):
-    raise ValueError("`output_dtypes` must be a list of tensors.")
+    raise ValueError("`output_dtypes` must be a list of `tf.DType` objects.")
   if not isinstance(output_shapes, list):
-    raise ValueError("`output_shapes` must be a list of tensors.")
+    raise ValueError("`output_shapes` must be a list of `tf.TensorShape` "
+                     "objects.")
 
   elems = [ops.convert_to_tensor(e) for e in elems]
   output_shapes = [tensor_shape.TensorShape(s) for s in output_shapes]
-  return gen_dataset_ops.map_defun(elems, output_dtypes, output_shapes, fn)
+  return gen_dataset_ops.map_defun(elems, fn.captured_inputs, output_dtypes,
+                                   output_shapes, fn)

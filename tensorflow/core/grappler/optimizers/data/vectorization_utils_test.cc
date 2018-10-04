@@ -55,6 +55,7 @@ NodeDef* AddMapDefunNode(const string& name, const std::vector<string>& inputs,
   func.set_name(function_name);
   NodeDef* node = function_utils::AddNode(name, "MapDefun", inputs, {}, fn);
   graph_transforms::SetNodeAttr("Targuments", t_arguments, node);
+  graph_transforms::SetNodeAttr("Tcaptured", DataTypeVector(), node);
   graph_transforms::SetNodeAttr("output_types", output_types, node);
   graph_transforms::SetNodeAttr("output_shapes", output_shapes, node);
   graph_transforms::SetNodeAttr("f", func, node);
@@ -142,6 +143,8 @@ TEST(VectorizeMapDefunTest, VectorizeDefunNoOps) {
   *lib.add_function() = outer;
   *lib.add_function() = inner;
   FunctionDef* vectorized;
+  Status s = VectorizeMapDefun(outer, *map_defun, &lib, &vectorized);
+  LOG(ERROR) << s;
   EXPECT_TRUE(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized).ok());
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
