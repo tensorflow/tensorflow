@@ -422,6 +422,7 @@ xla_test(
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:test",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2145,11 +2146,11 @@ xla_test(
         ":test_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -2166,5 +2167,23 @@ xla_test(
         ":client_library_test_base",
         ":xla_internal_test_main",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "multiple_devices_on_host_test",
+    srcs = ["multiple_devices_on_host_test.cc"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/synchronization",
     ],
 )

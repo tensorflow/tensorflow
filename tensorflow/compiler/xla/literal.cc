@@ -287,6 +287,8 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
     return InvalidArgument("LiteralProto has no layout");
   }
 
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(proto.shape()));
+
   Literal literal(proto.shape());
 
   TF_RETURN_IF_ERROR(literal.root_piece_->ForEachMutableSubpieceWithStatus(
@@ -1849,6 +1851,24 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   TF_RET_CHECK(proto.has_shape());
   TF_RET_CHECK(LayoutUtil::HasLayout(proto.shape()));
   TF_RET_CHECK(ShapeUtil::Equal(proto.shape(), subshape()));
+
+  if (LayoutUtil::IsSparseArray(subshape())) {
+    // Compute the number of elements (indices) in the sparse shape and reserve
+    // the necessary space in spare_indices.
+    TF_RET_CHECK(ShapeUtil::Rank(subshape()) != 0)
+        << "Scalar shapes cannot be sparse";
+    TF_RET_CHECK(proto.sparse_indices_size() % ShapeUtil::Rank(subshape()) == 0)
+        << "Unexpected number of indices in proto ("
+        << proto.sparse_indices_size() << ") for shape of rank "
+        << ShapeUtil::Rank(subshape());
+    const int64 index_count =
+        proto.sparse_indices_size() / ShapeUtil::Rank(subshape());
+    sparse_indices()->Resize(index_count);
+
+    // Copy the indices from the proto into the SparseIndexArray object.
+    TF_RETURN_IF_ERROR(CopyFromRepeatedField(sparse_indices()->mutable_data(),
+                                             proto.sparse_indices()));
+  }
 
   switch (subshape().element_type()) {
     case PRED:

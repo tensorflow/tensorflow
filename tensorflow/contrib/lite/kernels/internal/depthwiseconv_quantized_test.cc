@@ -35,29 +35,40 @@ namespace {
 // Runs the DepthwiseConv and compares against the reference implementation.
 template <FusedActivationFunctionType Ac>
 int TestOneDepthwiseConvWithGivenOutputShift(
-    const std::uint8_t* input_data, const Dims<4>& input_dims,
+    const std::uint8_t* input_data, const RuntimeShape& input_shape,
     std::int32_t input_offset, const std::uint8_t* filter_data,
-    const Dims<4>& filter_dims, std::int32_t filter_offset,
-    const std::int32_t* bias_data, const Dims<4>& bias_dims, int stride,
+    const RuntimeShape& filter_shape, std::int32_t filter_offset,
+    const std::int32_t* bias_data, const RuntimeShape& bias_shape, int stride,
     int pad_width, int pad_height, int depth_multiplier,
     std::int32_t output_offset, std::int32_t output_multiplier,
     int output_shift, std::int32_t output_activation_min,
-    std::int32_t output_activation_max, const Dims<4>& output_dims) {
-  const int output_buffer_size = RequiredBufferSizeForDims(output_dims);
+    std::int32_t output_activation_max, const RuntimeShape& output_shape) {
+  const int output_buffer_size = output_shape.FlatSize();
   std::vector<std::uint8_t> output_data(output_buffer_size);
   std::vector<std::uint8_t> reference_output_data(output_buffer_size);
-  reference_ops::DepthwiseConv<Ac>(
-      input_data, input_dims, input_offset, filter_data, filter_dims,
-      filter_offset, bias_data, bias_dims, stride, pad_width, pad_height,
-      depth_multiplier, output_offset, output_multiplier, output_shift,
-      output_activation_min, output_activation_max,
-      reference_output_data.data(), output_dims);
-  optimized_ops::DepthwiseConv<Ac>(
-      input_data, input_dims, input_offset, filter_data, filter_dims,
-      filter_offset, bias_data, bias_dims, stride, pad_width, pad_height,
-      depth_multiplier, output_offset, output_multiplier, output_shift,
-      output_activation_min, output_activation_max, output_data.data(),
-      output_dims);
+
+  tflite::DepthwiseParams op_params;
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = pad_width;
+  op_params.padding_values.height = pad_height;
+  op_params.stride_width = stride;
+  op_params.stride_height = stride;
+  op_params.dilation_width_factor = 1;
+  op_params.dilation_height_factor = 1;
+  op_params.depth_multiplier = depth_multiplier;
+  op_params.quantized_activation_min = output_activation_min;
+  op_params.quantized_activation_max = output_activation_max;
+  op_params.input_offset = input_offset;
+  op_params.weights_offset = filter_offset;
+  op_params.output_offset = output_offset;
+  op_params.output_multiplier = output_multiplier;
+  op_params.output_shift = -output_shift;
+  reference_ops::DepthwiseConv(op_params, input_shape, input_data, filter_shape,
+                               filter_data, bias_shape, bias_data, output_shape,
+                               reference_output_data.data());
+  optimized_ops::DepthwiseConv(op_params, input_shape, input_data, filter_shape,
+                               filter_data, bias_shape, bias_data, output_shape,
+                               output_data.data());
   int saturated_min = 0;
   int saturated_max = 0;
   std::vector<int> diff(output_buffer_size);
@@ -106,25 +117,25 @@ int TestOneDepthwiseConvWithGivenOutputShift(
 // vacuous. So we just bisect our way to reasonable output_shift values.
 template <FusedActivationFunctionType Ac>
 void TestOneDepthwiseConvBisectOutputShift(
-    const std::uint8_t* input_data, const Dims<4>& input_dims,
+    const std::uint8_t* input_data, const RuntimeShape& input_shape,
     std::int32_t input_offset, const std::uint8_t* filter_data,
-    const Dims<4>& filter_dims, std::int32_t filter_offset,
-    const std::int32_t* bias_data, const Dims<4>& bias_dims, int stride,
+    const RuntimeShape& filter_shape, std::int32_t filter_offset,
+    const std::int32_t* bias_data, const RuntimeShape& bias_shape, int stride,
     int pad_width, int pad_height, int depth_multiplier,
     std::int32_t output_offset, std::int32_t output_multiplier,
     int output_activation_bisect_start, int output_activation_bisect_end,
     std::int32_t output_activation_min, std::int32_t output_activation_max,
-    const Dims<4>& output_dims) {
+    const RuntimeShape& output_shape) {
   ASSERT_LT(output_activation_bisect_start, output_activation_bisect_end)
       << "Bisection failed ?!?!";
   int output_shift_bisect_midpoint =
       (output_activation_bisect_start + output_activation_bisect_end) / 2;
   int bisect_result = TestOneDepthwiseConvWithGivenOutputShift<Ac>(
-      input_data, input_dims, input_offset, filter_data, filter_dims,
-      filter_offset, bias_data, bias_dims, stride, pad_width, pad_height,
+      input_data, input_shape, input_offset, filter_data, filter_shape,
+      filter_offset, bias_data, bias_shape, stride, pad_width, pad_height,
       depth_multiplier, output_offset, output_multiplier,
       output_shift_bisect_midpoint, output_activation_min,
-      output_activation_max, output_dims);
+      output_activation_max, output_shape);
   // At this point we know that the test succeeded (otherwise it would have
   // aborted).
   if (bisect_result == 0) {
@@ -147,47 +158,47 @@ void TestOneDepthwiseConvBisectOutputShift(
                                              ? output_activation_bisect_end
                                              : output_shift_bisect_midpoint;
   TestOneDepthwiseConvBisectOutputShift<Ac>(
-      input_data, input_dims, input_offset, filter_data, filter_dims,
-      filter_offset, bias_data, bias_dims, stride, pad_width, pad_height,
+      input_data, input_shape, input_offset, filter_data, filter_shape,
+      filter_offset, bias_data, bias_shape, stride, pad_width, pad_height,
       depth_multiplier, output_offset, output_multiplier,
       new_output_activation_bisect_start, new_output_activation_bisect_end,
-      output_activation_min, output_activation_max, output_dims);
+      output_activation_min, output_activation_max, output_shape);
 }
 
 template <FusedActivationFunctionType Ac>
 void TestOneDepthwiseConv(
-    const std::uint8_t* input_data, const Dims<4>& input_dims,
+    const std::uint8_t* input_data, const RuntimeShape& input_shape,
     std::int32_t input_offset, const std::uint8_t* filter_data,
-    const Dims<4>& filter_dims, std::int32_t filter_offset,
-    const std::int32_t* bias_data, const Dims<4>& bias_dims, int stride,
+    const RuntimeShape& filter_shape, std::int32_t filter_offset,
+    const std::int32_t* bias_data, const RuntimeShape& bias_shape, int stride,
     int pad_width, int pad_height, int depth_multiplier,
     std::int32_t output_offset, std::int32_t output_multiplier,
     std::int32_t output_activation_min, std::int32_t output_activation_max,
-    const Dims<4>& output_dims) {
+    const RuntimeShape& output_shape) {
   TestOneDepthwiseConvBisectOutputShift<Ac>(
-      input_data, input_dims, input_offset, filter_data, filter_dims,
-      filter_offset, bias_data, bias_dims, stride, pad_width, pad_height,
+      input_data, input_shape, input_offset, filter_data, filter_shape,
+      filter_offset, bias_data, bias_shape, stride, pad_width, pad_height,
       depth_multiplier, output_offset, output_multiplier, 0, 32,
-      output_activation_min, output_activation_max, output_dims);
+      output_activation_min, output_activation_max, output_shape);
 }
 
 void TestOneDepthwiseConv(
     FusedActivationFunctionType Ac, const std::uint8_t* input_data,
-    const Dims<4>& input_dims, std::int32_t input_offset,
-    const std::uint8_t* filter_data, const Dims<4>& filter_dims,
+    const RuntimeShape& input_shape, std::int32_t input_offset,
+    const std::uint8_t* filter_data, const RuntimeShape& filter_shape,
     std::int32_t filter_offset, const std::int32_t* bias_data,
-    const Dims<4>& bias_dims, int stride, int pad_width, int pad_height,
+    const RuntimeShape& bias_shape, int stride, int pad_width, int pad_height,
     int depth_multiplier, std::int32_t output_offset,
     std::int32_t output_multiplier, std::int32_t output_activation_min,
-    std::int32_t output_activation_max, const Dims<4>& output_dims) {
-#define TOCO_HANDLE_CASE(AC_TYPE)                                           \
-  if (AC_TYPE == Ac) {                                                      \
-    TestOneDepthwiseConv<AC_TYPE>(                                          \
-        input_data, input_dims, input_offset, filter_data, filter_dims,     \
-        filter_offset, bias_data, bias_dims, stride, pad_width, pad_height, \
-        depth_multiplier, output_offset, output_multiplier,                 \
-        output_activation_min, output_activation_max, output_dims);         \
-    return;                                                                 \
+    std::int32_t output_activation_max, const RuntimeShape& output_shape) {
+#define TOCO_HANDLE_CASE(AC_TYPE)                                            \
+  if (AC_TYPE == Ac) {                                                       \
+    TestOneDepthwiseConv<AC_TYPE>(                                           \
+        input_data, input_shape, input_offset, filter_data, filter_shape,    \
+        filter_offset, bias_data, bias_shape, stride, pad_width, pad_height, \
+        depth_multiplier, output_offset, output_multiplier,                  \
+        output_activation_min, output_activation_max, output_shape);         \
+    return;                                                                  \
   }
   TOCO_HANDLE_CASE(FusedActivationFunctionType::kNone)
   TOCO_HANDLE_CASE(FusedActivationFunctionType::kRelu)
@@ -227,34 +238,33 @@ bool TryTestDepthwiseConv(int batch, int input_depth, int input_width,
   const std::int32_t input_offset = UniformRandomInt(-256, 0);
   const std::int32_t filter_offset = UniformRandomInt(-256, 0);
   const std::int32_t output_offset = UniformRandomInt(-256, 0);
-  Dims<4> input_dims_inference =
-      MakeDimsForInference(input_depth, input_width, input_height, batch);
-  Dims<4> output_dims_inference;
+  RuntimeShape input_shape_inference(
+      {batch, input_height, input_width, input_depth});
+  RuntimeShape output_shape_inference;
   int pad_width, pad_height;
-  if (!ComputeConvSizes(input_dims_inference, output_depth, filter_width,
+  if (!ComputeConvSizes(input_shape_inference, output_depth, filter_width,
                         filter_height, stride, dilation_width_factor,
                         dilation_height_factor, padding_type,
-                        &output_dims_inference, &pad_width, &pad_height)) {
+                        &output_shape_inference, &pad_width, &pad_height)) {
     return false;
   }
-  Dims<4> filter_dims_inference =
-      MakeDimsForInference(output_depth, filter_width, filter_height, 1);
-  Dims<4> bias_dims_inference = MakeDimsForInference(output_depth, 1, 1, 1);
-  const int input_buffer_size = RequiredBufferSizeForDims(input_dims_inference);
-  const int filter_buffer_size =
-      RequiredBufferSizeForDims(filter_dims_inference);
+  RuntimeShape filter_shape_inference(
+      {1, filter_height, filter_width, output_depth});
+  RuntimeShape bias_shape_inference({1, 1, 1, output_depth});
+  const int input_buffer_size = input_shape_inference.FlatSize();
+  const int filter_buffer_size = filter_shape_inference.FlatSize();
   std::vector<std::uint8_t> input_data(input_buffer_size);
   std::vector<std::uint8_t> filter_data(filter_buffer_size);
   std::vector<std::int32_t> bias_data(output_depth);
   FillRandom(&input_data);
   FillRandom(&filter_data);
   FillRandom(&bias_data, -10000, 10000);
-  TestOneDepthwiseConv(ac, input_data.data(), input_dims_inference,
-                       input_offset, filter_data.data(), filter_dims_inference,
-                       filter_offset, bias_data.data(), bias_dims_inference,
+  TestOneDepthwiseConv(ac, input_data.data(), input_shape_inference,
+                       input_offset, filter_data.data(), filter_shape_inference,
+                       filter_offset, bias_data.data(), bias_shape_inference,
                        stride, pad_width, pad_height, depth_multiplier,
                        output_offset, output_multiplier, output_activation_min,
-                       output_activation_max, output_dims_inference);
+                       output_activation_max, output_shape_inference);
   return true;
 }
 

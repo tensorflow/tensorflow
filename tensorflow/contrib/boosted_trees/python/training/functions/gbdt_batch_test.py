@@ -239,7 +239,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -503,7 +503,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -607,7 +607,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -711,7 +711,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -783,7 +783,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -847,7 +847,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1090,7 +1090,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       weights = array_ops.ones([batch_size, 1], dtypes.float32)
 
       partition_ids = array_ops.zeros([batch_size], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1194,7 +1194,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       weights = array_ops.ones([batch_size, 1], dtypes.float32)
 
       partition_ids = array_ops.zeros([batch_size], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1299,7 +1299,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       weights = array_ops.ones([batch_size, 1], dtypes.float32)
 
       partition_ids = array_ops.zeros([batch_size], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1405,7 +1405,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1524,7 +1524,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1656,7 +1656,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,

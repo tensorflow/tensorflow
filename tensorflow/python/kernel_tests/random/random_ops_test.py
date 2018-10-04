@@ -320,6 +320,15 @@ class RandomUniformTest(RandomOpTestCommon):
       error = np.abs(counts - mean)
       self.assertLess(error.max(), 5 * std)
 
+  # Check that minval = maxval is fine iff we're producing no numbers
+  def testUniformIntsDegenerate(self):
+    for dt in dtypes.int32, dtypes.int64:
+      def sample(n):
+        return self._Sampler(n, minv=0, maxv=0, dtype=dt, use_gpu=True)()
+      self.assertEqual(sample(0).shape, (10, 0))
+      with self.assertRaisesOpError('Need minval < maxval, got 0 >= 0'):
+        sample(1)
+
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):

@@ -3233,17 +3233,18 @@ INSTANTIATE_TEST_CASE_P(
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<
-          ::testing::tuple<int, int, int, bool, bool>> {};
+          ::testing::tuple<int, int, int, bool, bool, PrimitiveType>> {};
 TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   int m, k, n;
   bool transpose_lhs, transpose_rhs;
-  std::tie(m, k, n, transpose_lhs, transpose_rhs) = GetParam();
+  PrimitiveType element_type;
+  std::tie(m, k, n, transpose_lhs, transpose_rhs, element_type) = GetParam();
 
-  Shape dot_shape = ShapeUtil::MakeShape(F32, {m, n});
-  Shape lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
-  Shape transposed_lhs_shape = ShapeUtil::MakeShape(F32, {k, m});
-  Shape rhs_shape = ShapeUtil::MakeShape(F32, {k, n});
-  Shape transposed_rhs_shape = ShapeUtil::MakeShape(F32, {n, k});
+  Shape dot_shape = ShapeUtil::MakeShape(element_type, {m, n});
+  Shape lhs_shape = ShapeUtil::MakeShape(element_type, {m, k});
+  Shape transposed_lhs_shape = ShapeUtil::MakeShape(element_type, {k, m});
+  Shape rhs_shape = ShapeUtil::MakeShape(element_type, {k, n});
+  Shape transposed_rhs_shape = ShapeUtil::MakeShape(element_type, {n, k});
   HloComputation::Builder builder(TestName());
 
   auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -3285,7 +3286,7 @@ INSTANTIATE_TEST_CASE_P(
     DotStrengthReductionTestInstantiation, DotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Bool(),
-                       ::testing::Bool()));
+                       ::testing::Bool(), ::testing::Values(F32, BF16)));
 
 struct DotOfConcatTestSpec {
   int64 m;

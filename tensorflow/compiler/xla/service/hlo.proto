@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 53
+// Next ID: 56
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -124,8 +124,12 @@ message HloInstructionProto {
   // The string representation of the infeed configuration.
   bytes infeed_config = 27;
 
-  // Name of a global symbol to call, only present for kCustomCall.
+  // Name of a external target (eg, global symbol) to call, only present for
+  // kCustomCall.
   string custom_call_target = 28;
+
+  // Opaque string, only present for kCustomCall.
+  string custom_call_opaque = 53;
 
   // Shape of outfeed request.
   xla.Shape outfeed_shape = 29;
@@ -176,6 +180,10 @@ message HloInstructionProto {
 
   // Collective permute field.
   repeated SourceTarget source_target_pairs = 52;
+
+  // Sharding for kDomain instructions.
+  xla.OpSharding domain_entry_sharding = 54;
+  xla.OpSharding domain_exit_sharding = 55;
 }
 
 // Serialization of HloComputation.

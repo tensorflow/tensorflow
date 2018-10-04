@@ -67,6 +67,7 @@ limitations under the License.
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
+%rename("%s") TFE_Py_EncodeArg;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"

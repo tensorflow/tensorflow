@@ -90,6 +90,7 @@ BLACKLIST = [
     "//tensorflow/contrib/lite/python:interpreter.py",
     "//tensorflow/contrib/lite/python:interpreter_test.py",
     "//tensorflow/contrib/ffmpeg:test_data",
+    "//tensorflow/contrib/fused_conv:fused_conv2d_bias_activation_op_test_base",
     "//tensorflow/contrib/hadoop:test_data",
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",
@@ -141,7 +142,7 @@ def main():
 
   missing_dependencies = []
   # File extensions and endings to ignore
-  ignore_extensions = ["_test", "_test.py"]
+  ignore_extensions = ["_test", "_test.py", "_test_gpu", "_test_gpu.py"]
 
   ignored_files = 0
   blacklisted_files = len(BLACKLIST)

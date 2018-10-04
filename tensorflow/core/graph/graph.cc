@@ -192,6 +192,11 @@ void Node::ClearAttr(const string& name) {
   (*props_->node_def.mutable_attr()).erase(name);
 }
 
+void Node::set_name(string name) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_name(std::move(name));
+}
+
 void Node::set_requested_device(const string& device) {
   MaybeCopyOnWrite();
   props_->node_def.set_device(device);
@@ -643,7 +648,7 @@ Status Graph::IsValidNode(const Node* node) const {
 
 Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_outputs()) {
+  if (idx >= node->num_outputs() || idx < 0) {
     return errors::OutOfRange("Node '", node->name(), "' (type: '",
                               node->op_def().name(),
                               "', num of outputs: ", node->num_outputs(),
@@ -654,7 +659,7 @@ Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
 
 Status Graph::IsValidInputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_inputs()) {
+  if (idx >= node->num_inputs() || idx < 0) {
     return errors::OutOfRange("Node '", node->name(), "' (type: '",
                               node->op_def().name(),
                               "', num of inputs: ", node->num_inputs(),

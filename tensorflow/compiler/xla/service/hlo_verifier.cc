@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <set>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -993,7 +993,7 @@ Status CheckSameIsHostTransfer(const HloInstruction* instr1,
 
 // Checks various invariants of send and recv instructions.
 Status VerifySendsAndRecvs(const HloModule& module) {
-  tensorflow::gtl::FlatMap<int64, const HloInstruction*> host_channels;
+  absl::flat_hash_map<int64, const HloInstruction*> host_channels;
   // Host send/recv instructions must have their own unique channel.
   auto check_unique_host_channel = [&](const HloInstruction* instruction) {
     const HloSendRecvInstruction* sendrecv =
@@ -1061,7 +1061,7 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
-  tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
+  absl::flat_hash_map<string, const HloInstruction*> instructions;
 
   for (auto* computation : module->computations()) {
     for (const auto& instruction : computation->instructions()) {

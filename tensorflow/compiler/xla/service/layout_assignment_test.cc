@@ -55,7 +55,8 @@ class LayoutAssignmentTest : public HloVerifiedTestBase {
                      ComputationLayout* entry_computation_layout,
                      ChannelLayoutConstraints* channel_constraints = nullptr) {
     LayoutAssignment layout_assignment(
-        entry_computation_layout, /*channel_constraints=*/channel_constraints);
+        entry_computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+        /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
   }
 
@@ -860,6 +861,50 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
       ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
 }
 
+TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry_computation {
+      param = (f32[2,2]) parameter(0)
+      gte = f32[2,2] get-tuple-element(param), index=0
+      ar.0 = f32[2,2] cross-replica-sum(gte),
+        all_reduce_id=0, replica_groups={{0}}, to_apply=add,
+        sharding={maximal device=0}
+      const = f32[2,2] constant(f32[2,2]{{0,1},{2,3}})
+      ROOT ar.1 = f32[2,2] cross-replica-sum(const),
+        all_reduce_id=0, replica_groups={{0}}, to_apply=add,
+        sharding={maximal device=1}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  Shape param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1})});
+  TF_ASSERT_OK(
+      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+          param_shape));
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({1, 0}));
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(module.get(), &computation_layout, &channel_constraints);
+
+  EXPECT_THAT(LayoutOf(module.get(), "gte"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "ar.0"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "ar.1"), ElementsAre(0, 1));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root->shape().layout().minor_to_major(), ElementsAre(1, 0));
+}
+
 TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
   const char* module_str = R"(
     HloModule CopySliceOperandToAvoidImplicitLayoutChange
@@ -996,6 +1041,65 @@ TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {0, 1});
   EXPECT_THAT(root, op::Slice(AllOf(op::Copy(op::Parameter(0)),
                                     op::ShapeWithLayout(shape_copy))));
+}
+
+TEST_F(LayoutAssignmentTest, TupleCopyOnLayoutMismatch) {
+  // The first infeed uses layout {0,1}, while the second uses layout {1,0}.
+  // The mismatch forces a copy of the tuple.  The tuple contains a token, so
+  // layout assignment will fail if it tries to copy the whole tuple.
+  const char* module_str = R"(
+    HloModule TupleCopyOnLayoutMismatch
+
+    condition.1 (tup: (s32[], token[], f32[512,1024]{0,1})) -> pred[] {
+      tup.1 = (s32[], token[], f32[512,1024]{0,1}) parameter(0)
+      counter.1 = s32[] get-tuple-element(tup.1), index=0
+      five = s32[] constant(5)
+      ROOT lt = pred[] less-than(counter.1, five)
+    }
+
+    body.2 (tup: (s32[], token[], f32[512,1024]{0,1})) -> (s32[], token[], f32[512,1024]{0,1}) {
+      tup.2 = (s32[], token[], f32[512,1024]{0,1}) parameter(0)
+      counter.2 = s32[] get-tuple-element(tup.2), index=0
+      tok.2 = token[] get-tuple-element(tup.2), index=1
+
+      ifeed.2 = (f32[512,1024]{1,0}, token[]) infeed(tok.2)
+      next_tok = token[] get-tuple-element(ifeed.2), index=1
+      next_buf = f32[512,1024]{1,0} get-tuple-element(ifeed.2), index=0
+
+      one = s32[] constant(1)
+      next_counter = s32[] add(counter.2, one)
+      ROOT tup = (s32[], token[], f32[512,1024]{0,1}) tuple(next_counter, next_tok, next_buf)
+    }
+
+    ENTRY main () -> f32[512,1024]{0,1} {
+      start_tok = token[] after-all()
+
+      ifeed.3 = (f32[512,1024]{0,1}, token[]) infeed(start_tok)
+      itok = token[] get-tuple-element(ifeed.3), index=1
+      ibuf = f32[512,1024]{0,1} get-tuple-element(ifeed.3), index=0
+
+      zero = s32[] constant(0)
+      itup = (s32[], token[], f32[512,1024]{0,1}) tuple(zero, itok, ibuf)
+
+      loop = (s32[], token[], f32[512,1024]{0,1}) while(itup), condition=condition.1, body=body.2
+      ROOT result = f32[512,1024]{0,1} get-tuple-element(loop), index=2
+    }
+  )";
+
+  ParseAndVerifyModule(module_str);
+  ComputationLayout computation_layout(
+      module().entry_computation()->ComputeProgramShape());
+
+  // Sanity check to verify that there's a layout mismatch.
+  EXPECT_THAT(LayoutOf(&module(), "ibuf"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(&module(), "next_buf"), ElementsAre(1, 0));
+
+  AssignLayouts(&module(), &computation_layout);
+
+  // Make sure that layout assignment did not magically eliminate the mismatch,
+  // in which case the test didn't prove anything.
+  EXPECT_THAT(LayoutOf(&module(), "ibuf"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(&module(), "next_buf"), ElementsAre(1, 0));
 }
 
 }  // namespace

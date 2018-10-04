@@ -1,10 +1,12 @@
 `tf.contrib.data` API
 =====================
 
-NOTE: The `tf.contrib.data` module has been deprecated. Use `tf.data` instead.
-We are continuing to support existing code using the `tf.contrib.data` APIs in
-the current version of TensorFlow, but will eventually remove support. The
-`tf.data` APIs are subject to backwards compatibility guarantees.
+NOTE: The `tf.contrib.data` module has been deprecated. Use `tf.data` instead,
+or `tf.data.experimental` for the experimental transformations previously hosted
+in this module. We are continuing to support existing code using the
+`tf.contrib.data` APIs in the current version of TensorFlow, but will eventually
+remove support. The non-experimental `tf.data` APIs are subject to backwards
+compatibility guarantees.
 
 Porting your code to `tf.data`
 ------------------------------
@@ -25,13 +27,13 @@ instead apply them using `Dataset.apply()` transformation. The full list of
 changes is as follows:
 
 * `dataset.dense_to_sparse_batch(...)` is now
-  `dataset.apply(tf.contrib.data.dense_to_sparse_batch(...)`.
+  `dataset.apply(tf.data.experimental.dense_to_sparse_batch(...)`.
 * `dataset.enumerate(...)` is now
-  `dataset.apply(tf.contrib.data.enumerate_dataset(...))`.
+  `dataset.apply(tf.data.experimental.enumerate_dataset(...))`.
 * `dataset.group_by_window(...)` is now
-  `dataset.apply(tf.contrib.data.group_by_window(...))`.
+  `dataset.apply(tf.data.experimental.group_by_window(...))`.
 * `dataset.ignore_errors()` is now
-  `dataset.apply(tf.contrib.data.ignore_errors())`.
+  `dataset.apply(tf.data.experimental.ignore_errors())`.
 * `dataset.unbatch()` is now `dataset.apply(tf.contrib.data.unbatch())`.
 
 The `Dataset.make_dataset_resource()` and `Iterator.dispose_op()` methods have

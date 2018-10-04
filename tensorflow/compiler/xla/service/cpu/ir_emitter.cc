@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
@@ -67,8 +69,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -404,13 +404,12 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
 
-  // The signature of the acquire infeed buffer function is:
-  //
-  //   (void*)(int32 length);
   llvm::Type* int32_type = b_.getInt32Ty();
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* acquire_type = llvm::FunctionType::get(
-      i8_ptr_type, {int32_type, i8_ptr_type, int32_type},
+      i8_ptr_type,
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*shape_ptr*/ i8_ptr_type, /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* acquire_func;
@@ -423,11 +422,11 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   }
   acquire_func->setCallingConv(llvm::CallingConv::C);
 
-  // The signature of the release infeed buffer function is:
-  //
-  //   (void)(int32 length, void* buffer);
   llvm::FunctionType* release_type = llvm::FunctionType::get(
-      b_.getVoidTy(), {int32_type, i8_ptr_type, i8_ptr_type, int32_type},
+      b_.getVoidTy(),
+      {/*run_options*/ i8_ptr_type, /*buffer_length*/ int32_type,
+       /*buffer_ptr*/ i8_ptr_type, /*shape_ptr*/ i8_ptr_type,
+       /*shape_length*/ int32_type},
       /*isVarArg=*/false);
 
   llvm::Function* release_func;
@@ -444,9 +443,9 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
   // of size exactly 'length_32', and the runtime is responsible for
   // check-failing the process if there is a mismatch, versus passing us back a
   // buffer that we might overrun.
-  llvm::Value* acquired_pointer =
-      Call(acquire_func,
-           {b_.getInt32(length_32), shape_ptr, b_.getInt32(shape_length)});
+  llvm::Value* acquired_pointer = Call(
+      acquire_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                     shape_ptr, b_.getInt32(shape_length)});
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
@@ -458,8 +457,8 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
            /*SrcAlign=*/1, length_32);
   }
 
-  Call(release_func, {b_.getInt32(length_32), acquired_pointer, shape_ptr,
-                      b_.getInt32(shape_length)});
+  Call(release_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
+                      acquired_pointer, shape_ptr, b_.getInt32(shape_length)});
 
   return Status::OK();
 }
@@ -1399,10 +1398,10 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   //
   // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
   // [0->0, 3->1].
-  gtl::FlatMap<int64, int64> unreduced_dim_map;
+  absl::flat_hash_map<int64, int64> unreduced_dim_map;
 
-  gtl::FlatSet<int64> reduced_dims(reduce.dimensions().begin(),
-                                   reduce.dimensions().end());
+  absl::flat_hash_set<int64> reduced_dims(reduce.dimensions().begin(),
+                                          reduce.dimensions().end());
 
   const Shape& operand_shape = reduce.operand(0)->shape();
   const Shape& result_shape = reduce.shape();
@@ -1978,7 +1977,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  gtl::FlatSet<int64> inner_dims;
+  absl::flat_hash_set<int64> inner_dims;
   for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;

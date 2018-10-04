@@ -394,6 +394,10 @@ class ParametricDotTestWithoutLayoutAssignment : public ParametricDotTest {
   ParametricDotTestWithoutLayoutAssignment() {
     execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
         "layout-assignment");
+    // Disable algebraic simplification because the pass may replace a dot
+    // instruction with a layout-changing multiplication instruction.
+    execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+        "algsimp");
   }
 };
 
@@ -404,31 +408,18 @@ std::vector<DotTestParam> CreateNoLayoutAssignmentDotTestParameters() {
     for (bool lhs_row_major : {true, false}) {
       for (bool rhs_row_major : {true, false}) {
         for (bool has_addend : {true, false}) {
+          // The addend needs to be row major to match the result of the dot.
           params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
                             /*dot_lhs_row_major=*/lhs_row_major,
                             /*dot_rhs_row_major=*/rhs_row_major,
                             /*has_addend=*/has_addend,
                             /*addend_row_major=*/true});
-          if (has_addend) {
-            params.push_back({/*m=*/1, /*k=*/k, /*n=*/n,
-                              /*dot_lhs_row_major=*/lhs_row_major,
-                              /*dot_rhs_row_major=*/rhs_row_major,
-                              /*has_addend=*/has_addend,
-                              /*addend_row_major=*/false});
-          }
           if (n != 1) {
             params.push_back({/*m=*/n, /*k=*/k, /*n=*/1,
                               /*dot_lhs_row_major=*/lhs_row_major,
                               /*dot_rhs_row_major=*/rhs_row_major,
                               /*has_addend=*/has_addend,
                               /*addend_row_major=*/true});
-            if (has_addend) {
-              params.push_back({/*m=*/n, /*k=*/k, /*n=*/1,
-                                /*dot_lhs_row_major=*/lhs_row_major,
-                                /*dot_rhs_row_major=*/rhs_row_major,
-                                /*has_addend=*/has_addend,
-                                /*addend_row_major=*/false});
-            }
           }
         }
       }

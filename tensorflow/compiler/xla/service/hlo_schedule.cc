@@ -18,6 +18,8 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -30,7 +32,7 @@ namespace xla {
 
 /* static */ StatusOr<HloSchedule> HloSchedule::CreateFromProto(
     const HloModule* module, const HloScheduleProto& proto) {
-  tensorflow::gtl::FlatMap<int64, const HloComputation*> id_to_computation;
+  absl::flat_hash_map<int64, const HloComputation*> id_to_computation;
   for (const HloComputation* computation : module->computations()) {
     id_to_computation[computation->unique_id()] = computation;
   }
@@ -44,7 +46,7 @@ namespace xla {
         << "No computation exists in HLO module with id " << computation_id;
     const HloComputation* computation = comp_it->second;
 
-    tensorflow::gtl::FlatMap<int64, const HloInstruction*> id_to_instruction;
+    absl::flat_hash_map<int64, const HloInstruction*> id_to_instruction;
     for (const HloInstruction* instruction : computation->instructions()) {
       id_to_instruction[instruction->unique_id()] = instruction;
     }
@@ -112,13 +114,13 @@ Status HloSchedule::UpdateComputationSchedule(
     const HloComputation* computation) {
   // Map from unique ID to HloInstruction pointer for instructions in the
   // computation.
-  tensorflow::gtl::FlatMap<int, const HloInstruction*> id_to_instruction;
+  absl::flat_hash_map<int, const HloInstruction*> id_to_instruction;
   for (const HloInstruction* instruction : computation->instructions()) {
     InsertOrDie(&id_to_instruction, instruction->unique_id(), instruction);
   }
 
   // Set of all HloInstructions in the schedule.
-  tensorflow::gtl::FlatSet<int> ids_in_schedule;
+  absl::flat_hash_set<int> ids_in_schedule;
   for (int id : sequences_.at(computation->unique_id()).ids()) {
     InsertOrDie(&ids_in_schedule, id);
   }
@@ -126,15 +128,13 @@ Status HloSchedule::UpdateComputationSchedule(
   // Map from HloInstruction X to newly added instructions (instruction is in
   // computation, but not in schedule) which use X. If an instruction is not in
   // the map, then it has no users which are newly added instructions.
-  tensorflow::gtl::FlatMap<const HloInstruction*,
-                           std::vector<const HloInstruction*>>
+  absl::flat_hash_map<const HloInstruction*, std::vector<const HloInstruction*>>
       new_instruction_uses;
 
   // For each newly added instruction, this is the count of the instruction's
   // operands that have not yet been scheduled. When this value reaches zero,
   // then the instruction may be placed in the schedule.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int>
-      unscheduled_operand_count;
+  absl::flat_hash_map<const HloInstruction*, int> unscheduled_operand_count;
 
   // Create a worklist of newly added instructions which are ready to be added
   // to the schedule. Initialize worklist with those that have zero operands.
@@ -211,15 +211,15 @@ Status HloSchedule::Update() {
   if (sequences_.size() > nonfusion_computations.size()) {
     // Schedule contains some computations which have been removed from the
     // HloModule. Remove them from the schedule as well.
-    tensorflow::gtl::FlatSet<int64> nonfusion_computations_ids;
+    absl::flat_hash_set<int64> nonfusion_computations_ids;
     for (const HloComputation* computation : nonfusion_computations) {
       nonfusion_computations_ids.insert(computation->unique_id());
     }
     for (auto it = sequences_.begin(); it != sequences_.end();) {
       if (nonfusion_computations_ids.count(it->first) == 0) {
-        it = sequences_.erase(it);
+        sequences_.erase(it++);
       } else {
-        it++;
+        ++it;
       }
     }
   }
@@ -254,7 +254,7 @@ Status HloSchedule::Verify() const {
   // For each computation verify the set of instructions is the same and that
   // each dependency and control edge is honored.
   for (const HloComputation* computation : nonfusion_computations) {
-    tensorflow::gtl::FlatMap<const HloInstruction*, int> instruction_position;
+    absl::flat_hash_map<const HloInstruction*, int> instruction_position;
     int pos = 0;
     for (const HloInstruction* instruction :
          sequence(computation).instructions()) {

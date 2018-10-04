@@ -21,6 +21,9 @@ import abc
 import collections
 import functools
 
+import numpy as np
+
+from tensorflow.core.kernels.boosted_trees import boosted_trees_pb2
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.canned import boosted_trees_utils
@@ -40,6 +43,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.array_ops import identity as tf_identity
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util.tf_export import estimator_export
@@ -191,6 +195,43 @@ def _calculate_num_features(sorted_feature_columns):
     else:
       num_features += 1
   return num_features
+
+
+def _generate_feature_name_mapping(sorted_feature_columns):
+  """Return a list of feature name for feature ids.
+
+  Args:
+    sorted_feature_columns: a list/set of tf.feature_column sorted by name.
+
+  Returns:
+    feature_name_mapping: a list of feature names indexed by the feature ids.
+
+  Raises:
+    ValueError: when unsupported features/columns are tried.
+  """
+  names = []
+  for column in sorted_feature_columns:
+    if isinstance(column, feature_column_lib._IndicatorColumn):  # pylint:disable=protected-access
+      categorical_column = column.categorical_column
+      if isinstance(categorical_column,
+                    feature_column_lib._VocabularyListCategoricalColumn):  # pylint:disable=protected-access
+        for value in categorical_column.vocabulary_list:
+          names.append('{}:{}'.format(column.name, value))
+      elif isinstance(categorical_column,
+                      feature_column_lib._BucketizedColumn):  # pylint:disable=protected-access
+        boundaries = [-np.inf] + list(categorical_column.boundaries) + [np.inf]
+        for pair in zip(boundaries[:-1], boundaries[1:]):
+          names.append('{}:{}'.format(column.name, pair))
+      else:
+        for num in range(categorical_column._num_buckets):  # pylint:disable=protected-access
+          names.append('{}:{}'.format(column.name, num))
+    elif isinstance(column, feature_column_lib._BucketizedColumn):
+      names.append(column.name)
+    else:
+      raise ValueError(
+          'For now, only bucketized_column and indicator_column is supported '
+          'but got: {}'.format(column))
+  return names
 
 
 def _cache_transformed_features(features, sorted_feature_columns, batch_size):
@@ -966,6 +1007,60 @@ def _create_regression_head(label_dimension, weight_column=None):
   # pylint: enable=protected-access
 
 
+def _compute_feature_importances_per_tree(tree, num_features):
+  """Computes the importance of each feature in the tree."""
+  importances = np.zeros(num_features)
+
+  for node in tree.nodes:
+    node_type = node.WhichOneof('node')
+    if node_type == 'bucketized_split':
+      feature_id = node.bucketized_split.feature_id
+      importances[feature_id] += node.metadata.gain
+    elif node_type == 'leaf':
+      assert node.metadata.gain == 0
+    else:
+      raise ValueError('Unexpected split type %s', node_type)
+
+  return importances
+
+
+def _compute_feature_importances(tree_ensemble, num_features, normalize):
+  """Computes gain-based feature importances.
+
+  The higher the value, the more important the feature.
+
+  Args:
+    tree_ensemble: a trained tree ensemble, instance of proto
+      boosted_trees.TreeEnsemble.
+    num_features: The total number of feature ids.
+    normalize: If True, normalize the feature importances.
+
+  Returns:
+    sorted_feature_idx: A list of feature_id which is sorted
+      by its feature importance.
+    feature_importances: A list of corresponding feature importances.
+
+  Raises:
+    AssertionError: When normalize = True, if feature importances
+      contain negative value, or if normalization is not possible
+      (e.g. ensemble is empty or trees contain only a root node).
+  """
+  tree_importances = [_compute_feature_importances_per_tree(tree, num_features)
+                      for tree in tree_ensemble.trees]
+  tree_importances = np.array(tree_importances)
+  tree_weights = np.array(tree_ensemble.tree_weights).reshape(-1, 1)
+  feature_importances = np.sum(tree_importances * tree_weights, axis=0)
+  if normalize:
+    assert np.all(feature_importances >= 0), ('feature_importances '
+                                              'must be non-negative.')
+    normalizer = np.sum(feature_importances)
+    assert normalizer > 0, 'Trees are all empty or contain only a root node.'
+    feature_importances /= normalizer
+
+  sorted_feature_idx = np.argsort(feature_importances)[::-1]
+  return sorted_feature_idx, feature_importances[sorted_feature_idx]
+
+
 def _bt_explanations_fn(features,
                         head,
                         sorted_feature_columns,
@@ -1053,8 +1148,40 @@ class _BoostedTreesBase(estimator.Estimator):
         feature_columns, key=lambda tc: tc.name)
     self._head = head
     self._n_features = _calculate_num_features(self._sorted_feature_columns)
+    self._names_for_feature_id = np.array(
+        _generate_feature_name_mapping(self._sorted_feature_columns))
     self._center_bias = center_bias
     self._is_classification = is_classification
+
+  def experimental_feature_importances(self, normalize=False):
+    """Computes gain-based feature importances.
+
+    The higher the value, the more important the corresponding feature.
+
+    Args:
+      normalize: If True, normalize the feature importances.
+
+    Returns:
+      sorted_feature_names: 1-D array of feature name which is sorted
+        by its feature importance.
+      feature_importances: 1-D array of the corresponding feature importance.
+
+    Raises:
+      ValueError: When attempting to normalize on an empty ensemble
+        or an ensemble of trees which have no splits. Or when attempting
+        to normalize and feature importances have negative values.
+    """
+    reader = checkpoint_utils.load_checkpoint(self._model_dir)
+    serialized = reader.get_tensor('boosted_trees:0_serialized')
+    if not serialized:
+      raise ValueError('Found empty serialized string for TreeEnsemble.'
+                       'You should only call this method after training.')
+    ensemble_proto = boosted_trees_pb2.TreeEnsemble()
+    ensemble_proto.ParseFromString(serialized)
+
+    sorted_feature_id, importances = _compute_feature_importances(
+        ensemble_proto, self._n_features, normalize)
+    return self._names_for_feature_id[sorted_feature_id], importances
 
   def experimental_predict_with_explanations(self,
                                              input_fn,

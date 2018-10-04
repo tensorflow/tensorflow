@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_RUNNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_RUNNER_H_
 
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -27,51 +30,7 @@ namespace gpu {
 
 // This file contains low-level routines for running cudnn convolutions.
 
-// Different types of convolutions supported by cudnn.
-//
-// A way to think about these is that a convolution is defined by three arrays
-// -- the "input", the "filter", and the "output" -- and given any two of these,
-// we can compute the third.  For example, a backward-input convolution takes as
-// input a filter and an "output" and produces an "input" such that if one were
-// to do a forward convolution of "input" using filter, the result would be
-// something with the same shape as "output".
-//
-// This way of thinking is not correct if you look at the values produced. For
-// example, a backward-input convolution is not actually the mathematical
-// inverse of a forward convolution.  But it's right as far as the shapes and
-// "connectivity" (i.e. which elements of the input affect which elements of
-// the output) are concerned.
-enum class CudnnConvKind {
-  kForward,         // input  + filter => output
-  kBackwardInput,   // filter + output => input
-  kBackwardFilter,  // input  + output => filter
-};
-
-struct CudnnConvParams {
-  CudnnConvKind kind;
-  const Shape* input_shape;
-  const Shape* filter_shape;
-  const Shape* output_shape;
-  se::DeviceMemoryBase input_buf;
-  se::DeviceMemoryBase filter_buf;
-  se::DeviceMemoryBase output_buf;
-  const Window* window;
-  const ConvolutionDimensionNumbers* dnums;
-  int64 feature_group_count;
-  se::dnn::AlgorithmConfig algorithm;
-};
-
-// Converts a CudnnConvKind value to a string.
-string CudnnConvKindToString(CudnnConvKind kind);
-
 // Calls into cudnn to run the specified convolution.
-//
-// Note that depending on the value of CudnnConvKind, the result of this call
-// may be written into input_buf, filter_buf, or output_buf!
-//
-// At the moment convolution with half data type is implemented with cudnn
-// PSEUDO_HALF configuration, that is, the input values are half and the
-// internal computation type is float.
 //
 // We provide one overload which takes a scratch buffer, and another which takes
 // an allocator which is responsible for allocating the scratch space.  In
@@ -83,11 +42,15 @@ string CudnnConvKindToString(CudnnConvKind kind);
 // allocator and take note of how much memory is used.  The next time you call
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
-Status RunCudnnConvolution(CudnnConvParams params,
+Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
+                           absl::Span<se::DeviceMemoryBase> operand_buffers,
+                           se::DeviceMemoryBase result_buffer,
                            se::DeviceMemoryBase scratch_buf, se::Stream* stream,
                            se::dnn::ProfileResult* profile_result = nullptr);
 
-Status RunCudnnConvolution(CudnnConvParams params,
+Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
+                           absl::Span<se::DeviceMemoryBase> operand_buffers,
+                           se::DeviceMemoryBase result_buffer,
                            se::ScratchAllocator* scratch_allocator,
                            se::Stream* stream,
                            se::dnn::ProfileResult* profile_result = nullptr);

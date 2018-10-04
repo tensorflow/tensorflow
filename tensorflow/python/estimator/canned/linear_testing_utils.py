@@ -37,7 +37,8 @@ from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.estimator.inputs import pandas_io
-from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -152,8 +153,9 @@ class CheckPartitionerVarHook(session_run_hook.SessionRunHook):
 
 class BaseLinearRegressorPartitionerTest(object):
 
-  def __init__(self, linear_regressor_fn):
+  def __init__(self, linear_regressor_fn, fc_lib=feature_column):
     self._linear_regressor_fn = linear_regressor_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -173,7 +175,7 @@ class BaseLinearRegressorPartitionerTest(object):
       return [partitions, 1] if shape[0] == x_dim else [1]
 
     regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.categorical_column_with_hash_bucket(
+        feature_columns=(self._fc_lib.categorical_column_with_hash_bucket(
             'language', hash_bucket_size=x_dim),),
         partitioner=_partitioner,
         model_dir=self._model_dir)
@@ -209,9 +211,8 @@ class BaseLinearRegressorPartitionerTest(object):
         '_get_replica_device_setter',
         return_value=lambda _: '/cpu:0'):
       linear_regressor = self._linear_regressor_fn(
-          feature_columns=(
-              feature_column_lib.categorical_column_with_hash_bucket(
-                  'language', hash_bucket_size=x_dim),),
+          feature_columns=(self._fc_lib.categorical_column_with_hash_bucket(
+              'language', hash_bucket_size=x_dim),),
           config=FakeRunConfig(),
           model_dir=self._model_dir)
 
@@ -232,8 +233,9 @@ class BaseLinearRegressorPartitionerTest(object):
 # TODO(b/36813849): Add tests with dynamic shape inputs using placeholders.
 class BaseLinearRegressorEvaluationTest(object):
 
-  def __init__(self, linear_regressor_fn):
+  def __init__(self, linear_regressor_fn, fc_lib=feature_column):
     self._linear_regressor_fn = linear_regressor_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -252,7 +254,7 @@ class BaseLinearRegressorEvaluationTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         model_dir=self._model_dir)
     eval_metrics = linear_regressor.evaluate(
         input_fn=lambda: ({'age': ((1,),)}, ((10.,),)), steps=1)
@@ -276,7 +278,7 @@ class BaseLinearRegressorEvaluationTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         model_dir=self._model_dir)
     eval_metrics = linear_regressor.evaluate(
         input_fn=lambda: ({'age': ((1,), (1,))}, ((10.,), (10.,))), steps=1)
@@ -308,7 +310,7 @@ class BaseLinearRegressorEvaluationTest(object):
       return features, labels
 
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         weight_column='weights',
         model_dir=self._model_dir)
     eval_metrics = linear_regressor.evaluate(input_fn=_input_fn, steps=1)
@@ -336,8 +338,7 @@ class BaseLinearRegressorEvaluationTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column(
-            'age', shape=(x_dim,)),),
+        feature_columns=(self._fc_lib.numeric_column('age', shape=(x_dim,)),),
         label_dimension=label_dim,
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
@@ -374,8 +375,8 @@ class BaseLinearRegressorEvaluationTest(object):
 
     batch_size = 2
     feature_columns = [
-        feature_column_lib.numeric_column('age'),
-        feature_column_lib.numeric_column('height')
+        self._fc_lib.numeric_column('age'),
+        self._fc_lib.numeric_column('height')
     ]
     input_fn = numpy_io.numpy_input_fn(
         x={'age': np.array([20, 40]),
@@ -402,8 +403,9 @@ class BaseLinearRegressorEvaluationTest(object):
 
 class BaseLinearRegressorPredictTest(object):
 
-  def __init__(self, linear_regressor_fn):
+  def __init__(self, linear_regressor_fn, fc_lib=feature_column):
     self._linear_regressor_fn = linear_regressor_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -422,7 +424,7 @@ class BaseLinearRegressorPredictTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('x'),),
+        feature_columns=(self._fc_lib.numeric_column('x'),),
         model_dir=self._model_dir)
 
     predict_input_fn = numpy_io.numpy_input_fn(
@@ -441,7 +443,7 @@ class BaseLinearRegressorPredictTest(object):
     batch_size = 2
     label_dimension = 3
     x_dim = 4
-    feature_columns = (feature_column_lib.numeric_column('x', shape=(x_dim,)),)
+    feature_columns = (self._fc_lib.numeric_column('x', shape=(x_dim,)),)
     with ops.Graph().as_default():
       variables_lib.Variable(  # shape=[x_dim, label_dimension]
           [[1., 2., 3.], [2., 3., 4.], [3., 4., 5.], [4., 5., 6.]],
@@ -479,8 +481,8 @@ class BaseLinearRegressorPredictTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('x0'),
-                         feature_column_lib.numeric_column('x1')),
+        feature_columns=(self._fc_lib.numeric_column('x0'),
+                         self._fc_lib.numeric_column('x1')),
         model_dir=self._model_dir)
 
     predict_input_fn = numpy_io.numpy_input_fn(
@@ -515,9 +517,8 @@ class BaseLinearRegressorPredictTest(object):
               dense_shape=[2, 2]),
       })
 
-    feature_columns = (
-        feature_column_lib.categorical_column_with_vocabulary_list(
-            'language', vocabulary_list=['a', 'b', 'c']),)
+    feature_columns = (self._fc_lib.categorical_column_with_vocabulary_list(
+        'language', vocabulary_list=['a', 'b', 'c']),)
 
     # Check prediction for each sparse_combiner.
     # With sparse_combiner = 'sum', we have
@@ -561,8 +562,9 @@ class BaseLinearRegressorPredictTest(object):
 
 class BaseLinearRegressorIntegrationTest(object):
 
-  def __init__(self, linear_regressor_fn):
+  def __init__(self, linear_regressor_fn, fc_lib=feature_column):
     self._linear_regressor_fn = linear_regressor_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -575,7 +577,7 @@ class BaseLinearRegressorIntegrationTest(object):
   def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
                           input_dimension, label_dimension, prediction_length):
     feature_columns = [
-        feature_column_lib.numeric_column('x', shape=(input_dimension,))
+        self._fc_lib.numeric_column('x', shape=(input_dimension,))
     ]
     est = self._linear_regressor_fn(
         feature_columns=feature_columns,
@@ -597,7 +599,7 @@ class BaseLinearRegressorIntegrationTest(object):
     self.assertAllEqual((prediction_length, label_dimension), predictions.shape)
 
     # EXPORT
-    feature_spec = feature_column_lib.make_parse_example_spec(feature_columns)
+    feature_spec = self._fc_lib.make_parse_example_spec(feature_columns)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
     export_dir = est.export_savedmodel(tempfile.mkdtemp(),
@@ -729,8 +731,9 @@ class BaseLinearRegressorIntegrationTest(object):
 
 class BaseLinearRegressorTrainingTest(object):
 
-  def __init__(self, linear_regressor_fn):
+  def __init__(self, linear_regressor_fn, fc_lib=feature_column):
     self._linear_regressor_fn = linear_regressor_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -808,7 +811,7 @@ class BaseLinearRegressorTrainingTest(object):
     label = 5.
     age = 17
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         model_dir=self._model_dir)
 
     # Train for a few steps, and validate final checkpoint.
@@ -820,7 +823,7 @@ class BaseLinearRegressorTrainingTest(object):
   def testTrainWithOneDimLabel(self):
     label_dimension = 1
     batch_size = 20
-    feature_columns = [feature_column_lib.numeric_column('age', shape=(1,))]
+    feature_columns = [self._fc_lib.numeric_column('age', shape=(1,))]
     est = self._linear_regressor_fn(
         feature_columns=feature_columns,
         label_dimension=label_dimension,
@@ -840,7 +843,7 @@ class BaseLinearRegressorTrainingTest(object):
   def testTrainWithOneDimWeight(self):
     label_dimension = 1
     batch_size = 20
-    feature_columns = [feature_column_lib.numeric_column('age', shape=(1,))]
+    feature_columns = [self._fc_lib.numeric_column('age', shape=(1,))]
     est = self._linear_regressor_fn(
         feature_columns=feature_columns,
         label_dimension=label_dimension,
@@ -867,7 +870,7 @@ class BaseLinearRegressorTrainingTest(object):
     # loss = (logits - label)^2 = (0 - 5.)^2 = 25.
     mock_optimizer = self._mock_optimizer(expected_loss=25.)
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         model_dir=self._model_dir,
         optimizer=mock_optimizer)
     self.assertEqual(0, mock_optimizer.minimize.call_count)
@@ -900,7 +903,7 @@ class BaseLinearRegressorTrainingTest(object):
     # loss = (logits - label)^2 = (175 - 5)^2 = 28900
     mock_optimizer = self._mock_optimizer(expected_loss=28900.)
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         model_dir=self._model_dir,
         optimizer=mock_optimizer)
     self.assertEqual(0, mock_optimizer.minimize.call_count)
@@ -935,7 +938,7 @@ class BaseLinearRegressorTrainingTest(object):
     # loss = sum(logits - label)^2 = (175 - 5)^2 + (155 - 3)^2 = 52004
     mock_optimizer = self._mock_optimizer(expected_loss=52004.)
     linear_regressor = self._linear_regressor_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         model_dir=self._model_dir,
         optimizer=mock_optimizer)
     self.assertEqual(0, mock_optimizer.minimize.call_count)
@@ -954,8 +957,9 @@ class BaseLinearRegressorTrainingTest(object):
 
 class BaseLinearClassifierTrainingTest(object):
 
-  def __init__(self, linear_classifier_fn):
+  def __init__(self, linear_classifier_fn, fc_lib=feature_column):
     self._linear_classifier_fn = linear_classifier_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1031,7 +1035,7 @@ class BaseLinearClassifierTrainingTest(object):
     label = 0
     age = 17
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
 
@@ -1051,7 +1055,7 @@ class BaseLinearClassifierTrainingTest(object):
     batch_size = 20
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
     data_rank_1 = np.array([0, 1])
@@ -1078,7 +1082,7 @@ class BaseLinearClassifierTrainingTest(object):
     batch_size = 20
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
     data_rank_1 = np.array([0, 1])
@@ -1103,7 +1107,7 @@ class BaseLinearClassifierTrainingTest(object):
     batch_size = 20
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         weight_column='w',
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1129,7 +1133,7 @@ class BaseLinearClassifierTrainingTest(object):
     batch_size = 20
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         weight_column='w',
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1166,7 +1170,7 @@ class BaseLinearClassifierTrainingTest(object):
         expected_loss=-1 * math.log(1.0/n_classes))
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         optimizer=mock_optimizer,
         model_dir=self._model_dir)
@@ -1229,7 +1233,7 @@ class BaseLinearClassifierTrainingTest(object):
     mock_optimizer = self._mock_optimizer(expected_loss=expected_loss)
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         optimizer=mock_optimizer,
         model_dir=self._model_dir)
@@ -1277,7 +1281,7 @@ class BaseLinearClassifierTrainingTest(object):
     mock_optimizer = self._mock_optimizer(expected_loss=1.1132617)
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         optimizer=mock_optimizer,
         model_dir=self._model_dir)
@@ -1341,7 +1345,7 @@ class BaseLinearClassifierTrainingTest(object):
     mock_optimizer = self._mock_optimizer(expected_loss=expected_loss)
 
     est = linear.LinearClassifier(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         optimizer=mock_optimizer,
         model_dir=self._model_dir)
@@ -1368,8 +1372,9 @@ class BaseLinearClassifierTrainingTest(object):
 
 class BaseLinearClassifierEvaluationTest(object):
 
-  def __init__(self, linear_classifier_fn):
+  def __init__(self, linear_classifier_fn, fc_lib=feature_column):
     self._linear_classifier_fn = linear_classifier_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1398,7 +1403,7 @@ class BaseLinearClassifierEvaluationTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     est = self._linear_classifier_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
     eval_metrics = est.evaluate(
@@ -1464,7 +1469,7 @@ class BaseLinearClassifierEvaluationTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     est = self._linear_classifier_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
     eval_metrics = est.evaluate(
@@ -1540,7 +1545,7 @@ class BaseLinearClassifierEvaluationTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     est = self._linear_classifier_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         n_classes=n_classes,
         weight_column='w',
         model_dir=self._model_dir)
@@ -1605,8 +1610,9 @@ class BaseLinearClassifierEvaluationTest(object):
 
 class BaseLinearClassifierPredictTest(object):
 
-  def __init__(self, linear_classifier_fn):
+  def __init__(self, linear_classifier_fn, fc_lib=feature_column):
     self._linear_classifier_fn = linear_classifier_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1634,7 +1640,7 @@ class BaseLinearClassifierPredictTest(object):
       save_variables_to_ckpt(self._model_dir)
 
     est = self._linear_classifier_fn(
-        feature_columns=(feature_column_lib.numeric_column('age'),),
+        feature_columns=(self._fc_lib.numeric_column('age'),),
         label_vocabulary=label_vocabulary,
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1730,9 +1736,8 @@ class BaseLinearClassifierPredictTest(object):
               dense_shape=[2, 2]),
       })
 
-    feature_columns = (
-        feature_column_lib.categorical_column_with_vocabulary_list(
-            'language', vocabulary_list=['a', 'b', 'c']),)
+    feature_columns = (self._fc_lib.categorical_column_with_vocabulary_list(
+        'language', vocabulary_list=['a', 'b', 'c']),)
 
     # Check prediction for each sparse_combiner.
     # With sparse_combiner = 'sum', we have
@@ -1776,8 +1781,9 @@ class BaseLinearClassifierPredictTest(object):
 
 class BaseLinearClassifierIntegrationTest(object):
 
-  def __init__(self, linear_classifier_fn):
+  def __init__(self, linear_classifier_fn, fc_lib=feature_column):
     self._linear_classifier_fn = linear_classifier_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -1789,7 +1795,7 @@ class BaseLinearClassifierIntegrationTest(object):
   def _test_complete_flow(self, n_classes, train_input_fn, eval_input_fn,
                           predict_input_fn, input_dimension, prediction_length):
     feature_columns = [
-        feature_column_lib.numeric_column('x', shape=(input_dimension,))
+        self._fc_lib.numeric_column('x', shape=(input_dimension,))
     ]
     est = self._linear_classifier_fn(
         feature_columns=feature_columns,
@@ -1811,7 +1817,7 @@ class BaseLinearClassifierIntegrationTest(object):
     self.assertAllEqual((prediction_length, 1), predictions.shape)
 
     # EXPORT
-    feature_spec = feature_column_lib.make_parse_example_spec(feature_columns)
+    feature_spec = self._fc_lib.make_parse_example_spec(feature_columns)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
     export_dir = est.export_savedmodel(tempfile.mkdtemp(),
@@ -1961,9 +1967,12 @@ class BaseLinearClassifierIntegrationTest(object):
 
 class BaseLinearLogitFnTest(object):
 
+  def __init__(self, fc_lib=feature_column):
+    self._fc_lib = fc_lib
+
   def test_basic_logit_correctness(self):
     """linear_logit_fn simply wraps feature_column_lib.linear_model."""
-    age = feature_column_lib.numeric_column('age')
+    age = self._fc_lib.numeric_column('age')
     with ops.Graph().as_default():
       logit_fn = linear._linear_logit_fn_builder(units=2, feature_columns=[age])
       logits = logit_fn(features={'age': [[23.], [31.]]})
@@ -1983,12 +1992,14 @@ class BaseLinearLogitFnTest(object):
 
   def test_compute_fraction_of_zero(self):
     """Tests the calculation of sparsity."""
-    age = feature_column_lib.numeric_column('age')
-    occupation = feature_column_lib.categorical_column_with_hash_bucket(
+    if self._fc_lib != feature_column:
+      return
+    age = feature_column.numeric_column('age')
+    occupation = feature_column.categorical_column_with_hash_bucket(
         'occupation', hash_bucket_size=5)
     with ops.Graph().as_default():
       cols_to_vars = {}
-      feature_column_lib.linear_model(
+      feature_column.linear_model(
           features={
               'age': [[23.], [31.]],
               'occupation': [['doctor'], ['engineer']]
@@ -1997,7 +2008,42 @@ class BaseLinearLogitFnTest(object):
           units=3,
           cols_to_vars=cols_to_vars)
       cols_to_vars.pop('bias')
-      fraction_zero = linear._compute_fraction_of_zero(cols_to_vars)
+      fraction_zero = linear._compute_fraction_of_zero(cols_to_vars.values())
+      age_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                   'linear_model/age')[0]
+      with tf_session.Session() as sess:
+        sess.run([variables_lib.global_variables_initializer()])
+        # Upon initialization, all variables will be zero.
+        self.assertAllClose(1, fraction_zero.eval())
+
+        sess.run(age_var.assign([[2.0, 0.0, -1.0]]))
+        # 1 of the 3 age weights are zero, and all of the 15 (5 hash buckets
+        # x 3-dim output) are zero.
+        self.assertAllClose(16. / 18., fraction_zero.eval())
+
+  def test_compute_fraction_of_zero_v2(self):
+    """Tests the calculation of sparsity."""
+    if self._fc_lib != feature_column_v2:
+      return
+
+    age = feature_column_v2.numeric_column('age')
+    occupation = feature_column_v2.categorical_column_with_hash_bucket(
+        'occupation', hash_bucket_size=5)
+    shared_state_manager = feature_column_v2.SharedEmbeddingStateManager()
+    with ops.Graph().as_default():
+      model = feature_column_v2.LinearModel(
+          feature_columns=[age, occupation],
+          units=3,
+          shared_state_manager=shared_state_manager)
+      features = {
+          'age': [[23.], [31.]],
+          'occupation': [['doctor'], ['engineer']]
+      }
+      model(features)
+      variables = model.variables
+      variables.remove(model.bias_variable)
+      variables.extend(shared_state_manager.variables)
+      fraction_zero = linear._compute_fraction_of_zero(variables)
       age_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                    'linear_model/age')[0]
       with tf_session.Session() as sess:
@@ -2013,9 +2059,13 @@ class BaseLinearLogitFnTest(object):
 
 class BaseLinearWarmStartingTest(object):
 
-  def __init__(self, _linear_classifier_fn, _linear_regressor_fn):
+  def __init__(self,
+               _linear_classifier_fn,
+               _linear_regressor_fn,
+               fc_lib=feature_column):
     self._linear_classifier_fn = _linear_classifier_fn
     self._linear_regressor_fn = _linear_regressor_fn
+    self._fc_lib = fc_lib
 
   def setUp(self):
     # Create a directory to save our old checkpoint and vocabularies to.
@@ -2039,7 +2089,7 @@ class BaseLinearWarmStartingTest(object):
 
   def test_classifier_basic_warm_starting(self):
     """Tests correctness of LinearClassifier default warm-start."""
-    age = feature_column_lib.numeric_column('age')
+    age = self._fc_lib.numeric_column('age')
 
     # Create a LinearClassifier and train to save a checkpoint.
     linear_classifier = self._linear_classifier_fn(
@@ -2066,7 +2116,7 @@ class BaseLinearWarmStartingTest(object):
 
   def test_regressor_basic_warm_starting(self):
     """Tests correctness of LinearRegressor default warm-start."""
-    age = feature_column_lib.numeric_column('age')
+    age = self._fc_lib.numeric_column('age')
 
     # Create a LinearRegressor and train to save a checkpoint.
     linear_regressor = self._linear_regressor_fn(
@@ -2091,7 +2141,7 @@ class BaseLinearWarmStartingTest(object):
 
   def test_warm_starting_selective_variables(self):
     """Tests selecting variables to warm-start."""
-    age = feature_column_lib.numeric_column('age')
+    age = self._fc_lib.numeric_column('age')
 
     # Create a LinearClassifier and train to save a checkpoint.
     linear_classifier = self._linear_classifier_fn(
@@ -2128,7 +2178,7 @@ class BaseLinearWarmStartingTest(object):
     vocab_file = os.path.join(self._ckpt_and_vocab_dir, 'occupation_vocab')
     with open(vocab_file, 'w') as f:
       f.write('\n'.join(vocab_list))
-    occupation = feature_column_lib.categorical_column_with_vocabulary_file(
+    occupation = self._fc_lib.categorical_column_with_vocabulary_file(
         'occupation',
         vocabulary_file=vocab_file,
         vocabulary_size=len(vocab_list))
@@ -2152,7 +2202,7 @@ class BaseLinearWarmStartingTest(object):
                                   'new_occupation_vocab')
     with open(new_vocab_file, 'w') as f:
       f.write('\n'.join(new_vocab_list))
-    new_occupation = feature_column_lib.categorical_column_with_vocabulary_file(
+    new_occupation = self._fc_lib.categorical_column_with_vocabulary_file(
         'occupation',
         vocabulary_file=new_vocab_file,
         vocabulary_size=len(new_vocab_list))
@@ -2205,7 +2255,7 @@ class BaseLinearWarmStartingTest(object):
 
   def test_warm_starting_with_naming_change(self):
     """Tests warm-starting with a Tensor name remapping."""
-    age_in_years = feature_column_lib.numeric_column('age_in_years')
+    age_in_years = self._fc_lib.numeric_column('age_in_years')
 
     # Create a LinearClassifier and train to save a checkpoint.
     linear_classifier = self._linear_classifier_fn(
@@ -2219,7 +2269,7 @@ class BaseLinearWarmStartingTest(object):
     # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
     # accumulator values that change).
     warm_started_linear_classifier = self._linear_classifier_fn(
-        feature_columns=[feature_column_lib.numeric_column('age')],
+        feature_columns=[self._fc_lib.numeric_column('age')],
         n_classes=4,
         optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
         # The 'age' variable correspond to the 'age_in_years' variable in the

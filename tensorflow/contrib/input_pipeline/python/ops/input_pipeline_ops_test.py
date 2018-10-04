@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class InputPipelineOpsTest(test.TestCase):
 
   def testObtainNext(self):
-    with self.test_session():
+    with self.cached_session():
       var = state_ops.variable_op([], dtypes.int64)
       state_ops.assign(var, -1).op.run()
       c = constant_op.constant(["a", "b"])
@@ -45,7 +45,7 @@ class InputPipelineOpsTest(test.TestCase):
 
   def testSeekNext(self):
     string_list = ["a", "b", "c"]
-    with self.test_session() as session:
+    with self.cached_session() as session:
       elem = input_pipeline_ops.seek_next(string_list)
       session.run([variables.global_variables_initializer()])
       self.assertEqual(b"a", session.run(elem))
@@ -65,7 +65,7 @@ class InputPipelineOpsTest(test.TestCase):
 
   def testSeekNextLimitEpochs(self):
     string_list = ["a", "b", "c"]
-    with self.test_session() as session:
+    with self.cached_session() as session:
       elem = input_pipeline_ops.seek_next(string_list, num_epochs=1)
       session.run([
           variables.local_variables_initializer(),
@@ -75,7 +75,7 @@ class InputPipelineOpsTest(test.TestCase):
 
   def testSeekNextLimitEpochsThree(self):
     string_list = ["a", "b", "c"]
-    with self.test_session() as session:
+    with self.cached_session() as session:
       elem = input_pipeline_ops.seek_next(string_list, num_epochs=3)
       session.run([
           variables.local_variables_initializer(),
