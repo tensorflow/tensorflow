@@ -60,6 +60,7 @@ class TPUClusterResolver(ClusterResolver):
     if (self._tpu == compat.as_bytes('') or
         self._tpu == compat.as_bytes('local') or
         self._tpu.startswith(compat.as_bytes('/bns')) or
+        self._tpu.startswith(compat.as_bytes('localhost:')) or
         self._tpu.startswith(compat.as_bytes('grpc://'))):
       return False
     return True
