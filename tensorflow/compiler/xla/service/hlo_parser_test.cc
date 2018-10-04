@@ -1304,7 +1304,7 @@ TEST_F(HloParserTest, MoreConstants) {
 
 ENTRY %SelectScalarS32True.v4 () -> s32[] {
   %constant.2 = pred[] constant(true)
-  %constant.1 = s32[] constant(-42), sharding={s32[5,6] devices=[2,3]1,2,3,4}
+  %constant.1 = s32[] constant(-42), sharding={s32[5,6] devices=[2,2]1,2,3,4}
   %constant = s32[] constant(42)
   %select = s32[] select(pred[] %constant.2, s32[] %constant.1, s32[] %constant)
 }

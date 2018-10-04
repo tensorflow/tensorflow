@@ -1945,11 +1945,11 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case TUPLE:
-      LOG(FATAL) << "Should not be called on tuple shapes: "
-                 << ShapeUtil::HumanString(subshape());
-      break;
+      return InvalidArgument("Should not be called on tuple shapes: %s",
+                             ShapeUtil::HumanString(subshape()));
     default:
-      LOG(FATAL) << "Unhandled primitive type " << subshape().element_type();
+      return InvalidArgument("Is called on unsupported shape: %s",
+                             ShapeUtil::HumanString(subshape()));
   }
   return Status::OK();
 }
