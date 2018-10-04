@@ -62,6 +62,7 @@ tf_kernel_library(
         "one_hot_op.cc",
         "pack_op.cc",
         "pad_op.cc",
+        "permute_op.cc",
         "pooling_ops.cc",
         "qr_op.cc",
         "quantize_and_dequantize_op.cc",

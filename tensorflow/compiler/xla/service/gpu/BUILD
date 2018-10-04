@@ -476,6 +476,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -508,6 +509,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:multi_output_fusion",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -541,6 +543,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -715,6 +718,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

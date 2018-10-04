@@ -171,16 +171,16 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
 
     static PartialTensorShape MostSpecificCompatibleShape(
         const PartialTensorShape& ts1, const PartialTensorShape& ts2) {
-      PartialTensorShape output_tensorshape;
       if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
-        return output_tensorshape;
+        return PartialTensorShape();
+      PartialTensorShape output_tensorshape({});
       auto dims1 = ts1.dim_sizes();
       auto dims2 = ts2.dim_sizes();
       for (int d = 0; d < ts1.dims(); d++) {
         if (dims1[d] == dims2[d])
-          output_tensorshape.Concatenate(dims1[d]);
+          output_tensorshape.AddDim(dims1[d]);
         else
-          output_tensorshape.Concatenate(-1);
+          output_tensorshape.AddDim(-1);
       }
       return output_tensorshape;
     }

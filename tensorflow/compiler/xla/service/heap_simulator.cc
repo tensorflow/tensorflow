@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace xla {
 
 using absl::flat_hash_map;
-using tensorflow::gtl::FlatSet;
+using absl::flat_hash_set;
 
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
@@ -116,9 +117,9 @@ Status HeapSimulator::RunComputation(
   // 'used_buffers' is the reverse map - it tracks which buffers were used by an
   // instruction, so that we can remove the instructions from a buffer's live
   // set after they are visited.
-  flat_hash_map<const BufferValue*, FlatSet<const HloInstruction*>>
+  flat_hash_map<const BufferValue*, flat_hash_set<const HloInstruction*>>
       live_buffers;
-  flat_hash_map<const HloInstruction*, FlatSet<const BufferValue*>>
+  flat_hash_map<const HloInstruction*, flat_hash_set<const BufferValue*>>
       used_buffers;
   auto add_user_to_buffer = [this, &live_buffers, &used_buffers](
                                 const HloInstruction* user,
@@ -216,7 +217,7 @@ Status HeapSimulator::RunComputation(
       VLOG(4) << "  Removing user " << instruction->name() << " from buffer "
               << operand_buffer->ToString();
       auto it = live_buffers.find(operand_buffer);
-      FlatSet<const HloInstruction*>* live_set = &it->second;
+      flat_hash_set<const HloInstruction*>* live_set = &it->second;
       live_set->erase(instruction);
       if (live_set->empty()) {
         live_buffers.erase(it);
@@ -238,7 +239,8 @@ Status HeapSimulator::RunComputation(
     // that we should assign.
 
     // Make sure each buffer get reused at most once.
-    FlatSet<const BufferValue*> reused_buffers;
+    flat_hash_set<const BufferValue*> reused_buffers;
+    int64 alloc_size_by_instruction = 0;
     for (const BufferValue* buffer : buffers_defined_by_instruction) {
       if (IgnoreBuffer(buffer)) {
         continue;
@@ -271,14 +273,15 @@ Status HeapSimulator::RunComputation(
 
       if (!shared) {
         VLOG(3) << "  Allocating: " << buffer->ToString();
+        alloc_size_by_instruction += size_fn_(*buffer);
         Alloc(buffer, instruction);
       }
     }
     // Account for the memory used by subcomputations when estimating the
     // current heap size.
     if (memory_by_computation_ != nullptr) {
-      algorithm_->AccountForSubcomputationMemory(instruction,
-                                                 *memory_by_computation_);
+      algorithm_->AccountForSubcomputationMemory(
+          instruction, alloc_size_by_instruction, *memory_by_computation_);
     }
 
     // If all computations in the module have been scheduled, we can save memory
@@ -326,7 +329,7 @@ Status HeapSimulator::RunComputation(
   to_free.reserve(live_buffers.size());
   for (const auto& buffer_pending : live_buffers) {
     const BufferValue* buffer = buffer_pending.first;
-    const FlatSet<const HloInstruction*>& pending = buffer_pending.second;
+    const flat_hash_set<const HloInstruction*>& pending = buffer_pending.second;
     CHECK_EQ(pending.size(), 1) << *buffer;
     CHECK(*pending.begin() == nullptr) << *buffer;
     to_free.push_back(buffer);
@@ -384,10 +387,8 @@ void HeapSimulator::Alloc(const BufferValue* buffer,
 
   allocated_buffers_.insert(buffer);
   const int64 size = size_fn_(*buffer);
-  const HloInstruction* instruction_to_calc_aliasing =
-      memory_by_computation_ == nullptr ? nullptr : instruction;
-  algorithm_->Alloc(buffer, size, instruction_to_calc_aliasing);
-  no_fragmentation_stats_->Alloc(buffer, size, instruction_to_calc_aliasing);
+  algorithm_->Alloc(buffer, size);
+  no_fragmentation_stats_->Alloc(buffer, size);
   FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
                  nullptr);
 }
@@ -525,20 +526,8 @@ void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size) {
   }
 }
 
-void NoFragmentationStatsHeap::Alloc(const BufferValue* buffer, int64 size,
-                                     const HloInstruction* instruction) {
-  // The output buffer of while/call/conditional is always aliased with the
-  // output buffer of the root instruction in the body. Don't double count.
-  if (instruction == nullptr ||
-      (instruction->opcode() != HloOpcode::kWhile &&
-       instruction->opcode() != HloOpcode::kCall &&
-       instruction->opcode() != HloOpcode::kConditional)) {
-    Alloc(buffer, size);
-  }
-}
-
 void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
-    const HloInstruction* instruction,
+    const HloInstruction* instruction, int64 alloc_size_by_instruction,
     const absl::flat_hash_map<const HloComputation*, int64>&
         memory_by_computation) {
   // We only count the memory usage of the largest subcomputation, instead of
@@ -552,6 +541,14 @@ void NoFragmentationStatsHeap::AccountForSubcomputationMemory(
         max_subcomputation_bytes = subcomputation_bytes;
       }
     }
+  }
+  if (max_subcomputation_bytes > 0 &&
+      (instruction->opcode() == HloOpcode::kWhile ||
+       instruction->opcode() == HloOpcode::kCall ||
+       instruction->opcode() == HloOpcode::kConditional)) {
+    // The output buffer of while/call/conditional is always aliased with the
+    // output buffer of the root instruction in the body. Don't double count.
+    max_subcomputation_bytes -= alloc_size_by_instruction;
   }
   max_heap_size_ =
       std::max(max_heap_size_, current_heap_size_ + max_subcomputation_bytes);

@@ -23,7 +23,7 @@ from tensorflow.python.platform import test
 
 
 class ParseExampleDatasetSerializationTest(
-    reader_dataset_ops_test_base.ReadBatchFeaturesTestBase,
+    reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase,
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def ParseExampleDataset(self, num_repeat, batch_size):

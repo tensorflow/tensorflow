@@ -39,7 +39,8 @@ void GraphOptimizer::Optimize(
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
     const std::function<bool(const Node*)>& cse_consider_fn,
-    const std::function<bool(const Node*)>& cf_consider_fn) {
+    const std::function<bool(const Node*)>& cf_consider_fn,
+    bool cf_disable_memory_output_type_check) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -64,6 +65,8 @@ void GraphOptimizer::Optimize(
       ConstantFoldingOptions cf_opts;
       cf_opts.shape_map = shape_map;
       cf_opts.consider = cf_consider_fn;
+      cf_opts.disable_memory_output_type_check =
+          cf_disable_memory_output_type_check;
       if (opts_.max_folded_constant_in_bytes() > 0) {
         cf_opts.max_constant_size_in_bytes =
             opts_.max_folded_constant_in_bytes();

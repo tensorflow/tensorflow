@@ -277,13 +277,20 @@ PyObject* InterpreterWrapper::ResizeInputTensor(int i, PyObject* value) {
   Py_RETURN_NONE;
 }
 
+int InterpreterWrapper::NumTensors() const {
+  if (!interpreter_) {
+    return 0;
+  }
+  return interpreter_->tensors_size();
+}
+
 std::string InterpreterWrapper::TensorName(int i) const {
   if (!interpreter_ || i >= interpreter_->tensors_size() || i < 0) {
     return "";
   }
 
   const TfLiteTensor* tensor = interpreter_->tensor(i);
-  return tensor->name;
+  return tensor->name ? tensor->name : "";
 }
 
 PyObject* InterpreterWrapper::TensorType(int i) const {
@@ -291,6 +298,11 @@ PyObject* InterpreterWrapper::TensorType(int i) const {
   TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
 
   const TfLiteTensor* tensor = interpreter_->tensor(i);
+  if (tensor->type == kTfLiteNoType) {
+    PyErr_Format(PyExc_ValueError, "Tensor with no type found.");
+    return nullptr;
+  }
+
   int code = TfLiteTypeToPyArrayType(tensor->type);
   if (code == -1) {
     PyErr_Format(PyExc_ValueError, "Invalid tflite type code %d", code);
@@ -302,7 +314,12 @@ PyObject* InterpreterWrapper::TensorType(int i) const {
 PyObject* InterpreterWrapper::TensorSize(int i) const {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+
   const TfLiteTensor* tensor = interpreter_->tensor(i);
+  if (tensor->dims == nullptr) {
+    PyErr_Format(PyExc_ValueError, "Tensor with no shape found.");
+    return nullptr;
+  }
   PyObject* np_array =
       PyArrayFromIntVector(tensor->dims->data, tensor->dims->size);
 

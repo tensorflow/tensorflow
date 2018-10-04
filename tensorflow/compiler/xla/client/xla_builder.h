@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
@@ -1035,7 +1035,7 @@ class XlaBuilder {
   std::map<int64, HloComputationProto> embedded_;
 
   // The unique parameter numbers.
-  tensorflow::gtl::FlatSet<int64> parameter_numbers_;
+  absl::flat_hash_set<int64> parameter_numbers_;
 
   // The metadata to attach to each op. This is structured as a "modal"-like
   // operation, in order to simplify client code (and not sprinkle this metadata

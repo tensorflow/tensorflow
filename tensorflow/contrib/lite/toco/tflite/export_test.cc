@@ -313,6 +313,46 @@ TEST_F(VersionedOpExportTest, Export) {
   EXPECT_EQ(1, (*operators)[1]->opcode_index());
 }
 
+TEST(OperatorKeyTest, TestBuiltinOp) {
+  details::OperatorKey key(OperatorType::kConv, "", 2);
+  EXPECT_EQ(key.type, OperatorType::kConv);
+  EXPECT_EQ(key.custom_code, "");
+  EXPECT_EQ(key.version, 2);
+}
+
+TEST(OperatorKeyTest, TestFlexOp) {
+  {
+    details::OperatorKey key(OperatorType::kUnsupported, "SomeUnsupportedOp", 1,
+                             false);
+    EXPECT_EQ(key.type, OperatorType::kUnsupported);
+    // It shouldn't be converted to Flex op if `allow_flex_op` is false.
+    EXPECT_EQ(key.custom_code, "SomeUnsupportedOp");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_FALSE(key.is_flex_op);
+  }
+
+  {
+    details::OperatorKey key(OperatorType::kUnsupported, "SomeUnsupportedOp", 1,
+                             true);
+    EXPECT_EQ(key.type, OperatorType::kUnsupported);
+    // Verify that the custom op name is prefixed by "Flex" and `is_flex_op`
+    // is true.
+    EXPECT_EQ(key.custom_code, "FlexSomeUnsupportedOp");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_TRUE(key.is_flex_op);
+  }
+}
+
+TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
+  details::OperatorKey key(OperatorType::kUnsupported, "Merge", 1, true);
+  EXPECT_EQ(key.type, OperatorType::kUnsupported);
+  EXPECT_EQ(key.custom_code, "FlexMerge");
+  EXPECT_EQ(key.version, 1);
+  EXPECT_TRUE(key.is_flex_op);
+  // The control flow ops should be marked as unsupported.
+  EXPECT_TRUE(key.is_unsupported_flex_op);
+}
+
 // TODO(ahentz): tests for tensors, inputs, outputs, opcodes and operators.
 
 }  // namespace

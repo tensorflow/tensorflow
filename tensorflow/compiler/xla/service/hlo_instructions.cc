@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
@@ -213,6 +214,7 @@ HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
 HloInstructionProto HloSendRecvInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_channel_id(channel_id_);
+  proto.set_is_host_transfer(is_host_transfer_);
   return proto;
 }
 
@@ -641,14 +643,6 @@ HloTransposeInstruction::HloTransposeInstruction(
     absl::Span<const int64> dimensions)
     : HloInstruction(HloOpcode::kTranspose, shape),
       dimensions_(dimensions.begin(), dimensions.end()) {
-  CHECK_EQ(shape.dimensions().size(), dimensions.size());
-  CHECK_EQ(shape.dimensions().size(), operand->shape().dimensions().size());
-  CHECK(std::equal(operand->shape().dimensions().begin(),
-                   operand->shape().dimensions().end(),
-                   Permute(dimensions, shape.dimensions()).begin()))
-      << "shape: " << ShapeUtil::HumanString(shape)
-      << ", operand->shape(): " << ShapeUtil::HumanString(shape)
-      << ", dimensions: {" << StrJoin(dimensions, ", ") << "}";
   AppendOperand(operand);
 }
 
@@ -1489,7 +1483,6 @@ HloParameterInstruction::CloneWithNewOperandsImpl(
 HloGetTupleElementInstruction::HloGetTupleElementInstruction(
     const Shape& shape, HloInstruction* operand, int64 index)
     : HloInstruction(HloOpcode::kGetTupleElement, shape), tuple_index_(index) {
-  CHECK(ShapeUtil::IsTuple(operand->shape()));
   AppendOperand(operand);
 }
 
@@ -1611,9 +1604,6 @@ HloOutfeedInstruction::HloOutfeedInstruction(const Shape& outfeed_shape,
     : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeTokenShape()),
       outfeed_shape_(outfeed_shape),
       outfeed_config_(outfeed_config) {
-  CHECK(ShapeUtil::Compatible(operand->shape(), outfeed_shape))
-      << "Outfeed shape " << outfeed_shape
-      << " must be compatible with operand shape " << operand->shape();
   AppendOperand(operand);
   AppendOperand(token_operand);
 }
@@ -2309,5 +2299,24 @@ std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
   return absl::make_unique<HloDomainInstruction>(
       shape, new_operands[0], operand_side_metadata_->Clone(),
       user_side_metadata_->Clone());
+}
+
+HloInstructionProto HloDomainInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  auto operand_side_sharding =
+      dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
+  if (operand_side_sharding) {
+    *proto.mutable_domain_entry_sharding() =
+        operand_side_sharding->sharding()->ToProto();
+  }
+
+  auto user_side_sharding =
+      dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
+  if (user_side_sharding) {
+    *proto.mutable_domain_exit_sharding() =
+        user_side_sharding->sharding()->ToProto();
+  }
+
+  return proto;
 }
 }  // namespace xla

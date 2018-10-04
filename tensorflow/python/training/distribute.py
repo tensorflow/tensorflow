@@ -436,6 +436,9 @@ class DistributionStrategy(object):
 
   def __init__(self):
     self._default_device = None
+    # This property is used to determine if we should set drop_remainder=True
+    # when creating Datasets from numpy array inputs.
+    self._require_static_shapes = False
 
   def scope(self):
     """Returns a context manager selecting this DistributionStrategy as current.
@@ -630,7 +633,7 @@ class DistributionStrategy(object):
 
     Args:
       fn: function to run using this distribution strategy. The function must
-        have the following signature: def fn(context, *inputs).
+        have the following signature: `def fn(context, *inputs)`.
         `context` is an instance of `MultiStepContext` that will be passed when
         `fn` is run. `context` can be used to specify the outputs to be returned
         from `fn` by calling `context.set_last_step_output`. It can also be used
@@ -796,9 +799,9 @@ class DistributionStrategy(object):
     return merged(results)
     ```
 
-    Otherwise this returns `fn(var, *args, **kwargs)` colocated with `var`.'
+    Otherwise this returns `fn(var, *args, **kwargs)` colocated with `var`.
 
-    Neither *args nor **kwargs may contain per-device values.
+    Neither `*args` nor `**kwargs` may contain per-device values.
     If they contain mirrored values, they will be unwrapped before
     calling `fn`.
 
@@ -897,6 +900,10 @@ class DistributionStrategy(object):
       If `False`, `call_for_each_tower(fn)` may call `fn` multiple times.
     """
     raise NotImplementedError("must be implemented in descendants")
+
+  @property
+  def require_static_shapes(self):
+    return self._require_static_shapes
 
   @property
   def num_towers(self):

@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -119,7 +120,7 @@ Status HloSchedule::UpdateComputationSchedule(
   }
 
   // Set of all HloInstructions in the schedule.
-  tensorflow::gtl::FlatSet<int> ids_in_schedule;
+  absl::flat_hash_set<int> ids_in_schedule;
   for (int id : sequences_.at(computation->unique_id()).ids()) {
     InsertOrDie(&ids_in_schedule, id);
   }
@@ -210,7 +211,7 @@ Status HloSchedule::Update() {
   if (sequences_.size() > nonfusion_computations.size()) {
     // Schedule contains some computations which have been removed from the
     // HloModule. Remove them from the schedule as well.
-    tensorflow::gtl::FlatSet<int64> nonfusion_computations_ids;
+    absl::flat_hash_set<int64> nonfusion_computations_ids;
     for (const HloComputation* computation : nonfusion_computations) {
       nonfusion_computations_ids.insert(computation->unique_id());
     }

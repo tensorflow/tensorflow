@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -278,10 +278,9 @@ void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
 namespace {
 
 // Helper which builds a post order of the HLO call graph.
-void ComputeComputationPostOrder(
-    HloComputation* computation,
-    tensorflow::gtl::FlatSet<HloComputation*>* visited,
-    std::vector<HloComputation*>* post_order) {
+void ComputeComputationPostOrder(HloComputation* computation,
+                                 absl::flat_hash_set<HloComputation*>* visited,
+                                 std::vector<HloComputation*>* post_order) {
   if (visited->insert(computation).second) {
     for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
@@ -416,7 +415,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
 
 std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
     const {
-  tensorflow::gtl::FlatSet<HloComputation*> visited;
+  absl::flat_hash_set<HloComputation*> visited;
   std::vector<HloComputation*> post_order;
 
   // To avoid special handling of this computation, cast away const of
@@ -535,6 +534,28 @@ HloComputation::CreateFromProto(
                 const std::unique_ptr<HloInstruction>& b) {
               return to_proto_id[a.get()] < to_proto_id[b.get()];
             });
+
+  TF_RETURN_IF_ERROR([&]() -> Status {
+    std::vector<bool> parameters_seen(parameter_count);
+    int parameters_seen_count = 0;
+    for (auto& instruction : instructions) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        int64 param_no = instruction->parameter_number();
+        TF_RET_CHECK(param_no >= 0 && param_no < parameter_count)
+            << "Invalid parameter number.  Expected [0, " << parameter_count
+            << "), got " << param_no;
+        TF_RET_CHECK(!parameters_seen[param_no])
+            << "Parameter number " << param_no
+            << " already allocated in this computation";
+        parameters_seen[param_no] = true;
+        parameters_seen_count++;
+      }
+    }
+    TF_RET_CHECK(parameters_seen_count == parameter_count)
+        << "Not all parameters in range [0, " << parameter_count
+        << ") were referenced";
+    return Status::OK();
+  }());
 
   auto computation = absl::WrapUnique(
       new HloComputation(proto.name(), parameter_count, &instructions, root,

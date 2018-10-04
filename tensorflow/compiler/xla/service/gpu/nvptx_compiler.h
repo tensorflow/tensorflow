@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -140,10 +141,10 @@ class NVPTXCompiler : public LLVMCompiler {
     tensorflow::condition_variable compilation_done_cv_;
   };
 
-  // Don't even think about switching this to FlatMap; iterator stability is
-  // critical here.
-  std::unordered_map<CompilationCacheKey, CompilationCacheValue,
-                     CompilationCacheHash, CompilationCacheEq>
+  // Don't even think about switching this to flat_hash_map; iterator stability
+  // is critical here.
+  absl::node_hash_map<CompilationCacheKey, CompilationCacheValue,
+                      CompilationCacheHash, CompilationCacheEq>
       compilation_cache_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);

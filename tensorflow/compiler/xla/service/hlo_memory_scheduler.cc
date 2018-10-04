@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -111,7 +112,7 @@ class ListScheduler {
     // LogicalBuffer is in an operand of the instruction as indicated by
     // points-to analysis.
     for (auto* instruction : computation.instructions()) {
-      tensorflow::gtl::FlatSet<const LogicalBuffer*> instr_uses;
+      absl::flat_hash_set<const LogicalBuffer*> instr_uses;
       for (auto* operand : instruction->operands()) {
         points_to_analysis.GetPointsToSet(operand).ForEachElement(
             [&](const ShapeIndex& /*index*/,
@@ -194,13 +195,15 @@ class ListScheduler {
     return entry;
   }
 
-  // Returns the number of bytes freed if the HLO instruction is scheduled.
-  // If the instruction calls subcomputations, we count the memory used by the
-  // subcomputations as memory "defined" by the instruction. This is not
-  // entirely accurate, because subcomputation memory will be freed after the
-  // instruction finishes. But it is more accurate than not taking
-  // subcomputations into account at all. In the future, we may improve
-  // accounting for subcomputation memory (b/65409243).
+  // Returns the number of bytes freed *after* the HLO instruction finishes.
+  // The current List algorithm only considers two states for an instruction:
+  // right before it runs, and after it finishes. We don't represent memory
+  // usage during the execution of an instruction. But if the instruction calls
+  // subcomputations, they are only live during the instruction's execution.
+  // We end up counting the memory used by subcomputations as memory "defined"
+  // by the instruction. This is not entirely accurate, but it is more accurate
+  // than not taking subcomputations into account at all. In the future, we may
+  // improve accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
@@ -222,7 +225,18 @@ class ListScheduler {
         }
       }
     }
-    return freed_bytes - entry.bytes_defined - max_subcomputation_bytes;
+    int64 bytes_defined;
+    if (max_subcomputation_bytes > 0 &&
+        (entry.instruction->opcode() == HloOpcode::kWhile ||
+         entry.instruction->opcode() == HloOpcode::kCall ||
+         entry.instruction->opcode() == HloOpcode::kConditional)) {
+      // The output buffer of while/call/conditional is always aliased with the
+      // output buffer of the root instruction in the body. Don't double count.
+      bytes_defined = max_subcomputation_bytes;
+    } else {
+      bytes_defined = entry.bytes_defined + max_subcomputation_bytes;
+    }
+    return freed_bytes - bytes_defined;
   }
 
   // Constructs the scheduling priority of the given instruction.
@@ -262,9 +276,8 @@ class ListScheduler {
     };
 
     for (auto* instruction : computation_.instructions()) {
-      // Instruction with no operands or control predecessors will
-      // not be in the map.
-      if (unscheduled_pred_count.count(instruction) == 0) {
+      if (instruction->operands().empty() &&
+          instruction->control_predecessors().empty()) {
         add_to_ready_queue(instruction);
       }
     }
@@ -355,12 +368,11 @@ class ListScheduler {
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.  We rely on iterator stability in this map, and that the map
-  // entries are std::pair's.
-  std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
+  // LogicalBuffer.
+  absl::flat_hash_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
-  tensorflow::gtl::FlatSet<const HloInstruction*> scheduled_instructions_;
+  absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
 };
 
 int64 SumLogicalBufferSizes(
@@ -418,7 +430,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
         points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
     total_sizes[hlo] = logical_buffer_size;
     cumulative_total_size += logical_buffer_size;
-    tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
+    absl::flat_hash_set<const HloInstruction*> unique_operands(
         hlo->operands().begin(), hlo->operands().end());
     for (const HloInstruction* operand : unique_operands) {
       extra_users[hlo] += extra_users[operand];

@@ -728,6 +728,7 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 16,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
@@ -736,18 +737,27 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "metrics_v1_test",
+py_library(
+    name = "metrics_v1_test_lib",
+    testonly = 1,
     srcs = ["metrics_v1_test.py"],
-    additional_deps = [
+    deps = [
         ":combinations",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    additional_deps = [
+        ":metrics_v1_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",

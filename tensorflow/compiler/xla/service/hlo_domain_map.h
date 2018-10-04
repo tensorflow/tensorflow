@@ -20,13 +20,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -110,7 +110,7 @@ class HloDomainMap {
   // Out of an instruction set, returns a vector of all the ones which are not
   // a kDomain kind.
   static std::vector<HloInstruction*> MakeNonDomainInstructions(
-      const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+      const absl::flat_hash_set<HloInstruction*>& instruction_set,
       const InstructionOrderMap& instructions_order);
 
   // Populates domain_metadata_id_ that maps each HloInstruction to the unique

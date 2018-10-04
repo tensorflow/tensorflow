@@ -458,6 +458,7 @@ tf_kernel_library(
     srcs = ["stats_aggregator_dataset_op.cc"],
     deps = [
         ":dataset",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
     ],

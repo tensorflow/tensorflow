@@ -78,10 +78,6 @@ class DeviceDescription {
   // legitimate kernel launch request.
   const BlockDim &block_dim_limit() const { return block_dim_limit_; }
 
-  // Returns the limit on the number of simultaneously resident blocks
-  // on a multiprocessor.
-  uint64 blocks_per_core_limit() const { return blocks_per_core_limit_; }
-
   // Returns the limit on the total number of threads that can be launched in a
   // single block; i.e. the limit on x * y * z dimensions of a ThreadDim.
   // This limit affects what constitutes a legitimate kernel launch request.
@@ -107,27 +103,6 @@ class DeviceDescription {
   // simultaneously used by a block.
   const uint64 &registers_per_block_limit() const {
     return registers_per_block_limit_;
-  }
-
-  // Returns the limit on the total number of registers that can be
-  // allocated to a thread.
-  const uint64 &registers_per_thread_limit() const {
-    return registers_per_thread_limit_;
-  }
-
-  // Returns the granularity at which warps are allocated resources.
-  const uint64 &warp_alloc_granularity() const {
-    return warp_alloc_granularity_;
-  }
-
-  // Returns the granularity at which registers are allocated to warps.
-  const uint64 &register_alloc_granularity() const {
-    return register_alloc_granularity_;
-  }
-
-  // Returns the granularity at which shared memory is allocated to warps.
-  const uint64 &shared_memory_alloc_granularity() const {
-    return shared_memory_alloc_granularity_;
   }
 
   // Returns the number of address bits available to kernel code running on the
@@ -199,19 +174,12 @@ class DeviceDescription {
   ThreadDim thread_dim_limit_;
   BlockDim block_dim_limit_;
 
-  uint64 blocks_per_core_limit_;
-
   uint64 threads_per_core_limit_;
   uint64 threads_per_block_limit_;
   uint64 threads_per_warp_;
 
   uint64 registers_per_core_limit_;
   uint64 registers_per_block_limit_;
-  uint64 registers_per_thread_limit_;
-
-  uint64 warp_alloc_granularity_;
-  uint64 register_alloc_granularity_;
-  uint64 shared_memory_alloc_granularity_;
 
   uint64 device_address_bits_;
   uint64 device_memory_size_;
@@ -269,10 +237,6 @@ class DeviceDescriptionBuilder {
     device_description_->block_dim_limit_ = value;
   }
 
-  void set_blocks_per_core_limit(uint64 value) {
-    device_description_->blocks_per_core_limit_ = value;
-  }
-
   void set_threads_per_core_limit(uint64 value) {
     device_description_->threads_per_core_limit_ = value;
   }
@@ -288,19 +252,6 @@ class DeviceDescriptionBuilder {
   }
   void set_registers_per_block_limit(uint64 value) {
     device_description_->registers_per_block_limit_ = value;
-  }
-  void set_registers_per_thread_limit(uint64 value) {
-    device_description_->registers_per_thread_limit_ = value;
-  }
-
-  void set_warp_alloc_granularity(uint64 value) {
-    device_description_->warp_alloc_granularity_ = value;
-  }
-  void set_register_alloc_granularity(uint64 value) {
-    device_description_->register_alloc_granularity_ = value;
-  }
-  void set_shared_memory_alloc_granularity(uint64 value) {
-    device_description_->shared_memory_alloc_granularity_ = value;
   }
 
   void set_device_address_bits(uint64 value) {
@@ -369,21 +320,6 @@ uint64 DivideCeil(uint64 x, uint64 y);
 void CalculateDimensionality(const DeviceDescription &device_description,
                              uint64 element_count, uint64 *threads_per_block,
                              uint64 *block_count);
-
-// Compute and return maximum blocks per core (occupancy) based on the
-// device description, some kernel characteristics and the number of threads per
-// block.  If unable to compute occupancy, zero is returned.
-uint64 CalculateOccupancy(const DeviceDescription &device_description,
-                          uint64 registers_per_thread,
-                          uint64 shared_memory_per_block,
-                          const ThreadDim &thread_dims);
-
-// Compute and return the maximum number of registers per thread which
-// achieves the target occupancy.  If the target is not possible then
-// zero is returned.
-uint64 CalculateRegisterLimitForTargetOccupancy(
-    const DeviceDescription &device_description, uint64 shared_memory_per_block,
-    const ThreadDim &thread_dims, uint64 target_blocks_per_core);
 
 }  // namespace stream_executor
 
