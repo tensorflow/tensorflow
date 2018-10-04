@@ -77,19 +77,23 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       }
 
       // Don't constant fold unless it's a net positive or the output is small.
-      int64 elements_in_removed_operands = 0;
-      for (HloInstruction* operand : instruction->operands()) {
-        if (operand->user_count() == 1) {
-          elements_in_removed_operands +=
-              ShapeUtil::ElementsIn(operand->shape());
+      if (ShapeUtil::IsArray(instruction->shape())) {
+        int64 elements_in_removed_operands = 0;
+        for (HloInstruction* operand : instruction->operands()) {
+          if (operand->user_count() == 1 &&
+              ShapeUtil::IsArray(operand->shape())) {
+            elements_in_removed_operands +=
+                ShapeUtil::ElementsIn(operand->shape());
+          }
         }
-      }
-      int64 elements_in_constant = ShapeUtil::ElementsIn(instruction->shape());
+        int64 elements_in_constant =
+            ShapeUtil::ElementsIn(instruction->shape());
 
-      static const int64 kMaximumConstantSizeElements = 2 * 1000 * 1000;
-      if (elements_in_constant > elements_in_removed_operands &&
-          elements_in_constant > kMaximumConstantSizeElements) {
-        continue;
+        static const int64 kMaximumConstantSizeElements = 2 * 1000 * 1000;
+        if (elements_in_constant > elements_in_removed_operands &&
+            elements_in_constant > kMaximumConstantSizeElements) {
+          continue;
+        }
       }
 
       Literal result;
