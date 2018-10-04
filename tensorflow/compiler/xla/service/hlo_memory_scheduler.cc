@@ -263,9 +263,8 @@ class ListScheduler {
     };
 
     for (auto* instruction : computation_.instructions()) {
-      // Instruction with no operands or control predecessors will
-      // not be in the map.
-      if (unscheduled_pred_count.count(instruction) == 0) {
+      if (instruction->operands().empty() &&
+          instruction->control_predecessors().empty()) {
         add_to_ready_queue(instruction);
       }
     }
@@ -356,9 +355,8 @@ class ListScheduler {
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.  We rely on iterator stability in this map, and that the map
-  // entries are std::pair's.
-  std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
+  // LogicalBuffer.
+  absl::flat_hash_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
   absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
