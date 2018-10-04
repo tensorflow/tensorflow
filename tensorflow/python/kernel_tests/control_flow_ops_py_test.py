@@ -3422,7 +3422,8 @@ class EagerTest(test.TestCase):
       self.assertAllEqual(r.numpy(), 10)
       self.assertFalse(isinstance(r, list))
 
-  def testCondInDefun(self):
+  # TODO(b/117279927): Re-enable once msan failure is fixed.
+  def DISABLED_testCondInDefun(self):
     if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
       return unittest.skip("b/113346829 (gpu failure)")
 

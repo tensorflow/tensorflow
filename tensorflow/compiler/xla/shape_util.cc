@@ -869,11 +869,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
     return Status::OK();
   }
 
-  if (Rank(shape) != shape.dimensions_size()) {
-    return InvalidArgument(
-        "shape's rank is mismatched with dimension count; rank=%d "
-        "dimensions_size=%d",
-        Rank(shape), shape.dimensions_size());
+  if (LayoutUtil::IsSparseArray(shape) && Rank(shape) == 0) {
+    return InvalidArgument("sparse arrays must have rank > 0");
   }
   for (int64 i = 0; i < Rank(shape); ++i) {
     int64 dimension = shape.dimensions(i);
