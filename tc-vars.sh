@@ -50,12 +50,6 @@ if [ "${OS}" = "Linux" ]; then
 fi;
 
 export TF_ENABLE_XLA=0
-if [ "${OS}" = "Linux" ]; then
-    TF_NEED_JEMALLOC=1
-elif [ "${OS}" = "Darwin" ]; then
-    TF_NEED_JEMALLOC=0
-fi;
-export TF_NEED_JEMALLOC
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
 export TF_NEED_MKL=0
