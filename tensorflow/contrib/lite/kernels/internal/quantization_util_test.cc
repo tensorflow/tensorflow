@@ -259,7 +259,7 @@ TEST(QuantizationUtilTest, IntegerFrExpVersusDouble) {
   EXPECT_EQ(double_shift, 1);
 
   result = IntegerFrExp(123.45, &shift);
-  EXPECT_NEAR(result, (0.964453 * (1L << 31)), 1000);
+  EXPECT_NEAR(result, (0.964453 * (1LL << 31)), 1000);
   EXPECT_EQ(shift, 7);
   double_result = std::frexp(123.45, &double_shift);
   EXPECT_NEAR(double_result, 0.964453, 1e-5);
