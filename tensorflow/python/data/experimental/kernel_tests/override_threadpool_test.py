@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline statistics gathering ops."""
+"""Tests for the private `override_threadpool()` transformation."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -32,8 +32,8 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class OverrideThreadpoolDatasetTest(test_base.DatasetTestBase,
-                                    parameterized.TestCase):
+class OverrideThreadpoolTest(test_base.DatasetTestBase,
+                             parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("1", 1, None),
