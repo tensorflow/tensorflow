@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import rmsprop
 
 try:
   import yaml  # pylint:disable=g-import-not-at-top
@@ -1181,6 +1182,36 @@ class DefaultShapeInferenceBehaviorTest(test.TestCase):
     sample_input = array_ops.ones((1, 10, 10, 1))
     output = model(sample_input)
     self.assertEqual(output.shape, (1, 3))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_sequential_as_downstream_of_masking_layer(self):
+    inputs = keras.layers.Input(shape=(3, 4))
+    x = keras.layers.Masking(mask_value=0., input_shape=(3, 4))(inputs)
+
+    s = keras.Sequential()
+    s.add(keras.layers.Dense(5, input_shape=(4,)))
+
+    x = keras.layers.wrappers.TimeDistributed(s)(x)
+    model = keras.Model(inputs=inputs, outputs=x)
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(1e-3), loss='mse')
+
+    model_input = np.random.randint(
+        low=1, high=5, size=(10, 3, 4)).astype('float32')
+    for i in range(4):
+      model_input[i, i:, :] = 0.
+    model.fit(model_input,
+              np.random.random((10, 3, 5)), epochs=1, batch_size=6)
+
+    if not context.executing_eagerly():
+      # Note: this doesn't work in eager due to DeferredTensor/ops compatibility
+      # issue.
+      mask_outputs = [model.layers[1].compute_mask(model.layers[1].input)]
+      mask_outputs += [model.layers[2].compute_mask(
+          model.layers[2].input, mask_outputs[-1])]
+      func = keras.backend.function([model.input], mask_outputs)
+      mask_outputs_val = func([model_input])
+      self.assertAllClose(mask_outputs_val[0], np.any(model_input, axis=-1))
+      self.assertAllClose(mask_outputs_val[1], np.any(model_input, axis=-1))
 
 
 class GraphUtilsTest(test.TestCase):
