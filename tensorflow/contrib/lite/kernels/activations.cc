@@ -616,13 +616,15 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
-    case kTfLiteFloat32:
+    case kTfLiteFloat32: {
       SoftmaxParams op_params;
       optimized_ops::LogSoftmax(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
-    case kTfLiteUInt8:
+    }
+    case kTfLiteUInt8: {
+      SoftmaxParams op_params;
       op_params.input_multiplier = data->input_multiplier;
       op_params.input_left_shift = data->input_left_shift;
       op_params.reverse_scaling_divisor = data->reverse_scaling_divisor;
@@ -632,6 +634,7 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
           op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
       return kTfLiteOk;
+    }
     default:
       context->ReportError(context, "Only float32 supported currently., got %d",
                            input->type);
