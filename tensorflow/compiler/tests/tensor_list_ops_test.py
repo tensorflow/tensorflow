@@ -20,22 +20,13 @@ from __future__ import division
 from __future__ import print_function
 import numpy as np
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.client import session
-from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import list_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
-from tensorflow.python.training import server_lib
 
 
 def scalar_shape():
