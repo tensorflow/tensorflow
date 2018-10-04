@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/core/api/error_reporter.h"
+#include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/testing/util.h"
 
 // Comparison for TfLiteRegistration. Since TfLiteRegistration is a C object,
@@ -191,6 +192,27 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
     TfLiteIntArrayFree(desired_outputs);
     ASSERT_EQ(reg1, dummy_reg);
   }
+}
+
+// Test that loading a model with TensorFlow ops fails when the flex delegate is
+// not linked into the target.
+TEST(FlexModel, FailureWithoutFlexDelegate) {
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/contrib/lite/testdata/multi_add_flex.bin");
+  ASSERT_TRUE(model);
+
+  // Note that creation will succeed when using the BuiltinOpResolver, but
+  // unless the appropriate delegate is linked into the target or the client
+  // explicitly installs the delegate, execution will fail.
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*model,
+                               ops::builtin::BuiltinOpResolver{})(&interpreter),
+            kTfLiteOk);
+  ASSERT_TRUE(interpreter);
+
+  // As the flex ops weren't resolved implicitly by the flex delegate, runtime
+  // allocation and execution will fail.
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteError);
 }
 
 // This tests on a flatbuffer that defines a shape of 2 to be a memory mapped

@@ -2,7 +2,7 @@
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(default_visibility = [
-    "//visibility:public",
+    "//visibility:private",
 ])
 
 licenses(["notice"])  # Apache 2.0
@@ -50,6 +50,7 @@ cc_library(
     hdrs = [
         "delegate.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
         ":delegate_data",
@@ -66,6 +67,7 @@ cc_library(
             "//tensorflow/core:lib",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cc_test(
