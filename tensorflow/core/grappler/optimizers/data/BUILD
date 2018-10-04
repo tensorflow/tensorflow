@@ -524,6 +524,7 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
+        "//tensorflow/cc:ops",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

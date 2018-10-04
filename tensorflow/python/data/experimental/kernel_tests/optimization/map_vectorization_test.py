@@ -78,6 +78,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("Basic", lambda x: (x, x + 1), None),
+      ("Const", lambda x: 2, 12),
       ("Parallel", lambda x: (x, x + 1), 12),
       ("Gather", lambda x: array_ops.gather(x, 0), 12),
   )
@@ -206,6 +207,9 @@ class MapVectorizationBenchmark(test.Benchmark):
 
   def benchmarkAddConst(self):
     self._benchmark_helper(lambda *args: [x + 1 for x in args], "add_const")
+
+  def benchmarkReturnConst(self):
+    self._benchmark_helper(lambda *args: [constant_op.constant(2)], "ret_const")
 
   def benchmarkSelect(self):
     self._benchmark_helper(lambda *args: args[0], "select")

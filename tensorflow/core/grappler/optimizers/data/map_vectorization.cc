@@ -44,7 +44,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
   // Function inputs and outputs are the same as original, just
   // with different shapes.
   *vectorized_func->mutable_signature() = orig_func.signature();
-  graph_utils::SetUniqueGraphFunctionName("vectorized_function", library,
+  graph_utils::SetUniqueGraphFunctionName("naively_vectorized_fn", library,
                                           vectorized_func);
 
   // Add MapDefun node
