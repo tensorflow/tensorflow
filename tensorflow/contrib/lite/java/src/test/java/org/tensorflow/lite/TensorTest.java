@@ -182,7 +182,7 @@ public final class TensorTest {
     dataType = Tensor.dataTypeOf(testFloatArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     float[][] testMultiDimArray = {testFloatArray, testFloatArray, testFloatArray};
-    dataType = Tensor.dataTypeOf(testFloatArray);
+    dataType = Tensor.dataTypeOf(testMultiDimArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     try {
       double[] testDoubleArray = {0.783, 0.251};
@@ -237,5 +237,16 @@ public final class TensorTest {
     assertThat(shape[0]).isEqualTo(2);
     assertThat(shape[1]).isEqualTo(3);
     assertThat(shape[2]).isEqualTo(1);
+  }
+
+  @Test
+  public void testUseAfterClose() {
+    tensor.close();
+    try {
+      tensor.numBytes();
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
   }
 }
