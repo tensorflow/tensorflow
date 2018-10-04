@@ -26,14 +26,13 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-/* 
 // Convolution is:
 // ---------------
-// A quick recap of what a convolution layer calculates: if x is the 
-// pixels in the input image and w is the weights for the layer, then 
+// A quick recap of what a convolution layer calculates: if x is the
+// pixels in the input image and w is the weights for the layer, then
 // the convolution basically computes the following for each output pixel:
 // out[j] = x[i]*w[0] + x[i+1]*w[1] + x[i+2]*w[2] + ... + x[i+k]*w[k] + b
-// So x[i] is the input to Conv2D. 
+// So x[i] is the input to Conv2D.
 //    w[i] is the Const to Conv2D.
 //
 // BiasNorm After Convolution where out[j] is output of Conv2D
@@ -43,9 +42,9 @@ namespace graph_transforms {
 //              sqrt(variance)
 // So mean is the Const to Sub.
 //    sqrt(variance) is the Const to TrueDiv.
-//    gamma is the Const to Mul. 
+//    gamma is the Const to Mul.
 //    beta is the Const to BiasAdd.
-// 
+//
 // Now We can Fold these Operations into Conv2D and BiasAdd
 // ---------------------------------------------------------
 //           gamma * w
@@ -55,21 +54,21 @@ namespace graph_transforms {
 //         gamma*(b - mean)
 // b_new = ---------------- + beta
 //          sqrt(variance)
-// 
+//
 // So w_new[i] is the new Const to Conv2D.
 //    Sub, TrueDiv, Mul can be removed(Batchnorm removed).
 //    b_new    is the new Const to BiasAdd.
 //    b is 0 for YOLOv2
-*/
-Status FoldSubDivMulBatchNorms( const GraphDef& input_graph_def,
-                        const TransformFuncContext& context,
-                        GraphDef *output_graph_def) {
+
+Status FoldSubDivMulBatchNorms(const GraphDef& input_graph_def,
+                               const TransformFuncContext& context,
+                               GraphDef* output_graph_def) {
   std::map<string, const NodeDef*> node_map;
   MapNamesToNodes(input_graph_def, &node_map);
   GraphDef replaced_graph_def;
   ReplaceMatchingOpTypesOptions options;
-  options.allow_inconsistencies = false;  
-  
+  options.allow_inconsistencies = false;
+
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
       // ConstNode--->Mul--->Maximum(leaky Relu)
