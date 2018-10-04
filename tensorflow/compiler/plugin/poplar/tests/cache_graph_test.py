@@ -51,9 +51,8 @@ class IpuXlaCacheConvTest(test_util.TensorFlowTestCase):
       # called conv2d and conv2d_1
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'Copy_XLA_Args/arg1.*_weights_to_weights/OnTileCopy',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
-            'Copy_{XLA_Args/arg2.*_weights,partialReduceOut}_to_{XLA_Args/arg0.*_input,weights}']
+            'Copy_']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testConvolutionsDontMatchDifferentTypes(self):
