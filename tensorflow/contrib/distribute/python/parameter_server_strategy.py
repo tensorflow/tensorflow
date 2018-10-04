@@ -296,7 +296,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       return
     for d in cross_tower_ops_lib.get_devices_from(destinations):
       d_spec = tf_device.DeviceSpec.from_string(d)
-      if d_spec.job == self._task_type and d_spec.task != self._task_id:
+      if d_spec.job == self._task_type and d_spec.task != (self._task_id or 0):
         raise ValueError(
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
