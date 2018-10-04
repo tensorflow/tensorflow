@@ -1255,6 +1255,44 @@ class FunctionTest(test.TestCase):
     defined(Foo())
     self.assertEqual(len(defined._function_cache), 2)
 
+  def testCacheTensorShapeDtypeCollision(self):
+
+    def func(t):
+      return t + t
+
+    defined = function.defun(func)
+    t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
+    defined(t)
+    self.assertEqual(len(defined._function_cache), 1)
+
+    t = constant_op.constant([1.0], dtype=dtypes.complex128)
+    defined(t)
+    self.assertEqual(len(defined._function_cache), 2)
+
+  def testCacheTensorUnknownShapesCollision(self):
+
+    def func(t):
+      return t + t
+
+    with context.graph_mode(), self.cached_session():
+      defined = function.defun(func)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 1)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 2)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 3)
+
+      t = constant_op.constant(1.0, dtype=dtypes.float32)
+      defined(t)
+      self.assertEqual(len(defined._function_cache), 4)
+
   def testPythonFunctionWithDefaultArgs(self):
 
     def func(foo, bar=1, baz=2):
@@ -1271,17 +1309,17 @@ class FunctionTest(test.TestCase):
       return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn(('tRRR', (0, 1, 20)), cache_keys())
+    self.assertIn(('URRR', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn(('tRRR', (1, 1, 2)), cache_keys())
+    self.assertIn(('URRR', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
-    self.assertIn(('tRRR', (1, 2, 3)), cache_keys())
+    self.assertIn(('URRR', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
