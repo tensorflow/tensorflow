@@ -97,6 +97,13 @@ class PartitionedCallOp : public AsyncOpKernel {
         OP_REQUIRES_ASYNC(ctx, fbody != nullptr,
                           errors::Internal("Could not find handle ", handle),
                           done);
+        OP_REQUIRES_ASYNC(
+            ctx, args.size() == fbody->arg_nodes.size(),
+            errors::InvalidArgument(
+                "Wrong number of arguments to the op; function expects ",
+                fbody->arg_nodes.size(), " but PartitionedCall received ",
+                args.size()),
+            done);
         // We need to pass global op_registry as default_registry when creating
         // graph. So that graph optimization passes can lookup all possible ops
         // by name.
