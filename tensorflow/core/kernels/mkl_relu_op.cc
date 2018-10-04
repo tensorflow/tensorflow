@@ -1023,7 +1023,8 @@ class MklReluGradOpBase : public OpKernel {
       }
 
       OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                  {diff_dst_index}, diff_src_index,
+                                  {static_cast<const int>(diff_dst_index)},
+                                  static_cast<const int>(diff_src_index),
                                   tf_shape_diff_src, &diff_src_tensor));
       AllocateOutputSetMklShape(context, diff_src_index, dnn_shape_diff_src);
 
