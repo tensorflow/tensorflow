@@ -78,7 +78,7 @@ template <typename SubClass, typename RetTy = void> class AffineExprVisitor {
   // that you use to visit affine expressions...
 public:
   // Function to walk an AffineExpr (in post order).
-  RetTy walkPostOrder(AffineExpr *expr) {
+  RetTy walkPostOrder(AffineExprRef expr) {
     static_assert(std::is_base_of<AffineExprVisitor, SubClass>::value,
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
@@ -120,7 +120,7 @@ public:
   }
 
   // Function to visit an AffineExpr.
-  RetTy visit(AffineExpr *expr) {
+  RetTy visit(AffineExprRef expr) {
     static_assert(std::is_base_of<AffineExprVisitor, SubClass>::value,
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {

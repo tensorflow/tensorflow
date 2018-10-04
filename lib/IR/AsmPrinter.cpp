@@ -64,7 +64,7 @@ public:
   // Initializes module state, populating affine map state.
   void initialize(const Module *module);
 
-  int getAffineMapId(const AffineMap *affineMap) const {
+  int getAffineMapId(AffineMap *affineMap) const {
     auto it = affineMapIds.find(affineMap);
     if (it == affineMapIds.end()) {
       return -1;
@@ -72,9 +72,9 @@ public:
     return it->second;
   }
 
-  ArrayRef<const AffineMap *> getAffineMapIds() const { return affineMapsById; }
+  ArrayRef<AffineMap *> getAffineMapIds() const { return affineMapsById; }
 
-  int getIntegerSetId(const IntegerSet *integerSet) const {
+  int getIntegerSetId(IntegerSet *integerSet) const {
     auto it = integerSetIds.find(integerSet);
     if (it == integerSetIds.end()) {
       return -1;
@@ -82,19 +82,17 @@ public:
     return it->second;
   }
 
-  ArrayRef<const IntegerSet *> getIntegerSetIds() const {
-    return integerSetsById;
-  }
+  ArrayRef<IntegerSet *> getIntegerSetIds() const { return integerSetsById; }
 
 private:
-  void recordAffineMapReference(const AffineMap *affineMap) {
+  void recordAffineMapReference(AffineMap *affineMap) {
     if (affineMapIds.count(affineMap) == 0) {
       affineMapIds[affineMap] = affineMapsById.size();
       affineMapsById.push_back(affineMap);
     }
   }
 
-  void recordIntegerSetReference(const IntegerSet *integerSet) {
+  void recordIntegerSetReference(IntegerSet *integerSet) {
     if (integerSetIds.count(integerSet) == 0) {
       integerSetIds[integerSet] = integerSetsById.size();
       integerSetsById.push_back(integerSet);
@@ -102,7 +100,7 @@ private:
   }
 
   // Return true if this map could be printed using the shorthand form.
-  static bool hasShorthandForm(const AffineMap *boundMap) {
+  static bool hasShorthandForm(AffineMap *boundMap) {
     if (boundMap->isSingleConstant())
       return true;
 
@@ -126,11 +124,11 @@ private:
   void visitAttribute(const Attribute *attr);
   void visitOperation(const Operation *op);
 
-  DenseMap<const AffineMap *, int> affineMapIds;
-  std::vector<const AffineMap *> affineMapsById;
+  DenseMap<AffineMap *, int> affineMapIds;
+  std::vector<AffineMap *> affineMapsById;
 
-  DenseMap<const IntegerSet *, int> integerSetIds;
-  std::vector<const IntegerSet *> integerSetsById;
+  DenseMap<IntegerSet *, int> integerSetIds;
+  std::vector<IntegerSet *> integerSetsById;
 };
 } // end anonymous namespace
 
@@ -275,10 +273,10 @@ public:
   void print(const CFGFunction *fn);
   void print(const MLFunction *fn);
 
-  void printAffineMap(const AffineMap *map);
-  void printAffineExpr(const AffineExpr *expr);
-  void printAffineConstraint(const AffineExpr *expr, bool isEq);
-  void printIntegerSet(const IntegerSet *set);
+  void printAffineMap(AffineMap *map);
+  void printAffineExpr(AffineExprRef expr);
+  void printAffineConstraint(AffineExprRef expr, bool isEq);
+  void printIntegerSet(IntegerSet *set);
 
 protected:
   raw_ostream &os;
@@ -290,9 +288,9 @@ protected:
                              ArrayRef<const char *> elidedAttrs = {});
   void printFunctionResultType(const FunctionType *type);
   void printAffineMapId(int affineMapId) const;
-  void printAffineMapReference(const AffineMap *affineMap);
+  void printAffineMapReference(AffineMap *affineMap);
   void printIntegerSetId(int integerSetId) const;
-  void printIntegerSetReference(const IntegerSet *integerSet);
+  void printIntegerSetReference(IntegerSet *integerSet);
 
   /// This enum is used to represent the binding stength of the enclosing
   /// context that an AffineExpr is being printed in, so we can intelligently
@@ -301,7 +299,7 @@ protected:
     Weak,   // + and -
     Strong, // All other binary operators.
   };
-  void printAffineExprInternal(const AffineExpr *expr,
+  void printAffineExprInternal(AffineExprRef expr,
                                BindingStrength enclosingTightness);
 };
 } // end anonymous namespace
@@ -323,7 +321,7 @@ void ModulePrinter::printAffineMapId(int affineMapId) const {
   os << "#map" << affineMapId;
 }
 
-void ModulePrinter::printAffineMapReference(const AffineMap *affineMap) {
+void ModulePrinter::printAffineMapReference(AffineMap *affineMap) {
   int mapId = state.getAffineMapId(affineMap);
   if (mapId >= 0) {
     // Map will be printed at top of module so print reference to its id.
@@ -339,7 +337,7 @@ void ModulePrinter::printIntegerSetId(int integerSetId) const {
   os << "@@set" << integerSetId;
 }
 
-void ModulePrinter::printIntegerSetReference(const IntegerSet *integerSet) {
+void ModulePrinter::printIntegerSetReference(IntegerSet *integerSet) {
   int setId;
   if ((setId = state.getIntegerSetId(integerSet)) >= 0) {
     // The set will be printed at top of module; so print reference to its id.
@@ -572,12 +570,12 @@ void ModulePrinter::printType(const Type *type) {
 // Affine expressions and maps
 //===----------------------------------------------------------------------===//
 
-void ModulePrinter::printAffineExpr(const AffineExpr *expr) {
+void ModulePrinter::printAffineExpr(AffineExprRef expr) {
   printAffineExprInternal(expr, BindingStrength::Weak);
 }
 
 void ModulePrinter::printAffineExprInternal(
-    const AffineExpr *expr, BindingStrength enclosingTightness) {
+    AffineExprRef expr, BindingStrength enclosingTightness) {
   const char *binopSpelling = nullptr;
   switch (expr->getKind()) {
   case AffineExpr::Kind::SymbolId:
@@ -628,10 +626,10 @@ void ModulePrinter::printAffineExprInternal(
 
   // Pretty print addition to a product that has a negative operand as a
   // subtraction.
-  AffineExpr *rhsExpr = binOp->getRHS();
+  AffineExprRef rhsExpr = binOp->getRHS();
   if (auto *rhs = dyn_cast<AffineBinaryOpExpr>(rhsExpr)) {
     if (rhs->getKind() == AffineExpr::Kind::Mul) {
-      AffineExpr *rrhsExpr = rhs->getRHS();
+      AffineExprRef rrhsExpr = rhs->getRHS();
       if (auto *rrhs = dyn_cast<AffineConstantExpr>(rrhsExpr)) {
         if (rrhs->getValue() == -1) {
           printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
@@ -675,12 +673,12 @@ void ModulePrinter::printAffineExprInternal(
     os << ')';
 }
 
-void ModulePrinter::printAffineConstraint(const AffineExpr *expr, bool isEq) {
+void ModulePrinter::printAffineConstraint(AffineExprRef expr, bool isEq) {
   printAffineExprInternal(expr, BindingStrength::Weak);
   isEq ? os << " == 0" : os << " >= 0";
 }
 
-void ModulePrinter::printAffineMap(const AffineMap *map) {
+void ModulePrinter::printAffineMap(AffineMap *map) {
   // Dimension identifiers.
   os << '(';
   for (int i = 0; i < (int)map->getNumDims() - 1; ++i)
@@ -704,7 +702,7 @@ void ModulePrinter::printAffineMap(const AffineMap *map) {
   // Result affine expressions.
   os << " -> (";
   interleaveComma(map->getResults(),
-                  [&](AffineExpr *expr) { printAffineExpr(expr); });
+                  [&](AffineExprRef expr) { printAffineExpr(expr); });
   os << ')';
 
   if (!map->isBounded()) {
@@ -714,11 +712,11 @@ void ModulePrinter::printAffineMap(const AffineMap *map) {
   // Print range sizes for bounded affine maps.
   os << " size (";
   interleaveComma(map->getRangeSizes(),
-                  [&](AffineExpr *expr) { printAffineExpr(expr); });
+                  [&](AffineExprRef expr) { printAffineExpr(expr); });
   os << ')';
 }
 
-void ModulePrinter::printIntegerSet(const IntegerSet *set) {
+void ModulePrinter::printIntegerSet(IntegerSet *set) {
   // Dimension identifiers.
   os << '(';
   for (unsigned i = 1; i < set->getNumDims(); ++i)
@@ -853,13 +851,13 @@ public:
   void printAttribute(const Attribute *attr) {
     ModulePrinter::printAttribute(attr);
   }
-  void printAffineMap(const AffineMap *map) {
+  void printAffineMap(AffineMap *map) {
     return ModulePrinter::printAffineMapReference(map);
   }
-  void printIntegerSet(const IntegerSet *set) {
+  void printIntegerSet(IntegerSet *set) {
     return ModulePrinter::printIntegerSetReference(set);
   }
-  void printAffineExpr(const AffineExpr *expr) {
+  void printAffineExpr(AffineExprRef expr) {
     return ModulePrinter::printAffineExpr(expr);
   }
   void printFunctionReference(const Function *func) {
@@ -1433,7 +1431,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
   // Therefore, short-hand parsing and printing is only supported for
   // zero-operand constant maps and single symbol operand identity maps.
   if (map->getNumResults() == 1) {
-    AffineExpr *expr = map->getResult(0);
+    AffineExprRef expr = map->getResult(0);
 
     // Print constant bound.
     if (map->getNumDims() == 0 && map->getNumSymbols() == 0) {
@@ -1498,32 +1496,32 @@ void Type::print(raw_ostream &os) const {
 
 void Type::dump() const { print(llvm::errs()); }
 
-void AffineMap::dump() const {
+void AffineMap::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
 
-void AffineExpr::dump() const {
+void AffineExpr::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
 
-void IntegerSet::dump() const {
+void IntegerSet::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
 
-void AffineExpr::print(raw_ostream &os) const {
+void AffineExpr::print(raw_ostream &os) {
   ModuleState state(/*no context is known*/ nullptr);
   ModulePrinter(os, state).printAffineExpr(this);
 }
 
-void AffineMap::print(raw_ostream &os) const {
+void AffineMap::print(raw_ostream &os) {
   ModuleState state(/*no context is known*/ nullptr);
   ModulePrinter(os, state).printAffineMap(this);
 }
 
-void IntegerSet::print(raw_ostream &os) const {
+void IntegerSet::print(raw_ostream &os) {
   ModuleState state(/*no context is known*/ nullptr);
   ModulePrinter(os, state).printIntegerSet(this);
 }

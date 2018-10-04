@@ -120,17 +120,9 @@ public:
   AffineExprRef getCeilDivExpr(AffineExprRef lhs, AffineExprRef rhs);
   AffineExprRef getCeilDivExpr(AffineExprRef lhs, uint64_t rhs);
 
-  /// Creates a sum of products affine expression from constant coefficients.
-  /// If c_0, c_1, ... are the coefficients in the order corresponding to
-  /// dimensions, symbols, and the constant term, create the affine expression:
-  /// expr = c_0*d0 + c_1*d1 + ... + c_{ndims-1}*d_{ndims-1} + c_{..}*s0 +
-  ///        c_{..}*s1 + ... + const
-  AffineExpr *getAddMulPureAffineExpr(unsigned numDims, unsigned numSymbols,
-                                      ArrayRef<int64_t> coeffs);
-
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExpr *> results,
-                          ArrayRef<AffineExpr *> rangeSizes);
+                          ArrayRef<AffineExprRef> results,
+                          ArrayRef<AffineExprRef> rangeSizes);
 
   // Special cases of affine maps and integer sets
   /// Returns a single constant result affine map with 0 dimensions and 0
@@ -153,7 +145,7 @@ public:
 
   // Integer set.
   IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExpr *> constraints,
+                            ArrayRef<AffineExprRef> constraints,
                             ArrayRef<bool> isEq);
   // TODO: Helpers for affine map/exprs, etc.
 protected:

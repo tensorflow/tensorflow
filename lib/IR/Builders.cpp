@@ -150,8 +150,8 @@ FunctionAttr *Builder::getFunctionAttr(const Function *value) {
 //===----------------------------------------------------------------------===//
 
 AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
-                                 ArrayRef<AffineExpr *> results,
-                                 ArrayRef<AffineExpr *> rangeSizes) {
+                                 ArrayRef<AffineExprRef> results,
+                                 ArrayRef<AffineExprRef> rangeSizes) {
   return AffineMap::get(dimCount, symbolCount, results, rangeSizes, context);
 }
 
@@ -224,7 +224,7 @@ AffineExprRef Builder::getCeilDivExpr(AffineExprRef lhs, uint64_t rhs) {
 }
 
 IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                                   ArrayRef<AffineExpr *> constraints,
+                                   ArrayRef<AffineExprRef> constraints,
                                    ArrayRef<bool> isEq) {
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
 }
@@ -251,9 +251,9 @@ AffineMap *Builder::getSingleDimShiftAffineMap(int64_t shift) {
 }
 
 AffineMap *Builder::getShiftedAffineMap(AffineMap *map, int64_t shift) {
-  SmallVector<AffineExpr *, 4> shiftedResults;
+  SmallVector<AffineExprRef, 4> shiftedResults;
   shiftedResults.reserve(map->getNumResults());
-  for (auto *resultExpr : map->getResults()) {
+  for (auto resultExpr : map->getResults()) {
     shiftedResults.push_back(getAddExpr(resultExpr, shift));
   }
   return AffineMap::get(map->getNumDims(), map->getNumSymbols(), shiftedResults,

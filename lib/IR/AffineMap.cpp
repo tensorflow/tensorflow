@@ -23,7 +23,8 @@
 using namespace mlir;
 
 AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-                     AffineExpr *const *results, AffineExpr *const *rangeSizes)
+                     ArrayRef<AffineExprRef> results,
+                     ArrayRef<AffineExprRef> rangeSizes)
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
       results(results), rangeSizes(rangeSizes) {}
 
@@ -33,30 +34,36 @@ AffineMap *AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
              {AffineConstantExpr::get(val, context)}, {}, context);
 }
 
-bool AffineMap::isIdentity() const {
+bool AffineMap::isIdentity() {
   if (getNumDims() != getNumResults())
     return false;
-  ArrayRef<AffineExpr *> results = getResults();
+  ArrayRef<AffineExprRef> results = getResults();
   for (unsigned i = 0, numDims = getNumDims(); i < numDims; ++i) {
-    auto *expr = dyn_cast<AffineDimExpr>(results[i]);
+    auto *expr =
+        const_cast<AffineDimExpr *>(dyn_cast<AffineDimExpr>(results[i]));
     if (!expr || expr->getPosition() != i)
       return false;
   }
   return true;
 }
 
-bool AffineMap::isSingleConstant() const {
+bool AffineMap::isSingleConstant() {
   return getNumResults() == 1 && isa<AffineConstantExpr>(getResult(0));
 }
 
-int64_t AffineMap::getSingleConstantResult() const {
+int64_t AffineMap::getSingleConstantResult() {
   assert(isSingleConstant() && "map must have a single constant result");
-  return cast<AffineConstantExpr>(getResult(0))->getValue();
+  return const_cast<AffineConstantExpr *>(
+             cast<AffineConstantExpr>(getResult(0)))
+      ->getValue();
 }
 
+AffineExprRef AffineMap::getResult(unsigned idx) { return results[idx]; }
+
 /// Simplify add expression. Return nullptr if it can't be simplified.
-AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
-                                            MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::simplifyAdd(AffineExprRef lhs,
+                                              AffineExprRef rhs,
+                                              MLIRContext *context) {
   auto *lhsConst = dyn_cast<AffineConstantExpr>(lhs);
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 
@@ -80,16 +87,19 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
       return lhs;
   }
   // Fold successive additions like (d0 + 2) + 3 into d0 + 5.
-  auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
+  auto *lBin =
+      const_cast<AffineBinaryOpExpr *>(dyn_cast<AffineBinaryOpExpr>(lhs));
   if (lBin && rhsConst && lBin->getKind() == Kind::Add) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS()))
+    if (auto *lrhs = const_cast<AffineConstantExpr *>(
+            dyn_cast<AffineConstantExpr>(lBin->getRHS())))
       return lBin->getLHS() + (lrhs->getValue() + rhsConst->getValue());
   }
 
   // When doing successive additions, bring constant to the right: turn (d0 + 2)
   // + d1 into (d0 + d1) + 2.
   if (lBin && lBin->getKind() == Kind::Add) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+    if (auto *lrhs = const_cast<AffineConstantExpr *>(
+            dyn_cast<AffineConstantExpr>(lBin->getRHS()))) {
       return lBin->getLHS() + rhs + lrhs;
     }
   }
@@ -98,8 +108,9 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
 }
 
 /// Simplify a multiply expression. Return nullptr if it can't be simplified.
-AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
-                                            MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::simplifyMul(AffineExprRef lhs,
+                                              AffineExprRef rhs,
+                                              MLIRContext *context) {
   auto *lhsConst = dyn_cast<AffineConstantExpr>(lhs);
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 
@@ -129,16 +140,19 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   }
 
   // Fold successive multiplications: eg: (d0 * 2) * 3 into d0 * 6.
-  auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
+  auto *lBin =
+      const_cast<AffineBinaryOpExpr *>(dyn_cast<AffineBinaryOpExpr>(lhs));
   if (lBin && rhsConst && lBin->getKind() == Kind::Mul) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS()))
+    if (auto *lrhs = const_cast<AffineConstantExpr *>(
+            dyn_cast<AffineConstantExpr>(lBin->getRHS())))
       return lBin->getLHS() * (lrhs->getValue() * rhsConst->getValue());
   }
 
   // When doing successive multiplication, bring constant to the right: turn (d0
   // * 2) * d1 into (d0 * d1) * 2.
   if (lBin && lBin->getKind() == Kind::Mul) {
-    if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+    if (auto *lrhs = const_cast<AffineConstantExpr *>(
+            dyn_cast<AffineConstantExpr>(lBin->getRHS()))) {
       return (lBin->getLHS() * rhs) * lrhs;
     }
   }
@@ -146,9 +160,9 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   return nullptr;
 }
 
-AffineExpr *AffineBinaryOpExpr::simplifyFloorDiv(AffineExpr *lhs,
-                                                 AffineExpr *rhs,
-                                                 MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::simplifyFloorDiv(AffineExprRef lhs,
+                                                   AffineExprRef rhs,
+                                                   MLIRContext *context) {
   auto *lhsConst = dyn_cast<AffineConstantExpr>(lhs);
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 
@@ -162,9 +176,11 @@ AffineExpr *AffineBinaryOpExpr::simplifyFloorDiv(AffineExpr *lhs,
     if (rhsConst->getValue() == 1)
       return lhs;
 
-    auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
+    auto *lBin =
+        const_cast<AffineBinaryOpExpr *>(dyn_cast<AffineBinaryOpExpr>(lhs));
     if (lBin && lBin->getKind() == Kind::Mul) {
-      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+      if (auto *lrhs = const_cast<AffineConstantExpr *>(
+              dyn_cast<AffineConstantExpr>(lBin->getRHS()))) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
           return lBin->getLHS() * (lrhs->getValue() / rhsConst->getValue());
@@ -175,9 +191,9 @@ AffineExpr *AffineBinaryOpExpr::simplifyFloorDiv(AffineExpr *lhs,
   return nullptr;
 }
 
-AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
-                                                AffineExpr *rhs,
-                                                MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::simplifyCeilDiv(AffineExprRef lhs,
+                                                  AffineExprRef rhs,
+                                                  MLIRContext *context) {
   auto *lhsConst = dyn_cast<AffineConstantExpr>(lhs);
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 
@@ -191,9 +207,11 @@ AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
     if (rhsConst->getValue() == 1)
       return lhs;
 
-    auto *lBin = dyn_cast<AffineBinaryOpExpr>(lhs);
+    auto *lBin =
+        const_cast<AffineBinaryOpExpr *>(dyn_cast<AffineBinaryOpExpr>(lhs));
     if (lBin && lBin->getKind() == Kind::Mul) {
-      if (auto *lrhs = dyn_cast<AffineConstantExpr>(lBin->getRHS())) {
+      if (auto *lrhs = const_cast<AffineConstantExpr *>(
+              dyn_cast<AffineConstantExpr>(lBin->getRHS()))) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
           return lBin->getLHS() * (lrhs->getValue() / rhsConst->getValue());
@@ -204,8 +222,9 @@ AffineExpr *AffineBinaryOpExpr::simplifyCeilDiv(AffineExpr *lhs,
   return nullptr;
 }
 
-AffineExpr *AffineBinaryOpExpr::simplifyMod(AffineExpr *lhs, AffineExpr *rhs,
-                                            MLIRContext *context) {
+AffineExprRef AffineBinaryOpExpr::simplifyMod(AffineExprRef lhs,
+                                              AffineExprRef rhs,
+                                              MLIRContext *context) {
   auto *lhsConst = dyn_cast<AffineConstantExpr>(lhs);
   auto *rhsConst = dyn_cast<AffineConstantExpr>(rhs);
 

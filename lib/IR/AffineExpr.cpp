@@ -85,7 +85,7 @@ AffineExprRef AffineBinaryOpExpr::getMod(AffineExprRef lhs, uint64_t rhs,
 
 /// Returns true if this expression is made out of only symbols and
 /// constants (no dimensional identifiers).
-bool AffineExpr::isSymbolicOrConstant() const {
+bool AffineExpr::isSymbolicOrConstant() {
   switch (getKind()) {
   case Kind::Constant:
     return true;
@@ -108,7 +108,7 @@ bool AffineExpr::isSymbolicOrConstant() const {
 
 /// Returns true if this is a pure affine expression, i.e., multiplication,
 /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
-bool AffineExpr::isPureAffine() const {
+bool AffineExpr::isPureAffine() {
   switch (getKind()) {
   case Kind::SymbolId:
   case Kind::DimId:
@@ -138,7 +138,7 @@ bool AffineExpr::isPureAffine() const {
 }
 
 /// Returns the greatest known integral divisor of this affine expression.
-uint64_t AffineExpr::getLargestKnownDivisor() const {
+uint64_t AffineExpr::getLargestKnownDivisor() {
   AffineBinaryOpExpr *binExpr = nullptr;
   switch (kind) {
   case Kind::SymbolId:
@@ -148,7 +148,7 @@ uint64_t AffineExpr::getLargestKnownDivisor() const {
   case Kind::Constant:
     return std::abs(cast<AffineConstantExpr>(this)->getValue());
   case Kind::Mul: {
-    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    binExpr = cast<AffineBinaryOpExpr>(this);
     return binExpr->getLHS()->getLargestKnownDivisor() *
            binExpr->getRHS()->getLargestKnownDivisor();
   }
@@ -157,7 +157,7 @@ uint64_t AffineExpr::getLargestKnownDivisor() const {
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
-    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    binExpr = cast<AffineBinaryOpExpr>(this);
     return llvm::GreatestCommonDivisor64(
         binExpr->getLHS()->getLargestKnownDivisor(),
         binExpr->getRHS()->getLargestKnownDivisor());
@@ -165,7 +165,7 @@ uint64_t AffineExpr::getLargestKnownDivisor() const {
   }
 }
 
-bool AffineExpr::isMultipleOf(int64_t factor) const {
+bool AffineExpr::isMultipleOf(int64_t factor) {
   AffineBinaryOpExpr *binExpr = nullptr;
   uint64_t l, u;
   switch (kind) {
@@ -176,7 +176,7 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
   case Kind::Constant:
     return cast<AffineConstantExpr>(this)->getValue() % factor == 0;
   case Kind::Mul: {
-    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    binExpr = cast<AffineBinaryOpExpr>(this);
     // It's probably not worth optimizing this further (to not traverse the
     // whole sub-tree under - it that would require a version of isMultipleOf
     // that on a 'false' return also returns the largest known divisor).
@@ -188,7 +188,7 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
-    binExpr = cast<AffineBinaryOpExpr>(const_cast<AffineExpr *>(this));
+    binExpr = cast<AffineBinaryOpExpr>(this);
     return llvm::GreatestCommonDivisor64(
                binExpr->getLHS()->getLargestKnownDivisor(),
                binExpr->getRHS()->getLargestKnownDivisor()) %
@@ -198,7 +198,7 @@ bool AffineExpr::isMultipleOf(int64_t factor) const {
   }
 }
 
-MLIRContext *AffineExpr::getContext() const { return context; }
+MLIRContext *AffineExpr::getContext() { return context; }
 
 template <> AffineExprRef AffineExprRef::operator+(int64_t v) const {
   return AffineBinaryOpExpr::getAdd(expr, v, expr->getContext());

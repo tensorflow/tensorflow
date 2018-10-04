@@ -22,8 +22,9 @@
 using namespace mlir;
 
 IntegerSet::IntegerSet(unsigned dimCount, unsigned symbolCount,
-                       unsigned numConstraints, AffineExpr *const *constraints,
-                       const bool *const eqFlags)
+                       unsigned numConstraints,
+                       ArrayRef<AffineExprRef> constraints,
+                       ArrayRef<bool> eqFlags)
     : dimCount(dimCount), symbolCount(symbolCount),
       numConstraints(numConstraints), constraints(constraints),
       eqFlags(eqFlags) {}

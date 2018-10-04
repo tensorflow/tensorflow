@@ -30,14 +30,14 @@ using namespace mlir;
 MutableAffineMap::MutableAffineMap(AffineMap *map, MLIRContext *context)
     : numDims(map->getNumDims()), numSymbols(map->getNumSymbols()),
       context(context) {
-  for (auto *result : map->getResults())
+  for (auto result : map->getResults())
     results.push_back(result);
-  for (auto *rangeSize : map->getRangeSizes())
+  for (auto rangeSize : map->getRangeSizes())
     results.push_back(rangeSize);
 }
 
 bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
-  if (results[idx]->isMultipleOf(factor))
+  if (const_cast<AffineExprRef &>(results[idx])->isMultipleOf(factor))
     return true;
 
   // TODO(bondhugula): use simplifyAffineExpr and FlatAffineConstraints to

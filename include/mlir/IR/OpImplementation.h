@@ -28,8 +28,10 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
-class AffineMap;
 class AffineExpr;
+template <typename T> class AffineExprBaseRef;
+using AffineExprRef = AffineExprBaseRef<AffineExpr>;
+class AffineMap;
 class Builder;
 class Function;
 
@@ -68,8 +70,8 @@ public:
   virtual void printType(const Type *type) = 0;
   virtual void printFunctionReference(const Function *func) = 0;
   virtual void printAttribute(const Attribute *attr) = 0;
-  virtual void printAffineMap(const AffineMap *map) = 0;
-  virtual void printAffineExpr(const AffineExpr *expr) = 0;
+  virtual void printAffineMap(AffineMap *map) = 0;
+  virtual void printAffineExpr(AffineExprRef expr) = 0;
 
   /// If the specified operation has attributes, print out an attribute
   /// dictionary with their values.  elidedAttrs allows the client to ignore
@@ -104,7 +106,7 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Attribute &attr) {
 }
 
 inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const AffineMap &map) {
-  p.printAffineMap(&map);
+  p.printAffineMap(&const_cast<AffineMap &>(map));
   return p;
 }
 

@@ -52,9 +52,7 @@ FunctionPass *mlir::createSimplifyAffineExprPass() {
 }
 
 AffineMap *MutableAffineMap::getAffineMap() {
-  SmallVector<AffineExpr *, 8> res(results.begin(), results.end());
-  SmallVector<AffineExpr *, 8> sizes(rangeSizes.begin(), rangeSizes.end());
-  return AffineMap::get(numDims, numSymbols, res, sizes, context);
+  return AffineMap::get(numDims, numSymbols, results, rangeSizes, context);
 }
 
 PassResult SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {

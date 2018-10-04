@@ -193,7 +193,7 @@ public:
                            MLIRContext *context)
       : numDims(numDims), operandConsts(operandConsts), context(context) {}
 
-  IntegerAttr *constantFold(AffineExpr *expr) {
+  IntegerAttr *constantFold(AffineExprRef expr) {
     switch (expr->getKind()) {
     case AffineExpr::Kind::Add:
       return constantFoldBinExpr(
@@ -224,7 +224,7 @@ public:
 
 private:
   IntegerAttr *
-  constantFoldBinExpr(AffineExpr *expr,
+  constantFoldBinExpr(AffineExprRef expr,
                       std::function<uint64_t(int64_t, uint64_t)> op) {
     auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
     auto *lhs = constantFold(binOpExpr->getLHS());
@@ -254,7 +254,7 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operands,
   AffineExprConstantFolder exprFolder(map->getNumDims(), operands, context);
 
   // Constant fold each AffineExpr in AffineMap and add to 'results'.
-  for (auto *expr : map->getResults()) {
+  for (auto expr : map->getResults()) {
     results.push_back(exprFolder.constantFold(expr));
   }
   // Return false on success.

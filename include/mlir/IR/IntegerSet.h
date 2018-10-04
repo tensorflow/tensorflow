@@ -47,51 +47,45 @@ class MLIRContext;
 class IntegerSet {
 public:
   static IntegerSet *get(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr *> constraints,
+                         ArrayRef<AffineExprRef> constraints,
                          ArrayRef<bool> eqFlags, MLIRContext *context);
 
-  unsigned getNumDims() const { return dimCount; }
-  unsigned getNumSymbols() const { return symbolCount; }
-  unsigned getNumOperands() const { return dimCount + symbolCount; }
-  unsigned getNumConstraints() const { return numConstraints; }
+  unsigned getNumDims() { return dimCount; }
+  unsigned getNumSymbols() { return symbolCount; }
+  unsigned getNumOperands() { return dimCount + symbolCount; }
+  unsigned getNumConstraints() { return numConstraints; }
 
-  ArrayRef<AffineExpr *> getConstraints() const {
-    return ArrayRef<AffineExpr *>(constraints, numConstraints);
-  }
+  ArrayRef<AffineExprRef> getConstraints() { return constraints; }
 
-  AffineExpr *getConstraint(unsigned idx) const {
-    return getConstraints()[idx];
-  }
+  AffineExprRef getConstraint(unsigned idx) { return getConstraints()[idx]; }
 
   /// Returns the equality bits, which specify whether each of the constraints
   /// is an equality or inequality.
-  ArrayRef<bool> getEqFlags() const {
-    return ArrayRef<bool>(eqFlags, numConstraints);
-  }
+  ArrayRef<bool> getEqFlags() { return eqFlags; }
 
   /// Returns true if the idx^th constraint is an equality, false if it is an
   /// inequality.
-  bool isEq(unsigned idx) const { return getEqFlags()[idx]; }
+  bool isEq(unsigned idx) { return getEqFlags()[idx]; }
 
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os);
+  void dump();
 
 private:
   IntegerSet(unsigned dimCount, unsigned symbolCount, unsigned numConstraints,
-             AffineExpr *const *constraints, const bool *const eqFlags);
+             ArrayRef<AffineExprRef> constraints, ArrayRef<bool> eqFlags);
 
   ~IntegerSet() = delete;
 
-  const unsigned dimCount;
-  const unsigned symbolCount;
-  const unsigned numConstraints;
+  unsigned dimCount;
+  unsigned symbolCount;
+  unsigned numConstraints;
 
   /// Array of affine constraints: a constaint is either an equality
   /// (affine_expr == 0) or an inequality (affine_expr >= 0).
-  AffineExpr *const *const constraints;
+  ArrayRef<AffineExprRef> constraints;
 
   // Bits to check whether a constraint is an equality or an inequality.
-  const bool *const eqFlags;
+  ArrayRef<bool> eqFlags;
 };
 
 } // end namespace mlir

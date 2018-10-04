@@ -30,8 +30,10 @@
 
 namespace mlir {
 
-class MLIRContext;
 class AffineExpr;
+template <typename T> class AffineExprBaseRef;
+using AffineExprRef = AffineExprBaseRef<AffineExpr>;
+class MLIRContext;
 
 /// A multi-dimensional affine map
 /// Affine map's are immutable like Type's, and they are uniqued.
@@ -41,8 +43,8 @@ class AffineExpr;
 class AffineMap {
 public:
   static AffineMap *get(unsigned dimCount, unsigned symbolCount,
-                        ArrayRef<AffineExpr *> results,
-                        ArrayRef<AffineExpr *> rangeSizes,
+                        ArrayRef<AffineExprRef> results,
+                        ArrayRef<AffineExprRef> rangeSizes,
                         MLIRContext *context);
 
   /// Returns a single constant result affine map.
@@ -51,60 +53,56 @@ public:
   /// Returns true if the co-domain (or more loosely speaking, range) of this
   /// map is bounded. Bounded affine maps have a size (extent) for each of
   /// their range dimensions (more accurately co-domain dimensions).
-  bool isBounded() const { return rangeSizes != nullptr; }
+  bool isBounded() { return !rangeSizes.empty(); }
 
   /// Returns true if this affine map is an identity affine map.
   /// An identity affine map corresponds to an identity affine function on the
   /// dimensional identifiers.
-  bool isIdentity() const;
+  bool isIdentity();
 
   /// Returns true if this affine map is a single result constant function.
-  bool isSingleConstant() const;
+  bool isSingleConstant();
 
   /// Returns the constant result of this map. This methods asserts that the map
   /// has a single constant result.
-  int64_t getSingleConstantResult() const;
+  int64_t getSingleConstantResult();
 
   // Prints affine map to 'os'.
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os);
+  void dump();
 
-  unsigned getNumDims() const { return numDims; }
-  unsigned getNumSymbols() const { return numSymbols; }
-  unsigned getNumResults() const { return numResults; }
-  unsigned getNumInputs() const { return numDims + numSymbols; }
+  unsigned getNumDims() { return numDims; }
+  unsigned getNumSymbols() { return numSymbols; }
+  unsigned getNumResults() { return numResults; }
+  unsigned getNumInputs() { return numDims + numSymbols; }
 
-  ArrayRef<AffineExpr *> getResults() const {
-    return ArrayRef<AffineExpr *>(results, numResults);
-  }
+  ArrayRef<AffineExprRef> getResults() { return results; }
 
-  AffineExpr *getResult(unsigned idx) const { return results[idx]; }
+  AffineExprRef getResult(unsigned idx);
 
-  ArrayRef<AffineExpr *> getRangeSizes() const {
-    return rangeSizes ? ArrayRef<AffineExpr *>(rangeSizes, numResults)
-                      : ArrayRef<AffineExpr *>();
-  }
+  ArrayRef<AffineExprRef> getRangeSizes() { return rangeSizes; }
 
 private:
   AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-            AffineExpr *const *results, AffineExpr *const *rangeSizes);
+            ArrayRef<AffineExprRef> results,
+            ArrayRef<AffineExprRef> rangeSizes);
 
   AffineMap(const AffineMap &) = delete;
   void operator=(const AffineMap &) = delete;
 
-  const unsigned numDims;
-  const unsigned numSymbols;
-  const unsigned numResults;
+  unsigned numDims;
+  unsigned numSymbols;
+  unsigned numResults;
 
   /// The affine expressions for this (multi-dimensional) map.
   /// TODO: use trailing objects for this.
-  AffineExpr *const *const results;
+  ArrayRef<AffineExprRef> results;
 
   /// The extents along each of the range dimensions if the map is bounded,
   /// nullptr otherwise.
-  AffineExpr *const *const rangeSizes;
+  ArrayRef<AffineExprRef> rangeSizes;
 };
 
-}  // end namespace mlir
+} // end namespace mlir
 
-#endif  // MLIR_IR_AFFINE_MAP_H
+#endif // MLIR_IR_AFFINE_MAP_H

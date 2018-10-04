@@ -38,7 +38,8 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
     unsigned j = 0;
     AffineBoundExprList::const_iterator it, e;
     for (it = ubs.begin(), e = ubs.end(); it != e; it++, j++) {
-      if (auto *cExpr = dyn_cast<AffineConstantExpr>(*it)) {
+      if (auto *cExpr = const_cast<AffineConstantExpr *>(
+              dyn_cast<AffineConstantExpr>(*it))) {
         if (val == None) {
           val = cExpr->getValue();
           *idx = j;

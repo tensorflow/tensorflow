@@ -59,8 +59,8 @@ struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType *> {
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.
-  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr *>,
-                           ArrayRef<AffineExpr *>>;
+  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExprRef>,
+                           ArrayRef<AffineExprRef>>;
   using DenseMapInfo<AffineMap *>::getHashValue;
   using DenseMapInfo<AffineMap *>::isEqual;
 
@@ -71,7 +71,7 @@ struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
         hash_combine_range(std::get<3>(key).begin(), std::get<3>(key).end()));
   }
 
-  static bool isEqual(const KeyTy &lhs, const AffineMap *rhs) {
+  static bool isEqual(const KeyTy &lhs, AffineMap *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
     return lhs == std::make_tuple(rhs->getNumDims(), rhs->getNumSymbols(),
@@ -224,7 +224,7 @@ public:
 
   // Affine binary op expression uniquing. Figure out uniquing of dimensional
   // or symbolic identifiers.
-  DenseMap<std::tuple<unsigned, AffineExpr *, AffineExpr *>, AffineExpr *>
+  DenseMap<std::tuple<unsigned, AffineExprRef, AffineExprRef>, AffineExprRef>
       affineExprs;
 
   // Uniqui'ing of AffineDimExpr, AffineSymbolExpr's by their position.
@@ -800,8 +800,8 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
 //===----------------------------------------------------------------------===//
 
 AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExpr *> results,
-                          ArrayRef<AffineExpr *> rangeSizes,
+                          ArrayRef<AffineExprRef> results,
+                          ArrayRef<AffineExprRef> rangeSizes,
                           MLIRContext *context) {
   // The number of results can't be zero.
   assert(!results.empty());
@@ -822,12 +822,12 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
   auto *res = impl.allocator.Allocate<AffineMap>();
 
   // Copy the results and range sizes into the bump pointer.
-  results = impl.copyInto(ArrayRef<AffineExpr *>(results));
-  rangeSizes = impl.copyInto(ArrayRef<AffineExpr *>(rangeSizes));
+  results = impl.copyInto(results);
+  rangeSizes = impl.copyInto(rangeSizes);
 
   // Initialize the memory using placement new.
-  new (res) AffineMap(dimCount, symbolCount, results.size(), results.data(),
-                      rangeSizes.empty() ? nullptr : rangeSizes.data());
+  new (res)
+      AffineMap(dimCount, symbolCount, results.size(), results, rangeSizes);
 
   // Cache and return it.
   return *existing.first = res;
@@ -843,15 +843,13 @@ AffineExprRef AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExprRef lhs,
   auto &impl = context->getImpl();
 
   // Check if we already have this affine expression, and return it if we do.
-  AffineExpr *lhsExpr = lhs;
-  AffineExpr *rhsExpr = rhs;
-  auto keyValue = std::make_tuple((unsigned)kind, lhsExpr, rhsExpr);
+  auto keyValue = std::make_tuple((unsigned)kind, lhs, rhs);
   auto cached = impl.affineExprs.find(keyValue);
   if (cached != impl.affineExprs.end())
     return cached->second;
 
   // Simplify the expression if possible.
-  AffineExpr *simplified;
+  AffineExprRef simplified(nullptr);
   switch (kind) {
   case Kind::Add:
     simplified = AffineBinaryOpExpr::simplifyAdd(lhs, rhs, context);
@@ -940,7 +938,7 @@ AffineExprRef AffineConstantExpr::get(int64_t constant, MLIRContext *context) {
 //===----------------------------------------------------------------------===//
 
 IntegerSet *IntegerSet::get(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExpr *> constraints,
+                            ArrayRef<AffineExprRef> constraints,
                             ArrayRef<bool> eqFlags, MLIRContext *context) {
   assert(eqFlags.size() == constraints.size());
 
@@ -950,10 +948,10 @@ IntegerSet *IntegerSet::get(unsigned dimCount, unsigned symbolCount,
   auto *res = impl.allocator.Allocate<IntegerSet>();
 
   // Copy the equalities and inequalities into the bump pointer.
-  constraints = impl.copyInto(ArrayRef<AffineExpr *>(constraints));
+  constraints = impl.copyInto(ArrayRef<AffineExprRef>(constraints));
   eqFlags = impl.copyInto(ArrayRef<bool>(eqFlags));
 
   // Initialize the memory using placement new.
   return new (res) IntegerSet(dimCount, symbolCount, constraints.size(),
-                              constraints.data(), eqFlags.data());
+                              constraints, eqFlags);
 }

@@ -1238,7 +1238,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
       parseToken(Token::l_paren, "expected '(' at start of affine map range"))
     return nullptr;
 
-  SmallVector<AffineExpr *, 4> exprs;
+  SmallVector<AffineExprRef, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
     auto *elt = parseAffineExpr();
     ParseResult res = elt ? ParseSuccess : ParseFailure;
@@ -1257,7 +1257,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
   //  dim-size ::= affine-expr | `min` `(` affine-expr (`,` affine-expr)+ `)`
   // TODO(bondhugula): support for min of several affine expressions.
   // TODO: check if sizes are non-negative whenever they are constant.
-  SmallVector<AffineExpr *, 4> rangeSizes;
+  SmallVector<AffineExprRef, 4> rangeSizes;
   if (consumeIf(Token::kw_size)) {
     // Location of the l_paren token (if it exists) for error reporting later.
     auto loc = getToken().getLoc();
@@ -2500,7 +2500,7 @@ IntegerSet *AffineParser::parseIntegerSetInline() {
                  "expected '(' at start of integer set constraint list"))
     return nullptr;
 
-  SmallVector<AffineExpr *, 4> constraints;
+  SmallVector<AffineExprRef, 4> constraints;
   SmallVector<bool, 4> isEqs;
   auto parseElt = [&]() -> ParseResult {
     bool isEq;
