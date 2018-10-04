@@ -105,13 +105,6 @@ bool ResolveConstantTile::Run(Model* model, std::size_t op_index) {
   }
   const auto* op = static_cast<const TensorFlowTileOperator*>(base_op);
 
-  // If the output of this op is a non-discardable array such as an input_array
-  // or a state array of the model, then this is a job for RemoveUnusedOp, not
-  // for constants-propagation.
-  if (!IsDiscardableArray(*model, op->outputs[0])) {
-    return false;
-  }
-
   CHECK_GE(op->inputs.size(), 2);
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
