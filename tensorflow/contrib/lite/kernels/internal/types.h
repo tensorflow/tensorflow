@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 
-#include "absl/base/macros.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
@@ -441,7 +440,7 @@ inline int FlatSize(const Dims<N>& dims) {
   return flat_size;
 }
 
-ABSL_DEPRECATED("Prefer FlatSize.")
+TFLITE_DEPRECATED("Prefer FlatSize.")
 inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
 }
