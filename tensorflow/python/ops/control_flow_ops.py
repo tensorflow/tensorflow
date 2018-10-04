@@ -1333,6 +1333,9 @@ class ControlFlowState(object):
     """
     if util.IsLoopSwitch(op):
       return None
+    if op.graph._building_function:  # pylint: disable=protected-access
+      # The optimization here is tricky to apply to functions
+      return array_ops.zeros_like(op.outputs[index])
     dead_branch = util.IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     grad_state = self._map.get(forward_ctxt)
