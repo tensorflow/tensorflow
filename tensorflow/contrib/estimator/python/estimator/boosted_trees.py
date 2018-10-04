@@ -34,18 +34,19 @@ def _validate_input_fn_and_repeat_dataset(train_input_fn):
   return _input_fn
 
 
-# pylint: disable=protected-access
 def _is_classification_head(head):
   """Infers if the head is a classification head."""
   # Check using all classification heads defined in canned/head.py. However, it
   # is not a complete list - it does not check for other classification heads
   # not defined in the head library.
+  # pylint: disable=protected-access
   return isinstance(head,
                     (head_lib._BinaryLogisticHeadWithSigmoidCrossEntropyLoss,
                      head_lib._MultiClassHeadWithSoftmaxCrossEntropyLoss))
+  # pylint: enable=protected-access
 
 
-class _BoostedTreesEstimator(canned_boosted_trees._BoostedTreesBase):
+class _BoostedTreesEstimator(canned_boosted_trees._BoostedTreesBase):  # pylint: disable=protected-access
   """An Estimator for Tensorflow Boosted Trees models."""
 
   def __init__(self,
@@ -113,6 +114,7 @@ class _BoostedTreesEstimator(canned_boosted_trees._BoostedTreesBase):
          are requested.
     """
     # HParams for the model.
+    # pylint: disable=protected-access
     tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
         tree_complexity, min_node_weight, center_bias, pruning_mode)

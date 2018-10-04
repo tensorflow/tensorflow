@@ -353,7 +353,7 @@ endif()
 
 # MKL Support
 if (tensorflow_ENABLE_MKL_SUPPORT)
-  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
+  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML -DENABLE_MKL)
   include(mkl)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkl_STATIC_LIBRARIES})
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkl_copy_shared_to_destination)

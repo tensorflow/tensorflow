@@ -246,6 +246,7 @@ tf_cc_test(
         ":c_api_experimental",
         ":c_test_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

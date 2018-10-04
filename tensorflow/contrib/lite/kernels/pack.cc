@@ -85,9 +85,12 @@ template <typename T>
 void PackImpl(TfLiteContext* context, TfLiteNode* node, TfLiteTensor* output,
               int values_count, int axis) {
   VectorOfTensors<T> all_inputs(*context, *node->inputs);
-  reference_ops::Pack<T>(RemapDim(NumDimensions(output), axis),
-                         all_inputs.data(), all_inputs.dims(), values_count,
-                         GetTensorData<T>(output), GetTensorDims(output));
+  tflite::PackParams op_params;
+  op_params.axis = axis;
+  op_params.inputs_count = values_count;
+
+  reference_ops::Pack<T>(op_params, all_inputs.shapes(), all_inputs.data(),
+                         GetTensorShape(output), GetTensorData<T>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

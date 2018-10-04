@@ -64,7 +64,6 @@ tf_custom_op_py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/estimator",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
@@ -155,6 +154,8 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/38283730
+        "noasan",  # b/116875897
+        "nomsan",
         "notsan",  # Flaky: b/30756419
     ],
 )
@@ -178,7 +179,11 @@ tf_py_test(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:variables",
     ],
-    tags = ["notsan"],  # b/62863147
+    tags = [
+        "noasan",  # b/116875897
+        "nomsan",
+        "notsan",  # b/62863147
+    ],
 )
 
 py_library(
@@ -277,6 +282,7 @@ tf_py_test(
         "manual",
         "noasan",  # times out b/63678675
         "nomsan",
+        "notsan",  # b/116875897
     ],
 )
 

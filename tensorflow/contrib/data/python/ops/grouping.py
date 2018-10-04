@@ -282,12 +282,12 @@ def window_dataset(window_size):
   return _apply_fn
 
 
-class _GroupByReducerDataset(dataset_ops.Dataset):
+class _GroupByReducerDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that groups its input and performs a reduction."""
 
   def __init__(self, input_dataset, key_func, reducer):
     """See `group_by_reducer()` for details."""
-    super(_GroupByReducerDataset, self).__init__()
+    super(_GroupByReducerDataset, self).__init__(input_dataset)
 
     self._input_dataset = input_dataset
 
@@ -416,12 +416,12 @@ class _GroupByReducerDataset(dataset_ops.Dataset):
         **dataset_ops.flat_structure(self))
 
 
-class _GroupByWindowDataset(dataset_ops.Dataset):
+class _GroupByWindowDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that groups its input and performs a windowed reduction."""
 
   def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
     """See `group_by_window()` for details."""
-    super(_GroupByWindowDataset, self).__init__()
+    super(_GroupByWindowDataset, self).__init__(input_dataset)
 
     self._input_dataset = input_dataset
 
@@ -525,12 +525,12 @@ class Reducer(object):
     return self._finalize_func
 
 
-class _MapXDataset(dataset_ops.Dataset):
+class _MapXDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
   def __init__(self, input_dataset, map_func):
     """See `map_x_dataset()` for details."""
-    super(_MapXDataset, self).__init__()
+    super(_MapXDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
     wrapped_func = dataset_ops.StructuredFunctionWrapper(

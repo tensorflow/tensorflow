@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/vectorization/vectorizer_registry.h"
 
 namespace tensorflow {
@@ -23,31 +23,29 @@ namespace vectorization_utils {
 
 class UnpackVectorizer : public Vectorizer {
  public:
-  Status Vectorize(const NodeDef& node, gtl::ArraySlice<string> inputs,
-                   FunctionDef* outer_scope,
-                   std::map<string, string>* conversion_map) override {
-    if (inputs.size() != 1) {
+  Status Vectorize(const Node& node, Graph* outer_scope,
+                   std::vector<Port>* input_ports,
+                   std::vector<Port>* output_ports) override {
+    Status s;
+    if (node.num_inputs() != 1) {
       return errors::Internal("Unpack op should only have one input.");
     }
 
-    // Add new Unpack node
-    NodeDef* new_unpack_node = outer_scope->add_node_def();
-    *new_unpack_node = node;
-    new_unpack_node->clear_name();
-    function_utils::SetUniqueFunctionNodeName(
-        strings::StrCat("vectorized/", node.name()), outer_scope,
-        new_unpack_node);
+    // Add new Unpack node with the same op and attrs as the original node
+    auto new_unpack_node = outer_scope->AddNode(node.def(), &s);
+    TF_RETURN_IF_ERROR(s);
 
     // Increment "axis" attr by 1:
-    (*new_unpack_node->mutable_attr())["axis"].set_i(
-        node.attr().at("axis").i() + 1);
-    new_unpack_node->set_input(0, inputs[0]);
+    int new_axis = node.def().attr().at("axis").i() + 1;
+    new_unpack_node->AddAttr("axis", new_axis);
 
-    // Add the output mappings to conversion map
-    int num = new_unpack_node->attr().at("num").i();
+    // Add the input mappings
+    input_ports->push_back({new_unpack_node, 0});
+
+    // Add the output mappings
+    int num = node.def().attr().at("num").i();
     for (int i = 0; i < num; ++i) {
-      (*conversion_map)[strings::StrCat(node.name(), ":output:", i)] =
-          strings::StrCat(new_unpack_node->name(), ":output:", i);
+      output_ports->push_back({new_unpack_node, i});
     }
 
     return Status::OK();

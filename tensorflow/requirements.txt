@@ -1,2 +1,0 @@
-keras_applications >= 1.0.5
-keras_preprocessing >= 1.0.3

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.data.python.ops import iterator_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
@@ -33,7 +34,7 @@ from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 
 
-class CheckpointInputPipelineHookTest(test.TestCase):
+class CheckpointInputPipelineHookTest(test_base.DatasetTestBase):
 
   @staticmethod
   def _model_fn(features, labels, mode, config):
@@ -42,7 +43,7 @@ class CheckpointInputPipelineHookTest(test.TestCase):
     del config
     global_step = training_util.get_or_create_global_step()
     update_global_step_op = global_step.assign_add(1)
-    latest_feature = variables.Variable(
+    latest_feature = variables.VariableV1(
         0, name='latest_feature', dtype=dtypes.int64)
     store_latest_feature_op = latest_feature.assign(features)
     ops.add_to_collection('my_vars', global_step)

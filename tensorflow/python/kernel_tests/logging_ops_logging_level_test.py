@@ -31,7 +31,7 @@ class PrintV2LoggingLevelTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorLogInfo(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(
@@ -43,7 +43,7 @@ class PrintV2LoggingLevelTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorLogWarning(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(
@@ -55,7 +55,7 @@ class PrintV2LoggingLevelTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintOneTensorLogError(self):
-    with self.test_session():
+    with self.cached_session():
       tensor = math_ops.range(10)
       with self.captureWritesToStream(sys.stderr) as printed:
         print_op = logging_ops.print_v2(

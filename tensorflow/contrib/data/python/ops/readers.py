@@ -23,7 +23,6 @@ import csv
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.contrib.data.python.ops import parsing_ops
@@ -38,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
@@ -508,7 +508,7 @@ def make_csv_dataset(
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
 
 
-class CsvDataset(dataset_ops.Dataset):
+class CsvDataset(dataset_ops.DatasetSource):
   """A Dataset comprising lines from one or more CSV files."""
 
   def __init__(self,
@@ -629,7 +629,7 @@ class CsvDataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     # Constructs graph node for the dataset op.
-    return contrib_gen_dataset_ops.csv_dataset(
+    return gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
@@ -924,7 +924,7 @@ def _get_file_names(file_pattern, shuffle):
   return file_names
 
 
-class SqlDataset(dataset_ops.Dataset):
+class SqlDataset(dataset_ops.DatasetSource):
   """A `Dataset` consisting of the results from a SQL query."""
 
   def __init__(self, driver_name, data_source_name, query, output_types):
@@ -985,7 +985,7 @@ class SqlDataset(dataset_ops.Dataset):
     return self._output_types
 
 
-class LMDBDataset(dataset_ops.Dataset):
+class LMDBDataset(dataset_ops.DatasetSource):
   """A LMDB Dataset that reads the lmdb file."""
 
   def __init__(self, filenames):
@@ -1013,7 +1013,7 @@ class LMDBDataset(dataset_ops.Dataset):
         filenames, dtype=dtypes.string, name="filenames")
 
   def _as_variant_tensor(self):
-    return contrib_gen_dataset_ops.lmdb_dataset(
+    return gen_experimental_dataset_ops.experimental_lmdb_dataset(
         self._filenames,
         output_types=nest.flatten(self.output_types),
         output_shapes=nest.flatten(self.output_shapes))

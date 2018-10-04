@@ -1,6 +1,5 @@
 # This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.
-
+# MIOpen and tensorflow.  
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 

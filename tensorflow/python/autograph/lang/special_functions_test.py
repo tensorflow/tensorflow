@@ -33,7 +33,7 @@ class SpecialFunctionsTest(test.TestCase):
 
     l = special_functions.tensor_list(elements)
     sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [[1, 2], [3, 4]])
 
   def test_tensor_list_array_from_elements(self):
@@ -41,7 +41,7 @@ class SpecialFunctionsTest(test.TestCase):
 
     l = special_functions.tensor_list(elements, use_tensor_array=True)
     sl = l.stack()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(sess.run(sl), [[1, 2], [3, 4]])
 
   def test_stack(self):

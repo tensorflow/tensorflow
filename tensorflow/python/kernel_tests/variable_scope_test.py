@@ -394,10 +394,10 @@ class VariableScopeTest(test.TestCase):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
       variable_scope.enable_resource_variables()
-      self.assertTrue(isinstance(variables_lib.Variable(1.0),
+      self.assertTrue(isinstance(variables_lib.VariableV1(1.0),
                                  resource_variable_ops.ResourceVariable))
       variable_scope.disable_resource_variables()
-      self.assertFalse(isinstance(variables_lib.Variable(1.0),
+      self.assertFalse(isinstance(variables_lib.VariableV1(1.0),
                                   resource_variable_ops.ResourceVariable))
     finally:
       variable_scope._DEFAULT_USE_RESOURCE = old

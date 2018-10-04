@@ -71,6 +71,7 @@ bool AreAllNodeInputsPinnedToHost(const GraphView& graph, const NodeDef& node) {
     if (output_arg_id < 0) {
       LOG(WARNING) << "Invalid port: " << fanin.port_id << "!\n"
                    << node.DebugString() << "\n"
+                   << fanin.node->DebugString() << "\n"
                    << fanin_odef->DebugString();
       return false;
     }
@@ -157,13 +158,34 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
   return device;
 }
 
+bool IsTPUGraphDef(const GraphDef& def) {
+  for (const auto& node : def.node()) {
+    if (node.op() == "TPUCompile" || node.op() == "TPUExecute" ||
+        node.op() == "TPUPartitionedCall") {
+      return true;
+    }
+  }
+  return false;
+}
+
 // All the nodes that should be blacklisted and not swapped.
-bool IsBlacklisted(const NodeDef& node) { return IsCollective(node); }
+bool IsBlacklisted(const NodeDef& node) {
+  return
+      // Collective ops should not be swapped.
+      IsCollective(node) ||
+      // NoOp breaks perf regression tests (probably due to group dependencies).
+      IsNoOp(node);
+}
 }  // end namespace internal
 
 Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
+
+  // Skip all TPU graphs.
+  if (internal::IsTPUGraphDef(*optimized_graph)) {
+    return Status::OK();
+  }
 
   GraphProperties properties(item);
   bool has_properties = false;
@@ -182,6 +204,10 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // Topologically sort the graph, so that we traverse the nodes in order. This
   // will help us discover producer->consumer chains of Host ops.
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
+
+  // All the Const nodes, and their original devices in topological order.
+  std::vector<std::pair<NodeDef*, string>> const_nodes;
+
   for (auto& node : *optimized_graph->mutable_node()) {
     // Check if node already on CPU.
     if (str_util::StrContains(node.device(), DEVICE_CPU)) {
@@ -215,9 +241,27 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
+    if (IsConstant(node)) {
+      const_nodes.emplace_back(&node, node.device());
+    }
     // Try and swap the device to Host.
     node.set_device(
         internal::TryFindHostDevice(devices, has_device_cpu, node.device()));
+  }
+
+  // Traverse all `const_nodes`, and map them back to GPU greedily.
+  for (auto& it : const_nodes) {
+    NodeDef* node = it.first;
+    const string& device = it.second;
+
+    // Check all the consumers of this node, if any of them are on the original
+    // device, swap this node back onto the original device.
+    for (const GraphView::InputPort& fanout : graph.GetFanouts(*node, false)) {
+      if (fanout.node->device() == device) {
+        node->set_device(device);
+        break;
+      }
+    }
   }
   return Status::OK();
 }

@@ -95,7 +95,7 @@ if platform.system() != "Windows":
     ]
 
   def cross_replica_sum(x, group_assignment=None, name=None):
-    """Sum the input tensor accorss replicas according to group_assignment.
+    """Sum the input tensor across replicas according to group_assignment.
 
     Args:
       x: The local tensor to the sum.
@@ -111,6 +111,31 @@ if platform.system() != "Windows":
       group_assignment = _create_default_group_assignment()
 
     return gen_tpu_ops.cross_replica_sum(x, group_assignment, name=name)
+
+  def collective_permute(x, source_target_pairs, name=None):
+    """Permute the input tensor across replicas given source_target_pairs.
+
+    For each source_target_pair <a, b>, we send replica a's input to replica b.
+    Each replica id must only appear once in the source column. Also it must
+    only appear once in the target column.
+    For the replica id not in the target column, this op returns a zero tensor
+    with the same shape and dtype of the input x.
+
+    For example, suppose there are 4 TPU instances: `[A, B, C, D]`. Passing
+    source_target_pairs=`[[0,1],[1,2],[2,3]]` gets the outputs:
+    `[0, A, B, C]`.
+
+    Args:
+      x: The local tensor to be permuted.
+      source_target_pairs: 2d int lists with shape [num_pairs, 2].
+        source_target_pairs[i][0] represents the source replica id and
+        source_target_pairs[i][1] represents the target replica id.
+      name: Optional op name.
+
+    Returns:
+      A `Tensor` which is permuted.
+    """
+    return gen_tpu_ops.collective_permute(x, source_target_pairs, name=name)
 
   @ops.RegisterGradient("CrossReplicaSum")
   def _cross_replica_sum_grad(op, grad):
@@ -174,6 +199,33 @@ if platform.system() != "Windows":
             "{}".format(dtype, list(_SUPPORTED_INFEED_DTYPES)))
     return gen_tpu_ops.infeed_dequeue_tuple(dtypes, shapes, name=name)
   # pylint: enable=redefined-outer-name
+
+  # pylint: disable=protected-access
+  def send_tpu_embedding_gradients(inputs,
+                                   config,
+                                   learning_rates=None,
+                                   name=None):
+    """A placeholder op for feeding per-sample gradients to the embedding layer.
+
+    Args:
+      inputs: A TensorList of gradients with which to update embedding tables.
+        Contains one tensor per embedding table in the model.
+      config: Serialized TPUEmbeddingConfiguration proto.
+      learning_rates: A TensorList of float32 scalars, one for each embedding
+        table, containing the learning rates for each table when dynamic
+        learning rate is enabled through the OptimizationParameters in
+        TPUEmbeddingConfiguration. When the learning rate is constant, the list
+        should be empty (optional).
+      name: A name for the operation (optional).
+
+    Returns:
+      A SendTPUEmbeddingGradients operation.
+    """
+    if learning_rates is None:
+      learning_rates = []
+    return gen_tpu_ops._send_tpu_embedding_gradients(
+        inputs=inputs, learning_rates=learning_rates, config=config, name=name)
+
 
 else:
   # We have already built the appropriate libraries into the binary via CMake

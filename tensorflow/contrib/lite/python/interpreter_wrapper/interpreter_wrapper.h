@@ -65,7 +65,7 @@ class InterpreterWrapper {
   PyObject* TensorQuantization(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
-  PyObject* ResetVariableTensorsToZero();
+  PyObject* ResetVariableTensors();
 
   // Returns a reference to tensor index i as a numpy array. The base_object
   // should be the interpreter object providing the memory.

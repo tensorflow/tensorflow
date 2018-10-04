@@ -89,6 +89,8 @@ bool SafeLess(const NativeT& a, const NativeT& b) {
 // to this rule, notably:
 // - HandleCompare and HandleIsFinite: where the resulting literal type is
 //   always boolean.
+// - HandleImag and HandleReal: where the resulting literal type is always float
+//   and the operand is always complex, or real in the case of HandleReal.
 // These operations are handled outside of the parent HloEvaluator handlers
 // instead of from within TypedVisitor.
 //
@@ -327,14 +329,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleFloor(HloInstruction* floor) override {
     return HandleFloor<ReturnT>(floor);
-  }
-
-  Status HandleImag(HloInstruction* imag) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[imag],
-                        ElementWiseUnaryOp(imag, [](ElementwiseT elem_operand) {
-                          return std::imag(elem_operand);
-                        }));
-    return Status::OK();
   }
 
   Status HandleLog(HloInstruction* log) override {
@@ -680,14 +674,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
                                                       ElementwiseT rhs_el) {
                           return std::pow(lhs_el, rhs_el);
-                        }));
-    return Status::OK();
-  }
-
-  Status HandleReal(HloInstruction* real) override {
-    TF_ASSIGN_OR_RETURN(parent_->evaluated_[real],
-                        ElementWiseUnaryOp(real, [](ElementwiseT elem_operand) {
-                          return std::real(elem_operand);
                         }));
     return Status::OK();
   }
@@ -2284,19 +2270,16 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         // be 1.
         int64 update_dim_size =
             update_dim == -1 ? 1 : updates_shape.dimensions(update_dim);
-        // Clamp the scatter index so that the scatter region fits in the
-        // operand. input_scatter_index_clamped[i] =
-        // clamp(input_scatter_index[i], 0,
-        //                                       operand_shape.dimensions(i) -
-        //                                       update_dim_size);
-        input_scatter_index_clamped[i] =
-            std::min(operand_shape.dimensions(i) - update_dim_size,
-                     std::max(0LL, input_scatter_index[i]));
+        // If any part of the update region is out-of-bounds, then do not
+        // perform any update on the input.
+        if ((input_scatter_index[i] < 0) ||
+            (input_scatter_index[i] >
+             operand_shape.dimensions(i) - update_dim_size)) {
+          return true;
+        }
       }
       for (int i = 0, e = input_index.size(); i < e; i++) {
-        input_index[i] = input_scatter_index_clamped[i] + input_window_index[i];
-        DCHECK_GE(input_index[i], 0);
-        DCHECK_LT(input_index[i], operand_shape.dimensions(i));
+        input_index[i] = input_scatter_index[i] + input_window_index[i];
       }
 
       auto result_value_literal =

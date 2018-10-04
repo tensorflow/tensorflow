@@ -329,8 +329,6 @@ def _random_flip(image, flip_index, seed, scope_name):
           lambda: image,
           name=scope
       )
-      if isinstance(result, tuple):
-        result = result[0]  # TODO(b/111124878) remove this logic (CondV2).
       return fix_image_flip_shape(image, result)
     elif shape.ndims == 4:
       batch_size = array_ops.shape(image)[0]
@@ -1176,7 +1174,7 @@ def resize_image_with_pad(image,
 
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
-  """Linearly scales `image` to have zero mean and unit norm.
+  """Linearly scales `image` to have zero mean and unit variance.
 
   This op computes `(x - mean) / adjusted_stddev`, where `mean` is the average
   of all values in image, and
@@ -1379,7 +1377,7 @@ def adjust_gamma(image, gamma=1, gain=1):
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
-  with ops.op_scope([image, gamma, gain], None, 'adjust_gamma'):
+  with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
     # Convert pixel value to DT_FLOAT for computing adjusted image.
     img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
     # Keep image dtype for computing the scale of corresponding dtype.

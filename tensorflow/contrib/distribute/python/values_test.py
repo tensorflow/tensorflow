@@ -375,8 +375,9 @@ class PerDeviceDatasetTest(test.TestCase):
       combined_expected = []
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        combined_actual.extend(self.evaluate([
-            values.select_device(d, next_element) for d in devices]))
+        combined_actual.extend(
+            self.evaluate(
+                [values.select_device(d, next_element) for d in devices]))
         combined_expected.extend(expected_value)
 
       self.assertEqual(set(combined_expected), set(combined_actual))

@@ -21,9 +21,8 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-TFL_Status TFL_InterpreterResetVariableTensorsToZero(
-    TFL_Interpreter* interpreter) {
-  return interpreter->impl->ResetVariableTensorsToZero();
+TFL_Status TFL_InterpreterResetVariableTensors(TFL_Interpreter* interpreter) {
+  return interpreter->impl->ResetVariableTensors();
 }
 
 void TFL_InterpreterOptionsAddBuiltinOp(TFL_InterpreterOptions* options,

@@ -80,6 +80,12 @@ class Dataset(object):
     """
     raise NotImplementedError("Dataset._as_variant_tensor")
 
+  @abc.abstractmethod
+  def _inputs(self):
+    """Returns a list of the input datasets of the dataset."""
+
+    raise NotImplementedError("Dataset._inputs")
+
   def make_initializable_iterator(self, shared_name=None):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
@@ -1007,8 +1013,8 @@ class Dataset(object):
       return ParallelMapDataset(self, map_func, num_parallel_calls)
 
   def flat_map(self, map_func):
-    """Maps `map_func` across this dataset and flattens the result. 
-    
+    """Maps `map_func` across this dataset and flattens the result.
+
     Use `flat_map` if you want to make sure that the order of your dataset
     stays the same. For example, to flatten a dataset of batches into a
     dataset of their elements:
@@ -1017,15 +1023,15 @@ class Dataset(object):
     # NOTE: The following examples use `{ ... }` to represent the
     # contents of a dataset. '[...]' represents a tensor.
     a = {[1,2,3,4,5], [6,7,8,9], [10]}
-    
-    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) == 
+
+    a.flat_map(lambda x: Dataset.from_tensor_slices(x)) ==
       {[1,2,3,4,5,6,7,8,9,10]}
     ```
-    
-    `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since 
-    `flat_map` produces the same output as 
+
+    `tf.data.Dataset.interleave()` is a generalization of `flat_map`, since
+    `flat_map` produces the same output as
     `tf.data.Dataset.interleave(cycle_length=1)`
-    
+
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
         and types defined by `self.output_shapes` and `self.output_types`) to a
@@ -1157,6 +1163,7 @@ class Dataset(object):
     dataset = transformation_func(self)
     if not isinstance(dataset, Dataset):
       raise TypeError("`transformation_func` must return a Dataset.")
+    dataset._input_datasets = [self]  # pylint: disable=protected-access
     return dataset
 
   def window(self, size, shift=None, stride=1, drop_remainder=False):
@@ -1198,8 +1205,146 @@ class Dataset(object):
       shift = size
     return WindowDataset(self, size, shift, stride, drop_remainder)
 
+  def reduce(self, initial_state, reduce_func):
+    """Reduces the input dataset to a single element.
 
-class TensorDataset(Dataset):
+    The transformation calls `reduce_func` successively on every element of
+    the input dataset until the dataset is exhausted, aggregating information in
+    its internal state. The `initial_state` argument is used for the initial
+    state and the final state is returned as the result.
+
+    For example:
+    - `tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1)`
+      produces `5`
+    - `tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y)`
+      produces `10`
+
+    Args:
+      initial_state: A nested structure of tensors, representing the initial
+        state of the transformation.
+      reduce_func: A function that maps `(old_state, input_element)` to
+        `new_state`. It must take two arguments and return a nested structure
+        of tensors. The structure of `new_state` must match the structure of
+        `initial_state`.
+
+    Returns:
+      A nested structure of `tf.Tensor` objects, corresponding to the final
+      state of the transformation.
+
+    """
+
+    with ops.name_scope("initial_state"):
+      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
+      # values to tensors.
+      initial_state = nest.pack_sequence_as(initial_state, [
+          sparse_tensor_lib.SparseTensor.from_value(t)
+          if sparse_tensor_lib.is_sparse(t) else ops.convert_to_tensor(
+              t, name="component_%d" % i)
+          for i, t in enumerate(nest.flatten(initial_state))
+      ])
+
+    # Compute initial values for the state classes, shapes and types based on
+    # the initial state.
+    state_classes = sparse.get_classes(initial_state)
+    state_shapes = nest.pack_sequence_as(
+        initial_state, [t.get_shape() for t in nest.flatten(initial_state)])
+    state_types = nest.pack_sequence_as(
+        initial_state, [t.dtype for t in nest.flatten(initial_state)])
+
+    # Iteratively rerun the reduce function until reaching a fixed point on
+    # `self._state_shapes`.
+    need_to_rerun = True
+    while need_to_rerun:
+
+      wrapped_func = StructuredFunctionWrapper(
+          reduce_func,
+          "reduce()",
+          input_classes=(state_classes, self.output_classes),
+          input_shapes=(state_shapes, self.output_shapes),
+          input_types=(state_types, self.output_types),
+          add_to_graph=False)
+
+      # Extract and validate class information from the returned values.
+      output_classes = wrapped_func.output_classes
+      for new_state_class, state_class in zip(
+          nest.flatten(output_classes), nest.flatten(state_classes)):
+        if not issubclass(new_state_class, state_class):
+          raise TypeError(
+              "The element classes for the new state must match the initial "
+              "state. Expected %s; got %s." % (state_classes,
+                                               wrapped_func.output_classes))
+
+      # Extract and validate type information from the returned values.
+      output_types = wrapped_func.output_types
+      for new_state_type, state_type in zip(
+          nest.flatten(output_types), nest.flatten(state_types)):
+        if new_state_type != state_type:
+          raise TypeError(
+              "The element types for the new state must match the initial "
+              "state. Expected %s; got %s." % (state_types,
+                                               wrapped_func.output_types))
+
+      # Extract shape information from the returned values.
+      output_shapes = wrapped_func.output_shapes
+      flat_state_shapes = nest.flatten(state_shapes)
+      flat_new_state_shapes = nest.flatten(output_shapes)
+      weakened_state_shapes = [
+          original.most_specific_compatible_shape(new)
+          for original, new in zip(flat_state_shapes, flat_new_state_shapes)
+      ]
+
+      need_to_rerun = False
+      for original_shape, weakened_shape in zip(flat_state_shapes,
+                                                weakened_state_shapes):
+        if original_shape.ndims is not None and (
+            weakened_shape.ndims is None or
+            original_shape.as_list() != weakened_shape.as_list()):
+          need_to_rerun = True
+          break
+
+      if need_to_rerun:
+        state_shapes = nest.pack_sequence_as(state_shapes,
+                                             weakened_state_shapes)
+
+    reduce_func = wrapped_func.function
+    reduce_func.add_to_graph(ops.get_default_graph())
+
+    return sparse.deserialize_sparse_tensors(
+        nest.pack_sequence_as(
+            output_types,
+            gen_dataset_ops.reduce_dataset(
+                self._as_variant_tensor(),  # pylint: disable=protected-access
+                nest.flatten(sparse.serialize_sparse_tensors(initial_state)),
+                reduce_func.captured_inputs,
+                f=reduce_func,
+                output_shapes=nest.flatten(
+                    sparse.as_dense_shapes(output_shapes, output_classes)),
+                output_types=nest.flatten(
+                    sparse.as_dense_types(output_types, output_classes)))),
+        output_types,
+        output_shapes,
+        output_classes)
+
+
+class DatasetSource(Dataset):
+  """Abstract class representing a dataset with no inputs."""
+
+  def _inputs(self):
+    return []
+
+
+class UnaryDataset(Dataset):
+  """Abstract class representing a dataset with one input."""
+
+  def __init__(self, input_dataset):
+    super(UnaryDataset, self).__init__()
+    self._input_dataset = input_dataset
+
+  def _inputs(self):
+    return [self._input_dataset]
+
+
+class TensorDataset(DatasetSource):
   """A `Dataset` with a single element, viz. a nested structure of tensors."""
 
   def __init__(self, tensors):
@@ -1239,7 +1384,7 @@ class TensorDataset(Dataset):
     return self._output_types
 
 
-class TensorSliceDataset(Dataset):
+class TensorSliceDataset(DatasetSource):
   """A `Dataset` of slices from a nested structure of tensors."""
 
   def __init__(self, tensors):
@@ -1283,7 +1428,7 @@ class TensorSliceDataset(Dataset):
     return self._output_types
 
 
-class SparseTensorSliceDataset(Dataset):
+class SparseTensorSliceDataset(DatasetSource):
   """A `Dataset` that splits a rank-N `tf.SparseTensor` into its rows."""
 
   def __init__(self, sparse_tensor):
@@ -1383,6 +1528,9 @@ class _VariantDataset(Dataset):
 
   def _as_variant_tensor(self):
     return self._dataset_variant
+
+  def _inputs(self):
+    return []
 
   @property
   def output_classes(self):
@@ -1624,7 +1772,7 @@ def flat_structure(dataset):
   }
 
 
-class _GeneratorDataset(Dataset):
+class _GeneratorDataset(DatasetSource):
   """A `Dataset` that generates elements by invoking a function."""
 
   def __init__(self, init_args, init_func, next_func, finalize_func):
@@ -1725,6 +1873,9 @@ class ZipDataset(Dataset):
         **flat_structure(self))
     # pylint: enable=protected-access
 
+  def _inputs(self):
+    return nest.flatten(self._datasets)
+
   @property
   def output_classes(self):
     return nest.pack_sequence_as(
@@ -1760,6 +1911,7 @@ class ConcatenateDataset(Dataset):
       raise TypeError(
           "Two datasets to concatenate have different classes %s and %s" %
           (input_dataset.output_classes, dataset_to_concatenate.output_classes))
+    self._input_datasets = [input_dataset, dataset_to_concatenate]
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
@@ -1768,6 +1920,9 @@ class ConcatenateDataset(Dataset):
         self._dataset_to_concatenate._as_variant_tensor(),
         **flat_structure(self))
     # pylint: enable=protected-access
+
+  def _inputs(self):
+    return [self._input_dataset, self._dataset_to_concatenate]
 
   @property
   def output_classes(self):
@@ -1787,12 +1942,12 @@ class ConcatenateDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class RepeatDataset(Dataset):
+class RepeatDataset(UnaryDataset):
   """A `Dataset` that repeats its input several times."""
 
   def __init__(self, input_dataset, count):
     """See `Dataset.repeat()` for details."""
-    super(RepeatDataset, self).__init__()
+    super(RepeatDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     if count is None:
       self._count = constant_op.constant(-1, dtype=dtypes.int64, name="count")
@@ -1819,7 +1974,7 @@ class RepeatDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class RangeDataset(Dataset):
+class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
   def __init__(self, *args):
@@ -1867,12 +2022,12 @@ class RangeDataset(Dataset):
     return dtypes.int64
 
 
-class CacheDataset(Dataset):
+class CacheDataset(UnaryDataset):
   """A `Dataset` that caches elements of its input."""
 
   def __init__(self, input_dataset, filename):
     """See `Dataset.cache()` for details."""
-    super(CacheDataset, self).__init__()
+    super(CacheDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
@@ -1896,7 +2051,7 @@ class CacheDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class ShuffleDataset(Dataset):
+class ShuffleDataset(UnaryDataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
   def __init__(self,
@@ -1924,7 +2079,7 @@ class ShuffleDataset(Dataset):
     Raises:
       ValueError: if invalid arguments are provided.
     """
-    super(ShuffleDataset, self).__init__()
+    super(ShuffleDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
@@ -1956,12 +2111,12 @@ class ShuffleDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class TakeDataset(Dataset):
+class TakeDataset(UnaryDataset):
   """A `Dataset` containing the first `count` elements from its input."""
 
   def __init__(self, input_dataset, count):
     """See `Dataset.take()` for details."""
-    super(TakeDataset, self).__init__()
+    super(TakeDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
 
@@ -1984,12 +2139,12 @@ class TakeDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class SkipDataset(Dataset):
+class SkipDataset(UnaryDataset):
   """A `Dataset` skipping the first `count` elements from its input."""
 
   def __init__(self, input_dataset, count):
     """See `Dataset.skip()` for details."""
-    super(SkipDataset, self).__init__()
+    super(SkipDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
 
@@ -2012,12 +2167,12 @@ class SkipDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class BatchDataset(Dataset):
+class BatchDataset(UnaryDataset):
   """A `Dataset` that batches contiguous elements from its input."""
 
   def __init__(self, input_dataset, batch_size, drop_remainder):
     """See `Dataset.batch()` for details."""
-    super(BatchDataset, self).__init__()
+    super(BatchDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
@@ -2166,13 +2321,13 @@ def _default_padding(input_dataset):
   return nest.map_structure(make_zero, input_dataset.output_types)
 
 
-class PaddedBatchDataset(Dataset):
+class PaddedBatchDataset(UnaryDataset):
   """A `Dataset` that batches and pads contiguous elements from its input."""
 
   def __init__(self, input_dataset, batch_size, padded_shapes, padding_values,
                drop_remainder):
     """See `Dataset.batch()` for details."""
-    super(PaddedBatchDataset, self).__init__()
+    super(PaddedBatchDataset, self).__init__(input_dataset)
     if sparse.any_sparse(input_dataset.output_classes):
       # TODO(b/63669786): support batching of sparse tensors
       raise TypeError(
@@ -2272,12 +2427,12 @@ def _warn_if_collections(transformation_name):
                   % transformation_name)
 
 
-class MapDataset(Dataset):
+class MapDataset(UnaryDataset):
   """A `Dataset` that maps a function over elements in its input."""
 
   def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
-    super(MapDataset, self).__init__()
+    super(MapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
@@ -2338,12 +2493,12 @@ class ParallelMapDataset(MapDataset):
     # pylint: enable=protected-access
 
 
-class FlatMapDataset(Dataset):
+class FlatMapDataset(UnaryDataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
   def __init__(self, input_dataset, map_func):
     """See `Dataset.flat_map()` for details."""
-    super(FlatMapDataset, self).__init__()
+    super(FlatMapDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
 
     wrapped_func = StructuredFunctionWrapper(
@@ -2434,12 +2589,12 @@ class ParallelInterleaveDataset(FlatMapDataset):
     return "Dataset.interleave()"
 
 
-class FilterDataset(Dataset):
+class FilterDataset(UnaryDataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
   def __init__(self, input_dataset, predicate):
     """See `Dataset.filter()` for details."""
-    super(FilterDataset, self).__init__()
+    super(FilterDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     wrapped_func = StructuredFunctionWrapper(
         predicate, "Dataset.filter()", input_dataset)
@@ -2469,12 +2624,12 @@ class FilterDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class PrefetchDataset(Dataset):
+class PrefetchDataset(UnaryDataset):
   """A `Dataset` that asynchronously prefetches its input."""
 
   def __init__(self, input_dataset, buffer_size):
     """See `Dataset.prefetch()` for details."""
-    super(PrefetchDataset, self).__init__()
+    super(PrefetchDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     if buffer_size is None:
       buffer_size = -1  # This is the sentinel for auto-tuning.
@@ -2500,12 +2655,12 @@ class PrefetchDataset(Dataset):
     return self._input_dataset.output_types
 
 
-class WindowDataset(Dataset):
+class WindowDataset(UnaryDataset):
   """A dataset that creates window datasets from the input elements."""
 
   def __init__(self, input_dataset, size, shift, stride, drop_remainder):
     """See `window_dataset()` for more details."""
-    super(WindowDataset, self).__init__()
+    super(WindowDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._size = ops.convert_to_tensor(size, dtype=dtypes.int64, name="size")
     self._shift = ops.convert_to_tensor(shift, dtype=dtypes.int64, name="shift")

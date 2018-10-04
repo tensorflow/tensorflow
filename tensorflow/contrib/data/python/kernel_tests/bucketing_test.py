@@ -22,6 +22,7 @@ import random
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import grouping
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,7 +36,7 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class GroupByReducerTest(test.TestCase):
+class GroupByReducerTest(test_base.DatasetTestBase):
 
   def checkResults(self, dataset, shapes, values):
     self.assertEqual(shapes, dataset.output_shapes)
@@ -198,7 +199,7 @@ class GroupByReducerTest(test.TestCase):
       self.assertEqual(y, 45)
 
 
-class GroupByWindowTest(test.TestCase):
+class GroupByWindowTest(test_base.DatasetTestBase):
 
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
@@ -345,7 +346,7 @@ class GroupByWindowTest(test.TestCase):
 # NOTE(mrry): These tests are based on the tests in bucket_ops_test.py.
 # Currently, they use a constant batch size, though should be made to use a
 # different batch size per key.
-class BucketTest(test.TestCase):
+class BucketTest(test_base.DatasetTestBase):
 
   def _dynamicPad(self, bucket, window, window_size):
     # TODO(mrry): To match `tf.contrib.training.bucket()`, implement a
@@ -570,7 +571,7 @@ def _get_record_shape(sparse):
   return tensor_shape.TensorShape([None])
 
 
-class BucketBySequenceLength(test.TestCase):
+class BucketBySequenceLength(test_base.DatasetTestBase):
 
   def testBucket(self):
 
