@@ -1110,7 +1110,7 @@ _Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
 class AttentionCellWrapper(rnn_cell_impl.RNNCell):
   """Basic attention cell wrapper.
 
-  Implementation based on https://arxiv.org/abs/1409.0473.
+  Implementation based on https://arxiv.org/abs/1601.06733.
   """
 
   def __init__(self,
