@@ -2721,11 +2721,13 @@ def batch_gather(params, indices, name=None):
       raise ValueError("batch_gather does not allow indices with unknown "
                        "shape.")
     batch_indices = indices
+    dtype = indices.dtype
     accum_dim_value = 1
     for dim in range(ndims-1, 0, -1):
       dim_value = params_shape[dim-1]
-      accum_dim_value *= params_shape[dim]
-      dim_indices = gen_math_ops._range(0, dim_value, 1)
+      accum_dim_value *= gen_math_ops.cast(params_shape[dim], dtype)
+      dim_indices = gen_math_ops.cast(
+          gen_math_ops._range(0, dim_value, 1), dtype)
       dim_indices *= accum_dim_value
       dim_shape = stack([1] * (dim - 1) + [dim_value] + [1] * (ndims - dim),
                         axis=0)
