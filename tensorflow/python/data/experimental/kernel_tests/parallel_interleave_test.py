@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for `tf.data.experimental.parallel_interleave()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -37,7 +37,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
-class ParallelInterleaveDatasetTest(test_base.DatasetTestBase):
+class ParallelInterleaveTest(test_base.DatasetTestBase):
 
   def setUp(self):
 

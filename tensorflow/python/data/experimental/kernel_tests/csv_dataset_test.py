@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for CsvDatasetOp."""
+"""Tests for `tf.data.experimental.CsvDataset`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -44,7 +44,7 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CsvDatasetOpTest(test_base.DatasetTestBase):
+class CsvDatasetTest(test_base.DatasetTestBase):
 
   def _setup_files(self, inputs, linebreak='\n', compression_type=None):
     filenames = []

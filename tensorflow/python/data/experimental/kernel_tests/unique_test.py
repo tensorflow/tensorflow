@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for `tf.data.experimental.unique()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class UniqueDatasetTest(test_base.DatasetTestBase):
+class UniqueTest(test_base.DatasetTestBase):
 
   def _testSimpleHelper(self, dtype, test_cases):
     """Test the `unique()` transformation on a list of test cases.

@@ -70,6 +70,26 @@ py_test(
 )
 
 py_test(
+    name = "checkpoint_input_pipeline_hook_test",
+    size = "small",
+    srcs = ["checkpoint_input_pipeline_hook_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_test(
     name = "concatenate_dataset_serialization_test",
     size = "small",
     srcs = ["concatenate_dataset_serialization_test.py"],
@@ -580,7 +600,7 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python/data/experimental/kernel_tests:sql_dataset_op_test_base",
+        "//tensorflow/python/data/experimental/kernel_tests:sql_dataset_test_base",
         "//tensorflow/python/data/experimental/ops:readers",
     ],
 )

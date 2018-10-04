@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for `tf.data.experimental.rejection_resample()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -58,7 +58,7 @@ def _time_resampling(
   return end_time - start_time
 
 
-class ResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
+class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("InitialDistributionKnown", True),

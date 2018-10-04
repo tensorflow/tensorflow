@@ -12,45 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Test RangeDataset."""
+"""Tests for `tf.data.experimental.Counter`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import counter
-from tensorflow.python.data.experimental.ops import enumerate_ops
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
 
-class RangeDatasetTest(test_base.DatasetTestBase):
-
-  def testEnumerateDataset(self):
-    components = (["a", "b"], [1, 2], [37.0, 38])
-    start = constant_op.constant(20, dtype=dtypes.int64)
-
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).apply(
-        enumerate_ops.enumerate_dataset(start)).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    self.assertEqual(dtypes.int64, get_next[0].dtype)
-    self.assertEqual((), get_next[0].shape)
-    self.assertEqual([tensor_shape.TensorShape([])] * 3,
-                     [t.shape for t in get_next[1]])
-
-    with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertEqual((20, (b"a", 1, 37.0)), sess.run(get_next))
-      self.assertEqual((21, (b"b", 2, 38.0)), sess.run(get_next))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+class CounterTest(test_base.DatasetTestBase):
 
   def testCounter(self):
     """Test dataset construction using `count`."""
