@@ -131,6 +131,20 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                                    "larger than the row shape"):
         sess.run(get_next)
 
+  def testUnbatchWithUnknownRankInput(self):
+    placeholder = array_ops.placeholder(dtypes.int32)
+    dataset = dataset_ops.Dataset.from_tensors(placeholder).apply(
+        batching.unbatch())
+    iterator = dataset.make_initializable_iterator()
+    next_elem = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer, feed_dict={placeholder: [0, 1, 2, 3]})
+      for i in range(4):
+        self.assertEqual(i, sess.run(next_elem))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_elem)
+
   def testUnbatchScalarDataset(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
