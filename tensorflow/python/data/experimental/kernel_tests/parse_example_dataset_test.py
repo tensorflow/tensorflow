@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.parsing_ops."""
+"""Tests for `tf.data.experimental.parse_example_dataset()."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -73,7 +73,7 @@ def _compare_output_to_expected(tester, dict_tensors, expected_tensors,
     i += 1
 
 
-class ParseExampleTest(test_base.DatasetTestBase):
+class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
   def _test(self,
             input_tensor,

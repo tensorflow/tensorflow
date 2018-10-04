@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Base class for testing SqlDataset."""
-
+"""Base class for testing `tf.data.experimental.SqlDataset`."""
 
 from __future__ import absolute_import
 from __future__ import division

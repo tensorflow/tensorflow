@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for `tf.data.experimental.scan()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,7 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ScanDatasetTest(test_base.DatasetTestBase):
+class ScanTest(test_base.DatasetTestBase):
 
   def _counting_dataset(self, start, scan_fn):
     return dataset_ops.Dataset.from_tensors(0).repeat().apply(
