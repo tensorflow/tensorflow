@@ -306,7 +306,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
-        "no_oss",  # TODO(b/116813115): Investigate timeout and re-enable.
         "no_windows_gpu",
     ],
 )
