@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/inliner.h"
+#include "tensorflow/compiler/xla/service/map_inliner.h"
 
 #include <memory>
 #include <string>
@@ -32,10 +32,10 @@ limitations under the License.
 
 namespace xla {
 
-// InlinerVisitor traverses the HLO computation and inlines maps.
-class InlinerVisitor : public DfsHloVisitorWithDefault {
+// MapInlinerVisitor traverses the HLO computation and inlines maps.
+class MapInlinerVisitor : public DfsHloVisitorWithDefault {
  public:
-  explicit InlinerVisitor(HloComputation* computation)
+  explicit MapInlinerVisitor(HloComputation* computation)
       : computation_(computation) {}
 
   // Default visitor action is to do nothing and return OK.
@@ -49,24 +49,23 @@ class InlinerVisitor : public DfsHloVisitorWithDefault {
   StatusOr<bool> Run(HloComputation* computation);
 
  private:
-  // Current HloComputation instance the InlinerVisitor is traversing.
+  // Current HloComputation instance the MapInlinerVisitor is traversing.
   HloComputation* computation_;
 
   // Whether algebraic simplification has occurred.
   bool changed_ = false;
 };
 
-StatusOr<bool> InlinerVisitor::Run(HloComputation* computation) {
+StatusOr<bool> MapInlinerVisitor::Run(HloComputation* computation) {
   changed_ = false;
   computation_ = computation;
   TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(this));
   return changed_;
 }
 
-Status InlinerVisitor::HandleMap(HloInstruction* map) {
+Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
   HloComputation* function = map->to_apply();
   HloInstruction& root = *function->root_instruction();
-  // TODO(b/29249531): Add DCE pass to remove unused HloComputations.
   // Only inlining functions that are simply a single operation until a better
   // profitability model for inlining is defined.
   if (hlo_query::AllOperandsAreParameters(root)) {
@@ -112,8 +111,8 @@ Status InlinerVisitor::HandleMap(HloInstruction* map) {
   return Status::OK();
 }
 
-StatusOr<bool> Inliner::Run(HloModule* module) {
-  InlinerVisitor visitor(/*computation=*/nullptr);
+StatusOr<bool> MapInliner::Run(HloModule* module) {
+  MapInlinerVisitor visitor(/*computation=*/nullptr);
   bool changed = false;
   for (HloComputation* computation : module->computations()) {
     TF_ASSIGN_OR_RETURN(bool computation_changed, visitor.Run(computation));
