@@ -466,7 +466,7 @@ Graph* GetConstantGraph(
 bool ReplaceTensorWithConstant(
     Graph* graph, Device* partition_device, NodeAndOutput tensor,
     const Tensor& constant, const gtl::FlatSet<Node*>& control_deps,
-    int64 max_constant_size_in_bytes,
+    int64 max_constant_size_in_bytes, bool disable_memory_output_type_check,
     const ConstantFoldNameGenerator& generate_new_name) {
   // Be conservative when replacing a tensor with a constant, when not
   // running on CPU.
@@ -535,21 +535,23 @@ bool ReplaceTensorWithConstant(
   if (!NodeBuilder(builder).Finalize(graph, &constant_node).ok()) {
     return false;
   }
-  if (partition_device && device_type != DEVICE_CPU) {
-    MemoryType original_output_memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
-                             &original_output_memory_type)
-             .ok()) {
-      return false;
-    }
-    MemoryType const_output_memory_type;
-    if (!MemoryTypeForOutput(device_type, graph, constant_node, 0,
-                             &const_output_memory_type)
-             .ok()) {
-      return false;
-    }
-    if (original_output_memory_type != const_output_memory_type) {
-      return false;
+  if (!disable_memory_output_type_check) {
+    if (partition_device && device_type != DEVICE_CPU) {
+      MemoryType original_output_memory_type;
+      if (!MemoryTypeForOutput(device_type, graph, tensor.first, tensor.second,
+                               &original_output_memory_type)
+               .ok()) {
+        return false;
+      }
+      MemoryType const_output_memory_type;
+      if (!MemoryTypeForOutput(device_type, graph, constant_node, 0,
+                               &const_output_memory_type)
+               .ok()) {
+        return false;
+      }
+      if (original_output_memory_type != const_output_memory_type) {
+        return false;
+      }
     }
   }
   for (auto edge : edges_to_remove) {
@@ -658,7 +660,8 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
         constant_control_deps[tensors_to_replace[c].first];
     if (ReplaceTensorWithConstant(
             graph, partition_device, tensors_to_replace[c], outputs[c],
-            control_deps, opts.max_constant_size_in_bytes, generate_new_name)) {
+            control_deps, opts.max_constant_size_in_bytes,
+            opts.disable_memory_output_type_check, generate_new_name)) {
       ++num_nodes_replaced;
     }
   }
