@@ -234,11 +234,11 @@ cc_library(
         ":activation_functor",
         ":eigen_support",
         ":kernel_util",
+        ":lstm_eval",
         ":op_macros",
         ":padding",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
-        "//tensorflow/contrib/lite:util",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels:gemm_support",
         "//tensorflow/contrib/lite/kernels/internal:audio_utils",
@@ -251,6 +251,17 @@ cc_library(
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "lstm_eval",
+    srcs = ["lstm_eval.cc"],
+    hdrs = ["lstm_eval.h"],
+    deps = [
+        "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
     ],
 )
 
