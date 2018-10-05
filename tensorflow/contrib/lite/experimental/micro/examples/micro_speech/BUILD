@@ -17,6 +17,9 @@ tflite_micro_cc_test(
         "tiny_conv_model_data.cc",
         "tiny_conv_model_data.h",
     ],
+    tags = [
+        "nomsan",
+    ],
     deps = [
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite/experimental/micro:micro_framework",
