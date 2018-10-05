@@ -1,28 +1,27 @@
 # Release 1.12.0
 
 ## Major Features and Improvements
-* tf.data optimizations. Users can now represent, get and set options of a tf.data pipeline.
-  tf.data.AUTOTUNE enables the level of parallelism to be determined at runtime.
-* Keras models can now be directly exported to the SavedModel format and used with Tensorflow Serving.
-
-## Breaking Changes
+* tf.data users can now use `tf.data.experimental.AUTOTUNE` for the num_parallel_calls argument of `tf.data.Dataset.interleave`, `tf.data.Dataset.map`, and `tf.data.experimental.map_and_batch` to dynamically tune the level of parallelism at runtime.
+* Keras models can now be directly exported to the SavedModel format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow Serving.
+* TensorFlow builds with XLA support by default, does not enable XLA by
+  default, but makes it accessible via default binary builds.
 
 ## Bug Fixes and Other Changes
 
 * tf.data:
+  * tf.data users can now represent, get, and set options of TensorFlow input pipelines using `tf.data.Options()`, `tf.data.Dataset.options()`, and `tf.data.Dataset.with_options()` respectively.
   * All C++ code moves to the `tensorflow::data` namespace.
-  * Support evaluating with a tf.data.Dataset
   * Adding support for `num_parallel_calls` to `tf.data.Dataset.interleave`.
 * `tf.contrib`:
-  * Remove tf.contrib.linalg.  Library now in tf.linalg.
-  * Replace any calls to tf.contrib.get_signature_def_by_key(metagraph_def, signature_def_key) with meta_graph_def.signature_def[signature_def_key]. Catching a ValueError exception thrown by tf.contrib.get_signature_def_by_key should be replaced by catching a KeyError exception.
-  * Keras model can be exported to the SavedModel format using tf.contrib.saved_model.save_keras_model().
+  * Removed `tf.contrib.linalg`. `tf.linalg` should be used instead.
+  * Replace any calls to `tf.contrib.get_signature_def_by_key(metagraph_def, signature_def_key)` with `meta_graph_def.signature_def[signature_def_key]`. Catching a ValueError exception thrown by `tf.contrib.get_signature_def_by_key` should be replaced by catching a KeyError exception.
 * `tf.contrib.data`
-  * deprecated, and replaced by `tf.data.experimental`.
+  * deprecated, and replaced by tf.data.experimental.
+* Keras:
+  * Keras model now supports evaluating with a `tf.data.Dataset`.
 * Other:
   * Instead of jemalloc, revert back to using system malloc.
-  * Build TensorFlow with XLA support included by default.
-  * Removed integer types from tf.nn.softplus and tf.nn.softsign OpDefs. This is a bugfix; these ops were never meant to support integers.
+  * Removed integer types from `tf.nn.softplus` and `tf.nn.softsign` OpDefs. This is a bugfix; these ops were never meant to support integers.
   * Allow subslicing Tensors with a single dimension.
   * Add option to calculate string length in Unicode characters
   * Add functionality to SubSlice a tensor.
@@ -34,7 +33,7 @@
   * Add tf_api_version flag. If --define=tf_api_version=2 flag is passed in, then bazel will build TensorFlow API version 2.0. Note that TensorFlow 2.0 is under active development and has no guarantees at this point.
   * Added additional compression options to TfRecordWriter
   * Performance improvements for regex full match operations.
-  * Replace tf.GraphKeys.VARIABLES with tf.GraphKeys.GLOBAL_VARIABLES
+  * Replace tf.GraphKeys.VARIABLES with `tf.GraphKeys.GLOBAL_VARIABLES`
   * Removed unused dynamic learning rate support.
 
 ## Thanks to our Contributors
