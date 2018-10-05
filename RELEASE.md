@@ -1,3 +1,46 @@
+# Release 1.12.0
+
+## Major Features and Improvements
+
+
+## Breaking Changes
+
+## Bug Fixes and Other Changes
+
+* tf.data:
+  * All C++ code moves to the `tensorflow::data` namespace.
+  * Support evaluating with a tf.data.Dataset
+  * Adding support for `num_parallel_calls` to `tf.data.Dataset.interleave`.
+* `tf.contrib`:
+  * Remove tf.contrib.linalg.  Library now in tf.linalg.
+  * Replace any calls to tf.contrib.get_signature_def_by_key(metagraph_def, signature_def_key) with meta_graph_def.signature_def[signature_def_key]. Catching a ValueError exception thrown by tf.contrib.get_signature_def_by_key should be replaced by catching a KeyError exception.
+  * Keras model can be exported to the SavedModel format using tf.contrib.saved_model.save_keras_model().
+* `tf.contrib.data`
+  * deprecated, and replaced by `tf.data.experimental`.
+* Other:
+  * Instead of jemalloc, revert back to using system malloc.
+  * Build TensorFlow with XLA support included by default.
+  * Removed integer types from tf.nn.softplus and tf.nn.softsign OpDefs. This is a bugfix; these ops were never meant to support integers.
+  * Allow subslicing Tensors with a single dimension.
+  * Add option to calculate string length in Unicode characters
+  * Add functionality to SubSlice a tensor.
+  * Add searchsorted (ie lower/upper_bound) op.
+  * Adding model explainability to Boosted Trees.
+  * Support negative positions for tf.substr
+  * There was previously a bug in the bijector_impl where the _reduce_jacobian_det_over_event does not handle scalar ILDJ implementations properly.
+  * In tf eager execution, allow re-entering a GradientTape context
+  * Add tf_api_version flag. If --define=tf_api_version=2 flag is passed in, then bazel will build TensorFlow API version 2.0. Note that TensorFlow 2.0 is under active development and has no guarantees at this point.
+  * Added additional compression options to TfRecordWriter
+  * Performance improvements for regex full match operations.
+  * Replace tf.GraphKeys.VARIABLES with tf.GraphKeys.GLOBAL_VARIABLES
+  * Removed unused dynamic learning rate support.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+(David) Siu-Kei Muk, Ag Ramesh, Anton Dmitriev, Artem Sobolev, Avijit-Nervana, Bairen Yi, Bruno Goncalves, By Shen, candy.dc, Cheng Chen, Clayne Robison, coder3101, Dao Zhang, Elms, Fei Hu, feiquan, Geoffrey Irving, Guozhong Zhuang, hellcom, Hoeseong Kim, imsheridan, Jason Furmanek, Jason Zaman, Jenny Sahng, jiefangxuanyan, Johannes Bannhofer, Jonathan Homer, Koan-Sin Tan, kouml, Loo Rong Jie, Lukas Geiger, manipopopo, Ming Li, Moritz KröGer, Naurril, Niranjan Hasabnis, Pan Daoxin, Peng Yu, pengwa, rasmi, Roger Xin, Roland Fernandez, Sami Kama, Samuel Matzek, Sangjung Woo, Sergei Lebedev, Sergii Khomenko, shaohua, Shaohua Zhang, Shujian2015, Sunitha Kambhampati, tomguluson92, ViníCius Camargo, wangsiyu, weidankong, Wen-Heng (Jack) Chung, William D. Irons, Xin Jin, Yan Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
+
 # Release 1.11.0
 
 ## Major Features and Improvements
