@@ -345,6 +345,9 @@ public:
   static void build(Builder *builder, OperationState *result,
                     SSAValue *memrefOrTensor, unsigned index);
 
+  Attribute *constantFold(ArrayRef<Attribute *> operands,
+                          MLIRContext *context) const;
+
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
     return static_cast<unsigned>(

@@ -176,7 +176,14 @@ public:
                                                    op->getContext());
   }
 
-  /// The fallback for the constant folder is to always fail to fold.
+  /// Op implementations can implement this hook.  It should attempt to constant
+  /// fold this operation with the specified constant operand values - the
+  /// elements in "operands" will correspond directly to the operands of the
+  /// operation, but may be null if non-constant.  If constant folding is
+  /// successful, this returns false and fills in the `results` vector.  If not,
+  /// this returns true and `results` is unspecified.
+  ///
+  /// If not overridden, this fallback implementation always fails to fold.
   ///
   bool constantFold(ArrayRef<Attribute *> operands,
                     SmallVectorImpl<Attribute *> &results,
@@ -444,9 +451,15 @@ public:
     return impl::verifyOneResult(op);
   }
 
-  /// This hook implements a constant folder for this operation.  If the
-  /// operation can be folded successfully, a non-null result is returned.  If
-  /// not, a null pointer is returned.
+  /// Op implementations can implement this hook.  It should attempt to constant
+  /// fold this operation with the specified constant operand values - the
+  /// elements in "operands" will correspond directly to the operands of the
+  /// operation, but may be null if non-constant.  If constant folding is
+  /// successful, this returns a non-null attribute, otherwise it returns null
+  /// on failure.
+  ///
+  /// If not overridden, this fallback implementation always fails to fold.
+  ///
   Attribute *constantFold(ArrayRef<Attribute *> operands,
                           MLIRContext *context) const {
     return nullptr;

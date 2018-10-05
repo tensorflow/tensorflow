@@ -413,7 +413,6 @@ bb1:
   return
 }
 
-
 // -----
 
 mlfunc @return_type_mismatch() -> i32 {

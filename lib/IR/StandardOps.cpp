@@ -72,8 +72,8 @@ Attribute *AddFOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
   assert(operands.size() == 2 && "addf takes two operands");
 
-  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+  if (auto *lhs = dyn_cast_or_null<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast_or_null<FloatAttr>(operands[1]))
       return FloatAttr::get(lhs->getValue() + rhs->getValue(), context);
   }
 
@@ -88,8 +88,8 @@ Attribute *AddIOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
   assert(operands.size() == 2 && "addi takes two operands");
 
-  if (auto *lhs = dyn_cast<IntegerAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<IntegerAttr>(operands[1]))
+  if (auto *lhs = dyn_cast_or_null<IntegerAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
       return IntegerAttr::get(lhs->getValue() + rhs->getValue(), context);
   }
 
@@ -189,10 +189,11 @@ namespace {
 class AffineExprConstantFolder {
 public:
   AffineExprConstantFolder(unsigned numDims,
-                           ArrayRef<Attribute *> operandConsts,
-                           MLIRContext *context)
-      : numDims(numDims), operandConsts(operandConsts), context(context) {}
+                           ArrayRef<Attribute *> operandConsts)
+      : numDims(numDims), operandConsts(operandConsts) {}
 
+  /// Attempt to constant fold the specified affine expr, or return null on
+  /// failure.
   IntegerAttr *constantFold(AffineExprRef expr) {
     switch (expr->getKind()) {
     case AffineExpr::Kind::Add:
@@ -212,12 +213,12 @@ public:
           expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExpr::Kind::Constant:
       return IntegerAttr::get(cast<AffineConstantExpr>(expr)->getValue(),
-                              context);
+                              expr->getContext());
     case AffineExpr::Kind::DimId:
-      return cast<IntegerAttr>(
+      return dyn_cast_or_null<IntegerAttr>(
           operandConsts[cast<AffineDimExpr>(expr)->getPosition()]);
     case AffineExpr::Kind::SymbolId:
-      return cast<IntegerAttr>(
+      return dyn_cast_or_null<IntegerAttr>(
           operandConsts[numDims + cast<AffineSymbolExpr>(expr)->getPosition()]);
     }
   }
@@ -229,14 +230,16 @@ private:
     auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
     auto *lhs = constantFold(binOpExpr->getLHS());
     auto *rhs = constantFold(binOpExpr->getRHS());
-    return IntegerAttr::get(op(lhs->getValue(), rhs->getValue()), context);
+    if (!lhs || !rhs)
+      return nullptr;
+    return IntegerAttr::get(op(lhs->getValue(), rhs->getValue()),
+                            expr->getContext());
   }
 
   // The number of dimension operands in AffineMap containing this expression.
   unsigned numDims;
   // The constant valued operands used to evaluate this AffineExpr.
   ArrayRef<Attribute *> operandConsts;
-  MLIRContext *context;
 };
 
 } // end anonymous namespace
@@ -244,18 +247,17 @@ private:
 bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operands,
                                  SmallVectorImpl<Attribute *> &results,
                                  MLIRContext *context) const {
-  // Check that all attributes in 'operands' are IntegerAttr.
-  for (auto *attr : operands) {
-    if (!isa<IntegerAttr>(attr))
-      return true;
-  }
-
   AffineMap *map = getAffineMap();
-  AffineExprConstantFolder exprFolder(map->getNumDims(), operands, context);
+  AffineExprConstantFolder exprFolder(map->getNumDims(), operands);
 
   // Constant fold each AffineExpr in AffineMap and add to 'results'.
   for (auto expr : map->getResults()) {
-    results.push_back(exprFolder.constantFold(expr));
+    auto *folded = exprFolder.constantFold(expr);
+    // If we didn't fold to a constant, then folding fails.
+    if (!folded)
+      return true;
+
+    results.push_back(folded);
   }
   // Return false on success.
   return false;
@@ -667,6 +669,23 @@ bool DimOp::verify() const {
   return false;
 }
 
+Attribute *DimOp::constantFold(ArrayRef<Attribute *> operands,
+                               MLIRContext *context) const {
+  // Constant fold dim when the size the index refers to is a constant.
+  auto *opType = getOperand()->getType();
+  int indexSize = -1;
+  if (auto *tensorType = dyn_cast<RankedTensorType>(opType)) {
+    indexSize = tensorType->getShape()[getIndex()];
+  } else if (auto *memrefType = dyn_cast<MemRefType>(opType)) {
+    indexSize = memrefType->getShape()[getIndex()];
+  }
+
+  if (indexSize >= 0)
+    return IntegerAttr::get(indexSize, context);
+
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
@@ -796,8 +815,8 @@ Attribute *MulFOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
   assert(operands.size() == 2 && "mulf takes two operands");
 
-  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+  if (auto *lhs = dyn_cast_or_null<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast_or_null<FloatAttr>(operands[1]))
       return FloatAttr::get(lhs->getValue() * rhs->getValue(), context);
   }
 
@@ -812,11 +831,20 @@ Attribute *MulIOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
   assert(operands.size() == 2 && "muli takes two operands");
 
-  if (auto *lhs = dyn_cast<IntegerAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<IntegerAttr>(operands[1]))
-      // TODO: Handles the overflow case.
+  if (auto *lhs = dyn_cast_or_null<IntegerAttr>(operands[0])) {
+    // 0*x == 0
+    if (lhs->getValue() == 0)
+      return lhs;
+
+    if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
+      // TODO: Handle the overflow case.
       return IntegerAttr::get(lhs->getValue() * rhs->getValue(), context);
   }
+
+  // x*0 == 0
+  if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
+    if (rhs->getValue() == 0)
+      return rhs;
 
   return nullptr;
 }
@@ -997,8 +1025,8 @@ Attribute *SubFOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
   assert(operands.size() == 2 && "subf takes two operands");
 
-  if (auto *lhs = dyn_cast<FloatAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<FloatAttr>(operands[1]))
+  if (auto *lhs = dyn_cast_or_null<FloatAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast_or_null<FloatAttr>(operands[1]))
       return FloatAttr::get(lhs->getValue() - rhs->getValue(), context);
   }
 
@@ -1013,8 +1041,8 @@ Attribute *SubIOp::constantFold(ArrayRef<Attribute *> operands,
                                 MLIRContext *context) const {
   assert(operands.size() == 2 && "subi takes two operands");
 
-  if (auto *lhs = dyn_cast<IntegerAttr>(operands[0])) {
-    if (auto *rhs = dyn_cast<IntegerAttr>(operands[1]))
+  if (auto *lhs = dyn_cast_or_null<IntegerAttr>(operands[0])) {
+    if (auto *rhs = dyn_cast_or_null<IntegerAttr>(operands[1]))
       return IntegerAttr::get(lhs->getValue() - rhs->getValue(), context);
   }
 

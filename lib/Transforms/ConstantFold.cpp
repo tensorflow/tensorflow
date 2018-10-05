@@ -53,21 +53,19 @@ bool ConstantFold::foldOperation(Operation *op,
   // later, and don't try to fold it.
   if (op->is<ConstantOp>()) {
     existingConstants.push_back(op->getResult(0));
-    return 1;
+    return true;
   }
 
   // Check to see if each of the operands is a trivial constant.  If so, get
   // the value.  If not, ignore the instruction.
   SmallVector<Attribute *, 8> operandConstants;
   for (auto *operand : op->getOperands()) {
+    Attribute *operandCst = nullptr;
     if (auto *operandOp = operand->getDefiningOperation()) {
-      if (auto operandCst = operandOp->getAs<ConstantOp>()) {
-        operandConstants.push_back(operandCst->getValue());
-        continue;
-      }
+      if (auto operandConstantOp = operandOp->getAs<ConstantOp>())
+        operandCst = operandConstantOp->getValue();
     }
-    // If one of the operands was non-constant, then we can't fold it.
-    return true;
+    operandConstants.push_back(operandCst);
   }
 
   // Attempt to constant fold the operation.
