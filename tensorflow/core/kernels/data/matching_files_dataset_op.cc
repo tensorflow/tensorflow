@@ -100,7 +100,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        Status ret;  // Status to return
+        Status ret;
 
         while (!filepath_queue_.empty() ||
                current_pattern_index_ < dataset()->patterns_.size()) {
@@ -121,9 +121,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
             // In this case, current_path is a directory. Then continue the
             // search.
-            Status s =
-                UpdateIterator(ctx, current_path.first, current_pattern_);
-            ret.Update(s);
+            ret.Update(
+                UpdateIterator(ctx, current_path.first, current_pattern_));
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
@@ -139,8 +138,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               current_pattern_ = io::JoinPath(current_dir, current_pattern_);
             }
 
-            Status s = UpdateIterator(ctx, current_dir, current_pattern_);
-            ret.Update(s);
+            ret.Update(UpdateIterator(ctx, current_dir, current_pattern_));
             ++current_pattern_index_;
           }
         }
