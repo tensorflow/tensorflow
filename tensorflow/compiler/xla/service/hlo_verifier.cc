@@ -549,6 +549,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
+    case HloOpcode::kSort:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
       break;
@@ -1153,7 +1154,6 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RET_CHECK(!module->name().empty());
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
-
 
   for (auto* computation : module->computations()) {
     std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
