@@ -589,6 +589,7 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
