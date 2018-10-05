@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_TFLITE_MODEL_H_
-#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_TFLITE_MODEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
+#define TENSORFLOW_CONTRIB_LITE_TOOLS_BENCHMARK_BENCHMARK_TFLITE_MODEL_H_
 
 #include <memory>
 #include <string>
@@ -52,6 +52,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   BenchmarkTfLiteModel();
   BenchmarkTfLiteModel(BenchmarkParams params);
+  virtual ~BenchmarkTfLiteModel() {}
 
   std::vector<Flag> GetFlags() override;
   void LogParams() override;
@@ -59,12 +60,14 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;
-  virtual ~BenchmarkTfLiteModel() {}
 
   struct InputLayerInfo {
     std::string name;
     std::vector<int> shape;
   };
+
+ protected:
+  void PrepareInputsAndOutputs() override;
 
  private:
   std::unique_ptr<tflite::FlatBufferModel> model;

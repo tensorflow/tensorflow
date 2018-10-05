@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 // See documentation in ../ops/dataset_ops.cc for a high-level
@@ -30,8 +31,7 @@ namespace {
 class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByWindowDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key_func", &key_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("reduce_func", &reduce_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("window_size_func", &window_size_func_));
@@ -41,50 +41,19 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    // Get captured inputs for the key, reduce, and window_size functions.
-    OpInputList key_func_other_argument_inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("key_func_other_arguments",
-                                        &key_func_other_argument_inputs));
-    std::vector<Tensor> key_func_other_arguments;
-    key_func_other_arguments.reserve(key_func_other_argument_inputs.size());
-    for (const Tensor& t : key_func_other_argument_inputs) {
-      key_func_other_arguments.push_back(t);
-    }
-    OpInputList reduce_func_other_argument_inputs;
-    OP_REQUIRES_OK(ctx, ctx->input_list("reduce_func_other_arguments",
-                                        &reduce_func_other_argument_inputs));
-    std::vector<Tensor> reduce_func_other_arguments;
-    reduce_func_other_arguments.reserve(
-        reduce_func_other_argument_inputs.size());
-    for (const Tensor& t : reduce_func_other_argument_inputs) {
-      reduce_func_other_arguments.push_back(t);
-    }
-    OpInputList window_size_func_other_argument_inputs;
-    OP_REQUIRES_OK(ctx,
-                   ctx->input_list("window_size_func_other_arguments",
-                                   &window_size_func_other_argument_inputs));
-    std::vector<Tensor> window_size_func_other_arguments;
-    window_size_func_other_arguments.reserve(
-        window_size_func_other_argument_inputs.size());
-    for (const Tensor& t : window_size_func_other_argument_inputs) {
-      window_size_func_other_arguments.push_back(t);
-    }
-    // TODO(mrry): Refactor CapturedFunction to share the runtime
-    // state between multiple functions?
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
-                            key_func_, std::move(key_func_other_arguments),
-                            &captured_key_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
+                                                 "key_func_other_arguments",
+                                                 &captured_key_func));
     std::unique_ptr<CapturedFunction> captured_reduce_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(reduce_func_,
-                                      std::move(reduce_func_other_arguments),
-                                      &captured_reduce_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(reduce_func_, ctx,
+                                                 "reduce_func_other_arguments",
+                                                 &captured_reduce_func));
     std::unique_ptr<CapturedFunction> captured_window_size_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(
-                 window_size_func_, std::move(window_size_func_other_arguments),
-                 &captured_window_size_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(window_size_func_, ctx,
+                                            "window_size_func_other_arguments",
+                                            &captured_window_size_func));
 
     *output = new Dataset(
         ctx, input, key_func_, reduce_func_, window_size_func_,
@@ -93,7 +62,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& key_func, const NameAttrList& reduce_func,
@@ -103,7 +72,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_window_size_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           input_(input),
           key_func_(key_func),
           reduce_func_(reduce_func),
@@ -136,13 +105,14 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, key_func_.name()));
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, reduce_func_.name()));
       TF_RETURN_IF_ERROR(b->AddFunction(ctx, window_size_func_.name()));
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
@@ -203,7 +173,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        TF_RETURN_IF_ERROR(
+            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_reduce_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(
+            dataset()->captured_window_size_func_->Instantiate(ctx));
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -307,7 +283,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
      protected:
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(
@@ -348,7 +324,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         }
 
         if (current_group_iterator_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, current_group_iterator_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, current_group_iterator_));
 
           // Saving current_key_
           TF_RETURN_IF_ERROR(
@@ -364,7 +340,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
 
         if (reader->Contains(full_name("end_of_input"))) end_of_input_ = true;
 
@@ -412,7 +388,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(StartFlushingGroup(ctx, current_key_));
           // Restore current_group_iterator_ state
           TF_RETURN_IF_ERROR(
-              RestoreParent(ctx, reader, current_group_iterator_));
+              RestoreInput(ctx, reader, current_group_iterator_));
         }
         return Status::OK();
       }
@@ -530,7 +506,6 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
-  const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList key_func_;
@@ -542,4 +517,5 @@ REGISTER_KERNEL_BUILDER(Name("GroupByWindowDataset").Device(DEVICE_CPU),
                         GroupByWindowDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

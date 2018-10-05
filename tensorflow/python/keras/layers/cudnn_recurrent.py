@@ -47,6 +47,9 @@ class _CuDNNRNN(RNN):
     stateful: Boolean (default False). If True, the last state
         for each sample at index i in a batch will be used as initial
         state for the sample of index i in the following batch.
+    time_major: Boolean (default False). If true, the inputs and outputs will be
+        in shape `(timesteps, batch, ...)`, whereas in the False case, it will
+        be `(batch, timesteps, ...)`.
   """
 
   def __init__(self,
@@ -54,6 +57,7 @@ class _CuDNNRNN(RNN):
                return_state=False,
                go_backwards=False,
                stateful=False,
+               time_major=False,
                **kwargs):
     # We invoke the base layer's initializer directly here because we do not
     # want to create RNN cell instance.
@@ -62,6 +66,7 @@ class _CuDNNRNN(RNN):
     self.return_state = return_state
     self.go_backwards = go_backwards
     self.stateful = stateful
+    self.time_major = time_major
     self.supports_masking = False
     self.input_spec = [InputSpec(ndim=3)]
     if hasattr(self.cell.state_size, '__len__'):
@@ -124,7 +129,8 @@ class _CuDNNRNN(RNN):
         'return_sequences': self.return_sequences,
         'return_state': self.return_state,
         'go_backwards': self.go_backwards,
-        'stateful': self.stateful
+        'stateful': self.stateful,
+        'time_major': self.time_major,
     }
     base_config = super(  # pylint: disable=bad-super-call
         RNN, self).get_config()
@@ -267,7 +273,8 @@ class CuDNNGRU(_CuDNNRNN):
     self.built = True
 
   def _process_batch(self, inputs, initial_state):
-    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
+    if not self.time_major:
+      inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
@@ -301,7 +308,10 @@ class CuDNNGRU(_CuDNNRNN):
     if self.stateful or self.return_state:
       h = h[0]
     if self.return_sequences:
-      output = array_ops.transpose(outputs, perm=(1, 0, 2))
+      if self.time_major:
+        output = outputs
+      else:
+        output = array_ops.transpose(outputs, perm=(1, 0, 2))
     else:
       output = outputs[-1]
     return output, [h]
@@ -456,7 +466,8 @@ class CuDNNLSTM(_CuDNNRNN):
     self.built = True
 
   def _process_batch(self, inputs, initial_state):
-    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
+    if not self.time_major:
+      inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
     input_h = initial_state[0]
     input_c = initial_state[1]
     input_h = array_ops.expand_dims(input_h, axis=0)
@@ -496,7 +507,10 @@ class CuDNNLSTM(_CuDNNRNN):
       h = h[0]
       c = c[0]
     if self.return_sequences:
-      output = array_ops.transpose(outputs, perm=(1, 0, 2))
+      if self.time_major:
+        output = outputs
+      else:
+        output = array_ops.transpose(outputs, perm=(1, 0, 2))
     else:
       output = outputs[-1]
     return output, [h, c]

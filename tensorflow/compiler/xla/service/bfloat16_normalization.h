@@ -25,13 +25,13 @@ namespace xla {
 // A pass which adds F32 <-> BF16 conversions for HLO instructions that do not
 // support BF16 input/output or mixed precision, according to the passed-in
 // backend-specific BF16 support rules.
-class BFloat16Normalization : public HloPassInterface {
+class BFloat16Normalization : public HloModulePass {
  public:
   explicit BFloat16Normalization(const BFloat16Support* bfloat16_support)
       : bfloat16_support_(bfloat16_support) {}
 
   ~BFloat16Normalization() override = default;
-  tensorflow::StringPiece name() const override { return "bf16-normalization"; }
+  absl::string_view name() const override { return "bf16-normalization"; }
 
   // Run BF16 normalization on the given computation. Returns whether the
   // computation was changed.
@@ -48,13 +48,13 @@ class BFloat16Normalization : public HloPassInterface {
 // use mixed precision; it removes mixed precision even if the backend supports
 // it. This pass is used to make the HLO module valid for other HLO passes which
 // do not support mixed precision.
-class BFloat16MixedPrecisionRemoval : public HloPassInterface {
+class BFloat16MixedPrecisionRemoval : public HloModulePass {
  public:
   BFloat16MixedPrecisionRemoval() {}
 
   ~BFloat16MixedPrecisionRemoval() override = default;
 
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "bf16-mixed-precision-removal";
   }
 

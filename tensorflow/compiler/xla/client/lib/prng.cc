@@ -56,7 +56,7 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
 
   // Performs a single round of the Threefry2x32 algorithm, with a rotation
   // amount 'rotation'.
-  auto round = [builder](ThreeFry2x32State v, int rotation) {
+  auto round = [](ThreeFry2x32State v, int rotation) {
     v[0] = v[0] + v[1];
     v[1] = RotateLeftS32(v[1], rotation);
     v[1] = v[0] ^ v[1];

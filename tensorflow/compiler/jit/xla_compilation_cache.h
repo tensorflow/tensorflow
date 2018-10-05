@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -67,9 +68,9 @@ class XlaCompilationCache : public ResourceBase {
                  const std::map<int, Tensor>& constant_args,
                  const std::map<int, OptionalTensor>& variable_args,
                  OpKernelContext* ctx,
-                 const XlaCompiler::CompilationResult** compilation_result,
-                 xla::LocalExecutable** executable,
-                 const XlaCompiler::CompileOptions* compile_options);
+                 const XlaCompiler::CompileOptions& compile_options,
+                 const XlaCompiler::CompilationResult** out_compilation_result,
+                 xla::LocalExecutable** out_executable);
 
   // As above, but calls XlaCompiler::CompileSingleOp instead of
   // XlaCompiler::CompileFunction.
@@ -77,9 +78,9 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::Options& options,
       const std::map<int, Tensor>& constant_args,
       const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-      const XlaCompiler::CompilationResult** compilation_result,
-      xla::LocalExecutable** executable,
-      const XlaCompiler::CompileOptions* compile_options);
+      const XlaCompiler::CompileOptions& compile_options,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
@@ -88,15 +89,14 @@ class XlaCompilationCache : public ResourceBase {
 
  private:
   // Common implementation of Compile and CompileSingleOp.
-  Status CompileImpl(const XlaCompiler::Options& options,
-                     const NameAttrList& function,
-                     const std::map<int, Tensor>& constant_args,
-                     const std::map<int, OptionalTensor>& variable_args,
-                     OpKernelContext* ctx,
-                     const XlaCompiler::CompilationResult** compilation_result,
-                     xla::LocalExecutable** executable,
-                     const XlaCompiler::CompileOptions* compile_options,
-                     bool compile_single_op);
+  Status CompileImpl(
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const std::map<int, Tensor>& constant_args,
+      const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+      const XlaCompiler::CompileOptions& compile_options,
+      bool compile_single_op,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      xla::LocalExecutable** out_executable);
 
   // Takes `result` which has been compiled from a Tensorflow subgraph to a
   // XLA computation already, and generates an XLA LocalExecutable `executable`.
@@ -150,9 +150,22 @@ class XlaCompilationCache : public ResourceBase {
     std::unique_ptr<xla::LocalExecutable> executable GUARDED_BY(mu);
   };
 
-  mutex mu_;
-  std::unordered_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
-      GUARDED_BY(mu_);
+  mutex compile_cache_mu_;
+  absl::flat_hash_map<Signature, std::unique_ptr<Entry>, Signature::Hash> cache_
+      GUARDED_BY(compile_cache_mu_);
+
+  struct CompileStats {
+    // Number of times the cluster has been (re-)compiled.
+    int64 compile_count = 0;
+
+    // Cumulative time spent compiling the cluster.
+    int64 cumulative_compile_time_us = 0;
+  };
+  mutex compile_stats_mu_;
+
+  // Maps cluster names to compilation statistics for said cluster.
+  absl::flat_hash_map<string, CompileStats> compile_stats_
+      GUARDED_BY(compile_stats_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompilationCache);
 };

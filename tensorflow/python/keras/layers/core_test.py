@@ -30,16 +30,16 @@ from tensorflow.python.platform import test
 class CoreLayersTest(test.TestCase):
 
   def test_masking(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Masking, kwargs={}, input_shape=(3, 2, 3))
 
   def test_dropout(self):
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Dropout, kwargs={'rate': 0.5}, input_shape=(3, 2))
 
-    with self.test_session():
+    with self.cached_session():
       testing_utils.layer_test(
           keras.layers.Dropout,
           kwargs={'rate': 0.5,
@@ -47,7 +47,7 @@ class CoreLayersTest(test.TestCase):
           input_shape=(3, 2))
 
     # https://github.com/tensorflow/tensorflow/issues/14819
-    with self.test_session():
+    with self.cached_session():
       dropout = keras.layers.Dropout(0.5)
       self.assertEqual(True, dropout.supports_masking)
 
@@ -120,6 +120,20 @@ class CoreLayersTest(test.TestCase):
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_permute_errors_on_invalid_starting_dims_index(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+      testing_utils.layer_test(
+          keras.layers.Permute,
+          kwargs={'dims': (0, 1, 2)}, input_shape=(3, 2, 4))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_permute_errors_on_invalid_set_of_dims_indices(self):
+    with self.assertRaisesRegexp(ValueError, r'Invalid permutation .*dims.*'):
+      testing_utils.layer_test(
+          keras.layers.Permute,
+          kwargs={'dims': (1, 4, 2)}, input_shape=(3, 2, 4))
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_flatten(self):
     testing_utils.layer_test(
         keras.layers.Flatten, kwargs={}, input_shape=(3, 2, 4))
@@ -174,6 +188,14 @@ class CoreLayersTest(test.TestCase):
     ld = keras.layers.Lambda.from_config(config)
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_multiple_inputs(self):
+    ld = keras.layers.Lambda(lambda x: x[0], output_shape=lambda x: x[0])
+    x1 = np.ones([3, 2], np.float32)
+    x2 = np.ones([3, 5], np.float32)
+    out = ld([x1, x2])
+    self.assertAllEqual(out.shape, [3, 2])
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_dense(self):
     testing_utils.layer_test(
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 2))
@@ -188,7 +210,7 @@ class CoreLayersTest(test.TestCase):
         keras.layers.Dense, kwargs={'units': 3}, input_shape=(3, 4, 5, 2))
 
   def test_dense_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.Dense(
           3,
           kernel_regularizer=keras.regularizers.l1(0.01),
@@ -199,7 +221,7 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(3, len(layer.losses))
 
   def test_dense_constraints(self):
-    with self.test_session():
+    with self.cached_session():
       k_constraint = keras.constraints.max_norm(0.01)
       b_constraint = keras.constraints.max_norm(0.01)
       layer = keras.layers.Dense(
@@ -209,14 +231,14 @@ class CoreLayersTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
   def test_activity_regularization(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.ActivityRegularization(l1=0.1)
       layer(keras.backend.variable(np.ones((2, 4))))
       self.assertEqual(1, len(layer.losses))
       _ = layer.get_config()
 
   def test_lambda_output_shape(self):
-    with self.test_session():
+    with self.cached_session():
       l = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
       l(keras.backend.variable(np.ones((1, 1))))
       self.assertEqual((1, 1), l.get_config()['output_shape'])
@@ -225,13 +247,58 @@ class CoreLayersTest(test.TestCase):
     def get_output_shape(input_shape):
       return 1 * input_shape
 
-    with self.test_session():
+    with self.cached_session():
       l = keras.layers.Lambda(lambda x: x + 1, output_shape=get_output_shape)
       l(keras.backend.variable(np.ones((1, 1))))
       self.assertEqual('lambda', l.get_config()['output_shape_type'])
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_autocalculate_multiple_inputs(self):
+
+    def lambda_fn(x):
+      return math_ops.matmul(x[0], x[1])
+
+    l = keras.layers.Lambda(lambda_fn)
+    output_shape = l.compute_output_shape([(10, 10), (10, 20)])
+    self.assertAllEqual((10, 20), output_shape)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_list_multiple_outputs(self):
+
+    def lambda_fn(x):
+      return x
+
+    l = keras.layers.Lambda(lambda_fn, output_shape=[(10,), (20,)])
+    output_shape = l.compute_output_shape([(10, 10), (10, 20)])
+    self.assertAllEqual([(10, 10), (10, 20)], output_shape)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_tuple_with_none(self):
+
+    def lambda_fn(x):
+      return x
+
+    l = keras.layers.Lambda(lambda_fn, output_shape=(None, 10))
+    output_shape = l.compute_output_shape((5, 10, 20))
+    # Dimension(None) != Dimension(None), so check
+    # str representations for equality.
+    self.assertAllEqual(('5', '?', '10'), tuple([str(s) for s in output_shape]))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_function_multiple_outputs(self):
+
+    def lambda_fn(x):
+      return x
+
+    def output_shape_fn(input_shape):
+      return input_shape
+
+    l = keras.layers.Lambda(lambda_fn, output_shape=output_shape_fn)
+    output_shape = l.compute_output_shape([(10, 10), (10, 20)])
+    self.assertAllEqual([(10, 10), (10, 20)], output_shape)
+
   def test_lambda_config_serialization(self):
-    with self.test_session():
+    with self.cached_session():
       # test serialization with output_shape and output_shape_type
       layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
       layer(keras.backend.variable(np.ones((1, 1))))

@@ -290,7 +290,7 @@ public final class OperatorProcessor extends AbstractProcessor {
         javadoc.append(tag).append('\n');
       }
     }
-    javadoc.append("@see {@link ").append(opClassName).append("}\n");
+    javadoc.append("@see ").append(opClassName).append("\n");
 
     return javadoc.toString();
   }

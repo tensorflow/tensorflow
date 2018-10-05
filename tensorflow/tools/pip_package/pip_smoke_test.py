@@ -90,6 +90,8 @@ BLACKLIST = [
     "//tensorflow/contrib/lite/python:interpreter.py",
     "//tensorflow/contrib/lite/python:interpreter_test.py",
     "//tensorflow/contrib/ffmpeg:test_data",
+    "//tensorflow/contrib/fused_conv:fused_conv2d_bias_activation_op_test_base",
+    "//tensorflow/contrib/hadoop:test_data",
     "//tensorflow/contrib/factorization/examples:mnist",
     "//tensorflow/contrib/factorization/examples:mnist.py",
     "//tensorflow/contrib/factorization:factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",  # pylint:disable=line-too-long

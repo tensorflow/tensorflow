@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
@@ -47,6 +48,7 @@ class RecvBufCall : public CancellableCall {
     req_.set_buf_ptr(reinterpret_cast<int64>(DMAHelper::base(to_tensor)));
     req_.set_src_device(peer_device);
     req_.set_dst_device(to_device->name());
+    req_.set_request_id(GetUniqueRequestId());
   }
 
   ~RecvBufCall() override {}

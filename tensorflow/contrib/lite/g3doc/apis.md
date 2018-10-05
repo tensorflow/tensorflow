@@ -1,5 +1,3 @@
-book_path: /mobile/_book.yaml
-project_path: /mobile/_project.yaml
 
 # TensorFlow Lite APIs
 
@@ -39,7 +37,7 @@ float* output = interpreter->typed_output_tensor<float>(0);
 ```
 ### Data Alignment
 
-TensorFlow Lite data is usually aligned to 32-bit boundaries. It is recommended
+TensorFlow Lite data is usually aligned to 16-byte boundaries. It is recommended
 that all data provided to TensorFlow Lite be aligned that way.
 
 ### Error Reporting
@@ -114,7 +112,7 @@ below.  It should be noted that:
 
   * Tensors are represented by integers, in order to avoid string comparisons
     (and any fixed dependency on string libraries).
-  * An interpreter must not be accessed from concurrent threads
+  * An interpreter must not be accessed from concurrent threads.
   * Memory allocation for input and output tensors must be triggered
     by calling AllocateTensors() right after resizing tensors.
 
@@ -171,7 +169,7 @@ former provides error reporting facilities and access to global objects,
 including all the tensors. The latter allows implementations to access their
 inputs and outputs.
 
-When the interpreter loads a model, it calls init() once for each node in the
+When the interpreter loads a model, it calls `init()` once for each node in the
 graph. A given `init()` will be called more than once if the op is used
 multiple times in the graph. For custom ops a configuration buffer will be
 provided, containing a flexbuffer that maps parameter names to their values.
@@ -212,8 +210,9 @@ namespace custom {
 
 Note that registration is not automatic and an explicit call to
 `Register_MY_CUSTOM_OP` should be made somewhere. While the standard
-`:builtin_ops` takes care of the registration of builtins, custom ops will have
-to be collected in separated custom libraries.
+`BuiltinOpResolver` (available from the `:builtin_ops` target) takes care of the
+registration of builtins, custom ops will have to be collected in separate
+custom libraries.
 
 ### Customizing the kernel library
 
@@ -234,7 +233,7 @@ class OpResolver {
 };
 ```
 
-The regular usage will require the developer to use the `BuiltinOpResolver` and
+Regular usage will require the developer to use the `BuiltinOpResolver` and
 write:
 
 ```c++
@@ -310,18 +309,25 @@ an `IllegalArgumentException` will be thrown.
 
 #### Inputs
 
-Each input should be an array, a multi-dimensional array, or a `ByteBuffer` of
-the supported primitive types.
+Each input should be an array or multi-dimensional array of the supported
+primitive types, or a raw `ByteBuffer` of the appropriate size. If the input is
+an array or multi-dimensional array, the associated input tensor will be
+implicitly resized to the array's dimensions at inference time. If the input is
+a ByteBuffer, the caller should first manually resize the associated input
+tensor (via `Interpreter.resizeInput()`) before running inference.
 
-The use of `ByteBuffer` is preferred since it allows the `Interpreter` to avoid
-unnecessary copies. Each `ByteBuffer` needs to be a direct byte buffer, and its
-order must be `ByteOrder.nativeOrder()`. After it is used for a model inference,
-it must remain unchanged until the model inference is finished.
+When using 'ByteBuffer', prefer using direct byte buffers, as this allows the
+`Interpreter` to avoid unnecessary copies. If the `ByteBuffer` is a direct byte
+buffer, its order must be `ByteOrder.nativeOrder()`. After it is used for a
+model inference, it must remain unchanged until the model inference is finished.
 
 #### Outputs
 
-Each output should be an array, or a multi-dimensional array of the supported
-primitive types.
+Each output should be an array or multi-dimensional array of the supported
+primitive types, or a ByteBuffer of the appropriate size. Note that some models
+have dynamic outputs, where the shape of output tensors can vary depending on
+the input. There's no straightforward way of handling this with the existing
+Java inference API, but planned extensions will make this possible.
 
 #### Running Model Inference
 
@@ -341,9 +347,10 @@ interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
 where each entry in `inputs` corresponds to an input tensor and
 `map_of_indices_to_outputs` maps indices of output tensors to the
 corresponding output data. In both cases the tensor indices should correspond to
-the values given to the `TensorFlow Lite Optimized Converter` when the model was
-created. Be aware that the order of tensors in `input` must match the order
-given to the `TensorFlow Lite Optimized Converter`.
+the values given to the [TensorFlow Lite Optimized Converter](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/g3doc/cmdline_examples.md)
+when the model was created. Be aware that the order of tensors in `input` must
+match the order given to the `TensorFlow Lite Optimized Converter`.
+
 
 The Java API also provides convenient functions for app developers to get the
 index of any model input or output using a tensor name:

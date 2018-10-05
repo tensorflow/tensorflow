@@ -404,6 +404,9 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
     HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
     HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
+    HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
+    HANDLE_OPERATORTYPENAME_CASE(Unpack)
+    HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -601,14 +604,33 @@ void UnextendShape(Shape* shape, int new_shape_size) {
   shape_dims.erase(shape_dims.begin(), shape_dims.begin() + size_reduction);
 }
 
-bool IsValid(const Shape& shape) {
+// In general, zero-sized dimensions are disallowed, but there are exceptions,
+// e.g., if the tensor data itself represents a scalar (rank 0) shape, its
+// shape will have dimensions [0]. CheckNonEmptyShapeDimensions is more
+// strict, and is appropriate for ops and comparisons where an empty shape
+// doesn't make sense.
+template <typename Dims>
+void CheckValidShapeDimensions(const Dims& dims) {
+  if (dims.size() == 1 && dims[0] == 0) {
+    return;
+  }
+  for (const auto& dim : dims) {
+    CHECK_GE(dim, 1);
+  }
+}
+
+void CheckValidShape(const Shape& shape) {
+  CheckValidShapeDimensions(shape.dims());
+}
+
+bool IsNonEmpty(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     if (shape.dims(i) < 1) return false;
   }
   return true;
 }
 
-void CheckShapeDimensions(const Shape& shape) {
+void CheckNonEmptyShapeDimensions(const Shape& shape) {
   for (int i = 0; i < shape.dimensions_count(); ++i) {
     CHECK_GE(shape.dims()[i], 1) << "shape has dimension 0 at index << " << i
                                  << ". shape = " << ShapeToString(shape);
@@ -616,8 +638,8 @@ void CheckShapeDimensions(const Shape& shape) {
 }
 
 bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1) {
-  CheckShapeDimensions(shape0);
-  CheckShapeDimensions(shape1);
+  CheckNonEmptyShapeDimensions(shape0);
+  CheckNonEmptyShapeDimensions(shape1);
 
   const Shape* longer = &shape0;
   const Shape* shorter = &shape1;
@@ -644,8 +666,8 @@ bool ShapesAgreeUpToBroadcasting(const Shape& shape0, const Shape& shape1) {
 }
 
 bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1) {
-  CheckShapeDimensions(shape0);
-  CheckShapeDimensions(shape1);
+  CheckNonEmptyShapeDimensions(shape0);
+  CheckNonEmptyShapeDimensions(shape1);
 
   const Shape* longer = &shape0;
   const Shape* shorter = &shape1;
@@ -682,9 +704,9 @@ bool ShapesAgreeUpToExtending(const Shape& shape0, const Shape& shape1) {
 }
 
 int RequiredBufferSizeForShape(const Shape& shape) {
+  CheckValidShape(shape);
   int max_offset = 1;
   for (const auto& dim : shape.dims()) {
-    CHECK_GE(dim, 1);
     max_offset *= dim;
   }
   return max_offset;
@@ -821,24 +843,43 @@ void CheckNonAsciiIOArrays(const ModelFlags& model_flags) {
 }
 
 void CheckNonExistentIOArrays(const Model& model) {
+  // "non-existent" is interpreted in the stronger sense of
+  // "not actually produced/consumed by an op".
+  // Rationale: we have to artificially fix up TensorFlow graphs by creating
+  // any array that it refers to, so just checking that arrays exist isn't
+  // sufficient. The real invariant here is whether arrays are produced/consumed
+  // by something.
   if (model.flags.allow_nonexistent_arrays()) {
     return;
   }
+  static constexpr char general_comment[] =
+      "Is it a typo? To silence this message, pass this flag:  "
+      "allow_nonexistent_arrays";
   for (const auto& input_array : model.flags.input_arrays()) {
-    CHECK(model.HasArray(input_array.name()))
-        << "Input array not found: " << input_array.name();
+    QCHECK(GetOpWithInput(model, input_array.name()))
+        << "Specified input array \"" << input_array.name()
+        << "\" is not consumed by any op in this graph. " << general_comment;
   }
   for (const string& output_array : model.flags.output_arrays()) {
-    CHECK(model.HasArray(output_array))
-        << "Output array not found: " << output_array;
+    QCHECK(GetOpWithOutput(model, output_array))
+        << "Specified output array \"" << output_array
+        << "\" is not produced by any op in this graph. " << general_comment;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
-      CHECK(model.HasArray(rnn_state.state_array()));
-      CHECK(model.HasArray(rnn_state.back_edge_source_array()));
+      // Check that all RNN states are consumed
+      QCHECK(GetOpWithInput(model, rnn_state.state_array()))
+          << "Specified RNN state \"" << rnn_state.state_array()
+          << "\" is not consumed by any op in this graph. " << general_comment;
+      // Check that all RNN back-edge source arrays are produced
+      QCHECK(GetOpWithOutput(model, rnn_state.back_edge_source_array()))
+          << "Specified RNN back-edge source array \""
+          << rnn_state.back_edge_source_array()
+          << "\" is not produced by any op in this graph. " << general_comment;
     }
   }
 }
+
 }  // namespace
 
 void CheckNoMissingArray(const Model& model) {
@@ -945,13 +986,7 @@ void CheckEachArray(const Model& model) {
       // shape.
       CHECK(array->has_shape());
       // Constant buffer should has a valid shape.
-      bool is_scalar =
-          array->shape().dimensions_count() == 1 && array->shape().dims(0) == 0;
-      if (!is_scalar) {
-        for (int d : array->shape().dims()) {
-          CHECK_GE(d, 1);
-        }
-      }
+      CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
                RequiredBufferSizeForShape(array->shape()));
@@ -1543,8 +1578,8 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
     if (!input_array.has_shape()) {
       if (input_array_proto.has_shape()) {
         auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
+        CheckValidShapeDimensions(input_array_proto.shape().dims());
         for (auto dim : input_array_proto.shape().dims()) {
-          CHECK_GE(dim, 1);
           input_array_dims.push_back(dim);
         }
       }
@@ -1581,6 +1616,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
+
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),
@@ -2262,6 +2298,16 @@ void UndoWeightsShuffling(Model* model) {
     // Switch this FC op to using the deshuffled weights.
     weights_data = std::move(deshuffled_data);
   }
+}
+
+void CopyMinMaxAndQuantizationRelatedFields(const Array& src, Array* dst) {
+  if (src.minmax) {
+    dst->GetOrCreateMinMax() = src.GetMinMax();
+  }
+  if (src.quantization_params) {
+    dst->GetOrCreateQuantizationParams() = src.GetQuantizationParams();
+  }
+  dst->narrow_range = src.narrow_range;
 }
 
 }  // namespace toco

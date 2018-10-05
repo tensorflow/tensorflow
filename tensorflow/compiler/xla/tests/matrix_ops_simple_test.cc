@@ -17,12 +17,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -62,11 +63,11 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
                                                  });
   Exp(data);
 
-  std::unique_ptr<Literal> expected =
+  Literal expected =
       LiteralUtil::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
                                            {0.36788f, 1.64872f}});  // row 1
 
-  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
@@ -91,10 +92,10 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
                                                  });
   Map(&builder, {data}, add_half, {0, 1});
 
-  std::unique_ptr<Literal> expected =
+  Literal expected =
       LiteralUtil::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
                                            {-0.5f, 1.0f}});  // row 1
-  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
+  this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
 XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
@@ -110,10 +111,10 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
                                                 });
   Max(lhs, rhs);
 
-  std::unique_ptr<Literal> expected =
+  Literal expected =
       LiteralUtil::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
                                            {3.0f, -4.0f}});  // row 1
-  this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6));
+  this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6));
 }
 
 struct TestLinspaceMaxParam {
@@ -133,10 +134,9 @@ class TestLinspaceMaxParametric
     float from = -128.0, to = 256.0;
     std::unique_ptr<Array2D<T>> alhs =
         MakeLinspaceArray2D<T>(from, to, rows, cols);
-    auto arhs = MakeUnique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
+    auto arhs = absl::make_unique<Array2D<T>>(rows, cols, static_cast<T>(1.0f));
 
-    XlaBuilder builder(
-        tensorflow::strings::Printf("max_%lldx%lld_linspace", rows, cols));
+    XlaBuilder builder(absl::StrFormat("max_%dx%d_linspace", rows, cols));
     auto lhs = ConstantR2FromArray2D<T>(&builder, *alhs);
     auto rhs = ConstantR2FromArray2D<T>(&builder, *arhs);
     Max(lhs, rhs);
@@ -158,7 +158,7 @@ class TestLinspaceMaxParametric
 string PrintTestLinspaceMaxParam(
     const ::testing::TestParamInfo<TestLinspaceMaxParam>& test_param) {
   const TestLinspaceMaxParam& param = test_param.param;
-  return tensorflow::strings::StrCat(param.rows, "r", param.cols, "c");
+  return absl::StrCat(param.rows, "r", param.cols, "c");
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
@@ -200,14 +200,12 @@ class MatOpsDotAddTest
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
-        client_->TransferToServer(
-            *LiteralUtil::CreateR2FromArray2DWithLayout<T>(
-                lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+        client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
+            lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
     TF_ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
-        client_->TransferToServer(
-            *LiteralUtil::CreateR2FromArray2DWithLayout<T>(
-                rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+        client_->TransferToServer(LiteralUtil::CreateR2FromArray2DWithLayout<T>(
+            rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
 
     XlaBuilder builder(TestName());
     auto lhs_arg = Parameter(&builder, 0, lhs_shape, "lhs");

@@ -39,13 +39,18 @@ The API for converting TensorFlow models to TensorFlow Lite as of TensorFlow 1.9
 is `tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
 `tf.contrib.lite.Interpreter`.
 
+**NOTE**: As of TensorFlow 1.12, the API for converting TensorFlow models to
+TFLite will be renamed to `TFLiteConverter`. `TFLiteConverter` is semantically
+identically to `TocoConverter`. The API is available at
+`tf.contrib.lite.TFLiteConverter` as of the Sept 26 `tf-nightly`.
+
 `TocoConverter` provides class methods based on the original format of the
 model. `TocoConverter.from_session()` is available for GraphDefs.
 `TocoConverter.from_saved_model()` is available for SavedModels.
 `TocoConverter.from_keras_model_file()` is available for `tf.Keras` files.
-Example usages for simple float-point models are shown in [Basic
-Examples](#basic). Examples usages for more complex models is shown in [Complex
-Examples](#complex).
+Example usages for simple float-point models are shown in
+[Basic Examples](#basic). Examples usages for more complex models is shown in
+[Complex Examples](#complex).
 
 **NOTE**: Currently, `TocoConverter` will cause a fatal error to the Python
 interpreter when the conversion fails. This will be remedied as soon as
@@ -70,6 +75,7 @@ val = img + var
 out = tf.identity(val, name="out")
 
 with tf.Session() as sess:
+  sess.run(tf.global_variables_initializer())
   converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
   tflite_model = converter.convert()
   open("converted_model.tflite", "wb").write(tflite_model)
@@ -259,7 +265,7 @@ interpreter.allocate_tensors()
 In order to run the latest version of the TOCO Python API, clone the TensorFlow
 repository, configure the installation, and build and install the pip package.
 Detailed instructions are available
-[here](https://www.tensorflow.org/install/install_sources).
+[here](https://www.tensorflow.org/install/source).
 
 ### Converting models prior to TensorFlow 1.9. <a name="pre-tensorflow-1.9"></a>
 

@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -31,7 +31,7 @@ string HloOpcodeString(HloOpcode opcode) {
 }
 
 StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
-  static auto* opcode_map = new tensorflow::gtl::FlatMap<string, HloOpcode>({
+  static auto* opcode_map = new absl::flat_hash_map<string, HloOpcode>({
 #define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \
   {opcode_name, HloOpcode::enum_name},
       HLO_OPCODE_LIST(STRING_TO_OPCODE_ENTRY)
@@ -39,7 +39,7 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
   });
   auto it = opcode_map->find(opcode_name);
   if (it == opcode_map->end()) {
-    return InvalidArgument("Unknown opcode: %s", opcode_name.c_str());
+    return InvalidArgument("Unknown opcode: %s", opcode_name);
   }
   return it->second;
 }

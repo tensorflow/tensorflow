@@ -21,9 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.training import adagrad
 
 
 class EmbeddingTest(test.TestCase):
@@ -68,7 +70,7 @@ class EmbeddingTest(test.TestCase):
         expected_output_dtype='float32')
 
   def test_embedding_correctness(self):
-    with self.test_session():
+    with self.cached_session():
       layer = keras.layers.Embedding(output_dim=2, input_dim=2)
       layer.build((None, 2))
       matrix = np.array([[1, 1], [2, 2]])
@@ -78,6 +80,17 @@ class EmbeddingTest(test.TestCase):
       outputs = keras.backend.eval(layer(inputs))
       self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
 
+  @tf_test_util.run_in_graph_and_eager_modes()
+  def test_eager_gpu_cpu(self):
+    l = keras.layers.Embedding(output_dim=2, input_dim=2)
+    l.build((None, 2))
+    inputs = keras.backend.constant([[0, 1, 0]], dtype='int32')
+    with backprop.GradientTape() as tape:
+      output = l(inputs)
+    gs = tape.gradient(output, l.weights)
+    opt = adagrad.AdagradOptimizer(0.1)
+    opt.apply_gradients(zip(gs, l.weights))
+    self.assertAllEqual(len(gs), 1)
 
 if __name__ == '__main__':
   test.main()

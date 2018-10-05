@@ -5,8 +5,8 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_linkopts")
 
 common_copts = ["-Wall"] + tflite_copts()
 
@@ -32,6 +32,26 @@ cc_binary(
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
+    ],
+)
+
+cc_binary(
+    name = "benchmark_model_plus_flex",
+    srcs = [
+        "benchmark_main.cc",
+    ],
+    copts = common_copts,
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-pie",  # Android 5.0 and later supports only PIE
+            "-lm",  # some builtin ops, e.g., tanh, need -lm
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_tflite_model_lib",
+        ":logging",
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
     ],
 )
 
@@ -88,7 +108,6 @@ cc_library(
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/contrib/lite/profiling:profile_summarizer",
-        "//tensorflow/contrib/lite/profiling:profiler",
     ],
 )
 

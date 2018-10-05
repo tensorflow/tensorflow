@@ -35,6 +35,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -124,7 +125,7 @@ class GraphActionsTest(test.TestCase):
 
   # TODO(ptucker): Test number and contents of checkpoint files.
   def _assert_ckpt(self, output_dir, expected=True):
-    ckpt_state = saver_lib.get_checkpoint_state(output_dir)
+    ckpt_state = checkpoint_management.get_checkpoint_state(output_dir)
     if expected:
       pattern = '%s/model.ckpt-.*' % output_dir
       primary_ckpt_path = ckpt_state.model_checkpoint_path
@@ -161,9 +162,9 @@ class GraphActionsTest(test.TestCase):
       Tuple of 3 `Tensor` objects, 2 input and 1 output.
     """
     variables_lib.create_global_step()
-    in0 = variables.Variable(1.0)
+    in0 = variables.VariableV1(1.0)
     in1 = variables_lib.local_variable(2.0)
-    fake_table = variables.Variable(
+    fake_table = variables.VariableV1(
         3.0,
         trainable=False,
         collections=['fake_tables'],
@@ -174,7 +175,7 @@ class GraphActionsTest(test.TestCase):
     return in0, in1, out
 
   def test_infer(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._assert_ckpt(self._output_dir, False)
       in0, in1, out = self._build_inference_graph()
       self.assertEqual({
@@ -192,7 +193,7 @@ class GraphActionsTest(test.TestCase):
       side_effect=learn.graph_actions.coordinator.Coordinator.request_stop,
       autospec=True)
   def test_coordinator_request_stop_called(self, request_stop):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       in0, in1, out = self._build_inference_graph()
       learn.graph_actions.infer(None, {'a': in0, 'b': in1, 'c': out})
       self.assertTrue(request_stop.called)
@@ -203,7 +204,7 @@ class GraphActionsTest(test.TestCase):
       side_effect=learn.graph_actions.coordinator.Coordinator.request_stop,
       autospec=True)
   def test_run_feeds_iter_cleanup_with_exceptions(self, request_stop):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       in0, in1, out = self._build_inference_graph()
       try:
         for _ in learn.graph_actions.run_feeds_iter({
@@ -233,7 +234,7 @@ class GraphActionsTest(test.TestCase):
         self.assertTrue(test_ops.resource_initialized_op(handle).eval())
 
   def test_infer_different_default_graph(self):
-    with self.test_session():
+    with self.cached_session():
       self._assert_ckpt(self._output_dir, False)
       with ops.Graph().as_default():
         in0, in1, out = self._build_inference_graph()
@@ -248,7 +249,7 @@ class GraphActionsTest(test.TestCase):
       self._assert_ckpt(self._output_dir, False)
 
   def test_infer_invalid_feed(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._assert_ckpt(self._output_dir, False)
       in0, _, _ = self._build_inference_graph()
       with self.assertRaisesRegexp(TypeError, 'Can not convert a NoneType'):
@@ -256,7 +257,7 @@ class GraphActionsTest(test.TestCase):
       self._assert_ckpt(self._output_dir, False)
 
   def test_infer_feed(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._assert_ckpt(self._output_dir, False)
       in0, _, out = self._build_inference_graph()
       self.assertEqual(
@@ -270,7 +271,7 @@ class GraphActionsTest(test.TestCase):
   # TODO(ptucker): Test eval for 1 epoch.
 
   def test_evaluate_invalid_args(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._assert_ckpt(self._output_dir, False)
       with self.assertRaisesRegexp(ValueError, 'utput directory'):
         learn.graph_actions.evaluate(
@@ -287,7 +288,7 @@ class GraphActionsTest(test.TestCase):
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       _, _, out = self._build_inference_graph()
       writer = learn.graph_actions.get_summary_writer(self._output_dir)
       self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
@@ -309,10 +310,10 @@ class GraphActionsTest(test.TestCase):
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_ready_for_local_init(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       variables_lib.create_global_step()
-      v = variables.Variable(1.0)
-      variables.Variable(
+      v = variables.VariableV1(1.0)
+      variables.VariableV1(
           v + 1, collections=[ops.GraphKeys.LOCAL_VARIABLES], trainable=False)
       ready_for_local_init_op = variables.report_uninitialized_variables(
           variables.global_variables())
@@ -326,7 +327,7 @@ class GraphActionsTest(test.TestCase):
           max_steps=1)
 
   def test_evaluate_feed_fn(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       in0, _, out = self._build_inference_graph()
       writer = learn.graph_actions.get_summary_writer(self._output_dir)
       self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
@@ -351,7 +352,7 @@ class GraphActionsTest(test.TestCase):
       self._assert_ckpt(self._output_dir, False)
 
   def test_evaluate_feed_fn_with_exhaustion(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       in0, _, out = self._build_inference_graph()
       writer = learn.graph_actions.get_summary_writer(self._output_dir)
       self._assert_summaries(self._output_dir, writer, expected_session_logs=[])
@@ -374,7 +375,7 @@ class GraphActionsTest(test.TestCase):
           expected_session_logs=[])
 
   def test_evaluate_with_saver(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       _, _, out = self._build_inference_graph()
       ops.add_to_collection(ops.GraphKeys.SAVERS, saver_lib.Saver())
       writer = learn.graph_actions.get_summary_writer(self._output_dir)
@@ -434,7 +435,7 @@ class GraphActionsTrainTest(test.TestCase):
 
   # TODO(ptucker): Test number and contents of checkpoint files.
   def _assert_ckpt(self, output_dir, expected=True):
-    ckpt_state = saver_lib.get_checkpoint_state(output_dir)
+    ckpt_state = checkpoint_management.get_checkpoint_state(output_dir)
     if expected:
       pattern = '%s/model.ckpt-.*' % output_dir
       primary_ckpt_path = ckpt_state.model_checkpoint_path
@@ -455,9 +456,9 @@ class GraphActionsTrainTest(test.TestCase):
       Tuple of 3 `Tensor` objects, 2 input and 1 output.
     """
     variables_lib.create_global_step()
-    in0 = variables.Variable(1.0)
+    in0 = variables.VariableV1(1.0)
     in1 = variables_lib.local_variable(2.0)
-    fake_table = variables.Variable(
+    fake_table = variables.VariableV1(
         3.0,
         trainable=False,
         collections=['fake_tables'],
@@ -468,7 +469,7 @@ class GraphActionsTrainTest(test.TestCase):
     return in0, in1, out
 
   def test_train_invalid_args(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       train_op = constant_op.constant(1.0)
       loss_op = constant_op.constant(2.0)
       with self.assertRaisesRegexp(ValueError, 'utput directory'):
@@ -502,7 +503,7 @@ class GraphActionsTrainTest(test.TestCase):
   # TODO(ptucker): Mock supervisor, and assert all interactions.
 
   def test_train(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       self._assert_summaries(self._output_dir)
@@ -521,7 +522,7 @@ class GraphActionsTrainTest(test.TestCase):
       self._assert_ckpt(self._output_dir, True)
 
   def test_train_steps_is_incremental(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       learn.graph_actions.train(
@@ -534,7 +535,7 @@ class GraphActionsTrainTest(test.TestCase):
           self._output_dir, variables_lib.get_global_step().name)
       self.assertEqual(10, step)
 
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       learn.graph_actions.train(
@@ -548,7 +549,7 @@ class GraphActionsTrainTest(test.TestCase):
       self.assertEqual(25, step)
 
   def test_train_max_steps_is_not_incremental(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       learn.graph_actions.train(
@@ -561,7 +562,7 @@ class GraphActionsTrainTest(test.TestCase):
           self._output_dir, variables_lib.get_global_step().name)
       self.assertEqual(10, step)
 
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       learn.graph_actions.train(
@@ -575,7 +576,7 @@ class GraphActionsTrainTest(test.TestCase):
       self.assertEqual(15, step)
 
   def test_train_loss(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       variables_lib.create_global_step()
       loss_var = variables_lib.local_variable(10.0)
       train_op = control_flow_ops.group(
@@ -597,7 +598,7 @@ class GraphActionsTrainTest(test.TestCase):
       self._assert_ckpt(self._output_dir, True)
 
   def test_train_summaries(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       loss_op = constant_op.constant(2.0)
@@ -623,7 +624,7 @@ class GraphActionsTrainTest(test.TestCase):
       self._assert_ckpt(self._output_dir, True)
 
   def test_train_chief_monitor(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with ops.control_dependencies(self._build_inference_graph()):
         train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
       loss_op = constant_op.constant(2.0)
@@ -662,7 +663,7 @@ class GraphActionsTrainTest(test.TestCase):
       # and the other chief exclusive.
       chief_exclusive_monitor = _BaseMonitorWrapper(False)
       all_workers_monitor = _BaseMonitorWrapper(True)
-      with self.test_session(g):
+      with self.session(g):
         loss = learn.graph_actions.train(
             g,
             output_dir=self._output_dir,

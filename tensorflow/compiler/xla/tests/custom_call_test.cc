@@ -16,9 +16,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -80,8 +80,8 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
 
   module->AddEntryComputation(builder.Build());
 
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, *result, error_spec_);
+  Literal result = ExecuteAndTransfer(std::move(module), {});
+  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
@@ -101,8 +101,8 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
 
   module->AddEntryComputation(builder.Build());
 
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-  LiteralTestUtil::ExpectR0Near<float>(10.0f, *result, error_spec_);
+  Literal result = ExecuteAndTransfer(std::move(module), {});
+  LiteralTestUtil::ExpectR0Near<float>(10.0f, result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest,
@@ -125,9 +125,9 @@ XLA_TEST_F(CustomCallTest,
 
   module->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
+  Literal result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
-      Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, *result);
+      Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
 
 class CustomCallClientAPITest : public ClientLibraryTestBase {};

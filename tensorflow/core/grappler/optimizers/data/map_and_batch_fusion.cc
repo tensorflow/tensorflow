@@ -32,9 +32,8 @@ namespace {
 
 constexpr char kFusedOpName[] = "MapAndBatchDatasetV2";
 
-NodeDef make_map_and_batch_node(const NodeDef& map_node,
-                                const NodeDef& batch_node,
-                                MutableGraphView* graph) {
+NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
+                            MutableGraphView* graph) {
   NodeDef new_node;
   new_node.set_op(kFusedOpName);
   graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->GetGraph(),
@@ -81,11 +80,12 @@ NodeDef make_map_and_batch_node(const NodeDef& map_node,
 
   // Set `f` and `Targuments` attributes.
   for (auto key : {"f", "Targuments"}) {
-    (*new_node.mutable_attr())[key] = map_node.attr().at(key);
+    graph_utils::CopyAttribute(key, map_node, &new_node);
   }
+
   // Set `output_types` and `output_shapes` attributes.
   for (auto key : {"output_shapes", "output_types"}) {
-    (*new_node.mutable_attr())[key] = batch_node.attr().at(key);
+    graph_utils::CopyAttribute(key, batch_node, &new_node);
   }
   return new_node;
 }
@@ -104,8 +104,8 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     // Use a more descriptive variable name now that we know the node type.
     const NodeDef& batch_node = node;
-    GraphView::InputPort input_port = graph.GetInputPort(batch_node.name(), 0);
-    NodeDef* node2 = graph.GetRegularFanin(input_port).node;
+    NodeDef* node2 = graph_utils::GetInputNode(batch_node, graph);
+
     if (node2->op() != "MapDataset" && node2->op() != "ParallelMapDataset") {
       continue;
     }
@@ -113,7 +113,7 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     NodeDef* map_node = node2;
 
     auto* new_node =
-        graph.AddNode(make_map_and_batch_node(*map_node, batch_node, &graph));
+        graph.AddNode(MakeMapAndBatchNode(*map_node, batch_node, &graph));
     graph.ReplaceInput(batch_node, *new_node);
 
     // Mark the `Map` and `Batch` nodes for removal.

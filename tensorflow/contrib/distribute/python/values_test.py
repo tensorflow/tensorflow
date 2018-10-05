@@ -375,8 +375,9 @@ class PerDeviceDatasetTest(test.TestCase):
       combined_expected = []
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        combined_actual.extend(self.evaluate([
-            values.select_device(d, next_element) for d in devices]))
+        combined_actual.extend(
+            self.evaluate(
+                [values.select_device(d, next_element) for d in devices]))
         combined_expected.extend(expected_value)
 
       self.assertEqual(set(combined_expected), set(combined_actual))
@@ -521,6 +522,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
     return worker_device_map, devices
 
   def testDataDistributionOneDevicePerWorker(self):
+    self.skipTest("Temporarily disabled.")
     worker_device_map, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
@@ -528,6 +530,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                          [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testDataDistributionTwoDevicePerWorker(self):
+    self.skipTest("Temporarily disabled.")
     if context.num_gpus() < 1:
       self.skipTest("A GPU is not available for this test.")
     worker_device_map, devices = self._cpu_and_one_gpu_devices()
@@ -537,6 +540,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                          [[0, 2, 1, 3], [4, 6, 5, 7]])
 
   def testTupleDataset(self):
+    self.skipTest("Temporarily disabled.")
     worker_device_map, devices = self._cpu_devices()
 
     with context.graph_mode():
@@ -553,6 +557,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                          expected_values)
 
   def testInitializableIterator(self):
+    self.skipTest("Temporarily disabled.")
     worker_device_map, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
@@ -570,6 +575,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testValueErrorForIterator(self):
+    self.skipTest("Temporarily disabled.")
     # Incompatiable arguments.
     with self.assertRaises(ValueError):
       values.MultiWorkerDataIterator({"w1": None}, {"w1": "d1", "w2": "d2"})
@@ -635,7 +641,7 @@ class MirroredVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -653,7 +659,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _save_mirrored(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -668,7 +674,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _save_normal(self):
     """Save variables without mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
 
@@ -684,7 +690,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _restore_normal(self, save_path):
     """Restore to variables without mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=7., use_resource=True)
 
@@ -698,7 +704,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _restore_mirrored(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -738,7 +744,7 @@ class MirroredVariableTest(test.TestCase):
     if context.num_gpus() < 1 or context.executing_eagerly():
       self.skipTest("A GPU is not available for this test or it's eager mode.")
 
-    with self.test_session(
+    with self.session(
         graph=ops.Graph()) as sess, mirrored_strategy.MirroredStrategy(
             ["/device:GPU:0"]).scope():
       with ops.device("/device:GPU:0"):
@@ -821,7 +827,7 @@ class TowerLocalVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
@@ -844,7 +850,7 @@ class TowerLocalVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, tower_local = _make_tower_local(
           variable_scope.VariableAggregation.MEAN)
 
@@ -864,7 +870,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _save_tower_local_mean(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local(
           variable_scope.VariableAggregation.MEAN)
 
@@ -881,7 +887,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _save_tower_local_sum(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local("sum")
 
       # Overwrite the initial values.
@@ -897,7 +903,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _save_normal(self):
     """Save variables without mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
 
@@ -913,7 +919,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_normal(self, save_path):
     """Restore to variables without mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=7., use_resource=True)
 
@@ -927,7 +933,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_tower_local_mean(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local(
           variable_scope.VariableAggregation.MEAN)
 
@@ -942,7 +948,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_tower_local_sum(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.

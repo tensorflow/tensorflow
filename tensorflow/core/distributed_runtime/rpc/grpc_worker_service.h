@@ -49,7 +49,7 @@ class GrpcWorker : public Worker {
   WorkerEnv* env();
 
  private:
-  RecentRequestIds recv_tensor_recent_request_ids_;
+  RecentRequestIds recent_request_ids_;
 };
 
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);

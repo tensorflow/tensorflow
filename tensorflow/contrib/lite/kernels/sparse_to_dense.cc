@@ -19,8 +19,8 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -187,7 +187,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return ResizeOutputShape(context, output_shape, output);
 }
 
-template <typename T, typename I>
+template <typename T, typename TI>
 TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* indices = GetInput(context, node, kIndicesTensor);
   const TfLiteTensor* output_shape =
@@ -204,14 +204,15 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
 
   const int num_indices = SizeOfDimension(indices, 0);
   const bool value_is_scalar = NumDimensions(values) == 0;
-  std::vector<std::vector<I>> indices_vector;
+  std::vector<std::vector<TI>> indices_vector;
   indices_vector.reserve(num_indices);
-  TF_LITE_ENSURE_OK(context, GetIndicesVector<I>(context, indices, num_indices,
-                                                 &indices_vector));
+  TF_LITE_ENSURE_OK(context, GetIndicesVector<TI>(context, indices, num_indices,
+                                                  &indices_vector));
   reference_ops::SparseToDense(indices_vector, GetTensorData<T>(values),
                                *GetTensorData<T>(default_value),
-                               GetTensorData<T>(output), GetTensorDims(output),
-                               value_is_scalar);
+                               value_is_scalar, GetTensorShape(output),
+                               GetTensorData<T>(output));
+
   return kTfLiteOk;
 }
 

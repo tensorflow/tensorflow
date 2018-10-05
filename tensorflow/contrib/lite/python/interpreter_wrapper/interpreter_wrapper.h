@@ -15,12 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_PYTHON_INTERPRETER_WRAPPER_INTERPRETER_WRAPPER_H_
 #define TENSORFLOW_CONTRIB_LITE_PYTHON_INTERPRETER_WRAPPER_INTERPRETER_WRAPPER_H_
 
-// Place `<locale>` before <Python.h> to avoid build failures in macOS.
-#include <locale>
 #include <memory>
 #include <string>
 #include <vector>
 
+// Place `<locale>` before <Python.h> to avoid build failures in macOS.
+#include <locale>
+
+// The empty line above is on purpose as otherwise clang-format will
+// automatically move <Python.h> before <locale>.
 #include <Python.h>
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
@@ -56,13 +59,14 @@ class InterpreterWrapper {
   PyObject* OutputIndices() const;
   PyObject* ResizeInputTensor(int i, PyObject* value);
 
+  int NumTensors() const;
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
   PyObject* TensorQuantization(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
-  PyObject* ResetVariableTensorsToZero();
+  PyObject* ResetVariableTensors();
 
   // Returns a reference to tensor index i as a numpy array. The base_object
   // should be the interpreter object providing the memory.

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
-#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_MULTITHREADED_CONV_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_MULTITHREADED_CONV_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -26,7 +26,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
-#include "tensorflow/contrib/lite/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
@@ -69,13 +69,13 @@ struct MatMulConvFunctor {
 template <class T>
 class EigenTensorConvFunctor {
  private:
-  Eigen::PaddingType TfLitePadding2EigenPadding(TfLitePadding padding) {
+  Eigen::PaddingType RuntimePadding2EigenPadding(PaddingType padding) {
     switch (padding) {
-      case kTfLitePaddingValid:
+      case PaddingType::kValid:
         return Eigen::PADDING_VALID;
-      case kTfLitePaddingSame:
+      case PaddingType::kSame:
         return Eigen::PADDING_SAME;
-      case kTfLitePaddingUnknown:
+      case PaddingType::kNone:
         assert(false);  // should never get here.
         return Eigen::PADDING_VALID;
     }
@@ -89,7 +89,7 @@ class EigenTensorConvFunctor {
                   int input_width, int input_depth, const T* filter_data,
                   int filter_height, int filter_width, int filter_count,
                   int stride_rows, int stride_cols, int pad_width,
-                  int pad_height, TfLitePadding padding, T* output_data,
+                  int pad_height, PaddingType padding, T* output_data,
                   int output_height, int output_width) {
     const bool is_1x1_kernel = (filter_height == 1 && filter_width == 1 &&
                                 stride_rows == 1 && stride_cols == 1);
@@ -113,8 +113,8 @@ class EigenTensorConvFunctor {
           filter_width * filter_height * input_depth;
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-      EigenMatrix output(output_data, 1, filter_count);
-      ConstEigenMatrix input(input_data, 1, k);
+      EigenMatrix output(output_data, input_batches, filter_count);
+      ConstEigenMatrix input(input_data, input_batches, k);
       ConstEigenMatrix filter(filter_data, k, filter_count);
       MatMulConvFunctor<Eigen::ThreadPoolDevice, T>()(device, output, input,
                                                       filter, dim_pair);
@@ -127,28 +127,38 @@ class EigenTensorConvFunctor {
                               input_depth, filter_count);
       output.device(device) =
           Eigen::SpatialConvolution(input, filter, stride_cols, stride_rows,
-                                    TfLitePadding2EigenPadding(padding));
+                                    RuntimePadding2EigenPadding(padding));
     }
   }
 };
 
-inline void Conv(const Eigen::ThreadPoolDevice& device, const float* input_data,
-                 const Dims<4>& input_dims, const float* filter_data,
-                 const Dims<4>& filter_dims, const float* bias_data,
-                 const Dims<4>& bias_dims, int stride_width, int stride_height,
-                 int pad_width, int pad_height, TfLitePadding padding,
-                 float output_activation_min, float output_activation_max,
-                 float* output_data, const Dims<4>& output_dims,
-                 float* im2col_data, const Dims<4>& im2col_dims) {
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
-  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int filter_height = ArraySize(filter_dims, 2);
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
+inline void Conv(const Eigen::ThreadPoolDevice& device,
+                 const ConvParams& params, const RuntimeShape& input_shape,
+                 const float* input_data, const RuntimeShape& filter_shape,
+                 const float* filter_data, const RuntimeShape& bias_shape,
+                 const float* bias_data, const RuntimeShape& output_shape,
+                 float* output_data, const RuntimeShape& im2col_shape,
+                 float* im2col_data) {
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const PaddingType padding = params.padding_type;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int filter_height = filter_shape.Dims(1);
+  const int filter_width = filter_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
   EigenTensorConvFunctor<float> conv_functor;
   conv_functor(device, input_data, im2col_data, batches, input_height,
                input_width, input_depth, filter_data, filter_height,
@@ -157,11 +167,11 @@ inline void Conv(const Eigen::ThreadPoolDevice& device, const float* input_data,
                output_width);
 
   optimized_ops::AddBiasAndEvalActivationFunction(
-      bias_data, bias_dims, output_data, output_dims, output_activation_min,
-      output_activation_max);
+      output_activation_min, output_activation_max, bias_shape, bias_data,
+      output_shape, output_data);
 }
 
 }  // namespace multithreaded_ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_MULTITHREAD_CONV
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_MULTITHREADED_CONV_H_

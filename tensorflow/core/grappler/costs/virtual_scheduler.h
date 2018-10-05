@@ -114,6 +114,7 @@ struct DeviceState {
 
   DeviceState() {
     device_costs = Costs::ZeroCosts();
+    device_costs.num_ops_total = 0;
     memory_usage = 0;
     max_memory_usage = 0;
   }
@@ -275,7 +276,6 @@ class VirtualScheduler {
   // Return per device peak memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
 
- protected:
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
     return &device_;
   }
@@ -283,6 +283,7 @@ class VirtualScheduler {
     return &node_map_;
   }
 
+ protected:
   // Returns the size of output at port_num (unit: bytes). A special case is
   // port_num -1, which is for control dependency and assumed to be 4 bytes.
   int64 CalculateOutputSize(

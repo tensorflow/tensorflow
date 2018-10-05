@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
 #ifdef _OPENMP
@@ -49,6 +50,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #ifdef INTEL_MKL
+  // Early return when MKL is disabled
+  if (DisableMKL()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   if (user_omp_threads == nullptr) {
@@ -69,17 +72,6 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 }
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
-
-void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // When Xprof/ThreadScape profiling is off (which is the default), the
-  // following code is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                               op_kernel->name());
-
-  op_kernel->Compute(context);
-}
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_;
@@ -124,8 +116,12 @@ class MklCPUAllocatorFactory : public AllocatorFactory {
   }
 };
 
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+#ifdef ENABLE_MKL
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200),
+                       MklCPUAllocatorFactory);
+#endif  // ENABLE_MKL
+
 }  // namespace
-#endif
+#endif  // INTEL_MKL
 
 }  // namespace tensorflow

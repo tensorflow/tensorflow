@@ -256,7 +256,7 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
 
     # domain_dimension is 3
     self.assertAllEqual([2, 3, 3], operator.shape)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual([2, 3, 3], operator.to_dense().eval().shape)
 
   def test_dynamic_shape_broadcasts_up_from_operator_to_other_args(self):
@@ -274,7 +274,7 @@ class LinearOpearatorLowRankUpdateBroadcastsShape(test.TestCase):
         u_shape_ph: [2, 3, 2],  # batch_shape = [2]
     }
 
-    with self.test_session():
+    with self.cached_session():
       shape_tensor = operator.shape_tensor().eval(feed_dict=feed_dict)
       self.assertAllEqual([2, 3, 3], shape_tensor)
       dense = operator.to_dense().eval(feed_dict=feed_dict)

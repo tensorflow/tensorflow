@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -31,8 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -104,6 +103,30 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   XlaExpression e;
   e.set_constant_value(value);
   retvals_[retval_index] = Retval{dtype, value.shape(), e};
+  return Status::OK();
+}
+
+Status XlaContext::AddResourceRetval(int retval_index, XlaResource* resource) {
+  VLOG(1) << "Adding retval index " << retval_index << " with resource "
+          << resource->name() << ":" << resource->shape().DebugString()
+          << " to XLA computation";
+  if (retvals_.size() <= retval_index) {
+    retvals_.resize(retval_index + 1);
+  }
+  XlaExpression e;
+  e.set_resource(resource);
+  retvals_[retval_index] = Retval{DT_RESOURCE, resource->shape(), e};
+  return Status::OK();
+}
+
+Status XlaContext::AppendTokenRetval(const xla::XlaOp& token) {
+  VLOG(1) << "Adding retval index " << retvals_.size()
+          << " with token to XLA computation";
+  XlaExpression e;
+  e.set_handle(token);
+  // We use DT_INVALID because there is no TF DataType which corresponds to XLA
+  // token. XlaCompiler handles this case separately, so putting it here is OK.
+  retvals_.push_back(Retval{DT_INVALID, TensorShape(), e});
   return Status::OK();
 }
 

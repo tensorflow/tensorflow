@@ -19,6 +19,12 @@
 #  build_file = "eigen.BUILD",
 #)
 
+option(eigen_PATCH_FILE "Patch file to apply to eigen" OFF)
+set(eigen_PATCH_COMMAND "")
+if(eigen_PATCH_FILE)
+    set(eigen_PATCH_COMMAND PATCH_COMMAND patch -p0 -i "${eigen_PATCH_FILE}")
+endif(eigen_PATCH_FILE)
+
 include (ExternalProject)
 
 # We parse the current Eigen version and archive hash from the bazel configuration
@@ -45,6 +51,7 @@ ExternalProject_Add(eigen
     URL ${eigen_URL}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     INSTALL_DIR "${eigen_INSTALL}"
+    ${eigen_PATCH_COMMAND}
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF

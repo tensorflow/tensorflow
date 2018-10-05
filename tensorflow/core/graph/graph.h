@@ -72,6 +72,7 @@ class Node {
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
   const string& name() const;
+  void set_name(string name);
   const string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
@@ -590,12 +591,12 @@ class Graph {
   // Returns OK if `node` is non-null and belongs to this graph
   Status IsValidNode(const Node* node) const;
 
-  // Returns OK if IsValidNode(`node`) and `idx` is less than
-  // node->num_outputs()
+  // Returns OK if IsValidNode(`node`) and `idx` is a valid output.  Does not
+  // accept control outputs.
   Status IsValidOutputTensor(const Node* node, int idx) const;
 
-  // Returns OK if IsValidNode(`node`) and `idx` is less than
-  // node->num_inputs()
+  // Returns OK if IsValidNode(`node`) and `idx` a valid input.  Does not accept
+  // control inputs.
   Status IsValidInputTensor(const Node* node, int idx) const;
 
   // Create and return a new WhileContext owned by this graph. This is called
@@ -679,10 +680,6 @@ class Graph {
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
-
-  // Searches through edges_ for the Edge whose destination node and index
-  // matches dst. An edge with destination `dst` must exist in the graph.
-  const Edge* FindEdge(const Node* dst, int index);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };

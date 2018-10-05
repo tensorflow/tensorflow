@@ -30,6 +30,8 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -62,7 +64,7 @@ class KerasCallbacksTest(test.TestCase):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
 
       temp_dir = self.get_temp_dir()
@@ -225,7 +227,7 @@ class KerasCallbacksTest(test.TestCase):
           mode='unknown')
 
   def test_EarlyStopping(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(123)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -234,11 +236,8 @@ class KerasCallbacksTest(test.TestCase):
           num_classes=NUM_CLASSES)
       y_test = keras.utils.to_categorical(y_test)
       y_train = keras.utils.to_categorical(y_train)
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
           loss='categorical_crossentropy',
           optimizer='rmsprop',
@@ -267,7 +266,7 @@ class KerasCallbacksTest(test.TestCase):
             verbose=0)
 
   def test_EarlyStopping_reuse(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       patience = 3
       data = np.random.random((100, 1))
@@ -289,7 +288,7 @@ class KerasCallbacksTest(test.TestCase):
       assert len(hist.epoch) >= patience
 
   def test_EarlyStopping_with_baseline(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       baseline = 0.5
       (data, labels), _ = testing_utils.get_test_data(
@@ -297,9 +296,8 @@ class KerasCallbacksTest(test.TestCase):
           test_samples=50,
           input_shape=(1,),
           num_classes=NUM_CLASSES)
-      model = keras.models.Sequential((keras.layers.Dense(
-          1, input_dim=1, activation='relu'), keras.layers.Dense(
-              1, activation='sigmoid'),))
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=1, num_classes=1, input_dim=1)
       model.compile(
           optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
 
@@ -324,7 +322,7 @@ class KerasCallbacksTest(test.TestCase):
     monitor.on_epoch_end(0, logs={'loss': 0.})
 
   def test_LearningRateScheduler(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -333,11 +331,8 @@ class KerasCallbacksTest(test.TestCase):
           num_classes=NUM_CLASSES)
       y_test = keras.utils.to_categorical(y_test)
       y_train = keras.utils.to_categorical(y_train)
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
           loss='categorical_crossentropy',
           optimizer='sgd',
@@ -374,7 +369,7 @@ class KerasCallbacksTest(test.TestCase):
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
   def test_ReduceLROnPlateau(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -385,13 +380,10 @@ class KerasCallbacksTest(test.TestCase):
       y_train = keras.utils.to_categorical(y_train)
 
       def make_model():
+        random_seed.set_random_seed(1234)
         np.random.seed(1337)
-        model = keras.models.Sequential()
-        model.add(
-            keras.layers.Dense(
-                NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-        model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-
+        model = testing_utils.get_small_sequential_mlp(
+            num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
             optimizer=keras.optimizers.SGD(lr=0.1),
@@ -479,7 +471,7 @@ class KerasCallbacksTest(test.TestCase):
     self.assertEqual(reduce_on_plateau.min_delta, 1e-13)
 
   def test_CSVLogger(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
@@ -496,12 +488,8 @@ class KerasCallbacksTest(test.TestCase):
 
       def make_model():
         np.random.seed(1337)
-        model = keras.models.Sequential()
-        model.add(
-            keras.layers.Dense(
-                NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-        model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-
+        model = testing_utils.get_small_sequential_mlp(
+            num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
         model.compile(
             loss='categorical_crossentropy',
             optimizer=keras.optimizers.SGD(lr=0.1),
@@ -562,7 +550,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       fp = os.path.join(tmpdir, 'test.csv')
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -614,7 +602,7 @@ class KerasCallbacksTest(test.TestCase):
       assert 'nan' in values[-1], 'The last epoch was not logged.'
 
   def test_TerminateOnNaN(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -679,7 +667,7 @@ class KerasCallbacksTest(test.TestCase):
         i %= max_batch_index
 
     # case: Sequential
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
@@ -726,6 +714,8 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator without validation data
+      # histogram_freq must be zero
+      tsb.histogram_freq = 0
       model.fit_generator(
           data_generator(True),
           len(x_train),
@@ -734,6 +724,7 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator with validation data and accuracy
+      tsb.histogram_freq = 1
       model.fit_generator(
           data_generator(True),
           len(x_train),
@@ -743,6 +734,7 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       # fit generator without validation data and accuracy
+      tsb.histogram_freq = 0
       model.fit_generator(
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)
@@ -752,7 +744,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       filepath = os.path.join(tmpdir, 'logs')
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -824,7 +816,7 @@ class KerasCallbacksTest(test.TestCase):
     tmpdir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
-    with self.test_session():
+    with self.cached_session():
       filepath = os.path.join(tmpdir, 'logs')
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -934,7 +926,7 @@ class KerasCallbacksTest(test.TestCase):
     y_test = keras.utils.to_categorical(y_test)
     y_train = keras.utils.to_categorical(y_train)
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(
           keras.layers.Dense(
@@ -978,10 +970,9 @@ class KerasCallbacksTest(test.TestCase):
       while True:
         yield x, y
 
-    with self.test_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(10, input_dim=100, activation='relu'))
-      model.add(keras.layers.Dense(10, activation='softmax'))
+    with self.cached_session():
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=10, num_classes=10, input_dim=100)
       model.compile(
           loss='categorical_crossentropy',
           optimizer='sgd',
@@ -1021,7 +1012,7 @@ class KerasCallbacksTest(test.TestCase):
       os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
   def test_LambdaCallback(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1065,7 +1056,7 @@ class KerasCallbacksTest(test.TestCase):
       assert not t.is_alive()
 
   def test_TensorBoard_with_ReduceLROnPlateau(self):
-    with self.test_session():
+    with self.cached_session():
       temp_dir = self.get_temp_dir()
       self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
@@ -1077,11 +1068,8 @@ class KerasCallbacksTest(test.TestCase):
       y_test = keras.utils.to_categorical(y_test)
       y_train = keras.utils.to_categorical(y_train)
 
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
           loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
 
@@ -1173,45 +1161,41 @@ class KerasCallbacksTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_Tensorboard_eager(self):
-    with self.test_session():
-      temp_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
-      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    temp_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=TRAIN_SAMPLES,
-          test_samples=TEST_SAMPLES,
-          input_shape=(INPUT_DIM,),
-          num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+    y_test = keras.utils.to_categorical(y_test)
+    y_train = keras.utils.to_categorical(y_train)
 
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-      model.compile(
-          loss='binary_crossentropy',
-          optimizer=adam.AdamOptimizer(0.01),
-          metrics=['accuracy'])
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
+    model.compile(
+        loss='binary_crossentropy',
+        optimizer=adam.AdamOptimizer(0.01),
+        metrics=['accuracy'])
 
-      cbks = [keras.callbacks.TensorBoard(log_dir=temp_dir)]
+    cbks = [keras.callbacks.TensorBoard(log_dir=temp_dir)]
 
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=2,
-          verbose=0)
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=2,
+        verbose=0)
 
-      self.assertTrue(os.path.exists(temp_dir))
+    self.assertTrue(os.path.exists(temp_dir))
 
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
-    with self.test_session():
+    with self.cached_session():
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
           test_samples=TEST_SAMPLES,
@@ -1239,6 +1223,45 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
+  def test_fit_generator_with_callback(self):
+
+    class TestCallback(keras.callbacks.Callback):
+      def set_model(self, model):
+        # Check the model operations for the optimizer operations that
+        # the _make_train_function adds under a named scope for the
+        # optimizer. This ensurs the full model is populated before the
+        # set_model callback is called.
+        optimizer_name_scope = 'training/' + model.optimizer.__class__.__name__
+        graph_def = ops.get_default_graph().as_graph_def()
+        for node in graph_def.node:
+          if node.name.startswith(optimizer_name_scope):
+            return
+        raise RuntimeError('The optimizer operations are not present in the '
+                           'model graph when the Callback.set_model function '
+                           'is called')
+    np.random.seed(1337)
+
+    def generator():
+      x = np.random.randn(10, 100).astype(np.float32)
+      y = np.random.randn(10, 10).astype(np.float32)
+      while True:
+        yield x, y
+
+    with self.cached_session():
+      model = testing_utils.get_small_sequential_mlp(
+          num_hidden=10, num_classes=10, input_dim=100)
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      model.fit_generator(
+          generator(),
+          steps_per_epoch=2,
+          epochs=1,
+          validation_data=generator(),
+          validation_steps=2,
+          callbacks=[TestCallback()],
+          verbose=0)
 
 if __name__ == '__main__':
   test.main()

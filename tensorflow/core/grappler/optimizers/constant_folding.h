@@ -209,6 +209,10 @@ class ConstantFolding : public GraphOptimizer {
   // Removes Split or SplitV node if possible.
   bool RemoveSplitOrSplitV(const GraphProperties& properties,
                            GraphDef* optimized_graph, NodeDef* node);
+
+  bool MergeConcat(const GraphProperties& properties, bool use_shape_info,
+                   GraphDef* optimized_graph, NodeDef* node);
+
   // Points to an externally provided device or to owned_device_;
   RewriterConfig::Toggle opt_level_;
   DeviceBase* cpu_device_;

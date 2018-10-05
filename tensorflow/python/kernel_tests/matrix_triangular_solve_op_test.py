@@ -143,7 +143,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
   def testNonSquareMatrix(self):
     # A non-square matrix should cause an error.
     matrix = np.array([[1., 2., 3.], [3., 4., 5.]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, matrix)
       with self.assertRaises(ValueError):
@@ -154,7 +154,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # right-hand sides.
     matrix = np.array([[1., 0.], [0., 1.]])
     rhs = np.array([[1., 0.]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs)
       with self.assertRaises(ValueError):
@@ -164,7 +164,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # The input should be invertible.
     # The matrix is singular because it has a zero on the diagonal.
     singular_matrix = np.array([[1., 0., -1.], [-1., 0., 1.], [0., -1., 1.]])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Input matrix is not invertible."):
         self._verifySolve(singular_matrix, singular_matrix)
       with self.assertRaisesOpError("Input matrix is not invertible."):

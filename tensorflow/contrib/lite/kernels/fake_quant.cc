@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <vector>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
@@ -68,11 +68,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params =
       reinterpret_cast<TfLiteFakeQuantParams*>(node->builtin_data);
 
-  reference_ops::FakeQuant(GetTensorData<float>(op_context.input),
-                           GetTensorDims(op_context.input), params->min,
-                           params->max, params->num_bits,
-                           GetTensorData<float>(op_context.output),
-                           GetTensorDims(op_context.output));
+  tflite::FakeQuantParams op_params;
+  op_params.num_bits = params->num_bits;
+  op_params.minmax.min = params->min;
+  op_params.minmax.max = params->max;
+  reference_ops::FakeQuant(op_params, GetTensorShape(op_context.input),
+                           GetTensorData<float>(op_context.input),
+                           GetTensorShape(op_context.output),
+                           GetTensorData<float>(op_context.output));
 
   return kTfLiteOk;
 }

@@ -64,6 +64,8 @@ public final class TensorTest {
     assertThat(tensor.shape()).isEqualTo(expectedShape);
     assertThat(tensor.dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(tensor.numBytes()).isEqualTo(2 * 8 * 8 * 3 * 4);
+    assertThat(tensor.numElements()).isEqualTo(2 * 8 * 8 * 3);
+    assertThat(tensor.numDimensions()).isEqualTo(4);
   }
 
   @Test
@@ -180,7 +182,7 @@ public final class TensorTest {
     dataType = Tensor.dataTypeOf(testFloatArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     float[][] testMultiDimArray = {testFloatArray, testFloatArray, testFloatArray};
-    dataType = Tensor.dataTypeOf(testFloatArray);
+    dataType = Tensor.dataTypeOf(testMultiDimArray);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     try {
       double[] testDoubleArray = {0.783, 0.251};
@@ -201,12 +203,12 @@ public final class TensorTest {
   @Test
   public void testNumDimensions() {
     int scalar = 1;
-    assertThat(Tensor.numDimensions(scalar)).isEqualTo(0);
+    assertThat(Tensor.computeNumDimensions(scalar)).isEqualTo(0);
     int[][] array = {{2, 4}, {1, 9}};
-    assertThat(Tensor.numDimensions(array)).isEqualTo(2);
+    assertThat(Tensor.computeNumDimensions(array)).isEqualTo(2);
     try {
       int[] emptyArray = {};
-      Tensor.numDimensions(emptyArray);
+      Tensor.computeNumDimensions(emptyArray);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
@@ -214,14 +216,37 @@ public final class TensorTest {
   }
 
   @Test
+  public void testNumElements() {
+    int[] scalarShape = {};
+    assertThat(Tensor.computeNumElements(scalarShape)).isEqualTo(1);
+    int[] vectorShape = {3};
+    assertThat(Tensor.computeNumElements(vectorShape)).isEqualTo(3);
+    int[] matrixShape = {3, 4};
+    assertThat(Tensor.computeNumElements(matrixShape)).isEqualTo(12);
+    int[] degenerateShape = {3, 4, 0};
+    assertThat(Tensor.computeNumElements(degenerateShape)).isEqualTo(0);
+  }
+
+  @Test
   public void testFillShape() {
     int[][][] array = {{{23}, {14}, {87}}, {{12}, {42}, {31}}};
-    int num = Tensor.numDimensions(array);
+    int num = Tensor.computeNumDimensions(array);
     int[] shape = new int[num];
     Tensor.fillShape(array, 0, shape);
     assertThat(num).isEqualTo(3);
     assertThat(shape[0]).isEqualTo(2);
     assertThat(shape[1]).isEqualTo(3);
     assertThat(shape[2]).isEqualTo(1);
+  }
+
+  @Test
+  public void testUseAfterClose() {
+    tensor.close();
+    try {
+      tensor.numBytes();
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
   }
 }

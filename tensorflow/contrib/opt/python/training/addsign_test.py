@@ -80,9 +80,9 @@ class AddSignTest(test.TestCase):
           global_step = resource_variable_ops.ResourceVariable(
               0, trainable=False)
         else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
-          global_step = variables.Variable(
+          var0 = variables.VariableV1(var0_np)
+          var1 = variables.VariableV1(var1_np)
+          global_step = variables.VariableV1(
               0, trainable=False)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -183,9 +183,9 @@ class AddSignTest(test.TestCase):
           global_step = resource_variable_ops.ResourceVariable(
               0, trainable=False)
         else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
-          global_step = variables.Variable(
+          var0 = variables.VariableV1(var0_np)
+          var1 = variables.VariableV1(var1_np)
+          global_step = variables.VariableV1(
               0, trainable=False)
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = ops.IndexedSlices(

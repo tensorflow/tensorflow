@@ -52,7 +52,7 @@ class Convolution1DTest(test.TestCase):
         'kernel_size': 3,
     }
 
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
+    self._run_test(kwargs, 'padding', ['valid', 'same', 'causal'])
     self._run_test(kwargs, 'strides', [2])
     self._run_test(kwargs, 'dilation_rate', [2])
 
@@ -113,7 +113,7 @@ class Conv2DTest(test.TestCase):
       test_kwargs[arg] = value
       with self.test_session(use_gpu=True):
         testing_utils.layer_test(
-            keras.layers.SeparableConv2D,
+            keras.layers.Conv2D,
             kwargs=test_kwargs,
             input_shape=(num_samples, num_row, num_col, stack_size))
 
@@ -329,7 +329,7 @@ class SeparableConv1DTest(test.TestCase):
         'kernel_size': 3,
     }
 
-    self._run_test(kwargs, 'padding', ['valid', 'same'])
+    self._run_test(kwargs, 'padding', ['valid', 'same', 'causal'])
     self._run_test(kwargs, 'strides', [2])
     self._run_test(kwargs, 'dilation_rate', [2])
     self._run_test(kwargs, 'depth_multiplier', [2])

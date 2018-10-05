@@ -1,4 +1,4 @@
-# Bigtable #
+# Google Cloud Bigtable
 
 [Cloud Bigtable](https://cloud.google.com/bigtable/) is a high
 performance storage system that can store and serve training data. This contrib
@@ -13,7 +13,7 @@ Bigtable at high speed, in particular to feed modern accelerators. For
 general-purpose Cloud Bigtable
 APIs, see the [official Cloud Bigtable client library documentation][clientdoc].
 
-[clientdoc]:  https://cloud.google.com/bigtable/docs/reference/libraries
+[clientdoc]: https://cloud.google.com/bigtable/docs/reference/libraries
 
 ## Sample Use
 
@@ -203,7 +203,7 @@ def interleave_fn(index):
   start = tf.string_join(['training_data_', start_idx_str])
   end = tf.string_join(['training_data_', end_idx_str])
   return table.scan_range(start_idx, end_idx, columns=columns)
-ds = ds.apply(tf.contrib.data.parallel_interleave(
+ds = ds.apply(tf.data.experimental.parallel_interleave(
     interleave_fn, cycle_length=NUM_PARALLEL_READS, prefetch_input_elements=1))
 ```
 
@@ -249,7 +249,7 @@ def make_row_key_dataset():
    - ...
    - fake-data-23498103
   """
-  counter_dataset = tf.contrib.data.Counter()
+  counter_dataset = tf.data.experimental.Counter()
   width = 8
   row_key_prefix = 'fake-data-'
   ds = counter_dataset.map(lambda index: tf.as_string(index,
@@ -324,8 +324,14 @@ If you encounter a log line that includes the following:
 "filename":"/usr/share/grpc/roots.pem"
 ```
 
-you likely need to copy the [gRPC roots.pem file][grpcPem] to
-`/usr/share/grpc/roots.pem` on your local machine.
+you can solve it via either of the following approaches:
+
+* copy the [gRPC `roots.pem` file][grpcPem] to
+  `/usr/share/grpc/roots.pem` on your local machine, which is the default
+  location where gRPC will look for this file
+* export the environment variable `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH` to point to
+  the full path of the gRPC `roots.pem` file on your file system if it's in a
+  different location
 
 [grpcPem]: https://github.com/grpc/grpc/blob/master/etc/roots.pem
 
@@ -338,7 +344,10 @@ are available.
  - **Compute Engine**: When running on Compute Engine, the client will often use
    the service account from the virtual machine's metadata service. Be sure to
    authorize your Compute Engine VM to have access to the Cloud Bigtable service
-   when creating your VM.
+   when creating your VM, or [update the VM's scopes][update-vm-scopes] on a
+   running VM if you run into this issue.
  - **Cloud TPU**: Your Cloud TPUs run with the designated Cloud TPU service
    account dedicated to your GCP project. Ensure the service account has been
    authorized via the Cloud Console to access your Cloud Bigtable instances.
+
+[update-vm-scopes]: https://cloud.google.com/compute/docs/access/create-enable-service-accounts-for-instances#changeserviceaccountandscopes

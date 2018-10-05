@@ -88,7 +88,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
                 uint64 size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
-  bool SynchronizeAllActivity() override { return false; }
+  bool SynchronizeAllActivity() override { return true; }
   bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override;
 
   bool SynchronousMemSet(DeviceMemoryBase *location, int value,

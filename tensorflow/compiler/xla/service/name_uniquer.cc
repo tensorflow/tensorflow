@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -38,8 +39,10 @@ NameUniquer::NameUniquer(const string& separator) {
 }
 
 /*static*/ string NameUniquer::GetSanitizedName(const string& name) {
+  if (name.empty()) {
+    return "";
+  }
   string result = name;
-  CHECK(!result.empty()) << "name should not be empty";
   char c = static_cast<unsigned char>(result[0]);
   if (!isalpha(c) && c != '_') {
     result[0] = '_';
@@ -52,8 +55,8 @@ NameUniquer::NameUniquer(const string& separator) {
   return result;
 }
 
-string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
-  string root = GetSanitizedName(prefix.empty() ? "name" : std::string(prefix));
+string NameUniquer::GetUniqueName(absl::string_view prefix) {
+  string root = GetSanitizedName(prefix.empty() ? "name" : string(prefix));
 
   // Strip away numeric suffix (if any). Only recognize separator if it is in
   // the middle of the name.
@@ -63,20 +66,22 @@ string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
   if (separator_index != string::npos && (separator_index > 0) &&
       (separator_index < root.size() - 1)) {
     string after_suffix = root.substr(separator_index + 1);
-    if (tensorflow::strings::safe_strto64(after_suffix, &numeric_suffix)) {
+    if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
       has_numeric_suffix = true;
       // Remove numeric suffix from root.
       root = root.substr(0, separator_index);
+    } else {
+      // absl::SimpleAtoi may modify numeric_suffix even if it returns false.
+      numeric_suffix = 0;
     }
   }
 
   SequentialIdGenerator& id_generator = generated_names_[root];
   numeric_suffix = id_generator.RegisterId(numeric_suffix);
   if (numeric_suffix == 0) {
-    return has_numeric_suffix ? tensorflow::strings::StrCat(root, separator_, 0)
-                              : root;
+    return has_numeric_suffix ? absl::StrCat(root, separator_, 0) : root;
   }
-  tensorflow::strings::StrAppend(&root, separator_, numeric_suffix);
+  absl::StrAppend(&root, separator_, numeric_suffix);
   return root;
 }
 

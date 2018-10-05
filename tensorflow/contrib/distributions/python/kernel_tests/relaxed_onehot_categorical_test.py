@@ -46,7 +46,7 @@ class ExpRelaxedOneHotCategoricalTest(test.TestCase):
     dist = relaxed_onehot_categorical.ExpRelaxedOneHotCategorical(temperature,
                                                                   logits)
     expected_p = np.exp(logits)/np.sum(np.exp(logits))
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(expected_p, dist.probs.eval())
       self.assertAllEqual([3], dist.probs.get_shape())
 
@@ -57,7 +57,7 @@ class ExpRelaxedOneHotCategoricalTest(test.TestCase):
     p = np.exp(logits)/np.sum(np.exp(logits))
     dist = relaxed_onehot_categorical.ExpRelaxedOneHotCategorical(temperature,
                                                                   logits)
-    with self.test_session():
+    with self.cached_session():
       x = dist.sample().eval()
       # analytical ExpConcrete density presented in Maddison et al. 2016
       prod_term = p*np.exp(-temperature * x)
@@ -74,14 +74,14 @@ class RelaxedOneHotCategoricalTest(test.TestCase):
     logits = [2.0, 3.0, -4.0]
     dist = relaxed_onehot_categorical.RelaxedOneHotCategorical(temperature,
                                                                logits)
-    with self.test_session():
+    with self.cached_session():
       # check p for ExpRelaxed base distribution
       self.assertAllClose(logits, dist._distribution.logits.eval())
       self.assertAllEqual([3], dist._distribution.logits.get_shape())
 
   def testSample(self):
     temperature = 1.4
-    with self.test_session():
+    with self.cached_session():
       # single logit
       logits = [.3, .1, .4]
       dist = relaxed_onehot_categorical.RelaxedOneHotCategorical(temperature,
@@ -115,7 +115,7 @@ class RelaxedOneHotCategoricalTest(test.TestCase):
       expected_pdf = term1*np.power(term2, -k)*term3
       return expected_pdf
 
-    with self.test_session():
+    with self.cached_session():
       temperature = .4
       logits = np.array([[.3, .1, .4]]).astype(np.float32)
       dist = relaxed_onehot_categorical.RelaxedOneHotCategorical(temperature,
@@ -136,7 +136,7 @@ class RelaxedOneHotCategoricalTest(test.TestCase):
       self.assertAllClose(expected_pdf.flatten(), pdf, rtol=1e-4)
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       for batch_shape in ([], [1], [2, 3, 4]):
         dist = make_relaxed_categorical(batch_shape, 10)
         self.assertAllEqual(batch_shape, dist.batch_shape.as_list())
@@ -153,12 +153,12 @@ class RelaxedOneHotCategoricalTest(test.TestCase):
         self.assertAllEqual([10], dist.event_shape_tensor().eval())
 
   def testUnknownShape(self):
-    with self.test_session():
+    with self.cached_session():
       logits_pl = array_ops.placeholder(dtypes.float32)
       temperature = 1.0
       dist = relaxed_onehot_categorical.ExpRelaxedOneHotCategorical(temperature,
                                                                     logits_pl)
-      with self.test_session():
+      with self.cached_session():
         feed_dict = {logits_pl: [.3, .1, .4]}
         self.assertAllEqual([3], dist.sample().eval(feed_dict=feed_dict).shape)
         self.assertAllEqual([5, 3],
@@ -166,7 +166,7 @@ class RelaxedOneHotCategoricalTest(test.TestCase):
 
   def testDTypes(self):
     # check that sampling and log_prob work for a range of dtypes
-    with self.test_session():
+    with self.cached_session():
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         logits = random_ops.random_uniform(shape=[3, 3], dtype=dtype)
         dist = relaxed_onehot_categorical.RelaxedOneHotCategorical(

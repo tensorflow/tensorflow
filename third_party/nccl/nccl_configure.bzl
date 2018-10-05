@@ -5,6 +5,7 @@
 
   * `TF_NCCL_VERSION`: The NCCL version.
   * `NCCL_INSTALL_PATH`: The installation path of the NCCL library.
+  * `NCCL_HDR_PATH`: The installation path of the NCCL header files.
 """
 
 load(
@@ -15,7 +16,9 @@ load(
 )
 
 _NCCL_INSTALL_PATH = "NCCL_INSTALL_PATH"
+_NCCL_HDR_PATH = "NCCL_HDR_PATH"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
+_TF_NCCL_CONFIG_REPO = "TF_NCCL_CONFIG_REPO"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
 _DEFINE_NCCL_MINOR = "#define NCCL_MINOR"
@@ -48,25 +51,8 @@ alias(
 """
 
 # Local build results in dynamic link and the license should not be included.
-_NCCL_LOCAL_BUILD_TEMPLATE = """
-filegroup(
-  name = "LICENSE",
-  visibility = ["//visibility:public"],
-)
-
-cc_library(
-  name = "nccl",
-  srcs = ["nccl/lib/libnccl.so.%s"],
-  hdrs = ["nccl/include/nccl.h"],
-  include_prefix = "third_party/nccl",
-  strip_include_prefix = "nccl/include",
-  deps = [
-      "@local_config_cuda//cuda:cuda_headers",
-  ],
-  visibility = ["//visibility:public"],
-)
-"""
-
+_NCCL_REMOTE_BUILD_TEMPLATE = Label("//third_party/nccl:remote.BUILD.tpl")
+_NCCL_LOCAL_BUILD_TEMPLATE = Label("//third_party/nccl:system.BUILD.tpl")
 
 def _find_nccl_header(repository_ctx, nccl_install_path):
   """Finds the NCCL header on the system.
@@ -84,7 +70,7 @@ def _find_nccl_header(repository_ctx, nccl_install_path):
   return header_path
 
 
-def _check_nccl_version(repository_ctx, nccl_install_path, nccl_version):
+def _check_nccl_version(repository_ctx, nccl_install_path, nccl_hdr_path, nccl_version):
   """Checks whether the header file matches the specified version of NCCL.
 
   Args:
@@ -95,7 +81,9 @@ def _check_nccl_version(repository_ctx, nccl_install_path, nccl_version):
   Returns:
     A string containing the library version of NCCL.
   """
-  header_path = _find_nccl_header(repository_ctx, nccl_install_path)
+  header_path = repository_ctx.path("%s/nccl.h" % nccl_hdr_path)
+  if not header_path.exists:
+    header_path = _find_nccl_header(repository_ctx, nccl_install_path)
   header_dir = str(header_path.realpath.dirname)
   major_version = find_cuda_define(repository_ctx, header_dir, "nccl.h",
                                    _DEFINE_NCCL_MAJOR)
@@ -137,6 +125,13 @@ def _nccl_configure_impl(repository_ctx):
     repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
     return
 
+  if _TF_NCCL_CONFIG_REPO in repository_ctx.os.environ:
+    # Forward to the pre-configured remote repository.
+    repository_ctx.template("BUILD", _NCCL_REMOTE_BUILD_TEMPLATE, {
+        "%{target}": repository_ctx.os.environ[_TF_NCCL_CONFIG_REPO],
+    })
+    return
+
   nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
   if matches_version("1", nccl_version):
     # Alias to GitHub target from @nccl_archive.
@@ -147,15 +142,20 @@ def _nccl_configure_impl(repository_ctx):
   else:
     # Create target for locally installed NCCL.
     nccl_install_path = repository_ctx.os.environ[_NCCL_INSTALL_PATH].strip()
-    _check_nccl_version(repository_ctx, nccl_install_path, nccl_version)
-    repository_ctx.symlink(nccl_install_path, "nccl")
-    repository_ctx.file("BUILD", _NCCL_LOCAL_BUILD_TEMPLATE % nccl_version)
+    nccl_hdr_path = repository_ctx.os.environ[_NCCL_HDR_PATH].strip()
+    _check_nccl_version(repository_ctx, nccl_install_path, nccl_hdr_path, nccl_version)
+    repository_ctx.template("BUILD", _NCCL_LOCAL_BUILD_TEMPLATE, {
+        "%{version}": nccl_version,
+        "%{install_path}": nccl_install_path,
+        "%{hdr_path}": nccl_hdr_path,
+    })
 
 
 nccl_configure = repository_rule(
     implementation=_nccl_configure_impl,
     environ=[
         _NCCL_INSTALL_PATH,
+        _NCCL_HDR_PATH,
         _TF_NCCL_VERSION,
     ],
 )

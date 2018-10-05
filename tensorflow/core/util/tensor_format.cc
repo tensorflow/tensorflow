@@ -25,6 +25,10 @@ string GetConvnet3dDataFormatAttrString() {
   return "data_format: { 'NDHWC', 'NCDHW' } = 'NDHWC' ";
 }
 
+string GetConvnetDataFormat2D3DAttrString() {
+  return "data_format: { 'NHWC', 'NCHW', 'NDHWC', 'NCDHW' } = 'NHWC' ";
+}
+
 string GetConvnetFilterFormatAttrString() {
   return "filter_format: { 'HWIO', 'OIHW' } = 'HWIO' ";
 }

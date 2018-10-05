@@ -15,12 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,11 +34,6 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
       : computation_(computation), bfloat16_support_(bfloat16_support) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
-
-  // Special handling for cross-replica-sum and sort which can have a tuple
-  // output.
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
-  Status HandleSort(HloInstruction* sort) override;
 
   static bool Run(HloComputation* computation,
                   const BFloat16Support* bfloat16_support) {
@@ -73,8 +69,7 @@ class BFloat16NormalizationVisitor : public DfsHloVisitorWithDefault {
   // Inserts conversion HLOs to replace the called computations' BF16
   // operands/outputs to F32.
   Status ConvertCalledComputations(
-      HloInstruction* hlo,
-      tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps);
+      HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps);
 
   HloComputation* computation_;
   const BFloat16Support* bfloat16_support_;
@@ -118,8 +113,7 @@ Status BFloat16NormalizationVisitor::InsertConvertBeforeOperand(
 }
 
 Status BFloat16NormalizationVisitor::ConvertCalledComputations(
-    HloInstruction* hlo,
-    tensorflow::gtl::ArraySlice<HloComputation*> bf16_called_comps) {
+    HloInstruction* hlo, absl::Span<HloComputation* const> bf16_called_comps) {
   std::map<HloComputation*, HloComputation*> cloned_computations;
   for (auto& comp : bf16_called_comps) {
     auto cloned = comp->parent()->AddEmbeddedComputation(comp->Clone());
@@ -148,23 +142,6 @@ Status BFloat16NormalizationVisitor::ConvertCalledComputations(
     }
   }
   return Status::OK();
-}
-
-Status BFloat16NormalizationVisitor::HandleCrossReplicaSum(
-    HloInstruction* crs) {
-  if (!ShapeUtil::IsTuple(crs->shape())) {
-    return HandleInstruction(crs);
-  } else {
-    return HandleMultipleOutputs(crs);
-  }
-}
-
-Status BFloat16NormalizationVisitor::HandleSort(HloInstruction* sort) {
-  if (!ShapeUtil::IsTuple(sort->shape())) {
-    return HandleInstruction(sort);
-  } else {
-    return HandleMultipleOutputs(sort);
-  }
 }
 
 Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
@@ -379,6 +356,12 @@ Status BFloat16NormalizationVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kWhile ||            //
       hlo->opcode() == HloOpcode::kConditional) {
     return Status::OK();
+  }
+  // TODO(b/112040122): Correctly normalize variadic reduce.
+  if ((hlo->opcode() == HloOpcode::kSort ||
+       hlo->opcode() == HloOpcode::kCrossReplicaSum) &&
+      ShapeUtil::IsTuple(hlo->shape())) {
+    return HandleMultipleOutputs(hlo);
   }
   return HandleInstruction(hlo);
 }

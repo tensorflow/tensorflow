@@ -271,7 +271,7 @@ string ContainerInfo::DebugString() const {
                          "]");
 }
 
-ResourceHandle HandleFromInput(OpKernelContext* ctx, int input) {
+const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
 }
 
@@ -286,6 +286,15 @@ Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   return ctx->resource_manager()->Delete(p);
+}
+
+Status ResourceHandlesShape(shape_inference::InferenceContext* c) {
+  int n;
+  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+  for (int i = 0; i < n; ++i) {
+    c->set_output(i, c->Scalar());
+  }
+  return Status::OK();
 }
 
 }  //  end namespace tensorflow

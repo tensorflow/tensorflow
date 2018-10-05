@@ -74,6 +74,7 @@ class SimpleNode {
 
   const std::vector<SimpleEdge*>& in_edges() const { return in_edges_; }
   const std::vector<SimpleEdge*>& out_edges() const { return out_edges_; }
+
   std::vector<SimpleNode*> in_nodes() const {
     std::vector<SimpleNode*> res;
     res.reserve(in_edges_.size());
@@ -82,6 +83,16 @@ class SimpleNode {
     }
     return res;
   }
+
+  std::vector<SimpleNode*> out_nodes() const {
+    std::vector<SimpleNode*> res;
+    res.reserve(out_edges_.size());
+    for (const auto e : out_edges_) {
+      if (e) res.push_back(e->dst());
+    }
+    return res;
+  }
+
   const string& name() const { return node_->name(); }
   const tensorflow::Node* tf_node() const { return node_; }
   int id() const { return id_; }
@@ -215,45 +226,53 @@ SimpleGraph::~SimpleGraph() {
 
 namespace {
 
-bool CheckCycles(const std::unique_ptr<SimpleGraph>& g, const SimpleNode* src,
-                 const std::vector<SimpleNode*>& start) {
-  // Copied from TF ReverseDFS, which only works for tensorflow::Graph.
+// Copied from TF ReverseDFS, which only works for tensorflow::Graph.
+void StableDFS(const SimpleGraph& g, bool reverse,
+               const std::vector<const SimpleNode*>& start,
+               const std::function<bool(const SimpleNode*)>& enter,
+               const std::function<bool(const SimpleNode*)>& leave) {
+  // Stack of work to do.
   struct Work {
-    SimpleNode* node;
+    const SimpleNode* node;
     bool leave;  // Are we entering or leaving n?
   };
-
   std::vector<Work> stack(start.size());
   for (int i = 0; i < start.size(); ++i) {
     stack[i] = Work{start[i], false};
   }
 
-  std::vector<bool> visited(g->num_node_ids(), false);
+  auto get_nodes = reverse ? [](const SimpleNode* n) { return n->in_nodes(); }
+                           : [](const SimpleNode* n) { return n->out_nodes(); };
+  std::vector<bool> visited(g.num_node_ids(), false);
   while (!stack.empty()) {
     Work w = stack.back();
     stack.pop_back();
 
     auto n = w.node;
     if (w.leave) {
-      if (n == src) {
-        return true;
-      }
+      if (leave && !leave(n)) return;
       continue;
     }
 
     if (visited[n->id()]) continue;
     visited[n->id()] = true;
-    // Arrange to call leave(n) when all done with descendants.
-    stack.push_back(Work{n, true});
+    if (enter && !enter(n)) return;
 
-    auto nodes = n->in_nodes();
-    for (const auto node : nodes) {
+    // Arrange to call leave(n) when all done with descendants.
+    if (leave) stack.push_back(Work{n, true});
+
+    auto nodes = get_nodes(n);
+    std::vector<const SimpleNode*> nodes_sorted(nodes.begin(), nodes.end());
+    std::sort(nodes_sorted.begin(), nodes_sorted.end(),
+              [](const SimpleNode* lhs, const SimpleNode* rhs) {
+                return lhs->name() < rhs->name();
+              });
+    for (const SimpleNode* node : nodes_sorted) {
       if (!visited[node->id()]) {
         stack.push_back(Work{node, false});
       }
     }
   }
-  return false;
 }
 
 bool CanContractEdge(const SimpleEdge* edge,
@@ -289,14 +308,21 @@ bool CanContractEdge(const SimpleEdge* edge,
   // To achieve this goal, the correct way seems to be:
   // 1. remove any direct edge from src->dst;
   // 2. detect if src can reach dst, if so they cannot be merged.
-  std::vector<SimpleNode*> dfs_start_nodes;
-  for (SimpleNode* node : dst->in_nodes()) {
+  std::vector<const SimpleNode*> dfs_start_nodes;
+  for (const SimpleNode* node : dst->in_nodes()) {
     if (node != src) {
       dfs_start_nodes.push_back(node);
     }
   }
-
-  const bool has_cycle = CheckCycles(graph, src, dfs_start_nodes);
+  bool has_cycle = false;
+  StableDFS(*graph, /*reverse=*/true, dfs_start_nodes, /*enter=*/nullptr,
+            [&has_cycle, src](const SimpleNode* n) {
+              if (n == src) {
+                has_cycle = true;
+                return false;
+              }
+              return true;
+            });
   return !has_cycle;
 }
 }  // namespace
@@ -403,21 +429,19 @@ tensorflow::Status SegmentGraph(
   // In the future if we have a measure of how beneficial it is to include a
   // given node in a TRT subgraph then we can revisit this algorithm to take
   // advantage of that information.
-  std::vector<tensorflow::Node*> tforder;
-  tensorflow::GetPostOrder(*tf_graph, &tforder);
-  // use postorder implementation from tensorflow and construct mirror in
-  // internal format
-  std::vector<SimpleNode*> order;
-  order.reserve(tforder.size());
-  for (const auto tfnode : tforder) {
-    order.push_back(graph->FindNodeId(tfnode->id()));
-  }
+  std::vector<const SimpleNode*> order;
+  order.reserve(graph->num_node_ids());
+  StableDFS(*graph, /*reverse=*/false, {graph->source_node()},
+            /*enter=*/nullptr, [&order](const SimpleNode* n) {
+              order.push_back(n);
+              return true;
+            });
   for (const SimpleNode* node : order) {
     // All output nodes of 'node' have been visited...
-    VLOG(2) << "Trying node " << node->name() << " id=" << node->id();
+    VLOG(3) << "Trying node " << node->name() << " id=" << node->id();
     // 'node' must be a TRT candidate...
     if (node_segments[node->id()].Value() == nullptr) {
-      VLOG(2) << "... not a TRT candidate";
+      VLOG(3) << "... not a TRT candidate";
       continue;
     }
     // Contract output edges to combine 'node' with output
@@ -426,22 +450,22 @@ tensorflow::Status SegmentGraph(
     while (true) {
       std::set<const SimpleEdge*> contract_edges;
       for (const SimpleEdge* out_edge : node->out_edges()) {
-        VLOG(2) << "... out node " << out_edge->dst()->name() << " ( "
+        VLOG(3) << "... out node " << out_edge->dst()->name() << " ( "
                 << out_edge->dst()->id() << " <- " << node->id() << " )";
         if (out_edge->IsControlEdge()) {
-          VLOG(2) << "... ... Control Edge, Skipping";
+          VLOG(3) << "... ... Control Edge, Skipping";
           continue;
         }
         // Out node must be TRT candidate...
         if (node_segments[out_edge->dst()->id()].Value() == nullptr) {
-          VLOG(2) << "... ... not a TRT candidate";
+          VLOG(3) << "... ... not a TRT candidate";
           continue;
         }
         if (CanContractEdge(out_edge, graph)) {
-          VLOG(2) << "... ... can contract";
+          VLOG(3) << "... ... can contract";
           contract_edges.insert(out_edge);
         } else {
-          VLOG(2) << "... ... cannot contract, would form cycle";
+          VLOG(3) << "... ... cannot contract, would form cycle";
         }
       }
       if (contract_edges.empty()) {
@@ -454,7 +478,7 @@ tensorflow::Status SegmentGraph(
         const SimpleNode* src = contract_edge->src();
         const SimpleNode* dst = contract_edge->dst();
 
-        VLOG(2) << "Merge " << src->name() << " <- " << dst->name() << " ("
+        VLOG(3) << "Merge " << src->name() << " <- " << dst->name() << " ("
                 << src->id() << " <- " << dst->id();
         node_segments[src->id()].Merge(&node_segments[dst->id()]);
 
@@ -478,7 +502,7 @@ tensorflow::Status SegmentGraph(
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::unordered_map<string, std::set<const tensorflow::Node*>> sg_map;
+  std::map<string, std::set<const tensorflow::Node*>> sg_map;
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the device names that the nodes in the segment are
@@ -558,27 +582,36 @@ tensorflow::Status SegmentGraph(
       // then after doing this operation the resulting subgraph will keep the
       // same properties 1 and 2.
       //
-      // For simplicity we use heuristics: for input nodes remove all its
-      // input, for output nodes remove all its output. In this way, for common
-      // cases the number of removed nodes should be minimum.
+      // For simplicity we use heuristics: for input and const output nodes
+      // remove all their inputs, and for non-const output nodes remove all
+      // their outputs. In this way, for common cases the number of removed
+      // nodes should be minimum.
       auto remove_nodes = [&segment_nodes](
                               bool is_input_nodes,
                               std::deque<const tensorflow::Node*>* que) {
         // Run a BFS on the queue to find all the input/output nodes.
         std::set<const tensorflow::Node*> visited;
+        std::set<const tensorflow::Node*> logged(que->begin(), que->end());
         while (!que->empty()) {
           auto node = que->front();
           que->pop_front();
           if (!visited.insert(node).second) continue;
           segment_nodes.erase(node);
-          for (auto in :
-               is_input_nodes ? node->in_nodes() : node->out_nodes()) {
+          for (auto in : (is_input_nodes || node->type_string() == "Const")
+                             ? node->in_nodes()
+                             : node->out_nodes()) {
             if (segment_nodes.count(in)) {
               que->push_back(in);
-              VLOG(2) << "Need to remove node " << in->name()
-                      << " because one of its "
-                      << (is_input_nodes ? "output" : "input")
-                      << " nodes in the graph was removed: " << node->name();
+              if (VLOG_IS_ON(2)) {
+                if (!logged.count(in)) {
+                  VLOG(2) << "----> Need to remove node " << in->name()
+                          << " because one of its "
+                          << (is_input_nodes ? "output" : "input")
+                          << " nodes in the graph was removed: "
+                          << node->name();
+                  logged.insert(in);
+                }
+              }
             }
           }
         }
@@ -594,7 +627,7 @@ tensorflow::Status SegmentGraph(
   for (const auto& itr : sg_map) {
     const std::set<const tensorflow::Node*>& segment_nodes = itr.second;
     if (VLOG_IS_ON(1)) {
-      string s;
+      string s = "parent=" + itr.first + ":";
       for (auto node : segment_nodes) s += " " + node->name();
       VLOG(1) << "Segment " << segments->size() << ": " << s;
     }

@@ -12,6 +12,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
+        ":feature_column_v2",
         "//tensorflow/python:util",
     ],
 )
@@ -122,7 +123,6 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:numpy_io",
     ],
 )
 

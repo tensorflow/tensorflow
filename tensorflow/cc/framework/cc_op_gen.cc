@@ -466,7 +466,7 @@ string AvoidCPPKeywords(StringPiece name) {
   if (IsCPPKeyword(name)) {
     return strings::StrCat(name, "_");
   }
-  return std::string(name);
+  return string(name);
 }
 
 void InferArgAttributes(const OpDef::ArgDef& arg,
@@ -506,15 +506,6 @@ bool HasOptionalAttrs(
     }
   }
   return false;
-}
-
-const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
-  for (int i = 0; i < api_def.in_arg_size(); ++i) {
-    if (api_def.in_arg(i).name() == name) {
-      return &api_def.in_arg(i);
-    }
-  }
-  return nullptr;
 }
 
 struct OpInfo {
@@ -862,11 +853,7 @@ void OpInfo::WriteClassDecl(WritableFile* h) const {
     }
   }
 
-  strings::StrAppend(&class_decl, "\n");
-
-  if (output_types.empty()) {
-    strings::StrAppend(&class_decl, "  Operation operation;\n");
-  }
+  strings::StrAppend(&class_decl, "\n  Operation operation;\n");
   for (int i = 0; i < output_types.size(); ++i) {
     strings::StrAppend(&class_decl, "  ", output_types[i], " ", output_names[i],
                        ";\n");
@@ -887,9 +874,11 @@ void OpInfo::GetOutput(string* out) const {
   string return_on_error =
       strings::StrCat("if (!", scope_str, ".ok()) return;");
 
+  strings::StrAppend(out, "  this->operation = Operation(ret);\n");
+
   // No outputs.
   if (graph_op_def.output_arg_size() == 0) {
-    strings::StrAppend(out, "  this->operation = Operation(ret);\n  return;\n");
+    strings::StrAppend(out, "  return;\n");
     return;
   }
   if (graph_op_def.output_arg_size() == 1) {

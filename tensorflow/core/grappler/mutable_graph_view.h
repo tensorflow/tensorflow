@@ -29,8 +29,15 @@ class MutableGraphView : public GraphView {
   using GraphView::GraphView;
 
   GraphDef* GetGraph() { return MutableGraph(); }
+
   // Adds a new node to graph and updates the view.
   NodeDef* AddNode(NodeDef&& node);
+
+  // Inserts a new node to the graph after `input` node and updates the view.
+  // This adds `node` to the graph and replaces the input for the output
+  // nodes of `input` with a port `output_port_id` with the new node.
+  NodeDef* InsertNode(const NodeDef& input, NodeDef&& node,
+                      int output_port_id = 0);
 
   // Replaces the input for the output nodes of 'old_input' with a port
   // `output_port_id` with 'new_input'.

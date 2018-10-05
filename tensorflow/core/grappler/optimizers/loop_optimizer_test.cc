@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -535,6 +536,29 @@ TEST_F(LoopOptimizerTest, RemovePush_NoOp) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
+TEST_F(LoopOptimizerTest, RemovePush_NoPopButStackLives) {
+  GrapplerItem item;
+  GraphDef& graph = item.graph;
+  AddSimpleNode("c", "Const", {}, &graph);
+  // Stack with corresponding push
+  AddSimpleNode("stack1", "StackV2", {}, &graph);
+  AddSimpleNode("push1", "StackPushV2", {"stack1", "c"}, &graph);
+  // Stack with corresponding push behind Enter.
+  AddSimpleNode("stack2", "StackV2", {}, &graph);
+  AddEnterNode("enter2_c", "frame_name", false, 1, {"c"}, &graph);
+  AddEnterNode("enter2_stack2", "frame_name", false, 1, {"stack2"}, &graph);
+  AddSimpleNode("push2", "StackPushV2", {"enter2_stack2", "enter2_c"}, &graph);
+  item.keep_ops.push_back("stack1");
+  item.keep_ops.push_back("stack2");
+
+  LoopOptimizer optimizer;
+  EnableOnlyStackPushRemoval(&optimizer);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  VerifyGraphsEqual(item.graph, output, __FUNCTION__);
+}
+
 TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   GrapplerItem item;
   GraphDef& graph = item.graph;
@@ -589,7 +613,7 @@ TEST_F(LoopOptimizerTest, RemovePushWithoutMatchingPop) {
   }
 }
 
-TEST_F(LoopOptimizerTest, RemoveDeadBranches) {
+TEST_F(LoopOptimizerTest, RemoveDeadBranches_ConstantCondition) {
   Scope scope = Scope::NewRootScope();
   Output v_in = ops::Variable(scope.WithOpName("v_in"), {3}, DT_FLOAT);
 
@@ -639,7 +663,7 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranches) {
 
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_CHECK_OK(status);
@@ -694,6 +718,238 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranches) {
       EXPECT_EQ("id4", node.input(1));
     }
   }
+}
+
+TEST_F(LoopOptimizerTest, RemoveDeadBranches_ZeroIterWhile) {
+  const string gdef_ascii = R"EOF(
+node {
+  name: "Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 20
+      }
+    }
+  }
+}
+node {
+  name: "while/Enter"
+  op: "Enter"
+  input: "Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "frame_name"
+    value {
+      s: "while/while/"
+    }
+  }
+  attr {
+    key: "is_constant"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "parallel_iterations"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "while/Merge"
+  op: "Merge"
+  input: "while/Enter"
+  input: "while/NextIteration"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Less/y"
+  op: "Const"
+  input: "^while/Merge"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "while/Less"
+  op: "Less"
+  input: "while/Merge"
+  input: "while/Less/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/LoopCond"
+  op: "LoopCond"
+  input: "while/Less"
+}
+node {
+  name: "while/Switch"
+  op: "Switch"
+  input: "while/Merge"
+  input: "while/LoopCond"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@while/Merge"
+      }
+    }
+  }
+}
+node {
+  name: "while/Identity"
+  op: "Identity"
+  input: "while/Switch:1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/add/y"
+  op: "Const"
+  input: "^while/Identity"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "while/add"
+  op: "Add"
+  input: "while/Identity"
+  input: "while/add/y"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/NextIteration"
+  op: "NextIteration"
+  input: "while/add"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+node {
+  name: "while/Exit"
+  op: "Exit"
+  input: "while/Switch"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+}
+versions {
+  producer: 21
+}
+  )EOF";
+
+  GrapplerItem item;
+  CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
+  item.fetch = {"while/Exit"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_CHECK_OK(status);
+  auto tensors_got = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors_got.size());
+  test::ExpectTensorEqual<int32>(tensors_expected[0], tensors_got[0]);
+
+  int nodes_present = 0;
+  for (const NodeDef& node : output.node()) {
+    // All nodes connected to Switch's positive check should be pruned.
+    if (node.name() == "while/add") {
+      LOG(ERROR) << "while/add is present after optimization";
+    } else if (node.name() == "while/add/y") {
+      LOG(ERROR) << "while/add/y is present after optimization";
+    } else if (node.name() == "while/NextIteration") {
+      LOG(ERROR) << "while/NextIteration is present after optimization";
+    } else if (node.name() == "while/Identity") {
+      LOG(ERROR) << "while/Identity is present after optimization";
+    }
+    ++nodes_present;
+  }
+  EXPECT_EQ(8, nodes_present);
 }
 
 }  // namespace grappler

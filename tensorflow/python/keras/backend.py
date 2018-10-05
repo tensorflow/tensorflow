@@ -73,7 +73,16 @@ _SESSION = None
 # This dictionary holds a mapping {graph: learning_phase}.
 # A learning phase is a bool tensor used to run Keras models in
 # either train mode (learning_phase == 1) or test mode (learning_phase == 0).
-_GRAPH_LEARNING_PHASES = {}
+_GRAPH_LEARNING_PHASES = weakref.WeakKeyDictionary()
+
+
+# _DUMMY_EAGER_GRAPH is used as a key in _GRAPH_LEARNING_PHASES.
+# We keep a separate reference to it to make sure it does not get removed from
+# _GRAPH_LEARNING_PHASES. We use a dummy class instead of something like a
+# string because strings are not weakly-referencable.
+class _DummyEagerGraph(object):
+  pass
+_DUMMY_EAGER_GRAPH = _DummyEagerGraph()
 
 # This boolean flag can be set to True to leave variable initialization
 # up to the user.
@@ -93,6 +102,14 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 # It is populated when `_get_available_gpus()` is called for the first time.
 # We assume our devices don't change henceforth.
 _LOCAL_DEVICES = None
+
+# This dictionary holds a mapping between a graph and variables to initialize
+# in the graph.
+_GRAPH_VARIABLES = weakref.WeakKeyDictionary()
+
+# This dictionary holds a mapping between a graph and TF optimizers created in
+# the graph.
+_GRAPH_TF_OPTIMIZERS = weakref.WeakKeyDictionary()
 
 
 @tf_export('keras.backend.backend')
@@ -309,6 +326,8 @@ def clear_session():
   """
   global _SESSION
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
+  global _GRAPH_VARIABLES  # pylint: disable=global-variable-not-assigned
+  global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
   ops.reset_default_graph()
   reset_uids()
   _SESSION = None
@@ -316,6 +335,8 @@ def clear_session():
       False, shape=(), name='keras_learning_phase')
   _GRAPH_LEARNING_PHASES = {}
   _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = phase
+  _GRAPH_VARIABLES.pop(ops.get_default_graph(), None)
+  _GRAPH_TF_OPTIMIZERS.pop(ops.get_default_graph(), None)
 
 
 @tf_export('keras.backend.manual_variable_initialization')
@@ -346,18 +367,26 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.executing_eagerly():
-    if 'eager' not in _GRAPH_LEARNING_PHASES:
-      # Fallback to inference mode as default.
-      return 0
-    return _GRAPH_LEARNING_PHASES['eager']
+  with ops.init_scope():
+    # We always check & set the learning phase inside the init_scope,
+    # otherwise the wrong default_graph will be used to look up the learning
+    # phase inside of functions & defuns.
+    #
+    # This is because functions & defuns (both in graph & in eager mode)
+    # will always execute non-eagerly using a function-specific default
+    # subgraph.
+    if context.executing_eagerly():
+      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+        # Fallback to inference mode as default.
+        return 0
+      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
-  graph = ops.get_default_graph()
-  if graph not in _GRAPH_LEARNING_PHASES:
-    phase = array_ops.placeholder_with_default(
-        False, shape=(), name='keras_learning_phase')
-    _GRAPH_LEARNING_PHASES[graph] = phase
-  return _GRAPH_LEARNING_PHASES[graph]
+    graph = ops.get_default_graph()
+    if graph not in _GRAPH_LEARNING_PHASES:
+      phase = array_ops.placeholder_with_default(
+          False, shape=(), name='keras_learning_phase')
+      _GRAPH_LEARNING_PHASES[graph] = phase
+    return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -373,10 +402,11 @@ def set_learning_phase(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
-  if context.executing_eagerly():
-    _GRAPH_LEARNING_PHASES['eager'] = value
-  else:
-    _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+  with ops.init_scope():
+    if context.executing_eagerly():
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    else:
+      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
 
 
 @tf_contextlib.contextmanager
@@ -402,10 +432,11 @@ def learning_phase_scope(value):
     yield value
   finally:
     # Restore learning phase to initial value.
-    if context.executing_eagerly():
-      _GRAPH_LEARNING_PHASES['eager'] = previous_value
-    else:
-      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
+    with ops.init_scope():
+      if context.executing_eagerly():
+        _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+      else:
+        _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
 @tf_export('keras.backend.get_session')
@@ -431,13 +462,7 @@ def get_session():
     session = default_session
   else:
     if _SESSION is None:
-      if not os.environ.get('OMP_NUM_THREADS'):
-        config = config_pb2.ConfigProto(allow_soft_placement=True)
-      else:
-        num_thread = int(os.environ.get('OMP_NUM_THREADS'))
-        config = config_pb2.ConfigProto(
-            intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
-      _SESSION = session_module.Session(config=config)
+      _SESSION = session_module.Session(config=get_default_session_config())
     session = _SESSION
   if not _MANUAL_VAR_INIT:
     with session.graph.as_default():
@@ -454,6 +479,16 @@ def set_session(session):
   """
   global _SESSION
   _SESSION = session
+
+
+def get_default_session_config():
+  if not os.environ.get('OMP_NUM_THREADS'):
+    config = config_pb2.ConfigProto(allow_soft_placement=True)
+  else:
+    num_thread = int(os.environ.get('OMP_NUM_THREADS'))
+    config = config_pb2.ConfigProto(
+        intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
+  return config
 
 
 # DEVICE MANIPULATION
@@ -618,6 +653,7 @@ def variable(value, dtype=None, name=None, constraint=None):
 
   Examples:
   ```python
+      >>> import numpy as np
       >>> from keras import backend as K
       >>> val = np.array([[1, 2], [3, 4]])
       >>> kvar = K.variable(value=val, dtype='float64', name='example_var')
@@ -648,15 +684,43 @@ def variable(value, dtype=None, name=None, constraint=None):
       constraint=constraint)
   if isinstance(value, np.ndarray):
     v._keras_shape = value.shape
-  elif hasattr(value, 'get_shape'):
+  elif hasattr(value, 'shape'):
     v._keras_shape = int_shape(value)
   v._uses_learning_phase = False
+  track_variable(v)
   return v
+
+
+def track_tf_optimizer(tf_optimizer):
+  """Tracks the given TF optimizer for initialization of its variables."""
+  if context.executing_eagerly():
+    return
+  graph = ops.get_default_graph()
+  optimizers = _GRAPH_TF_OPTIMIZERS.setdefault(graph, weakref.WeakSet())
+  optimizers.add(tf_optimizer)
+
+def track_variable(v):
+  """Tracks the given variable for initialization."""
+  if context.executing_eagerly():
+    return
+  graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
+  if graph not in _GRAPH_VARIABLES:
+    _GRAPH_VARIABLES[graph] = weakref.WeakSet()
+  _GRAPH_VARIABLES[graph].add(v)
+
+
+def _get_variables(graph=None):
+  """Returns variables corresponding to the given graph for initialization."""
+  assert not context.executing_eagerly()
+  variables = _GRAPH_VARIABLES.setdefault(graph, weakref.WeakSet())
+  for opt in _GRAPH_TF_OPTIMIZERS.get(graph, set()):
+    variables.update(opt.optimizer.variables())
+  return variables
 
 
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
-  variables = variables_module.global_variables()
+  variables = _get_variables(ops.get_default_graph())
   candidate_vars = []
   for v in variables:
     if not getattr(v, '_keras_initialized', False):
@@ -736,9 +800,10 @@ def is_keras_tensor(x):
       True
   ```
   """
-  if not isinstance(x, (ops.Tensor,
-                        variables_module.Variable,
-                        sparse_tensor.SparseTensor)):
+  if (not isinstance(x, (ops.Tensor,
+                         variables_module.Variable,
+                         sparse_tensor.SparseTensor)) and
+      x.__class__.__name__ != 'DeferredTensor'):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')
@@ -853,7 +918,10 @@ def int_shape(x):
   ```
   """
   try:
-    return tuple(x.get_shape().as_list())
+    shape = x.shape
+    if not isinstance(shape, tuple):
+      shape = tuple(shape.as_list())
+    return shape
   except ValueError:
     return None
 
@@ -880,7 +948,7 @@ def ndim(x):
       2
   ```
   """
-  dims = x.get_shape()._dims
+  dims = x.shape._dims
   if dims is not None:
     return len(dims)
   return None
@@ -968,8 +1036,9 @@ def zeros(shape, dtype=None, name=None):
       dtype = floatx()
     tf_dtype = dtypes_module.as_dtype(dtype)
     v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
-    if py_all(v.get_shape().as_list()):
+    if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
+    track_variable(v)
     return v
 
 
@@ -1002,8 +1071,9 @@ def ones(shape, dtype=None, name=None):
       dtype = floatx()
     tf_dtype = dtypes_module.as_dtype(dtype)
     v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
-    if py_all(v.get_shape().as_list()):
+    if py_all(v.shape.as_list()):
       return variable(v, dtype=dtype, name=name)
+    track_variable(v)
     return v
 
 
@@ -1196,7 +1266,7 @@ def count_params(x):
              [ 0.,  0.,  0.]], dtype=float32)
   ```
   """
-  return np.prod(x.get_shape().as_list())
+  return np.prod(x.shape.as_list())
 
 
 @tf_export('keras.backend.cast')
@@ -1442,12 +1512,8 @@ def batch_dot(x, y, axes=None):
       out = math_ops.reduce_sum(
           math_ops.multiply(array_ops.transpose(x, [1, 0]), y), axes[1])
   else:
-    if axes is not None:
-      adj_x = None if axes[0] == ndim(x) - 1 else True
-      adj_y = True if axes[1] == ndim(y) - 1 else None
-    else:
-      adj_x = None
-      adj_y = None
+    adj_x = None if axes[0] == ndim(x) - 1 else True
+    adj_y = True if axes[1] == ndim(y) - 1 else None
     out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
   if diff:
     if x_ndim > y_ndim:
@@ -2115,10 +2181,10 @@ def _fused_normalize_batch_in_training(x,
 
   if gamma is None:
     gamma = constant_op.constant(
-        1.0, dtype=x.dtype, shape=[x.get_shape()[normalization_axis]])
+        1.0, dtype=x.dtype, shape=[x.shape[normalization_axis]])
   if beta is None:
     beta = constant_op.constant(
-        0.0, dtype=x.dtype, shape=[x.get_shape()[normalization_axis]])
+        0.0, dtype=x.dtype, shape=[x.shape[normalization_axis]])
 
   return nn.fused_batch_norm(
       x, gamma, beta, epsilon=epsilon, data_format=tf_data_format)
@@ -2323,7 +2389,7 @@ def repeat_elements(x, rep, axis):
   Returns:
       A tensor.
   """
-  x_shape = x.get_shape().as_list()
+  x_shape = x.shape.as_list()
   # For static axis
   if x_shape[axis] is not None:
     # slices along the repeat axis
@@ -2343,7 +2409,7 @@ def repeat_elements(x, rep, axis):
   auxiliary_axis = axis + 1
   x_shape = array_ops.shape(x)
   x_rep = array_ops.expand_dims(x, axis=auxiliary_axis)
-  reps = np.ones(len(x.get_shape()) + 1)
+  reps = np.ones(len(x.shape) + 1)
   reps[auxiliary_axis] = rep
   x_rep = array_ops.tile(x_rep, reps)
 
@@ -2355,7 +2421,7 @@ def repeat_elements(x, rep, axis):
   x_rep = array_ops.reshape(x_rep, x_shape)
 
   # Fix shape representation
-  x_shape = x.get_shape().as_list()
+  x_shape = x.shape.as_list()
   x_rep.set_shape(x_shape)
   x_rep._keras_shape = tuple(x_shape)
   return x_rep
@@ -2762,7 +2828,8 @@ class Function(object):
       outputs: Output tensors to fetch.
       updates: Additional update ops to be run at function call.
       name: A name to help users identify what this function does.
-      session_kwargs: Arguments to `tf.Session.run()`: `fetches`, `feed_dict`.
+      session_kwargs: Arguments to `tf.Session.run()`:
+                      `fetches`, `feed_dict`, `options`, `run_metadata`.
   """
 
   def __init__(self, inputs, outputs, updates=None, name=None,
@@ -2796,6 +2863,8 @@ class Function(object):
     self.fetches = session_kwargs.pop('fetches', [])
     if not isinstance(self.fetches, list):
       self.fetches = [self.fetches]
+    self.run_options = session_kwargs.pop('options', None)
+    self.run_metadata = session_kwargs.pop('run_metadata', None)
     # The main use case of `fetches` being passed to a model is the ability
     # to run custom updates
     # This requires us to wrap fetches in `identity` ops.
@@ -2853,6 +2922,9 @@ class Function(object):
       callable_opts.fetch.append(x.name)
     # Handle updates.
     callable_opts.target.append(self.updates_op.name)
+    # Handle run_options.
+    if self.run_options:
+      callable_opts.run_options.CopyFrom(self.run_options)
     # Create callable.
     callable_fn = session._make_callable_from_options(callable_opts)
     # Cache parameters corresponding to the generated callable, so that
@@ -2911,7 +2983,8 @@ class Function(object):
         session != self._session):
       self._make_callable(feed_arrays, feed_symbols, symbol_vals, session)
 
-    fetched = self._callable_fn(*array_vals)
+    fetched = self._callable_fn(*array_vals,
+                                run_metadata=self.run_metadata)
     self._call_fetch_callbacks(fetched[-len(self._fetches):])
     return fetched[:len(self.outputs)]
 
@@ -2934,8 +3007,8 @@ def function(inputs, outputs, updates=None, **kwargs):
   """
   if kwargs:
     for key in kwargs:
-      if (key not in tf_inspect.getargspec(session_module.Session.run)[0] and
-          key not in tf_inspect.getargspec(Function.__init__)[0]):
+      if (key not in tf_inspect.getfullargspec(session_module.Session.run)[0]
+          and key not in tf_inspect.getfullargspec(Function.__init__)[0]):
         msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)
@@ -2986,7 +3059,8 @@ def rnn(step_function,
         mask=None,
         constants=None,
         unroll=False,
-        input_length=None):
+        input_length=None,
+        time_major=False):
   """Iterates over the time dimension of a tensor.
 
   Arguments:
@@ -3015,6 +3089,13 @@ def rnn(step_function,
       constants: List of constant values passed at each step.
       unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
       input_length: If specified, assume time dimension is of this length.
+      time_major: Boolean. If true, the inputs and outputs will be in shape
+          `(timesteps, batch, ...)`, whereas in the False case, it will be
+          `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+          efficient because it avoids transposes at the beginning and end of the
+          RNN calculation. However, most TensorFlow data is batch-major, so by
+          default this function accepts input and emits output in batch-major
+          form.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -3032,19 +3113,21 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
-  ndim = len(inputs.get_shape())
+  ndim = len(inputs.shape)
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
-  inputs_shape = inputs.get_shape()
-  axes = [1, 0] + list(range(2, ndim))
-  inputs = array_ops.transpose(inputs, (axes))
+  inputs_shape = inputs.shape
+  if not time_major:
+    axes = [1, 0] + list(range(2, ndim))
+    inputs = array_ops.transpose(inputs, axes)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
-    if len(mask.get_shape()) == ndim - 1:
+    if len(mask.shape) == ndim - 1:
       mask = expand_dims(mask)
-    mask = array_ops.transpose(mask, axes)
+    if not time_major:
+      mask = array_ops.transpose(mask, axes)
 
   if constants is None:
     constants = []
@@ -3053,7 +3136,7 @@ def rnn(step_function,
   uses_learning_phase = False
 
   if unroll:
-    if not inputs.get_shape()[0]:
+    if not inputs.shape[0]:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
     states = initial_states
     successive_states = []
@@ -3170,7 +3253,7 @@ def rnn(step_function,
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
         for state, new_state in zip(states, new_states):
-          new_state.set_shape(state.get_shape())
+          new_state.set_shape(state.shape)
         tiled_mask_t = array_ops.tile(mask_t,
                                       array_ops.stack(
                                           [1, array_ops.shape(output)[1]]))
@@ -3207,7 +3290,7 @@ def rnn(step_function,
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
         for state, new_state in zip(states, new_states):
-          new_state.set_shape(state.get_shape())
+          new_state.set_shape(state.shape)
         output_ta_t = output_ta_t.write(time, output)
         return (time + 1, output_ta_t) + tuple(new_states)
 
@@ -3225,11 +3308,12 @@ def rnn(step_function,
     outputs = output_ta.stack()
     last_output = output_ta.read(last_time - 1)
 
-  axes = [1, 0] + list(range(2, len(outputs.get_shape())))
-  outputs = array_ops.transpose(outputs, axes)
+  if not time_major:
+    axes = [1, 0] + list(range(2, len(outputs.shape)))
+    outputs = array_ops.transpose(outputs, axes)
 
-  # Static shape inference: (samples, time, ...)
-  outputs_shape = outputs.get_shape().as_list()
+  # Static shape inference: (samples, time, ...) or (time, sample, ...)
+  outputs_shape = outputs.shape.as_list()
   outputs_shape[0] = inputs_shape[0]
   outputs_shape[1] = inputs_shape[1]
   outputs.set_shape(outputs_shape)
@@ -3391,13 +3475,17 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-  clip_max = max_value is not None
 
   if alpha != 0.:
+    if max_value is None and threshold == 0:
+      return nn.leaky_relu(x, alpha=alpha)
+
     if threshold != 0:
       negative_part = nn.relu(-x + threshold)
     else:
       negative_part = nn.relu(-x)
+
+  clip_max = max_value is not None
 
   if threshold != 0:
     # computes x for x > threshold else 0
@@ -3500,7 +3588,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  rank = len(output.get_shape())
+  rank = len(output.shape)
   axis = axis % rank
   # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
@@ -3536,7 +3624,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  rank = len(output.get_shape())
+  rank = len(output.shape)
   axis = axis % rank
   if axis != rank - 1:
     permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
@@ -3549,7 +3637,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
     output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
     output = math_ops.log(output)
 
-  output_shape = output.get_shape()
+  output_shape = output.shape
   targets = cast(flatten(target), 'int64')
   logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
   res = nn.sparse_softmax_cross_entropy_with_logits(
@@ -3796,7 +3884,7 @@ def conv1d(x,
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
 
-  kernel_shape = kernel.get_shape().as_list()
+  kernel_shape = kernel.shape.as_list()
   if padding == 'causal':
     # causal (dilated) convolution:
     left_pad = dilation_rate * (kernel_shape[0] - 1)

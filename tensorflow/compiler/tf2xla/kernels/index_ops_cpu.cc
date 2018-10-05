@@ -78,14 +78,14 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     std::vector<xla::XlaOp> args;
     args.push_back(ctx->Input(0));
     args.push_back(xla::ConstantLiteral(
-        &b, *xla::LiteralUtil::CreateR1<int64>(input_shape.dim_sizes())));
+        &b, xla::LiteralUtil::CreateR1<int64>(input_shape.dim_sizes())));
     if (input_shape.dims() > 1) {
       // Don't bother passing the output shape and dim for the 1d case, since
       // the shape is always a scalar and the dim is always 0.
       args.push_back(xla::ConstantLiteral(
-          &b, *xla::LiteralUtil::CreateR1<int64>(output_shape.dim_sizes())));
+          &b, xla::LiteralUtil::CreateR1<int64>(output_shape.dim_sizes())));
       args.push_back(
-          xla::ConstantLiteral(&b, *xla::LiteralUtil::CreateR0<int32>(dim)));
+          xla::ConstantLiteral(&b, xla::LiteralUtil::CreateR0<int32>(dim)));
     }
 
     xla::Shape xla_shape =

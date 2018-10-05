@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
-#define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -45,6 +45,10 @@ struct ConstantFoldingOptions {
   // optimization.
   int64 max_constant_size_in_bytes = 10 * 1024 * 1024;
 
+  // If disable_memory_output_type_check is true, we will disable output memory
+  // type check for constant node replacement.
+  bool disable_memory_output_type_check = false;
+
   // A generator for the name suffix of constant folded nodes. A
   // default id generator that monotonically increases is used if nullptr is
   // passed.
@@ -66,4 +70,4 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_

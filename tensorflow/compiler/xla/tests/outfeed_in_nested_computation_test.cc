@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -22,9 +23,9 @@ namespace {
 // Tests that ensure outfeed instructions that are contained in nested
 // computations in non-root positions are executed.
 
-class LocalClientExecuteTest : public LocalClientTestBase {};
+class OutfeedInNestedComputationTest : public LocalClientTestBase {};
 
-TEST_F(LocalClientExecuteTest, OutfeedInWhile) {
+XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   XlaBuilder b(TestName());
 
   Shape state_tuple_array_shape = ShapeUtil::MakeShape(xla::S32, {10, 5});
@@ -69,7 +70,7 @@ TEST_F(LocalClientExecuteTest, OutfeedInWhile) {
   GetTupleElement(result_tuple, 0);
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
-  std::unique_ptr<xla::Literal> comp_result;
+  Literal comp_result;
   std::unique_ptr<tensorflow::Thread> thread(
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions(), "execute_thread", [&] {
@@ -80,44 +81,44 @@ TEST_F(LocalClientExecuteTest, OutfeedInWhile) {
   VLOG(1) << "Transferring trip count to computation";
   // Transfer number of iterations to Infeed.
   TF_ASSERT_OK(
-      local_client_->TransferToInfeed(*LiteralUtil::CreateR0<int32_t>(1)));
+      local_client_->TransferToInfeed(LiteralUtil::CreateR0<int32_t>(1)));
 
   // Pick up value from outfeed
   {
     VLOG(1) << "Reading from condition outfeed";
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> r,
+    TF_ASSERT_OK_AND_ASSIGN(Literal r,
                             local_client_->TransferFromOutfeed(&int_shape));
-    EXPECT_EQ(r->Get<int32>({}), 1);
+    EXPECT_EQ(r.Get<int32>({}), 1);
   }
 
   VLOG(1) << "Writing data to infeed";
   // Transfer some stuff to Infeed for use inside of loop.
   TF_ASSERT_OK(local_client_->TransferToInfeed(
-      *LiteralUtil::CreateR1<int32_t>({10, 20})));
+      LiteralUtil::CreateR1<int32_t>({10, 20})));
 
   // Pick up value from outfeed
   {
     VLOG(1) << "Reading from body outfeed";
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> r,
+    TF_ASSERT_OK_AND_ASSIGN(Literal r,
                             local_client_->TransferFromOutfeed(&xfeed_shape));
-    EXPECT_EQ(r->Get<int32>({0}), 11);
-    EXPECT_EQ(r->Get<int32>({1}), 21);
+    EXPECT_EQ(r.Get<int32>({0}), 11);
+    EXPECT_EQ(r.Get<int32>({1}), 21);
   }
 
   {
     VLOG(1) << "Reading from condition outfeed";
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> r,
+    TF_ASSERT_OK_AND_ASSIGN(Literal r,
                             local_client_->TransferFromOutfeed(&int_shape));
-    EXPECT_EQ(r->Get<int32>({}), 0);
+    EXPECT_EQ(r.Get<int32>({}), 0);
   }
 
   // Joins the thread
   thread.reset();
 
-  EXPECT_EQ(comp_result->Get<int32>({}), 0);
+  EXPECT_EQ(comp_result.Get<int32>({}), 0);
 }
 
-TEST_F(LocalClientExecuteTest, OutfeedInConditional) {
+XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   XlaBuilder b(TestName());
 
   Shape condition_shape = ShapeUtil::MakeShape(xla::PRED, {});
@@ -144,7 +145,7 @@ TEST_F(LocalClientExecuteTest, OutfeedInConditional) {
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
-  std::unique_ptr<xla::Literal> comp_result;
+  Literal comp_result;
   std::unique_ptr<tensorflow::Thread> thread(
       tensorflow::Env::Default()->StartThread(
           tensorflow::ThreadOptions(), "execute_thread", [&] {
@@ -153,12 +154,12 @@ TEST_F(LocalClientExecuteTest, OutfeedInConditional) {
           }));
 
   TF_ASSERT_OK(
-      local_client_->TransferToInfeed(*LiteralUtil::CreateR0<bool>(true)));
+      local_client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> r,
+  TF_ASSERT_OK_AND_ASSIGN(Literal r,
                           local_client_->TransferFromOutfeed(&result_shape));
 
-  EXPECT_EQ(r->Get<bool>({}), true);
+  EXPECT_EQ(r.Get<bool>({}), true);
 
   // Join the thread
   thread.reset();
