@@ -162,9 +162,9 @@ cc_library(
     hdrs = [
         "simd/powerpc/jccolext-altivec.c",
         "simd/powerpc/jcgryext-altivec.c",
+        "simd/powerpc/jcsample.h",
         "simd/powerpc/jdcolext-altivec.c",
         "simd/powerpc/jdmrgext-altivec.c",
-        "simd/powerpc/jcsample.h",
         "simd/powerpc/jsimd_altivec.h",
     ],
     copts = libjpegturbo_copts,
@@ -186,7 +186,6 @@ cc_library(
         "jsimd.h",
         "jsimddct.h",
         "simd/jsimd.h",
-        "simd/x86_64/jsimd.c",
         "simd/x86_64/jccolor-avx2.o",
         "simd/x86_64/jccolor-sse2.o",
         "simd/x86_64/jcgray-avx2.o",
@@ -213,6 +212,7 @@ cc_library(
         "simd/x86_64/jquantf-sse2.o",
         "simd/x86_64/jquanti-avx2.o",
         "simd/x86_64/jquanti-sse2.o",
+        "simd/x86_64/jsimd.c",
         "simd/x86_64/jsimdcpu.o",
     ],
     copts = libjpegturbo_copts,
@@ -322,9 +322,9 @@ cc_library(
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/jsimd.h",
         "simd/arm/jsimd.c",
         "simd/arm/jsimd_neon.S",
+        "simd/jsimd.h",
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
@@ -343,9 +343,9 @@ cc_library(
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/jsimd.h",
         "simd/arm64/jsimd.c",
         "simd/arm64/jsimd_neon.S",
+        "simd/jsimd.h",
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
@@ -366,7 +366,6 @@ cc_library(
         "jsimd.h",
         "jsimddct.h",
         "simd/jsimd.h",
-        "simd/x86_64/jsimd.c",
         "simd/x86_64/jccolor-avx2.obj",
         "simd/x86_64/jccolor-sse2.obj",
         "simd/x86_64/jcgray-avx2.obj",
@@ -393,6 +392,7 @@ cc_library(
         "simd/x86_64/jquantf-sse2.obj",
         "simd/x86_64/jquanti-avx2.obj",
         "simd/x86_64/jquanti-sse2.obj",
+        "simd/x86_64/jsimd.c",
         "simd/x86_64/jsimdcpu.obj",
     ],
     copts = libjpegturbo_copts,
@@ -603,6 +603,7 @@ JCONFIGINT_WIN_SUBSTITUTIONS = {
 }
 
 JCONFIGINT_NOWIN_SUBSTITUTIONS.update(JCONFIGINT_COMMON_SUBSTITUTIONS)
+
 JCONFIGINT_WIN_SUBSTITUTIONS.update(JCONFIGINT_COMMON_SUBSTITUTIONS)
 
 template_rule(
