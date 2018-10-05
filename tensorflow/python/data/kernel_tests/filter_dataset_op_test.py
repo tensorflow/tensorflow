@@ -156,7 +156,7 @@ class FilterDatasetTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testShortCircuit(self):
+  def testReturnComponent(self):
     iterator = (
         dataset_ops.Dataset.zip(
             (dataset_ops.Dataset.range(10),

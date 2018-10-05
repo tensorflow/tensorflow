@@ -182,7 +182,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      auto map_fn = [this](IteratorContext* ctx, const string& prefix,
+      auto map_fn = [this](IteratorContext* ctx,
                            std::vector<Tensor> input_element,
                            std::vector<Tensor>* result, StatusCallback done) {
         (*ctx->runner())([this, ctx, input_element, result, done]() {

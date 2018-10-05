@@ -30,7 +30,7 @@ namespace data {
 // 3. A `std::vector<Tensor>*` to which the function will write the result.
 // 4. A `StatusCallback` that should be invoked when the function is complete.
 using ParallelMapIteratorFunction =
-    std::function<void(IteratorContext*, const string&, std::vector<Tensor>,
+    std::function<void(IteratorContext*, std::vector<Tensor>,
                        std::vector<Tensor>*, StatusCallback)>;
 
 // Returns a new iterator that applies `map_func` to the elements of
