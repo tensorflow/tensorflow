@@ -2430,6 +2430,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv3d = "Conv3D";
     csinfo_.conv3d_grad_input = "Conv3DBackpropInputV2";
     csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
+    csinfo_.depthwise_conv2d = "DepthwiseConv2dNative";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.identity = "Identity";
@@ -2510,6 +2511,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.conv3d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_input),
                       CopyAttrsConv, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.depthwise_conv2d,
+                      mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d),
+                      CopyAttrsConv2DDepthwise, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -2659,6 +2663,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv3d;
     string conv3d_grad_input;
     string conv3d_grad_filter;
+    string depthwise_conv2d;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string identity;
@@ -3134,6 +3139,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsBiasAddGrad(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb);
+  static void CopyAttrsConv2DDepthwise(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb);
@@ -3625,6 +3631,29 @@ void MklLayoutRewritePass::AddWorkSpaceEdgeIfNeeded(
 
 void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node,
                                          NodeBuilder* nb) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
+                                           NodeBuilder* nb) {
   DataType T;
   string data_format;
   string padding;
