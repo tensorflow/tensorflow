@@ -269,15 +269,6 @@ class FuncGraph(ops.Graph):
   def variables(self, var_list):
     self._weak_variables = [weakref.ref(v) for v in var_list]
 
-  def control_dependencies(self, control_inputs):
-    # Drop control dependencies to outside of the graph. TODO(b/117109273)
-    # unclear how to capture an op, not a tensor.
-    if not control_inputs:
-      return super(FuncGraph, self).control_dependencies(control_inputs)
-    return super(FuncGraph, self).control_dependencies(
-        [c for c in control_inputs
-         if getattr(c, "graph", None) is self])
-
   def create_op(
       self,
       op_type,
@@ -503,6 +494,9 @@ class _EagerDefinedFunction(object):
 
     Returns:
       The outputs of the function call.
+
+    Raises:
+      ValueError: if the number of arguments is incorrect.
     """
 
     executing_eagerly = ctx.executing_eagerly()
@@ -536,6 +530,10 @@ class _EagerDefinedFunction(object):
       # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
       # creates `PartitionedCallOp` kernels by default, or remove the previous
       # branch if a TPU kernel is registered for `PartitionedCall`.
+      if len(args) != len(self.signature.input_arg):
+        raise ValueError(
+            "Arguments and signature arguments do not match: %s %s " %
+            (len(args), len(list(self.signature.input_arg))))
       outputs = functional_ops.partitioned_call(
           args=args,
           f=self,
@@ -756,7 +754,6 @@ class Function(object):
         BACKWARD_FUNCTION_ATTRIBUTE_NAME:
             self._backward_graph_function._inference_function.name})  # pylint: disable=protected-access
     forward_function_attr.update(self._attrs)
-
     self._forward_function = _EagerDefinedFunction(
         forward_function_name, self._func_graph, self._func_graph.inputs,
         self._func_graph.outputs + backwards_graph_captures,
@@ -1152,23 +1149,22 @@ class PolymorphicFunction(object):
       del args, kwargs
       cache_key = self._flat_input_signature
 
+    ctx = context.context()
     with ops.init_scope():
-      init_graph = ops.get_default_graph()
-
       # The graph, or whether we're executing eagerly, should be a part of the
       # cache key so we don't improperly capture tensors such as variables.
-      executing_eagerly = context.executing_eagerly()
-      execution_context = executing_eagerly or init_graph
+      executing_eagerly = ctx.executing_eagerly()
+      execution_context = executing_eagerly or ops.get_default_graph()
 
-    default_graph = ops.get_default_graph()
-    # Putting the device in the cache key ensures that call-site device
-    # annotations are respected.
-    device_functions = _get_device_functions(context.context(), default_graph)
-
-    # `ops.colocate_with` directives translate into `ops.device` directives when
-    # eager execution is enabled.
-    colocation_stack = (() if executing_eagerly else
-                        tuple(default_graph._colocation_stack.peek_objs()))  # pylint: disable=protected-access
+    if executing_eagerly:
+      device_functions = (pydev.merge_device(ctx.device_name),)
+      colocation_stack = ()
+    else:
+      default_graph = ops.get_default_graph()
+      # Putting the device in the cache key ensures that call-site device
+      # annotations are respected.
+      device_functions = tuple(default_graph._device_functions_outer_to_inner)  # pylint: disable=protected-access
+      colocation_stack = tuple(default_graph._colocation_stack.peek_objs())  # pylint: disable=protected-access
 
     return (cache_key, execution_context, device_functions, colocation_stack)
 
@@ -1195,9 +1191,6 @@ class PolymorphicFunction(object):
     """
     args = self._args_to_prepend + args
     kwargs = dict(kwargs, **self._kwargs_to_include)
-    # Maps from index of arg to its corresponding value, according to `args`
-    # and `kwargs`; seeded with the default values for the named args that
-    # aren't in `args`.
     if not kwargs:
       if self._default_values:
         inputs = args + self._default_values[len(args) -
@@ -1205,6 +1198,9 @@ class PolymorphicFunction(object):
       else:
         inputs = args
     else:
+      # Maps from index of arg to its corresponding value, according to `args`
+      # and `kwargs`; seeded with the default values for the named args that
+      # aren't in `args`.
       arg_indices_to_values = {
           index: default for index, default in six.iteritems(
               self._arg_indices_to_default_values) if index >= len(args)
@@ -1227,9 +1223,12 @@ class PolymorphicFunction(object):
     flat_inputs = nest.flatten(inputs)
 
     # Check for NumPy arrays in arguments and convert them to Tensors.
+    # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
+    # finding a way to store them directly in the cache key (currently not
+    # possible since ndarrays are not hashable).
     need_packing = False
     for index, value in enumerate(flat_inputs):
-      if isinstance(value, np.ndarray):
+      if type(value) == np.ndarray:
         flat_inputs[index] = constant_op.constant(value)
         need_packing = True
     if need_packing:

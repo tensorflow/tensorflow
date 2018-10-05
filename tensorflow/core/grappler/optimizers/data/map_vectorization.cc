@@ -44,7 +44,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
   // Function inputs and outputs are the same as original, just
   // with different shapes.
   *vectorized_func->mutable_signature() = orig_func.signature();
-  graph_utils::SetUniqueGraphFunctionName("vectorized_function", library,
+  graph_utils::SetUniqueGraphFunctionName("naively_vectorized_fn", library,
                                           vectorized_func);
 
   // Add MapDefun node
@@ -67,6 +67,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
     map_defun_node->add_input(input.name());
   }
   (*map_defun_node->mutable_attr())["Targuments"] = t_args;
+  AddNodeAttr("Tcaptured", DataTypeVector(), map_defun_node);
 
   // Set return values to match output names
   string output_prefix = strings::StrCat(map_defun_node->name(), ":output:");

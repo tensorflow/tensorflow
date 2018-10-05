@@ -571,6 +571,10 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
           ValueError("Device %s not found in %s (current device %s)" %
                      (device, self._index.keys(), device_util.current())), e)
 
+  @property
+  def device(self):
+    return self._get().device
+
   # The arguments to update() are automatically unwrapped so the update()
   # function would normally see regular variables, not MirroredVariables.
   # However, the update function can still operate on wrapped MirroredVariables
