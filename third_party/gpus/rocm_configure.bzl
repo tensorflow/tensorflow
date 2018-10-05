@@ -188,6 +188,9 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/8.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/8.0.0/include")
 
+    # Add RCCL headers
+    inc_dirs.append("/opt/rocm/rccl/include")
+
     inc_entries = []
     for inc_dir in inc_dirs:
         inc_entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)
@@ -392,6 +395,12 @@ def _find_libs(repository_ctx, rocm_config):
             cpu_value,
             rocm_config.rocm_toolkit_path + "/miopen",
         ),
+        "rccl": _find_rocm_lib(
+            "rccl",
+            repository_ctx,
+            cpu_value,
+            rocm_config.rocm_toolkit_path + "/rccl",
+        ),
     }
 
 def _get_rocm_config(repository_ctx):
@@ -474,6 +483,7 @@ def _create_dummy_repository(repository_ctx):
             "%{hip_lib}": _lib_name("hip", cpu_value),
             "%{rocblas_lib}": _lib_name("rocblas", cpu_value),
             "%{miopen_lib}": _lib_name("miopen", cpu_value),
+            "%{rccl_lib}": _lib_name("rccl", cpu_value),
             "%{rocfft_lib}": _lib_name("rocfft", cpu_value),
             "%{hiprand_lib}": _lib_name("hiprand", cpu_value),
             "%{rocm_include_genrules}": "",
@@ -703,6 +713,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocfft_lib}": rocm_libs["rocfft"].file_name,
             "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
             "%{miopen_lib}": rocm_libs["miopen"].file_name,
+            "%{rccl_lib}": rocm_libs["rccl"].file_name,
             "%{rocm_include_genrules}": "\n".join(genrules),
             "%{rocm_headers}": ('":rocm-include",\n' +
                                 '":rocfft-include",\n' +

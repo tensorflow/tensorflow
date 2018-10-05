@@ -57,7 +57,7 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 # Install rocm pkgs
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    rocm-dev rocm-libs rocm-utils \
+    rocm-dev rocm-libs rocm-utils rocm-cmake \
     rocfft miopen-hip miopengemm rocblas hipblas rocrand \
     rocm-profiler cxlactivitylogger && \
     apt-get clean && \
@@ -75,6 +75,21 @@ ENV OPENCL_ROOT=$ROCM_PATH/opencl
 ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
+
+# Workadround : build HIP from source using fork that holds roc-1.9.x with HIP PR 692
+RUN cd $HOME && git clone -b roc-1.9.x-reinit https://github.com/whchung/HIP.git
+RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make -j$(nproc) package && dpkg -i *.deb
+
+# Install RCCL
+RUN cd ~ && \
+git clone https://github.com/ROCmSoftwarePlatform/rccl.git && \
+mkdir rccl_build && \
+cd rccl_build && \
+CXX=/opt/rocm/bin/hcc cmake ../rccl && \
+make package && \
+dpkg -i *.deb && \
+cd ~ && \
+rm -rf rccl
 
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'

@@ -21,7 +21,11 @@ from __future__ import print_function
 import collections
 import math
 
-from tensorflow.contrib import nccl
+from tensorflow.python import pywrap_tensorflow
+if pywrap_tensorflow.IsGoogleCudaEnabled():
+  from tensorflow.contrib import nccl
+else:
+  from tensorflow.contrib import rccl as nccl
 from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
