@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -29,7 +30,7 @@ _TEST_TYPES = (dtypes.int64, dtypes.float32,
                dtypes.complex64, dtypes.complex128)
 
 
-class GatherTest(test.TestCase):
+class GatherTest(test.TestCase, parameterized.TestCase):
 
   def _buildParams(self, data, dtype):
     data = data.astype(dtype.as_numpy_dtype)
@@ -39,14 +40,15 @@ class GatherTest(test.TestCase):
       return data + 10j * data
     return data
 
-  def testSimpleGather(self):
+  @parameterized.parameters(dtypes.int32, dtypes.int64)
+  def testSimpleGather(self, indices_dtype):
     data = np.array([0, 1, 2, 3, 7, 5, 8, 9, 10, 11, 15, 13])
     indices = [3, 4]
     with self.test_session(use_gpu=True):
       for dtype in _TEST_TYPES:
         params_np = self._buildParams(data, dtype)
         params = constant_op.constant(params_np)
-        indices_tf = constant_op.constant(indices)
+        indices_tf = constant_op.constant(indices, dtype=indices_dtype)
         gather_t = array_ops.batch_gather(params, indices_tf)
         expected_result = np.array([3, 7])
         np_val = self._buildParams(expected_result, dtype)
@@ -54,14 +56,15 @@ class GatherTest(test.TestCase):
         self.assertAllEqual(np_val, gather_val)
         self.assertEqual(np_val.shape, gather_t.get_shape())
 
-  def test2DArray(self):
+  @parameterized.parameters(dtypes.int32, dtypes.int64)
+  def test2DArray(self, indices_dtype):
     data = np.array([[0, 1, 2, 3, 7, 5], [8, 9, 10, 11, 15, 13]])
     indices = [[3], [4]]
     with self.test_session(use_gpu=True):
       for dtype in _TEST_TYPES:
         params_np = self._buildParams(data, dtype)
         params = constant_op.constant(params_np)
-        indices_tf = constant_op.constant(indices)
+        indices_tf = constant_op.constant(indices, dtype=indices_dtype)
         gather_t = array_ops.batch_gather(params, indices_tf)
         expected_result = np.array([[3], [15]])
         np_val = self._buildParams(expected_result, dtype)

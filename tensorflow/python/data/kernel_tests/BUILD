@@ -291,7 +291,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "multi_device_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["multi_device_iterator_test.py"],
     additional_deps = [
         ":test_base",

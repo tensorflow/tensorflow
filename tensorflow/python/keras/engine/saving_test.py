@@ -38,6 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
+from tensorflow.python.training.checkpointable import util as checkpointable
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -922,6 +923,18 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
         SubclassedModel, SubclassedModelRestore,
         _restore_init_fn)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_incompatible_checkpoint(self):
+    save_path = checkpointable.Checkpoint().save(
+        os.path.join(self.get_temp_dir(), 'ckpt'))
+    m = keras.Model()
+    with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):
+      m.load_weights(save_path)
+    m.dense = keras.layers.Dense(2)
+    m.dense(constant_op.constant([[1.]]))
+    with self.assertRaisesRegexp(
+        AssertionError, 'Nothing except the root object matched'):
+      m.load_weights(save_path)
 
 if __name__ == '__main__':
   test.main()

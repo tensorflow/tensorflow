@@ -548,6 +548,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
+    case HloOpcode::kSort:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
       break;
@@ -763,169 +764,6 @@ Status VerifyHloStructure(HloModule* module) {
   return Status::OK();
 }
 
-Status HloVerifier::CheckFusionInstruction(HloInstruction* fusion) const {
-  // The parent fusion instruction of the fusion computation must be 'fusion'.
-  HloComputation* fused_computation = fusion->fused_instructions_computation();
-  if (fusion != fused_computation->FusionInstruction()) {
-    return InternalError(
-        "Instruction of fused computation does not match expected "
-        "instruction "
-        "%s.",
-        fusion->ToString());
-  }
-
-  // Fused root instruction and fused parameters must all be owned by the
-  // fusion computation.
-  bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters =
-      fusion->fused_parameters();
-  const HloInstruction* fused_root = fusion->fused_expression_root();
-  std::vector<bool> parameter_owned(fused_parameters.size(), false);
-  for (auto* instruction : fused_computation->instructions()) {
-    if (fused_root == instruction) {
-      if (root_owned) {
-        return InternalError("Root appears more than once in %s.",
-                             fusion->ToString());
-      }
-      root_owned = true;
-    }
-    for (int i = 0; i < fused_parameters.size(); ++i) {
-      if (fused_parameters[i] == instruction) {
-        if (parameter_owned[i]) {
-          return InternalError("Parameter appears more than once in %s.",
-                               fusion->ToString());
-        }
-        parameter_owned[i] = true;
-      }
-    }
-  }
-  if (!root_owned) {
-    return InternalError("Root not found in computation of %s.",
-                         fusion->ToString());
-  }
-  // Make sure all the parameter_owned entries are set
-  for (int i = 0; i < parameter_owned.size(); i++) {
-    if (!parameter_owned[i]) {
-      return InternalError("Parameter %d not found in computation of %s.", i,
-                           fusion->ToString());
-    }
-  }
-
-  // Fused root must have no users.
-  if (fused_root->user_count() != 0) {
-    return InternalError("Root of %s may not have users.", fusion->ToString());
-  }
-
-  // All uses of fused instructions must be in the fusion computation, and
-  // every non-root instruction must have at least one use.
-  for (auto* instruction :
-       fusion->fused_instructions_computation()->instructions()) {
-    if (instruction != fused_root) {
-      if (instruction->user_count() == 0) {
-        return InternalError("Non-root instruction %s in %s must have users.",
-                             instruction->ToString(), fusion->ToString());
-      }
-      for (auto& user : instruction->users()) {
-        if (fused_computation != user->parent()) {
-          return InternalError(
-              "Non-root instruction %s in %s may not have external users.",
-              instruction->ToString(), fusion->ToString());
-        }
-      }
-    }
-  }
-
-  // Fused parameter instructions must be numbered contiguously and match up
-  // (shapes equal) with their respective operand.
-  CHECK_EQ(fusion->operands().size(), fused_parameters.size());
-  std::vector<bool> parameter_numbers(fused_parameters.size(), false);
-  for (auto fused_param : fused_parameters) {
-    int64 param_no = fused_param->parameter_number();
-    if (param_no < 0) {
-      return InternalError("Unexpected negative parameter number %d in %s.",
-                           param_no, fusion->ToString());
-    }
-    if (param_no >= fused_parameters.size()) {
-      return InternalError(
-          "Unexpected parameter number %d in %s: higher then number of "
-          "parameters %lu.",
-          param_no, fusion->ToString(), fused_parameters.size());
-    }
-    if (parameter_numbers[param_no]) {
-      return InternalError(
-          "Did not expect parameter number %d more than once in %s.", param_no,
-          fusion->ToString());
-    }
-    parameter_numbers[param_no] = true;
-  }
-  // Make sure all the parameter_numbers entries were seen.
-  for (int i = 0; i < parameter_numbers.size(); i++) {
-    if (!parameter_numbers[i]) {
-      return InternalError("Did not see parameter number %d in %s.", i,
-                           fusion->ToString());
-    }
-  }
-
-  // TODO(b/65423525): We'd like to check that all operands are distinct.
-  // This is currently disabled due to the invariant being violated by
-  // multi-output fusion.
-  return Status::OK();
-}
-
-Status HloVerifier::CheckWhileInstruction(HloInstruction* instruction) {
-  auto* while_cond = instruction->while_condition();
-  auto* while_body = instruction->while_body();
-  if (while_cond->num_parameters() != 1) {
-    return FailedPrecondition(
-        "While condition must have exactly 1 parameter; had %d : %s",
-        while_cond->num_parameters(), while_cond->ToString());
-  }
-  if (while_body->num_parameters() != 1) {
-    return FailedPrecondition(
-        "While body must have exactly 1 parameter; had %d : %s",
-        while_body->num_parameters(), while_body->ToString());
-  }
-  if (instruction->operand_count() != 1) {
-    return FailedPrecondition(
-        "While loop must have exactly one operand; had %d : %s",
-        instruction->operand_count(), instruction->ToString());
-  }
-  return Status::OK();
-}
-
-Status HloVerifier::CheckConditionalInstruction(HloInstruction* instruction) {
-  if (instruction->true_computation()->num_parameters() != 1) {
-    return FailedPrecondition(
-        "True computation %s of %s must have 1 parameter insted of %d",
-        instruction->true_computation()->name(), instruction->ToString(),
-        instruction->true_computation()->num_parameters());
-  }
-  if (instruction->false_computation()->num_parameters() != 1) {
-    return FailedPrecondition(
-        "False computation %s of %s must have 1 parameter insted of %d",
-        instruction->false_computation()->name(), instruction->ToString(),
-        instruction->false_computation()->num_parameters());
-  }
-  return Status::OK();
-}
-
-Status HloVerifier::CheckElementwiseInstruction(HloInstruction* instruction) {
-  const Shape& out_shape = instruction->shape();
-  for (HloInstruction* operand : instruction->operands()) {
-    const Shape& operand_shape = operand->shape();
-    if (!ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
-      return FailedPrecondition(
-          "Implicit broadcast is not allowed in HLO."
-          "Found different shapes for instruction %s.\n"
-          "output: %s\noperand: %s\n",
-          HloOpcodeString(instruction->opcode()),
-          ShapeUtil::HumanString(out_shape),
-          ShapeUtil::HumanString(operand_shape));
-    }
-  }
-  return Status::OK();
-}
-
 namespace {
 
 // Returns true if the given Shape has a TOKEN shape as any subshape.
@@ -1054,6 +892,261 @@ Status VerifySendsAndRecvs(const HloModule& module) {
   return Status::OK();
 }
 
+// CHECKs various invariants of a fusion instruction.
+Status CheckFusionInstruction(HloInstruction* fusion) {
+  // The parent fusion instruction of the fusion computation must be 'fusion'.
+  HloComputation* fused_computation = fusion->fused_instructions_computation();
+  if (fusion != fused_computation->FusionInstruction()) {
+    return InternalError(
+        "Instruction of fused computation does not match expected "
+        "instruction "
+        "%s.",
+        fusion->ToString());
+  }
+
+  // Fused root instruction and fused parameters must all be owned by the
+  // fusion computation.
+  bool root_owned = false;
+  const std::vector<HloInstruction*>& fused_parameters =
+      fusion->fused_parameters();
+  const HloInstruction* fused_root = fusion->fused_expression_root();
+  std::vector<bool> parameter_owned(fused_parameters.size(), false);
+  for (auto* instruction : fused_computation->instructions()) {
+    if (fused_root == instruction) {
+      if (root_owned) {
+        return InternalError("Root appears more than once in %s.",
+                             fusion->ToString());
+      }
+      root_owned = true;
+    }
+    for (int i = 0; i < fused_parameters.size(); ++i) {
+      if (fused_parameters[i] == instruction) {
+        if (parameter_owned[i]) {
+          return InternalError("Parameter appears more than once in %s.",
+                               fusion->ToString());
+        }
+        parameter_owned[i] = true;
+      }
+    }
+  }
+  if (!root_owned) {
+    return InternalError("Root not found in computation of %s.",
+                         fusion->ToString());
+  }
+  // Make sure all the parameter_owned entries are set
+  for (int i = 0; i < parameter_owned.size(); i++) {
+    if (!parameter_owned[i]) {
+      return InternalError("Parameter %d not found in computation of %s.", i,
+                           fusion->ToString());
+    }
+  }
+
+  // Fused root must have no users.
+  if (fused_root->user_count() != 0) {
+    return InternalError("Root of %s may not have users.", fusion->ToString());
+  }
+
+  // All uses of fused instructions must be in the fusion computation, and
+  // every non-root instruction must have at least one use.
+  for (auto* instruction :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instruction != fused_root) {
+      if (instruction->user_count() == 0) {
+        return InternalError("Non-root instruction %s in %s must have users.",
+                             instruction->ToString(), fusion->ToString());
+      }
+      for (auto& user : instruction->users()) {
+        if (fused_computation != user->parent()) {
+          return InternalError(
+              "Non-root instruction %s in %s may not have external users.",
+              instruction->ToString(), fusion->ToString());
+        }
+      }
+    }
+  }
+
+  // Fused parameter instructions must be numbered contiguously and match up
+  // (shapes equal) with their respective operand.
+  CHECK_EQ(fusion->operands().size(), fused_parameters.size());
+  std::vector<bool> parameter_numbers(fused_parameters.size(), false);
+  for (auto fused_param : fused_parameters) {
+    int64 param_no = fused_param->parameter_number();
+    if (param_no < 0) {
+      return InternalError("Unexpected negative parameter number %d in %s.",
+                           param_no, fusion->ToString());
+    }
+    if (param_no >= fused_parameters.size()) {
+      return InternalError(
+          "Unexpected parameter number %d in %s: higher then number of "
+          "parameters %lu.",
+          param_no, fusion->ToString(), fused_parameters.size());
+    }
+    if (parameter_numbers[param_no]) {
+      return InternalError(
+          "Did not expect parameter number %d more than once in %s.", param_no,
+          fusion->ToString());
+    }
+    parameter_numbers[param_no] = true;
+  }
+  // Make sure all the parameter_numbers entries were seen.
+  for (int i = 0; i < parameter_numbers.size(); i++) {
+    if (!parameter_numbers[i]) {
+      return InternalError("Did not see parameter number %d in %s.", i,
+                           fusion->ToString());
+    }
+  }
+
+  TF_RET_CHECK(fusion->called_computations() ==
+               absl::Span<HloComputation* const>(
+                   {fusion->fused_instructions_computation()}))
+      << "Fusion HLO calls computations other than the "
+         "fused_instructions_computation: "
+      << fusion->ToString() << " fusion->fused_instructions_computation(): "
+      << fusion->fused_instructions_computation()->ToString()
+      << " fusion->called_computations(): "
+      << ComputationsToString(fusion->called_computations());
+
+  for (const auto& fused : fusion->fused_instructions()) {
+    TF_RET_CHECK(fused->parent() == fusion->fused_instructions_computation())
+        << "Fused HLO was missing a parent: " << fused->ToString()
+        << " parent: " << fused->parent()
+        << " computation: " << fusion->parent();
+  }
+
+  // TODO(b/65423525): We'd like to check that all operands are distinct.
+  // This is currently disabled due to the invariant being violated by
+  // multi-output fusion.
+  return Status::OK();
+}
+
+// Checks that the non-scalar operand shapes are compatible to the output
+// shape, i.e., that there are no implicit broadcasts of size-one dimensions.
+Status CheckElementwiseInstruction(HloInstruction* instruction) {
+  const Shape& out_shape = instruction->shape();
+  for (HloInstruction* operand : instruction->operands()) {
+    const Shape& operand_shape = operand->shape();
+    if (!ShapeUtil::CompatibleIgnoringElementType(operand_shape, out_shape)) {
+      return FailedPrecondition(
+          "Implicit broadcast is not allowed in HLO."
+          "Found different shapes for instruction %s.\n"
+          "output: %s\noperand: %s\n",
+          HloOpcodeString(instruction->opcode()),
+          ShapeUtil::HumanString(out_shape),
+          ShapeUtil::HumanString(operand_shape));
+    }
+  }
+  return Status::OK();
+}
+
+// Visitor which verifies various fields on the HLO instruction. This class does
+// not check result shape as that is checked in the ShapeVerifier.
+class InstructionVerifier : public DfsHloVisitorWithDefault {
+ public:
+  InstructionVerifier() {}
+
+  Status DefaultAction(HloInstruction*) override { return Status::OK(); }
+
+  Status HandleFusion(HloInstruction* fusion) override {
+    return CheckFusionInstruction(fusion);
+  }
+
+  Status HandleBroadcast(HloInstruction* broadcast) override {
+    // If you see this failure then someone has confused the difference
+    // between the HLO broadcast op, and the UserComputation broadcast
+    // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
+    // or ComputationLowerer::Visit()
+    TF_RET_CHECK(broadcast->dimensions().size() ==
+                 ShapeUtil::Rank(broadcast->operand(0)->shape()))
+        << "Broadcast HLO (" << broadcast->ToShortString()
+        << ") has invalid number of dimensions: "
+        << broadcast->dimensions().size()
+        << " != " << ShapeUtil::Rank(broadcast->operand(0)->shape());
+    return Status::OK();
+  }
+
+  Status HandleWhile(HloInstruction* xla_while) override {
+    auto* while_cond = xla_while->while_condition();
+    auto* while_body = xla_while->while_body();
+    if (while_cond->num_parameters() != 1) {
+      return FailedPrecondition(
+          "While condition must have exactly 1 parameter; had %d : %s",
+          while_cond->num_parameters(), while_cond->ToString());
+    }
+    if (while_body->num_parameters() != 1) {
+      return FailedPrecondition(
+          "While body must have exactly 1 parameter; had %d : %s",
+          while_body->num_parameters(), while_body->ToString());
+    }
+    if (xla_while->operand_count() != 1) {
+      return FailedPrecondition(
+          "While loop must have exactly one operand; had %d : %s",
+          xla_while->operand_count(), xla_while->ToString());
+    }
+    return Status::OK();
+  }
+
+  Status HandleConditional(HloInstruction* conditional) override {
+    if (conditional->true_computation()->num_parameters() != 1) {
+      return FailedPrecondition(
+          "True computation %s of %s must have 1 parameter insted of %d",
+          conditional->true_computation()->name(), conditional->ToString(),
+          conditional->true_computation()->num_parameters());
+    }
+    if (conditional->false_computation()->num_parameters() != 1) {
+      return FailedPrecondition(
+          "False computation %s of %s must have 1 parameter insted of %d",
+          conditional->false_computation()->name(), conditional->ToString(),
+          conditional->false_computation()->num_parameters());
+    }
+    return Status::OK();
+  }
+
+  Status HandleElementwiseUnary(HloInstruction* instruction) override {
+    return CheckElementwiseInstruction(instruction);
+  }
+
+  Status HandleElementwiseBinary(HloInstruction* instruction) override {
+    return CheckElementwiseInstruction(instruction);
+  }
+
+  Status HandleGetTupleElement(HloInstruction* gte) override {
+    TF_RET_CHECK(ShapeUtil::IsTuple(gte->operand(0)->shape()));
+    return Status::OK();
+  }
+
+  Status HandleTranspose(HloInstruction* transpose) override {
+    const Shape& shape = transpose->shape();
+    const HloInstruction* operand = transpose->operand(0);
+    TF_RET_CHECK(shape.dimensions().size() == transpose->dimensions().size());
+    TF_RET_CHECK(shape.dimensions().size() ==
+                 transpose->operand(0)->shape().dimensions().size());
+    TF_RET_CHECK(std::equal(
+        operand->shape().dimensions().begin(),
+        operand->shape().dimensions().end(),
+        Permute(transpose->dimensions(), shape.dimensions()).begin()))
+        << "shape: " << shape << ", operand->shape(): " << shape
+        << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
+        << "}";
+    return Status::OK();
+  }
+
+  Status Preprocess(HloInstruction* instruction) override {
+    auto previous = instructions_by_name_.find(instruction->name());
+    TF_RET_CHECK(previous == instructions_by_name_.end())
+        << "HLO has name that is not unique within module:\n"
+        << instruction->ToString()
+        << " in computation: " << instruction->parent()->name()
+        << "\nPrevious HLO with same name:\n"
+        << previous->second->ToString()
+        << " in computation: " << previous->second->parent()->name();
+    instructions_by_name_[instruction->name()] = instruction;
+    return Status::OK();
+  }
+
+ private:
+  absl::flat_hash_map<string, const HloInstruction*> instructions_by_name_;
+};
+
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
@@ -1061,65 +1154,12 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
   TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
-  absl::flat_hash_map<string, const HloInstruction*> instructions;
-
   for (auto* computation : module->computations()) {
-    for (const auto& instruction : computation->instructions()) {
-      TF_RET_CHECK(instruction->parent() == computation);
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        TF_RETURN_IF_ERROR(CheckFusionInstruction(instruction));
-        TF_RET_CHECK(instruction->called_computations() ==
-                     absl::Span<HloComputation* const>(
-                         {instruction->fused_instructions_computation()}))
-            << "Fusion HLO calls computations other than the "
-               "fused_instructions_computation: "
-            << instruction->ToString()
-            << " instruction->fused_instructions_computation(): "
-            << instruction->fused_instructions_computation()->ToString()
-            << " instruction->called_computations(): "
-            << ComputationsToString(instruction->called_computations());
-
-        for (const auto& fused : instruction->fused_instructions()) {
-          TF_RET_CHECK(fused->parent() ==
-                       instruction->fused_instructions_computation())
-              << "Fused HLO was missing a parent: " << fused->ToString()
-              << " parent: " << fused->parent()
-              << " computation: " << computation;
-        }
-      } else if (instruction->opcode() == HloOpcode::kBroadcast) {
-        // If you see this failure then someone has confused the difference
-        // between the HLO broadcast op, and the UserComputation broadcast
-        // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
-        // or ComputationLowerer::Visit()
-        TF_RET_CHECK(instruction->dimensions().size() ==
-                     ShapeUtil::Rank(instruction->operand(0)->shape()))
-            << "Broadcast HLO (" << instruction->ToShortString()
-            << ") has invalid number of dimensions: "
-            << instruction->dimensions().size()
-            << " != " << ShapeUtil::Rank(instruction->operand(0)->shape());
-      } else if (instruction->opcode() == HloOpcode::kWhile) {
-        TF_RETURN_IF_ERROR(CheckWhileInstruction(instruction));
-      } else if (instruction->opcode() == HloOpcode::kConditional) {
-        TF_RETURN_IF_ERROR(CheckConditionalInstruction(instruction));
-      } else if (instruction->opcode() !=
-                     HloOpcode::kRng /* Rng operands are always scalar. */
-                 && instruction->IsElementwise()) {
-        TF_RETURN_IF_ERROR(CheckElementwiseInstruction(instruction));
-      }
-
-      auto previous = instructions.find(instruction->name());
-      TF_RET_CHECK(previous == instructions.end())
-          << "HLO has name that is not unique within module:\n"
-          << instruction->ToString()
-          << " in computation: " << computation->name()
-          << "\nPrevious HLO with same name:\n"
-          << previous->second->ToString()
-          << " in computation: " << previous->second->parent()->name();
-      instructions[instruction->name()] = instruction;
-    }
-
     std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
+
+    InstructionVerifier instruction_verifier;
+    TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
   }
 
   TF_RETURN_IF_ERROR(VerifyEntryAndExitShapes(*module));

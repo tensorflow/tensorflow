@@ -23,6 +23,7 @@ from __future__ import print_function
 import collections
 import math
 import time
+import unittest
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -349,6 +350,13 @@ class ControlFlowTest(test.TestCase):
     y = control_flow_ops.cond(p, fn1, fn2)
     grad = gradients_impl.gradients(y, [v])
     self.assertAllEqual([None], grad)
+
+  def testCondOutputShape(self):
+    x = constant_op.constant(1.0)
+    b = control_flow_ops.cond(
+        constant_op.constant(True), lambda: math_ops.square(x),
+        lambda: math_ops.subtract(x, 1.))
+    self.assertEqual(b.shape, tensor_shape.scalar())
 
   def testFetchable(self):
     with self.cached_session() as sess:
@@ -3414,7 +3422,8 @@ class EagerTest(test.TestCase):
       self.assertAllEqual(r.numpy(), 10)
       self.assertFalse(isinstance(r, list))
 
-  def testCondInDefun(self):
+  # TODO(b/117279927): Re-enable once msan failure is fixed.
+  def DISABLED_testCondInDefun(self):
     if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
       return unittest.skip("b/113346829 (gpu failure)")
 

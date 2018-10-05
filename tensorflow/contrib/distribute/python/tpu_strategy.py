@@ -132,7 +132,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     """
     # TODO(sourabhbajaj): OneDeviceStrategy should be initialized with the
     # master node fetched from the cluster resolver.
-    super(TPUStrategy, self).__init__('/device:CPU:0')
+    super(TPUStrategy, self).__init__("/device:CPU:0")
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
@@ -151,6 +151,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
+
+    self._require_static_shapes = True
 
   def _get_enqueue_op_per_host(self, host_id, iterator, input_shapes,
                                iterations):

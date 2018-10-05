@@ -218,12 +218,6 @@ class HeapAlgorithm {
   // Alloc allocates a buffer of 'size' bytes.
   virtual void Alloc(const BufferValue* buffer, int64 size) = 0;
 
-  // NoFragmentationStatsHeap overrides this method.
-  virtual void Alloc(const BufferValue* buffer, int64 size,
-                     const HloInstruction* instruction) {
-    Alloc(buffer, size);
-  }
-
   // Takes memory usage of subcomputations into account when calculating the
   // memory usage of a computation. Currently, we don't handle buffer aliasing
   // between computations entirely correctly. We are careful to not double count
@@ -235,6 +229,8 @@ class HeapAlgorithm {
   // analysis, it's not worth making major changes to HeapSimulator now.
   virtual void AccountForSubcomputationMemory(
       const HloInstruction* instruction,
+      // The total number of bytes allocated by instruction.
+      int64 alloc_size_by_instruction,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) {}
 
@@ -257,11 +253,8 @@ class NoFragmentationStatsHeap : public HeapAlgorithm {
 
   void Alloc(const BufferValue* buffer, int64 size) override;
 
-  void Alloc(const BufferValue* buffer, int64 size,
-             const HloInstruction* instruction) override;
-
   void AccountForSubcomputationMemory(
-      const HloInstruction* instruction,
+      const HloInstruction* instruction, int64 alloc_size_by_instruction,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) override;
 

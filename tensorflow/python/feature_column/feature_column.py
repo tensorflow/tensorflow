@@ -2829,7 +2829,7 @@ def _check_shape(shape, key):
     shape = [shape]
   shape = tuple(shape)
   for dimension in shape:
-    if not isinstance(dimension, int):
+    if not isinstance(dimension, six.integer_types):
       raise TypeError('shape dimensions must be integer. '
                       'shape: {}, key: {}'.format(shape, key))
     if dimension < 1:

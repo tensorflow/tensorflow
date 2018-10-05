@@ -643,14 +643,6 @@ HloTransposeInstruction::HloTransposeInstruction(
     absl::Span<const int64> dimensions)
     : HloInstruction(HloOpcode::kTranspose, shape),
       dimensions_(dimensions.begin(), dimensions.end()) {
-  CHECK_EQ(shape.dimensions().size(), dimensions.size());
-  CHECK_EQ(shape.dimensions().size(), operand->shape().dimensions().size());
-  CHECK(std::equal(operand->shape().dimensions().begin(),
-                   operand->shape().dimensions().end(),
-                   Permute(dimensions, shape.dimensions()).begin()))
-      << "shape: " << ShapeUtil::HumanString(shape)
-      << ", operand->shape(): " << ShapeUtil::HumanString(shape)
-      << ", dimensions: {" << StrJoin(dimensions, ", ") << "}";
   AppendOperand(operand);
 }
 
@@ -1491,7 +1483,6 @@ HloParameterInstruction::CloneWithNewOperandsImpl(
 HloGetTupleElementInstruction::HloGetTupleElementInstruction(
     const Shape& shape, HloInstruction* operand, int64 index)
     : HloInstruction(HloOpcode::kGetTupleElement, shape), tuple_index_(index) {
-  CHECK(ShapeUtil::IsTuple(operand->shape()));
   AppendOperand(operand);
 }
 
@@ -1613,9 +1604,6 @@ HloOutfeedInstruction::HloOutfeedInstruction(const Shape& outfeed_shape,
     : HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeTokenShape()),
       outfeed_shape_(outfeed_shape),
       outfeed_config_(outfeed_config) {
-  CHECK(ShapeUtil::Compatible(operand->shape(), outfeed_shape))
-      << "Outfeed shape " << outfeed_shape
-      << " must be compatible with operand shape " << operand->shape();
   AppendOperand(operand);
   AppendOperand(token_operand);
 }

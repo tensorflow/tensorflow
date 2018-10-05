@@ -1242,6 +1242,7 @@ cc_library(
     srcs = [
         "ops/math_grad.cc",
         "ops/random_grad.cc",
+        "ops/stateless_random_grad.cc",
     ],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     visibility = ["//visibility:public"],
@@ -3750,7 +3751,7 @@ tf_cc_tests_gpu(
 
 tf_cc_tests_gpu(
     name = "hierarchical_tree_broadcaster_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "common_runtime/hierarchical_tree_broadcaster_test.cc",
     ],

@@ -1831,9 +1831,10 @@ class StructuredFunctionWrapper(object):
           flat_classes.append(component)
           flat_shapes.append(component)
           flat_types.append(component)
-          if t.options() is not None:  # pylint: disable=protected-access
-            warnings.warn("Encountered a nested dataset with options. These "
-                          "options will not be applied to the outer dataset.")
+          if t.options() != Options():
+            warnings.warn("Encountered a nested dataset with non-default "
+                          "options. These options will not be propagated to "
+                          "the outer dataset.")
         else:
           try:
             t = ops.convert_to_tensor(t)

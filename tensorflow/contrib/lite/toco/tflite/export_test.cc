@@ -105,13 +105,15 @@ TEST_F(ExportTest, LoadOperatorsMap) {
 
   details::OperatorsMap operators;
   const auto ops_by_type = BuildOperatorByTypeMap();
-  // TODO(ycling): Add a test for allow_flex_ops.
   details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
-  EXPECT_EQ(0, operators[details::OperatorKey(OperatorType::kAdd, "", 1)]);
-  EXPECT_EQ(1, operators[details::OperatorKey(OperatorType::kConv, "", 1)]);
-  EXPECT_EQ(2, operators[details::OperatorKey(OperatorType::kSub, "", 1)]);
-  EXPECT_EQ(3, operators[details::OperatorKey(OperatorType::kUnsupported,
+  EXPECT_EQ(
+      0, operators[details::OperatorKey(::tflite::BuiltinOperator_ADD, "", 1)]);
+  EXPECT_EQ(1, operators[details::OperatorKey(::tflite::BuiltinOperator_CONV_2D,
+                                              "", 1)]);
+  EXPECT_EQ(2, operators[details::OperatorKey(::tflite::BuiltinOperator_CUSTOM,
                                               "MyCrazyOp", 1)]);
+  EXPECT_EQ(
+      3, operators[details::OperatorKey(::tflite::BuiltinOperator_SUB, "", 1)]);
 }
 
 TEST_F(ExportTest, Export) {
@@ -133,7 +135,7 @@ TEST_F(ExportTest, Export) {
   }
 
   EXPECT_THAT(names, ElementsAre("builtin:ADD", "builtin:CONV_2D",
-                                 "builtin:SUB", "custom:MyCrazyOp"));
+                                 "custom:MyCrazyOp", "builtin:SUB"));
 
   std::vector<uint32_t> indices;
   auto operators = (*model->subgraphs())[0]->operators();
@@ -142,7 +144,7 @@ TEST_F(ExportTest, Export) {
     indices.push_back(op->opcode_index());
   }
 
-  EXPECT_THAT(indices, ElementsAre(1, 0, 3, 2));
+  EXPECT_THAT(indices, ElementsAre(1, 0, 2, 3));
 }
 
 TEST_F(ExportTest, QuantizeWeights) {
@@ -257,7 +259,8 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV1) {
   details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(1, operators.size());
-  EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 1)));
+  EXPECT_EQ(0, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 1)));
 }
 
 TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV2) {
@@ -268,7 +271,8 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithOpV2) {
   details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(1, operators.size());
-  EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 2)));
+  EXPECT_EQ(0, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 2)));
 }
 
 TEST_F(VersionedOpExportTest, LoadOperatorsMapWithBothVersions) {
@@ -280,8 +284,10 @@ TEST_F(VersionedOpExportTest, LoadOperatorsMapWithBothVersions) {
   details::LoadOperatorsMap(input_model_, &operators, ops_by_type, false);
 
   EXPECT_EQ(2, operators.size());
-  EXPECT_EQ(0, operators.at(details::OperatorKey(OperatorType::kConv, "", 1)));
-  EXPECT_EQ(1, operators.at(details::OperatorKey(OperatorType::kConv, "", 2)));
+  EXPECT_EQ(0, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 1)));
+  EXPECT_EQ(1, operators.at(details::OperatorKey(
+                   ::tflite::BuiltinOperator_CONV_2D, "", 2)));
 }
 
 TEST_F(VersionedOpExportTest, Export) {
@@ -311,6 +317,69 @@ TEST_F(VersionedOpExportTest, Export) {
   EXPECT_EQ(2, operators->size());
   EXPECT_EQ(0, (*operators)[0]->opcode_index());
   EXPECT_EQ(1, (*operators)[1]->opcode_index());
+}
+
+TEST(OperatorKeyTest, TestBuiltinOp) {
+  auto op = absl::make_unique<ConvOperator>();
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CONV_2D);
+  EXPECT_EQ(key.custom_code, "");
+  EXPECT_EQ(key.version, 1);
+}
+
+TEST(OperatorKeyTest, TestCustomOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "MyCrazyCustomOp";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code, "MyCrazyCustomOp");
+  EXPECT_EQ(key.version, 1);
+}
+
+TEST(OperatorKeyTest, TestFlexOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "BatchMatMul";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  {
+    const auto key = details::GetOperatorKey(*op, ops_by_type, false);
+    // It shouldn't be converted to Flex op if `allow_flex_op` is false.
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "BatchMatMul");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_FALSE(key.is_flex_op);
+  }
+
+  {
+    // Verify that the custom op name is prefixed by "Flex" and `is_flex_op`
+    // is true.
+    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "FlexBatchMatMul");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_TRUE(key.is_flex_op);
+  }
+}
+
+TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "Merge";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code, "FlexMerge");
+  EXPECT_EQ(key.version, 1);
+  EXPECT_TRUE(key.is_flex_op);
+  // The control flow ops should be marked as unsupported.
+  EXPECT_TRUE(key.is_unsupported_flex_op);
 }
 
 // TODO(ahentz): tests for tensors, inputs, outputs, opcodes and operators.

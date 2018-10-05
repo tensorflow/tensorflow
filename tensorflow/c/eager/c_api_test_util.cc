@@ -99,8 +99,6 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   TFE_OpAddInput(op, b, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
-  TFE_OpSetAttrBool(op, "transpose_a", 0);
-  TFE_OpSetAttrBool(op, "transpose_b", 0);
   TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));
 
   return op;

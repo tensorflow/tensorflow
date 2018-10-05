@@ -13176,6 +13176,14 @@ op {
     name: "else_branch"
     type: "func"
   }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+  }
   is_stateful: true
 }
 op {
@@ -15254,6 +15262,10 @@ op {
     name: "arguments"
     type_list_attr: "Targuments"
   }
+  input_arg {
+    name: "captured_inputs"
+    type_list_attr: "Tcaptured"
+  }
   output_arg {
     name: "output"
     type_list_attr: "output_types"
@@ -15263,6 +15275,15 @@ op {
     type: "list(type)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "Tcaptured"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
   }
   attr {
     name: "output_types"
@@ -28595,6 +28616,14 @@ op {
     name: "stats_aggregator"
     type: DT_RESOURCE
   }
+  input_arg {
+    name: "tag"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "counter_prefix"
+    type: DT_STRING
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -33729,6 +33758,19 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "unit"
+    type: "string"
+    default_value {
+      s: "BYTE"
+    }
+    allowed_values {
+      list {
+        s: "BYTE"
+        s: "UTF8_CHAR"
       }
     }
   }

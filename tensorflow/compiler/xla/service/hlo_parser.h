@@ -40,12 +40,6 @@ StatusOr<std::unique_ptr<HloModule>> ParseHloString(
 // point to an empty module (no computations).
 Status ParseHloString(absl::string_view str, HloModule* module);
 
-// Parses the text for a single HLO instruction into an HLO module with an
-// entry computation that runs that instruction (with the same parameters) as
-// its root instruction.
-StatusOr<std::unique_ptr<HloModule>> ParseHloOpToModule(
-    absl::string_view str, absl::string_view name = "single_op");
-
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with default config.
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);

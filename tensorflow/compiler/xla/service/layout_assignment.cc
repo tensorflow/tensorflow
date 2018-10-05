@@ -792,21 +792,27 @@ StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
       << " instruction: " << instruction->ToString();
 
   if (ShapeUtil::IsTuple(instruction->shape())) {
-    // Deep-copy tuples.
+    // Copy tuple elements which have differing layouts.
     std::vector<HloInstruction*> element_copies;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          ++i) {
+      const Shape& target_shape =
+          ShapeUtil::GetSubshape(shape_with_layout, {i});
+      const Shape& instr_shape =
+          ShapeUtil::GetSubshape(instruction->shape(), {i});
       HloInstruction* gte = instruction->parent()->AddInstruction(
-          HloInstruction::CreateGetTupleElement(
-              ShapeUtil::GetSubshape(instruction->shape(), {i}), instruction,
-              i));
-      SetupCopiedInstruction(*instruction, gte, {i});
-      // Recurse to copy each elements.
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * element_copy,
-          CreateCopyWithNewLayout(
-              ShapeUtil::GetSubshape(shape_with_layout, {i}), gte));
-      element_copies.push_back(element_copy);
+          HloInstruction::CreateGetTupleElement(instr_shape, instruction, i));
+
+      if (ShapeUtil::Equal(target_shape, instr_shape)) {
+        // Shapes and layouts are equal, no need to copy.
+        element_copies.push_back(gte);
+      } else {
+        SetupCopiedInstruction(*instruction, gte, {i});
+        // Recurse to copy each element.
+        TF_ASSIGN_OR_RETURN(HloInstruction * element_copy,
+                            CreateCopyWithNewLayout(target_shape, gte));
+        element_copies.push_back(element_copy);
+      }
     }
     // Gather element copies into a tuple with a new Tuple instruction.
     HloInstruction* tuple_copy = instruction->parent()->AddInstruction(
@@ -974,10 +980,15 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
 
 LayoutAssignment::LayoutAssignment(
     ComputationLayout* entry_computation_layout,
+    std::function<bool(const HloInstruction*)>
+        instruction_can_change_layout_func,
     ChannelLayoutConstraints* channel_constraints)
     : entry_computation_layout_(entry_computation_layout),
+
       saved_entry_computation_layout_(*entry_computation_layout),
-      channel_layout_constraints_(channel_constraints) {
+      channel_layout_constraints_(channel_constraints),
+      instruction_can_change_layout_func_(
+          std::move(instruction_can_change_layout_func)) {
   if (channel_layout_constraints_ != nullptr) {
     // Save a copy of the input ChannelLayoutConstraints so that we can reset it
     // if we have to undo previous operations (ClearPreviousPassSideEffects()).
@@ -998,7 +1009,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
           ShapeUtil::Rank(instruction->shape()) &&
-      InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) {
+      !instruction_can_change_layout_func_(instruction)) {
     // Propagate the result layout to the operand layout if the instruction
     // requires the same layout out for the result and the operand.
     //
@@ -1076,7 +1087,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
 
   if (!ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape()) &&
-      InstructionRequiresInputLayoutEqualToOutputLayout(user)) {
+      !instruction_can_change_layout_func_(user)) {
     // Assign users the same layout as the operand.
     return absl::make_unique<Layout>(operand_layout);
   }
@@ -1842,7 +1853,8 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   return true;
 }
 
-bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
+/* static */
+bool LayoutAssignment::InstructionCanChangeLayout(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAbs:
@@ -1908,7 +1920,7 @@ bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
     case HloOpcode::kTanh:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
-      return true;
+      return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -1939,7 +1951,7 @@ bool LayoutAssignment::InstructionRequiresInputLayoutEqualToOutputLayout(
     case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
-      return false;
+      return true;
   }
 }
 

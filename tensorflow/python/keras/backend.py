@@ -653,6 +653,7 @@ def variable(value, dtype=None, name=None, constraint=None):
 
   Examples:
   ```python
+      >>> import numpy as np
       >>> from keras import backend as K
       >>> val = np.array([[1, 2], [3, 4]])
       >>> kvar = K.variable(value=val, dtype='float64', name='example_var')
@@ -3058,7 +3059,8 @@ def rnn(step_function,
         mask=None,
         constants=None,
         unroll=False,
-        input_length=None):
+        input_length=None,
+        time_major=False):
   """Iterates over the time dimension of a tensor.
 
   Arguments:
@@ -3087,6 +3089,13 @@ def rnn(step_function,
       constants: List of constant values passed at each step.
       unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
       input_length: If specified, assume time dimension is of this length.
+      time_major: Boolean. If true, the inputs and outputs will be in shape
+          `(timesteps, batch, ...)`, whereas in the False case, it will be
+          `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+          efficient because it avoids transposes at the beginning and end of the
+          RNN calculation. However, most TensorFlow data is batch-major, so by
+          default this function accepts input and emits output in batch-major
+          form.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -3108,15 +3117,17 @@ def rnn(step_function,
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
   inputs_shape = inputs.shape
-  axes = [1, 0] + list(range(2, ndim))
-  inputs = array_ops.transpose(inputs, (axes))
+  if not time_major:
+    axes = [1, 0] + list(range(2, ndim))
+    inputs = array_ops.transpose(inputs, axes)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
     if len(mask.shape) == ndim - 1:
       mask = expand_dims(mask)
-    mask = array_ops.transpose(mask, axes)
+    if not time_major:
+      mask = array_ops.transpose(mask, axes)
 
   if constants is None:
     constants = []
@@ -3297,10 +3308,11 @@ def rnn(step_function,
     outputs = output_ta.stack()
     last_output = output_ta.read(last_time - 1)
 
-  axes = [1, 0] + list(range(2, len(outputs.shape)))
-  outputs = array_ops.transpose(outputs, axes)
+  if not time_major:
+    axes = [1, 0] + list(range(2, len(outputs.shape)))
+    outputs = array_ops.transpose(outputs, axes)
 
-  # Static shape inference: (samples, time, ...)
+  # Static shape inference: (samples, time, ...) or (time, sample, ...)
   outputs_shape = outputs.shape.as_list()
   outputs_shape[0] = inputs_shape[0]
   outputs_shape[1] = inputs_shape[1]

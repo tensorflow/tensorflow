@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import transformer
@@ -34,6 +35,9 @@ from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 # See b/114389775 for a related bug in pyct
 # These symbols are legal in Python, but don't appear in the namespace.
 _SPECIAL_SYMBOLS = {'range': range, 'print': print}
+
+if six.PY2:
+  _SPECIAL_SYMBOLS['xrange'] = xrange
 
 
 class LiveValueResolver(transformer.Base):
