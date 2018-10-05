@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
+#include "tensorflow/contrib/lite/kernels/lstm_eval.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
@@ -694,330 +695,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-TfLiteStatus EvalFloat(
-    const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
-    const TfLiteTensor* input_to_forget_weights,
-    const TfLiteTensor* input_to_cell_weights,
-    const TfLiteTensor* input_to_output_weights,
-    const TfLiteTensor* recurrent_to_input_weights,
-    const TfLiteTensor* recurrent_to_forget_weights,
-    const TfLiteTensor* recurrent_to_cell_weights,
-    const TfLiteTensor* recurrent_to_output_weights,
-    const TfLiteTensor* cell_to_input_weights,
-    const TfLiteTensor* cell_to_forget_weights,
-    const TfLiteTensor* cell_to_output_weights, const TfLiteTensor* aux_input,
-    const TfLiteTensor* aux_input_to_input_weights,
-    const TfLiteTensor* aux_input_to_forget_weights,
-    const TfLiteTensor* aux_input_to_cell_weights,
-    const TfLiteTensor* aux_input_to_output_weights,
-    const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
-    const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
-    TfLiteTensor* scratch_buffer, TfLiteTensor* activation_state,
-    TfLiteTensor* cell_state, TfLiteTensor* output) {
-  const int max_time = input->dims->data[0];
-  const int n_batch = input->dims->data[1];
-  const int n_input = input->dims->data[2];
-  const int aux_input_size = (aux_input) ? aux_input->dims->data[2] : 0;
-
-  // n_cell and n_output will be the same size when there is no projection.
-  const int n_cell = input_to_output_weights->dims->data[0];
-  const int n_output = recurrent_to_output_weights->dims->data[1];
-
-  // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
-  const bool use_cifg = (input_to_input_weights == nullptr);
-  const bool use_peephole = (cell_to_output_weights != nullptr);
-
-  // Index the scratch buffers pointers to the global scratch buffer.
-  float* input_gate_scratch = nullptr;
-  float* cell_scratch = nullptr;
-  float* forget_gate_scratch = nullptr;
-  float* output_gate_scratch = nullptr;
-  if (use_cifg) {
-    cell_scratch = scratch_buffer->data.f;
-    forget_gate_scratch = scratch_buffer->data.f + n_cell * n_batch;
-    output_gate_scratch = scratch_buffer->data.f + 2 * n_cell * n_batch;
-  } else {
-    input_gate_scratch = scratch_buffer->data.f;
-    cell_scratch = scratch_buffer->data.f + n_cell * n_batch;
-    forget_gate_scratch = scratch_buffer->data.f + 2 * n_cell * n_batch;
-    output_gate_scratch = scratch_buffer->data.f + 3 * n_cell * n_batch;
-  }
-
-  // Check optional tensors, the respective pointers can be null.
-  const float* input_to_input_weights_ptr =
-      (use_cifg) ? nullptr : input_to_input_weights->data.f;
-  const float* recurrent_to_input_weights_ptr =
-      (use_cifg) ? nullptr : recurrent_to_input_weights->data.f;
-  const float* input_gate_bias_ptr =
-      (use_cifg) ? nullptr : input_gate_bias->data.f;
-  const float* cell_to_input_weights_ptr =
-      (use_peephole && !use_cifg) ? cell_to_input_weights->data.f : nullptr;
-  const float* cell_to_forget_weights_ptr =
-      (use_peephole) ? cell_to_forget_weights->data.f : nullptr;
-  const float* cell_to_output_weights_ptr =
-      (use_peephole) ? cell_to_output_weights->data.f : nullptr;
-  const float* projection_weights_ptr =
-      (projection_weights == nullptr) ? nullptr : projection_weights->data.f;
-  const float* projection_bias_ptr =
-      (projection_bias == nullptr) ? nullptr : projection_bias->data.f;
-
-  float* aux_input_ptr = nullptr;
-  float* aux_input_to_input_weights_ptr = nullptr;
-  float* aux_input_to_forget_weights_ptr = nullptr;
-  float* aux_input_to_cell_weights_ptr = nullptr;
-  float* aux_input_to_output_weights_ptr = nullptr;
-  if (aux_input_size > 0) {
-    aux_input_ptr = aux_input->data.f;
-    aux_input_to_input_weights_ptr = aux_input_to_input_weights->data.f;
-    aux_input_to_forget_weights_ptr = aux_input_to_forget_weights->data.f;
-    aux_input_to_cell_weights_ptr = aux_input_to_cell_weights->data.f;
-    aux_input_to_output_weights_ptr = aux_input_to_output_weights->data.f;
-  }
-
-  // Loop through the sequence.
-  const int input_step = n_batch * n_input;
-  const int output_step = n_batch * output->dims->data[2];
-  for (int t = 0; t < max_time; t++) {
-    // If this is the forward_sequence, step forward, otherwise step backwards.
-    const int t_rel = forward_sequence ? t : max_time - t - 1;
-    const float* input_ptr = input->data.f + t_rel * input_step;
-    float* output_ptr_time =
-        output->data.f + t_rel * output_step + output_offset;
-
-    kernel_utils::LstmStepWithAuxInput(
-        input_ptr, input_to_input_weights_ptr, input_to_forget_weights->data.f,
-        input_to_cell_weights->data.f, input_to_output_weights->data.f,
-        aux_input_ptr, aux_input_to_input_weights_ptr,
-        aux_input_to_forget_weights_ptr, aux_input_to_cell_weights_ptr,
-        aux_input_to_output_weights_ptr, recurrent_to_input_weights_ptr,
-        recurrent_to_forget_weights->data.f, recurrent_to_cell_weights->data.f,
-        recurrent_to_output_weights->data.f, cell_to_input_weights_ptr,
-        cell_to_forget_weights_ptr, cell_to_output_weights_ptr,
-        input_gate_bias_ptr, forget_gate_bias->data.f, cell_bias->data.f,
-        output_gate_bias->data.f, projection_weights_ptr, projection_bias_ptr,
-        params, n_batch, n_cell, n_input, aux_input_size, n_output,
-        activation_state->data.f, cell_state->data.f, input_gate_scratch,
-        forget_gate_scratch, cell_scratch, output_gate_scratch,
-        output_ptr_time);
-  }
-  return kTfLiteOk;
-}
-
-TfLiteStatus EvalHybrid(
-    const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,
-    const TfLiteTensor* input_to_forget_weights,
-    const TfLiteTensor* input_to_cell_weights,
-    const TfLiteTensor* input_to_output_weights,
-    const TfLiteTensor* recurrent_to_input_weights,
-    const TfLiteTensor* recurrent_to_forget_weights,
-    const TfLiteTensor* recurrent_to_cell_weights,
-    const TfLiteTensor* recurrent_to_output_weights,
-    const TfLiteTensor* cell_to_input_weights,
-    const TfLiteTensor* cell_to_forget_weights,
-    const TfLiteTensor* cell_to_output_weights, const TfLiteTensor* aux_input,
-    const TfLiteTensor* aux_input_to_input_weights,
-    const TfLiteTensor* aux_input_to_forget_weights,
-    const TfLiteTensor* aux_input_to_cell_weights,
-    const TfLiteTensor* aux_input_to_output_weights,
-    const TfLiteTensor* input_gate_bias, const TfLiteTensor* forget_gate_bias,
-    const TfLiteTensor* cell_bias, const TfLiteTensor* output_gate_bias,
-    const TfLiteTensor* projection_weights, const TfLiteTensor* projection_bias,
-    const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
-    TfLiteTensor* scratch_buffer, TfLiteTensor* scaling_factors,
-    TfLiteTensor* prod_scaling_factors, TfLiteTensor* recovered_cell_weights,
-    TfLiteTensor* input_quantized, TfLiteTensor* aux_input_quantized,
-    TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
-    TfLiteTensor* output_state, TfLiteTensor* cell_state,
-    TfLiteTensor* output) {
-  const int max_time = input->dims->data[0];
-  const int n_batch = input->dims->data[1];
-  const int n_input = input->dims->data[2];
-  const int aux_input_size = (aux_input) ? aux_input->dims->data[2] : 0;
-  // n_cell and n_output will be the same size when there is no projection.
-  const int n_cell = input_to_output_weights->dims->data[0];
-  const int n_output = recurrent_to_output_weights->dims->data[1];
-
-  // Since we have already checked that weights are all there or none, we can
-  // check the existence of only one to get the condition.
-  const bool use_cifg = (input_to_input_weights == nullptr);
-  const bool use_peephole = (cell_to_output_weights != nullptr);
-
-  float* input_gate_scratch = nullptr;
-  float* cell_scratch = nullptr;
-  float* forget_gate_scratch = nullptr;
-  float* output_gate_scratch = nullptr;
-  if (use_cifg) {
-    cell_scratch = scratch_buffer->data.f;
-    forget_gate_scratch = scratch_buffer->data.f + n_cell * n_batch;
-    output_gate_scratch = scratch_buffer->data.f + 2 * n_cell * n_batch;
-  } else {
-    input_gate_scratch = scratch_buffer->data.f;
-    cell_scratch = scratch_buffer->data.f + n_cell * n_batch;
-    forget_gate_scratch = scratch_buffer->data.f + 2 * n_cell * n_batch;
-    output_gate_scratch = scratch_buffer->data.f + 3 * n_cell * n_batch;
-  }
-
-  // Check optional tensors, the respective pointers can be null.
-  int8_t* input_to_input_weights_ptr = nullptr;
-  float input_to_input_weights_scale = 1.0f;
-  int8_t* recurrent_to_input_weights_ptr = nullptr;
-  float recurrent_to_input_weights_scale = 1.0f;
-  float* input_gate_bias_ptr = nullptr;
-  if (!use_cifg) {
-    input_to_input_weights_ptr =
-        reinterpret_cast<int8_t*>(input_to_input_weights->data.uint8);
-    recurrent_to_input_weights_ptr =
-        reinterpret_cast<int8_t*>(recurrent_to_input_weights->data.uint8);
-    input_gate_bias_ptr = input_gate_bias->data.f;
-    input_to_input_weights_scale = input_to_input_weights->params.scale;
-    recurrent_to_input_weights_scale = recurrent_to_input_weights->params.scale;
-  }
-
-  int8_t* cell_to_input_weights_ptr = nullptr;
-  int8_t* cell_to_forget_weights_ptr = nullptr;
-  int8_t* cell_to_output_weights_ptr = nullptr;
-  float cell_to_input_weights_scale = 1.0f;
-  float cell_to_forget_weights_scale = 1.0f;
-  float cell_to_output_weights_scale = 1.0f;
-  if (use_peephole) {
-    if (!use_cifg) {
-      cell_to_input_weights_ptr =
-          reinterpret_cast<int8_t*>(cell_to_input_weights->data.uint8);
-      cell_to_input_weights_scale = cell_to_input_weights->params.scale;
-    }
-    cell_to_forget_weights_ptr =
-        reinterpret_cast<int8_t*>(cell_to_forget_weights->data.uint8);
-    cell_to_output_weights_ptr =
-        reinterpret_cast<int8_t*>(cell_to_output_weights->data.uint8);
-    cell_to_forget_weights_scale = cell_to_forget_weights->params.scale;
-    cell_to_output_weights_scale = cell_to_output_weights->params.scale;
-  }
-
-  const int8_t* projection_weights_ptr =
-      (projection_weights == nullptr)
-          ? nullptr
-          : reinterpret_cast<int8_t*>(projection_weights->data.uint8);
-  const float projection_weights_scale =
-      (projection_weights == nullptr) ? 1.0f : projection_weights->params.scale;
-  const float* projection_bias_ptr =
-      (projection_bias == nullptr) ? nullptr : projection_bias->data.f;
-
-  // Required tensors, pointers are non-null.
-  const int8_t* input_to_forget_weights_ptr =
-      reinterpret_cast<int8_t*>(input_to_forget_weights->data.uint8);
-  const float input_to_forget_weights_scale =
-      input_to_forget_weights->params.scale;
-  const int8_t* input_to_cell_weights_ptr =
-      reinterpret_cast<int8_t*>(input_to_cell_weights->data.uint8);
-  const float input_to_cell_weights_scale = input_to_cell_weights->params.scale;
-  const int8_t* input_to_output_weights_ptr =
-      reinterpret_cast<int8_t*>(input_to_output_weights->data.uint8);
-  const float input_to_output_weights_scale =
-      input_to_output_weights->params.scale;
-  const int8_t* recurrent_to_forget_weights_ptr =
-      reinterpret_cast<int8_t*>(recurrent_to_forget_weights->data.uint8);
-  const float recurrent_to_forget_weights_scale =
-      recurrent_to_forget_weights->params.scale;
-  const int8_t* recurrent_to_cell_weights_ptr =
-      reinterpret_cast<int8_t*>(recurrent_to_cell_weights->data.uint8);
-  const float recurrent_to_cell_weights_scale =
-      recurrent_to_cell_weights->params.scale;
-  const int8_t* recurrent_to_output_weights_ptr =
-      reinterpret_cast<int8_t*>(recurrent_to_output_weights->data.uint8);
-  const float recurrent_to_output_weights_scale =
-      recurrent_to_output_weights->params.scale;
-  const float* forget_gate_bias_ptr = forget_gate_bias->data.f;
-  const float* cell_bias_ptr = cell_bias->data.f;
-  const float* output_gate_bias_ptr = output_gate_bias->data.f;
-
-  float* output_state_ptr = output_state->data.f;
-  float* cell_state_ptr = cell_state->data.f;
-
-  // Temporary storage for quantized values and scaling factors.
-  int8_t* quantized_input_ptr =
-      reinterpret_cast<int8_t*>(input_quantized->data.uint8);
-  int8_t* quantized_aux_input_ptr =
-      (aux_input_quantized == nullptr)
-          ? nullptr
-          : reinterpret_cast<int8_t*>(aux_input_quantized->data.uint8);
-  int8_t* quantized_output_state_ptr =
-      reinterpret_cast<int8_t*>(output_state_quantized->data.uint8);
-  int8_t* quantized_cell_state_ptr =
-      reinterpret_cast<int8_t*>(cell_state_quantized->data.uint8);
-  float* scaling_factors_ptr = scaling_factors->data.f;
-  float* prod_scaling_factors_ptr = prod_scaling_factors->data.f;
-  float* recovered_cell_weights_ptr = recovered_cell_weights->data.f;
-
-  // Auxiliary input and weights.
-  float* aux_input_ptr = nullptr;
-  int8_t* aux_input_to_input_weights_ptr = nullptr;
-  int8_t* aux_input_to_forget_weights_ptr = nullptr;
-  int8_t* aux_input_to_cell_weights_ptr = nullptr;
-  int8_t* aux_input_to_output_weights_ptr = nullptr;
-  float aux_input_to_input_weights_scale = 0.0f;
-  float aux_input_to_forget_weights_scale = 0.0f;
-  float aux_input_to_cell_weights_scale = 0.0f;
-  float aux_input_to_output_weights_scale = 0.0f;
-  if (aux_input_size > 0) {
-    aux_input_ptr = aux_input->data.f;
-    aux_input_to_input_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_input_weights->data.uint8);
-    aux_input_to_forget_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_forget_weights->data.uint8);
-    aux_input_to_cell_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_cell_weights->data.uint8);
-    aux_input_to_output_weights_ptr =
-        reinterpret_cast<int8_t*>(aux_input_to_output_weights->data.uint8);
-    aux_input_to_input_weights_scale = aux_input_to_input_weights->params.scale;
-    aux_input_to_forget_weights_scale =
-        aux_input_to_forget_weights->params.scale;
-    aux_input_to_cell_weights_scale = aux_input_to_cell_weights->params.scale;
-    aux_input_to_output_weights_scale =
-        aux_input_to_output_weights->params.scale;
-  }
-
-  // Feed the sequence into the LSTM step-by-step.
-  const int input_step = n_batch * n_input;
-  const int output_step = n_batch * output->dims->data[2];
-  for (int t = 0; t < max_time; t++) {
-    // If this is the forward_sequence, step forward, otherwise step backwards.
-    const int t_rel = forward_sequence ? t : max_time - t - 1;
-    const float* input_ptr = input->data.f + t_rel * input_step;
-    float* output_ptr = output->data.f + t_rel * output_step + output_offset;
-
-    kernel_utils::LstmStepWithAuxInput(
-        input_ptr, input_to_input_weights_ptr, input_to_input_weights_scale,
-        input_to_forget_weights_ptr, input_to_forget_weights_scale,
-        input_to_cell_weights_ptr, input_to_cell_weights_scale,
-        input_to_output_weights_ptr, input_to_output_weights_scale,
-        aux_input_ptr, aux_input_to_input_weights_ptr,
-        aux_input_to_input_weights_scale, aux_input_to_forget_weights_ptr,
-        aux_input_to_forget_weights_scale, aux_input_to_cell_weights_ptr,
-        aux_input_to_cell_weights_scale, aux_input_to_output_weights_ptr,
-        aux_input_to_output_weights_scale, recurrent_to_input_weights_ptr,
-        recurrent_to_input_weights_scale, recurrent_to_forget_weights_ptr,
-        recurrent_to_forget_weights_scale, recurrent_to_cell_weights_ptr,
-        recurrent_to_cell_weights_scale, recurrent_to_output_weights_ptr,
-        recurrent_to_output_weights_scale, cell_to_input_weights_ptr,
-        cell_to_input_weights_scale, cell_to_forget_weights_ptr,
-        cell_to_forget_weights_scale, cell_to_output_weights_ptr,
-        cell_to_output_weights_scale, input_gate_bias_ptr, forget_gate_bias_ptr,
-        cell_bias_ptr, output_gate_bias_ptr, projection_weights_ptr,
-        projection_weights_scale, projection_bias_ptr, params, n_batch, n_cell,
-        n_input, aux_input_size, n_output, input_gate_scratch,
-        forget_gate_scratch, cell_scratch, output_gate_scratch,
-        scaling_factors_ptr, prod_scaling_factors_ptr,
-        recovered_cell_weights_ptr, quantized_input_ptr,
-        quantized_aux_input_ptr, quantized_output_state_ptr,
-        quantized_cell_state_ptr, output_state_ptr, cell_state_ptr, output_ptr);
-  }
-
-  return kTfLiteOk;
-}
-
 // The LSTM Op engine.
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = reinterpret_cast<TfLiteBidirectionalSequenceLSTMParams*>(
@@ -1157,7 +834,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (fw_input_to_output_weights->type) {
     case kTfLiteFloat32: {
-      TfLiteStatus fw_pass_status = EvalFloat(
+      TfLiteStatus fw_pass_status = lstm_eval::EvalFloat(
           input, fw_input_to_input_weights, fw_input_to_forget_weights,
           fw_input_to_cell_weights, fw_input_to_output_weights,
           fw_recurrent_to_input_weights, fw_recurrent_to_forget_weights,
@@ -1172,7 +849,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           fw_activation_state, fw_cell_state, fw_output);
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
-      TfLiteStatus bw_pass_status = EvalFloat(
+      TfLiteStatus bw_pass_status = lstm_eval::EvalFloat(
           input, bw_input_to_input_weights, bw_input_to_forget_weights,
           bw_input_to_cell_weights, bw_input_to_output_weights,
           bw_recurrent_to_input_weights, bw_recurrent_to_forget_weights,
@@ -1208,7 +885,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TfLiteTensor* recovered_cell_weights =
           GetTemporary(context, node, kRecoveredCellWeights);
 
-      TfLiteStatus fw_pass_status = EvalHybrid(
+      TfLiteStatus fw_pass_status = lstm_eval::EvalHybrid(
           input, fw_input_to_input_weights, fw_input_to_forget_weights,
           fw_input_to_cell_weights, fw_input_to_output_weights,
           fw_recurrent_to_input_weights, fw_recurrent_to_forget_weights,
@@ -1226,7 +903,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           fw_output);
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
-      TfLiteStatus bw_pass_status = EvalHybrid(
+      TfLiteStatus bw_pass_status = lstm_eval::EvalHybrid(
           input, bw_input_to_input_weights, bw_input_to_forget_weights,
           bw_input_to_cell_weights, bw_input_to_output_weights,
           bw_recurrent_to_input_weights, bw_recurrent_to_forget_weights,
