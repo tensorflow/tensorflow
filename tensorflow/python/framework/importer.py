@@ -370,7 +370,8 @@ def import_graph_def(graph_def,
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
-    corresponding to the names in `return_elements`.
+    corresponding to the names in `return_elements`,
+    and None if `returns_elements` is None.
 
   Raises:
     TypeError: If `graph_def` is not a `GraphDef` proto,
