@@ -31,6 +31,3 @@ macro reset
 
 runMacro $reset
 
-emulation RunFor @1
-
-quit
