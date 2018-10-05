@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/builtin_operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 
 namespace toco {
 namespace tflite {
@@ -380,6 +381,39 @@ TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
   EXPECT_TRUE(key.is_flex_op);
   // The control flow ops should be marked as unsupported.
   EXPECT_TRUE(key.is_unsupported_flex_op);
+}
+
+TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
+  // Test Toco-supported/TFLite-unsupported operators.
+  // TODO(ycling): The test will be broken if Range is implemented in TFLite.
+  // Find a more robust way to test the fallback logic.
+  auto op = absl::make_unique<RangeOperator>();
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+
+  {
+    // If NodeDef isn't retained in the Toco op, a regular custom op
+    // will be exported.
+    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "Range");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_FALSE(key.is_flex_op);
+  }
+
+  ::tensorflow::NodeDef node_def;
+  node_def.set_name("Range");
+  node_def.set_op("Range");
+  node_def.SerializeToString(&op->tensorflow_node_def);
+
+  {
+    // If NodeDef is retained in the Toco op, a Flex op will be exported.
+    const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+    EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+    EXPECT_EQ(key.custom_code, "FlexRange");
+    EXPECT_EQ(key.version, 1);
+    EXPECT_TRUE(key.is_flex_op);
+  }
 }
 
 // TODO(ahentz): tests for tensors, inputs, outputs, opcodes and operators.

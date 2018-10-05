@@ -1157,6 +1157,25 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
+    const string& tensorflow_node_def) {
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+
+  ::tensorflow::NodeDef node_def;
+  if (!node_def.ParseFromString(tensorflow_node_def)) {
+    LOG(ERROR) << "Failed to parse TensorFlow NodeDef";
+    return {};
+  }
+
+  fbb->Vector([&]() {
+    fbb->String(node_def.op());
+    fbb->String(tensorflow_node_def);
+  });
+  fbb->Finish();
+  LOG(INFO) << "Writing flex op: " << node_def.op();
+  return std::unique_ptr<flexbuffers::Builder>(fbb.release());
+}
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   TensorFlowUnsupported(const string& name, OperatorType type,
@@ -1192,22 +1211,15 @@ class TensorFlowUnsupported : public BaseOperator {
 
   std::unique_ptr<flexbuffers::Builder> WriteOptions(
       const TensorFlowUnsupportedOperator& op) const {
+    if (allow_flex_ops_) {
+      return WriteFlexOpOptions(op.tensorflow_node_def);
+    }
     auto fbb = absl::make_unique<flexbuffers::Builder>();
 
     ::tensorflow::NodeDef node_def;
     if (!node_def.ParseFromString(op.tensorflow_node_def)) {
       LOG(ERROR) << "Failed to parse TensorFlow NodeDef";
       return std::unique_ptr<flexbuffers::Builder>();
-    }
-
-    if (allow_flex_ops_) {
-      fbb->Vector([&]() {
-        fbb->String(node_def.op());
-        fbb->String(op.tensorflow_node_def);
-      });
-      fbb->Finish();
-      LOG(INFO) << "Writing flex op: " << node_def.op();
-      return std::unique_ptr<flexbuffers::Builder>(fbb.release());
     }
 
     bool has_valid_attr = false;
