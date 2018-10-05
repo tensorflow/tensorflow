@@ -1228,8 +1228,9 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // GIL, which is always held when any TFE_Py_* methods are called. We should
 // revisit this if/when decide to not hold the GIL while manipulating the tape
 // stack.
-static tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* tape_set = nullptr;
 tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
+  thread_local tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* tape_set{
+      nullptr};
   if (tape_set == nullptr) {
     tape_set = new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>;
   }
@@ -1264,27 +1265,10 @@ class SafeTapeSet {
   tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*> tape_set_;
 };
 
-// xcode 7 doesn't define thread_local, so for compatibility we implement our
-// own. TODO(apassos) remove once we can deprecate xcode 7.
-#ifndef __APPLE__
 bool* ThreadTapeIsStopped() {
   thread_local bool thread_tape_is_stopped{false};
   return &thread_tape_is_stopped;
 }
-#else
-static std::unordered_map<std::thread::id, bool>* tape_is_stopped = nullptr;
-bool* ThreadTapeIsStopped() {
-  if (tape_is_stopped == nullptr) {
-    tape_is_stopped = new std::unordered_map<std::thread::id, bool>;
-  }
-  auto it = tape_is_stopped->find(std::this_thread::get_id());
-  if (it != tape_is_stopped->end()) {
-    return &(it->second);
-  }
-  return &(tape_is_stopped->emplace(std::this_thread::get_id(), false)
-               .first->second);
-}
-#endif
 
 void TFE_Py_TapeSetStopOnThread() { *ThreadTapeIsStopped() = true; }
 
