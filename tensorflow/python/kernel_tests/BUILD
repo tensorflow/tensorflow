@@ -3255,7 +3255,7 @@ tf_py_test(
     tags = ["no_pip"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "cond_v2_test",
     size = "medium",
     srcs = ["cond_v2_test.py"],
@@ -3272,7 +3272,6 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     grpc_enabled = True,
-    tags = ["no_gpu"],  # TODO(b/111656070)
 )
 
 cuda_py_test(

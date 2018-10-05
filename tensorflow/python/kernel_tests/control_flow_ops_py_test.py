@@ -23,7 +23,6 @@ from __future__ import print_function
 import collections
 import math
 import time
-import unittest
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -661,7 +660,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
       sess.run(r)
 
-  @test_util.disable_control_flow_v2("b/113346829 (gpu failure)")
   def testCondGrad_1(self):
     graph = ops.Graph()
     with graph.as_default():
@@ -3424,9 +3422,6 @@ class EagerTest(test.TestCase):
 
   # TODO(b/117279927): Re-enable once msan failure is fixed.
   def DISABLED_testCondInDefun(self):
-    if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
-      return unittest.skip("b/113346829 (gpu failure)")
-
     with context.eager_mode():
 
       @eager_function.defun
