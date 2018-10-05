@@ -1407,13 +1407,8 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
         gen_array_ops.conjugate_transpose
         if (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
     if perm is None:
-      a = ops.convert_to_tensor(a, name="a")
-      if not a.get_shape().ndims:
-        rank = gen_array_ops.rank(a)
-        perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
-      else:
-        rank = a.get_shape().ndims
-        perm = (rank - 1) - np.arange(rank)
+      rank = gen_array_ops.rank(a)
+      perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
       ret = transpose_fn(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
