@@ -664,7 +664,7 @@ def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
     # a tf.range for all the leading dimensions followed by concat of all the
     # coordinates we created with the original indices.
 
-    # For example if indices.shape = [2, 3, 4], we should generate the following
+    # For example if indices.shape = [2, 3], we should generate the following
     # indices for tf.scatter_nd_update:
     # nd_indices[:, :, 0] = [[0, 0, 0], [1, 1, 1]]
     # nd_indices[:, :, 1] = [[0, 1, 2], [0, 1, 2]]
