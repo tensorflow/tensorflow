@@ -110,6 +110,12 @@ class AttrBuilder {
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
 
   void MayBeInitializeNodeDef();
+  // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
+  // well as any default attr-value pairs from the associated op_def, if there
+  // is one.
+  //
+  // If `include_those_in_node_def` is true, also include any attr-value pairs
+  // from `node_def_`.
   void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
