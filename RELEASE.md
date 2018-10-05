@@ -1,7 +1,9 @@
 # Release 1.12.0
 
 ## Major Features and Improvements
-
+* tf.data optimizations. Users can now represent, get and set options of a tf.data pipeline.
+  tf.data.AUTOTUNE enables the level of parallelism to be determined at runtime.
+* Keras models can now be directly exported to the SavedModel format and used with Tensorflow Serving.
 
 ## Breaking Changes
 
