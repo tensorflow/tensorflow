@@ -323,7 +323,7 @@ b'y \(shape=\(2, 3\) dtype=float32\) = '
 0.0, 1.0, ..."""
     with context.eager_mode():
       t = constant_op.constant(np.array(range(6)), shape=[2, 3], 
-          dtype=np.float32)
+                               dtype=np.float32)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_full):
         check_ops.assert_none_equal(t, t, message="This is the error message.",
