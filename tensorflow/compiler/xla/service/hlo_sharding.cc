@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -376,6 +377,20 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   TF_RET_CHECK(proto.type() != OpSharding::Type::OpSharding_Type_MAXIMAL)
       << "Maximal sharding is expected to have single device assignment, but "
       << proto.tile_assignment_devices().size() << " has provided.";
+
+  TF_RET_CHECK(proto.tile_assignment_devices().size() > 1);
+  TF_RET_CHECK(!proto.tile_assignment_dimensions().empty());
+
+  // RE: the product of tile assignment tensor dimensions must be
+  // equal to tile_assignment_devices.size().
+  int64 product_of_dimensions = 1;
+  for (auto dimension : proto.tile_assignment_dimensions()) {
+    TF_RET_CHECK(dimension > 0);
+    product_of_dimensions =
+        MultiplyWithoutOverflow(product_of_dimensions, dimension);
+    TF_RET_CHECK(product_of_dimensions > 0);
+  }
+  TF_RET_CHECK(product_of_dimensions == proto.tile_assignment_devices().size());
 
   // Some versions of gcc cannot infer the TileAssignment constructor from a
   // braced initializer-list, so create one manually.

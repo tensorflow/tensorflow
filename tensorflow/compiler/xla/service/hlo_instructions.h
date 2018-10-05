@@ -896,7 +896,6 @@ class HloOutfeedInstruction : public HloInstruction {
                                  absl::string_view outfeed_config);
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape_));
     return outfeed_shape_;
   }
   // Returns the config for the Outfeed instruction.
