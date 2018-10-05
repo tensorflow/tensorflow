@@ -46,7 +46,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
     std::vector<string> pattern_strs;
     pattern_strs.reserve(num_patterns);
 
-    for (int i = 0; i < num_patterns; i++) {
+    for (size_t i = 0; i < num_patterns; i++) {
       pattern_strs.push_back(patterns(i));
     }
 
@@ -100,39 +100,39 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        Status ret;
+        Status ret;  // Status to return
 
         while (!filepath_queue_.empty() ||
                current_pattern_index_ < dataset()->patterns_.size()) {
-          // All the elements in the heap will be the matched filename or the
-          // potential directory.
+          // All the elements in the heap will be the matched filenames or the
+          // potential directories.
           if (!filepath_queue_.empty()) {
-            string current_file = filepath_queue_.top();
+            const PathStatus current_path = filepath_queue_.top();
             filepath_queue_.pop();
 
-            // We can also use isDectory() here. But IsDirectory call can be
-            // expensive for some FS.
-            if (ctx->env()->MatchPath(current_file, current_pattern_)) {
+            if (!current_path.second) {
               Tensor filepath_tensor(ctx->allocator({}), DT_STRING, {});
-              filepath_tensor.scalar<string>()() = current_file;
+              filepath_tensor.scalar<string>()() =
+                  std::move(current_path.first);
               out_tensors->emplace_back(std::move(filepath_tensor));
               *end_of_sequence = false;
               return Status::OK();
             }
 
-            // In this case, current_file is a directory. Then continue the
+            // In this case, current_path is a directory. Then continue the
             // search.
-            const string& current_dir = current_file;
-            Status s = UpdateIterator(ctx, current_dir, current_pattern_);
+            Status s =
+                UpdateIterator(ctx, current_path.first, current_pattern_);
             ret.Update(s);
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
-            string fixed_prefix = current_pattern_.substr(
-                0, current_pattern_.find_first_of("*?[\\"));
+            StringPiece fixed_prefix =
+                StringPiece(current_pattern_)
+                    .substr(0, current_pattern_.find_first_of("*?[\\"));
             string current_dir(io::Dirname(fixed_prefix));
 
-            // If dir is empty then we need to fix up fixed_prefix and
+            // If current_dir is empty then we need to fix up fixed_prefix and
             // current_pattern_ to include . as the top level directory.
             if (current_dir.empty()) {
               current_dir = ".";
@@ -146,7 +146,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         }
 
         *end_of_sequence = true;
-        return Status::OK();
+        return ret;
       }
 
      protected:
@@ -163,9 +163,12 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                                                  filepath_queue_.size()));
           int i = 0;
           while (!filepath_queue_.empty()) {
+            TF_RETURN_IF_ERROR(
+                writer->WriteScalar(full_name(strings::StrCat("path_", i)),
+                                    filepath_queue_.top().first));
             TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat("queue_element_", i)),
-                filepath_queue_.top()));
+                full_name(strings::StrCat("path_status_", i)),
+                filepath_queue_.top().second));
             filepath_queue_.pop();
             i++;
           }
@@ -190,10 +193,13 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(
               reader->ReadScalar(full_name("queue_size"), &queue_size));
           for (int i = 0; i < queue_size; i++) {
-            string element;
+            string path;
+            int64 path_status;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("queue_element_", i)), &element));
-            filepath_queue_.push(element);
+                full_name(strings::StrCat("path_", i)), &path));
+            TF_RETURN_IF_ERROR(reader->ReadScalar(
+                full_name(strings::StrCat("path_status_", i)), &path_status));
+            filepath_queue_.push(PathStatus(path, path_status));
           }
         }
 
@@ -204,55 +210,56 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       Status UpdateIterator(IteratorContext* ctx, const string& dir,
                             const string& eval_pattern)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        string fixed_prefix =
-            eval_pattern.substr(0, eval_pattern.find_first_of("*?[\\"));
+        StringPiece fixed_prefix =
+            StringPiece(eval_pattern)
+                .substr(0, eval_pattern.find_first_of("*?[\\"));
 
         FileSystem* fs;
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSystemForFile(dir, &fs));
 
-        filepath_queue_.push(dir);
+        filepath_queue_.push(PathStatus(dir, true));
         Status ret;  // Status to return
-        // children_dir_status holds is_dir status for children. It can have
-        // three possible values: OK for true; FAILED_PRECONDITION for false;
-        // CANCELLED if we don't calculate IsDirectory (we might do that because
-        // there isn't any point in exploring that child path).
 
         // DFS to find the first element in the iterator.
         while (!filepath_queue_.empty()) {
-          string current_dir = filepath_queue_.top();
+          const PathStatus current_path = filepath_queue_.top();
+
+          // All the files in the heap are matched with the pattern, so finish
+          // the search if current_path is a file.
+          if (!current_path.second) {
+            return Status::OK();
+          }
+
           filepath_queue_.pop();
+
+          // If current_path is a directory, search its children.
+          const string& current_dir = current_path.first;
           std::vector<string> children;
           Status s = fs->GetChildren(current_dir, &children);
           ret.Update(s);
 
-          // If current_dir has no children, there will two possible situations:
-          // 1) the current_dir is an empty dir; 2) the current_dir is actual a
-          // file instead of a director. For the first one, continue to search
-          // the heap. For the second one, if the file matches the pattern, add
-          // it to the heap and finish the search; otherwise, continue the next
-          // search.
-          if (children.empty()) {
-            if (ctx->env()->MatchPath(current_dir, eval_pattern)) {
-              filepath_queue_.push(current_dir);
-              return ret;
-            } else {
-              continue;
-            }
+          // If GetChildren() fails, continue the next search.
+          if (!s.ok()) {
+            continue;
           }
 
+          // children_dir_status holds is_dir status for children. It can have
+          // three possible values: OK for true; FAILED_PRECONDITION for false;
+          // CANCELLED if we don't calculate IsDirectory (we might do that
+          // because there isn't any point in exploring that child path).
           std::vector<Status> children_dir_status;
           children_dir_status.resize(children.size());
 
           // This IsDirectory call can be expensive for some FS. Parallelizing
           // it.
-          auto is_directory_fn = [fs, &current_dir, &children, &fixed_prefix,
+          auto is_directory_fn = [fs, current_dir, &children, &fixed_prefix,
                                   &children_dir_status](int i) {
             const string child_path = io::JoinPath(current_dir, children[i]);
             // In case the child_path doesn't start with the fixed_prefix, then
             // we don't need to explore this path.
             if (!str_util::StartsWith(child_path, fixed_prefix)) {
               children_dir_status[i] =
-                  Status(tensorflow::error::CANCELLED, "Operation not needed");
+                  errors::Cancelled("Operation not needed");
             } else {
               children_dir_status[i] = fs->IsDirectory(child_path);
             }
@@ -268,22 +275,24 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           counter.Wait();
 
           for (int i = 0; i < children.size(); i++) {
-            const string child_dir_path =
+            const string& child_dir_path =
                 io::JoinPath(current_dir, children[i]);
-            const Status child_dir_status = children_dir_status[i];
+            const Status& child_dir_status = children_dir_status[i];
+
             // If the IsDirectory call was cancelled we bail.
             if (child_dir_status.code() == tensorflow::error::CANCELLED) {
+              ret.Update(child_dir_status);
               continue;
             }
 
             if (child_dir_status.ok()) {
               // push the child dir for next search
-              filepath_queue_.push(child_dir_path);
+              filepath_queue_.push(PathStatus(child_dir_path, true));
             } else {
               // This case will be a file: if the file matches the pattern, push
               // it to the heap; otherwise, ignore it.
               if (ctx->env()->MatchPath(child_dir_path, eval_pattern)) {
-                filepath_queue_.push(child_dir_path);
+                filepath_queue_.push(PathStatus(child_dir_path, false));
               }
             }
           }
@@ -292,7 +301,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       }
 
       mutex mu_;
-      std::priority_queue<string, std::vector<string>, std::greater<string>>
+      // True means the path is a directory; False means the path is a filename.
+      typedef std::pair<string, bool> PathStatus;
+      std::priority_queue<PathStatus, std::vector<PathStatus>,
+                          std::greater<PathStatus>>
           filepath_queue_ GUARDED_BY(mu_);
       size_t current_pattern_index_ GUARDED_BY(mu_) = 0;
       string current_pattern_ GUARDED_BY(mu_);
