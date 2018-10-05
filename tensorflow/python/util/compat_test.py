@@ -24,15 +24,7 @@ try:
 except ImportError:
   Path = None
 
-try:
-  from collections.abc import Iterable as _Iterable
-except ImportError:
-  from collections import Iterable as _Iterable
-
-import inspect
-
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.ops import array_ops
 

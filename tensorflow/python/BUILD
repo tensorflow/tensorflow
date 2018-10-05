@@ -3801,16 +3801,11 @@ tf_py_test(
     name = "compat_test",
     size = "small",
     srcs = ["util/compat_test.py"],
-    main = "util/compat_test.py",
     srcs_version = "PY2AND3",
     deps = [
-        ":array_ops",
         ":client_testlib",
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":util",
-        "//third_party/py/numpy"
+        ":array_ops",
+        ":util"
     ]
 )
 
