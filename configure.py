@@ -35,7 +35,6 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_NCCL_VERSION = '2.2'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
@@ -1109,18 +1108,17 @@ def set_tf_nccl_install_path(environ_cp):
     raise ValueError('Currently NCCL is only supported on Linux platforms.')
 
   ask_nccl_version = (
-      'Please specify the NCCL version you want to use. If NCCL %s is not '
-      'installed, then you can use version 1.3 that can be fetched '
-      'automatically but it may have worse performance with multiple GPUs. '
-      '[Default is %s]: ') % (_DEFAULT_NCCL_VERSION, _DEFAULT_NCCL_VERSION)
+      'Please specify the locally installed NCCL version you want to use. '
+      '[Default is to use https://github.com/nvidia/nccl]: ')
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_nccl_version = get_from_env_or_user_or_default(
-        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, _DEFAULT_NCCL_VERSION)
-    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
+        environ_cp, 'TF_NCCL_VERSION', ask_nccl_version, '')
 
-    if tf_nccl_version == '1':
-      break  # No need to get install path, NCCL 1 is a GitHub repo.
+    if not tf_nccl_version:
+      break  # No need to get install path, building the open source code.
+
+    tf_nccl_version = reformat_version_sequence(str(tf_nccl_version), 1)
 
     # Look with ldconfig first if we can find the library in paths
     # like /usr/lib/x86_64-linux-gnu and the header file in the corresponding
@@ -1231,7 +1229,6 @@ def set_tf_nccl_install_path(environ_cp):
   # Set TF_NCCL_VERSION
   environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
   write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
-
 
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.

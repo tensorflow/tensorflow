@@ -585,12 +585,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "nccl_archive",
-        build_file = clean_dep("//third_party:nccl/nccl_archive.BUILD"),
-        sha256 = "2ca86fb6179ecbff789cc67c836139c1bbc0324ed8c04643405a30bf26325176",
-        strip_prefix = "nccl-03d856977ecbaac87e598c0c4bafca96761b9ac7",
+        build_file = clean_dep("//third_party:nccl/archive.BUILD"),
+        sha256 = "19132b5127fa8e02d95a09795866923f04064c8f1e0770b2b42ab551408882a4",
+        strip_prefix = "nccl-f93fe9bfd94884cec2ba711897222e0df5569a53",
         urls = [
-            "https://mirror.bazel.build/github.com/nvidia/nccl/archive/03d856977ecbaac87e598c0c4bafca96761b9ac7.tar.gz",
-            "https://github.com/nvidia/nccl/archive/03d856977ecbaac87e598c0c4bafca96761b9ac7.tar.gz",
+            "https://mirror.bazel.build/github.com/nvidia/nccl/archive/f93fe9bfd94884cec2ba711897222e0df5569a53.tar.gz",
+            "https://github.com/nvidia/nccl/archive/f93fe9bfd94884cec2ba711897222e0df5569a53.tar.gz",
         ],
     )
 
