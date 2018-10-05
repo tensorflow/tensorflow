@@ -276,11 +276,11 @@ TfLiteStatus AddOpsAndParams(
       augmented_inputs.push_back(next_id++);
     };
 
-    auto add_vector_int32 = [&](const int* values, uint32_t num_values) {
+    auto add_vector_int32 = [&](const uint32_t* values, uint32_t num_values) {
       ANeuralNetworksOperandType operand_type{
           .type = ANEURALNETWORKS_TENSOR_INT32,
           .dimensionCount = 1,
-          .dimensions = &num_values};
+          .dimensions = values};
       CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type))
       CHECK_NN(ANeuralNetworksModel_setOperandValue(
           nn_model, next_id, values, sizeof(int32_t) * num_values));
@@ -422,7 +422,7 @@ TfLiteStatus AddOpsAndParams(
       const auto* builtin = reinterpret_cast<TfLiteSqueezeParams*>(data);
       // Note that we add the squeeze dimensions even if the dimensions were
       // unspecified (empty), as NNAPI requires the operand.
-      add_vector_int32(builtin->squeeze_dims,
+      add_vector_int32(reinterpret_cast<const uint32_t*>(builtin->squeeze_dims),
                        static_cast<uint32_t>(builtin->num_squeeze_dims));
     };
 
