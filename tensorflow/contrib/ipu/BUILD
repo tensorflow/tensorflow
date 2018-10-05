@@ -76,3 +76,24 @@ test_suite(
         "conditional_test",
     ],
 )
+
+test_suite(
+    name = "size_speed_tests",
+    tests = [
+    ],
+)
+
+test_suite(
+    name = "training_tests",
+    tests = [
+    ],
+)
+
+test_suite(
+    name = "all_ci_tests",
+    tests = [
+        ":all_tests",
+        ":size_speed_tests",
+        ":training_tests",
+    ],
+)
