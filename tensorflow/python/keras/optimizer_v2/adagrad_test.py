@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.optimizer_v2 import adagrad
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.optimizer_v2 import adagrad
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 
 class AdagradOptimizerTest(test.TestCase):
 
-  def doTestBasic(self, use_locking=False, use_resource=False):
+  def doTestBasic(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
         if use_resource:
@@ -45,8 +45,7 @@ class AdagradOptimizerTest(test.TestCase):
           var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        ada_opt = adagrad.AdagradOptimizer(
-            3.0, initial_accumulator_value=0.1, use_locking=use_locking)
+        ada_opt = adagrad.Adagrad(3.0, initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
@@ -63,10 +62,10 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]), var1.eval())
 
   def testBasic(self):
-    self.doTestBasic(use_locking=False)
+    self.doTestBasic()
 
   def testBasicResource(self):
-    self.doTestBasic(use_locking=False, use_resource=True)
+    self.doTestBasic(use_resource=True)
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -76,7 +75,7 @@ class AdagradOptimizerTest(test.TestCase):
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
         loss = pred * pred
-        sgd_op = adagrad.AdagradOptimizer(1.0).minimize(loss)
+        sgd_op = adagrad.Adagrad(1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType(
@@ -94,7 +93,7 @@ class AdagradOptimizerTest(test.TestCase):
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        ada_opt = adagrad.AdagradOptimizer(
+        ada_opt = adagrad.Adagrad(
             constant_op.constant(3.0), initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
@@ -126,7 +125,7 @@ class AdagradOptimizerTest(test.TestCase):
                 [0.01], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]),
             constant_op.constant([2, 1]))
-        ada_opt = adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
+        ada_opt = adagrad.Adagrad(3.0, initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
@@ -159,9 +158,9 @@ class AdagradOptimizerTest(test.TestCase):
                 [0.2], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]),
             constant_op.constant([2, 1]))
-        repeated_update = adagrad.AdagradOptimizer(3.0).apply_gradients(
+        repeated_update = adagrad.Adagrad(3.0).apply_gradients(
             [(grad_repeated_index, repeated_index_update_var)])
-        aggregated_update = adagrad.AdagradOptimizer(3.0).apply_gradients(
+        aggregated_update = adagrad.Adagrad(3.0).apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
         self.assertAllClose(aggregated_update_var.eval(),
@@ -183,10 +182,8 @@ class AdagradOptimizerTest(test.TestCase):
             [1.0, 2.0], dtype=dtype)
         loss_aggregated = 2 * math_ops.reduce_sum(
             embedding_ops.embedding_lookup(var_aggregated, [0]))
-        update_op_repeated = adagrad.AdagradOptimizer(
-            2.0).minimize(loss_repeated)
-        update_op_aggregated = adagrad.AdagradOptimizer(
-            2.0).minimize(loss_aggregated)
+        update_op_repeated = adagrad.Adagrad(2.0).minimize(loss_repeated)
+        update_op_aggregated = adagrad.Adagrad(2.0).minimize(loss_aggregated)
         variables.global_variables_initializer().run()
         self.assertAllCloseAccordingToType(
             var_repeated.eval(), var_aggregated.eval())
@@ -216,7 +213,7 @@ class AdagradOptimizerTest(test.TestCase):
                 dtype=dtype),
             constant_op.constant([0]),
             constant_op.constant(shape))
-        ada_opt = adagrad.AdagradOptimizer(1.0, initial_accumulator_value=0.1)
+        ada_opt = adagrad.Adagrad(1.0, initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(zip([grads0], [var0]))
         self.assertEqual(["accumulator"], ada_opt.get_slot_names())
         slot0 = ada_opt.get_slot(var0, "accumulator")
@@ -239,7 +236,7 @@ class AdagradOptimizerTest(test.TestCase):
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
-        ada_opt = adagrad.AdagradOptimizer(3.0)
+        ada_opt = adagrad.Adagrad(3.0)
         # Apply the optimizer twice.  Both applications will use
         # the same accums.
         ada_update1 = ada_opt.apply_gradients(
@@ -272,7 +269,7 @@ class AdagradOptimizerTest(test.TestCase):
                                       validate_shape=False)
       self.assertFalse(v.shape.is_fully_defined())
       # Creating optimizer should cause no exception.
-      adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
+      adagrad.Adagrad(3.0, initial_accumulator_value=0.1)
 
 
 if __name__ == "__main__":

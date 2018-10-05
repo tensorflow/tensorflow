@@ -179,11 +179,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def get_expected_variables(optimizer_fn, num_parameter_devices):
         variables_map = {
             "GradientDescent": ["dense/kernel", "dense/bias"],
-            "Adam": [
-                "dense/kernel", "dense/bias", "beta1_power", "beta2_power",
-                "dense/kernel/Adam", "dense/kernel/Adam_1", "dense/bias/Adam",
-                "dense/bias/Adam_1"
-            ],
             "Adagrad": [
                 "dense/kernel/Adagrad", "dense/kernel",
                 "dense/bias/Adagrad", "dense/bias"
