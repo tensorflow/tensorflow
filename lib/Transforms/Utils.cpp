@@ -54,6 +54,7 @@ bool mlir::replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
                                     AffineMap *indexRemap) {
   unsigned newMemRefRank = cast<MemRefType>(newMemRef->getType())->getRank();
   unsigned oldMemRefRank = cast<MemRefType>(oldMemRef->getType())->getRank();
+  (void)newMemRefRank;
   if (indexRemap) {
     assert(indexRemap->getNumInputs() == oldMemRefRank);
     assert(indexRemap->getNumResults() + extraIndices.size() == newMemRefRank);
