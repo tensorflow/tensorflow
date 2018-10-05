@@ -383,7 +383,9 @@ def set_build_var(environ_cp,
   var = str(int(get_var(environ_cp, var_name, query_item, enabled_by_default)))
   environ_cp[var_name] = var
   if var == '1':
-    write_to_bazelrc('build --define %s=true' % option_name)
+    write_to_bazelrc(
+        'build:%s --define %s=true' % (bazel_config_name, option_name))
+    write_to_bazelrc('build --config=%s' % bazel_config_name)
   elif bazel_config_name is not None:
     # TODO(mikecase): Migrate all users of configure.py to use --config Bazel
     # options and not to set build configs through environment variables.
