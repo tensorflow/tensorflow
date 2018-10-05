@@ -56,6 +56,18 @@ def get_compute_sets_from_report(report):
   cs = [x.split()[0] for x in cs]
   return cs
 
+def check_compute_sets_not_in_blacklist(cs_list, bl):
+  result = True
+  fail_list = []
+  for x in bl:
+    matches = [cs for cs in cs_list if fnmatch.fnmatch(cs, x)]
+    if len(matches) > 0:
+      fail_list += matches
+      result = False
+  if not result:
+    print("Compute sets present: " + str(fail_list))
+  return result
+
 def check_whitelist_entries_in_compute_sets(cs_list, whitelist):
   result = True
   fail_list = []

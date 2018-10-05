@@ -682,29 +682,21 @@ def moments(
     Two `Tensor` objects: `mean` and `variance`.
   """
   with ops.name_scope(name, "moments", [x, axes]):
-    # The dynamic range of fp16 is too limited to support the collection of
-    # sufficient statistics. As a workaround we simply perform the operations
-    # on 32-bit floats before converting the mean and variance back to fp16
-    y = math_ops.cast(x, dtypes.float32) if x.dtype == dtypes.float16 else x
     # Compute true mean while keeping the dims for proper broadcasting.
-    mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
+    mean = math_ops.reduce_mean(x, axes, keepdims=True, name="mean")
     # sample variance, not unbiased variance
     # Note: stop_gradient does not change the gradient that gets
     #       backpropagated to the mean from the variance calculation,
     #       because that gradient is zero
     variance = math_ops.reduce_mean(
-        math_ops.squared_difference(y, array_ops.stop_gradient(mean)),
+        math_ops.squared_difference(x, array_ops.stop_gradient(mean)),
         axes,
         keepdims=True,
         name="variance")
     if not keep_dims:
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
-    if x.dtype == dtypes.float16:
-      return (math_ops.cast(mean, dtypes.float16),
-              math_ops.cast(variance, dtypes.float16))
-    else:
-      return (mean, variance)
+    return (mean, variance)
 
 
 @tf_export("nn.weighted_moments")
@@ -729,11 +721,6 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
         frequency_weights, name="frequency_weights")
 
     # Unlike moments(), this just uses a simpler two-pass method.
-
-    # See comment in moments() WRT precision; it applies here too.
-    needs_cast = x.dtype == dtypes.float16
-    if needs_cast:
-      x = math_ops.cast(x, dtypes.float32)
 
     if frequency_weights.dtype != x.dtype:
       frequency_weights = math_ops.cast(frequency_weights, x.dtype)
@@ -771,10 +758,6 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
       weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
       weighted_variance = array_ops.squeeze(
           weighted_variance, axis=axes)
-
-    if needs_cast:
-      weighted_mean = math_ops.cast(weighted_mean, dtypes.float16)
-      weighted_variance = math_ops.cast(weighted_variance, dtypes.float16)
 
     return weighted_mean, weighted_variance
 

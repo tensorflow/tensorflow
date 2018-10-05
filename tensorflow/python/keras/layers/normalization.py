@@ -245,11 +245,7 @@ class BatchNormalization(Layer):
         raise ValueError('Unsupported axis, fused batch norm only supports '
                          'axis == [1] or axis == [3]')
 
-    # Raise parameters of fp16 batch norm to fp32
-    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
-      param_dtype = dtypes.float32
-    else:
-      param_dtype = self.dtype or dtypes.float32
+    param_dtype = self.dtype or dtypes.float32
 
     axis_to_dim = {x: input_shape[x].value for x in self.axis}
     for x in axis_to_dim:

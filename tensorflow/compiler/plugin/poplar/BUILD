@@ -585,6 +585,7 @@ py_test(
     size = "small",
     srcs = ["tests/batch_norm_test.py"],
     deps = [
+        ":ipu_ops",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
