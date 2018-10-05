@@ -343,14 +343,20 @@ public:
     return MLFuncBuilder(forStmt, forStmt->end());
   }
 
-  /// Get the current insertion point of the builder.
+  /// Returns the current insertion point of the builder.
   StmtBlock::iterator getInsertionPoint() const { return insertPoint; }
 
-  /// Get the current block of the builder.
+  /// Returns the current block of the builder.
   StmtBlock *getBlock() const { return block; }
 
-  /// Create an operation given the fields represented as an OperationState.
+  /// Creates an operation given the fields represented as an OperationState.
   OperationStmt *createOperation(const OperationState &state);
+
+  /// Creates an operation given the fields.
+  OperationStmt *createOperation(Location *location, Identifier name,
+                                 ArrayRef<MLValue *> operands,
+                                 ArrayRef<Type *> types,
+                                 ArrayRef<NamedAttribute> attrs);
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
