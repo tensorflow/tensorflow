@@ -423,7 +423,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
      [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} "\
-      "${EXTRA_ARGS} -- ${BAZEL_TARGET}"
+"${EXTRA_ARGS} -- ${BAZEL_TARGET}"
   elif [[ ${CTYPE} == gpu* ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
