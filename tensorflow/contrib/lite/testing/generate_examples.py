@@ -81,9 +81,9 @@ parser.add_argument(
     action="store_true",
     help="Include intermediate graphdefs in the output zip files.")
 parser.add_argument(
-    "--run_with_extended",
+    "--run_with_flex",
     action="store_true",
-    help="Whether the TFLite Extended converter is being used.")
+    help="Whether the TFLite Flex converter is being used.")
 
 RANDOM_SEED = 342
 TEST_INPUT_DEPTH = 3
@@ -339,11 +339,11 @@ def toco_convert(graph_def_str, input_tensors, output_tensors,
     graphdef_file.flush()
 
     # TODO(aselle): Switch this to subprocess at some point.
-    if "pb2lite" in bin_path and FLAGS.run_with_extended:
+    if "pb2lite" in bin_path and FLAGS.run_with_flex:
       opts = ("--input_arrays={0} --output_arrays={1}".format(
           ",".join(input_arrays), ",".join(output_tensors)))
-    elif FLAGS.run_with_extended:
-      opts += " --allow_eager_ops --force_eager_ops"
+    elif FLAGS.run_with_flex:
+      opts += " --allow_flex_ops --force_flex_ops"
     cmd = ("%s --input_file=%s --output_file=%s %s > %s 2>&1" %
            (bin_path, graphdef_file.name, output_file.name, opts,
             stdout_file.name))
@@ -762,8 +762,11 @@ def make_constant_tests(zip_path):
         dtype=parameters["dtype"],
         name="input1",
         shape=parameters["input_shape"])
-    out = tf.constant(
+    constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
+    # This maximum node is here to avoid the situation where a graph output is
+    # a constant, which is an error in toco.
+    out = tf.maximum(dummy_input, constant)
     return [dummy_input], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -2848,7 +2851,14 @@ def make_zeros_like_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.zeros_like(input_tensor)
+    zeros = tf.zeros_like(input_tensor)
+    # This maximum node is so that toco can perform the constants-propagation
+    # through the above zeros_like, which it can't do if the output of the
+    # zeros_like as an output of the whole graphs (graph outputs can't be
+    # constants). If toco does not perform such constants-propagation then
+    # the resulting tflite graph retains the zeros_like as a Fill op, which
+    # is unsupported by TFLite, even as a custom op.
+    out = tf.maximum(zeros, input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -3333,7 +3343,7 @@ def main(unused_args):
   # list of valid conversion modes is defined in
   # generated_test_conversion_modes() in build_def.bzl.
   test_function = ("make_%s_tests" % (out.replace(".zip", "").replace(
-      "pb2lite", "").replace("toco-extended", "").rstrip("_")))
+      "pb2lite", "").replace("toco-flex", "").rstrip("_")))
   if test_function not in globals():
     raise RuntimeError("Can't find a test function to create %r. Tried %r" %
                        (out, test_function))

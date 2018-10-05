@@ -367,18 +367,26 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  if context.executing_eagerly():
-    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
-      # Fallback to inference mode as default.
-      return 0
-    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+  with ops.init_scope():
+    # We always check & set the learning phase inside the init_scope,
+    # otherwise the wrong default_graph will be used to look up the learning
+    # phase inside of functions & defuns.
+    #
+    # This is because functions & defuns (both in graph & in eager mode)
+    # will always execute non-eagerly using a function-specific default
+    # subgraph.
+    if context.executing_eagerly():
+      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+        # Fallback to inference mode as default.
+        return 0
+      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
-  graph = ops.get_default_graph()
-  if graph not in _GRAPH_LEARNING_PHASES:
-    phase = array_ops.placeholder_with_default(
-        False, shape=(), name='keras_learning_phase')
-    _GRAPH_LEARNING_PHASES[graph] = phase
-  return _GRAPH_LEARNING_PHASES[graph]
+    graph = ops.get_default_graph()
+    if graph not in _GRAPH_LEARNING_PHASES:
+      phase = array_ops.placeholder_with_default(
+          False, shape=(), name='keras_learning_phase')
+      _GRAPH_LEARNING_PHASES[graph] = phase
+    return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -394,10 +402,11 @@ def set_learning_phase(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
-  if context.executing_eagerly():
-    _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
-  else:
-    _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+  with ops.init_scope():
+    if context.executing_eagerly():
+      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
+    else:
+      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
 
 
 @tf_contextlib.contextmanager
@@ -423,10 +432,11 @@ def learning_phase_scope(value):
     yield value
   finally:
     # Restore learning phase to initial value.
-    if context.executing_eagerly():
-      _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
-    else:
-      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
+    with ops.init_scope():
+      if context.executing_eagerly():
+        _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
+      else:
+        _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
 
 
 @tf_export('keras.backend.get_session')
@@ -685,10 +695,8 @@ def track_tf_optimizer(tf_optimizer):
   if context.executing_eagerly():
     return
   graph = ops.get_default_graph()
-  if graph not in _GRAPH_TF_OPTIMIZERS:
-    _GRAPH_TF_OPTIMIZERS[graph] = set()
-  _GRAPH_TF_OPTIMIZERS[graph].add(tf_optimizer)
-
+  optimizers = _GRAPH_TF_OPTIMIZERS.setdefault(graph, weakref.WeakSet())
+  optimizers.add(tf_optimizer)
 
 def track_variable(v):
   """Tracks the given variable for initialization."""
@@ -1503,12 +1511,8 @@ def batch_dot(x, y, axes=None):
       out = math_ops.reduce_sum(
           math_ops.multiply(array_ops.transpose(x, [1, 0]), y), axes[1])
   else:
-    if axes is not None:
-      adj_x = None if axes[0] == ndim(x) - 1 else True
-      adj_y = True if axes[1] == ndim(y) - 1 else None
-    else:
-      adj_x = None
-      adj_y = None
+    adj_x = None if axes[0] == ndim(x) - 1 else True
+    adj_y = True if axes[1] == ndim(y) - 1 else None
     out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
   if diff:
     if x_ndim > y_ndim:
@@ -3054,7 +3058,8 @@ def rnn(step_function,
         mask=None,
         constants=None,
         unroll=False,
-        input_length=None):
+        input_length=None,
+        time_major=False):
   """Iterates over the time dimension of a tensor.
 
   Arguments:
@@ -3083,6 +3088,13 @@ def rnn(step_function,
       constants: List of constant values passed at each step.
       unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
       input_length: If specified, assume time dimension is of this length.
+      time_major: Boolean. If true, the inputs and outputs will be in shape
+          `(timesteps, batch, ...)`, whereas in the False case, it will be
+          `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+          efficient because it avoids transposes at the beginning and end of the
+          RNN calculation. However, most TensorFlow data is batch-major, so by
+          default this function accepts input and emits output in batch-major
+          form.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -3104,15 +3116,17 @@ def rnn(step_function,
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
   inputs_shape = inputs.shape
-  axes = [1, 0] + list(range(2, ndim))
-  inputs = array_ops.transpose(inputs, (axes))
+  if not time_major:
+    axes = [1, 0] + list(range(2, ndim))
+    inputs = array_ops.transpose(inputs, axes)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
     if len(mask.shape) == ndim - 1:
       mask = expand_dims(mask)
-    mask = array_ops.transpose(mask, axes)
+    if not time_major:
+      mask = array_ops.transpose(mask, axes)
 
   if constants is None:
     constants = []
@@ -3293,10 +3307,11 @@ def rnn(step_function,
     outputs = output_ta.stack()
     last_output = output_ta.read(last_time - 1)
 
-  axes = [1, 0] + list(range(2, len(outputs.shape)))
-  outputs = array_ops.transpose(outputs, axes)
+  if not time_major:
+    axes = [1, 0] + list(range(2, len(outputs.shape)))
+    outputs = array_ops.transpose(outputs, axes)
 
-  # Static shape inference: (samples, time, ...)
+  # Static shape inference: (samples, time, ...) or (time, sample, ...)
   outputs_shape = outputs.shape.as_list()
   outputs_shape[0] = inputs_shape[0]
   outputs_shape[1] = inputs_shape[1]

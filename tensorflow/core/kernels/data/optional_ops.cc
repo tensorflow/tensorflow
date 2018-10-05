@@ -213,6 +213,14 @@ static Status OptionalDeviceCopy(
     std::vector<Tensor> to_values;
     to_values.reserve(from_values.size());
     for (const Tensor& t : from_values) {
+      if (t.dtype() == DT_VARIANT) {
+        // TODO(b/116349787): Implement support for nested variants.
+        return errors::Unimplemented(
+            "Support for copying nested variants to device has not yet been "
+            "implemented.");
+      }
+    }
+    for (const Tensor& t : from_values) {
       if (DMAHelper::CanUseDMA(&t)) {
         Tensor tmp(t.dtype());
         TF_RETURN_IF_ERROR(copy(t, &tmp));

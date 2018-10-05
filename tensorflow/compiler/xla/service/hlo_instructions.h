@@ -546,17 +546,6 @@ class HloSliceInstruction : public HloInstruction {
   }
   const std::vector<int64>& slice_strides() const { return slice_strides_; }
 
-  // Returns the flag that describes whether a slice must be lowered into an
-  // offset into the original operand.
-  bool IsInPlaceSlice() const { return is_in_place_slice_; }
-
-  // Sets and returns the flag that describes whether a slice must be lowered
-  // into an offset into the original operand.
-  bool SetIsInPlaceSlice(bool value) {
-    is_in_place_slice_ = value;
-    return value;
-  }
-
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -573,9 +562,6 @@ class HloSliceInstruction : public HloInstruction {
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
   std::vector<int64> slice_strides_;
-
-  // Describes whether the slice can be lowered to an offset into the operand.
-  bool is_in_place_slice_ = false;
 };
 
 class HloConstantInstruction : public HloInstruction {
@@ -1070,7 +1056,8 @@ class HloCustomCallInstruction : public HloInstruction {
  public:
   explicit HloCustomCallInstruction(const Shape& shape,
                                     absl::Span<HloInstruction* const> operands,
-                                    absl::string_view custom_call_target);
+                                    absl::string_view custom_call_target,
+                                    absl::string_view opaque);
   const Window& window() const override {
     CHECK(window_ != nullptr);
     return *window_;
@@ -1090,6 +1077,7 @@ class HloCustomCallInstruction : public HloInstruction {
     convolution_dimension_numbers_ =
         absl::make_unique<ConvolutionDimensionNumbers>(dnums);
   }
+  const string& opaque() const { return opaque_; }
   const string& custom_call_target() const { return custom_call_target_; }
   void set_feature_group_count(int64 feature_group_count) {
     feature_group_count_ = feature_group_count;
@@ -1109,8 +1097,10 @@ class HloCustomCallInstruction : public HloInstruction {
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
-  // Name of a global symbol to call, only present for kCustomCall.
+  // Name of a global symbol to call.
   string custom_call_target_;
+  // Opaque string interpreted by the backend.
+  string opaque_;
   // Describes the window in a windowed operation such as convolution.
   std::unique_ptr<Window> window_;
   // Describes the dimension numbers used for a convolution.
@@ -1336,6 +1326,9 @@ class HloDomainInstruction : public HloInstruction {
       const Shape& shape, HloInstruction* operand,
       std::unique_ptr<DomainMetadata> operand_side_metadata,
       std::unique_ptr<DomainMetadata> user_side_metadata);
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
 
   // Retrieves the operand side metadata of a kDomain instruction.
   const DomainMetadata& operand_side_metadata() const {

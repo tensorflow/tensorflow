@@ -63,7 +63,8 @@ class _Gumbel(distribution.Distribution):
   Examples of initialization of one or a batch of distributions.
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Define a single scalar Gumbel distribution.
   dist = tfd.Gumbel(loc=0., scale=3.)

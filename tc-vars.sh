@@ -50,27 +50,18 @@ if [ "${OS}" = "Linux" ]; then
 fi;
 
 export TF_ENABLE_XLA=0
-if [ "${OS}" = "Linux" ]; then
-    TF_NEED_JEMALLOC=1
-elif [ "${OS}" = "Darwin" ]; then
-    TF_NEED_JEMALLOC=0
-fi;
-export TF_NEED_JEMALLOC
-export TF_NEED_GCP=0
-export TF_NEED_HDFS=0
-export TF_NEED_OPENCL_SYCL=0
 export TF_NEED_MKL=0
-export TF_NEED_VERBS=0
 export TF_NEED_MPI=0
-export TF_NEED_AWS=0
-export TF_NEED_KAFKA=0
-export TF_NEED_GDR=0
-export TF_NEED_NGRAPH=0
+export TF_NEED_IGNITE=0
 export TF_DOWNLOAD_CLANG=0
 export TF_SET_ANDROID_WORKSPACE=0
 export TF_NEED_TENSORRT=0
 export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 export PYTHON_BIN_PATH=/usr/bin/python2.7
+
+export TF_NEED_CUDA=0
+export TF_NEED_OPENCL_SYCL=0
+export TF_NEED_ROCM=0
 
 ## Below, define or export some build variables
 
@@ -103,7 +94,7 @@ if [ "${OS}" = "Darwin" ]; then
 fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
-TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.2 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+TF_CUDA_FLAGS="TF_NEED_CUDA=1 TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.2 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_CUDA_FLAGS="--config=cuda"

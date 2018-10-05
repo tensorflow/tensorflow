@@ -79,6 +79,9 @@ struct LocalResponseNormalizationOptionsT;
 struct LSTMOptions;
 struct LSTMOptionsT;
 
+struct BidirectionalSequenceLSTMOptions;
+struct BidirectionalSequenceLSTMOptionsT;
+
 struct ResizeBilinearOptions;
 struct ResizeBilinearOptionsT;
 
@@ -264,8 +267,8 @@ enum TensorType {
   TensorType_MAX = TensorType_COMPLEX64
 };
 
-inline TensorType (&EnumValuesTensorType())[9] {
-  static TensorType values[] = {
+inline const TensorType (&EnumValuesTensorType())[9] {
+  static const TensorType values[] = {
     TensorType_FLOAT32,
     TensorType_FLOAT16,
     TensorType_INT32,
@@ -279,8 +282,8 @@ inline TensorType (&EnumValuesTensorType())[9] {
   return values;
 }
 
-inline const char **EnumNamesTensorType() {
-  static const char *names[] = {
+inline const char * const *EnumNamesTensorType() {
+  static const char * const names[] = {
     "FLOAT32",
     "FLOAT16",
     "INT32",
@@ -399,8 +402,8 @@ enum BuiltinOperator {
   BuiltinOperator_MAX = BuiltinOperator_FILL
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[94] {
-  static BuiltinOperator values[] = {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[94] {
+  static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
     BuiltinOperator_CONCATENATION,
@@ -499,8 +502,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[94] {
   return values;
 }
 
-inline const char **EnumNamesBuiltinOperator() {
-  static const char *names[] = {
+inline const char * const *EnumNamesBuiltinOperator() {
+  static const char * const names[] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -676,12 +679,14 @@ enum BuiltinOptions {
   BuiltinOptions_SquareOptions = 66,
   BuiltinOptions_ZerosLikeOptions = 67,
   BuiltinOptions_FillOptions = 68,
+  BuiltinOptions_BidirectionalSequenceLSTMOptions = 69,
+  BuiltinOptions_BidirectionalSequenceRNNOptions = 70,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_FillOptions
+  BuiltinOptions_MAX = BuiltinOptions_BidirectionalSequenceRNNOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[69] {
-  static BuiltinOptions values[] = {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[71] {
+  static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
     BuiltinOptions_DepthwiseConv2DOptions,
@@ -750,13 +755,15 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[69] {
     BuiltinOptions_FloorDivOptions,
     BuiltinOptions_SquareOptions,
     BuiltinOptions_ZerosLikeOptions,
-    BuiltinOptions_FillOptions
+    BuiltinOptions_FillOptions,
+    BuiltinOptions_BidirectionalSequenceLSTMOptions,
+    BuiltinOptions_BidirectionalSequenceRNNOptions
   };
   return values;
 }
 
-inline const char **EnumNamesBuiltinOptions() {
-  static const char *names[] = {
+inline const char * const *EnumNamesBuiltinOptions() {
+  static const char * const names[] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -826,6 +833,8 @@ inline const char **EnumNamesBuiltinOptions() {
     "SquareOptions",
     "ZerosLikeOptions",
     "FillOptions",
+    "BidirectionalSequenceLSTMOptions",
+    "BidirectionalSequenceRNNOptions",
     nullptr
   };
   return names;
@@ -1110,6 +1119,14 @@ template<> struct BuiltinOptionsTraits<ZerosLikeOptions> {
 
 template<> struct BuiltinOptionsTraits<FillOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_FillOptions;
+};
+
+template<> struct BuiltinOptionsTraits<BidirectionalSequenceLSTMOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_BidirectionalSequenceLSTMOptions;
+};
+
+template<> struct BuiltinOptionsTraits<BidirectionalSequenceRNNOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_BidirectionalSequenceRNNOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1687,6 +1704,22 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_FillOptions ?
       reinterpret_cast<const FillOptionsT *>(value) : nullptr;
   }
+  BidirectionalSequenceLSTMOptionsT *AsBidirectionalSequenceLSTMOptions() {
+    return type == BuiltinOptions_BidirectionalSequenceLSTMOptions ?
+      reinterpret_cast<BidirectionalSequenceLSTMOptionsT *>(value) : nullptr;
+  }
+  const BidirectionalSequenceLSTMOptionsT *AsBidirectionalSequenceLSTMOptions() const {
+    return type == BuiltinOptions_BidirectionalSequenceLSTMOptions ?
+      reinterpret_cast<const BidirectionalSequenceLSTMOptionsT *>(value) : nullptr;
+  }
+  BidirectionalSequenceRNNOptionsT *AsBidirectionalSequenceRNNOptions() {
+    return type == BuiltinOptions_BidirectionalSequenceRNNOptions ?
+      reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(value) : nullptr;
+  }
+  const BidirectionalSequenceRNNOptionsT *AsBidirectionalSequenceRNNOptions() const {
+    return type == BuiltinOptions_BidirectionalSequenceRNNOptions ?
+      reinterpret_cast<const BidirectionalSequenceRNNOptionsT *>(value) : nullptr;
+  }
 };
 
 bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions type);
@@ -1699,16 +1732,16 @@ enum Padding {
   Padding_MAX = Padding_VALID
 };
 
-inline Padding (&EnumValuesPadding())[2] {
-  static Padding values[] = {
+inline const Padding (&EnumValuesPadding())[2] {
+  static const Padding values[] = {
     Padding_SAME,
     Padding_VALID
   };
   return values;
 }
 
-inline const char **EnumNamesPadding() {
-  static const char *names[] = {
+inline const char * const *EnumNamesPadding() {
+  static const char * const names[] = {
     "SAME",
     "VALID",
     nullptr
@@ -1732,8 +1765,8 @@ enum ActivationFunctionType {
   ActivationFunctionType_MAX = ActivationFunctionType_SIGN_BIT
 };
 
-inline ActivationFunctionType (&EnumValuesActivationFunctionType())[6] {
-  static ActivationFunctionType values[] = {
+inline const ActivationFunctionType (&EnumValuesActivationFunctionType())[6] {
+  static const ActivationFunctionType values[] = {
     ActivationFunctionType_NONE,
     ActivationFunctionType_RELU,
     ActivationFunctionType_RELU_N1_TO_1,
@@ -1744,8 +1777,8 @@ inline ActivationFunctionType (&EnumValuesActivationFunctionType())[6] {
   return values;
 }
 
-inline const char **EnumNamesActivationFunctionType() {
-  static const char *names[] = {
+inline const char * const *EnumNamesActivationFunctionType() {
+  static const char * const names[] = {
     "NONE",
     "RELU",
     "RELU_N1_TO_1",
@@ -1770,8 +1803,8 @@ enum LSHProjectionType {
   LSHProjectionType_MAX = LSHProjectionType_DENSE
 };
 
-inline LSHProjectionType (&EnumValuesLSHProjectionType())[3] {
-  static LSHProjectionType values[] = {
+inline const LSHProjectionType (&EnumValuesLSHProjectionType())[3] {
+  static const LSHProjectionType values[] = {
     LSHProjectionType_UNKNOWN,
     LSHProjectionType_SPARSE,
     LSHProjectionType_DENSE
@@ -1779,8 +1812,8 @@ inline LSHProjectionType (&EnumValuesLSHProjectionType())[3] {
   return values;
 }
 
-inline const char **EnumNamesLSHProjectionType() {
-  static const char *names[] = {
+inline const char * const *EnumNamesLSHProjectionType() {
+  static const char * const names[] = {
     "UNKNOWN",
     "SPARSE",
     "DENSE",
@@ -1801,16 +1834,16 @@ enum FullyConnectedOptionsWeightsFormat {
   FullyConnectedOptionsWeightsFormat_MAX = FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8
 };
 
-inline FullyConnectedOptionsWeightsFormat (&EnumValuesFullyConnectedOptionsWeightsFormat())[2] {
-  static FullyConnectedOptionsWeightsFormat values[] = {
+inline const FullyConnectedOptionsWeightsFormat (&EnumValuesFullyConnectedOptionsWeightsFormat())[2] {
+  static const FullyConnectedOptionsWeightsFormat values[] = {
     FullyConnectedOptionsWeightsFormat_DEFAULT,
     FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8
   };
   return values;
 }
 
-inline const char **EnumNamesFullyConnectedOptionsWeightsFormat() {
-  static const char *names[] = {
+inline const char * const *EnumNamesFullyConnectedOptionsWeightsFormat() {
+  static const char * const names[] = {
     "DEFAULT",
     "SHUFFLED4x16INT8",
     nullptr
@@ -1830,16 +1863,16 @@ enum LSTMKernelType {
   LSTMKernelType_MAX = LSTMKernelType_BASIC
 };
 
-inline LSTMKernelType (&EnumValuesLSTMKernelType())[2] {
-  static LSTMKernelType values[] = {
+inline const LSTMKernelType (&EnumValuesLSTMKernelType())[2] {
+  static const LSTMKernelType values[] = {
     LSTMKernelType_FULL,
     LSTMKernelType_BASIC
   };
   return values;
 }
 
-inline const char **EnumNamesLSTMKernelType() {
-  static const char *names[] = {
+inline const char * const *EnumNamesLSTMKernelType() {
+  static const char * const names[] = {
     "FULL",
     "BASIC",
     nullptr
@@ -1860,8 +1893,8 @@ enum CombinerType {
   CombinerType_MAX = CombinerType_SQRTN
 };
 
-inline CombinerType (&EnumValuesCombinerType())[3] {
-  static CombinerType values[] = {
+inline const CombinerType (&EnumValuesCombinerType())[3] {
+  static const CombinerType values[] = {
     CombinerType_SUM,
     CombinerType_MEAN,
     CombinerType_SQRTN
@@ -1869,8 +1902,8 @@ inline CombinerType (&EnumValuesCombinerType())[3] {
   return values;
 }
 
-inline const char **EnumNamesCombinerType() {
-  static const char *names[] = {
+inline const char * const *EnumNamesCombinerType() {
+  static const char * const names[] = {
     "SUM",
     "MEAN",
     "SQRTN",
@@ -1890,15 +1923,15 @@ enum CustomOptionsFormat {
   CustomOptionsFormat_MAX = CustomOptionsFormat_FLEXBUFFERS
 };
 
-inline CustomOptionsFormat (&EnumValuesCustomOptionsFormat())[1] {
-  static CustomOptionsFormat values[] = {
+inline const CustomOptionsFormat (&EnumValuesCustomOptionsFormat())[1] {
+  static const CustomOptionsFormat values[] = {
     CustomOptionsFormat_FLEXBUFFERS
   };
   return values;
 }
 
-inline const char **EnumNamesCustomOptionsFormat() {
-  static const char *names[] = {
+inline const char * const *EnumNamesCustomOptionsFormat() {
+  static const char * const names[] = {
     "FLEXBUFFERS",
     nullptr
   };
@@ -1943,13 +1976,13 @@ struct QuantizationParameters FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tab
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_MIN) &&
-           verifier.Verify(min()) &&
+           verifier.VerifyVector(min()) &&
            VerifyOffset(verifier, VT_MAX) &&
-           verifier.Verify(max()) &&
+           verifier.VerifyVector(max()) &&
            VerifyOffset(verifier, VT_SCALE) &&
-           verifier.Verify(scale()) &&
+           verifier.VerifyVector(scale()) &&
            VerifyOffset(verifier, VT_ZERO_POINT) &&
-           verifier.Verify(zero_point()) &&
+           verifier.VerifyVector(zero_point()) &&
            verifier.EndTable();
   }
   QuantizationParametersT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2060,11 +2093,11 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SHAPE) &&
-           verifier.Verify(shape()) &&
+           verifier.VerifyVector(shape()) &&
            VerifyField<int8_t>(verifier, VT_TYPE) &&
            VerifyField<uint32_t>(verifier, VT_BUFFER) &&
            VerifyOffset(verifier, VT_NAME) &&
-           verifier.Verify(name()) &&
+           verifier.VerifyString(name()) &&
            VerifyOffset(verifier, VT_QUANTIZATION) &&
            verifier.VerifyTable(quantization()) &&
            VerifyField<uint8_t>(verifier, VT_IS_VARIABLE) &&
@@ -2530,9 +2563,9 @@ struct ConcatEmbeddingsOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Ta
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_NUM_CHANNELS) &&
            VerifyOffset(verifier, VT_NUM_COLUMNS_PER_CHANNEL) &&
-           verifier.Verify(num_columns_per_channel()) &&
+           verifier.VerifyVector(num_columns_per_channel()) &&
            VerifyOffset(verifier, VT_EMBEDDING_DIM_PER_CHANNEL) &&
-           verifier.Verify(embedding_dim_per_channel()) &&
+           verifier.VerifyVector(embedding_dim_per_channel()) &&
            verifier.EndTable();
   }
   ConcatEmbeddingsOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2834,9 +2867,11 @@ struct BidirectionalSequenceRNNOptionsT : public flatbuffers::NativeTable {
   typedef BidirectionalSequenceRNNOptions TableType;
   bool time_major;
   ActivationFunctionType fused_activation_function;
+  bool merge_outputs;
   BidirectionalSequenceRNNOptionsT()
       : time_major(false),
-        fused_activation_function(ActivationFunctionType_NONE) {
+        fused_activation_function(ActivationFunctionType_NONE),
+        merge_outputs(false) {
   }
 };
 
@@ -2844,7 +2879,8 @@ struct BidirectionalSequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuf
   typedef BidirectionalSequenceRNNOptionsT NativeTableType;
   enum {
     VT_TIME_MAJOR = 4,
-    VT_FUSED_ACTIVATION_FUNCTION = 6
+    VT_FUSED_ACTIVATION_FUNCTION = 6,
+    VT_MERGE_OUTPUTS = 8
   };
   bool time_major() const {
     return GetField<uint8_t>(VT_TIME_MAJOR, 0) != 0;
@@ -2852,10 +2888,14 @@ struct BidirectionalSequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuf
   ActivationFunctionType fused_activation_function() const {
     return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool merge_outputs() const {
+    return GetField<uint8_t>(VT_MERGE_OUTPUTS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS) &&
            verifier.EndTable();
   }
   BidirectionalSequenceRNNOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2872,6 +2912,9 @@ struct BidirectionalSequenceRNNOptionsBuilder {
   void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(BidirectionalSequenceRNNOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
   }
+  void add_merge_outputs(bool merge_outputs) {
+    fbb_.AddElement<uint8_t>(BidirectionalSequenceRNNOptions::VT_MERGE_OUTPUTS, static_cast<uint8_t>(merge_outputs), 0);
+  }
   explicit BidirectionalSequenceRNNOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2887,8 +2930,10 @@ struct BidirectionalSequenceRNNOptionsBuilder {
 inline flatbuffers::Offset<BidirectionalSequenceRNNOptions> CreateBidirectionalSequenceRNNOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     bool time_major = false,
-    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE) {
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    bool merge_outputs = false) {
   BidirectionalSequenceRNNOptionsBuilder builder_(_fbb);
+  builder_.add_merge_outputs(merge_outputs);
   builder_.add_fused_activation_function(fused_activation_function);
   builder_.add_time_major(time_major);
   return builder_.Finish();
@@ -3424,6 +3469,96 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(
 
 flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const LSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct BidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
+  typedef BidirectionalSequenceLSTMOptions TableType;
+  ActivationFunctionType fused_activation_function;
+  float cell_clip;
+  float proj_clip;
+  bool merge_outputs;
+  BidirectionalSequenceLSTMOptionsT()
+      : fused_activation_function(ActivationFunctionType_NONE),
+        cell_clip(0.0f),
+        proj_clip(0.0f),
+        merge_outputs(false) {
+  }
+};
+
+struct BidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef BidirectionalSequenceLSTMOptionsT NativeTableType;
+  enum {
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_CELL_CLIP = 6,
+    VT_PROJ_CLIP = 8,
+    VT_MERGE_OUTPUTS = 10
+  };
+  ActivationFunctionType fused_activation_function() const {
+    return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  float cell_clip() const {
+    return GetField<float>(VT_CELL_CLIP, 0.0f);
+  }
+  float proj_clip() const {
+    return GetField<float>(VT_PROJ_CLIP, 0.0f);
+  }
+  bool merge_outputs() const {
+    return GetField<uint8_t>(VT_MERGE_OUTPUTS, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<float>(verifier, VT_CELL_CLIP) &&
+           VerifyField<float>(verifier, VT_PROJ_CLIP) &&
+           VerifyField<uint8_t>(verifier, VT_MERGE_OUTPUTS) &&
+           verifier.EndTable();
+  }
+  BidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(BidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<BidirectionalSequenceLSTMOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct BidirectionalSequenceLSTMOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(BidirectionalSequenceLSTMOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_cell_clip(float cell_clip) {
+    fbb_.AddElement<float>(BidirectionalSequenceLSTMOptions::VT_CELL_CLIP, cell_clip, 0.0f);
+  }
+  void add_proj_clip(float proj_clip) {
+    fbb_.AddElement<float>(BidirectionalSequenceLSTMOptions::VT_PROJ_CLIP, proj_clip, 0.0f);
+  }
+  void add_merge_outputs(bool merge_outputs) {
+    fbb_.AddElement<uint8_t>(BidirectionalSequenceLSTMOptions::VT_MERGE_OUTPUTS, static_cast<uint8_t>(merge_outputs), 0);
+  }
+  explicit BidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  BidirectionalSequenceLSTMOptionsBuilder &operator=(const BidirectionalSequenceLSTMOptionsBuilder &);
+  flatbuffers::Offset<BidirectionalSequenceLSTMOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<BidirectionalSequenceLSTMOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectionalSequenceLSTMOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    float cell_clip = 0.0f,
+    float proj_clip = 0.0f,
+    bool merge_outputs = false) {
+  BidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
+  builder_.add_proj_clip(proj_clip);
+  builder_.add_cell_clip(cell_clip);
+  builder_.add_merge_outputs(merge_outputs);
+  builder_.add_fused_activation_function(fused_activation_function);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectionalSequenceLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct ResizeBilinearOptionsT : public flatbuffers::NativeTable {
   typedef ResizeBilinearOptions TableType;
   bool align_corners;
@@ -3630,7 +3765,7 @@ struct ReshapeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NEW_SHAPE) &&
-           verifier.Verify(new_shape()) &&
+           verifier.VerifyVector(new_shape()) &&
            verifier.EndTable();
   }
   ReshapeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4294,7 +4429,7 @@ struct SqueezeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SQUEEZE_DIMS) &&
-           verifier.Verify(squeeze_dims()) &&
+           verifier.VerifyVector(squeeze_dims()) &&
            verifier.EndTable();
   }
   SqueezeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6041,7 +6176,7 @@ struct OperatorCode FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_BUILTIN_CODE) &&
            VerifyOffset(verifier, VT_CUSTOM_CODE) &&
-           verifier.Verify(custom_code()) &&
+           verifier.VerifyString(custom_code()) &&
            VerifyField<int32_t>(verifier, VT_VERSION) &&
            verifier.EndTable();
   }
@@ -6347,6 +6482,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const FillOptions *builtin_options_as_FillOptions() const {
     return builtin_options_type() == BuiltinOptions_FillOptions ? static_cast<const FillOptions *>(builtin_options()) : nullptr;
   }
+  const BidirectionalSequenceLSTMOptions *builtin_options_as_BidirectionalSequenceLSTMOptions() const {
+    return builtin_options_type() == BuiltinOptions_BidirectionalSequenceLSTMOptions ? static_cast<const BidirectionalSequenceLSTMOptions *>(builtin_options()) : nullptr;
+  }
+  const BidirectionalSequenceRNNOptions *builtin_options_as_BidirectionalSequenceRNNOptions() const {
+    return builtin_options_type() == BuiltinOptions_BidirectionalSequenceRNNOptions ? static_cast<const BidirectionalSequenceRNNOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -6360,17 +6501,17 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_OPCODE_INDEX) &&
            VerifyOffset(verifier, VT_INPUTS) &&
-           verifier.Verify(inputs()) &&
+           verifier.VerifyVector(inputs()) &&
            VerifyOffset(verifier, VT_OUTPUTS) &&
-           verifier.Verify(outputs()) &&
+           verifier.VerifyVector(outputs()) &&
            VerifyField<uint8_t>(verifier, VT_BUILTIN_OPTIONS_TYPE) &&
            VerifyOffset(verifier, VT_BUILTIN_OPTIONS) &&
            VerifyBuiltinOptions(verifier, builtin_options(), builtin_options_type()) &&
            VerifyOffset(verifier, VT_CUSTOM_OPTIONS) &&
-           verifier.Verify(custom_options()) &&
+           verifier.VerifyVector(custom_options()) &&
            VerifyField<int8_t>(verifier, VT_CUSTOM_OPTIONS_FORMAT) &&
            VerifyOffset(verifier, VT_MUTATING_VARIABLE_INPUTS) &&
-           verifier.Verify(mutating_variable_inputs()) &&
+           verifier.VerifyVector(mutating_variable_inputs()) &&
            verifier.EndTable();
   }
   OperatorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6650,6 +6791,14 @@ template<> inline const FillOptions *Operator::builtin_options_as<FillOptions>()
   return builtin_options_as_FillOptions();
 }
 
+template<> inline const BidirectionalSequenceLSTMOptions *Operator::builtin_options_as<BidirectionalSequenceLSTMOptions>() const {
+  return builtin_options_as_BidirectionalSequenceLSTMOptions();
+}
+
+template<> inline const BidirectionalSequenceRNNOptions *Operator::builtin_options_as<BidirectionalSequenceRNNOptions>() const {
+  return builtin_options_as_BidirectionalSequenceRNNOptions();
+}
+
 struct OperatorBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
@@ -6773,17 +6922,17 @@ struct SubGraph FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_TENSORS) &&
-           verifier.Verify(tensors()) &&
+           verifier.VerifyVector(tensors()) &&
            verifier.VerifyVectorOfTables(tensors()) &&
            VerifyOffset(verifier, VT_INPUTS) &&
-           verifier.Verify(inputs()) &&
+           verifier.VerifyVector(inputs()) &&
            VerifyOffset(verifier, VT_OUTPUTS) &&
-           verifier.Verify(outputs()) &&
+           verifier.VerifyVector(outputs()) &&
            VerifyOffset(verifier, VT_OPERATORS) &&
-           verifier.Verify(operators()) &&
+           verifier.VerifyVector(operators()) &&
            verifier.VerifyVectorOfTables(operators()) &&
            VerifyOffset(verifier, VT_NAME) &&
-           verifier.Verify(name()) &&
+           verifier.VerifyString(name()) &&
            verifier.EndTable();
   }
   SubGraphT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6873,7 +7022,7 @@ struct Buffer FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_DATA) &&
-           verifier.Verify(data()) &&
+           verifier.VerifyVector(data()) &&
            verifier.EndTable();
   }
   BufferT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -6962,18 +7111,18 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<uint32_t>(verifier, VT_VERSION) &&
            VerifyOffset(verifier, VT_OPERATOR_CODES) &&
-           verifier.Verify(operator_codes()) &&
+           verifier.VerifyVector(operator_codes()) &&
            verifier.VerifyVectorOfTables(operator_codes()) &&
            VerifyOffset(verifier, VT_SUBGRAPHS) &&
-           verifier.Verify(subgraphs()) &&
+           verifier.VerifyVector(subgraphs()) &&
            verifier.VerifyVectorOfTables(subgraphs()) &&
            VerifyOffset(verifier, VT_DESCRIPTION) &&
-           verifier.Verify(description()) &&
+           verifier.VerifyString(description()) &&
            VerifyOffset(verifier, VT_BUFFERS) &&
-           verifier.Verify(buffers()) &&
+           verifier.VerifyVector(buffers()) &&
            verifier.VerifyVectorOfTables(buffers()) &&
            VerifyOffset(verifier, VT_METADATA_BUFFER) &&
-           verifier.Verify(metadata_buffer()) &&
+           verifier.VerifyVector(metadata_buffer()) &&
            verifier.EndTable();
   }
   ModelT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7407,6 +7556,7 @@ inline void BidirectionalSequenceRNNOptions::UnPackTo(BidirectionalSequenceRNNOp
   (void)_resolver;
   { auto _e = time_major(); _o->time_major = _e; };
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = merge_outputs(); _o->merge_outputs = _e; };
 }
 
 inline flatbuffers::Offset<BidirectionalSequenceRNNOptions> BidirectionalSequenceRNNOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceRNNOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -7419,10 +7569,12 @@ inline flatbuffers::Offset<BidirectionalSequenceRNNOptions> CreateBidirectionalS
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BidirectionalSequenceRNNOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _time_major = _o->time_major;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _merge_outputs = _o->merge_outputs;
   return tflite::CreateBidirectionalSequenceRNNOptions(
       _fbb,
       _time_major,
-      _fused_activation_function);
+      _fused_activation_function,
+      _merge_outputs);
 }
 
 inline FullyConnectedOptionsT *FullyConnectedOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -7655,6 +7807,41 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBuffe
       _cell_clip,
       _proj_clip,
       _kernel_type);
+}
+
+inline BidirectionalSequenceLSTMOptionsT *BidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new BidirectionalSequenceLSTMOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void BidirectionalSequenceLSTMOptions::UnPackTo(BidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = cell_clip(); _o->cell_clip = _e; };
+  { auto _e = proj_clip(); _o->proj_clip = _e; };
+  { auto _e = merge_outputs(); _o->merge_outputs = _e; };
+}
+
+inline flatbuffers::Offset<BidirectionalSequenceLSTMOptions> BidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateBidirectionalSequenceLSTMOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectionalSequenceLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const BidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BidirectionalSequenceLSTMOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _fused_activation_function = _o->fused_activation_function;
+  auto _cell_clip = _o->cell_clip;
+  auto _proj_clip = _o->proj_clip;
+  auto _merge_outputs = _o->merge_outputs;
+  return tflite::CreateBidirectionalSequenceLSTMOptions(
+      _fbb,
+      _fused_activation_function,
+      _cell_clip,
+      _proj_clip,
+      _merge_outputs);
 }
 
 inline ResizeBilinearOptionsT *ResizeBilinearOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -9425,6 +9612,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const FillOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_BidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const BidirectionalSequenceLSTMOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_BidirectionalSequenceRNNOptions: {
+      auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -9715,6 +9910,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const FillOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_BidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const BidirectionalSequenceLSTMOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_BidirectionalSequenceRNNOptions: {
+      auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -9993,6 +10196,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const FillOptionsT *>(value);
       return CreateFillOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_BidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const BidirectionalSequenceLSTMOptionsT *>(value);
+      return CreateBidirectionalSequenceLSTMOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_BidirectionalSequenceRNNOptions: {
+      auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptionsT *>(value);
+      return CreateBidirectionalSequenceRNNOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -10269,6 +10480,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_FillOptions: {
       value = new FillOptionsT(*reinterpret_cast<FillOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_BidirectionalSequenceLSTMOptions: {
+      value = new BidirectionalSequenceLSTMOptionsT(*reinterpret_cast<BidirectionalSequenceLSTMOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_BidirectionalSequenceRNNOptions: {
+      value = new BidirectionalSequenceRNNOptionsT(*reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(u.value));
       break;
     }
     default:
@@ -10618,6 +10837,16 @@ inline void BuiltinOptionsUnion::Reset() {
       delete ptr;
       break;
     }
+    case BuiltinOptions_BidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<BidirectionalSequenceLSTMOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_BidirectionalSequenceRNNOptions: {
+      auto ptr = reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(value);
+      delete ptr;
+      break;
+    }
     default: break;
   }
   value = nullptr;
@@ -10626,6 +10855,10 @@ inline void BuiltinOptionsUnion::Reset() {
 
 inline const tflite::Model *GetModel(const void *buf) {
   return flatbuffers::GetRoot<tflite::Model>(buf);
+}
+
+inline const tflite::Model *GetSizePrefixedModel(const void *buf) {
+  return flatbuffers::GetSizePrefixedRoot<tflite::Model>(buf);
 }
 
 inline const char *ModelIdentifier() {
@@ -10642,6 +10875,11 @@ inline bool VerifyModelBuffer(
   return verifier.VerifyBuffer<tflite::Model>(ModelIdentifier());
 }
 
+inline bool VerifySizePrefixedModelBuffer(
+    flatbuffers::Verifier &verifier) {
+  return verifier.VerifySizePrefixedBuffer<tflite::Model>(ModelIdentifier());
+}
+
 inline const char *ModelExtension() {
   return "tflite";
 }
@@ -10650,6 +10888,12 @@ inline void FinishModelBuffer(
     flatbuffers::FlatBufferBuilder &fbb,
     flatbuffers::Offset<tflite::Model> root) {
   fbb.Finish(root, ModelIdentifier());
+}
+
+inline void FinishSizePrefixedModelBuffer(
+    flatbuffers::FlatBufferBuilder &fbb,
+    flatbuffers::Offset<tflite::Model> root) {
+  fbb.FinishSizePrefixed(root, ModelIdentifier());
 }
 
 inline std::unique_ptr<ModelT> UnPackModel(

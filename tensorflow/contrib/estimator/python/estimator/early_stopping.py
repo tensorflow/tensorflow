@@ -57,6 +57,13 @@ def make_early_stopping_hook(estimator,
   tf.estimator.train_and_evaluate(estimator, train_spec, ...)
   ```
 
+  Caveat: Current implementation supports early-stopping both training and
+  evaluation in local mode. In distributed mode, training can be stopped but
+  evaluation (where it's a separate job) will indefinitely wait for new model
+  checkpoints to evaluate, so you will need other means to detect and stop it.
+  Early-stopping evaluation in distributed mode requires changes in
+  `train_and_evaluate` API and will be addressed in a future revision.
+
   Args:
     estimator: A `tf.estimator.Estimator` instance.
     should_stop_fn: `callable`, function that takes no arguments and returns a
@@ -109,6 +116,13 @@ def stop_if_higher_hook(estimator,
   tf.estimator.train_and_evaluate(estimator, train_spec, ...)
   ```
 
+  Caveat: Current implementation supports early-stopping both training and
+  evaluation in local mode. In distributed mode, training can be stopped but
+  evaluation (where it's a separate job) will indefinitely wait for new model
+  checkpoints to evaluate, so you will need other means to detect and stop it.
+  Early-stopping evaluation in distributed mode requires changes in
+  `train_and_evaluate` API and will be addressed in a future revision.
+
   Args:
     estimator: A `tf.estimator.Estimator` instance.
     metric_name: `str`, metric to track. "loss", "accuracy", etc.
@@ -157,6 +171,13 @@ def stop_if_lower_hook(estimator,
   train_spec = tf.estimator.TrainSpec(..., hooks=[hook])
   tf.estimator.train_and_evaluate(estimator, train_spec, ...)
   ```
+
+  Caveat: Current implementation supports early-stopping both training and
+  evaluation in local mode. In distributed mode, training can be stopped but
+  evaluation (where it's a separate job) will indefinitely wait for new model
+  checkpoints to evaluate, so you will need other means to detect and stop it.
+  Early-stopping evaluation in distributed mode requires changes in
+  `train_and_evaluate` API and will be addressed in a future revision.
 
   Args:
     estimator: A `tf.estimator.Estimator` instance.
@@ -207,6 +228,13 @@ def stop_if_no_increase_hook(estimator,
   tf.estimator.train_and_evaluate(estimator, train_spec, ...)
   ```
 
+  Caveat: Current implementation supports early-stopping both training and
+  evaluation in local mode. In distributed mode, training can be stopped but
+  evaluation (where it's a separate job) will indefinitely wait for new model
+  checkpoints to evaluate, so you will need other means to detect and stop it.
+  Early-stopping evaluation in distributed mode requires changes in
+  `train_and_evaluate` API and will be addressed in a future revision.
+
   Args:
     estimator: A `tf.estimator.Estimator` instance.
     metric_name: `str`, metric to track. "loss", "accuracy", etc.
@@ -256,6 +284,13 @@ def stop_if_no_decrease_hook(estimator,
   train_spec = tf.estimator.TrainSpec(..., hooks=[hook])
   tf.estimator.train_and_evaluate(estimator, train_spec, ...)
   ```
+
+  Caveat: Current implementation supports early-stopping both training and
+  evaluation in local mode. In distributed mode, training can be stopped but
+  evaluation (where it's a separate job) will indefinitely wait for new model
+  checkpoints to evaluate, so you will need other means to detect and stop it.
+  Early-stopping evaluation in distributed mode requires changes in
+  `train_and_evaluate` API and will be addressed in a future revision.
 
   Args:
     estimator: A `tf.estimator.Estimator` instance.

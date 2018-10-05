@@ -29,7 +29,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util import nest as tf_nest
 
 
-class _PrependFromQueueAndPaddedBatchDataset(dataset_ops.Dataset):
+class _PrependFromQueueAndPaddedBatchDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that prepends a queue to another `Dataset`.
 
   A vector of handles to the queue is returned as the first component of
@@ -39,7 +39,7 @@ class _PrependFromQueueAndPaddedBatchDataset(dataset_ops.Dataset):
 
   def __init__(self, input_dataset, batch_size, padded_shapes, padding_values):
     """Initialize `PrependFromQueueAndPaddedBatchDataset`."""
-    super(_PrependFromQueueAndPaddedBatchDataset, self).__init__()
+    super(_PrependFromQueueAndPaddedBatchDataset, self).__init__(input_dataset)
     if sparse.any_sparse(input_dataset.output_classes):
       raise TypeError(
           "Batching of padded sparse tensors is not currently supported")

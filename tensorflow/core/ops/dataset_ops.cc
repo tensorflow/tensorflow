@@ -185,6 +185,8 @@ REGISTER_OP("ParseExampleDataset")
 REGISTER_OP("SetStatsAggregatorDataset")
     .Input("input_dataset: variant")
     .Input("stats_aggregator: resource")
+    .Input("tag: string")
+    .Input("counter_prefix: string")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -756,6 +758,19 @@ REGISTER_OP("DatasetToSingleElement")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(IteratorGetNextShapeFn);
 
+REGISTER_OP("ReduceDataset")
+    .Input("input_dataset: variant")
+    .Input("initial_state: Tstate")
+    .Input("other_arguments: Targuments")
+    .Output("components: output_types")
+    .Attr("f: func")
+    .Attr("Tstate: list(type) >= 1")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_inter_op_parallelism: bool = true")
+    .SetShapeFn(IteratorGetNextShapeFn);
+
 REGISTER_OP("IteratorToStringHandle")
     .Input("resource_handle: resource")
     .Output("string_handle: string")
@@ -931,5 +946,42 @@ REGISTER_OP("MapDefun")
       }
       return Status::OK();
     });
+
+REGISTER_OP("MultiDeviceIterator")
+    .Output("handle: resource")
+    .Attr("devices: list(string) >= 1")
+    .Attr("shared_name: string")
+    .Attr("container: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MultiDeviceIteratorInit")
+    .Input("dataset: variant")
+    .Input("multi_device_iterator: resource")
+    .Input("max_buffer_size: int64")
+    .Output("incarnation_id: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
+    .Input("multi_device_iterator: resource")
+    .Input("shard_num: int32")
+    .Input("incarnation_id: int64")
+    .Output("components: output_types")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(IteratorGetNextShapeFn);
+
+REGISTER_OP("MultiDeviceIteratorToStringHandle")
+    .Input("multi_device_iterator: resource")
+    .Output("string_handle: string")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MultiDeviceIteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("multi_device_iterator: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow

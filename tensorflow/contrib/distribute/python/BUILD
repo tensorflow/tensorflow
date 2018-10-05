@@ -28,6 +28,7 @@ py_library(
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
@@ -453,7 +454,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "estimator_training_test",
-    size = "large",
+    size = "enormous",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
         ":combinations",
@@ -651,8 +652,8 @@ py_library(
     name = "prefetching_ops_v2",
     srcs = ["prefetching_ops_v2.py"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:contrib_op_loader",
         "//tensorflow/contrib/data/python/ops:prefetching_ops",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -727,6 +728,7 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 16,
     tags = [
         "multi_and_single_gpu",
         "no_pip",
@@ -735,18 +737,27 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "metrics_v1_test",
+py_library(
+    name = "metrics_v1_test_lib",
+    testonly = 1,
     srcs = ["metrics_v1_test.py"],
-    additional_deps = [
+    deps = [
         ":combinations",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "metrics_v1_test",
+    srcs = ["metrics_v1_test.py"],
+    additional_deps = [
+        ":metrics_v1_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",

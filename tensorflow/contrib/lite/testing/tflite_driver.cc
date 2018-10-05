@@ -17,7 +17,7 @@ limitations under the License.
 #include <iostream>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #include "tensorflow/contrib/lite/testing/split.h"
 
 namespace tflite {
@@ -138,8 +138,8 @@ class TfLiteDriver::Expectation {
 
 TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
     : use_nnapi_(use_nnapi) {
-  if (delegate_name == "EAGER") {
-    delegate_ = EagerDelegate::Create();
+  if (delegate_name == "FLEX") {
+    delegate_ = FlexDelegate::Create();
   }
 }
 
@@ -301,7 +301,7 @@ bool TfLiteDriver::CheckResults() {
 }
 
 void TfLiteDriver::ResetLSTMStateTensors() {
-  interpreter_->ResetVariableTensorsToZero();
+  interpreter_->ResetVariableTensors();
 }
 
 }  // namespace testing

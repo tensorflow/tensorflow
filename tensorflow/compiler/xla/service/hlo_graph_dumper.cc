@@ -1110,7 +1110,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                               instr->metadata().source_line()));
   }
 
-  return StrJoin(lines, "<br/>");
+  return StrJoin(lines, "\n");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(

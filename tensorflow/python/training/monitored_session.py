@@ -1114,7 +1114,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised while a session was being created. '
                      'This may be due to a preemption of a connected worker '
                      'or parameter server. A new session will be created. '
-                     'Error: %s', e)
+                     'This error may also occur due to a gRPC failure caused '
+                     'by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
 
   def _check_stop(self):
     try:
@@ -1127,7 +1131,11 @@ class _RecoverableSession(_WrappedSession):
                    'session is complete. This may be due to a preemption in '
                    'a connected worker or parameter server. The current '
                    'session will be closed and a new session will be '
-                   'created. Error: %s', e)
+                   'created. This error may also occur due to a gRPC failure '
+                   'caused by high memory or network bandwidth usage in the '
+                   'parameter servers. If this error occurs repeatedly, try '
+                   'increasing the number of parameter servers assigned to '
+                   'the job. Error: %s', e)
       self.close()
       self._sess = self._create_session()
       # Since we have just recreated the session, the overall computation should
@@ -1150,7 +1158,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1166,7 +1178,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 

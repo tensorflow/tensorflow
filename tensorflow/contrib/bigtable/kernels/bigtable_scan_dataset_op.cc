@@ -67,6 +67,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     const uint64 num_outputs = columns.size() + 1;
     std::vector<PartialTensorShape> output_shapes;

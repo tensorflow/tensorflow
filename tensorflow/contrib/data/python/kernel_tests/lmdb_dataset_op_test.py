@@ -22,6 +22,7 @@ import os
 import shutil
 
 from tensorflow.contrib.data.python.ops import readers
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -31,7 +32,7 @@ from tensorflow.python.util import compat
 prefix_path = "tensorflow/core/lib"
 
 
-class LMDBDatasetTest(test.TestCase):
+class LMDBDatasetTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(LMDBDatasetTest, self).setUp()

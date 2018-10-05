@@ -35,10 +35,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-void CopyAttribute(const string& attr_name, const NodeDef& from, NodeDef* to) {
-  (*to->mutable_attr())[attr_name] = from.attr().at(attr_name);
-}
-
 // Returns a FunctionDef containing a MapDefun op that wraps the original
 // function.
 FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
@@ -61,7 +57,7 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
   for (const string& k : {"f", "output_types", "output_shapes"}) {
     // Function, output types and (unbatched) shapes are the same as the
     // original map node.
-    CopyAttribute(k, map_node, map_defun_node);
+    graph_utils::CopyAttribute(k, map_node, map_defun_node);
   }
 
   // Get types of input arguments from original map function
@@ -86,25 +82,23 @@ FunctionDef* CreateMapDefunWrapper(const NodeDef& map_node,
 FunctionDef* AddVectorizedFunction(const NodeDef& map_node,
                                    const FunctionDef& orig_func,
                                    FunctionDefLibrary* library) {
-  // Vectorizes orig_func naively by wrapping in a MapDefun op, then tries to
-  // do true vectorization with Vectorize.
+  // Vectorizes orig_func naively by wrapping in a MapDefun op, then performing
+  // efficient vectorization with VectorizeMapDefun.
   FunctionDef* vectorized_func =
       CreateMapDefunWrapper(map_node, orig_func, library);
-  NodeDef* map_defun_node = vectorized_func->mutable_node_def()->Mutable(0);
-  DCHECK_EQ(map_defun_node->op(), "MapDefun");
+  const NodeDef& map_defun_node = vectorized_func->node_def(0);
+  DCHECK_EQ(map_defun_node.op(), "MapDefun");
 
-  // Create a copy of the original function so that we can mutate it, and
-  // attach that to the map defun node.
-  FunctionDef* map_defun_fn = library->add_function();
-  *map_defun_fn = orig_func;
-  graph_utils::SetUniqueGraphFunctionName(orig_func.signature().name(), library,
-                                          map_defun_fn);
-  (*map_defun_node->mutable_attr())["f"].mutable_func()->set_name(
-      map_defun_fn->signature().name());
+  // TODO(b/116285210): Unreferenced functions should get cleaned up later
+  FunctionDef* result;
+  Status s = vectorization_utils::VectorizeMapDefun(
+      *vectorized_func, map_defun_node, library, &result);
 
-  vectorization_utils::VectorizeMapDefun(vectorized_func, map_defun_fn,
-                                         map_defun_node);
-  return vectorized_func;
+  if (!s.ok()) {
+    LOG(ERROR) << "VectorizeMapDefun failed: " << s;
+    return vectorized_func;
+  }
+  return result;
 }
 
 bool IsOutputShapesFullyDefined(const NodeDef& node) {
@@ -195,13 +189,16 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
   }
 
   // Set attrs
-  CopyAttribute("Targuments", old_map_node, &map_node);
+  graph_utils::CopyAttribute("Targuments", old_map_node, &map_node);
   auto& func_attr = (*map_node.mutable_attr())["f"];
   func_attr.mutable_func()->set_name(vectorized_func.signature().name());
 
   for (auto key : {"output_shapes", "output_types"}) {
-    CopyAttribute(key, old_batch_node, &map_node);
+    graph_utils::CopyAttribute(key, old_batch_node, &map_node);
   }
+
+  (*map_node.mutable_attr())["use_inter_op_parallelism"].set_b(true);
+
   return map_node;
 }
 

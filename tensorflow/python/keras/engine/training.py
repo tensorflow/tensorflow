@@ -20,11 +20,9 @@ from __future__ import print_function
 
 import weakref
 import numpy as np
-import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -383,27 +381,31 @@ class Model(Network):
     """
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
-    if distribute and not isinstance(
-        optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
-      raise NotImplementedError('Only TF native optimizers are supported with '
-                                'DistributionStrategy.')
-    if distribute and context.executing_eagerly():
-      raise NotImplementedError('DistributionStrategy is not supported in '
-                                'Eager mode.')
-    if distribute and sample_weight_mode:
-      raise NotImplementedError('sample_weight_mode is not supported with '
-                                'DistributionStrategy.')
-    if distribute and weighted_metrics:
-      raise NotImplementedError('weighted_metrics is not supported with '
-                                'DistributionStrategy.')
-    if distribute and target_tensors:
-      raise ValueError('target_tensors is not supported with '
-                       'DistributionStrategy.')
+    if distribute:
+      if not isinstance(
+          optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+        raise NotImplementedError(
+            'optimizer must be an instance of '
+            'tf.train.Optimizer, not a %s' % type(optimizer))
+      if context.executing_eagerly():
+        raise NotImplementedError('DistributionStrategy is not supported '
+                                  'when eager execution is enabled.')
+      if sample_weight_mode:
+        raise NotImplementedError('sample_weight_mode is not supported with '
+                                  'DistributionStrategy.')
+      if weighted_metrics:
+        raise NotImplementedError('weighted_metrics is not supported with '
+                                  'DistributionStrategy.')
+      if target_tensors:
+        raise ValueError('target_tensors is not supported with '
+                         'DistributionStrategy.')
 
     loss = loss or {}
     if context.executing_eagerly() and not isinstance(
         optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
-      raise ValueError('Only TF native optimizers are supported in Eager mode.')
+      raise ValueError(
+          'optimizer must be an instance of tf.train.Optimizer, not '
+          'a %s' % type(optimizer))
 
     self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
@@ -643,12 +645,6 @@ class Model(Network):
         skip_target_indices=skip_target_indices,
         sample_weights=self.sample_weights)
 
-    # If using distribution strategy and stateful_metrics, raise an error
-    # since we currently don't support stateful metrics.
-    if self._distribution_strategy is not None and self.stateful_metric_names:
-      raise NotImplementedError('Stateful metrics are not supported with '
-                                'DistributionStrategy.')
-
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
 
@@ -816,19 +812,22 @@ class Model(Network):
     first_x_value = nest.flatten(x)[0]
     if isinstance(first_x_value, np.ndarray):
       x_shape = first_x_value.shape
-      x_dtype = first_x_value.dtype
       if batch_size is None:
         batch_size = x_shape[0] // steps
+      # We need to use the drop_remainder argument to allow for a static
+      # input shape which is required for TPUs.
+      drop_remainder = self._distribution_strategy.require_static_shapes
       if y is not None:
-        first_y_value = nest.flatten(y)[0]
-        x = Dataset.from_generator(lambda x=x, y=y: six.moves.zip(x, y),
-                                   output_types=(x_dtype, first_y_value.dtype),
-                                   output_shapes=(x_shape[1:],
-                                                  first_y_value.shape[1:]))
+        var_x = distributed_training_utils.get_var_for_numpy(
+            self._distribution_strategy, x)
+        var_y = distributed_training_utils.get_var_for_numpy(
+            self._distribution_strategy, y)
+
+        x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
         # TODO(anjalisridhar): What should the buffer size be?
         x = x.shuffle(10000)
         x = x.repeat()
-        x = x.batch(batch_size)
+        x = x.batch(batch_size, drop_remainder=drop_remainder)
         y = None
       else:
         # This case is for the predict call where the dataset only contains
@@ -836,11 +835,11 @@ class Model(Network):
         # TODO(anjalisridhar): Raise an error if we are not able to process
         # all the predict samples. This can happen if the number of batches is
         # not evenly divisible by the number of worker devices.
-        x = Dataset.from_generator(lambda x=x: x,
-                                   output_types=x_dtype,
-                                   output_shapes=x_shape[1:])
+        var_x = distributed_training_utils.get_var_for_numpy(
+            self._distribution_strategy, x)
+        x = dataset_ops.Dataset.from_tensor_slices(var_x)
         x = x.repeat()
-        x = x.batch(batch_size)
+        x = x.batch(batch_size, drop_remainder=drop_remainder)
 
     # TODO(anjalisridhar): Can we use the iterator and getnext op cache?
     # We require users to pass Datasets since we distribute the dataset across
@@ -853,7 +852,8 @@ class Model(Network):
     # able to clone a Dataset on multiple workers we can remove this lambda.
     result = self._distribution_strategy.distribute_dataset(lambda: x)
     iterator = result.make_initializable_iterator()
-    K.get_session().run(iterator.initializer)
+    with self._distribution_strategy.scope():
+      K.get_session().run(iterator.initializer)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
@@ -979,16 +979,18 @@ class Model(Network):
                            'Make sure that your dataset can generate '
                            'required number of samples.')
 
-      if (not isinstance(next_element, (list, tuple)) or
-          len(next_element) not in [2, 3]):
-        raise ValueError(
-            'Please provide model inputs as a list or tuple of 2  or 3'
-            'elements: (input, target) or (input, target, sample_weights)'
-            'Received %s' % next_element)
-      if len(next_element) == 2:
-        x, y = next_element
+      if isinstance(next_element, (list, tuple)):
+        if len(next_element) not in [2, 3]:
+          raise ValueError(
+              'Please provide model inputs as a list or tuple of 2  or 3'
+              'elements: (input, target) or (input, target, sample_weights)'
+              'Received %s' % next_element)
+        if len(next_element) == 2:
+          x, y = next_element
+        else:
+          x, y, sample_weight = next_element
       else:
-        x, y, sample_weight = next_element
+        x = next_element
     x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
                                                      class_weight, batch_size)
     return x, y, sample_weights
@@ -1416,6 +1418,8 @@ class Model(Network):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset or a dataset iterator
+            For the first two cases, `batch_size` must be provided.
+            For the last case, `validation_steps` must be provided.
         shuffle: Boolean (whether to shuffle the training data
             before each epoch) or str (for 'batch').
             'batch' is a special option for dealing with the
@@ -1451,9 +1455,10 @@ class Model(Network):
             TensorFlow data tensors, the default `None` is equal to
             the number of samples in your dataset divided by
             the batch size, or 1 if that cannot be determined.
-        validation_steps: Only relevant if `steps_per_epoch`
-            is specified. Total number of steps (batches of samples)
-            to validate before stopping.
+        validation_steps: Only relevant if `validation_data` is provided and
+            is a dataset or dataset iterator. Total number of steps (batches of
+            samples) to draw before stopping when performing validation
+            at the end of every epoch.
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
@@ -1517,7 +1522,8 @@ class Model(Network):
     if self._distribution_strategy:
       distributed_training_utils.validate_callbacks(callbacks)
 
-      distributed_training_utils.validate_inputs(x, y)
+      distributed_training_utils.validate_inputs(
+          x, y, self._distribution_strategy)
 
       first_x_value = nest.flatten(x)[0]
       if not steps_per_epoch and isinstance(first_x_value, np.ndarray):
@@ -1559,7 +1565,8 @@ class Model(Network):
 
       # Validate and standardize validation data.
       if self._distribution_strategy:
-        distributed_training_utils.validate_inputs(val_x, val_y)
+        distributed_training_utils.validate_inputs(
+            val_x, val_y, self._distribution_strategy)
         first_valx_value = nest.flatten(val_x)[0]
         if not validation_steps and isinstance(first_valx_value, np.ndarray):
           validation_steps = distributed_training_utils.get_input_batch_params(
@@ -1733,7 +1740,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_inputs(x, y)
+      distributed_training_utils.validate_inputs(
+          x, y, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
@@ -1848,7 +1856,8 @@ class Model(Network):
       # `MirroredStrategy`.
       if hasattr(self._distribution_strategy, '_prefetch_on_device'):
         self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
-      distributed_training_utils.validate_inputs(x, None)
+      distributed_training_utils.validate_inputs(
+          x, None, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
@@ -2353,6 +2362,6 @@ class DistributedCallbackModel(Model):
     # Whitelisted atttributes of the model that can be accessed by the user
     # during a callback.
     if item not in ['_setattr_tracking']:
-      logging.warning('You are accessing attribute ' + item + 'of the '
+      logging.warning('You are accessing attribute ' + item + ' of the '
                       'DistributedCallbackModel that may not have been set '
                       'correctly.')

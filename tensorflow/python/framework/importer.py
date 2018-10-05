@@ -329,7 +329,7 @@ def _SetDefaultAttrValues(node_def, op_def):
         node_def.attr[key].CopyFrom(attr_def.default_value)
 
 
-@tf_export('import_graph_def')
+@tf_export('graph_util.import_graph_def', 'import_graph_def')
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
                  ' on this feature.', 'op_dict')

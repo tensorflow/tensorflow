@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
@@ -208,6 +208,9 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
+    case HloOpcode::kScatter:
+      // TODO(b/32495713): We aren't checking the embedded computation in
+      // Scatter.
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
     case HloOpcode::kParameter:
@@ -1278,7 +1281,7 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
 
 XlaOp XlaBuilder::CustomCall(const string& call_target_name,
                              absl::Span<const XlaOp> operands,
-                             const Shape& shape) {
+                             const Shape& shape, const string& opaque) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     if (absl::StartsWith(call_target_name, "$")) {
@@ -1289,6 +1292,7 @@ XlaOp XlaBuilder::CustomCall(const string& call_target_name,
     }
     *instr.mutable_shape() = shape;
     instr.set_custom_call_target(call_target_name);
+    instr.set_custom_call_opaque(opaque);
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
   });
 }
@@ -2289,7 +2293,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   // also a valid dependency order). The related ops will be added to the
   // subgraph in the same order.
   std::set<int64> related_ops;
-  tensorflow::gtl::FlatSet<int64> related_calls;  // Related computations.
+  absl::flat_hash_set<int64> related_calls;  // Related computations.
   std::queue<int64> worklist;
   worklist.push(root->id());
   related_ops.insert(root->id());
@@ -2681,8 +2685,9 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 }
 
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 absl::Span<const XlaOp> operands, const Shape& shape) {
-  return builder->CustomCall(call_target_name, operands, shape);
+                 absl::Span<const XlaOp> operands, const Shape& shape,
+                 const string& opaque) {
+  return builder->CustomCall(call_target_name, operands, shape, opaque);
 }
 
 XlaOp Complex(const XlaOp& real, const XlaOp& imag,

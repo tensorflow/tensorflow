@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/optimizers/pin_to_host_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -105,6 +107,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("scoped_allocator",
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
+  MK_OPT("small_op", new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -113,6 +116,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 
 Status MetaOptimizer::InitializeOptimizers(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  if (cfg_.disable_meta_optimizer()) {
+    return Status::OK();
+  }
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
@@ -132,6 +138,9 @@ Status MetaOptimizer::InitializeOptimizers(
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  }
+  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
+    optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
@@ -167,11 +176,12 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
-  return InitializeCustomGraphOptimizers(optimizers);
+  return InitializeCustomGraphOptimizers(std::set<string>(), optimizers);
 }
 
 Status MetaOptimizer::InitializeOptimizersByName(
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  std::set<string> initialized_custom_optimizers;
   for (const string& optimizer_name : cfg_.optimizers()) {
     auto optimizer = MakeNewOptimizer(optimizer_name);
     if (optimizer) {
@@ -185,18 +195,26 @@ Status MetaOptimizer::InitializeOptimizersByName(
 
     if (custom_optimizer) {
       VLOG(2) << "Registered custom graph optimizer: " << optimizer_name;
-      TF_RETURN_IF_ERROR(custom_optimizer->Init());
+      TF_RETURN_IF_ERROR(custom_optimizer->Init(
+          GetCustomGraphOptimizerConfig(optimizer_name)));
       optimizers->push_back(std::move(custom_optimizer));
+      initialized_custom_optimizers.insert(optimizer_name);
     } else {
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
-  return InitializeCustomGraphOptimizers(optimizers);
+  return InitializeCustomGraphOptimizers(initialized_custom_optimizers,
+                                         optimizers);
 }
 
 Status MetaOptimizer::InitializeCustomGraphOptimizers(
+    const std::set<string>& pre_initialized_optimizers,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
+    if (pre_initialized_optimizers.find(optimizer_config.name()) !=
+        pre_initialized_optimizers.end()) {
+      continue;
+    }
     // Initialize the ExperimentalImplementationSelector here instead of
     // CustomizeOptimizer registry, due the static link issue in TensorRT for
     // double registry.
@@ -215,11 +233,31 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
       TF_RETURN_IF_ERROR(custom_optimizer->Init(&optimizer_config));
       optimizers->push_back(std::move(custom_optimizer));
     } else {
+      // If there are no custom optimizers with given name, try to initalize a
+      // default optimizer. This way, custom configurable optimizers can be
+      // mixed with default optimizers in any order.
+      auto optimizer = MakeNewOptimizer(optimizer_config.name());
+      if (optimizer) {
+        VLOG(2) << "Registered default graph optimizer: "
+                << optimizer_config.name();
+        optimizers->push_back(std::move(optimizer));
+        continue;
+      }
       VLOG(2) << "Can't register an optimizer by name: "
               << optimizer_config.name();
     }
   }
   return Status::OK();
+}
+
+const RewriterConfig::CustomGraphOptimizer*
+MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
+  for (const auto& config : cfg_.custom_optimizers()) {
+    if (config.name() == name) {
+      return &config;
+    }
+  }
+  return nullptr;
 }
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
@@ -376,6 +414,15 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   FunctionLibraryDefinition flib(OpRegistry::Global(),
                                  optimized_graph->library());
 
+  // Find functions for which we might need to compute a gradient at runtime.
+  gtl::FlatSet<string> differentiable_functions;
+  for (const NodeDef& node : optimized_graph->node()) {
+    if (IsSymbolicGradient(node)) {
+      const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
+      if (f_attr) differentiable_functions.insert(f_attr->func().name());
+    }
+  }
+
   // Optimize each function only once.
   std::unordered_set<string> optimized_funcs;
   bool optimize_function_library = true;
@@ -391,6 +438,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Skip parametrized functions (function type or body is defined only at
       // function call time by caller node attributes).
+      // They should be specialized to their instantiation type parameters by
+      // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name;
@@ -404,6 +453,13 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       GrapplerFunctionItem func_item;
       TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
           func, flib, item.graph.versions().producer(), &func_item));
+
+      // If we need to compute the gradient of optimized function at runtime, we
+      // can't perform non-differentiable rewrites.
+      if (differentiable_functions.find(func_name) !=
+          differentiable_functions.end()) {
+        func_item.allowed_optimizations.non_differentiable_rewrites = false;
+      }
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -455,6 +511,9 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
+  if (cfg.disable_meta_optimizer()) {
+    return false;
+  }
   return !cfg.disable_model_pruning() ||
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.function_optimization() != RewriterConfig::OFF ||
@@ -468,6 +527,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          cfg.debug_stripper() == RewriterConfig::ON ||
          cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+         cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
 }
 

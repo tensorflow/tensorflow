@@ -1237,6 +1237,24 @@ class FunctionTest(test.TestCase):
     x = constant_op.constant([1.0, 2.0])
     self.assertAllEqual([2., 4.], self.evaluate(defined(x)))
 
+  def testCacheObjectHashCollisions(self):
+
+    class Foo(object):
+
+      def __hash__(self):
+        return 42
+
+    def func(foo):
+      del foo
+      return
+
+    defined = function.defun(func)
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 1)
+
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 2)
+
   def testPythonFunctionWithDefaultArgs(self):
 
     def func(foo, bar=1, baz=2):
@@ -1250,20 +1268,20 @@ class FunctionTest(test.TestCase):
 
     def cache_keys():
       """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[:3] for key in defined._function_cache)
+      return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn((0, 1, 20), cache_keys())
+    self.assertIn(('tRRR', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn((1, 1, 2), cache_keys())
+    self.assertIn(('tRRR', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
-    self.assertIn((1, 2, 3), cache_keys())
+    self.assertIn(('tRRR', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -1602,7 +1620,7 @@ class FunctionTest(test.TestCase):
     defun_add = function.defun_with_attributes(
         add, attributes={'experimental_3': True, 'experimental_4': 1.0})
 
-    with context.graph_mode(), self.test_session():
+    with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
         sq = matmul(t, t)
@@ -1636,7 +1654,7 @@ class FunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError,
                                  '.*Attribute name is not whitelisted.*'):
-      with context.graph_mode(), self.test_session():
+      with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           matmul(t, t)
@@ -1647,7 +1665,7 @@ class FunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError,
                                  '.*Unsupported attribute type.*'):
-      with context.graph_mode(), self.test_session():
+      with context.graph_mode(), self.cached_session():
         with ops.get_default_graph().as_default():
           t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
           add(t, t)
@@ -1669,12 +1687,38 @@ class FunctionTest(test.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 2)
+        self.assertEqual(len(graph._functions), 6)
+        # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
-        pre_register_matmul_func_name = functions[0].definition.signature.name
-        self.assertRegexpMatches(pre_register_matmul_func_name, '.*matmul.*')
-        pre_register_add_func_name = functions[1].definition.signature.name
-        self.assertRegexpMatches(pre_register_add_func_name, '.*add.*')
+        captured_function_names = [
+            f.definition.signature.name for f in functions
+        ]
+        expected_func_name_regex = [
+            '.*inference.*matmul.*',
+            '.*forward.*matmul.*',
+            '.*inference.*backward.*matmul.*',
+            '.*inference.*add.*',
+            '.*forward.*add.*',
+            '.*inference.*backward.*add.*',
+        ]
+        for i in range(len(functions)):
+          self.assertRegexpMatches(captured_function_names[i],
+                                   expected_func_name_regex[i])
+
+        # Check the forward and backward function has the correct attributes.
+        self.assertEquals(
+            functions[1].definition.attr['backward_function_name'].s,
+            functions[2].name)
+        self.assertEquals(
+            functions[2].definition.attr['forward_function_name'].s,
+            functions[1].name)
+
+        self.assertEquals(
+            functions[4].definition.attr['backward_function_name'].s,
+            functions[5].name)
+        self.assertEquals(
+            functions[5].definition.attr['forward_function_name'].s,
+            functions[4].name)
 
         sq = defun_matmul(t, t)
         double = add(t, t)
@@ -1682,12 +1726,11 @@ class FunctionTest(test.TestCase):
         self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
         # Make sure the pre registered function is used, and no other function
         # is added.
-        self.assertEqual(len(graph._functions), 2)
+        self.assertEqual(len(graph._functions), 6)
         functions = list(graph._functions.values())
-        called_func_name = functions[0].definition.signature.name
-        self.assertEqual(pre_register_matmul_func_name, called_func_name)
-        called_func_name = functions[1].definition.signature.name
-        self.assertEqual(pre_register_add_func_name, called_func_name)
+        for i in range(len(functions)):
+          self.assertEquals(captured_function_names[i],
+                            functions[i].definition.signature.name)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -1705,7 +1748,7 @@ class FunctionTest(test.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 1)
+        self.assertEqual(len(graph._functions), 3)
 
         # Test input param shape mismatch
         t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -1728,7 +1771,7 @@ class FunctionTest(test.TestCase):
         graph = ops.get_default_graph()
         # Only one function is registered since the input param are in same type
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 1)
+        self.assertEqual(len(graph._functions), 3)
 
   def testCallingFunctionWithDifferentVariables(self):
 
@@ -1767,7 +1810,8 @@ class FunctionTest(test.TestCase):
                                  'be Tensors;.*'):
       graph_function('Not a Tensor.')
 
-  def testSwapImplementationWithGrapplerPlugin(self):
+  # TODO(scottzhu): Revive the test once the grappler plugin is updated.
+  def disabled_testSwapImplementationWithGrapplerPlugin(self):
     rewrites = rewriter_config_pb2.RewriterConfig()
     # function_optimizer has to be turn off, otherwise it will delete the
     # registered function if it does not get called.
@@ -1811,6 +1855,36 @@ class FunctionTest(test.TestCase):
       else:
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEquals(y_value, 3.0)
+
+  def testDefunFunctionSeparateGraphs(self):
+    with context.graph_mode():
+
+      @function.defun
+      def add(x):
+        return x + 5
+
+      @function.defun
+      def maybe_add(x, should_add):
+        if should_add:
+          return add(x)
+        else:
+          return x
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 1)
+        self.assertEqual(len(add._function_cache), 1)
+
+        maybe_add(x, False)
+        self.assertEqual(len(maybe_add._function_cache), 2)
+        self.assertEqual(len(add._function_cache), 1)
+
+      with ops.Graph().as_default():
+        x = constant_op.constant(11)
+        maybe_add(x, True)
+        self.assertEqual(len(maybe_add._function_cache), 3)
+        self.assertEqual(len(add._function_cache), 2)
 
 
 @test_util.with_c_shapes

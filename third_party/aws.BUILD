@@ -24,6 +24,12 @@ cc_library(
         "@org_tensorflow//tensorflow:raspberry_pi_armeabi": glob([
             "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
         ]),
+        "@org_tensorflow//tensorflow:rpi3": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:rpi3-armv8": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
         "//conditions:default": [],
     }) + glob([
         "aws-cpp-sdk-core/include/**/*.h",

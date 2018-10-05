@@ -47,7 +47,7 @@ def tfadd(_):
 
 def tfadd_with_ckpt(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
-  y = variables.Variable(constant_op.constant([0]), name='y_saved')
+  y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
   init_op = variables.initialize_all_variables()
@@ -62,7 +62,7 @@ def tfadd_with_ckpt(out_dir):
 
 def tfadd_with_ckpt_saver(out_dir):
   x = array_ops.placeholder(dtypes.int32, name='x_hold')
-  y = variables.Variable(constant_op.constant([0]), name='y_saved')
+  y = variables.VariableV1(constant_op.constant([0]), name='y_saved')
   math_ops.add(x, y, name='x_y_sum')
 
   init_op = variables.initialize_all_variables()

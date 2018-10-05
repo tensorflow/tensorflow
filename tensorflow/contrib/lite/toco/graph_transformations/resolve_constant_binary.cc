@@ -191,6 +191,14 @@ void EvaluateBinaryOperatorOnConstantInputs(Model* model,
 bool ResolveConstantBinaryOperator::Run(Model* model, std::size_t op_index) {
   const auto binary_it = model->operators.begin() + op_index;
   const auto* binary_op = binary_it->get();
+
+  // If the output of this op is a non-discardable array such as an input_array
+  // or a state array of the model, then this is a job for RemoveUnusedOp, not
+  // for constants-propagation.
+  if (!IsDiscardableArray(*model, binary_op->outputs[0])) {
+    return false;
+  }
+
   // Test for binary ops of types that we know how to resolve
   if (binary_op->type != OperatorType::kAdd &&
       binary_op->type != OperatorType::kMul &&

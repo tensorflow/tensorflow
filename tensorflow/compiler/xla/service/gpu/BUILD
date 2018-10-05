@@ -91,6 +91,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -357,6 +358,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
         "//tensorflow/stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -371,7 +373,6 @@ cc_library(
     hdrs = ["ir_emission_utils.h"],
     deps = [
         ":backend_configs",
-        ":cudnn_convolution_runner",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -412,6 +413,8 @@ cc_library(
     srcs = ["cudnn_convolution_runner.cc"],
     hdrs = ["cudnn_convolution_runner.h"],
     deps = [
+        ":backend_configs",
+        ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -420,8 +423,10 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -430,6 +435,7 @@ cc_library(
     srcs = ["cudnn_convolution_rewriter.cc"],
     hdrs = ["cudnn_convolution_rewriter.h"],
     deps = [
+        ":backend_configs",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:util",
@@ -470,6 +476,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -502,6 +509,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:multi_output_fusion",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -535,6 +543,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -594,14 +603,11 @@ cc_library(
     hdrs = ["pad_for_tensor_cores.h"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:shape_inference",
     ],
 )
 
@@ -654,6 +660,7 @@ cc_library(
     deps = [
         ":cudnn_convolution_algorithm_picker",
         ":cudnn_convolution_rewriter",
+        ":cudnn_fused_convolution_rewriter",
         ":fusion_merger",
         ":gpu_constants",
         ":gpu_copy_insertion",
@@ -711,6 +718,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -781,6 +789,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -963,5 +972,21 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "cudnn_fused_convolution_rewriter",
+    srcs = ["cudnn_fused_convolution_rewriter.cc"],
+    hdrs = ["cudnn_fused_convolution_rewriter.h"],
+    deps = [
+        ":backend_configs",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )

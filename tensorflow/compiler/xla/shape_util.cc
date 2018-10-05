@@ -422,8 +422,11 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
-  CHECK_EQ(shape.dimensions_size(), Rank(shape));
+  DCHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
+  DCHECK_EQ(shape.dimensions_size(), Rank(shape));
+  if (shape.dimensions().size() == 1) {
+    return shape.dimensions()[0];
+  }
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
       std::multiplies<int64>());
@@ -828,7 +831,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
-  if (shape.element_type() == PRIMITIVE_TYPE_INVALID) {
+  if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
+      !PrimitiveType_IsValid(shape.element_type())) {
     return InvalidArgument("shape has invalid element type: %s",
                            shape.ShortDebugString());
   }

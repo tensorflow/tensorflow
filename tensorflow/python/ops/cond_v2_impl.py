@@ -96,9 +96,12 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
 
     # Create the If op.
     tensors = gen_functional_ops._if(  # pylint: disable=protected-access
-        pred, cond_inputs, [t.dtype for t in true_graph.outputs],
+        pred,
+        cond_inputs, [t.dtype for t in true_graph.outputs],
         _create_new_tf_function(true_graph),
         _create_new_tf_function(false_graph),
+        output_shapes=_get_output_shapes(true_graph.outputs,
+                                         false_graph.outputs),
         name=scope)
 
     # Set the flag to enable lowering on the `if` op if necessary
@@ -119,7 +122,11 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
                       attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
 
-    return tuple(tensors[:num_cond_outputs])
+    result = tuple(tensors[:num_cond_outputs])
+    if len(result) == 1:
+      return result[0]
+    else:
+      return result
 
 
 @ops.RegisterGradient("If")
@@ -171,9 +178,12 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
 
   # Create the gradient If op.
   tensors = gen_functional_ops._if(
-      op.inputs[0], grad_inputs, [t.dtype for t in true_grad_graph.outputs],
+      op.inputs[0],
+      grad_inputs, [t.dtype for t in true_grad_graph.outputs],
       _create_new_tf_function(true_grad_graph),
-      _create_new_tf_function(false_grad_graph))
+      _create_new_tf_function(false_grad_graph),
+      output_shapes=_get_output_shapes(true_grad_graph.outputs,
+                                       false_grad_graph.outputs))
 
   # The predicate has no gradient.
   return [None] + tensors[:num_grad_outputs]
@@ -474,6 +484,14 @@ def _check_same_outputs(true_graph, false_graph):
         "arguments, got:\n"
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
+
+
+def _get_output_shapes(true_graph_outputs, false_graph_outputs):
+  output_shapes = [
+      t_out.shape.most_specific_compatible_shape(f_out.shape)
+      for t_out, f_out in zip(true_graph_outputs, false_graph_outputs)
+  ]
+  return output_shapes
 
 
 def _is_ancestor(graph, maybe_ancestor):

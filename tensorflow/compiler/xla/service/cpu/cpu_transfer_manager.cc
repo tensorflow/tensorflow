@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
 
@@ -128,7 +129,8 @@ Status CpuTransferManager::TransferLiteralToInfeed(
     buffers.push_back(buffer);
   }
 
-  cpu::runtime::XfeedManager* xfeed_manager = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed_manager =
+      cpu::runtime::GetXfeedManager(executor->device_ordinal());
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
   cleanup.release();
@@ -141,7 +143,8 @@ Status CpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(executor, size, source));
 
-  cpu::runtime::XfeedManager* xfeed_manager = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed_manager =
+      cpu::runtime::GetXfeedManager(executor->device_ordinal());
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
   return Status::OK();
@@ -265,7 +268,8 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
     buffer_pointers.push_back(b.get());
   }
 
-  cpu::runtime::XfeedManager* xfeed_manager = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed_manager =
+      cpu::runtime::GetXfeedManager(executor->device_ordinal());
   xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
   VLOG(2) << "Waiting for buffer to be notified as populated.";
   std::vector<Shape> outfed_shapes;

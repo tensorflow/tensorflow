@@ -134,7 +134,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             dims[0] for dims in self._GetParamsCached().input_dims if len(dims)
         ]),
         max_workspace_size_bytes=1 << 25,
-        precision_mode=self._ToBytes(run_params.precision_mode),
+        precision_mode=run_params.precision_mode,
         minimum_segment_size=2,
         is_dynamic_op=run_params.dynamic_engine,
         maximum_cached_engines=1,

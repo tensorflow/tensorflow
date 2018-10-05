@@ -615,11 +615,7 @@ def tf_kernel_tests_linkstatic():
 
 def tf_additional_lib_defines():
     """Additional defines needed to build TF libraries."""
-    return select({
-        "//tensorflow:with_jemalloc_linux_x86_64": ["TENSORFLOW_USE_JEMALLOC"],
-        "//tensorflow:with_jemalloc_linux_ppc64le": ["TENSORFLOW_USE_JEMALLOC"],
-        "//conditions:default": [],
-    })
+    return []
 
 def tf_additional_lib_deps():
     """Additional dependencies needed to build TF libraries."""
@@ -631,64 +627,45 @@ def tf_additional_lib_deps():
     ] + if_static(
         ["@nsync//:nsync_cpp"],
         ["@nsync//:nsync_headers"],
-    ) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64_dynamic": ["@jemalloc//:jemalloc_headers"],
-        "//tensorflow:with_jemalloc_linux_ppc64le_dynamic": ["@jemalloc//:jemalloc_headers"],
-        "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
-        "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
-        "//conditions:default": [],
-    })
+    )
 
 def tf_additional_core_deps():
     return select({
-        "//tensorflow:with_gcp_support_android_override": [],
-        "//tensorflow:with_gcp_support_ios_override": [],
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_hdfs_support_windows_override": [],
-        "//tensorflow:with_hdfs_support_android_override": [],
-        "//tensorflow:with_hdfs_support_ios_override": [],
-        "//tensorflow:with_hdfs_support": [
+            "//tensorflow/core/platform/s3:s3_file_system",
             "//tensorflow/core/platform/hadoop:hadoop_file_system",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_aws_support_windows_override": [],
-        "//tensorflow:with_aws_support_android_override": [],
-        "//tensorflow:with_aws_support_ios_override": [],
-        "//tensorflow:with_aws_support": [
-            "//tensorflow/core/platform/s3:s3_file_system",
-        ],
-        "//conditions:default": [],
     })
 
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_op_deps():
     return select({
-        "//tensorflow:with_gcp_support_windows_override": [],
-        "//tensorflow:with_gcp_support_android_override": [],
-        "//tensorflow:with_gcp_support_ios_override": [],
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
             "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
         ],
-        "//conditions:default": [],
     })
 
 # TODO(jart, jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
     return select({
-        "//tensorflow:with_gcp_support_windows_override": [],
-        "//tensorflow:with_gcp_support_android_override": [],
-        "//tensorflow:with_gcp_support_ios_override": [],
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
             "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
         ],
-        "//conditions:default": [],
     })
 
 def tf_lib_proto_parsing_deps():
@@ -738,11 +715,7 @@ def tf_additional_binary_deps():
             "//tensorflow/stream_executor:cuda_platform",
             "//tensorflow/core/platform/default/build_config:cuda",
         ],
-    ) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": ["@jemalloc//:jemalloc_impl"],
-        "//tensorflow:with_jemalloc_linux_ppc64le": ["@jemalloc//:jemalloc_impl"],
-        "//conditions:default": [],
-    }) + [
+    ) + [
         # TODO(allenl): Split these out into their own shared objects (they are
         # here because they are shared between contrib/ op shared objects and
         # core).

@@ -20,6 +20,8 @@ limitations under the License.
 #include <set>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -75,7 +77,7 @@ bool IsRematerializable(const HloInstruction* instruction) {
 // cache before, and eventually calling the IsRematerializable() API.
 bool CanBeRematerialized(
     const HloInstruction* instruction,
-    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+    absl::flat_hash_map<const HloInstruction*, bool>* remat_able) {
   auto it = remat_able->find(instruction);
   if (it != remat_able->end()) {
     return it->second;
@@ -268,7 +270,7 @@ class InstructionList {
   Item* first_;
 
   // Item for each instruction.
-  tensorflow::gtl::FlatMap<const HloInstruction*, Item*> item_map_;
+  absl::flat_hash_map<const HloInstruction*, Item*> item_map_;
 };
 
 // Return the items which use the given LogicalBuffer. Sets
@@ -503,7 +505,7 @@ MemoryUsageTracker::MemoryUsageTracker(
   PointsToSet::BufferSet live_out_set =
       points_to_analysis.GetPointsToSet(computation_->root_instruction())
           .CreateFlattenedSet();
-  tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferId>
+  absl::flat_hash_map<const LogicalBuffer*, BufferId>
       logical_buffer_to_buffer_id;
 
   for (auto* item = instruction_list_.first(); item != nullptr;
@@ -854,7 +856,7 @@ int64 RematerializationCost(const HloInstruction* instruction,
 Item* PickRematerializationCandidate(
     const MemoryUsageTracker& memory_tracker,
     const InstructionList& instruction_list, int64 memory_limit_bytes,
-    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+    absl::flat_hash_map<const HloInstruction*, bool>* remat_able) {
   Item* best_item = nullptr;
   int64 best_cost = 0;
 
@@ -980,10 +982,10 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // rematerialization is essentially a move). If the next rematerialization of
   // the instruction is also a move then the rematerialization is added to the
   // blacklist.
-  tensorflow::gtl::FlatSet<const HloInstruction*> remat_move_instructions;
+  absl::flat_hash_set<const HloInstruction*> remat_move_instructions;
 
   // The map from instructions to their rematerializable status.
-  tensorflow::gtl::FlatMap<const HloInstruction*, bool> remat_able;
+  absl::flat_hash_map<const HloInstruction*, bool> remat_able;
 
   // The peak memory of the computation at any point in the instruction
   // sequence.

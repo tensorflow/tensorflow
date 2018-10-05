@@ -55,7 +55,7 @@ def get_resource_handle_data(graph_op):
       compat.as_bytes(handle_data))
 
 
-def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
+def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
   """Creates a variable handle with information to do shape inference."""
   container = ops.get_default_graph()._container  # pylint: disable=protected-access
   if container is None:
@@ -397,61 +397,33 @@ class ResourceVariable(variables.RefVariable):
           # When in eager mode use a uid for the shared_name, to prevent
           # accidental sharing.
           shared_name = "%s_%d" % (handle_name, ops.uid())
-        if init_from_fn:
-          # Use attr_scope and device(None) to simulate the behavior of
-          # colocate_with when the variable we want to colocate with doesn't
-          # yet exist.
-          if self._in_graph_mode:
-            attr = attr_value_pb2.AttrValue(
-                list=attr_value_pb2.AttrValue.ListValue(
-                    s=[compat.as_bytes("loc:@%s" % handle_name)]))
-            with ops.get_default_graph()._attr_scope({"_class": attr}):
-              with ops.name_scope("Initializer"), ops.device(None):
-                initial_value = ops.convert_to_tensor(
-                    initial_value(), name="initial_value", dtype=dtype)
-              self._handle = _eager_safe_variable_handle(
-                  shape=initial_value.get_shape(),
-                  dtype=initial_value.dtype.base_dtype,
-                  shared_name=shared_name,
-                  name=name,
-                  graph_mode=self._in_graph_mode)
-              self._shape = initial_value.get_shape()
-          else:
-            initial_value = initial_value()
-            with ops.name_scope("Initializer"):
-              initial_value = ops.convert_to_tensor(
-                  initial_value, name="initial_value", dtype=dtype)
-            self._handle = _eager_safe_variable_handle(
-                shape=initial_value.get_shape(),
-                dtype=initial_value.dtype.base_dtype,
-                shared_name=shared_name,
-                name=name,
-                graph_mode=False)
-            self._shape = initial_value.get_shape()
-        # pylint: enable=protected-access
-
-        # Or get the initial value from a Tensor or Python object.
-        else:
-          with ops.name_scope("Initializer"):
+        # Use attr_scope and device(None) to simulate the behavior of
+        # colocate_with when the variable we want to colocate with doesn't
+        # yet exist.
+        attr = attr_value_pb2.AttrValue(
+            list=attr_value_pb2.AttrValue.ListValue(
+                s=[compat.as_bytes("loc:@%s" % handle_name)]))
+        with ops.get_default_graph()._attr_scope({"_class": attr}):
+          with ops.name_scope("Initializer"), ops.device(None):
             initial_value = ops.convert_to_tensor(
-                initial_value, name="initial_value", dtype=dtype)
-          # pylint: disable=protected-access
-          if (self._in_graph_mode and initial_value is not None and
-              initial_value.op._get_control_flow_context() is not None):
-            raise ValueError(
-                "Initializer for variable %s is from inside a control-flow "
-                "construct, such as a loop or conditional. When creating a "
-                "variable inside a loop or conditional, use a lambda as the "
-                "initializer." % name)
-          # pylint: enable=protected-access
-          self._handle = _eager_safe_variable_handle(
+                initial_value() if init_from_fn else initial_value,
+                name="initial_value", dtype=dtype)
+          self._handle = eager_safe_variable_handle(
               shape=initial_value.get_shape(),
               dtype=initial_value.dtype.base_dtype,
               shared_name=shared_name,
               name=name,
               graph_mode=self._in_graph_mode)
-          self._shape = initial_value.get_shape()
-
+        self._shape = initial_value.shape
+        # pylint: disable=protected-access
+        if (self._in_graph_mode and initial_value is not None and
+            initial_value.op._get_control_flow_context() is not None):
+          raise ValueError(
+              "Initializer for variable %s is from inside a control-flow "
+              "construct, such as a loop or conditional. When creating a "
+              "variable inside a loop or conditional, use a lambda as the "
+              "initializer." % name)
+        # pylint: enable=protected-access
         self._unique_id = shared_name
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"

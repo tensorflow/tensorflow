@@ -278,15 +278,8 @@ class IteratorContext {
     // Function call support.
     std::function<void(std::function<void()>)> runner = nullptr;
 
-    // A function that returns the current `StatsAggregator` instance to be
-    // used when recording statistics about the iterator.
-    //
-    // NOTE(mrry): This is somewhat awkward, because (i) the `StatsAggregator`
-    // is a property of the `IteratorResource` (which this class does not know
-    // about), and (ii) it can change after the `IteratorContext` has been
-    // created. Better suggestions are welcome!
-    std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
-        nullptr;
+    // The `StatsAggregator` object to record statistics about the iterator.
+    std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
     // The FunctionLibraryRuntime object to be used to make function calls.
     FunctionLibraryRuntime* lib = nullptr;
@@ -320,13 +313,6 @@ class IteratorContext {
     return &params_.runner;
   }
 
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    if (params_.stats_aggregator_getter) {
-      return params_.stats_aggregator_getter();
-    } else {
-      return nullptr;
-    }
-  }
 
   std::shared_ptr<const FunctionLibraryDefinition> function_library() {
     return params_.function_library;
@@ -344,8 +330,8 @@ class IteratorContext {
     return params_.allocator_getter;
   }
 
-  std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter() {
-    return params_.stats_aggregator_getter;
+  std::shared_ptr<StatsAggregator> stats_aggregator() {
+    return params_.stats_aggregator;
   }
 
   std::shared_ptr<model::Model> model() { return params_.model; }
@@ -529,25 +515,11 @@ class DatasetBase : public core::RefCounted {
                       std::unique_ptr<IteratorBase>* iterator) const {
     *iterator = MakeIteratorInternal(prefix);
     if (ctx->model()) {
-      // The prefix might contain an index. We need to strip it to make it
-      // possible for the model to successfully identify the output node.
-      string sanitized_prefix = prefix;
-      if (str_util::EndsWith(prefix, "]")) {
-        sanitized_prefix = prefix.substr(0, prefix.rfind('['));
-      }
-      std::shared_ptr<model::Node> node =
-          ctx->model()->AddNode((*iterator)->prefix(), sanitized_prefix);
-      std::vector<string> tokens =
-          str_util::Split((*iterator)->prefix(), ':', str_util::SkipEmpty());
-      node->set_name(tokens[tokens.size() - 1]);
+      ctx->model()->AddNode((*iterator)->prefix(), prefix);
       std::shared_ptr<model::Model> model = ctx->model();
       const string& prefix = (*iterator)->prefix();
-      (*iterator)->AddCleanupFunction([model, node, prefix]() {
-        if (node->output()) {
-          node->output()->remove_input(node);
-        }
-        model->RemoveNode(prefix);
-      });
+      (*iterator)->AddCleanupFunction(
+          [model, prefix]() { model->RemoveNode(prefix); });
     }
     return (*iterator)->Initialize(ctx);
   }
@@ -629,23 +601,10 @@ class DatasetBaseIterator : public IteratorBase {
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) final {
     tracing::ScopedActivity activity(params_.prefix);
-    Status s;
-    if (ctx->model()) {
-      std::shared_ptr<model::Node> node =
-          ctx->model()->LookupNode(params_.prefix);
-      if (node->output()) {
-        node->output()->stop_work();
-      }
-      node->start_work();
-      s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-      node->stop_work();
-      node->add_element();
-      if (node->output()) {
-        node->output()->start_work();
-      }
-    } else {
-      s = GetNextInternal(ctx, out_tensors, end_of_sequence);
-    }
+    RecordStart(ctx, true /* stop_output */);
+    Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
+    if (s.ok() && !*end_of_sequence) RecordElement(ctx);
+    RecordStop(ctx, true /* start_output */);
     if (TF_PREDICT_FALSE(errors::IsOutOfRange(s) && !*end_of_sequence)) {
       s = errors::Internal(
           "Iterator \"", params_.prefix,
@@ -677,52 +636,46 @@ class DatasetBaseIterator : public IteratorBase {
   void AddConstantParameter(IteratorContext* ctx, const string& name,
                             int64 value) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->add_constant_param(name, value);
-      }
+      ctx->model()->AddConstantParameter(prefix(), name, value);
     }
   }
 
   // When performance modeling is enabled, this method adds a tunable parameter
   // to the model node corresponding to this iterator.
   //
-  // The `set_fn` function should set the tunable parameter to the value of
-  // its input argument. The function should be thread-safe; in particular, the
-  // state it updates should be protected by a lock as the function can be
-  // invoked asynchronously. It is guaranteed that this function will not be
-  // invoked after the iterator is deleted because the model node that owns
-  // the function is deleted when the iterator is deleted.
+  // The performance modeling logic may use `state` to set the value of the
+  // tunable parameter at any point during the lifetime of this iterator. When
+  // it does, it acquires `state->mu` and notifies `state->cond_var`.
   void AddTunableParameter(IteratorContext* ctx, const string& name,
-                           int64 value, int64 min, int64 max,
-                           std::function<void(int64)>&& set_fn) {
+                           std::shared_ptr<model::SharedState> state, int64 min,
+                           int64 max) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->add_tunable_param(name, value, min, max, std::move(set_fn));
-      }
+      ctx->model()->AddTunableParameter(prefix(), name, std::move(state), min,
+                                        max);
+    }
+  }
+
+  // When performance modeling is enabled, this method records the fact that
+  // this iterator has produced an element.
+  void RecordElement(IteratorContext* ctx) {
+    if (ctx->model()) {
+      ctx->model()->RecordElement(prefix());
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has started work.
-  void StartWork(IteratorContext* ctx) {
+  void RecordStart(IteratorContext* ctx, bool stop_output = false) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->start_work();
-      }
+      ctx->model()->RecordStart(prefix(), stop_output);
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has stopped work.
-  void StopWork(IteratorContext* ctx) {
+  void RecordStop(IteratorContext* ctx, bool start_output = false) {
     if (ctx->model()) {
-      std::shared_ptr<model::Node> node = ctx->model()->LookupNode(prefix());
-      if (node) {
-        node->stop_work();
-      }
+      ctx->model()->RecordStop(prefix(), start_output);
     }
   }
 

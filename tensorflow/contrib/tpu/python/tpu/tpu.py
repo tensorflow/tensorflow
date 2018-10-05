@@ -155,19 +155,20 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, var):
+  def get_replicated_var_handle(self, name, vars_):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
     and is not intended as a public API.
 
     Args:
-      var: The replicated TPU variable.
+      name: The common name of the variable.
+      vars_: The replicated TPU variables.
 
     Returns:
       The handle of the TPU replicated input node.
     """
-    handle = self._replicated_vars.get(var)
+    handle = self._replicated_vars.get(name)
     if handle is not None:
       return handle
 
@@ -183,10 +184,10 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     saved_context = graph._get_control_flow_context()
     graph._set_control_flow_context(self.outer_context)
     handle = tpu_ops.tpu_replicated_input(
-        [v.handle for v in var._vars], name=var.name + "/handle")
+        [v.handle for v in vars_], name=name + "/handle")
     graph._set_control_flow_context(saved_context)
     # pylint: enable=protected-access
-    self._replicated_vars[var] = handle
+    self._replicated_vars[name] = handle
     return handle
 
   def report_unsupported_operations(self):
@@ -562,13 +563,14 @@ def split_compile_and_replicate(computation,
             device_assignment.core_assignment.flatten().tolist()
     }
     # TODO(phawkins): remove this case after the forward compatibility window
-    # expires on 2018-10-6.
-    if api_compat.forward_compatible(2018, 10, 6):
+    # expires on 2018-10-5.
+    if api_compat.forward_compatible(2018, 10, 5):
       metadata_kwargs["num_cores_per_replica"] = (
           device_assignment.num_cores_per_replica)
     else:
-      metadata_kwargs["computation_shape"] = (
-          device_assignment.computation_shape.tolist())
+      metadata_kwargs["computation_shape"] = [
+          device_assignment.num_cores_per_replica
+      ]
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -660,6 +662,10 @@ def split_compile_and_replicate(computation,
       # be less confusing to clients if they knowingly choose to use resource
       # variables.
       # Partitioned variables is not supported (b/112311320).
+      vscope = variable_scope.get_variable_scope()
+      saved_use_resource = vscope.use_resource
+      saved_custom_getter = vscope.custom_getter
+
       def custom_getter(getter, name, *args, **kwargs):
         """Variables on TPU have a few restrictions."""
         partitioner = kwargs["partitioner"]
@@ -670,12 +676,10 @@ def split_compile_and_replicate(computation,
               "`partitioner` that is {} for variable {}. "
               "Setting `partitioner` to `None`."
               .format(partitioner, name))
-        return getter(name, *args, **kwargs)
-
-      vscope = variable_scope.get_variable_scope()
-
-      saved_use_resource = vscope.use_resource
-      saved_custom_getter = vscope.custom_getter
+        if saved_custom_getter is None:
+          return getter(name, *args, **kwargs)
+        else:
+          return saved_custom_getter(getter, name, *args, **kwargs)
 
       vscope.set_use_resource(True)
       vscope.set_custom_getter(custom_getter)

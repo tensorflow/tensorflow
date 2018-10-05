@@ -28,6 +28,14 @@ bool ResolveConstantRange::Run(Model* model, std::size_t op_index) {
   auto* op = static_cast<RangeOperator*>(base_op);
 
   CHECK_EQ(op->inputs.size(), 3);
+
+  // If the output of this op is a non-discardable array such as an input_array
+  // or a state array of the model, then this is a job for RemoveUnusedOp, not
+  // for constants-propagation.
+  if (!IsDiscardableArray(*model, op->outputs[0])) {
+    return false;
+  }
+
   const auto& start_array = model->GetArray(op->inputs[0]);
   if (!start_array.has_shape()) {
     // Yield until all input dims have been resolved.

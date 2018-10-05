@@ -43,7 +43,10 @@ cc_library(
         "compatibility.h",
         "types.h",
     ],
-    deps = ["@com_google_absl//absl/base:core_headers"],
+    deps = [
+        "//tensorflow/contrib/lite/kernels:op_macros",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 config_setting(
@@ -260,6 +263,7 @@ cc_library(
     deps = [
         ":round",
         ":types",
+        "//tensorflow/contrib/lite/kernels:op_macros",
     ],
 )
 
@@ -291,7 +295,9 @@ cc_library(
         "common.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/fully_connected.h",
         "reference/reference_ops.h",
+        "reference/softmax.h",
     ],
     deps = [
         ":quantization_util",
@@ -300,6 +306,7 @@ cc_library(
         ":types",
         "@gemmlowp",
         "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -320,8 +327,10 @@ cc_library(
         "common.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
+        "reference/fully_connected.h",
         "reference/legacy_reference_ops.h",
         "reference/reference_ops.h",
+        "reference/softmax.h",
     ],
     deps = [
         ":quantization_util",
@@ -330,6 +339,7 @@ cc_library(
         ":types",
         "@gemmlowp",
         "//tensorflow/contrib/lite/c:c_api_internal",
+        "//tensorflow/contrib/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -462,6 +472,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "@arm_neon_2_x86_sse",
+        "//tensorflow/contrib/lite/kernels:op_macros",
         "@gemmlowp",
     ] + select({
         ":arm": [

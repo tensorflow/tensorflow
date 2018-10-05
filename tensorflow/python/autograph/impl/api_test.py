@@ -55,7 +55,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -75,7 +75,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -96,7 +96,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -122,7 +122,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -145,7 +145,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -185,7 +185,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -202,7 +202,7 @@ class ApiTest(test.TestCase):
         return -x
       return x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = api.converted_call(test_fn, api.ConversionOptions.new(),
                              constant_op.constant(-1))
       self.assertEqual(1, sess.run(x))
@@ -219,7 +219,7 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
       x = api.converted_call(tc.test_method, api.ConversionOptions.new(), tc)
       self.assertEqual(1, sess.run(x))
@@ -236,7 +236,7 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
       x = api.converted_call(
           TestClass.test_method,
@@ -255,7 +255,7 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
       x = api.converted_call(tc, api.ConversionOptions.new())
       self.assertEqual(1, sess.run(x))
@@ -272,7 +272,7 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = api.converted_call(TestClass, api.ConversionOptions.new(),
                               constant_op.constant(-1))
       # tc is now a converted object.
@@ -284,7 +284,7 @@ class ApiTest(test.TestCase):
     def f(x):
       return x == 0
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = api.converted_call(f, api.ConversionOptions.new(),
                              constant_op.constant(0))
       self.assertTrue(sess.run(x))
@@ -303,7 +303,7 @@ class ApiTest(test.TestCase):
 
     compiled_fn = api.to_graph(test_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = compiled_fn(constant_op.constant([4, 8]), 4)
       self.assertListEqual([1, 2], sess.run(x).tolist())
 

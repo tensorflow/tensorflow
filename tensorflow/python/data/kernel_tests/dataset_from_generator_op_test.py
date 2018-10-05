@@ -22,6 +22,7 @@ import threading
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,7 +31,7 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class DatasetConstructorTest(test.TestCase):
+class DatasetConstructorTest(test_base.DatasetTestBase):
 
   def _testFromGenerator(self, generator, elem_sequence, num_repeats,
                          output_types=None):

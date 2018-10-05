@@ -19,11 +19,11 @@ limitations under the License.
 #include <list>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -154,7 +154,7 @@ class HloReachabilityMap {
 
   // Dense assignment from HloInstruction* to number. These numbers index
   // into the bit_vectors_ vector and into the bits within a BitVector.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int> indices_;
+  absl::flat_hash_map<const HloInstruction*, int> indices_;
 
   // Bitvectors holding the reachability to each instruction. The bit vector for
   // instruction X includes ones for each instruction which X is reachable from.
