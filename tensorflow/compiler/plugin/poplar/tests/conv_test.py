@@ -541,7 +541,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       mem_nchw = tu.get_total_memory_from_report(s)
 
-      self.assertTrue(mem_nchw < mem_nhwc)
+      self.assertTrue((mem_nhwc - mem_nchw) / mem_nhwc > -0.1)
 
 if __name__ == "__main__":
     googletest.main()
