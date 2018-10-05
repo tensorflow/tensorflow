@@ -621,7 +621,7 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       MklDnnData<T> diff_dst(&cpu_engine);
 
       // This flag indicate Conv2D or Conv3D
-      bool isConv2D = (this->strides_.size() == 4);
+      bool is_Conv2D = (this->strides_.size() == 4);
 
       // Input tensors
       const int kInputIdx = 0, kFilterIdx = 1, kOutbpropIdx = 2;
@@ -680,13 +680,13 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_output_dims_tf_order, &fwd_output_dims,
-          &padding_left, &padding_right);
+          &padding_left, &padding_right, false);
       if (!context->status().ok()) return;
 
       // Create Convolution forward descriptor since Convolution backward
       // API needs it. For that, we first need to create input, filter
       // and output memory descriptors.
-      auto tf_fmt = isConv2D
+      auto tf_fmt = is_Conv2D
                         ? TFDataFormatToMklDnnDataFormat(this->data_format_)
                         : TFDataFormatToMklDnn3DDataFormat(this->data_format_);
 
@@ -696,7 +696,7 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       auto fwd_filter_md = filter_mkl_shape.IsMklTensor()
                                ? filter_mkl_shape.GetMklLayout()
                                : memory::desc(fwd_filter_dims, MklDnnType<T>(),
-                                              isConv2D ? memory::format::hwio
+                                              is_Conv2D ? memory::format::hwio
                                                        : memory::format::dhwio);
 
       conv_utl.GetInputSizeInMklOrder(diff_dst_tf_shape, &diff_dst_dims);

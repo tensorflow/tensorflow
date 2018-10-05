@@ -760,7 +760,7 @@ class MklConvOp : public OpKernel {
 #else
 
 // Base class for convolution forward operations
-template <typename Device, typename T, bool biasEnabled>
+template <typename Device, typename T, bool biasEnabled, bool is_Depthwise>
 class MklConvOp : public OpKernel {
  public:
   ~MklConvOp() {}
@@ -846,7 +846,7 @@ class MklConvOp : public OpKernel {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims,
           &strides, &dilations, &dst_dims_tf_order, &dst_dims_mkl_order,
-          &padding_left, &padding_right);
+          &padding_left, &padding_right, is_Depthwise);
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -871,12 +871,19 @@ class MklConvOp : public OpKernel {
         return;
       }
 
-      bool isConv2D = (strides_.size() == 4);
+      bool is_Conv2D = (strides_.size() == 4);
+
+      //TODO 3-D support for Depthwise is not there
+      if (is_Depthwise) {
+        OP_REQUIRES(context, is_Conv2D,
+                     errors::InvalidArgument(
+                       "Only 2D convolution is supported for depthwise."));
+      }
 
       // Create memory for user data.
       // Describe how the inputs and outputs of Convolution look like. Also
       // specify buffers containing actual input and output data.
-      auto tf_fmt = isConv2D ? TFDataFormatToMklDnnDataFormat(data_format_)
+      auto tf_fmt = is_Conv2D ? TFDataFormatToMklDnnDataFormat(data_format_)
                              : TFDataFormatToMklDnn3DDataFormat(data_format_);
 
       // If input is in MKL layout, then simply grab input layout; otherwise,
@@ -890,12 +897,18 @@ class MklConvOp : public OpKernel {
                         : memory::desc(src_dims, MklDnnType<T>(), tf_fmt);
 
       // Although filter shape (filter_dims) required is in MKL-DNN order,
-      // the layout is Tensorflow's layout (HWIO).
-      auto filter_md = filter_mkl_shape.IsMklTensor()  // Should NEVER be true
-                           ? filter_mkl_shape.GetMklLayout()
+      // the layout is Tensorflow's layout (HWIO) and (HWIGO)for depthwise/group
+      // convolutions
+      
+     auto filter_format = is_Conv2D ? (is_Depthwise ? memory::format::hwigo 
+                                                    : memory::format::hwio) 
+                                    :  memory::format::dhwio; 
+
+     auto filter_md = filter_mkl_shape.IsMklTensor()  // Should NEVER be true
+                            ? filter_mkl_shape.GetMklLayout()
                            : memory::desc(filter_dims, MklDnnType<T>(),
-                                          isConv2D ? memory::format::hwio
-                                                   : memory::format::dhwio);
+                                          filter_format);
+      
       // MKLDNN dilation starts from 0.
       for (int i = 0; i < dilations.size(); i++) dilations[i] -= 1;
 
@@ -1088,12 +1101,17 @@ class MklConvOp : public OpKernel {
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, T, false>);          \
+                          MklConvOp<CPUDevice, T, false, false>);   \
+  REGISTER_KERNEL_BUILDER(Name("_MklDepthwiseConv2dNative")         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConvOp<CPUDevice, T, false, true>);    \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, T, true>);           \
+                          MklConvOp<CPUDevice, T, true, false>);    \
   REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DWithBias")          \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
@@ -1108,7 +1126,7 @@ TF_CALL_float(REGISTER_MKL_CPU_2D);
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-                          MklConvOp<CPUDevice, T, false>);
+                          MklConvOp<CPUDevice, T, false, false>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 
 }  // namespace tensorflow

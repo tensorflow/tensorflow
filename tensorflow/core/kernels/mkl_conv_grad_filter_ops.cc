@@ -756,7 +756,7 @@ class MklConvCustomBackpropFilterOp
       MklDnnData<T> diff_filter(&cpu_engine_);  // output
 
       // This flag indicates Conv2D or Conv3D
-      bool isConv2D = (this->strides_.size() == 4);
+      bool is_Conv2D = (this->strides_.size() == 4);
 
       // Input tensors
       const int kInputIdx = 0, kFilterIdx = 1, kOutbpropIdx = 2;
@@ -815,10 +815,10 @@ class MklConvCustomBackpropFilterOp
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_dst_dims_tf_order,
-          &fwd_dst_dims, &padding_left, &padding_right);
+          &fwd_dst_dims, &padding_left, &padding_right, false);
       if (!context->status().ok()) return;
 
-      auto tf_fmt = isConv2D
+      auto tf_fmt = is_Conv2D
                         ? TFDataFormatToMklDnnDataFormat(this->data_format_)
                         : TFDataFormatToMklDnn3DDataFormat(this->data_format_);
 
@@ -841,7 +841,7 @@ class MklConvCustomBackpropFilterOp
         TensorShape obp_tf_shape = GetTfShape(context, 2);
         depth = (this->data_format_ == FORMAT_NCHW)
                     ? obp_tf_shape.dim_size(1)
-                    : obp_tf_shape.dim_size(isConv2D ? 3 : 4);
+                    : obp_tf_shape.dim_size(is_Conv2D ? 3 : 4);
         diff_bias_dims = {static_cast<int>(depth)};
       }
       for (int i = 0; i < dilations.size(); i++) dilations[i] -= 1;
@@ -866,7 +866,7 @@ class MklConvCustomBackpropFilterOp
       MklDnnShape diff_filter_mkl_shape;
       diff_filter_mkl_shape.SetMklTensor(false);
 
-      if (isConv2D) {
+      if (is_Conv2D) {
         // Conv2D: output_dims_mkl_order is in OIHW format.
         TensorShape diff_filter_tf_shape({bwd_output_dims[MklDnnDims::Dim_H],
                                           bwd_output_dims[MklDnnDims::Dim_W],

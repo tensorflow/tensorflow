@@ -84,6 +84,7 @@ namespace tensorflow {
 // Tensorflow tensor.
 
 typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
+
 typedef enum {
   Dim_N = 0,
   Dim_C = 1,
@@ -102,6 +103,15 @@ typedef enum {
   Dim3d_O = 0,
   Dim3d_I = 1
 } MklDnnDims3D;
+
+// Filter Dimensions for grouped convolution.
+typedef enum {
+  DimGroup_G = 0,
+  DimGroup_O = 1,
+  DimGroup_I = 2,
+  DimGroup_H = 3,
+  DimGroup_W = 4
+} MklDnnDimsGroup;
 
 static const int kSmallBatchSize = 32;
 
