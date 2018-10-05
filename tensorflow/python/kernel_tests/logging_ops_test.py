@@ -306,6 +306,19 @@ class PrintV2Test(test.TestCase):
           logging_ops.print_v2(tensor)
         self.assertTrue((expected + "\n") in printed.contents())
 
+  def testPrintsOrderedInDefun(self):
+    with context.eager_mode():
+
+      @function.defun
+      def prints():
+        logging_ops.print_v2("A")
+        logging_ops.print_v2("B")
+        logging_ops.print_v2("C")
+
+      with self.captureWritesToStream(sys.stderr) as printed:
+        prints()
+      self.assertTrue(("A\nB\nC\n") in printed.contents())
+
   @test_util.run_in_graph_and_eager_modes()
   def testPrintInDefunWithoutExplicitEvalOfPrint(self):
     @function.defun
