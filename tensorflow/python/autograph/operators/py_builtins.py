@@ -228,5 +228,6 @@ BUILTIN_FUINCTIONS_MAP = {
     'len': len_,
     'print': print_,
     'range': range_,
+    # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
 }
