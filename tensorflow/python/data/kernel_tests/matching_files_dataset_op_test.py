@@ -45,6 +45,16 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
     for filename in filenames:
       open(os.path.join(self.tmp_dir, filename), 'a').close()
 
+  def testNonExistingDirectory(self):
+    """Test the MatchingFiles dataset with a non-existing directory"""
+
+    self.tearDown()
+    dataset = MatchingFilesDataset(os.path.join(self.tmp_dir, '*'))
+    with self.cached_session() as sess:
+      next_element = dataset.make_one_shot_iterator().get_next()
+      with self.assertRaises(errors.NotFoundError):
+        sess.run(next_element)
+
   def testEmptyDirectory(self):
     """Test the MatchingFiles dataset with an empty directory"""
 
@@ -98,15 +108,15 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
   def testFileMiddles(self):
     """Test the MatchingFiles dataset using the middles of filename"""
 
-    filenames = ['a.txt', 'b.py', 'c.pyc']
+    filenames = ['aa.txt', 'bb.py', 'bbc.pyc', 'cc.pyc']
     self._touchTempFiles(filenames)
 
-    dataset = MatchingFilesDataset(os.path.join(self.tmp_dir, '*.py*'))
+    dataset = MatchingFilesDataset(os.path.join(self.tmp_dir, 'b*.py*'))
     with self.cached_session() as sess:
       next_element = dataset.make_one_shot_iterator().get_next()
       expected_filenames = []
       actual_filenames = []
-      for filename in filenames[1:]:
+      for filename in filenames[1:3]:
         expected_filenames.append(
             compat.as_bytes(os.path.join(self.tmp_dir, filename)))
         actual_filenames.append(compat.as_bytes(sess.run(next_element)))
@@ -133,8 +143,8 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
 
     patterns = []
     for i in range(depth):
-      pattern = '{}/{}/*.txt'.format(
-          self.tmp_dir, os.path.join(*['**' for _ in range(i + 1)]))
+      pattern = os.path.join(
+          self.tmp_dir, os.path.join(*['**' for _ in range(i + 1)]), '*.txt')
       patterns.append(pattern)
 
     dataset = MatchingFilesDataset(patterns)
@@ -171,9 +181,10 @@ class MatchingFilesDatasetBenchmark(test.Benchmark):
 
     patterns = []
     for i in range(depth):
-      pattern = '{}/{}/*.txt'.format(tmp_dir,
-                                     os.path.join(
-                                         *['**' for _ in range(i + 1)]))
+      pattern = os.path.join(tmp_dir,
+                             os.path.join(*['**' for _ in range(i + 1)]),
+                             '*.txt')
+
       patterns.append(pattern)
 
     deltas = []

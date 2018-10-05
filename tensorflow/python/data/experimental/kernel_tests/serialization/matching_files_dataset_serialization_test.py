@@ -48,9 +48,9 @@ class MatchingFilesDatasetSerializationTest(
 
     patterns = []
     for i in range(depth):
-      pattern = '{}/{}/*.txt'.format(tmp_dir,
-                                     os.path.join(
-                                         *['**' for _ in range(i + 1)]))
+      pattern = os.path.join(tmp_dir,
+                             os.path.join(*['**' for _ in range(i + 1)]),
+                             '*.txt')
       patterns.append(pattern)
 
     num_outputs = width * depth
