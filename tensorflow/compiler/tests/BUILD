@@ -895,6 +895,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tensor_list_ops_test",
+    size = "small",
+    srcs = ["tensor_list_ops_test.py"],
+    # TensorList ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],
@@ -1025,6 +1041,19 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
+    name = "permute_test",
+    size = "small",
+    srcs = ["permute_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:nn_ops",
     ],
 )
 

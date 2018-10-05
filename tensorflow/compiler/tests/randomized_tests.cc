@@ -1820,7 +1820,7 @@ TEST_F(OpTest, Diag) {
     do {
       dims = RandomDims(1);
       size = TensorShape(dims).num_elements();
-    } while (size * size < tf_xla_max_tensor_size);
+    } while (size * size > tf_xla_max_tensor_size);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Diag").RandomInput(type, dims).Attr("T", type));
   });

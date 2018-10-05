@@ -144,13 +144,6 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
   const auto* concat_op =
       static_cast<const ConcatenationOperator*>(concat_base_op);
 
-  // If the output of this op is a non-discardable array such as an input_array
-  // or a state array of the model, then this is a job for RemoveUnusedOp, not
-  // for constants-propagation.
-  if (!IsDiscardableArray(*model, concat_op->outputs[0])) {
-    return false;
-  }
-
   for (const string& input_name : concat_op->inputs) {
     // We only expect constant unquantized arrays as input, otherwise we return.
     // We  also make sure the shapes of the input arrays are known and they are

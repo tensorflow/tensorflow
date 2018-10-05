@@ -172,17 +172,6 @@ class HloVerifier : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // CHECKs various invariants of a fusion instruction.
-  Status CheckFusionInstruction(HloInstruction* fusion) const;
-
-  Status CheckWhileInstruction(HloInstruction* instruction);
-
-  Status CheckConditionalInstruction(HloInstruction* instruction);
-
-  // Checks that the non-scalar operand shapes are compatible to the output
-  // shape, i.e., that there are no implicit broadcasts of size-one dimensions.
-  Status CheckElementwiseInstruction(HloInstruction* instruction);
-
   // Creates a ShapeVerifier that checks that shapes match inferred
   // expectations. This is a factory function because ShapeVerifier,
   // being a DfsHloVisitor, is stateful. We want a clean object

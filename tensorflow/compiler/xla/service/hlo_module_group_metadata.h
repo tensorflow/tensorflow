@@ -102,14 +102,14 @@ class HloModuleGroupMetadata {
     HloInstruction* recv_done = nullptr;
   };
 
-  explicit HloModuleGroupMetadata(const std::vector<HloModule*>& modules)
-      : modules_(modules) {}
+  explicit HloModuleGroupMetadata(absl::Span<HloModule* const> modules)
+      : modules_(modules.begin(), modules.end()) {}
 
   ~HloModuleGroupMetadata() = default;
 
   // Build and return the metadata for the given modules.
   static StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
-      const std::vector<HloModule*>& modules);
+      absl::Span<HloModule* const> modules);
 
   // Returns true if the instruction is one of the 4 channel instructions (Send,
   // Recv, SendDone, RecvDone).
@@ -274,7 +274,7 @@ class HloModuleGroupMetadata {
   int64 max_channel_id_ = -1;
 
   // The modules that this metadata was built from.
-  const std::vector<HloModule*>& modules_;
+  const std::vector<HloModule*> modules_;
 
   absl::flat_hash_map<HloModule*, std::unique_ptr<TuplePointsToAnalysis>>
       points_to_analyses_;
