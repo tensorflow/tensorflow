@@ -281,7 +281,6 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
             // If the IsDirectory call was cancelled we bail.
             if (child_dir_status.code() == tensorflow::error::CANCELLED) {
-              ret.Update(child_dir_status);
               continue;
             }
 
