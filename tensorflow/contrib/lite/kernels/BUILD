@@ -259,6 +259,7 @@ cc_library(
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
     deps = [
+        ":op_macros",
         "//tensorflow/contrib/lite/c:c_api_internal",
         "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
         "//tensorflow/contrib/lite/kernels/internal:tensor_utils",

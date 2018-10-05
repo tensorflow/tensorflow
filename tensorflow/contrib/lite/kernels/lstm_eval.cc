@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/contrib/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -599,6 +600,7 @@ TfLiteStatus EvalFloat(
     const TfLiteLSTMParams* params, bool forward_sequence, int output_offset,
     TfLiteTensor* scratch_buffer, TfLiteTensor* activation_state,
     TfLiteTensor* cell_state, TfLiteTensor* output) {
+  TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int max_time = (input->dims->size == 2) ? 1 : input->dims->data[0];
   const int n_batch = input->dims->data[input->dims->size - 2];
   const int n_input = input->dims->data[input->dims->size - 1];
@@ -716,6 +718,7 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* output_state_quantized, TfLiteTensor* cell_state_quantized,
     TfLiteTensor* output_state, TfLiteTensor* cell_state,
     TfLiteTensor* output) {
+  TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int max_time = (input->dims->size == 2) ? 1 : input->dims->data[0];
   const int n_batch = input->dims->data[input->dims->size - 2];
   const int n_input = input->dims->data[input->dims->size - 1];
