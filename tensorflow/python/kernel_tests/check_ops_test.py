@@ -322,22 +322,23 @@ b'x \(shape=\(2, 3\) dtype=float32\) = '
 b'y \(shape=\(2, 3\) dtype=float32\) = '
 0.0, 1.0, ..."""
     with context.eager_mode():
-      t = constant_op.constant(np.array(range(6)), shape=[2,3], dtype=np.float32)
+      t = constant_op.constant(np.array(range(6)), shape=[2, 3], 
+          dtype=np.float32)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_full):
         check_ops.assert_none_equal(t, t, message="This is the error message.",
-                               summarize=10)
+                                    summarize=10)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_full):
         check_ops.assert_none_equal(t, t, message="This is the error message.",
-                               summarize=-1)
+                                    summarize=-1)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_default):
         check_ops.assert_none_equal(t, t, message="This is the error message.")
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_short):
         check_ops.assert_none_equal(t, t, message="This is the error message.",
-                               summarize=2)
+                                    summarize=2)
 
 
 class AssertAllCloseTest(test.TestCase):
