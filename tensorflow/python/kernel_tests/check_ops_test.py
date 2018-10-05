@@ -329,14 +329,14 @@ b'y \(shape=\(2, 3\) dtype=float32\) = '
                                summarize=10)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_full):
-        check_ops.assert_equal(t, t, message="This is the error message.",
+        check_ops.assert_none_equal(t, t, message="This is the error message.",
                                summarize=-1)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_default):
-        check_ops.assert_equal(t, t, message="This is the error message.")
+        check_ops.assert_none_equal(t, t, message="This is the error message.")
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_short):
-        check_ops.assert_equal(t, t, message="This is the error message.",
+        check_ops.assert_none_equal(t, t, message="This is the error message.",
                                summarize=2)
 
 
