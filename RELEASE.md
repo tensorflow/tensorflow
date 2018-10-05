@@ -3,8 +3,7 @@
 ## Major Features and Improvements
 * tf.data users can now use `tf.data.experimental.AUTOTUNE` for the num_parallel_calls argument of `tf.data.Dataset.interleave`, `tf.data.Dataset.map`, and `tf.data.experimental.map_and_batch` to dynamically tune the level of parallelism at runtime.
 * Keras models can now be directly exported to the SavedModel format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow Serving.
-* TensorFlow builds with XLA support by default, does not enable XLA by
-  default, but makes it accessible via default binary builds.
+* TensorFlow builds with XLA support by default, does not enable XLA by default, but makes it accessible via default binary builds.
 
 ## Bug Fixes and Other Changes
 
