@@ -1482,5 +1482,17 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(result, tf_result)
 
 
+class BatchGatherTest(test_util.TensorFlowTestCase):
+
+  def testIndicesDtype(self):
+    with context.eager_mode():
+      x = constant_op.constant([[0, 1, 2], [3, 4, 5]])
+      res = []
+      for dtype in [dtypes.int32, dtypes.int64]:
+          y = constant_op.constant([[1, 2], [0, 1]], dtype=dtype)
+          res.append(array_ops.batch_gather(x, y))
+      self.assertAllEqual(res[0], res[1])
+
+
 if __name__ == "__main__":
   test_lib.main()
