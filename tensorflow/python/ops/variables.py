@@ -2284,7 +2284,7 @@ def report_uninitialized_variables(var_list=None,
     # Run all operations on CPU
     if var_list:
       init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
-    local_device = os.environ.get("TF_LOCAL_DEVICE", "/cpu:0")
+    local_device = os.environ.get("TF_DEVICE_FOR_UNINITIALIZED_VARIABLE_REPORTING", "/cpu:0")
     with ops.device(local_device):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor
