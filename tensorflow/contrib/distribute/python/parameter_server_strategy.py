@@ -294,9 +294,12 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   def _verify_destinations_not_different_worker(self, destinations):
     if destinations is None:
       return
+    task_id = self._task_id
+    if task_id is None:
+      task_id = 0
     for d in cross_tower_ops_lib.get_devices_from(destinations):
       d_spec = tf_device.DeviceSpec.from_string(d)
-      if d_spec.job == self._task_type and d_spec.task != (self._task_id or 0):
+      if d_spec.job == self._task_type and d_spec.task != task_id:
         raise ValueError(
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
