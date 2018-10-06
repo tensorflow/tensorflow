@@ -661,8 +661,7 @@ class ControlFlowTest(test.TestCase):
       sess.run(r)
 
   def testCondGrad_1(self):
-    graph = ops.Graph()
-    with graph.as_default():
+    with self.cached_session():
       x = constant_op.constant(10.0, name="x")
       pred = math_ops.less(1, 2)
       fn1 = lambda: array_ops.identity(x)
@@ -670,8 +669,7 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
 
       grad = gradients_impl.gradients(r, [x])[0]
-      with self.cached_session():
-        self.assertAllEqual(1.0, grad.eval())
+      self.assertAllEqual(1.0, grad.eval())
 
   def testCondGrad_2(self):
     with self.cached_session():
