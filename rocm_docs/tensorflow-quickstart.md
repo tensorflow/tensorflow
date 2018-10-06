@@ -25,7 +25,7 @@ Here are the basic instructions:
 ```
 cd ~/models/tutorials/image/mnist
 
-python ./convolutional.py 
+python3 ./convolutional.py 
 ```
 
 And here is what we expect to see:  
@@ -69,7 +69,7 @@ Run the training:
 cd ~/models/tutorials/image/cifar10
 
 export HIP_VISIBLE_DEVICES=0
-python ./cifar10_train.py
+python3 ./cifar10_train.py
 ```
 
 You should see output similar to this:
@@ -95,7 +95,7 @@ To run the evaluation, follow this:
 cd ~/models/tutorials/image/cifar10
 
 export HIP_VISIBLE_DEVICES=0
-python ./cifar10_eval.py
+python3 ./cifar10_eval.py
 ```
 
 Using the most recent training checkpoints, this script indicates how often the top prediction matches the true label of the image.  You should see periodic output similar to this:
@@ -125,7 +125,7 @@ ln -s ./cifar-10-batches-bin ./cifar10
 
 Train ResNet:
 ```
-python ./resnet_main.py --train_data_path=cifar10/data_batch* \
+python3 ./resnet_main.py --train_data_path=cifar10/data_batch* \
                                --log_root=/tmp/resnet_model \
                                --train_dir=/tmp/resnet_model/train \
                                --dataset='cifar10' \
@@ -150,7 +150,7 @@ Details can be found at this [link]( https://github.com/ROCmSoftwarePlatform/hip
 Here's how to run the classification workload:  
 ```
 cd models/tutorials/image/imagenet
-python ./classify_image.py
+python3 ./classify_image.py
 ```
 Here are the expected results:
 ```
@@ -172,7 +172,7 @@ git clone -b cnn_tf_v1.10_compatible https://github.com/tensorflow/benchmarks.gi
 cd benchmarks
 
 # Run the training benchmark (e.g. ResNet-50)
-python ./scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=resnet50 --num_gpus=1
+python3 ./scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=resnet50 --num_gpus=1
 ```
 
 ## FAQs & tips
