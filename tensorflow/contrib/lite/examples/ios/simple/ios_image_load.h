@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #ifndef TENSORFLOW_CONTRIB_LITE_EXAMPLES_IOS_SIMPLE_IOS_IMAGE_LOAD_H_
 #define TENSORFLOW_CONTRIB_LITE_EXAMPLES_IOS_SIMPLE_IOS_IMAGE_LOAD_H_
 
-#include <vector>
 #import <UIKit/UIKit.h>
+#include <vector>
 
-std::vector<uint8_t> LoadImageFromUIImage(UIImage *img);
+std::vector<uint8_t> LoadImageFromUIImage(UIImage* img);
