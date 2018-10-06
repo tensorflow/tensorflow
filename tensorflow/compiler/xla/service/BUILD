@@ -2450,6 +2450,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_parser",
         ":hlo_verifier",
+        ":layout_assignment",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",

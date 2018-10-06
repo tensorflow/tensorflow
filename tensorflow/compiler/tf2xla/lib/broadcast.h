@@ -13,21 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_OPTIONS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_OPTIONS_H_
+#ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_BROADCAST_H_
+#define TENSORFLOW_COMPILER_TF2XLA_LIB_BROADCAST_H_
 
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
-// Helper functions for querying options that are specific to the GPU backend.
+namespace tensorflow {
 
-namespace xla {
-namespace gpu {
+// Broadcasts 'input' up to shape 'output_dims', using TensorFlow broadcasting
+// rules. Supports broadcasting a dimension of size x to size x*y, i.e., tiling.
+xla::StatusOr<xla::XlaOp> BroadcastTo(xla::XlaOp input,
+                                      absl::Span<int64 const> output_dims);
 
-// Returns true if we should use heuristics to assign convolution layouts, as
-// opposed to always assigning NCHW.
-bool ConvUseLayoutHeuristic(const HloModuleConfig& config);
+}  // namespace tensorflow
 
-}  // namespace gpu
-}  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_OPTIONS_H_
+#endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_BROADCAST_H_

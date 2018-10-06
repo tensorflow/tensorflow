@@ -23,7 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-namespace vectorization_utils {
 
 // A global VectorizerRegistry is used to hold all the vectorizers.
 class VectorizerRegistry {
@@ -59,16 +58,12 @@ class VectorizerRegistration {
 #define REGISTER_VECTORIZER_UNIQ_HELPER(ctr, op_type, vectorizer) \
   REGISTER_VECTORIZER_UNIQ(ctr, op_type, vectorizer)
 
-#define REGISTER_VECTORIZER_UNIQ(ctr, op_type, vectorizer)                  \
-  static ::tensorflow::grappler::vectorization_utils::                      \
-      vectorizer_registration::VectorizerRegistration                       \
-          vectorizer_registration_##ctr(                                    \
-              op_type,                                                      \
-              ::std::unique_ptr<                                            \
-                  ::tensorflow::grappler::vectorization_utils::Vectorizer>( \
-                  new vectorizer()))
+#define REGISTER_VECTORIZER_UNIQ(ctr, op_type, vectorizer)                \
+  static ::tensorflow::grappler::vectorizer_registration::                \
+      VectorizerRegistration vectorizer_registration_##ctr(               \
+          op_type, ::std::unique_ptr<::tensorflow::grappler::Vectorizer>( \
+                       new vectorizer()))
 
-}  // namespace vectorization_utils
 }  // namespace grappler
 }  // namespace tensorflow
 

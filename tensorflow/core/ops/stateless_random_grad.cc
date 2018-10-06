@@ -13,16 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_options.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/framework/function.h"
 
-namespace xla {
-namespace gpu {
-
-bool ConvUseLayoutHeuristic(const HloModuleConfig& config) {
-  return !config.debug_options().xla_backend_extra_options().count(
-      "xla_gpu_experimental_conv_disable_layout_heuristic");
-}
-
-}  // namespace gpu
-}  // namespace xla
+namespace tensorflow {
+REGISTER_OP_NO_GRADIENT("StatelessRandomUniform");
+REGISTER_OP_NO_GRADIENT("StatelessRandomNormal");
+REGISTER_OP_NO_GRADIENT("StatelessTruncatedNormal");
+REGISTER_OP_NO_GRADIENT("StatelessMultinomial");
+}  // end namespace tensorflow

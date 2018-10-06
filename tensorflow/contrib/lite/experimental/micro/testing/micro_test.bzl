@@ -10,6 +10,7 @@ def tflite_micro_cc_test(
         nocopts = "",
         linkopts = [],
         deps = [],
+        tags = [],
         visibility = None):
     """Tests a C/C++ binary without testing framework  dependencies`.
 
@@ -43,6 +44,7 @@ def tflite_micro_cc_test(
         nocopts = nocopts,
         linkopts = linkopts,
         deps = deps,
+        tags = tags,
         visibility = visibility,
     )
     native.sh_test(
@@ -61,4 +63,5 @@ def tflite_micro_cc_test(
         ],
         deps = [
         ],
+        tags = tags,
     )
