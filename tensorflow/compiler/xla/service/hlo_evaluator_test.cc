@@ -1463,6 +1463,58 @@ TEST_P(HloEvaluatorTest, ReduceWindowMax) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_P(HloEvaluatorTest, ReduceWindowMaxWindowDilation) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[3,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  //  { 9, 10, 11 },
+  // }
+  auto arg_array = absl::make_unique<Array2D<float>>(3, 3);
+  arg_array->FillUnique(1.0f);
+  auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
+
+  HloComputation::Builder max_computation("max");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = max_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = max_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  max_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
+  auto max_func = module().AddEmbeddedComputation(max_computation.Build());
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(2);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, arg_instruction, init_value, window, max_func));
+
+  module().AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+
+  auto expected = LiteralUtil::CreateR2<float>({{11}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_P(HloEvaluatorTest, ReduceWindowAdd) {
   HloComputation::Builder b(TestName());
 

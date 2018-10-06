@@ -104,7 +104,8 @@ class ScanOp : public XlaOpKernel {
     }
     auto output = xla::ReduceWindowWithGeneralPadding(
         XlaHelpers::ConvertElementType(builder, ctx->Input(0), dtype), init,
-        *reducer, window_dims, window_strides, padding);
+        *reducer, window_dims, window_strides,
+        /*base_dilations=*/{}, /*window_dilations=*/{}, padding);
     output =
         XlaHelpers::ConvertElementType(builder, output, ctx->input_type(0));
 

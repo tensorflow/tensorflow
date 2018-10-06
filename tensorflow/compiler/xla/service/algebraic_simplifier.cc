@@ -2057,6 +2057,12 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     return Status::OK();
   }
 
+  // Bail on dilation.
+  if (window_util::HasDilation(window)) {
+    VLOG(10) << "Not folding pad into reduce-window as there is dilation.";
+    return Status::OK();
+  }
+
   VLOG(10) << "Considering folding Pad: " << pad->ToString()
            << "\ninto reduce-window: " << reduce_window->ToString()
            << (convert != nullptr

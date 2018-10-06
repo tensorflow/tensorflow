@@ -688,8 +688,25 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
   for (size_t i = 0; i < index.size(); ++i) {
     llvm::Value* strided_index =
         NSWMul(index[i], b_.getInt64(window.dimensions(i).stride()));
-    input_index[i] = NSWSub(NSWAdd(strided_index, window_index[i]),
-                            b_.getInt64(window.dimensions(i).padding_low()));
+    input_index[i] = NSWSub(
+        NSWAdd(strided_index,
+               NSWMul(window_index[i],
+                      b_.getInt64(window.dimensions(i).window_dilation()))),
+        b_.getInt64(window.dimensions(i).padding_low()));
+
+    // We need to verify that we are not in the dilated base area.
+    llvm::Value* dilation_condition = ICmpEQ(
+        SRem(input_index[i], b_.getInt64(window.dimensions(i).base_dilation())),
+        b_.getInt64(0));
+    if (in_bounds_condition == nullptr) {
+      in_bounds_condition = dilation_condition;
+    } else {
+      in_bounds_condition = And(in_bounds_condition, dilation_condition);
+    }
+
+    // Apply base dilation to the index.
+    input_index[i] =
+        SDiv(input_index[i], b_.getInt64(window.dimensions(i).base_dilation()));
 
     // We need to check if 0 <= input_index[i] < bound, as otherwise we are in
     // the padding so that we can skip the computation. That is equivalent to
@@ -727,12 +744,6 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
       /*instruction=*/*reduce_window,
       /*operands=*/{reduce_window->operand(0)},
       /*supported_types=*/{F32, BF16, S32, F16}));
-
-  // TODO(b/31410564): Implement dilation for reduce-window.
-  if (window_util::HasDilation(reduce_window->window())) {
-    return Unimplemented(
-        "Dilation for ReduceWindow is not implemented on CPU.");
-  }
 
   // Pseudo code for reduce window:
   //
