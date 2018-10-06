@@ -781,7 +781,6 @@ cc_library(
     srcs = ["gpu_layout_assignment.cc"],
     hdrs = ["gpu_layout_assignment.h"],
     deps = [
-        ":gpu_options",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -879,16 +878,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "gpu_options",
-    srcs = ["gpu_options.cc"],
-    hdrs = ["gpu_options.h"],
-    deps = [
-        "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
