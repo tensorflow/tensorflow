@@ -32,16 +32,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-
 # pylint: disable=wildcard-import
-from tensorflow.python.ops.gen_stateless_random_ops import *
+from tensorflow.contrib.stateless.python.stateless_ops import *
 
 from tensorflow.python.util.all_util import remove_undocumented
-
-ops.NotDifferentiable("StatelessMultinomial")
-ops.NotDifferentiable("StatelessRandomNormal")
-ops.NotDifferentiable("StatelessRandomUniform")
-ops.NotDifferentiable("StatelessTruncatedNormal")
 
 remove_undocumented(__name__)
