@@ -300,29 +300,51 @@ const AffineBound ForStmt::getUpperBound() const {
   return AffineBound(*this, lbMap->getNumInputs(), getNumOperands(), ubMap);
 }
 
-void ForStmt::setLowerBound(ArrayRef<MLValue *> operands, AffineMap *map) {
-  // TODO: handle the case when number of existing or new operands is non-zero.
-  assert(getNumOperands() == 0 && operands.empty());
+void ForStmt::setLowerBound(ArrayRef<MLValue *> lbOperands, AffineMap *map) {
+  assert(lbOperands.size() == map->getNumInputs());
+  assert(map->getNumResults() >= 1 && "bound map has at least one result");
 
+  SmallVector<MLValue *, 4> ubOperands(getUpperBoundOperands());
+
+  operands.clear();
+  operands.reserve(lbOperands.size() + ubMap->getNumInputs());
+  for (auto *operand : lbOperands) {
+    operands.emplace_back(StmtOperand(this, operand));
+  }
+  for (auto *operand : ubOperands) {
+    operands.emplace_back(StmtOperand(this, operand));
+  }
   this->lbMap = map;
 }
 
-void ForStmt::setUpperBound(ArrayRef<MLValue *> operands, AffineMap *map) {
-  // TODO: handle the case when number of existing or new operands is non-zero.
-  assert(getNumOperands() == 0 && operands.empty());
+void ForStmt::setUpperBound(ArrayRef<MLValue *> ubOperands, AffineMap *map) {
+  assert(ubOperands.size() == map->getNumInputs());
+  assert(map->getNumResults() >= 1 && "bound map has at least one result");
 
+  SmallVector<MLValue *, 4> lbOperands(getLowerBoundOperands());
+
+  operands.clear();
+  operands.reserve(lbOperands.size() + ubOperands.size());
+  for (auto *operand : lbOperands) {
+    operands.emplace_back(StmtOperand(this, operand));
+  }
+  for (auto *operand : ubOperands) {
+    operands.emplace_back(StmtOperand(this, operand));
+  }
   this->ubMap = map;
 }
 
 void ForStmt::setLowerBoundMap(AffineMap *map) {
   assert(lbMap->getNumDims() == map->getNumDims() &&
          lbMap->getNumSymbols() == map->getNumSymbols());
+  assert(map->getNumResults() >= 1 && "bound map has at least one result");
   this->lbMap = map;
 }
 
 void ForStmt::setUpperBoundMap(AffineMap *map) {
   assert(ubMap->getNumDims() == map->getNumDims() &&
          ubMap->getNumSymbols() == map->getNumSymbols());
+  assert(map->getNumResults() >= 1 && "bound map has at least one result");
   this->ubMap = map;
 }
 
@@ -371,6 +393,51 @@ bool ForStmt::matchingBoundOperandList() const {
       return false;
   }
   return true;
+}
+
+/// Folds the specified (lower or upper) bound to a constant if possible
+/// considering its operands. Returns false if the folding happens, true
+/// otherwise.
+bool ForStmt::constantFoldBound(bool lower) {
+  // Check if the bound is already a constant.
+  if (lower && hasConstantLowerBound())
+    return true;
+  if (!lower && hasConstantUpperBound())
+    return true;
+
+  // Check to see if each of the operands is the result of a constant.  If so,
+  // get the value.  If not, ignore it.
+  SmallVector<Attribute *, 8> operandConstants;
+  auto boundOperands =
+      lower ? getLowerBoundOperands() : getUpperBoundOperands();
+  for (const auto *operand : boundOperands) {
+    Attribute *operandCst = nullptr;
+    if (auto *operandOp = operand->getDefiningOperation()) {
+      if (auto operandConstantOp = operandOp->getAs<ConstantOp>())
+        operandCst = operandConstantOp->getValue();
+    }
+    operandConstants.push_back(operandCst);
+  }
+
+  AffineMap *boundMap = lower ? getLowerBoundMap() : getUpperBoundMap();
+  assert(boundMap->getNumResults() >= 1 &&
+         "bound maps should have at least one result");
+  SmallVector<Attribute *, 4> foldedResults;
+  if (boundMap->constantFold(operandConstants, foldedResults))
+    return true;
+
+  // Compute the max or min as applicable over the results.
+  assert(!foldedResults.empty() && "bounds should have at least one result");
+  auto maxOrMin = cast<IntegerAttr>(foldedResults[0])->getValue();
+  for (unsigned i = 1; i < foldedResults.size(); i++) {
+    auto foldedResult = cast<IntegerAttr>(foldedResults[i])->getValue();
+    maxOrMin = lower ? std::max(maxOrMin, foldedResult)
+                     : std::min(maxOrMin, foldedResult);
+  }
+  lower ? setConstantLowerBound(maxOrMin) : setConstantUpperBound(maxOrMin);
+
+  // Return false on success.
+  return false;
 }
 
 //===----------------------------------------------------------------------===//

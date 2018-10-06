@@ -36,6 +36,7 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
                      SmallVectorImpl<SSAValue *> &existingConstants,
                      ConstantFactoryType constantFactory);
   void visitOperationStmt(OperationStmt *stmt);
+  void visitForStmt(ForStmt *stmt);
   PassResult runOnCFGFunction(CFGFunction *f) override;
   PassResult runOnMLFunction(MLFunction *f) override;
 };
@@ -44,7 +45,7 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-/// This returns 0 if the operation was successfully folded.
+/// This returns false if the operation was successfully folded.
 bool ConstantFold::foldOperation(Operation *op,
                                  SmallVectorImpl<SSAValue *> &existingConstants,
                                  ConstantFactoryType constantFactory) {
@@ -140,6 +141,12 @@ void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
   if (!ConstantFold::foldOperation(stmt, existingConstants, constantFactory)) {
     opStmtsToErase.push_back(stmt);
   }
+}
+
+// Override the walker's for statement visit for constant folding.
+void ConstantFold::visitForStmt(ForStmt *stmt) {
+  stmt->constantFoldBound(/*lower=*/true);
+  stmt->constantFoldBound(/*lower=*/false);
 }
 
 PassResult ConstantFold::runOnMLFunction(MLFunction *f) {

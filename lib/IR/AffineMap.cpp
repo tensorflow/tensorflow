@@ -17,10 +17,75 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 using namespace mlir;
+
+namespace {
+
+// AffineExprConstantFolder evaluates an affine expression using constant
+// operands passed in 'operandConsts'. Returns a pointer to an IntegerAttr
+// attribute representing the constant value of the affine expression
+// evaluated on constant 'operandConsts'.
+class AffineExprConstantFolder {
+public:
+  AffineExprConstantFolder(unsigned numDims,
+                           ArrayRef<Attribute *> operandConsts)
+      : numDims(numDims), operandConsts(operandConsts) {}
+
+  /// Attempt to constant fold the specified affine expr, or return null on
+  /// failure.
+  IntegerAttr *constantFold(AffineExprRef expr) {
+    switch (expr->getKind()) {
+    case AffineExpr::Kind::Add:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, int64_t rhs) { return lhs + rhs; });
+    case AffineExpr::Kind::Mul:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, int64_t rhs) { return lhs * rhs; });
+    case AffineExpr::Kind::Mod:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, uint64_t rhs) { return mod(lhs, rhs); });
+    case AffineExpr::Kind::FloorDiv:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, uint64_t rhs) { return floorDiv(lhs, rhs); });
+    case AffineExpr::Kind::CeilDiv:
+      return constantFoldBinExpr(
+          expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
+    case AffineExpr::Kind::Constant:
+      return IntegerAttr::get(cast<AffineConstantExpr>(expr)->getValue(),
+                              expr->getContext());
+    case AffineExpr::Kind::DimId:
+      return dyn_cast_or_null<IntegerAttr>(
+          operandConsts[cast<AffineDimExpr>(expr)->getPosition()]);
+    case AffineExpr::Kind::SymbolId:
+      return dyn_cast_or_null<IntegerAttr>(
+          operandConsts[numDims + cast<AffineSymbolExpr>(expr)->getPosition()]);
+    }
+  }
+
+private:
+  IntegerAttr *
+  constantFoldBinExpr(AffineExprRef expr,
+                      std::function<uint64_t(int64_t, uint64_t)> op) {
+    auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+    auto *lhs = constantFold(binOpExpr->getLHS());
+    auto *rhs = constantFold(binOpExpr->getRHS());
+    if (!lhs || !rhs)
+      return nullptr;
+    return IntegerAttr::get(op(lhs->getValue(), rhs->getValue()),
+                            expr->getContext());
+  }
+
+  // The number of dimension operands in AffineMap containing this expression.
+  unsigned numDims;
+  // The constant valued operands used to evaluate this AffineExpr.
+  ArrayRef<Attribute *> operandConsts;
+};
+
+} // end anonymous namespace
 
 AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
                      ArrayRef<AffineExprRef> results,
@@ -246,4 +311,27 @@ AffineExprRef AffineBinaryOpExpr::simplifyMod(AffineExprRef lhs,
   // test, or in general using quantifier elimination (add two new variables q
   // and r, and eliminate all variables from the linear system other than r. All
   // of this can be done through mlir/Analysis/'s FlatAffineConstraints.
+}
+
+/// Folds the results of the application of an affine map on the provided
+/// operands to a constant if possible. Returns false if the folding happens,
+/// true otherwise.
+bool AffineMap::constantFold(ArrayRef<Attribute *> operandConstants,
+                             SmallVectorImpl<Attribute *> &results) {
+  assert(getNumInputs() == operandConstants.size());
+
+  // Fold each of the result expressions.
+  AffineExprConstantFolder exprFolder(getNumDims(), operandConstants);
+  // Constant fold each AffineExpr in AffineMap and add to 'results'.
+  for (auto expr : getResults()) {
+    auto *folded = exprFolder.constantFold(expr);
+    // If we didn't fold to a constant, then folding fails.
+    if (!folded)
+      return true;
+
+    results.push_back(folded);
+  }
+  assert(results.size() == getNumResults() &&
+         "constant folding produced the wrong number of results");
+  return false;
 }

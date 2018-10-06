@@ -1,5 +1,9 @@
 // RUN: mlir-opt %s -constant-fold | FileCheck %s
 
+// CHECK: [[MAP0:#map[0-9]+]] = ()[s0] -> (0, s0)
+// CHECK: [[MAP1:#map[0-9]+]] = ()[s0] -> (100, s0)
+
+// CHECK-LABEL: @test(%arg0 : memref<f32>) {
 mlfunc @test(%p : memref<f32>) {
   for %i0 = 0 to 128 {
     for %i1 = 0 to 8 { // CHECK: for %i1 = 0 to 8 {
@@ -85,6 +89,36 @@ mlfunc @affine_apply(%variable : affineint) -> (affineint, affineint, affineint)
   // CHECK: return %c1159, %c1152, %c42
   return %x#0, %x#1, %y : affineint, affineint, affineint
 }
+
+// CHECK-LABEL:  mlfunc @constant_fold_bounds(%arg0 : affineint) {
+mlfunc @constant_fold_bounds(%N : affineint) {
+  // CHECK:      %c3 = constant 3 : affineint
+  // CHECK-NEXT: %0 = "foo"() : () -> affineint
+  %c9 = constant 9 : affineint
+  %c1 = constant 1 : affineint
+  %c2 = constant 2 : affineint
+  %c3 = affine_apply (d0, d1) -> (d0 + d1) (%c1, %c2)
+  %l = "foo"() : () -> affineint
+
+  // CHECK:  for %i0 = 5 to 7 {
+  for %i = max (d0, d1) -> (0, d0 + d1)(%c2, %c3) to min (d0, d1) -> (d0 - 2, 32*d1) (%c9, %c1) {
+    "foo"(%i, %c3) : (affineint, affineint) -> ()
+  }
+
+  // Bound takes a non-constant argument but can still be folded.
+  // CHECK:  for %i1 = 1 to 7 {
+  for %j = max (d0) -> (0, 1)(%N) to min (d0, d1) -> (7, 9)(%N, %l) {
+    "foo"(%j, %c3) : (affineint, affineint) -> ()
+  }
+
+  // None of the bounds can be folded.
+  // CHECK: for %i2 = max [[MAP0]]()[%0] to min [[MAP1]]()[%arg0] {
+  for %k = max ()[s0] -> (0, s0) ()[%l] to min ()[s0] -> (100, s0)()[%N] {
+    "foo"(%k, %c3) : (affineint, affineint) -> ()
+  }
+  return
+}
+
 
 // CHECK-LABEL: cfgfunc @simple_mulf
 cfgfunc @simple_mulf() -> f32 {

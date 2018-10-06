@@ -33,6 +33,7 @@ namespace mlir {
 class AffineExpr;
 template <typename T> class AffineExprBaseRef;
 using AffineExprRef = AffineExprBaseRef<AffineExpr>;
+class Attribute;
 class MLIRContext;
 
 /// A multi-dimensional affine map
@@ -81,6 +82,12 @@ public:
   AffineExprRef getResult(unsigned idx);
 
   ArrayRef<AffineExprRef> getRangeSizes() { return rangeSizes; }
+
+  /// Folds the results of the application of an affine map on the provided
+  /// operands to a constant if possible. Returns false if the folding happens,
+  /// true otherwise.
+  bool constantFold(ArrayRef<Attribute *> operandConstants,
+                    SmallVectorImpl<Attribute *> &results);
 
 private:
   AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,

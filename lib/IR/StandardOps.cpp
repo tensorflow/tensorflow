@@ -180,85 +180,12 @@ bool AffineApplyOp::isValidSymbol() const {
   return true;
 }
 
-namespace {
-
-// AffineExprConstantFolder evaluates an affine expression using constant
-// operands passed in 'operandConsts'. Returns a pointer to an IntegerAttr
-// attribute representing the constant value of the affine expression
-// evaluated on constant 'operandConsts'.
-class AffineExprConstantFolder {
-public:
-  AffineExprConstantFolder(unsigned numDims,
-                           ArrayRef<Attribute *> operandConsts)
-      : numDims(numDims), operandConsts(operandConsts) {}
-
-  /// Attempt to constant fold the specified affine expr, or return null on
-  /// failure.
-  IntegerAttr *constantFold(AffineExprRef expr) {
-    switch (expr->getKind()) {
-    case AffineExpr::Kind::Add:
-      return constantFoldBinExpr(
-          expr, [](int64_t lhs, int64_t rhs) { return lhs + rhs; });
-    case AffineExpr::Kind::Mul:
-      return constantFoldBinExpr(
-          expr, [](int64_t lhs, int64_t rhs) { return lhs * rhs; });
-    case AffineExpr::Kind::Mod:
-      return constantFoldBinExpr(
-          expr, [](int64_t lhs, uint64_t rhs) { return mod(lhs, rhs); });
-    case AffineExpr::Kind::FloorDiv:
-      return constantFoldBinExpr(
-          expr, [](int64_t lhs, uint64_t rhs) { return floorDiv(lhs, rhs); });
-    case AffineExpr::Kind::CeilDiv:
-      return constantFoldBinExpr(
-          expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
-    case AffineExpr::Kind::Constant:
-      return IntegerAttr::get(cast<AffineConstantExpr>(expr)->getValue(),
-                              expr->getContext());
-    case AffineExpr::Kind::DimId:
-      return dyn_cast_or_null<IntegerAttr>(
-          operandConsts[cast<AffineDimExpr>(expr)->getPosition()]);
-    case AffineExpr::Kind::SymbolId:
-      return dyn_cast_or_null<IntegerAttr>(
-          operandConsts[numDims + cast<AffineSymbolExpr>(expr)->getPosition()]);
-    }
-  }
-
-private:
-  IntegerAttr *
-  constantFoldBinExpr(AffineExprRef expr,
-                      std::function<uint64_t(int64_t, uint64_t)> op) {
-    auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
-    auto *lhs = constantFold(binOpExpr->getLHS());
-    auto *rhs = constantFold(binOpExpr->getRHS());
-    if (!lhs || !rhs)
-      return nullptr;
-    return IntegerAttr::get(op(lhs->getValue(), rhs->getValue()),
-                            expr->getContext());
-  }
-
-  // The number of dimension operands in AffineMap containing this expression.
-  unsigned numDims;
-  // The constant valued operands used to evaluate this AffineExpr.
-  ArrayRef<Attribute *> operandConsts;
-};
-
-} // end anonymous namespace
-
-bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operands,
+bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operandConstants,
                                  SmallVectorImpl<Attribute *> &results,
                                  MLIRContext *context) const {
-  AffineMap *map = getAffineMap();
-  AffineExprConstantFolder exprFolder(map->getNumDims(), operands);
-
-  // Constant fold each AffineExpr in AffineMap and add to 'results'.
-  for (auto expr : map->getResults()) {
-    auto *folded = exprFolder.constantFold(expr);
-    // If we didn't fold to a constant, then folding fails.
-    if (!folded)
-      return true;
-
-    results.push_back(folded);
-  }
+  auto *map = getAffineMap();
+  if (map->constantFold(operandConstants, results))
+    return true;
   // Return false on success.
   return false;
 }
@@ -671,7 +598,7 @@ bool DimOp::verify() const {
 
 Attribute *DimOp::constantFold(ArrayRef<Attribute *> operands,
                                MLIRContext *context) const {
-  // Constant fold dim when the size the index refers to is a constant.
+  // Constant fold dim when the size along the index referred to is a constant.
   auto *opType = getOperand()->getType();
   int indexSize = -1;
   if (auto *tensorType = dyn_cast<RankedTensorType>(opType)) {
