@@ -20,6 +20,8 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 
+import json
+import re
 import time
 
 def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
@@ -265,6 +267,30 @@ def extract_all_io_events(events):
       except UnicodeDecodeError:
         pass
   return result
+
+def get_memory_size_from_events(events):
+  """Get the total memory consumption for the first compilation in the list
+  of events.
+  :param events: A list of IpuTraceEvent objects.
+  :return: The total size as an integer, or None.
+  """
+  size = None
+  for evt in events:
+    if evt.type == IpuTraceEvent.COMPILE_END:
+      in_memory_usage_section=False
+      try:
+        for l in evt.data_str.decode('utf-8').split("\n"):
+          l = l.strip()
+          if l.startswith('Memory Usage'):
+            in_memory_usage_section=True
+          if l.startswith('Total') and in_memory_usage_section:
+              m = re.match(r'.+:\s+(\d+)', l)
+              if m:
+                return int(m.group(1))
+      except UnicodeDecodeError:
+        pass
+  return None
+
 
 def move_variable_initialization_to_cpu(graph=None):
   """For all variables in the VARIABLES collection, move any initialization
