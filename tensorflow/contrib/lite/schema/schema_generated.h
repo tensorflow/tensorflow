@@ -79,6 +79,9 @@ struct LocalResponseNormalizationOptionsT;
 struct LSTMOptions;
 struct LSTMOptionsT;
 
+struct UnidirectionalSequenceLSTMOptions;
+struct UnidirectionalSequenceLSTMOptionsT;
+
 struct BidirectionalSequenceLSTMOptions;
 struct BidirectionalSequenceLSTMOptionsT;
 
@@ -681,11 +684,12 @@ enum BuiltinOptions {
   BuiltinOptions_FillOptions = 68,
   BuiltinOptions_BidirectionalSequenceLSTMOptions = 69,
   BuiltinOptions_BidirectionalSequenceRNNOptions = 70,
+  BuiltinOptions_UnidirectionalSequenceLSTMOptions = 71,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_BidirectionalSequenceRNNOptions
+  BuiltinOptions_MAX = BuiltinOptions_UnidirectionalSequenceLSTMOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[71] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[72] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -757,7 +761,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[71] {
     BuiltinOptions_ZerosLikeOptions,
     BuiltinOptions_FillOptions,
     BuiltinOptions_BidirectionalSequenceLSTMOptions,
-    BuiltinOptions_BidirectionalSequenceRNNOptions
+    BuiltinOptions_BidirectionalSequenceRNNOptions,
+    BuiltinOptions_UnidirectionalSequenceLSTMOptions
   };
   return values;
 }
@@ -835,6 +840,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "FillOptions",
     "BidirectionalSequenceLSTMOptions",
     "BidirectionalSequenceRNNOptions",
+    "UnidirectionalSequenceLSTMOptions",
     nullptr
   };
   return names;
@@ -1127,6 +1133,10 @@ template<> struct BuiltinOptionsTraits<BidirectionalSequenceLSTMOptions> {
 
 template<> struct BuiltinOptionsTraits<BidirectionalSequenceRNNOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_BidirectionalSequenceRNNOptions;
+};
+
+template<> struct BuiltinOptionsTraits<UnidirectionalSequenceLSTMOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UnidirectionalSequenceLSTMOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1719,6 +1729,14 @@ struct BuiltinOptionsUnion {
   const BidirectionalSequenceRNNOptionsT *AsBidirectionalSequenceRNNOptions() const {
     return type == BuiltinOptions_BidirectionalSequenceRNNOptions ?
       reinterpret_cast<const BidirectionalSequenceRNNOptionsT *>(value) : nullptr;
+  }
+  UnidirectionalSequenceLSTMOptionsT *AsUnidirectionalSequenceLSTMOptions() {
+    return type == BuiltinOptions_UnidirectionalSequenceLSTMOptions ?
+      reinterpret_cast<UnidirectionalSequenceLSTMOptionsT *>(value) : nullptr;
+  }
+  const UnidirectionalSequenceLSTMOptionsT *AsUnidirectionalSequenceLSTMOptions() const {
+    return type == BuiltinOptions_UnidirectionalSequenceLSTMOptions ?
+      reinterpret_cast<const UnidirectionalSequenceLSTMOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3468,6 +3486,84 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(
 }
 
 flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const LSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct UnidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
+  typedef UnidirectionalSequenceLSTMOptions TableType;
+  ActivationFunctionType fused_activation_function;
+  float cell_clip;
+  float proj_clip;
+  UnidirectionalSequenceLSTMOptionsT()
+      : fused_activation_function(ActivationFunctionType_NONE),
+        cell_clip(0.0f),
+        proj_clip(0.0f) {
+  }
+};
+
+struct UnidirectionalSequenceLSTMOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UnidirectionalSequenceLSTMOptionsT NativeTableType;
+  enum {
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_CELL_CLIP = 6,
+    VT_PROJ_CLIP = 8
+  };
+  ActivationFunctionType fused_activation_function() const {
+    return static_cast<ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  float cell_clip() const {
+    return GetField<float>(VT_CELL_CLIP, 0.0f);
+  }
+  float proj_clip() const {
+    return GetField<float>(VT_PROJ_CLIP, 0.0f);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<float>(verifier, VT_CELL_CLIP) &&
+           VerifyField<float>(verifier, VT_PROJ_CLIP) &&
+           verifier.EndTable();
+  }
+  UnidirectionalSequenceLSTMOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UnidirectionalSequenceLSTMOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_fused_activation_function(ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(UnidirectionalSequenceLSTMOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_cell_clip(float cell_clip) {
+    fbb_.AddElement<float>(UnidirectionalSequenceLSTMOptions::VT_CELL_CLIP, cell_clip, 0.0f);
+  }
+  void add_proj_clip(float proj_clip) {
+    fbb_.AddElement<float>(UnidirectionalSequenceLSTMOptions::VT_PROJ_CLIP, proj_clip, 0.0f);
+  }
+  explicit UnidirectionalSequenceLSTMOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  UnidirectionalSequenceLSTMOptionsBuilder &operator=(const UnidirectionalSequenceLSTMOptionsBuilder &);
+  flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UnidirectionalSequenceLSTMOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirectionalSequenceLSTMOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    ActivationFunctionType fused_activation_function = ActivationFunctionType_NONE,
+    float cell_clip = 0.0f,
+    float proj_clip = 0.0f) {
+  UnidirectionalSequenceLSTMOptionsBuilder builder_(_fbb);
+  builder_.add_proj_clip(proj_clip);
+  builder_.add_cell_clip(cell_clip);
+  builder_.add_fused_activation_function(fused_activation_function);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirectionalSequenceLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct BidirectionalSequenceLSTMOptionsT : public flatbuffers::NativeTable {
   typedef BidirectionalSequenceLSTMOptions TableType;
@@ -6488,6 +6584,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const BidirectionalSequenceRNNOptions *builtin_options_as_BidirectionalSequenceRNNOptions() const {
     return builtin_options_type() == BuiltinOptions_BidirectionalSequenceRNNOptions ? static_cast<const BidirectionalSequenceRNNOptions *>(builtin_options()) : nullptr;
   }
+  const UnidirectionalSequenceLSTMOptions *builtin_options_as_UnidirectionalSequenceLSTMOptions() const {
+    return builtin_options_type() == BuiltinOptions_UnidirectionalSequenceLSTMOptions ? static_cast<const UnidirectionalSequenceLSTMOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -6797,6 +6896,10 @@ template<> inline const BidirectionalSequenceLSTMOptions *Operator::builtin_opti
 
 template<> inline const BidirectionalSequenceRNNOptions *Operator::builtin_options_as<BidirectionalSequenceRNNOptions>() const {
   return builtin_options_as_BidirectionalSequenceRNNOptions();
+}
+
+template<> inline const UnidirectionalSequenceLSTMOptions *Operator::builtin_options_as<UnidirectionalSequenceLSTMOptions>() const {
+  return builtin_options_as_UnidirectionalSequenceLSTMOptions();
 }
 
 struct OperatorBuilder {
@@ -7807,6 +7910,38 @@ inline flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(flatbuffers::FlatBuffe
       _cell_clip,
       _proj_clip,
       _kernel_type);
+}
+
+inline UnidirectionalSequenceLSTMOptionsT *UnidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new UnidirectionalSequenceLSTMOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void UnidirectionalSequenceLSTMOptions::UnPackTo(UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = fused_activation_function(); _o->fused_activation_function = _e; };
+  { auto _e = cell_clip(); _o->cell_clip = _e; };
+  { auto _e = proj_clip(); _o->proj_clip = _e; };
+}
+
+inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> UnidirectionalSequenceLSTMOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUnidirectionalSequenceLSTMOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UnidirectionalSequenceLSTMOptions> CreateUnidirectionalSequenceLSTMOptions(flatbuffers::FlatBufferBuilder &_fbb, const UnidirectionalSequenceLSTMOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UnidirectionalSequenceLSTMOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _fused_activation_function = _o->fused_activation_function;
+  auto _cell_clip = _o->cell_clip;
+  auto _proj_clip = _o->proj_clip;
+  return tflite::CreateUnidirectionalSequenceLSTMOptions(
+      _fbb,
+      _fused_activation_function,
+      _cell_clip,
+      _proj_clip);
 }
 
 inline BidirectionalSequenceLSTMOptionsT *BidirectionalSequenceLSTMOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -9620,6 +9755,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const UnidirectionalSequenceLSTMOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -9918,6 +10057,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const UnidirectionalSequenceLSTMOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -10204,6 +10347,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const BidirectionalSequenceRNNOptionsT *>(value);
       return CreateBidirectionalSequenceRNNOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<const UnidirectionalSequenceLSTMOptionsT *>(value);
+      return CreateUnidirectionalSequenceLSTMOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -10488,6 +10635,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_BidirectionalSequenceRNNOptions: {
       value = new BidirectionalSequenceRNNOptionsT(*reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      value = new UnidirectionalSequenceLSTMOptionsT(*reinterpret_cast<UnidirectionalSequenceLSTMOptionsT *>(u.value));
       break;
     }
     default:
@@ -10844,6 +10995,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_BidirectionalSequenceRNNOptions: {
       auto ptr = reinterpret_cast<BidirectionalSequenceRNNOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_UnidirectionalSequenceLSTMOptions: {
+      auto ptr = reinterpret_cast<UnidirectionalSequenceLSTMOptionsT *>(value);
       delete ptr;
       break;
     }
