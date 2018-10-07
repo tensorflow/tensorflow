@@ -250,6 +250,7 @@ union BuiltinOptions {
   FillOptions,
   BidirectionalSequenceLSTMOptions,
   BidirectionalSequenceRNNOptions,
+  UnidirectionalSequenceLSTMOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -392,6 +393,13 @@ table LSTMOptions {
   // Parameters for LSTM version 2 or above.
   // Basic kernel is only supported in version 2 or above.
   kernel_type: LSTMKernelType = FULL;
+}
+
+// An implementation of TensorFlow dynamic_rnn with LSTMCell.
+table UnidirectionalSequenceLSTMOptions {
+  fused_activation_function:ActivationFunctionType;
+  cell_clip: float; // Optional, 0.0 means no clipping
+  proj_clip: float; // Optional, 0.0 means no clipping
 }
 
 table BidirectionalSequenceLSTMOptions {
