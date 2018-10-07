@@ -356,8 +356,8 @@ private:
   AffineMap *lbMap;
   // Affine map for the upper bound.
   AffineMap *ubMap;
-  // Positive constant step. Since affineint is int64_t, we restrict step to the
-  // set of positive integers that int64_t can represent.
+  // Positive constant step. Since index is stored as an int64_t, we restrict
+  // step to the set of positive integers that int64_t can represent.
   int64_t step;
   // Operands for the lower and upper bounds, with the former followed by the
   // latter. Dimensional operands are followed by symbolic operands for each

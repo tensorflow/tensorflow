@@ -34,8 +34,8 @@ bb:
 
 cfgfunc @affine_apply_no_map() {
 bb0:
-  %i = "constant"() {value: 0} : () -> affineint
-  %x = "affine_apply" (%i) { } : (affineint) -> (affineint) //  expected-error {{'affine_apply' op requires an affine map}}
+  %i = "constant"() {value: 0} : () -> index
+  %x = "affine_apply" (%i) { } : (index) -> (index) //  expected-error {{'affine_apply' op requires an affine map}}
   return
 }
 
@@ -43,8 +43,8 @@ bb0:
 
 cfgfunc @affine_apply_wrong_operand_count() {
 bb0:
-  %i = "constant"() {value: 0} : () -> affineint
-  %x = "affine_apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (affineint) -> (affineint) //  expected-error {{'affine_apply' op operand count and affine map dimension and symbol count must match}}
+  %i = "constant"() {value: 0} : () -> index
+  %x = "affine_apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine_apply' op operand count and affine map dimension and symbol count must match}}
   return
 }
 
@@ -52,9 +52,9 @@ bb0:
 
 cfgfunc @affine_apply_wrong_result_count() {
 bb0:
-  %i = "constant"() {value: 0} : () -> affineint
-  %j = "constant"() {value: 1} : () -> affineint
-  %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (affineint,affineint) -> (affineint) //  expected-error {{'affine_apply' op result count and affine map result count must match}}
+  %i = "constant"() {value: 0} : () -> index
+  %j = "constant"() {value: 1} : () -> index
+  %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine_apply' op result count and affine map result count must match}}
   return
 }
 
@@ -62,7 +62,7 @@ bb0:
 
 cfgfunc @unknown_custom_op() {
 bb0:
-  %i = crazyThing() {value: 0} : () -> affineint  // expected-error {{custom op 'crazyThing' is unknown}}
+  %i = crazyThing() {value: 0} : () -> index  // expected-error {{custom op 'crazyThing' is unknown}}
   return
 }
 
@@ -70,7 +70,7 @@ bb0:
 
 cfgfunc @bad_alloc_wrong_dynamic_dim_count() {
 bb0:
-  %0 = "constant"() {value: 7} : () -> affineint
+  %0 = "constant"() {value: 7} : () -> index
   // Test alloc with wrong number of dynamic dimensions.
   %1 = alloc(%0)[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{custom op 'alloc' dimension operand count does not equal memref dynamic dimension count}}
   return
@@ -80,7 +80,7 @@ bb0:
 
 cfgfunc @bad_alloc_wrong_symbol_count() {
 bb0:
-  %0 = "constant"() {value: 7} : () -> affineint
+  %0 = "constant"() {value: 7} : () -> index
   // Test alloc with wrong number of symbols
   %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{operand count does not equal dimension plus symbol operand count}}
   return
@@ -91,8 +91,8 @@ bb0:
 cfgfunc @test_store_zero_results() {
 bb0:
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
-  %1 = "constant"() {value: 0} : () -> affineint
-  %2 = "constant"() {value: 1} : () -> affineint
+  %1 = "constant"() {value: 0} : () -> index
+  %2 = "constant"() {value: 1} : () -> index
   %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
   // Test that store returns zero results.
   %4 = store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1> // expected-error {{cannot name an operation with no results}}

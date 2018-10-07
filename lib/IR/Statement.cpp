@@ -287,7 +287,7 @@ ForStmt *ForStmt::create(Location *location, ArrayRef<MLValue *> lbOperands,
 ForStmt::ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,
                  AffineMap *ubMap, int64_t step, MLIRContext *context)
     : Statement(Kind::For, location),
-      MLValue(MLValueKind::ForStmt, Type::getAffineInt(context)),
+      MLValue(MLValueKind::ForStmt, Type::getIndex(context)),
       StmtBlock(StmtBlockKind::For), lbMap(lbMap), ubMap(ubMap), step(step) {
   operands.reserve(numOperands);
 }

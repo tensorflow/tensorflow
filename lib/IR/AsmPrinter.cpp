@@ -457,8 +457,8 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
 
 void ModulePrinter::printType(const Type *type) {
   switch (type->getKind()) {
-  case Type::Kind::AffineInt:
-    os << "affineint";
+  case Type::Kind::Index:
+    os << "index";
     return;
   case Type::Kind::BF16:
     os << "bf16";
@@ -891,7 +891,7 @@ protected:
         } else {
           specialName << 'c' << intOp->getValue() << '_' << *intOp->getType();
         }
-      } else if (auto intOp = op->getAs<ConstantAffineIntOp>()) {
+      } else if (auto intOp = op->getAs<ConstantIndexOp>()) {
         specialName << 'c' << intOp->getValue();
       } else if (auto constant = op->getAs<ConstantOp>()) {
         if (isa<FunctionAttr>(constant->getValue()))

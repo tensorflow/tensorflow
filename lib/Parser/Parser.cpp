@@ -285,7 +285,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///          | function-type
 ///
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
-///   other-type ::= `affineint` | `tf_control`
+///   other-type ::= `index` | `tf_control`
 ///
 Type *Parser::parseType() {
   switch (getToken().getKind()) {
@@ -327,9 +327,9 @@ Type *Parser::parseType() {
     return builder.getF64Type();
 
   // other-type
-  case Token::kw_affineint:
-    consumeToken(Token::kw_affineint);
-    return builder.getAffineIntType();
+  case Token::kw_index:
+    consumeToken(Token::kw_index);
+    return builder.getIndexType();
   case Token::kw_tf_control:
     consumeToken(Token::kw_tf_control);
     return builder.getTFControlType();
@@ -1048,7 +1048,7 @@ AffineExpr *AffineParser::parseBareIdExpr() {
 AffineExpr *AffineParser::parseIntegerExpr() {
   auto val = getToken().getUInt64IntegerValue();
   if (!val.hasValue() || (int64_t)val.getValue() < 0)
-    return (emitError("constant too large for affineint"), nullptr);
+    return (emitError("constant too large for index"), nullptr);
 
   consumeToken(Token::integer);
   return builder.getConstantExpr((int64_t)val.getValue());
@@ -2277,9 +2277,9 @@ ParseResult MLFunctionParser::parseForStmt() {
   if (consumeIf(Token::kw_step) && parseIntConstant(step))
     return ParseFailure;
 
-  // The loop step is a positive integer constant. Since affineint is of int64_t
-  // type, we restrict step to be in the set of positive integers that int64_t
-  // can represent.
+  // The loop step is a positive integer constant. Since index is stored as an
+  // int64_t type, we restrict step to be in the set of positive integers that
+  // int64_t can represent.
   if (step < 1) {
     return emitError("step has to be a positive integer");
   }
@@ -2315,7 +2315,7 @@ ParseResult MLFunctionParser::parseIntConstant(int64_t &val) {
   auto uval = getToken().getUInt64IntegerValue();
 
   if (!uval.hasValue() || (int64_t)uval.getValue() < 0) {
-    return emitError("bound or step is too large for affineint");
+    return emitError("bound or step is too large for index");
   }
 
   val = (int64_t)uval.getValue();
@@ -2360,9 +2360,9 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
                      " symbol count must match");
 
   // Resolve SSA uses.
-  Type *affineIntType = builder.getAffineIntType();
+  Type *indexType = builder.getIndexType();
   for (unsigned i = 0, e = opInfo.size(); i != e; ++i) {
-    SSAValue *sval = resolveSSAUse(opInfo[i], affineIntType);
+    SSAValue *sval = resolveSSAUse(opInfo[i], indexType);
     if (!sval)
       return ParseFailure;
 
@@ -2422,7 +2422,7 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
 
   // TODO: improve error message when SSA value is not an affine integer.
   // Currently it is 'use of value ... expects different type than prior uses'
-  if (auto *value = resolveSSAUse(opInfo, builder.getAffineIntType()))
+  if (auto *value = resolveSSAUse(opInfo, builder.getIndexType()))
     operands.push_back(cast<MLValue>(value));
   else
     return ParseFailure;

@@ -56,7 +56,7 @@ static bool parseDimAndSymbolList(OpAsmParser *parser,
   numDims = opInfos.size();
 
   // Parse the optional symbol operands.
-  auto *affineIntTy = parser->getBuilder().getAffineIntType();
+  auto *affineIntTy = parser->getBuilder().getIndexType();
   if (parser->parseOperandList(opInfos, -1,
                                OpAsmParser::Delimiter::OptionalSquare) ||
       parser->resolveOperands(opInfos, affineIntTy, operands))
@@ -103,13 +103,13 @@ Attribute *AddIOp::constantFold(ArrayRef<Attribute *> operands,
 void AffineApplyOp::build(Builder *builder, OperationState *result,
                           AffineMap *map, ArrayRef<SSAValue *> operands) {
   result->addOperands(operands);
-  result->types.append(map->getNumResults(), builder->getAffineIntType());
+  result->types.append(map->getNumResults(), builder->getIndexType());
   result->addAttribute("map", builder->getAffineMapAttr(map));
 }
 
 bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
-  auto *affineIntTy = builder.getAffineIntType();
+  auto *affineIntTy = builder.getIndexType();
 
   AffineMapAttr *mapAttr;
   unsigned numDims;
@@ -258,10 +258,10 @@ bool AllocOp::verify() const {
     return emitOpError(
         "operand count does not equal dimension plus symbol operand count");
   }
-  // Verify that all operands are of type AffineInt.
+  // Verify that all operands are of type Index.
   for (auto *operand : getOperands()) {
-    if (!operand->getType()->isAffineInt())
-      return emitOpError("requires operands to be of type AffineInt");
+    if (!operand->getType()->isIndex())
+      return emitOpError("requires operands to be of type Index");
   }
   return false;
 }
@@ -445,7 +445,7 @@ bool ConstantOp::verify() const {
     return emitOpError("requires a 'value' attribute");
 
   auto *type = this->getType();
-  if (isa<IntegerType>(type) || type->isAffineInt()) {
+  if (isa<IntegerType>(type) || type->isIndex()) {
     if (!isa<IntegerAttr>(value))
       return emitOpError(
           "requires 'value' to be an integer for an integer result type");
@@ -502,16 +502,15 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
                     builder->getIntegerType(width));
 }
 
-/// ConstantAffineIntOp only matches values whose result type is AffineInt.
-bool ConstantAffineIntOp::isClassFor(const Operation *op) {
-  return ConstantOp::isClassFor(op) &&
-         op->getResult(0)->getType()->isAffineInt();
+/// ConstantIndexOp only matches values whose result type is Index.
+bool ConstantIndexOp::isClassFor(const Operation *op) {
+  return ConstantOp::isClassFor(op) && op->getResult(0)->getType()->isIndex();
 }
 
-void ConstantAffineIntOp::build(Builder *builder, OperationState *result,
-                                int64_t value) {
+void ConstantIndexOp::build(Builder *builder, OperationState *result,
+                            int64_t value) {
   ConstantOp::build(builder, result, builder->getIntegerAttr(value),
-                    builder->getAffineIntType());
+                    builder->getIndexType());
 }
 
 //===----------------------------------------------------------------------===//
@@ -549,7 +548,7 @@ void DimOp::build(Builder *builder, OperationState *result,
                   SSAValue *memrefOrTensor, unsigned index) {
   result->addOperands(memrefOrTensor);
   result->addAttribute("index", builder->getIntegerAttr(index));
-  result->types.push_back(builder->getAffineIntType());
+  result->types.push_back(builder->getIndexType());
 }
 
 void DimOp::print(OpAsmPrinter *p) const {
@@ -568,7 +567,7 @@ bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->parseOptionalAttributeDict(result->attributes) ||
          parser->parseColonType(type) ||
          parser->resolveOperand(operandInfo, type, result->operands) ||
-         parser->addTypeToList(parser->getBuilder().getAffineIntType(),
+         parser->addTypeToList(parser->getBuilder().getIndexType(),
                                result->types);
 }
 
@@ -639,7 +638,7 @@ bool ExtractElementOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   VectorOrTensorType *type;
 
-  auto affineIntTy = parser->getBuilder().getAffineIntType();
+  auto affineIntTy = parser->getBuilder().getIndexType();
   return parser->parseOperand(aggregateInfo) ||
          parser->parseOperandList(indexInfo, -1,
                                   OpAsmParser::Delimiter::Square) ||
@@ -662,8 +661,8 @@ bool ExtractElementOp::verify() const {
     return emitOpError("result type must match element type of aggregate");
 
   for (auto *idx : getIndices())
-    if (!idx->getType()->isAffineInt())
-      return emitOpError("index to extract_element must have 'affineint' type");
+    if (!idx->getType()->isIndex())
+      return emitOpError("index to extract_element must have 'index' type");
 
   // Verify the # indices match if we have a ranked type.
   auto aggregateRank = aggregateType->getRankIfPresent();
@@ -698,7 +697,7 @@ bool LoadOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType *type;
 
-  auto affineIntTy = parser->getBuilder().getAffineIntType();
+  auto affineIntTy = parser->getBuilder().getIndexType();
   return parser->parseOperand(memrefInfo) ||
          parser->parseOperandList(indexInfo, -1,
                                   OpAsmParser::Delimiter::Square) ||
@@ -724,8 +723,8 @@ bool LoadOp::verify() const {
     return emitOpError("incorrect number of indices for load");
 
   for (auto *idx : getIndices())
-    if (!idx->getType()->isAffineInt())
-      return emitOpError("index to load must have 'affineint' type");
+    if (!idx->getType()->isIndex())
+      return emitOpError("index to load must have 'index' type");
 
   // TODO: Verify we have the right number of indices.
 
@@ -904,7 +903,7 @@ bool StoreOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   MemRefType *memrefType;
 
-  auto affineIntTy = parser->getBuilder().getAffineIntType();
+  auto affineIntTy = parser->getBuilder().getIndexType();
   return parser->parseOperand(storeValueInfo) || parser->parseComma() ||
          parser->parseOperand(memrefInfo) ||
          parser->parseOperandList(indexInfo, -1,
@@ -934,8 +933,8 @@ bool StoreOp::verify() const {
     return emitOpError("store index operand count not equal to memref rank");
 
   for (auto *idx : getIndices())
-    if (!idx->getType()->isAffineInt())
-      return emitOpError("index to load must have 'affineint' type");
+    if (!idx->getType()->isIndex())
+      return emitOpError("index to load must have 'index' type");
 
   // TODO: Verify we have the right number of indices.
 

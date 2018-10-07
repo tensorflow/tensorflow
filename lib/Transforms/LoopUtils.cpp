@@ -99,7 +99,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
     if (forStmt->hasConstantLowerBound()) {
       auto *mlFunc = forStmt->findFunction();
       MLFuncBuilder topBuilder(&mlFunc->front());
-      auto constOp = topBuilder.create<ConstantAffineIntOp>(
+      auto constOp = topBuilder.create<ConstantIndexOp>(
           forStmt->getLoc(), forStmt->getConstantLowerBound());
       forStmt->replaceAllUsesWith(constOp->getResult());
     } else {

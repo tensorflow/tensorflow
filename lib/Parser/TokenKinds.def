@@ -87,7 +87,6 @@ TOK_OPERATOR(star,               "*")
 // TODO: More operator tokens
 
 // Keywords.  These turn "foo" into Token::kw_foo enums.
-TOK_KEYWORD(affineint)
 TOK_KEYWORD(attributes)
 TOK_KEYWORD(bf16)
 TOK_KEYWORD(br)
@@ -103,6 +102,7 @@ TOK_KEYWORD(false)
 TOK_KEYWORD(floordiv)
 TOK_KEYWORD(for)
 TOK_KEYWORD(if)
+TOK_KEYWORD(index)
 TOK_KEYWORD(max)
 TOK_KEYWORD(memref)
 TOK_KEYWORD(min)

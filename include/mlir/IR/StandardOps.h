@@ -70,12 +70,12 @@ private:
 
 /// The "affine_apply" operation applies an affine map to a list of operands,
 /// yielding a list of results. The operand and result list sizes must be the
-/// same. All operands and results are of type 'AffineInt'. This operation
+/// same. All operands and results are of type 'Index'. This operation
 /// requires a single affine map attribute named "map".
 /// For example:
 ///
 ///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
-///          (affineint) -> (affineint)
+///          (index) -> (index)
 ///
 /// equivalently:
 ///
@@ -285,13 +285,13 @@ private:
 };
 
 /// This is a refinement of the "constant" op for the case where it is
-/// returning an integer value of AffineInt type.
+/// returning an integer value of Index type.
 ///
-///   %1 = "constant"(){value: 99} : () -> affineint
+///   %1 = "constant"(){value: 99} : () -> index
 ///
-class ConstantAffineIntOp : public ConstantOp {
+class ConstantIndexOp : public ConstantOp {
 public:
-  /// Build a constant int op producing an affineint.
+  /// Build a constant int op producing an index.
   static void build(Builder *builder, OperationState *result, int64_t value);
 
   int64_t getValue() const {
@@ -302,7 +302,7 @@ public:
 
 private:
   friend class Operation;
-  explicit ConstantAffineIntOp(const Operation *state) : ConstantOp(state) {}
+  explicit ConstantIndexOp(const Operation *state) : ConstantOp(state) {}
 };
 
 /// The "dealloc" operation frees the region of memory referenced by a memref
@@ -335,7 +335,7 @@ private:
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an
-/// "affineint".  It requires a single integer attribute named "index".  It
+/// "index".  It requires a single integer attribute named "index".  It
 /// returns the size of the specified dimension.  For example:
 ///
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>

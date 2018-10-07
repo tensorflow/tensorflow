@@ -44,14 +44,14 @@ extfunc @foo(i32, i64) -> f32
 // CHECK: extfunc @bar()
 extfunc @bar() -> ()
 
-// CHECK: extfunc @baz() -> (i1, affineint, f32)
-extfunc @baz() -> (i1, affineint, f32)
+// CHECK: extfunc @baz() -> (i1, index, f32)
+extfunc @baz() -> (i1, index, f32)
 
 // CHECK: extfunc @missingReturn()
 extfunc @missingReturn()
 
-// CHECK: extfunc @int_types(i1, i2, i4, i7, i87) -> (i1, affineint, i19)
-extfunc @int_types(i1, i2, i4, i7, i87) -> (i1, affineint, i19)
+// CHECK: extfunc @int_types(i1, i2, i4, i7, i87) -> (i1, index, i19)
+extfunc @int_types(i1, i2, i4, i7, i87) -> (i1, index, i19)
 
 
 // CHECK: extfunc @vectors(vector<1xf32>, vector<2x4xf32>)
@@ -174,8 +174,8 @@ mlfunc @loops() {
 mlfunc @complex_loops() {
   for %i1 = 1 to 100 {      // CHECK:   for %i0 = 1 to 100 {
     for %j1 = 1 to 100 {    // CHECK:     for %i1 = 1 to 100 {
-       // CHECK: "foo"(%i0, %i1) : (affineint, affineint) -> ()
-       "foo"(%i1, %j1) : (affineint,affineint) -> ()
+       // CHECK: "foo"(%i0, %i1) : (index, index) -> ()
+       "foo"(%i1, %j1) : (index,index) -> ()
     }                       // CHECK:     }
     "boo"() : () -> ()      // CHECK:     "boo"() : () -> ()
     for %j2 = 1 to 10 {     // CHECK:     for %i2 = 1 to 10 {
@@ -187,8 +187,8 @@ mlfunc @complex_loops() {
   return                    // CHECK:   return
 }                           // CHECK: }
 
-// CHECK: mlfunc @triang_loop(%arg0 : affineint, %arg1 : memref<?x?xi32>) {
-mlfunc @triang_loop(%arg0 : affineint, %arg1 : memref<?x?xi32>) {
+// CHECK: mlfunc @triang_loop(%arg0 : index, %arg1 : memref<?x?xi32>) {
+mlfunc @triang_loop(%arg0 : index, %arg1 : memref<?x?xi32>) {
   %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
   for %i0 = 1 to %arg0 {      // CHECK: for %i0 = 1 to %arg0 {
     for %i1 = %i0 to %arg0 {  // CHECK:   for %i1 = #map1(%i0) to %arg0 {
@@ -198,20 +198,20 @@ mlfunc @triang_loop(%arg0 : affineint, %arg1 : memref<?x?xi32>) {
   return       // CHECK:   return
 }              // CHECK: }
 
-// CHECK: mlfunc @minmax_loop(%arg0 : affineint, %arg1 : affineint, %arg2 : memref<100xf32>) {
-mlfunc @minmax_loop(%arg0 : affineint, %arg1 : affineint, %arg2 : memref<100xf32>) {
+// CHECK: mlfunc @minmax_loop(%arg0 : index, %arg1 : index, %arg2 : memref<100xf32>) {
+mlfunc @minmax_loop(%arg0 : index, %arg1 : index, %arg2 : memref<100xf32>) {
   // CHECK: for %i0 = max #map{{.*}}()[%arg0] to min #map{{.*}}()[%arg1] {
   for %i0 = max()[s]->(0,s-1)()[%arg0] to min()[s]->(100,s+1)()[%arg1] {
-    // CHECK: "foo"(%arg2, %i0) : (memref<100xf32>, affineint) -> ()
-    "foo"(%arg2, %i0) : (memref<100xf32>, affineint) -> ()
+    // CHECK: "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
+    "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
   }      // CHECK:   }
   return // CHECK:   return
 }        // CHECK: }
 
-// CHECK-LABEL: mlfunc @loop_bounds(%arg0 : affineint) {
-mlfunc @loop_bounds(%N : affineint) {
-  // CHECK: %0 = "foo"(%arg0) : (affineint) -> affineint
-  %s = "foo"(%N) : (affineint) -> affineint
+// CHECK-LABEL: mlfunc @loop_bounds(%arg0 : index) {
+mlfunc @loop_bounds(%N : index) {
+  // CHECK: %0 = "foo"(%arg0) : (index) -> index
+  %s = "foo"(%N) : (index) -> index
   // CHECK: for %i0 = %0 to %arg0
   for %i = %s to %N {
     // CHECK: for %i1 = #map1(%i0) to 0
@@ -220,16 +220,16 @@ mlfunc @loop_bounds(%N : affineint) {
        %w = affine_apply(d0, d1)[s0] -> (d0+d1, s0+1) (%i, %j) [%s]
        // CHECK: for %i2 = #map{{.*}}(%1#0, %i0)[%arg0] to #map{{.*}}(%1#1, %i1)[%0] {
        for %k = #bound_map1 (%w#0, %i)[%N] to (i, j)[s] -> (i + j + s) (%w#1, %j)[%s] {
-          // CHECK: "foo"(%i0, %i1, %i2) : (affineint, affineint, affineint) -> ()
-          "foo"(%i, %j, %k) : (affineint, affineint, affineint)->()
-          // CHECK: %c30 = constant 30 : affineint
-          %c = constant 30 : affineint
+          // CHECK: "foo"(%i0, %i1, %i2) : (index, index, index) -> ()
+          "foo"(%i, %j, %k) : (index, index, index)->()
+          // CHECK: %c30 = constant 30 : index
+          %c = constant 30 : index
           // CHECK: %2 = affine_apply #map{{.*}}(%arg0, %c30)
           %u = affine_apply (d0, d1)->(d0+d1) (%N, %c)
           // CHECK: for %i3 = max #map{{.*}}(%i0)[%2] to min #map{{.*}}(%i2)[%c30] {
           for %l = max #bound_map2(%i)[%u] to min #bound_map2(%k)[%c] {
-            // CHECK: "bar"(%i3) : (affineint) -> ()
-            "bar"(%l) : (affineint) -> ()
+            // CHECK: "bar"(%i3) : (index) -> ()
+            "bar"(%l) : (index) -> ()
           } // CHECK:           }
        }    // CHECK:         }
      }      // CHECK:       }
@@ -237,18 +237,18 @@ mlfunc @loop_bounds(%N : affineint) {
   return    // CHECK:   return
 }           // CHECK: }
 
-// CHECK-LABEL: mlfunc @ifstmt(%arg0 : affineint) {
-mlfunc @ifstmt(%N: affineint) {
-  %c = constant 200 : affineint // CHECK   %c200 = constant 200
+// CHECK-LABEL: mlfunc @ifstmt(%arg0 : index) {
+mlfunc @ifstmt(%N: index) {
+  %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {   	        // CHECK   for %i0 = 1 to 10 {
     if @@set0(%i)[%N, %c] {     // CHECK     if @@set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
-      %y = "add"(%x, %i) : (i32, affineint) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, affineint) -> i32
+      %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
     } else if (i)[N] : (i - 2 >= 0, 4 - i >= 0)(%i)[%N]  {      // CHECK     } else if (@@set1(%i0)[%arg0]) {
-      // CHECK: %c1 = constant 1 : affineint
-      %u = constant 1 : affineint
+      // CHECK: %c1 = constant 1 : index
+      %u = constant 1 : index
       // CHECK: %2 = affine_apply #map{{.*}}(%i0, %i0)[%c1]
       %w = affine_apply (d0,d1)[s0] -> (d0+d1+s0) (%i, %i) [%u]
     } else {            // CHECK     } else {
@@ -258,14 +258,14 @@ mlfunc @ifstmt(%N: affineint) {
   return    // CHECK   return
 }           // CHECK }
 
-// CHECK-LABEL: mlfunc @simple_ifstmt(%arg0 : affineint) {
-mlfunc @simple_ifstmt(%N: affineint) {
-  %c = constant 200 : affineint // CHECK   %c200 = constant 200
+// CHECK-LABEL: mlfunc @simple_ifstmt(%arg0 : index) {
+mlfunc @simple_ifstmt(%N: index) {
+  %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {   	        // CHECK   for %i0 = 1 to 10 {
     if @@set0(%i)[%N, %c] {     // CHECK     if @@set0(%i0)[%arg0, %c200] {
       %x = constant 1 : i32
        // CHECK: %c1_i32 = constant 1 : i32
-      %y = "add"(%x, %i) : (i32, affineint) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, affineint) -> i32
+      %y = "add"(%x, %i) : (i32, index) -> i32 // CHECK: %0 = "add"(%c1_i32, %i0) : (i32, index) -> i32
       %z = "mul"(%y, %y) : (i32, i32) -> i32 // CHECK: %1 = "mul"(%0, %0) : (i32, i32) -> i32
     }       // CHECK     }
   }         // CHECK   }
@@ -294,8 +294,8 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"() {cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
   "foo"() {if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()
 
-  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifstmt : (affineint) -> ()} : () -> ()
-  "foo"() {fn: @attributes : () -> (), if: @ifstmt : (affineint) -> ()} : () -> ()
+  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifstmt : (index) -> ()} : () -> ()
+  "foo"() {fn: @attributes : () -> (), if: @ifstmt : (index) -> ()} : () -> ()
   return
 }
 
@@ -462,7 +462,7 @@ mlfunc @mlfuncattrempty() -> ()
 #map_non_simple1 = (d0)[s0] -> (d0 + s0)
 #map_non_simple2 = ()[s0, s1] -> (s0 + s1)
 #map_non_simple3 = ()[s0] -> (s0 + 3)
-mlfunc @mlfuncsimplemap(%arg0 : affineint, %arg1 : affineint) -> () {
+mlfunc @mlfuncsimplemap(%arg0 : index, %arg1 : index) -> () {
   for %i0 = 0 to #map_simple0()[] { 
   // CHECK: for %i0 = 0 to 10 {
     for %i1 = 0 to #map_simple1()[%arg1] { 

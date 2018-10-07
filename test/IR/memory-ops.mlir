@@ -10,8 +10,8 @@ bb0:
   // CHECK: %0 = alloc() : memref<1024x64xf32, #map0, 1>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
 
-  %c0 = "constant"() {value: 0} : () -> affineint
-  %c1 = "constant"() {value: 1} : () -> affineint
+  %c0 = "constant"() {value: 0} : () -> index
+  %c1 = "constant"() {value: 1} : () -> index
 
   // Test alloc with dynamic dimensions.
   // CHECK: %1 = alloc(%c0, %c1) : memref<?x?xf32, #map0, 1>
@@ -51,8 +51,8 @@ bb0:
   // CHECK: %0 = alloc() : memref<1024x64xf32, #map0, 1>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
 
-  %1 = constant 0 : affineint
-  %2 = constant 1 : affineint
+  %1 = constant 0 : index
+  %2 = constant 1 : index
 
   // CHECK: %1 = load %0[%c0, %c1] : memref<1024x64xf32, #map0, 1>
   %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>

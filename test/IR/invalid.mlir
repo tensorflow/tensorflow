@@ -50,7 +50,7 @@ cfgfunc @bar() // expected-error {{expected '{' in CFG function}}
 
 // -----
 
-extfunc missingsigil() -> (i1, affineint, f32) // expected-error {{expected a function identifier like}}
+extfunc missingsigil() -> (i1, index, f32) // expected-error {{expected a function identifier like}}
 
 
 // -----
@@ -346,8 +346,8 @@ extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
 
 // -----
 
-// affineint is not allowed in a vector.
-extfunc @vectors(vector<1 x affineint>) // expected-error {{invalid vector element type}}
+// index is not allowed in a vector.
+extfunc @vectors(vector<1 x index>) // expected-error {{invalid vector element type}}
 
 // -----
 
@@ -398,7 +398,7 @@ mlfunc @duplicate_induction_var() {
 mlfunc @dominance_failure() {
   for %i = 1 to 10 {
   }
-  "xxx"(%i) : (affineint)->()   // expected-error {{operand #0 does not dominate this use}}
+  "xxx"(%i) : (index)->()   // expected-error {{operand #0 does not dominate this use}}
   return
 }
 
@@ -455,7 +455,7 @@ bb0:
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @bound_symbol_mismatch(%N : affineint) {
+mlfunc @bound_symbol_mismatch(%N : index) {
   for %i = #map1(%N) to 100 {
   // expected-error@-1 {{symbol operand count and affine map symbol count must match}}
   }
@@ -466,7 +466,7 @@ mlfunc @bound_symbol_mismatch(%N : affineint) {
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @bound_dim_mismatch(%N : affineint) {
+mlfunc @bound_dim_mismatch(%N : index) {
   for %i = #map1(%N, %N)[%N] to 100 {
   // expected-error@-1 {{dim operand count and affine map dim count must match}}
   }
@@ -477,9 +477,9 @@ mlfunc @bound_dim_mismatch(%N : affineint) {
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @invalid_dim_nested(%N : affineint) {
+mlfunc @invalid_dim_nested(%N : index) {
   for %i = 1 to 100 {
-    %a = "foo"(%N) : (affineint)->(affineint)
+    %a = "foo"(%N) : (index)->(index)
     for %j = 1 to #map1(%a)[%i] {
     // expected-error@-1 {{value '%a' cannot be used as a dimension id}}
     }
@@ -491,9 +491,9 @@ mlfunc @invalid_dim_nested(%N : affineint) {
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @invalid_dim_affine_apply(%N : affineint) {
+mlfunc @invalid_dim_affine_apply(%N : index) {
   for %i = 1 to 100 {
-    %a = "foo"(%N) : (affineint)->(affineint)
+    %a = "foo"(%N) : (index)->(index)
     %w = affine_apply (i)->(i+1) (%a)
     for %j = 1 to #map1(%w)[%i] {
     // expected-error@-1 {{value '%w' cannot be used as a dimension id}}
@@ -506,9 +506,9 @@ mlfunc @invalid_dim_affine_apply(%N : affineint) {
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @invalid_symbol_iv(%N : affineint) {
+mlfunc @invalid_symbol_iv(%N : index) {
   for %i = 1 to 100 {
-    %a = "foo"(%N) : (affineint)->(affineint)
+    %a = "foo"(%N) : (index)->(index)
     for %j = 1 to #map1(%N)[%i] {
     // expected-error@-1 {{value '%i' cannot be used as a symbol}}
     }
@@ -520,9 +520,9 @@ mlfunc @invalid_symbol_iv(%N : affineint) {
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @invalid_symbol_nested(%N : affineint) {
+mlfunc @invalid_symbol_nested(%N : index) {
   for %i = 1 to 100 {
-    %a = "foo"(%N) : (affineint)->(affineint)
+    %a = "foo"(%N) : (index)->(index)
     for %j = 1 to #map1(%N)[%a] {
     // expected-error@-1 {{value '%a' cannot be used as a symbol}}
     }
@@ -534,7 +534,7 @@ mlfunc @invalid_symbol_nested(%N : affineint) {
 
 #map1 = (i)[j] -> (i+j)
 
-mlfunc @invalid_symbol_affine_apply(%N : affineint) {
+mlfunc @invalid_symbol_affine_apply(%N : index) {
   for %i = 1 to 100 {
     %w = affine_apply (i)->(i+1) (%i)
     for %j = 1 to #map1(%i)[%w] {
@@ -548,14 +548,14 @@ mlfunc @invalid_symbol_affine_apply(%N : affineint) {
 
 mlfunc @large_bound() {
   for %i = 1 to 9223372036854775810 {
-  // expected-error@-1 {{bound or step is too large for affineint}}
+  // expected-error@-1 {{bound or step is too large for index}}
   }
   return
 }
 
 // -----
 
-mlfunc @max_in_upper_bound(%N : affineint) {
+mlfunc @max_in_upper_bound(%N : index) {
   for %i = 1 to max (i)->(N, 100) { //expected-error {{expected SSA operand}}
   }
   return
@@ -580,7 +580,7 @@ mlfunc @invalid_bound_map(%N : i32) {
 // -----
 @@set0 = (i)[N] : (i >= 0, N - i >= 0)
 
-mlfunc @invalid_if_operands1(%N : affineint) {
+mlfunc @invalid_if_operands1(%N : index) {
   for %i = 1 to 10 {
     if @@set0(%i) {
     // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
@@ -588,7 +588,7 @@ mlfunc @invalid_if_operands1(%N : affineint) {
 // -----
 @@set0 = (i)[N] : (i >= 0, N - i >= 0)
 
-mlfunc @invalid_if_operands2(%N : affineint) {
+mlfunc @invalid_if_operands2(%N : index) {
   for %i = 1 to 10 {
     if @@set0()[%N] {
     // expected-error@-1 {{dim operand count and integer set dim count must match}}
@@ -596,7 +596,7 @@ mlfunc @invalid_if_operands2(%N : affineint) {
 // -----
 @@set0 = (i)[N] : (i >= 0, N - i >= 0)
 
-mlfunc @invalid_if_operands3(%N : affineint) {
+mlfunc @invalid_if_operands3(%N : index) {
   for %i = 1 to 10 {
     if @@set0(%i)[%i] {
     // expected-error@-1 {{value '%i' cannot be used as a symbol}}

@@ -73,48 +73,48 @@ bb0:   // CHECK: bb0:
 }
 
 // CHECK-LABEL: mlfunc @affine_apply
-mlfunc @affine_apply(%variable : affineint) -> (affineint, affineint, affineint) {
-  %c177 = constant 177 : affineint
-  %c211 = constant 211 : affineint
-  %N = constant 1075 : affineint
+mlfunc @affine_apply(%variable : index) -> (index, index, index) {
+  %c177 = constant 177 : index
+  %c211 = constant 211 : index
+  %N = constant 1075 : index
 
-  // CHECK: %c1159 = constant 1159 : affineint
-  // CHECK: %c1152 = constant 1152 : affineint
+  // CHECK: %c1159 = constant 1159 : index
+  // CHECK: %c1152 = constant 1152 : index
   %x = affine_apply (d0, d1)[S0] -> ( (d0 + 128 * S0) floordiv 128 + d1 mod 128, 128 * (S0 ceildiv 128) )
            (%c177, %c211)[%N]
 
-  // CHECK: %c42 = constant 42 : affineint
+  // CHECK: %c42 = constant 42 : index
   %y = affine_apply (d0) -> (42) (%variable)
 
   // CHECK: return %c1159, %c1152, %c42
-  return %x#0, %x#1, %y : affineint, affineint, affineint
+  return %x#0, %x#1, %y : index, index, index
 }
 
-// CHECK-LABEL:  mlfunc @constant_fold_bounds(%arg0 : affineint) {
-mlfunc @constant_fold_bounds(%N : affineint) {
-  // CHECK:      %c3 = constant 3 : affineint
-  // CHECK-NEXT: %0 = "foo"() : () -> affineint
-  %c9 = constant 9 : affineint
-  %c1 = constant 1 : affineint
-  %c2 = constant 2 : affineint
+// CHECK-LABEL:  mlfunc @constant_fold_bounds(%arg0 : index) {
+mlfunc @constant_fold_bounds(%N : index) {
+  // CHECK:      %c3 = constant 3 : index
+  // CHECK-NEXT: %0 = "foo"() : () -> index
+  %c9 = constant 9 : index
+  %c1 = constant 1 : index
+  %c2 = constant 2 : index
   %c3 = affine_apply (d0, d1) -> (d0 + d1) (%c1, %c2)
-  %l = "foo"() : () -> affineint
+  %l = "foo"() : () -> index
 
   // CHECK:  for %i0 = 5 to 7 {
   for %i = max (d0, d1) -> (0, d0 + d1)(%c2, %c3) to min (d0, d1) -> (d0 - 2, 32*d1) (%c9, %c1) {
-    "foo"(%i, %c3) : (affineint, affineint) -> ()
+    "foo"(%i, %c3) : (index, index) -> ()
   }
 
   // Bound takes a non-constant argument but can still be folded.
   // CHECK:  for %i1 = 1 to 7 {
   for %j = max (d0) -> (0, 1)(%N) to min (d0, d1) -> (7, 9)(%N, %l) {
-    "foo"(%j, %c3) : (affineint, affineint) -> ()
+    "foo"(%j, %c3) : (index, index) -> ()
   }
 
   // None of the bounds can be folded.
   // CHECK: for %i2 = max [[MAP0]]()[%0] to min [[MAP1]]()[%arg0] {
   for %k = max ()[s0] -> (0, s0) ()[%l] to min ()[s0] -> (100, s0)()[%N] {
-    "foo"(%k, %c3) : (affineint, affineint) -> ()
+    "foo"(%k, %c3) : (index, index) -> ()
   }
   return
 }
@@ -152,12 +152,12 @@ bb0(%a : i32):   // CHECK: bb0(%arg0: i32):
 }
 
 // CHECK-LABEL: mlfunc @dim
-mlfunc @dim(%x : tensor<8x4xf32>) -> affineint {
+mlfunc @dim(%x : tensor<8x4xf32>) -> index {
 
-  // CHECK: %c4 = constant 4 : affineint
+  // CHECK: %c4 = constant 4 : index
   %0 = dim %x, 1 : tensor<8x4xf32>
 
   // CHECK-NEXT: return %c4
-  return %0 : affineint
+  return %0 : index
 }
 

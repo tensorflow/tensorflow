@@ -6,7 +6,7 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn keyword mlirType affineint i1 i2 i4 i8 i13 i16 i32 i64
+syn keyword mlirType index i1 i2 i4 i8 i13 i16 i32 i64
       \ f16 f32 tf_control
 syn keyword mlirType memref tensor vector
 

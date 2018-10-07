@@ -15,7 +15,7 @@ bb0(%a : f32):
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
   // CHECK: %1 = dim %0, 2 : tensor<4x4x?xf32>
-  %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
+  %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %2 = addf %arg0, %arg0 : f32
   %x = "addf"(%a, %a) : (f32,f32) -> (f32)
@@ -29,7 +29,7 @@ cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32) {
 // CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32):
 bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
-  %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
+  %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %1 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a2 = dim %t, 2 : tensor<4x4x?xf32>
@@ -70,8 +70,8 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
   // CHECK: %c42_i32_0 = constant 42 : i32
   %7 = constant 42 : i32
 
-  // CHECK: %c43 = constant 43 {crazy: "foo"} : affineint
-  %8 = constant 43 {crazy: "foo"} : affineint
+  // CHECK: %c43 = constant 43 {crazy: "foo"} : index
+  %8 = constant 43 {crazy: "foo"} : index
 
   // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
@@ -91,16 +91,16 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
 // CHECK-LABEL: cfgfunc @affine_apply() {
 cfgfunc @affine_apply() {
 bb0:
-  %i = "constant"() {value: 0} : () -> affineint
-  %j = "constant"() {value: 1} : () -> affineint
+  %i = "constant"() {value: 0} : () -> index
+  %j = "constant"() {value: 1} : () -> index
 
   // CHECK: affine_apply #map0(%c0)
   %a = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
-    (affineint) -> (affineint)
+    (index) -> (index)
 
   // CHECK: affine_apply #map1(%c0, %c1)
   %b = "affine_apply" (%i, %j) { map: #map5 } :
-    (affineint, affineint) -> (affineint, affineint)
+    (index, index) -> (index, index)
 
   // CHECK: affine_apply #map2(%c0, %c1)[%c1, %c0]
   %c = affine_apply (i,j)[m,n] -> (i+n, j+m)(%i, %j)[%j, %i]
@@ -112,10 +112,10 @@ bb0:
 }
 
 // CHECK-LABEL: cfgfunc @load_store
-cfgfunc @load_store(memref<4x4xi32>, affineint) {
-bb0(%0: memref<4x4xi32>, %1: affineint):
+cfgfunc @load_store(memref<4x4xi32>, index) {
+bb0(%0: memref<4x4xi32>, %1: index):
   // CHECK: %0 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
-  %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, affineint, affineint)->i32
+  %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, index, index)->i32
 
   // CHECK: %1 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
   %3 = load %0[%1, %1] : memref<4x4xi32>
@@ -158,7 +158,7 @@ mlfunc @calls(%arg0 : i32) {
 
 // CHECK-LABEL: mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
 mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
-  %c0 = "constant"() {value: 0} : () -> affineint
+  %c0 = "constant"() {value: 0} : () -> index
 
   // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
   %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>

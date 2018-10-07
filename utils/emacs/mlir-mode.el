@@ -29,10 +29,10 @@
    ;; Affinemaps
    '("#[-a-zA-Z$._0-9]*" . font-lock-variable-name-face)
    ;; Types
-   '("\\b\\(f16\\|bf16\\|f32\\|f64\\|affineint\\|tf_control\\|i[1-9][0-9]*\\)\\b" . font-lock-type-face)
+   '("\\b\\(f16\\|bf16\\|f32\\|f64\\|index\\|tf_control\\|i[1-9][0-9]*\\)\\b" . font-lock-type-face)
    '("\\b\\(tensor\\|vector\\|memref\\)\\b" . font-lock-type-face)
    ;; Dimension lists
-   '("\\b\\([0-9?]+x\\)*\\(f16\\|bf16\\|f32\\|f64\\|affineint\\|i[1-9][0-9]*\\)\\b" . font-lock-preprocessor-face)
+   '("\\b\\([0-9?]+x\\)*\\(f16\\|bf16\\|f32\\|f64\\|index\\|i[1-9][0-9]*\\)\\b" . font-lock-preprocessor-face)
    ;; Integer literals
    '("\\b[-]?[0-9]+\\b" . font-lock-preprocessor-face)
    ;; Floating point constants

@@ -36,7 +36,7 @@ public:
   /// Integer identifier for all the concrete type kinds.
   enum class Kind {
     // Target pointer sized integer, used (e.g.) in affine mappings.
-    AffineInt,
+    Index,
 
     // TensorFlow types.
     TFControl,
@@ -48,7 +48,7 @@ public:
     TFString,
 
     /// These are marker for the first and last 'other' type.
-    FIRST_OTHER_TYPE = AffineInt,
+    FIRST_OTHER_TYPE = Index,
     LAST_OTHER_TYPE = TFString,
 
     // Floating point.
@@ -76,7 +76,7 @@ public:
 
   // Convenience predicates.  This is only for 'other' and floating point types,
   // derived types should use isa/dyn_cast.
-  bool isAffineInt() const { return getKind() == Kind::AffineInt; }
+  bool isIndex() const { return getKind() == Kind::Index; }
   bool isTFControl() const { return getKind() == Kind::TFControl; }
   bool isTFResource() const { return getKind() == Kind::TFResource; }
   bool isTFVariant() const { return getKind() == Kind::TFVariant; }
@@ -98,7 +98,7 @@ public:
   static FloatType *getF16(MLIRContext *ctx);
   static FloatType *getF32(MLIRContext *ctx);
   static FloatType *getF64(MLIRContext *ctx);
-  static OtherType *getAffineInt(MLIRContext *ctx);
+  static OtherType *getIndex(MLIRContext *ctx);
   static OtherType *getTFControl(MLIRContext *ctx);
   static OtherType *getTFString(MLIRContext *ctx);
   static OtherType *getTFResource(MLIRContext *ctx);
@@ -224,8 +224,8 @@ private:
   ~OtherType() = delete;
 };
 
-inline OtherType *Type::getAffineInt(MLIRContext *ctx) {
-  return OtherType::get(Kind::AffineInt, ctx);
+inline OtherType *Type::getIndex(MLIRContext *ctx) {
+  return OtherType::get(Kind::Index, ctx);
 }
 inline OtherType *Type::getTFControl(MLIRContext *ctx) {
   return OtherType::get(Kind::TFControl, ctx);
