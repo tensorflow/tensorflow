@@ -24,42 +24,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#ifdef INTEL_MKL_ML_ONLY
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#endif
 #include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
-#endif
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_ML_ONLY
-
-template <typename Device, typename T>
-class MklIdentityOp : public OpKernel {
- public:
-  explicit MklIdentityOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    MklShape mkl_shape_input;
-    GetMklShape(context, 0, &mkl_shape_input);
-    bool input_in_mkl_format = mkl_shape_input.IsMklTensor();
-
-    if (input_in_mkl_format) {
-      ForwardMklTensorInToOut(context, 0, 0);
-    } else {
-      ForwardTfTensorInToOut(context, 0, 0);
-    }
-  }
-
-  bool IsExpensive() override { return false; }
-};
-
-#else
 
 template <typename Device, typename T>
 class MklIdentityOp : public OpKernel {
@@ -83,7 +53,6 @@ class MklIdentityOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-#endif
 
 #define REGISTER_MKL_CPU(T)                                         \
   REGISTER_KERNEL_BUILDER(Name("_MklIdentity")                      \
