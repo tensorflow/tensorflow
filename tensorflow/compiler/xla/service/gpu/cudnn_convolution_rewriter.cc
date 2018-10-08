@@ -525,6 +525,9 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   TF_RETURN_IF_ERROR(
       custom_call->set_backend_config(GetDefaultBackendConfig()));
 
+  VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
+          << custom_call->ToString();
+
   // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract out
   // the conv result and replace `conv` with it.
   TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
