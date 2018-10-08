@@ -239,6 +239,36 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv2dtranspose_dilation(self):
+    kwargs = {
+        'filters': 2,
+        'kernel_size': 3,
+        'padding': 'valid',
+        'dilation_rate': 2,
+        'kernel_initializer': 'ones'
+    }
+    with self.cached_session(use_gpu=True):
+      model = keras.Sequential()
+      model.add(keras.layers.Conv2DTranspose(**kwargs))
+      x = np.arange(48).reshape((1, 4, 4, 3)).astype(np.float32)
+      y = model.predict(x)
+      self.assertAllClose(y[0][0][0], [3, 3], atol=1e-7)
+
+    kwargs = {
+        'filters': 2,
+        'kernel_size': 3,
+        'padding': 'same',
+        'dilation_rate': 2,
+        'data_format': 'channels_first',
+        'kernel_initializer': 'ones'
+    }
+    with self.cached_session(use_gpu=True):
+      model = keras.Sequential()
+      model.add(keras.layers.Conv2DTranspose(**kwargs))
+      x = np.arange(48).reshape((1, 3, 4, 4)).astype(np.float32)
+      y = model.predict(x)
+      self.assertAllClose(y[0][0][0], [252, 264, 252, 264], atol=1e-7)
+
 
 class Conv3DTransposeTest(test.TestCase):
 
