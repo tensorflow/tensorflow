@@ -26,8 +26,8 @@ namespace tensorflow {
 namespace grappler {
 namespace internal {
 // Try and find an appropriate Host device in `devices` given `device`.
-string TryFindHostDevice(const gtl::FlatSet<string>& devices,
-                         bool has_device_cpu, const string& device);
+bool TrySwapToHostDevice(const gtl::FlatSet<string>& devices,
+                         bool has_device_cpu, string* device);
 }  // end namespace internal
 
 // Optimize TensorFlow ops that should be swapped into the CPU to avoid
