@@ -360,6 +360,9 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
+  VLOG(1) << "Replacing convolution " << instr->ToString() << " with "
+          << new_call->ToString();
+
   TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   // Repackage new_call so it has the same shape as the original call, namely
