@@ -128,7 +128,13 @@ class TestCase(test.TestCase):
   @contextlib.contextmanager
   def converted(self, entity, converter_module, namespace, *tf_symbols):
     node, ctx = self.prepare(entity, namespace)
-    node = converter_module.transform(node, ctx)
+
+    if not isinstance(converter_module, (list, tuple)):
+      converter_module = (converter_module,)
+    for m in converter_module:
+      node = m.transform(node, ctx)
+      node = converter.standard_analysis(node, ctx, is_initial=True)
+
     with self.compiled(node, namespace, *tf_symbols) as result:
       yield result
 
