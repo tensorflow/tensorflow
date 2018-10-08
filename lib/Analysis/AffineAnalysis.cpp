@@ -139,10 +139,10 @@ public:
     operandExprStack.reserve(8);
   }
 
-  void visitMulExpr(AffineBinaryOpExpr *expr) {
+  void visitMulExpr(AffineBinaryOpExprRef expr) {
     assert(operandExprStack.size() >= 2);
     // This is a pure affine expr; the RHS will be a constant.
-    assert(isa<AffineConstantExpr>(expr->getRHS()));
+    assert(expr->getRHS().isa<AffineConstantExprRef>());
     // Get the RHS constant.
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     operandExprStack.pop_back();
@@ -153,7 +153,7 @@ public:
     }
   }
 
-  void visitAddExpr(AffineBinaryOpExpr *expr) {
+  void visitAddExpr(AffineBinaryOpExprRef expr) {
     assert(operandExprStack.size() >= 2);
     const auto &rhs = operandExprStack.back();
     auto &lhs = operandExprStack[operandExprStack.size() - 2];
@@ -166,10 +166,10 @@ public:
     operandExprStack.pop_back();
   }
 
-  void visitModExpr(AffineBinaryOpExpr *expr) {
+  void visitModExpr(AffineBinaryOpExprRef expr) {
     assert(operandExprStack.size() >= 2);
     // This is a pure affine expr; the RHS will be a constant.
-    assert(isa<AffineConstantExpr>(expr->getRHS()));
+    assert(expr->getRHS().isa<AffineConstantExprRef>());
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     operandExprStack.pop_back();
     auto &lhs = operandExprStack.back();
@@ -195,32 +195,32 @@ public:
         AffineConstantExpr::get(rhsConst, context), context));
     lhs[getLocalVarStartIndex() + numLocals - 1] = -rhsConst;
   }
-  void visitCeilDivExpr(AffineBinaryOpExpr *expr) {
+  void visitCeilDivExpr(AffineBinaryOpExprRef expr) {
     visitDivExpr(expr, /*isCeil=*/true);
   }
-  void visitFloorDivExpr(AffineBinaryOpExpr *expr) {
+  void visitFloorDivExpr(AffineBinaryOpExprRef expr) {
     visitDivExpr(expr, /*isCeil=*/false);
   }
-  void visitDimExpr(AffineDimExpr *expr) {
+  void visitDimExpr(AffineDimExprRef expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
     eq[getDimStartIndex() + expr->getPosition()] = 1;
   }
-  void visitSymbolExpr(AffineSymbolExpr *expr) {
+  void visitSymbolExpr(AffineSymbolExprRef expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
     eq[getSymbolStartIndex() + expr->getPosition()] = 1;
   }
-  void visitConstantExpr(AffineConstantExpr *expr) {
+  void visitConstantExpr(AffineConstantExprRef expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
     eq[getConstantIndex()] = expr->getValue();
   }
 
 private:
-  void visitDivExpr(AffineBinaryOpExpr *expr, bool isCeil) {
+  void visitDivExpr(AffineBinaryOpExprRef expr, bool isCeil) {
     assert(operandExprStack.size() >= 2);
-    assert(isa<AffineConstantExpr>(expr->getRHS()));
+    assert(expr->getRHS().isa<AffineConstantExprRef>());
     // This is a pure affine expr; the RHS is a positive constant.
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     // TODO(bondhugula): handle division by zero at the same time the issue is

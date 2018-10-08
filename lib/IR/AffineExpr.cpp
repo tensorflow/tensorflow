@@ -27,10 +27,10 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExprRef lhs,
   // We verify affine op expr forms at construction time.
   switch (kind) {
   case Kind::Add:
-    assert(!isa<AffineConstantExpr>(lhs));
+    assert(!lhs.isa<AffineConstantExprRef>());
     break;
   case Kind::Mul:
-    assert(!isa<AffineConstantExpr>(lhs));
+    assert(!lhs.isa<AffineConstantExprRef>());
     assert(rhs->isSymbolicOrConstant());
     break;
   case Kind::FloorDiv:
@@ -124,15 +124,15 @@ bool AffineExpr::isPureAffine() {
     // possible, allowing this to merge into the next case.
     auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine() &&
-           (isa<AffineConstantExpr>(op->getLHS()) ||
-            isa<AffineConstantExpr>(op->getRHS()));
+           (op->getLHS().isa<AffineConstantExprRef>() ||
+            op->getRHS().isa<AffineConstantExprRef>());
   }
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
     auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() &&
-           isa<AffineConstantExpr>(op->getRHS());
+           op->getRHS().isa<AffineConstantExprRef>();
   }
   }
 }
@@ -214,7 +214,7 @@ template <> AffineExprRef AffineExprRef::operator*(AffineExprRef other) const {
 }
 // Unary minus, delegate to operator*.
 template <> AffineExprRef AffineExprRef::operator-() const {
-  return *this * (-1);
+  return AffineBinaryOpExpr::getMul(expr, -1, expr->getContext());
 }
 // Delegate to operator+.
 template <> AffineExprRef AffineExprRef::operator-(int64_t v) const {

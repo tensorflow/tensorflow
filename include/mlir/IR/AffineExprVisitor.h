@@ -46,7 +46,7 @@ namespace mlir {
 ///  struct DimExprCounter : public AffineExprVisitor<DimExprCounter> {
 ///    unsigned numDimExprs;
 ///    DimExprCounter() : numDimExprs(0) {}
-///    void visitAffineDimExpr(AffineDimExpr *expr) { ++numDimExprs; }
+///    void visitAffineDimExpr(AffineDimExprRef expr) { ++numDimExprs; }
 ///  };
 ///
 ///  And this class would be used like this:
@@ -83,39 +83,39 @@ public:
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
     case AffineExpr::Kind::Add: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitAddExpr(binOpExpr);
     }
     case AffineExpr::Kind::Mul: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitMulExpr(binOpExpr);
     }
     case AffineExpr::Kind::Mod: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitModExpr(binOpExpr);
     }
     case AffineExpr::Kind::FloorDiv: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitFloorDivExpr(binOpExpr);
     }
     case AffineExpr::Kind::CeilDiv: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitCeilDivExpr(binOpExpr);
     }
     case AffineExpr::Kind::Constant:
       return static_cast<SubClass *>(this)->visitConstantExpr(
-          cast<AffineConstantExpr>(expr));
+          expr.cast<AffineConstantExprRef>());
     case AffineExpr::Kind::DimId:
       return static_cast<SubClass *>(this)->visitDimExpr(
-          cast<AffineDimExpr>(expr));
+          expr.cast<AffineDimExprRef>());
     case AffineExpr::Kind::SymbolId:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
-          cast<AffineSymbolExpr>(expr));
+          expr.cast<AffineSymbolExprRef>());
     }
   }
 
@@ -125,34 +125,34 @@ public:
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
     case AffineExpr::Kind::Add: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitAddExpr(binOpExpr);
     }
     case AffineExpr::Kind::Mul: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitMulExpr(binOpExpr);
     }
     case AffineExpr::Kind::Mod: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitModExpr(binOpExpr);
     }
     case AffineExpr::Kind::FloorDiv: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitFloorDivExpr(binOpExpr);
     }
     case AffineExpr::Kind::CeilDiv: {
-      auto *binOpExpr = cast<AffineBinaryOpExpr>(expr);
+      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitCeilDivExpr(binOpExpr);
     }
     case AffineExpr::Kind::Constant:
       return static_cast<SubClass *>(this)->visitConstantExpr(
-          cast<AffineConstantExpr>(expr));
+          expr.cast<AffineConstantExprRef>());
     case AffineExpr::Kind::DimId:
       return static_cast<SubClass *>(this)->visitDimExpr(
-          cast<AffineDimExpr>(expr));
+          expr.cast<AffineDimExprRef>());
     case AffineExpr::Kind::SymbolId:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
-          cast<AffineSymbolExpr>(expr));
+          expr.cast<AffineSymbolExprRef>());
     }
   }
 
@@ -166,29 +166,29 @@ public:
 
   // Default visit methods. Note that the default op-specific binary op visit
   // methods call the general visitAffineBinaryOpExpr visit method.
-  void visitAffineBinaryOpExpr(AffineBinaryOpExpr *expr) {}
-  void visitAddExpr(AffineBinaryOpExpr *expr) {
+  void visitAffineBinaryOpExpr(AffineBinaryOpExprRef expr) {}
+  void visitAddExpr(AffineBinaryOpExprRef expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitMulExpr(AffineBinaryOpExpr *expr) {
+  void visitMulExpr(AffineBinaryOpExprRef expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitModExpr(AffineBinaryOpExpr *expr) {
+  void visitModExpr(AffineBinaryOpExprRef expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitFloorDivExpr(AffineBinaryOpExpr *expr) {
+  void visitFloorDivExpr(AffineBinaryOpExprRef expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitCeilDivExpr(AffineBinaryOpExpr *expr) {
+  void visitCeilDivExpr(AffineBinaryOpExprRef expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitConstantExpr(AffineConstantExpr *expr) {}
-  void visitAffineDimExpr(AffineDimExpr *expr) {}
-  void visitAffineSymbolExpr(AffineSymbolExpr *expr) {}
+  void visitConstantExpr(AffineConstantExprRef expr) {}
+  void visitAffineDimExpr(AffineDimExprRef expr) {}
+  void visitAffineSymbolExpr(AffineSymbolExprRef expr) {}
 
 private:
   // Walk the operands - each operand is itself walked in post order.
-  void walkOperandsPostOrder(AffineBinaryOpExpr *expr) {
+  void walkOperandsPostOrder(AffineBinaryOpExprRef expr) {
     walkPostOrder(expr->getLHS());
     walkPostOrder(expr->getRHS());
   }

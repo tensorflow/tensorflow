@@ -107,8 +107,8 @@ private:
     // Check if the affine map is single dim id or single symbol identity -
     // (i)->(i) or ()[s]->(i)
     return boundMap->getNumInputs() == 1 && boundMap->getNumResults() == 1 &&
-           (isa<AffineDimExpr>(boundMap->getResult(0)) ||
-            isa<AffineSymbolExpr>(boundMap->getResult(0)));
+           (boundMap->getResult(0).isa<AffineDimExprRef>() ||
+            boundMap->getResult(0).isa<AffineSymbolExprRef>());
   }
 
   // Visit functions.
@@ -579,13 +579,13 @@ void ModulePrinter::printAffineExprInternal(
   const char *binopSpelling = nullptr;
   switch (expr->getKind()) {
   case AffineExpr::Kind::SymbolId:
-    os << 's' << cast<AffineSymbolExpr>(expr)->getPosition();
+    os << 's' << expr.cast<AffineSymbolExprRef>()->getPosition();
     return;
   case AffineExpr::Kind::DimId:
-    os << 'd' << cast<AffineDimExpr>(expr)->getPosition();
+    os << 'd' << expr.cast<AffineDimExprRef>()->getPosition();
     return;
   case AffineExpr::Kind::Constant:
-    os << cast<AffineConstantExpr>(expr)->getValue();
+    os << expr.cast<AffineConstantExprRef>()->getValue();
     return;
   case AffineExpr::Kind::Add:
     binopSpelling = " + ";
@@ -604,7 +604,7 @@ void ModulePrinter::printAffineExprInternal(
     break;
   }
 
-  auto *binOp = cast<AffineBinaryOpExpr>(expr);
+  auto binOp = expr.cast<AffineBinaryOpExprRef>();
 
   // Handle tightly binding binary operators.
   if (binOp->getKind() != AffineExpr::Kind::Add) {
@@ -627,10 +627,10 @@ void ModulePrinter::printAffineExprInternal(
   // Pretty print addition to a product that has a negative operand as a
   // subtraction.
   AffineExprRef rhsExpr = binOp->getRHS();
-  if (auto *rhs = dyn_cast<AffineBinaryOpExpr>(rhsExpr)) {
+  if (auto rhs = rhsExpr.dyn_cast<AffineBinaryOpExprRef>()) {
     if (rhs->getKind() == AffineExpr::Kind::Mul) {
       AffineExprRef rrhsExpr = rhs->getRHS();
-      if (auto *rrhs = dyn_cast<AffineConstantExpr>(rrhsExpr)) {
+      if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExprRef>()) {
         if (rrhs->getValue() == -1) {
           printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
           os << " - ";
@@ -655,7 +655,7 @@ void ModulePrinter::printAffineExprInternal(
   }
 
   // Pretty print addition to a negative number as a subtraction.
-  if (auto *rhs = dyn_cast<AffineConstantExpr>(rhsExpr)) {
+  if (auto rhs = rhsExpr.dyn_cast<AffineConstantExprRef>()) {
     if (rhs->getValue() < 0) {
       printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
       os << " - " << -rhs->getValue();
@@ -1435,7 +1435,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
 
     // Print constant bound.
     if (map->getNumDims() == 0 && map->getNumSymbols() == 0) {
-      if (auto *constExpr = dyn_cast<AffineConstantExpr>(expr)) {
+      if (auto constExpr = expr.dyn_cast<AffineConstantExprRef>()) {
         os << constExpr->getValue();
         return;
       }
@@ -1444,7 +1444,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
     // Print bound that consists of a single SSA symbol if the map is over a
     // single symbol.
     if (map->getNumDims() == 0 && map->getNumSymbols() == 1) {
-      if (auto *symExpr = dyn_cast<AffineSymbolExpr>(expr)) {
+      if (auto symExpr = expr.dyn_cast<AffineSymbolExprRef>()) {
         printOperand(bound.getOperand(0));
         return;
       }

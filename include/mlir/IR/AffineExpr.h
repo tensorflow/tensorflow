@@ -26,6 +26,121 @@
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Support/Casting.h"
+#include <type_traits>
+
+namespace mlir {
+
+class AffineExpr;
+class AffineBinaryOpExpr;
+class AffineDimExpr;
+class AffineSymbolExpr;
+class AffineConstantExpr;
+
+/// Helper structure to build AffineExpr with intuitive operators in order to
+/// operate on chainable, lightweight value types instead of pointer types.
+/// This structure operates on immutable types so it freely casts constness
+/// away.
+/// TODO(ntv): Remove all redundant MLIRContext* arguments through the API
+/// TODO(ntv): Remove all uses of AffineExpr* in Parser.cpp
+/// TODO(ntv): Add extra out-of-class operators for int op AffineExprBaseRef
+/// TODO(ntv): Rename
+/// TODO(ntv): Drop const everywhere it makes sense in AffineExpr
+/// TODO(ntv): remove const comment
+/// TODO(ntv): pointer pair
+template <typename AffineExprType> class AffineExprBaseRef {
+public:
+  typedef AffineExprBaseRef TemplateType;
+  typedef AffineExprType ImplType;
+
+  AffineExprBaseRef() : expr(nullptr) {}
+  /* implicit */ AffineExprBaseRef(const AffineExprType *expr)
+      : expr(const_cast<AffineExprType *>(expr)) {}
+
+  AffineExprBaseRef(const AffineExprBaseRef &other) : expr(other.expr) {}
+  AffineExprBaseRef &operator=(AffineExprBaseRef other) {
+    expr = other.expr;
+    return *this;
+  }
+
+  bool operator==(AffineExprBaseRef other) const { return expr == other.expr; }
+
+  AffineExprType *operator->() const { return expr; }
+
+  /* implicit */ operator AffineExprBaseRef<AffineExpr>() const {
+    return const_cast<AffineExpr *>(static_cast<const AffineExpr *>(expr));
+  }
+  explicit operator bool() const { return expr; }
+
+  bool empty() const { return expr == nullptr; }
+  bool operator!() const { return expr == nullptr; }
+
+  template <typename U> bool isa() const {
+    using PtrType = typename U::ImplType;
+    return llvm::isa<PtrType>(const_cast<AffineExprType *>(this->expr));
+  }
+  template <typename U> U dyn_cast() const {
+    using PtrType = typename U::ImplType;
+    return U(llvm::dyn_cast<PtrType>(const_cast<AffineExprType *>(this->expr)));
+  }
+  template <typename U> U cast() const {
+    using PtrType = typename U::ImplType;
+    return U(llvm::cast<PtrType>(const_cast<AffineExprType *>(this->expr)));
+  }
+
+  AffineExprBaseRef operator+(int64_t v) const;
+  AffineExprBaseRef operator+(AffineExprBaseRef other) const;
+  AffineExprBaseRef operator-() const;
+  AffineExprBaseRef operator-(int64_t v) const;
+  AffineExprBaseRef operator-(AffineExprBaseRef other) const;
+  AffineExprBaseRef operator*(int64_t v) const;
+  AffineExprBaseRef operator*(AffineExprBaseRef other) const;
+  AffineExprBaseRef floorDiv(uint64_t v) const;
+  AffineExprBaseRef floorDiv(AffineExprBaseRef other) const;
+  AffineExprBaseRef ceilDiv(uint64_t v) const;
+  AffineExprBaseRef ceilDiv(AffineExprBaseRef other) const;
+  AffineExprBaseRef operator%(uint64_t v) const;
+  AffineExprBaseRef operator%(AffineExprBaseRef other) const;
+
+  friend ::llvm::hash_code hash_value(AffineExprBaseRef arg);
+
+private:
+  AffineExprType *expr;
+};
+
+using AffineExprRef = AffineExprBaseRef<AffineExpr>;
+using AffineBinaryOpExprRef = AffineExprBaseRef<AffineBinaryOpExpr>;
+using AffineDimExprRef = AffineExprBaseRef<AffineDimExpr>;
+using AffineSymbolExprRef = AffineExprBaseRef<AffineSymbolExpr>;
+using AffineConstantExprRef = AffineExprBaseRef<AffineConstantExpr>;
+
+// Make AffineExprRef hashable.
+inline ::llvm::hash_code hash_value(AffineExprRef arg) {
+  return ::llvm::hash_value(static_cast<AffineExpr *>(arg.expr));
+}
+
+} // namespace mlir
+
+namespace llvm {
+
+// AffineExprRef hash just like pointers
+template <> struct DenseMapInfo<mlir::AffineExprRef> {
+  static mlir::AffineExprRef getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<mlir::AffineExpr *>::getEmptyKey();
+    return mlir::AffineExprRef(pointer);
+  }
+  static mlir::AffineExprRef getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<mlir::AffineExpr *>::getTombstoneKey();
+    return mlir::AffineExprRef(pointer);
+  }
+  static unsigned getHashValue(mlir::AffineExprRef val) {
+    return mlir::hash_value(val);
+  }
+  static bool isEqual(mlir::AffineExprRef LHS, mlir::AffineExprRef RHS) {
+    return LHS == RHS;
+  }
+};
+
+} // namespace llvm
 
 namespace mlir {
 
@@ -97,93 +212,6 @@ private:
 inline raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr) {
   expr.print(os);
   return os;
-}
-
-/// Helper structure to build AffineExpr with intuitive operators in order to
-/// operate on chainable, lightweight value types instead of pointer types.
-/// This structure operates on immutable types so it freely casts constness
-/// away.
-/// TODO(ntv): Remove all redundant MLIRContext* arguments through the API
-/// TODO(ntv): Remove all uses of AffineExpr* in Parser.cpp
-/// TODO(ntv): Add extra out-of-class operators for int op AffineExprBaseRef
-/// TODO(ntv): Rename
-/// TODO(ntv): Drop const everywhere it makes sense in AffineExpr
-/// TODO(ntv): remove const comment
-/// TODO(ntv): pointer pair
-template <typename AffineExprType> class AffineExprBaseRef {
-public:
-  /* implicit */ AffineExprBaseRef(AffineExprType *expr) : expr(expr) {}
-
-  AffineExprBaseRef(const AffineExprBaseRef &other) : expr(other.expr){};
-  AffineExprBaseRef &operator=(AffineExprBaseRef other) {
-    expr = other;
-    return *this;
-  };
-  bool operator==(AffineExprBaseRef other) const { return expr == other.expr; };
-  AffineExprType *operator->() { return expr; }
-  /* implicit */ operator AffineExprType *() { return expr; }
-
-  bool operator!() { return expr == nullptr; }
-
-  AffineExprBaseRef operator+(int64_t v) const;
-  AffineExprBaseRef operator+(AffineExprBaseRef other) const;
-  AffineExprBaseRef operator-() const;
-  AffineExprBaseRef operator-(int64_t v) const;
-  AffineExprBaseRef operator-(AffineExprBaseRef other) const;
-  AffineExprBaseRef operator*(int64_t v) const;
-  AffineExprBaseRef operator*(AffineExprBaseRef other) const;
-  AffineExprBaseRef floorDiv(uint64_t v) const;
-  AffineExprBaseRef floorDiv(AffineExprBaseRef other) const;
-  AffineExprBaseRef ceilDiv(uint64_t v) const;
-  AffineExprBaseRef ceilDiv(AffineExprBaseRef other) const;
-  AffineExprBaseRef operator%(uint64_t v) const;
-  AffineExprBaseRef operator%(AffineExprBaseRef other) const;
-
-private:
-  AffineExprType *expr;
-};
-
-using AffineExprRef = AffineExprBaseRef<AffineExpr>;
-
-inline ::llvm::hash_code hash_value(AffineExprRef arg);
-} // namespace mlir
-
-namespace llvm {
-
-/// This helper structure allows classof/isa/cast/dyn_cast to operate on
-/// AffineExprBaseRef<T>.
-template <typename T> struct simplify_type<mlir::AffineExprBaseRef<T>> {
-  using SimpleType = T *;
-  static SimpleType getSimplifiedValue(mlir::AffineExprBaseRef<T> &input) {
-    return input;
-  }
-};
-
-// AffineExprRef hash just like pointers
-template <> struct DenseMapInfo<mlir::AffineExprRef> {
-  static mlir::AffineExprRef getEmptyKey() {
-    auto pointer = llvm::DenseMapInfo<mlir::AffineExpr *>::getEmptyKey();
-    return mlir::AffineExprRef(pointer);
-  }
-  static mlir::AffineExprRef getTombstoneKey() {
-    auto pointer = llvm::DenseMapInfo<mlir::AffineExpr *>::getTombstoneKey();
-    return mlir::AffineExprRef(pointer);
-  }
-  static unsigned getHashValue(mlir::AffineExprRef val) {
-    return mlir::hash_value(val);
-  }
-  static bool isEqual(mlir::AffineExprRef LHS, mlir::AffineExprRef RHS) {
-    return LHS == RHS;
-  }
-};
-
-} // namespace llvm
-
-namespace mlir {
-
-// Make AffineExprRef hashable.
-inline ::llvm::hash_code hash_value(AffineExprRef arg) {
-  return ::llvm::hash_value(static_cast<AffineExpr *>(arg));
 }
 
 /// Affine binary operation expression. An affine binary operation could be an
