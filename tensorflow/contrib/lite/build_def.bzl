@@ -212,7 +212,8 @@ def json_to_tflite(name, src, out):
 
 # This is the master list of generated examples that will be made into tests. A
 # function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by commenting it out. If you do, add a link to a bug or issue.
+# Disable a test by adding it to the blacklists specified in
+# generated_test_models_failing().
 def generated_test_models():
     return [
         "add",
@@ -291,11 +292,37 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        #"transpose_conv",   # disabled due to b/111213074
+        "transpose_conv",
         "unpack",
         "where",
         "zeros_like",
     ]
+
+# List of models that fail generated tests for the conversion mode.
+# If you have to disable a test, please add here with a link to the appropriate
+# bug or issue.
+def generated_test_models_failing(conversion_mode):
+    if not conversion_mode:
+        return [
+            "transpose_conv",  # disabled due to b/111213074
+        ]
+
+    if conversion_mode == "toco-flex":
+        # TODO(b/117328698): Fix and enable the known flex failures.
+        return [
+            "arg_min_max",
+            "div",
+            "floor_div",
+            "gather ",
+            "lstm ",
+            "resize_bilinear",
+            "space_to_batch_nd",
+            "split",
+            "transpose",
+            "unpack",
+        ]
+
+    return []
 
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
@@ -313,10 +340,14 @@ def generated_test_models_all():
     tests = generated_test_models()
     options = []
     for conversion_mode in conversion_modes:
+        failing_tests = generated_test_models_failing(conversion_mode)
         for test in tests:
+            tags = []
+            if test in failing_tests:
+                tags.append("notap")
             if conversion_mode:
                 test += "_%s" % conversion_mode
-            options.append((conversion_mode, test))
+            options.append((conversion_mode, test, tags))
     return options
 
 def gen_zip_test(name, test_name, conversion_mode, **kwargs):
@@ -336,9 +367,6 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         # if conversion_mode == "pb2lite":
         #     toco = "//tensorflow/contrib/lite/experimental/pb2lite:pb2lite"
         flags = "--ignore_toco_errors --run_with_flex"
-        kwargs["tags"].append("skip_already_failing")
-        kwargs["tags"].append("no_oss")
-        kwargs["tags"].append("notap")
 
     gen_zipped_test_file(
         name = "zip_%s" % test_name,

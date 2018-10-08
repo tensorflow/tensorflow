@@ -35,7 +35,7 @@ load(
         ":zip_%s" % test_name,
     ],
     shard_count = 20,
-    tags = [
+    tags = tags + [
         "gen_zip_test",
         "no_oss",
         "tflite_not_portable_intentional",
@@ -61,7 +61,7 @@ load(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name in generated_test_models_all()]
+) for conversion_mode, test_name, tags in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
