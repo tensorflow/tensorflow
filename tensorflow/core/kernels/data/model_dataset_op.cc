@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -126,9 +127,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-          optimize_thread_.reset(ctx->env()->StartThread(
-              {}, "optimize_thread",
-              [this, new_ctx]() { OptimizeThread(new_ctx); }));
+          optimize_thread_ =
+              MakeUnique<BackgroundWorker>(ctx->env(), "optimize_thread");
+          optimize_thread_->Schedule(
+              [this, new_ctx]() { OptimizeThread(new_ctx); });
         }
         return Status::OK();
       }
@@ -167,7 +169,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       mutex mu_;
       condition_variable cond_var_;
       std::shared_ptr<model::Model> model_;
-      std::unique_ptr<Thread> optimize_thread_ GUARDED_BY(mu_);
+      std::unique_ptr<BackgroundWorker> optimize_thread_ GUARDED_BY(mu_);
       bool cancelled_ GUARDED_BY(mu_) = false;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
