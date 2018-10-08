@@ -312,7 +312,10 @@ class ShapeUtil {
   static bool IsEffectiveScalar(const Shape& shape) {
     return IsArray(shape) && TrueRank(shape) == 0;
   }
-  static bool IsScalarF32(const Shape& shape);
+
+  // Returns whether "shape" is a scalar (array) with the given element_type.
+  static bool IsScalarWithElementType(const Shape& shape,
+                                      PrimitiveType element_type);
 
   // Extracts the size of the shape's dimension at dimension number
   // GetDimensionNumber(dimension_number).
