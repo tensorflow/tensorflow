@@ -157,8 +157,11 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
         self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
         self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-        self.assertAllCloseAccordingToType(var0_np, var0.eval())
-        self.assertAllCloseAccordingToType(var1_np, var1.eval())
+        # TODO(b/117393988): Reduce tolerances for float16.
+        self.assertAllCloseAccordingToType(
+            var0_np, var0.eval(), half_rtol=3e-3, half_atol=3e-3)
+        self.assertAllCloseAccordingToType(
+            var1_np, var1.eval(), half_rtol=3e-3, half_atol=3e-3)
 
   @parameterized.parameters([dtypes.float32, dtypes.float64])
   def testMinimizeSparseResourceVariable(self, dtype):
