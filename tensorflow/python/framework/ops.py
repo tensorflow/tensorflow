@@ -5457,8 +5457,7 @@ def enable_eager_execution_internal(config=None,
         "tf.contrib.eager.ASYNC")
   if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
-        _default_session_stack.stack
-        or len(get_default_graph().get_operations()) > 0)  # pylint: disable=g-explicit-length-test
+        _default_graph_stack._global_default_graph is not None) # pylint: disable=protected-access
     if graph_mode_has_been_used:
       raise ValueError(
           "tf.enable_eager_execution must be called at program startup.")
