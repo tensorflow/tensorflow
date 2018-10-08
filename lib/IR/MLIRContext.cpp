@@ -61,8 +61,8 @@ struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType *> {
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.
-  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExprRef>,
-                           ArrayRef<AffineExprRef>>;
+  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>,
+                           ArrayRef<AffineExpr>>;
   using DenseMapInfo<AffineMap *>::getHashValue;
   using DenseMapInfo<AffineMap *>::isEqual;
 
@@ -226,15 +226,15 @@ public:
 
   // Affine binary op expression uniquing. Figure out uniquing of dimensional
   // or symbolic identifiers.
-  DenseMap<std::tuple<unsigned, AffineExprRef, AffineExprRef>, AffineExprRef>
+  DenseMap<std::tuple<unsigned, AffineExpr, AffineExpr>, AffineExpr>
       affineExprs;
 
-  // Uniqui'ing of AffineDimExprRef, AffineSymbolExprRef's by their position.
-  std::vector<AffineDimExpr *> dimExprs;
-  std::vector<AffineSymbolExpr *> symbolExprs;
+  // Uniqui'ing of AffineDimExpr, AffineSymbolExpr's by their position.
+  std::vector<AffineDimExprClass *> dimExprs;
+  std::vector<AffineSymbolExprClass *> symbolExprs;
 
-  // Uniqui'ing of AffineConstantExpr using constant value as key.
-  DenseMap<int64_t, AffineConstantExpr *> constExprs;
+  // Uniqui'ing of AffineConstantExprClass using constant value as key.
+  DenseMap<int64_t, AffineConstantExprClass *> constExprs;
 
   /// Integer type uniquing.
   DenseMap<unsigned, IntegerType *> integers;
@@ -802,15 +802,14 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
 //===----------------------------------------------------------------------===//
 
 AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExprRef> results,
-                          ArrayRef<AffineExprRef> rangeSizes,
-                          MLIRContext *context) {
+                          ArrayRef<AffineExpr> results,
+                          ArrayRef<AffineExpr> rangeSizes) {
   // The number of results can't be zero.
   assert(!results.empty());
 
   assert(rangeSizes.empty() || results.size() == rangeSizes.size());
 
-  auto &impl = context->getImpl();
+  auto &impl = results[0]->getContext()->getImpl();
 
   // Check if we already have this affine map.
   auto key = std::make_tuple(dimCount, symbolCount, results, rangeSizes);
@@ -836,19 +835,18 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
 }
 
 /// Simplify add expression. Return nullptr if it can't be simplified.
-static AffineExprRef simplifyAdd(AffineExprRef lhs, AffineExprRef rhs,
-                                 MLIRContext *context) {
-  auto lhsConst = lhs.dyn_cast<AffineConstantExprRef>();
-  auto rhsConst = rhs.dyn_cast<AffineConstantExprRef>();
+static AffineExpr simplifyAdd(AffineExpr lhs, AffineExpr rhs) {
+  auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
+  auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
   // Fold if both LHS, RHS are a constant.
   if (lhsConst && rhsConst)
     return getAffineConstantExpr(lhsConst->getValue() + rhsConst->getValue(),
-                                 context);
+                                 lhs->getContext());
 
   // Canonicalize so that only the RHS is a constant. (4 + d0 becomes d0 + 4).
   // If only one of them is a symbolic expressions, make it the RHS.
-  if (lhs.isa<AffineConstantExprRef>() ||
+  if (lhs.isa<AffineConstantExpr>() ||
       (lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant())) {
     return rhs + lhs;
   }
@@ -861,16 +859,16 @@ static AffineExprRef simplifyAdd(AffineExprRef lhs, AffineExprRef rhs,
       return lhs;
   }
   // Fold successive additions like (d0 + 2) + 3 into d0 + 5.
-  auto lBin = lhs.dyn_cast<AffineBinaryOpExprRef>();
+  auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
   if (lBin && rhsConst && lBin->getKind() == AffineExprKind::Add) {
-    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExprRef>())
+    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExpr>())
       return lBin->getLHS() + (lrhs->getValue() + rhsConst->getValue());
   }
 
   // When doing successive additions, bring constant to the right: turn (d0 + 2)
   // + d1 into (d0 + d1) + 2.
   if (lBin && lBin->getKind() == AffineExprKind::Add) {
-    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExprRef>()) {
+    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExpr>()) {
       return lBin->getLHS() + rhs + lrhs;
     }
   }
@@ -879,21 +877,20 @@ static AffineExprRef simplifyAdd(AffineExprRef lhs, AffineExprRef rhs,
 }
 
 /// Simplify a multiply expression. Return nullptr if it can't be simplified.
-static AffineExprRef simplifyMul(AffineExprRef lhs, AffineExprRef rhs,
-                                 MLIRContext *context) {
-  auto lhsConst = lhs.dyn_cast<AffineConstantExprRef>();
-  auto rhsConst = rhs.dyn_cast<AffineConstantExprRef>();
+static AffineExpr simplifyMul(AffineExpr lhs, AffineExpr rhs) {
+  auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
+  auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
   if (lhsConst && rhsConst)
     return getAffineConstantExpr(lhsConst->getValue() * rhsConst->getValue(),
-                                 context);
+                                 lhs->getContext());
 
   assert(lhs->isSymbolicOrConstant() || rhs->isSymbolicOrConstant());
 
   // Canonicalize the mul expression so that the constant/symbolic term is the
   // RHS. If both the lhs and rhs are symbolic, swap them if the lhs is a
   // constant. (Note that a constant is trivially symbolic).
-  if (!rhs->isSymbolicOrConstant() || lhs.isa<AffineConstantExprRef>()) {
+  if (!rhs->isSymbolicOrConstant() || lhs.isa<AffineConstantExpr>()) {
     // At least one of them has to be symbolic.
     return rhs * lhs;
   }
@@ -910,16 +907,16 @@ static AffineExprRef simplifyMul(AffineExprRef lhs, AffineExprRef rhs,
   }
 
   // Fold successive multiplications: eg: (d0 * 2) * 3 into d0 * 6.
-  auto lBin = lhs.dyn_cast<AffineBinaryOpExprRef>();
+  auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
   if (lBin && rhsConst && lBin->getKind() == AffineExprKind::Mul) {
-    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExprRef>())
+    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExpr>())
       return lBin->getLHS() * (lrhs->getValue() * rhsConst->getValue());
   }
 
   // When doing successive multiplication, bring constant to the right: turn (d0
   // * 2) * d1 into (d0 * d1) * 2.
   if (lBin && lBin->getKind() == AffineExprKind::Mul) {
-    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExprRef>()) {
+    if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExpr>()) {
       return (lBin->getLHS() * rhs) * lrhs;
     }
   }
@@ -927,14 +924,14 @@ static AffineExprRef simplifyMul(AffineExprRef lhs, AffineExprRef rhs,
   return nullptr;
 }
 
-static AffineExprRef simplifyFloorDiv(AffineExprRef lhs, AffineExprRef rhs,
-                                      MLIRContext *context) {
-  auto lhsConst = lhs.dyn_cast<AffineConstantExprRef>();
-  auto rhsConst = rhs.dyn_cast<AffineConstantExprRef>();
+static AffineExpr simplifyFloorDiv(AffineExpr lhs, AffineExpr rhs) {
+  auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
+  auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
   if (lhsConst && rhsConst)
     return getAffineConstantExpr(
-        floorDiv(lhsConst->getValue(), rhsConst->getValue()), context);
+        floorDiv(lhsConst->getValue(), rhsConst->getValue()),
+        lhs->getContext());
 
   // Fold floordiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) floordiv 64 = i * 2.
@@ -942,9 +939,9 @@ static AffineExprRef simplifyFloorDiv(AffineExprRef lhs, AffineExprRef rhs,
     if (rhsConst->getValue() == 1)
       return lhs;
 
-    auto lBin = lhs.dyn_cast<AffineBinaryOpExprRef>();
+    auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
     if (lBin && lBin->getKind() == AffineExprKind::Mul) {
-      if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExprRef>()) {
+      if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExpr>()) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
           return lBin->getLHS() * (lrhs->getValue() / rhsConst->getValue());
@@ -955,14 +952,13 @@ static AffineExprRef simplifyFloorDiv(AffineExprRef lhs, AffineExprRef rhs,
   return nullptr;
 }
 
-static AffineExprRef simplifyCeilDiv(AffineExprRef lhs, AffineExprRef rhs,
-                                     MLIRContext *context) {
-  auto lhsConst = lhs.dyn_cast<AffineConstantExprRef>();
-  auto rhsConst = rhs.dyn_cast<AffineConstantExprRef>();
+static AffineExpr simplifyCeilDiv(AffineExpr lhs, AffineExpr rhs) {
+  auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
+  auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
   if (lhsConst && rhsConst)
     return getAffineConstantExpr(
-        ceilDiv(lhsConst->getValue(), rhsConst->getValue()), context);
+        ceilDiv(lhsConst->getValue(), rhsConst->getValue()), lhs->getContext());
 
   // Fold ceildiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) ceildiv 64 = i * 2.
@@ -970,9 +966,9 @@ static AffineExprRef simplifyCeilDiv(AffineExprRef lhs, AffineExprRef rhs,
     if (rhsConst->getValue() == 1)
       return lhs;
 
-    auto lBin = lhs.dyn_cast<AffineBinaryOpExprRef>();
+    auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
     if (lBin && lBin->getKind() == AffineExprKind::Mul) {
-      if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExprRef>()) {
+      if (auto lrhs = lBin->getRHS().dyn_cast<AffineConstantExpr>()) {
         // rhsConst is known to be positive if a constant.
         if (lrhs->getValue() % rhsConst->getValue() == 0)
           return lBin->getLHS() * (lrhs->getValue() / rhsConst->getValue());
@@ -983,14 +979,13 @@ static AffineExprRef simplifyCeilDiv(AffineExprRef lhs, AffineExprRef rhs,
   return nullptr;
 }
 
-static AffineExprRef simplifyMod(AffineExprRef lhs, AffineExprRef rhs,
-                                 MLIRContext *context) {
-  auto lhsConst = lhs.dyn_cast<AffineConstantExprRef>();
-  auto rhsConst = rhs.dyn_cast<AffineConstantExprRef>();
+static AffineExpr simplifyMod(AffineExpr lhs, AffineExpr rhs) {
+  auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
+  auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
   if (lhsConst && rhsConst)
     return getAffineConstantExpr(
-        mod(lhsConst->getValue(), rhsConst->getValue()), context);
+        mod(lhsConst->getValue(), rhsConst->getValue()), lhs->getContext());
 
   // Fold modulo of an expression that is known to be a multiple of a constant
   // to zero if that constant is a multiple of the modulo factor. Eg: (i * 128)
@@ -998,7 +993,7 @@ static AffineExprRef simplifyMod(AffineExprRef lhs, AffineExprRef rhs,
   if (rhsConst) {
     // rhsConst is known to be positive if a constant.
     if (lhs->getLargestKnownDivisor() % rhsConst->getValue() == 0)
-      return getAffineConstantExpr(0, context);
+      return getAffineConstantExpr(0, lhs->getContext());
   }
 
   return nullptr;
@@ -1013,33 +1008,33 @@ static AffineExprRef simplifyMod(AffineExprRef lhs, AffineExprRef rhs,
 /// present, return from the list. The stored expressions are unique: they are
 /// constructed and stored in a simplified/canonicalized form. The result after
 /// simplification could be any form of affine expression.
-AffineExprRef AffineBinaryOpExpr::get(AffineExprKind kind, AffineExprRef lhs,
-                                      AffineExprRef rhs, MLIRContext *context) {
-  auto &impl = context->getImpl();
+AffineExpr AffineBinaryOpExprClass::get(AffineExprKind kind, AffineExpr lhs,
+                                        AffineExpr rhs) {
+  auto &impl = lhs->getContext()->getImpl();
 
   // Check if we already have this affine expression, and return it if we do.
   auto keyValue = std::make_tuple((unsigned)kind, lhs, rhs);
   auto cached = impl.affineExprs.find(keyValue);
   if (cached != impl.affineExprs.end())
-    return static_cast<AffineExpr *>(cached->second);
+    return static_cast<AffineExprClass *>(cached->second);
 
   // Simplify the expression if possible.
-  AffineExprRef simplified;
+  AffineExpr simplified;
   switch (kind) {
   case AffineExprKind::Add:
-    simplified = simplifyAdd(lhs, rhs, context);
+    simplified = simplifyAdd(lhs, rhs);
     break;
   case AffineExprKind::Mul:
-    simplified = simplifyMul(lhs, rhs, context);
+    simplified = simplifyMul(lhs, rhs);
     break;
   case AffineExprKind::FloorDiv:
-    simplified = simplifyFloorDiv(lhs, rhs, context);
+    simplified = simplifyFloorDiv(lhs, rhs);
     break;
   case AffineExprKind::CeilDiv:
-    simplified = simplifyCeilDiv(lhs, rhs, context);
+    simplified = simplifyCeilDiv(lhs, rhs);
     break;
   case AffineExprKind::Mod:
-    simplified = simplifyMod(lhs, rhs, context);
+    simplified = simplifyMod(lhs, rhs);
     break;
   default:
     llvm_unreachable("unexpected binary affine expr");
@@ -1047,20 +1042,20 @@ AffineExprRef AffineBinaryOpExpr::get(AffineExprKind kind, AffineExprRef lhs,
 
   // The simplified one would have already been cached; just return it.
   if (simplified)
-    return static_cast<AffineExpr *>(simplified);
+    return static_cast<AffineExprClass *>(simplified);
 
   // An expression with these operands will already be in the
   // simplified/canonical form. Create and store it.
-  auto *result = impl.allocator.Allocate<AffineBinaryOpExpr>();
+  auto *result = impl.allocator.Allocate<AffineBinaryOpExprClass>();
   // Initialize the memory using placement new.
-  new (result) AffineBinaryOpExpr(kind, lhs, rhs, context);
+  new (result) AffineBinaryOpExprClass(kind, lhs, rhs);
   bool inserted = impl.affineExprs.insert({keyValue, result}).second;
   assert(inserted && "the expression shouldn't already exist in the map");
   (void)inserted;
   return result;
 }
 
-AffineExprRef mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {
+AffineExpr mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we need to resize.
@@ -1071,14 +1066,13 @@ AffineExprRef mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {
   if (result)
     return result;
 
-  result = impl.allocator.Allocate<AffineDimExpr>();
+  result = impl.allocator.Allocate<AffineDimExprClass>();
   // Initialize the memory using placement new.
-  new (result) AffineDimExpr(position, context);
+  new (result) AffineDimExprClass(position, context);
   return result;
 }
 
-AffineExprRef mlir::getAffineSymbolExpr(unsigned position,
-                                        MLIRContext *context) {
+AffineExpr mlir::getAffineSymbolExpr(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we need to resize.
@@ -1089,23 +1083,22 @@ AffineExprRef mlir::getAffineSymbolExpr(unsigned position,
   if (result)
     return result;
 
-  result = impl.allocator.Allocate<AffineSymbolExpr>();
+  result = impl.allocator.Allocate<AffineSymbolExprClass>();
   // Initialize the memory using placement new.
-  new (result) AffineSymbolExpr(position, context);
+  new (result) AffineSymbolExprClass(position, context);
   return result;
 }
 
-AffineExprRef mlir::getAffineConstantExpr(int64_t constant,
-                                          MLIRContext *context) {
+AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
   auto &impl = context->getImpl();
   auto *&result = impl.constExprs[constant];
 
   if (result)
     return result;
 
-  result = impl.allocator.Allocate<AffineConstantExpr>();
+  result = impl.allocator.Allocate<AffineConstantExprClass>();
   // Initialize the memory using placement new.
-  new (result) AffineConstantExpr(constant, context);
+  new (result) AffineConstantExprClass(constant, context);
   return result;
 }
 
@@ -1115,7 +1108,7 @@ AffineExprRef mlir::getAffineConstantExpr(int64_t constant,
 //===----------------------------------------------------------------------===//
 
 IntegerSet *IntegerSet::get(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExprRef> constraints,
+                            ArrayRef<AffineExpr> constraints,
                             ArrayRef<bool> eqFlags, MLIRContext *context) {
   assert(eqFlags.size() == constraints.size());
 
@@ -1125,7 +1118,7 @@ IntegerSet *IntegerSet::get(unsigned dimCount, unsigned symbolCount,
   auto *res = impl.allocator.Allocate<IntegerSet>();
 
   // Copy the equalities and inequalities into the bump pointer.
-  constraints = impl.copyInto(ArrayRef<AffineExprRef>(constraints));
+  constraints = impl.copyInto(ArrayRef<AffineExpr>(constraints));
   eqFlags = impl.copyInto(ArrayRef<bool>(eqFlags));
 
   // Initialize the memory using placement new.

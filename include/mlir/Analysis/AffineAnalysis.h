@@ -16,8 +16,8 @@
 // =============================================================================
 //
 // This header file defines prototypes for methods that perform analysis
-// involving affine structures (AffineExpr, AffineMap, IntegerSet, etc.) and
-// other IR structures that in turn use these.
+// involving affine structures (AffineExprClass, AffineMap, IntegerSet, etc.)
+// and other IR structures that in turn use these.
 //
 //===----------------------------------------------------------------------===//
 
@@ -31,11 +31,11 @@ namespace mlir {
 
 namespace detail {
 
-class AffineExpr;
+class AffineExprClass;
 
 } // namespace detail
-template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
+template <typename T> class AffineExprBase;
+using AffineExpr = AffineExprBase<detail::AffineExprClass>;
 class MLIRContext;
 class MLValue;
 class OperationStmt;
@@ -44,8 +44,8 @@ class OperationStmt;
 /// simple analysis. This has complexity linear in the number of nodes in
 /// 'expr'. Returns the simplified expression, which is the same as the input
 //  expression if it can't be simplified.
-AffineExprRef simplifyAffineExpr(AffineExprRef expr, unsigned numDims,
-                                 unsigned numSymbols);
+AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
+                              unsigned numSymbols);
 
 /// Returns the sequence of AffineApplyOp OperationStmts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',

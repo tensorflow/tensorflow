@@ -47,7 +47,7 @@ class MLIRContext;
 class IntegerSet {
 public:
   static IntegerSet *get(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExprRef> constraints,
+                         ArrayRef<AffineExpr> constraints,
                          ArrayRef<bool> eqFlags, MLIRContext *context);
 
   unsigned getNumDims() { return dimCount; }
@@ -55,9 +55,9 @@ public:
   unsigned getNumOperands() { return dimCount + symbolCount; }
   unsigned getNumConstraints() { return numConstraints; }
 
-  ArrayRef<AffineExprRef> getConstraints() { return constraints; }
+  ArrayRef<AffineExpr> getConstraints() { return constraints; }
 
-  AffineExprRef getConstraint(unsigned idx) { return getConstraints()[idx]; }
+  AffineExpr getConstraint(unsigned idx) { return getConstraints()[idx]; }
 
   /// Returns the equality bits, which specify whether each of the constraints
   /// is an equality or inequality.
@@ -72,7 +72,7 @@ public:
 
 private:
   IntegerSet(unsigned dimCount, unsigned symbolCount, unsigned numConstraints,
-             ArrayRef<AffineExprRef> constraints, ArrayRef<bool> eqFlags);
+             ArrayRef<AffineExpr> constraints, ArrayRef<bool> eqFlags);
 
   ~IntegerSet() = delete;
 
@@ -82,7 +82,7 @@ private:
 
   /// Array of affine constraints: a constaint is either an equality
   /// (affine_expr == 0) or an inequality (affine_expr >= 0).
-  ArrayRef<AffineExprRef> constraints;
+  ArrayRef<AffineExpr> constraints;
 
   // Bits to check whether a constraint is an equality or an inequality.
   ArrayRef<bool> eqFlags;

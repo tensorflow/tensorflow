@@ -28,17 +28,17 @@ namespace mlir {
 
 namespace detail {
 
-class AffineExpr;
+class AffineExprClass;
 
 } // namespace detail
-template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
+template <typename T> class AffineExprBase;
+using AffineExpr = AffineExprBase<detail::AffineExprClass>;
 class ForStmt;
 
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
-AffineExprRef getTripCountExpr(const ForStmt &forStmt);
+AffineExpr getTripCountExpr(const ForStmt &forStmt);
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count

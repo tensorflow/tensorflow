@@ -108,8 +108,8 @@ private:
     // Check if the affine map is single dim id or single symbol identity -
     // (i)->(i) or ()[s]->(i)
     return boundMap->getNumInputs() == 1 && boundMap->getNumResults() == 1 &&
-           (boundMap->getResult(0).isa<AffineDimExprRef>() ||
-            boundMap->getResult(0).isa<AffineSymbolExprRef>());
+           (boundMap->getResult(0).isa<AffineDimExpr>() ||
+            boundMap->getResult(0).isa<AffineSymbolExpr>());
   }
 
   // Visit functions.
@@ -275,8 +275,8 @@ public:
   void print(const MLFunction *fn);
 
   void printAffineMap(AffineMap *map);
-  void printAffineExpr(AffineExprRef expr);
-  void printAffineConstraint(AffineExprRef expr, bool isEq);
+  void printAffineExpr(AffineExpr expr);
+  void printAffineConstraint(AffineExpr expr, bool isEq);
   void printIntegerSet(IntegerSet *set);
 
 protected:
@@ -294,13 +294,13 @@ protected:
   void printIntegerSetReference(IntegerSet *integerSet);
 
   /// This enum is used to represent the binding stength of the enclosing
-  /// context that an AffineExpr is being printed in, so we can intelligently
-  /// produce parens.
+  /// context that an AffineExprClass is being printed in, so we can
+  /// intelligently produce parens.
   enum class BindingStrength {
     Weak,   // + and -
     Strong, // All other binary operators.
   };
-  void printAffineExprInternal(AffineExprRef expr,
+  void printAffineExprInternal(AffineExpr expr,
                                BindingStrength enclosingTightness);
 };
 } // end anonymous namespace
@@ -571,22 +571,22 @@ void ModulePrinter::printType(const Type *type) {
 // Affine expressions and maps
 //===----------------------------------------------------------------------===//
 
-void ModulePrinter::printAffineExpr(AffineExprRef expr) {
+void ModulePrinter::printAffineExpr(AffineExpr expr) {
   printAffineExprInternal(expr, BindingStrength::Weak);
 }
 
 void ModulePrinter::printAffineExprInternal(
-    AffineExprRef expr, BindingStrength enclosingTightness) {
+    AffineExpr expr, BindingStrength enclosingTightness) {
   const char *binopSpelling = nullptr;
   switch (expr->getKind()) {
   case AffineExprKind::SymbolId:
-    os << 's' << expr.cast<AffineSymbolExprRef>()->getPosition();
+    os << 's' << expr.cast<AffineSymbolExpr>()->getPosition();
     return;
   case AffineExprKind::DimId:
-    os << 'd' << expr.cast<AffineDimExprRef>()->getPosition();
+    os << 'd' << expr.cast<AffineDimExpr>()->getPosition();
     return;
   case AffineExprKind::Constant:
-    os << expr.cast<AffineConstantExprRef>()->getValue();
+    os << expr.cast<AffineConstantExpr>()->getValue();
     return;
   case AffineExprKind::Add:
     binopSpelling = " + ";
@@ -605,7 +605,7 @@ void ModulePrinter::printAffineExprInternal(
     break;
   }
 
-  auto binOp = expr.cast<AffineBinaryOpExprRef>();
+  auto binOp = expr.cast<AffineBinaryOpExpr>();
 
   // Handle tightly binding binary operators.
   if (binOp->getKind() != AffineExprKind::Add) {
@@ -627,11 +627,11 @@ void ModulePrinter::printAffineExprInternal(
 
   // Pretty print addition to a product that has a negative operand as a
   // subtraction.
-  AffineExprRef rhsExpr = binOp->getRHS();
-  if (auto rhs = rhsExpr.dyn_cast<AffineBinaryOpExprRef>()) {
+  AffineExpr rhsExpr = binOp->getRHS();
+  if (auto rhs = rhsExpr.dyn_cast<AffineBinaryOpExpr>()) {
     if (rhs->getKind() == AffineExprKind::Mul) {
-      AffineExprRef rrhsExpr = rhs->getRHS();
-      if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExprRef>()) {
+      AffineExpr rrhsExpr = rhs->getRHS();
+      if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExpr>()) {
         if (rrhs->getValue() == -1) {
           printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
           os << " - ";
@@ -656,7 +656,7 @@ void ModulePrinter::printAffineExprInternal(
   }
 
   // Pretty print addition to a negative number as a subtraction.
-  if (auto rhs = rhsExpr.dyn_cast<AffineConstantExprRef>()) {
+  if (auto rhs = rhsExpr.dyn_cast<AffineConstantExpr>()) {
     if (rhs->getValue() < 0) {
       printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
       os << " - " << -rhs->getValue();
@@ -674,7 +674,7 @@ void ModulePrinter::printAffineExprInternal(
     os << ')';
 }
 
-void ModulePrinter::printAffineConstraint(AffineExprRef expr, bool isEq) {
+void ModulePrinter::printAffineConstraint(AffineExpr expr, bool isEq) {
   printAffineExprInternal(expr, BindingStrength::Weak);
   isEq ? os << " == 0" : os << " >= 0";
 }
@@ -703,7 +703,7 @@ void ModulePrinter::printAffineMap(AffineMap *map) {
   // Result affine expressions.
   os << " -> (";
   interleaveComma(map->getResults(),
-                  [&](AffineExprRef expr) { printAffineExpr(expr); });
+                  [&](AffineExpr expr) { printAffineExpr(expr); });
   os << ')';
 
   if (!map->isBounded()) {
@@ -713,7 +713,7 @@ void ModulePrinter::printAffineMap(AffineMap *map) {
   // Print range sizes for bounded affine maps.
   os << " size (";
   interleaveComma(map->getRangeSizes(),
-                  [&](AffineExprRef expr) { printAffineExpr(expr); });
+                  [&](AffineExpr expr) { printAffineExpr(expr); });
   os << ')';
 }
 
@@ -858,7 +858,7 @@ public:
   void printIntegerSet(IntegerSet *set) {
     return ModulePrinter::printIntegerSetReference(set);
   }
-  void printAffineExpr(AffineExprRef expr) {
+  void printAffineExpr(AffineExpr expr) {
     return ModulePrinter::printAffineExpr(expr);
   }
   void printFunctionReference(const Function *func) {
@@ -1432,11 +1432,11 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
   // Therefore, short-hand parsing and printing is only supported for
   // zero-operand constant maps and single symbol operand identity maps.
   if (map->getNumResults() == 1) {
-    AffineExprRef expr = map->getResult(0);
+    AffineExpr expr = map->getResult(0);
 
     // Print constant bound.
     if (map->getNumDims() == 0 && map->getNumSymbols() == 0) {
-      if (auto constExpr = expr.dyn_cast<AffineConstantExprRef>()) {
+      if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
         os << constExpr->getValue();
         return;
       }
@@ -1445,7 +1445,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
     // Print bound that consists of a single SSA symbol if the map is over a
     // single symbol.
     if (map->getNumDims() == 0 && map->getNumSymbols() == 1) {
-      if (auto symExpr = expr.dyn_cast<AffineSymbolExprRef>()) {
+      if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
         printOperand(bound.getOperand(0));
         return;
       }
@@ -1502,7 +1502,7 @@ void AffineMap::dump() {
   llvm::errs() << "\n";
 }
 
-void AffineExpr::dump() {
+void AffineExprClass::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
@@ -1512,7 +1512,7 @@ void IntegerSet::dump() {
   llvm::errs() << "\n";
 }
 
-void AffineExpr::print(raw_ostream &os) {
+void AffineExprClass::print(raw_ostream &os) {
   ModuleState state(/*no context is known*/ nullptr);
   ModulePrinter(os, state).printAffineExpr(this);
 }

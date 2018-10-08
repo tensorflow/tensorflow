@@ -37,7 +37,7 @@ public:
 
   /// Attempt to constant fold the specified affine expr, or return null on
   /// failure.
-  IntegerAttr *constantFold(AffineExprRef expr) {
+  IntegerAttr *constantFold(AffineExpr expr) {
     switch (expr->getKind()) {
     case AffineExprKind::Add:
       return constantFoldBinExpr(
@@ -55,23 +55,23 @@ public:
       return constantFoldBinExpr(
           expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExprKind::Constant:
-      return IntegerAttr::get(expr.cast<AffineConstantExprRef>()->getValue(),
+      return IntegerAttr::get(expr.cast<AffineConstantExpr>()->getValue(),
                               expr->getContext());
     case AffineExprKind::DimId:
       return dyn_cast_or_null<IntegerAttr>(
-          operandConsts[expr.cast<AffineDimExprRef>()->getPosition()]);
+          operandConsts[expr.cast<AffineDimExpr>()->getPosition()]);
     case AffineExprKind::SymbolId:
       return dyn_cast_or_null<IntegerAttr>(
           operandConsts[numDims +
-                        expr.cast<AffineSymbolExprRef>()->getPosition()]);
+                        expr.cast<AffineSymbolExpr>()->getPosition()]);
     }
   }
 
 private:
   IntegerAttr *
-  constantFoldBinExpr(AffineExprRef expr,
+  constantFoldBinExpr(AffineExpr expr,
                       std::function<uint64_t(int64_t, uint64_t)> op) {
-    auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+    auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
     auto *lhs = constantFold(binOpExpr->getLHS());
     auto *rhs = constantFold(binOpExpr->getRHS());
     if (!lhs || !rhs)
@@ -89,23 +89,23 @@ private:
 } // end anonymous namespace
 
 AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-                     ArrayRef<AffineExprRef> results,
-                     ArrayRef<AffineExprRef> rangeSizes)
+                     ArrayRef<AffineExpr> results,
+                     ArrayRef<AffineExpr> rangeSizes)
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
       results(results), rangeSizes(rangeSizes) {}
 
 /// Returns a single constant result affine map.
 AffineMap *AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
   return get(/*dimCount=*/0, /*symbolCount=*/0,
-             {getAffineConstantExpr(val, context)}, {}, context);
+             {getAffineConstantExpr(val, context)}, {});
 }
 
 bool AffineMap::isIdentity() {
   if (getNumDims() != getNumResults())
     return false;
-  ArrayRef<AffineExprRef> results = getResults();
+  ArrayRef<AffineExpr> results = getResults();
   for (unsigned i = 0, numDims = getNumDims(); i < numDims; ++i) {
-    auto expr = results[i].dyn_cast<AffineDimExprRef>();
+    auto expr = results[i].dyn_cast<AffineDimExpr>();
     if (!expr || expr->getPosition() != i)
       return false;
   }
@@ -113,15 +113,15 @@ bool AffineMap::isIdentity() {
 }
 
 bool AffineMap::isSingleConstant() {
-  return getNumResults() == 1 && getResult(0).isa<AffineConstantExprRef>();
+  return getNumResults() == 1 && getResult(0).isa<AffineConstantExpr>();
 }
 
 int64_t AffineMap::getSingleConstantResult() {
   assert(isSingleConstant() && "map must have a single constant result");
-  return getResult(0).cast<AffineConstantExprRef>()->getValue();
+  return getResult(0).cast<AffineConstantExpr>()->getValue();
 }
 
-AffineExprRef AffineMap::getResult(unsigned idx) { return results[idx]; }
+AffineExpr AffineMap::getResult(unsigned idx) { return results[idx]; }
 
 /// Folds the results of the application of an affine map on the provided
 /// operands to a constant if possible. Returns false if the folding happens,
@@ -132,7 +132,7 @@ bool AffineMap::constantFold(ArrayRef<Attribute *> operandConstants,
 
   // Fold each of the result expressions.
   AffineExprConstantFolder exprFolder(getNumDims(), operandConstants);
-  // Constant fold each AffineExpr in AffineMap and add to 'results'.
+  // Constant fold each AffineExprClass in AffineMap and add to 'results'.
   for (auto expr : getResults()) {
     auto *folded = exprFolder.constantFold(expr);
     // If we didn't fold to a constant, then folding fails.

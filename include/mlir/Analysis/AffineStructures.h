@@ -44,8 +44,8 @@ struct MutableAffineMap {
 public:
   MutableAffineMap(AffineMap *map, MLIRContext *context);
 
-  AffineExprRef getResult(unsigned idx) const { return results[idx]; }
-  void setResult(unsigned idx, AffineExprRef result) { results[idx] = result; }
+  AffineExpr getResult(unsigned idx) const { return results[idx]; }
+  void setResult(unsigned idx, AffineExpr result) { results[idx] = result; }
   unsigned getNumResults() const { return results.size(); }
   unsigned getNumDims() const { return numDims; }
   void setNumDims(unsigned d) { numDims = d; }
@@ -66,11 +66,12 @@ public:
 
 private:
   // Same meaning as AffineMap's fields.
-  SmallVector<AffineExprRef, 8> results;
-  SmallVector<AffineExprRef, 8> rangeSizes;
+  SmallVector<AffineExpr, 8> results;
+  SmallVector<AffineExpr, 8> rangeSizes;
   unsigned numDims;
   unsigned numSymbols;
-  /// A pointer to the IR's context to store all newly created AffineExpr's.
+  /// A pointer to the IR's context to store all newly created
+  /// AffineExprClass's.
   MLIRContext *context;
 };
 
@@ -96,9 +97,10 @@ private:
   unsigned numDims;
   unsigned numSymbols;
 
-  SmallVector<AffineExprRef, 8> constraints;
+  SmallVector<AffineExpr, 8> constraints;
   SmallVector<bool, 8> eqFlags;
-  /// A pointer to the IR's context to store all newly created AffineExpr's.
+  /// A pointer to the IR's context to store all newly created
+  /// AffineExprClass's.
   MLIRContext *context;
 };
 
@@ -283,7 +285,7 @@ public:
     return ArrayRef<int64_t>(&inequalities[idx * getNumCols()], getNumCols());
   }
 
-  AffineExprRef toAffineExpr(unsigned idx, MLIRContext *context);
+  AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
 
   void addInequality(ArrayRef<int64_t> inEq);
   void addEquality(ArrayRef<int64_t> eq);

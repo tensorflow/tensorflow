@@ -831,38 +831,35 @@ private:
   // Identifier lists for polyhedral structures.
   ParseResult parseDimIdList(unsigned &numDims);
   ParseResult parseSymbolIdList(unsigned &numSymbols);
-  ParseResult parseIdentifierDefinition(AffineExprRef idExpr);
+  ParseResult parseIdentifierDefinition(AffineExpr idExpr);
 
-  AffineExprRef parseAffineExpr();
-  AffineExprRef parseParentheticalExpr();
-  AffineExprRef parseNegateExpression(AffineExprRef lhs);
-  AffineExprRef parseIntegerExpr();
-  AffineExprRef parseBareIdExpr();
+  AffineExpr parseAffineExpr();
+  AffineExpr parseParentheticalExpr();
+  AffineExpr parseNegateExpression(AffineExpr lhs);
+  AffineExpr parseIntegerExpr();
+  AffineExpr parseBareIdExpr();
 
-  AffineExprRef getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExprRef lhs,
-                                      AffineExprRef rhs, SMLoc opLoc);
-  AffineExprRef getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExprRef lhs,
-                                      AffineExprRef rhs);
-  AffineExprRef parseAffineOperandExpr(AffineExprRef lhs);
-  AffineExprRef parseAffineLowPrecOpExpr(AffineExprRef llhs,
-                                         AffineLowPrecOp llhsOp);
-  AffineExprRef parseAffineHighPrecOpExpr(AffineExprRef llhs,
-                                          AffineHighPrecOp llhsOp,
-                                          SMLoc llhsOpLoc);
-  AffineExprRef parseAffineConstraint(bool *isEq);
+  AffineExpr getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr lhs,
+                                   AffineExpr rhs, SMLoc opLoc);
+  AffineExpr getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr lhs,
+                                   AffineExpr rhs);
+  AffineExpr parseAffineOperandExpr(AffineExpr lhs);
+  AffineExpr parseAffineLowPrecOpExpr(AffineExpr llhs, AffineLowPrecOp llhsOp);
+  AffineExpr parseAffineHighPrecOpExpr(AffineExpr llhs, AffineHighPrecOp llhsOp,
+                                       SMLoc llhsOpLoc);
+  AffineExpr parseAffineConstraint(bool *isEq);
 
 private:
-  SmallVector<std::pair<StringRef, AffineExprRef>, 4> dimsAndSymbols;
+  SmallVector<std::pair<StringRef, AffineExpr>, 4> dimsAndSymbols;
 };
 } // end anonymous namespace
 
 /// Create an affine binary high precedence op expression (mul's, div's, mod).
 /// opLoc is the location of the op token to be used to report errors
 /// for non-conforming expressions.
-AffineExprRef AffineParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
-                                                  AffineExprRef lhs,
-                                                  AffineExprRef rhs,
-                                                  SMLoc opLoc) {
+AffineExpr AffineParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
+                                               AffineExpr lhs, AffineExpr rhs,
+                                               SMLoc opLoc) {
   // TODO: make the error location info accurate.
   switch (op) {
   case Mul:
@@ -900,9 +897,8 @@ AffineExprRef AffineParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
 }
 
 /// Create an affine binary low precedence op expression (add, sub).
-AffineExprRef AffineParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
-                                                  AffineExprRef lhs,
-                                                  AffineExprRef rhs) {
+AffineExpr AffineParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
+                                               AffineExpr lhs, AffineExpr rhs) {
   switch (op) {
   case AffineLowPrecOp::Add:
     return builder.getAddExpr(lhs, rhs);
@@ -960,10 +956,10 @@ AffineHighPrecOp AffineParser::consumeIfHighPrecOp() {
 /// null. If no rhs can be found, returns (llhs llhsOp lhs) or lhs if llhs is
 /// null. llhsOpLoc is the location of the llhsOp token that will be used to
 /// report an error for non-conforming expressions.
-AffineExprRef AffineParser::parseAffineHighPrecOpExpr(AffineExprRef llhs,
-                                                      AffineHighPrecOp llhsOp,
-                                                      SMLoc llhsOpLoc) {
-  AffineExprRef lhs = parseAffineOperandExpr(llhs);
+AffineExpr AffineParser::parseAffineHighPrecOpExpr(AffineExpr llhs,
+                                                   AffineHighPrecOp llhsOp,
+                                                   SMLoc llhsOpLoc) {
+  AffineExpr lhs = parseAffineOperandExpr(llhs);
   if (!lhs)
     return nullptr;
 
@@ -971,7 +967,7 @@ AffineExprRef AffineParser::parseAffineHighPrecOpExpr(AffineExprRef llhs,
   auto opLoc = getToken().getLoc();
   if (AffineHighPrecOp op = consumeIfHighPrecOp()) {
     if (llhs) {
-      AffineExprRef expr = getBinaryAffineOpExpr(llhsOp, llhs, lhs, opLoc);
+      AffineExpr expr = getBinaryAffineOpExpr(llhsOp, llhs, lhs, opLoc);
       if (!expr)
         return nullptr;
       return parseAffineHighPrecOpExpr(expr, op, opLoc);
@@ -991,7 +987,7 @@ AffineExprRef AffineParser::parseAffineHighPrecOpExpr(AffineExprRef llhs,
 /// Parse an affine expression inside parentheses.
 ///
 ///   affine-expr ::= `(` affine-expr `)`
-AffineExprRef AffineParser::parseParentheticalExpr() {
+AffineExpr AffineParser::parseParentheticalExpr() {
   if (parseToken(Token::l_paren, "expected '('"))
     return nullptr;
   if (getToken().is(Token::r_paren))
@@ -1009,11 +1005,11 @@ AffineExprRef AffineParser::parseParentheticalExpr() {
 /// Parse the negation expression.
 ///
 ///   affine-expr ::= `-` affine-expr
-AffineExprRef AffineParser::parseNegateExpression(AffineExprRef lhs) {
+AffineExpr AffineParser::parseNegateExpression(AffineExpr lhs) {
   if (parseToken(Token::minus, "expected '-'"))
     return nullptr;
 
-  AffineExprRef operand = parseAffineOperandExpr(lhs);
+  AffineExpr operand = parseAffineOperandExpr(lhs);
   // Since negation has the highest precedence of all ops (including high
   // precedence ops) but lower than parentheses, we are only going to use
   // parseAffineOperandExpr instead of parseAffineExpr here.
@@ -1028,7 +1024,7 @@ AffineExprRef AffineParser::parseNegateExpression(AffineExprRef lhs) {
 /// Parse a bare id that may appear in an affine expression.
 ///
 ///   affine-expr ::= bare-id
-AffineExprRef AffineParser::parseBareIdExpr() {
+AffineExpr AffineParser::parseBareIdExpr() {
   if (getToken().isNot(Token::bare_identifier))
     return (emitError("expected bare identifier"), nullptr);
 
@@ -1046,7 +1042,7 @@ AffineExprRef AffineParser::parseBareIdExpr() {
 /// Parse a positive integral constant appearing in an affine expression.
 ///
 ///   affine-expr ::= integer-literal
-AffineExprRef AffineParser::parseIntegerExpr() {
+AffineExpr AffineParser::parseIntegerExpr() {
   auto val = getToken().getUInt64IntegerValue();
   if (!val.hasValue() || (int64_t)val.getValue() < 0)
     return (emitError("constant too large for index"), nullptr);
@@ -1064,7 +1060,7 @@ AffineExprRef AffineParser::parseIntegerExpr() {
 //  operand expression, it's an op expression and will be parsed via
 //  parseAffineHighPrecOpExpression(). However, for i + (j*k) + -l, (j*k) and -l
 //  are valid operands that will be parsed by this function.
-AffineExprRef AffineParser::parseAffineOperandExpr(AffineExprRef lhs) {
+AffineExpr AffineParser::parseAffineOperandExpr(AffineExpr lhs) {
   switch (getToken().getKind()) {
   case Token::bare_identifier:
     return parseBareIdExpr();
@@ -1114,16 +1110,16 @@ AffineExprRef AffineParser::parseAffineOperandExpr(AffineExprRef lhs) {
 /// Eg: when the expression is e1 + e2*e3 + e4, with e1 as llhs, this function
 /// will return the affine expr equivalent of (e1 + (e2*e3)) + e4, where (e2*e3)
 /// will be parsed using parseAffineHighPrecOpExpr().
-AffineExprRef AffineParser::parseAffineLowPrecOpExpr(AffineExprRef llhs,
-                                                     AffineLowPrecOp llhsOp) {
-  AffineExprRef lhs;
+AffineExpr AffineParser::parseAffineLowPrecOpExpr(AffineExpr llhs,
+                                                  AffineLowPrecOp llhsOp) {
+  AffineExpr lhs;
   if (!(lhs = parseAffineOperandExpr(llhs)))
     return nullptr;
 
   // Found an LHS. Deal with the ops.
   if (AffineLowPrecOp lOp = consumeIfLowPrecOp()) {
     if (llhs) {
-      AffineExprRef sum = getBinaryAffineOpExpr(llhsOp, llhs, lhs);
+      AffineExpr sum = getBinaryAffineOpExpr(llhsOp, llhs, lhs);
       return parseAffineLowPrecOpExpr(sum, lOp);
     }
     // No LLHS, get RHS and form the expression.
@@ -1133,13 +1129,13 @@ AffineExprRef AffineParser::parseAffineLowPrecOpExpr(AffineExprRef llhs,
   if (AffineHighPrecOp hOp = consumeIfHighPrecOp()) {
     // We have a higher precedence op here. Get the rhs operand for the llhs
     // through parseAffineHighPrecOpExpr.
-    AffineExprRef highRes = parseAffineHighPrecOpExpr(lhs, hOp, opLoc);
+    AffineExpr highRes = parseAffineHighPrecOpExpr(lhs, hOp, opLoc);
     if (!highRes)
       return nullptr;
 
     // If llhs is null, the product forms the first operand of the yet to be
     // found expression. If non-null, the op to associate with llhs is llhsOp.
-    AffineExprRef expr =
+    AffineExpr expr =
         llhs ? getBinaryAffineOpExpr(llhsOp, llhs, highRes) : highRes;
 
     // Recurse for subsequent low prec op's after the affine high prec op
@@ -1170,14 +1166,14 @@ AffineExprRef AffineParser::parseAffineLowPrecOpExpr(AffineExprRef llhs,
 /// Additional conditions are checked depending on the production. For eg., one
 /// of the operands for `*` has to be either constant/symbolic; the second
 /// operand for floordiv, ceildiv, and mod has to be a positive integer.
-AffineExprRef AffineParser::parseAffineExpr() {
+AffineExpr AffineParser::parseAffineExpr() {
   return parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp);
 }
 
 /// Parse a dim or symbol from the lists appearing before the actual expressions
 /// of the affine map. Update our state to store the dimensional/symbolic
 /// identifier.
-ParseResult AffineParser::parseIdentifierDefinition(AffineExprRef idExpr) {
+ParseResult AffineParser::parseIdentifierDefinition(AffineExpr idExpr) {
   if (getToken().isNot(Token::bare_identifier))
     return emitError("expected bare identifier");
 
@@ -1239,7 +1235,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
       parseToken(Token::l_paren, "expected '(' at start of affine map range"))
     return nullptr;
 
-  SmallVector<AffineExprRef, 4> exprs;
+  SmallVector<AffineExpr, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseAffineExpr();
     ParseResult res = elt ? ParseSuccess : ParseFailure;
@@ -1258,7 +1254,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
   //  dim-size ::= affine-expr | `min` `(` affine-expr (`,` affine-expr)+ `)`
   // TODO(bondhugula): support for min of several affine expressions.
   // TODO: check if sizes are non-negative whenever they are constant.
-  SmallVector<AffineExprRef, 4> rangeSizes;
+  SmallVector<AffineExpr, 4> rangeSizes;
   if (consumeIf(Token::kw_size)) {
     // Location of the l_paren token (if it exists) for error reporting later.
     auto loc = getToken().getLoc();
@@ -2446,8 +2442,8 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
 /// isEq is set to true if the parsed constraint is an equality, false if it is
 /// an inequality (greater than or equal).
 ///
-AffineExprRef AffineParser::parseAffineConstraint(bool *isEq) {
-  AffineExprRef expr = parseAffineExpr();
+AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
+  AffineExpr expr = parseAffineExpr();
   if (!expr)
     return nullptr;
 
@@ -2501,7 +2497,7 @@ IntegerSet *AffineParser::parseIntegerSetInline() {
                  "expected '(' at start of integer set constraint list"))
     return nullptr;
 
-  SmallVector<AffineExprRef, 4> constraints;
+  SmallVector<AffineExpr, 4> constraints;
   SmallVector<bool, 4> isEqs;
   auto parseElt = [&]() -> ParseResult {
     bool isEq;

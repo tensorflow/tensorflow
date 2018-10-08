@@ -26,12 +26,12 @@ namespace mlir {
 
 namespace detail {
 
-class AffineExpr;
+class AffineExprClass;
 
 } // namespace detail
 
-template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
+template <typename T> class AffineExprBase;
+using AffineExpr = AffineExprBase<detail::AffineExprClass>;
 class MLIRContext;
 class Module;
 class UnknownLoc;
@@ -108,25 +108,25 @@ public:
   FunctionAttr *getFunctionAttr(const Function *value);
 
   // Affine expressions and affine maps.
-  AffineExprRef getAffineDimExpr(unsigned position);
-  AffineExprRef getAffineSymbolExpr(unsigned position);
-  AffineExprRef getAffineConstantExpr(int64_t constant);
-  AffineExprRef getAddExpr(AffineExprRef lhs, AffineExprRef rhs);
-  AffineExprRef getAddExpr(AffineExprRef lhs, int64_t rhs);
-  AffineExprRef getSubExpr(AffineExprRef lhs, AffineExprRef rhs);
-  AffineExprRef getSubExpr(AffineExprRef lhs, int64_t rhs);
-  AffineExprRef getMulExpr(AffineExprRef lhs, AffineExprRef rhs);
-  AffineExprRef getMulExpr(AffineExprRef lhs, int64_t rhs);
-  AffineExprRef getModExpr(AffineExprRef lhs, AffineExprRef rhs);
-  AffineExprRef getModExpr(AffineExprRef lhs, uint64_t rhs);
-  AffineExprRef getFloorDivExpr(AffineExprRef lhs, AffineExprRef rhs);
-  AffineExprRef getFloorDivExpr(AffineExprRef lhs, uint64_t rhs);
-  AffineExprRef getCeilDivExpr(AffineExprRef lhs, AffineExprRef rhs);
-  AffineExprRef getCeilDivExpr(AffineExprRef lhs, uint64_t rhs);
+  AffineExpr getAffineDimExpr(unsigned position);
+  AffineExpr getAffineSymbolExpr(unsigned position);
+  AffineExpr getAffineConstantExpr(int64_t constant);
+  AffineExpr getAddExpr(AffineExpr lhs, AffineExpr rhs);
+  AffineExpr getAddExpr(AffineExpr lhs, int64_t rhs);
+  AffineExpr getSubExpr(AffineExpr lhs, AffineExpr rhs);
+  AffineExpr getSubExpr(AffineExpr lhs, int64_t rhs);
+  AffineExpr getMulExpr(AffineExpr lhs, AffineExpr rhs);
+  AffineExpr getMulExpr(AffineExpr lhs, int64_t rhs);
+  AffineExpr getModExpr(AffineExpr lhs, AffineExpr rhs);
+  AffineExpr getModExpr(AffineExpr lhs, uint64_t rhs);
+  AffineExpr getFloorDivExpr(AffineExpr lhs, AffineExpr rhs);
+  AffineExpr getFloorDivExpr(AffineExpr lhs, uint64_t rhs);
+  AffineExpr getCeilDivExpr(AffineExpr lhs, AffineExpr rhs);
+  AffineExpr getCeilDivExpr(AffineExpr lhs, uint64_t rhs);
 
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExprRef> results,
-                          ArrayRef<AffineExprRef> rangeSizes);
+                          ArrayRef<AffineExpr> results,
+                          ArrayRef<AffineExpr> rangeSizes);
 
   // Special cases of affine maps and integer sets
   /// Returns a single constant result affine map with 0 dimensions and 0
@@ -151,7 +151,7 @@ public:
 
   // Integer set.
   IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExprRef> constraints,
+                            ArrayRef<AffineExpr> constraints,
                             ArrayRef<bool> isEq);
   // TODO: Helpers for affine map/exprs, etc.
 protected:

@@ -32,11 +32,11 @@ namespace mlir {
 
 namespace detail {
 
-class AffineExpr;
+class AffineExprClass;
 
 } // namespace detail
-template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
+template <typename T> class AffineExprBase;
+using AffineExpr = AffineExprBase<detail::AffineExprClass>;
 class Attribute;
 class MLIRContext;
 
@@ -48,9 +48,8 @@ class MLIRContext;
 class AffineMap {
 public:
   static AffineMap *get(unsigned dimCount, unsigned symbolCount,
-                        ArrayRef<AffineExprRef> results,
-                        ArrayRef<AffineExprRef> rangeSizes,
-                        MLIRContext *context);
+                        ArrayRef<AffineExpr> results,
+                        ArrayRef<AffineExpr> rangeSizes);
 
   /// Returns a single constant result affine map.
   static AffineMap *getConstantMap(int64_t val, MLIRContext *context);
@@ -81,11 +80,11 @@ public:
   unsigned getNumResults() { return numResults; }
   unsigned getNumInputs() { return numDims + numSymbols; }
 
-  ArrayRef<AffineExprRef> getResults() { return results; }
+  ArrayRef<AffineExpr> getResults() { return results; }
 
-  AffineExprRef getResult(unsigned idx);
+  AffineExpr getResult(unsigned idx);
 
-  ArrayRef<AffineExprRef> getRangeSizes() { return rangeSizes; }
+  ArrayRef<AffineExpr> getRangeSizes() { return rangeSizes; }
 
   /// Folds the results of the application of an affine map on the provided
   /// operands to a constant if possible. Returns false if the folding happens,
@@ -95,8 +94,7 @@ public:
 
 private:
   AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-            ArrayRef<AffineExprRef> results,
-            ArrayRef<AffineExprRef> rangeSizes);
+            ArrayRef<AffineExpr> results, ArrayRef<AffineExpr> rangeSizes);
 
   AffineMap(const AffineMap &) = delete;
   void operator=(const AffineMap &) = delete;
@@ -107,11 +105,11 @@ private:
 
   /// The affine expressions for this (multi-dimensional) map.
   /// TODO: use trailing objects for this.
-  ArrayRef<AffineExprRef> results;
+  ArrayRef<AffineExpr> results;
 
   /// The extents along each of the range dimensions if the map is bounded,
   /// nullptr otherwise.
-  ArrayRef<AffineExprRef> rangeSizes;
+  ArrayRef<AffineExpr> rangeSizes;
 };
 
 } // end namespace mlir

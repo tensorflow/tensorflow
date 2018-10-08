@@ -32,7 +32,7 @@ using namespace mlir;
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
-AffineExprRef mlir::getTripCountExpr(const ForStmt &forStmt) {
+AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
   // upper_bound - lower_bound + 1
   int64_t loopSpan;
 
@@ -56,12 +56,12 @@ AffineExprRef mlir::getTripCountExpr(const ForStmt &forStmt) {
       return nullptr;
 
     // ub_expr - lb_expr + 1
-    AffineExprRef lbExpr(lbMap->getResult(0));
-    AffineExprRef ubExpr(ubMap->getResult(0));
+    AffineExpr lbExpr(lbMap->getResult(0));
+    AffineExpr ubExpr(ubMap->getResult(0));
     auto loopSpanExpr = simplifyAffineExpr(
         ubExpr - lbExpr + 1, std::max(lbMap->getNumDims(), ubMap->getNumDims()),
         std::max(lbMap->getNumSymbols(), ubMap->getNumSymbols()));
-    auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExprRef>();
+    auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExpr>();
     if (!cExpr)
       return loopSpanExpr.ceilDiv(step);
     loopSpan = cExpr->getValue();
@@ -84,7 +84,7 @@ llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForStmt &forStmt) {
   if (!tripCountExpr)
     return None;
 
-  if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExprRef>())
+  if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExpr>())
     return constExpr->getValue();
 
   return None;
@@ -99,7 +99,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   if (!tripCountExpr)
     return 1;
 
-  if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExprRef>()) {
+  if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExpr>()) {
     uint64_t tripCount = constExpr->getValue();
 
     // 0 iteration loops (greatest divisor is 2^64 - 1).

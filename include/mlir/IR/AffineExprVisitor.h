@@ -1,4 +1,4 @@
-//===- AffineExprVisitor.h - MLIR AffineExpr Visitor Class ------*- C++ -*-===//
+//===- AffineExprVisitor.h - MLIR AffineExprClass Visitor Class -*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the AffineExpr visitor class.
+// This file defines the AffineExprClass visitor class.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,9 +26,9 @@
 
 namespace mlir {
 
-/// Base class for AffineExpr visitors/walkers.
+/// Base class for AffineExprClass visitors/walkers.
 ///
-/// AffineExpr visitors are used when you want to perform different actions
+/// AffineExprClass visitors are used when you want to perform different actions
 /// for different kinds of AffineExprs without having to use lots of casts
 /// and a big switch statement.
 ///
@@ -46,7 +46,7 @@ namespace mlir {
 ///  struct DimExprCounter : public AffineExprVisitor<DimExprCounter> {
 ///    unsigned numDimExprs;
 ///    DimExprCounter() : numDimExprs(0) {}
-///    void visitAffineDimExpr(AffineDimExprRef expr) { ++numDimExprs; }
+///    void visitAffineDimExpr(AffineDimExpr expr) { ++numDimExprs; }
 ///  };
 ///
 ///  And this class would be used like this:
@@ -56,13 +56,14 @@ namespace mlir {
 ///
 /// AffineExprVisitor provides visit methods for the following binary affine
 /// op expressions:
-/// AffineBinaryAddOpExpr, AffineBinaryMulOpExpr, AffineBinaryModOpExpr,
-/// AffineBinaryFloorDivOpExpr, AffineBinaryCeilDivOpExpr.
-/// Note that default implementations of these methods will call the general
-/// AffineBinaryOpExpr method.
+/// AffineBinaryAddOpExprClass, AffineBinaryMulOpExprClass,
+/// AffineBinaryModOpExprClass, AffineBinaryFloorDivOpExprClass,
+/// AffineBinaryCeilDivOpExpr. Note that default implementations of these
+/// methods will call the general AffineBinaryOpExprClass method.
 ///
 /// In addition, visit methods are provided for the following affine
-//  expressions: AffineConstantExpr, AffineDimExpr, and AffineSymbolExpr.
+//  expressions: AffineConstantExprClass, AffineDimExprClass, and
+//  AffineSymbolExpr.
 ///
 /// Note that if you don't implement visitXXX for some affine expression type,
 /// the visitXXX method for Statement superclass will be invoked.
@@ -77,88 +78,88 @@ template <typename SubClass, typename RetTy = void> class AffineExprVisitor {
   // Interface code - This is the public interface of the AffineExprVisitor
   // that you use to visit affine expressions...
 public:
-  // Function to walk an AffineExpr (in post order).
-  RetTy walkPostOrder(AffineExprRef expr) {
+  // Function to walk an AffineExprClass (in post order).
+  RetTy walkPostOrder(AffineExpr expr) {
     static_assert(std::is_base_of<AffineExprVisitor, SubClass>::value,
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
     case AffineExprKind::Add: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitAddExpr(binOpExpr);
     }
     case AffineExprKind::Mul: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitMulExpr(binOpExpr);
     }
     case AffineExprKind::Mod: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitModExpr(binOpExpr);
     }
     case AffineExprKind::FloorDiv: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitFloorDivExpr(binOpExpr);
     }
     case AffineExprKind::CeilDiv: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitCeilDivExpr(binOpExpr);
     }
     case AffineExprKind::Constant:
       return static_cast<SubClass *>(this)->visitConstantExpr(
 
-          expr.cast<AffineConstantExprRef>());
+          expr.cast<AffineConstantExpr>());
     case AffineExprKind::DimId:
       return static_cast<SubClass *>(this)->visitDimExpr(
 
-          expr.cast<AffineDimExprRef>());
+          expr.cast<AffineDimExpr>());
     case AffineExprKind::SymbolId:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
 
-          expr.cast<AffineSymbolExprRef>());
+          expr.cast<AffineSymbolExpr>());
     }
   }
 
   // Function to visit an AffineExpr.
-  RetTy visit(AffineExprRef expr) {
+  RetTy visit(AffineExpr expr) {
     static_assert(std::is_base_of<AffineExprVisitor, SubClass>::value,
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
     case AffineExprKind::Add: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       return static_cast<SubClass *>(this)->visitAddExpr(binOpExpr);
     }
     case AffineExprKind::Mul: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       return static_cast<SubClass *>(this)->visitMulExpr(binOpExpr);
     }
     case AffineExprKind::Mod: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       return static_cast<SubClass *>(this)->visitModExpr(binOpExpr);
     }
     case AffineExprKind::FloorDiv: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       return static_cast<SubClass *>(this)->visitFloorDivExpr(binOpExpr);
     }
     case AffineExprKind::CeilDiv: {
-      auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+      auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
       return static_cast<SubClass *>(this)->visitCeilDivExpr(binOpExpr);
     }
     case AffineExprKind::Constant:
       return static_cast<SubClass *>(this)->visitConstantExpr(
 
-          expr.cast<AffineConstantExprRef>());
+          expr.cast<AffineConstantExpr>());
     case AffineExprKind::DimId:
       return static_cast<SubClass *>(this)->visitDimExpr(
 
-          expr.cast<AffineDimExprRef>());
+          expr.cast<AffineDimExpr>());
     case AffineExprKind::SymbolId:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
 
-          expr.cast<AffineSymbolExprRef>());
+          expr.cast<AffineSymbolExpr>());
     }
   }
 
@@ -172,29 +173,29 @@ public:
 
   // Default visit methods. Note that the default op-specific binary op visit
   // methods call the general visitAffineBinaryOpExpr visit method.
-  void visitAffineBinaryOpExpr(AffineBinaryOpExprRef expr) {}
-  void visitAddExpr(AffineBinaryOpExprRef expr) {
+  void visitAffineBinaryOpExpr(AffineBinaryOpExpr expr) {}
+  void visitAddExpr(AffineBinaryOpExpr expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitMulExpr(AffineBinaryOpExprRef expr) {
+  void visitMulExpr(AffineBinaryOpExpr expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitModExpr(AffineBinaryOpExprRef expr) {
+  void visitModExpr(AffineBinaryOpExpr expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitFloorDivExpr(AffineBinaryOpExprRef expr) {
+  void visitFloorDivExpr(AffineBinaryOpExpr expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitCeilDivExpr(AffineBinaryOpExprRef expr) {
+  void visitCeilDivExpr(AffineBinaryOpExpr expr) {
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
-  void visitConstantExpr(AffineConstantExprRef expr) {}
-  void visitAffineDimExpr(AffineDimExprRef expr) {}
-  void visitAffineSymbolExpr(AffineSymbolExprRef expr) {}
+  void visitConstantExpr(AffineConstantExpr expr) {}
+  void visitAffineDimExpr(AffineDimExpr expr) {}
+  void visitAffineSymbolExpr(AffineSymbolExpr expr) {}
 
 private:
   // Walk the operands - each operand is itself walked in post order.
-  void walkOperandsPostOrder(AffineBinaryOpExprRef expr) {
+  void walkOperandsPostOrder(AffineBinaryOpExpr expr) {
     walkPostOrder(expr->getLHS());
     walkPostOrder(expr->getRHS());
   }

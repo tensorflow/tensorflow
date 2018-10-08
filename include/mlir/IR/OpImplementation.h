@@ -31,11 +31,11 @@ namespace mlir {
 
 namespace detail {
 
-class AffineExpr;
+class AffineExprClass;
 
 } // namespace detail
-template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
+template <typename T> class AffineExprBase;
+using AffineExpr = AffineExprBase<detail::AffineExprClass>;
 class AffineMap;
 class Builder;
 class Function;
@@ -76,7 +76,7 @@ public:
   virtual void printFunctionReference(const Function *func) = 0;
   virtual void printAttribute(const Attribute *attr) = 0;
   virtual void printAffineMap(AffineMap *map) = 0;
-  virtual void printAffineExpr(AffineExprRef expr) = 0;
+  virtual void printAffineExpr(AffineExpr expr) = 0;
 
   /// If the specified operation has attributes, print out an attribute
   /// dictionary with their values.  elidedAttrs allows the client to ignore

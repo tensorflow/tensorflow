@@ -47,7 +47,7 @@ namespace {
 struct AffineMapCompositionUpdate {
   using PositionMap = DenseMap<unsigned, unsigned>;
 
-  explicit AffineMapCompositionUpdate(ArrayRef<AffineExprRef> inputResults)
+  explicit AffineMapCompositionUpdate(ArrayRef<AffineExpr> inputResults)
       : inputResults(inputResults), outputNumDims(0), outputNumSymbols(0) {}
 
   // Map from 'curr' affine map dim position to 'output' affine map
@@ -65,7 +65,7 @@ struct AffineMapCompositionUpdate {
   // symbol position.
   PositionMap inputSymbolMap;
   // Results of 'input' affine map.
-  ArrayRef<AffineExprRef> inputResults;
+  ArrayRef<AffineExpr> inputResults;
   // Number of dimension operands for 'output' affine map.
   unsigned outputNumDims;
   // Number of symbol operands for 'output' affine map.
@@ -80,29 +80,29 @@ public:
   AffineExprComposer(const AffineMapCompositionUpdate &mapUpdate)
       : mapUpdate(mapUpdate), walkingInputMap(false) {}
 
-  AffineExprRef walk(AffineExprRef expr) {
+  AffineExpr walk(AffineExpr expr) {
     switch (expr->getKind()) {
     case AffineExprKind::Add:
       return walkBinExpr(
-          expr, [](AffineExprRef lhs, AffineExprRef rhs) { return lhs + rhs; });
+          expr, [](AffineExpr lhs, AffineExpr rhs) { return lhs + rhs; });
     case AffineExprKind::Mul:
       return walkBinExpr(
-          expr, [](AffineExprRef lhs, AffineExprRef rhs) { return lhs * rhs; });
+          expr, [](AffineExpr lhs, AffineExpr rhs) { return lhs * rhs; });
     case AffineExprKind::Mod:
       return walkBinExpr(
-          expr, [](AffineExprRef lhs, AffineExprRef rhs) { return lhs % rhs; });
+          expr, [](AffineExpr lhs, AffineExpr rhs) { return lhs % rhs; });
     case AffineExprKind::FloorDiv:
-      return walkBinExpr(expr, [](AffineExprRef lhs, AffineExprRef rhs) {
+      return walkBinExpr(expr, [](AffineExpr lhs, AffineExpr rhs) {
         return lhs.floorDiv(rhs);
       });
     case AffineExprKind::CeilDiv:
-      return walkBinExpr(expr, [](AffineExprRef lhs, AffineExprRef rhs) {
+      return walkBinExpr(expr, [](AffineExpr lhs, AffineExpr rhs) {
         return lhs.ceilDiv(rhs);
       });
     case AffineExprKind::Constant:
       return expr;
     case AffineExprKind::DimId: {
-      unsigned dimPosition = expr.cast<AffineDimExprRef>()->getPosition();
+      unsigned dimPosition = expr.cast<AffineDimExpr>()->getPosition();
       if (walkingInputMap) {
         return getAffineDimExpr(mapUpdate.inputDimMap.lookup(dimPosition),
                                 expr->getContext());
@@ -123,7 +123,7 @@ public:
       return composer.walk(mapUpdate.inputResults[inputResultIndex]);
     }
     case AffineExprKind::SymbolId:
-      unsigned symbolPosition = expr.cast<AffineSymbolExprRef>()->getPosition();
+      unsigned symbolPosition = expr.cast<AffineSymbolExpr>()->getPosition();
       if (walkingInputMap) {
         return getAffineSymbolExpr(
             mapUpdate.inputSymbolMap.lookup(symbolPosition),
@@ -139,10 +139,9 @@ private:
                      bool walkingInputMap)
       : mapUpdate(mapUpdate), walkingInputMap(walkingInputMap) {}
 
-  AffineExprRef
-  walkBinExpr(AffineExprRef expr,
-              std::function<AffineExprRef(AffineExprRef, AffineExprRef)> op) {
-    auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
+  AffineExpr walkBinExpr(AffineExpr expr,
+                         std::function<AffineExpr(AffineExpr, AffineExpr)> op) {
+    auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
     return op(walk(binOpExpr->getLHS()), walk(binOpExpr->getRHS()));
   }
 
@@ -197,7 +196,7 @@ void MutableAffineMap::simplify() {
 }
 
 AffineMap *MutableAffineMap::getAffineMap() {
-  return AffineMap::get(numDims, numSymbols, results, rangeSizes, context);
+  return AffineMap::get(numDims, numSymbols, results, rangeSizes);
 }
 
 MutableIntegerSet::MutableIntegerSet(IntegerSet *set, MLIRContext *context)
@@ -295,10 +294,10 @@ void AffineValueMap::fwdSubstitute(const AffineApplyOp &inputOp) {
     DenseSet<unsigned> *positions;
     AffineExprPositionGatherer(unsigned numDims, DenseSet<unsigned> *positions)
         : numDims(numDims), positions(positions) {}
-    void visitDimExpr(AffineDimExprRef expr) {
+    void visitDimExpr(AffineDimExpr expr) {
       positions->insert(expr->getPosition());
     }
-    void visitSymbolExpr(AffineSymbolExprRef expr) {
+    void visitSymbolExpr(AffineSymbolExpr expr) {
       positions->insert(numDims + expr->getPosition());
     }
   };

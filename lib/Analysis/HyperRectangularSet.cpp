@@ -38,7 +38,7 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
     unsigned j = 0;
     AffineBoundExprList::const_iterator it, e;
     for (it = ubs.begin(), e = ubs.end(); it != e; it++, j++) {
-      if (auto cExpr = it->dyn_cast<AffineConstantExprRef>()) {
+      if (auto cExpr = it->dyn_cast<AffineConstantExpr>()) {
         if (val == None) {
           val = cExpr->getValue();
           *idx = j;
@@ -52,8 +52,9 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
   return val;
 }
 
-// Merge the two lists of AffineExpr's into a single one, avoiding duplicates.
-// lb specifies whether the bound lists are for a lower bound or an upper bound.
+// Merge the two lists of AffineExprClass's into a single one, avoiding
+// duplicates. lb specifies whether the bound lists are for a lower bound or an
+// upper bound.
 // TODO(bondhugula): clean this code up.
 static void mergeBounds(const HyperRectangularSet &set,
                         AffineBoundExprList &lhsList,
@@ -68,7 +69,7 @@ static void mergeBounds(const HyperRectangularSet &set,
     }
     if (it == lhsList.end()) {
       // There can only be one constant affine expr in this bound list.
-      if (auto cExpr = expr.dyn_cast<AffineConstantExprRef>()) {
+      if (auto cExpr = expr.dyn_cast<AffineConstantExpr>()) {
         unsigned idx;
         if (lb) {
           auto cb = getReducedConstBound(
@@ -105,8 +106,8 @@ static void mergeBounds(const HyperRectangularSet &set,
 }
 
 HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
-                                         ArrayRef<ArrayRef<AffineExprRef>> lbs,
-                                         ArrayRef<ArrayRef<AffineExprRef>> ubs,
+                                         ArrayRef<ArrayRef<AffineExpr>> lbs,
+                                         ArrayRef<ArrayRef<AffineExpr>> ubs,
                                          MLIRContext *context,
                                          IntegerSet *symbolContext)
     : context(symbolContext ? MutableIntegerSet(symbolContext, context)
