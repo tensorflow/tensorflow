@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import collections
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
@@ -31,7 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ShuffleDatasetTest(test_base.DatasetTestBase):
+class ShuffleDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testShuffleDataset(self):
     components = (
@@ -208,6 +209,28 @@ class ShuffleDatasetTest(test_base.DatasetTestBase):
             sorted(initial_permutation), sorted(next_permutation))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
+
+  @parameterized.named_parameters(
+      ("ReshuffleEachIterationNoSeed", None, True),
+      ("ReshuffleEachIterationWithSeed", 42, True),
+      ("NoReshuffleEachIterationNoSeed", None, False),
+      ("NoReshuffleEachIterationWithSeed", 42, False),
+  )
+  def testShuffleAndZipDataset(self, seed, reshuffle):
+    dataset = (dataset_ops.Dataset.range(10)
+               .shuffle(10, seed=seed, reshuffle_each_iteration=reshuffle)
+               .repeat(3))
+    dataset = dataset_ops.Dataset.zip((dataset, dataset))
+    iterator = dataset.make_one_shot_iterator()
+    next_element = iterator.get_next()
+
+    with self.cached_session() as sess:
+      for _ in range(30):
+        x, y = sess.run(next_element)
+        self.assertEqual(x, y)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
 
 if __name__ == "__main__":
   test.main()
