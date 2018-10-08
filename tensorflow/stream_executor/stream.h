@@ -2005,7 +2005,7 @@ class Stream {
   // Routines to do fused operations
 
   // Fused Convolution+Bias+Activation (float)
-  Stream& ThenFusedConvolveBiasActivation(
+  Stream& ThenFusedConvolutionBiasActivation(
       const dnn::BatchDescriptor& conv_input_descriptor,
       const DeviceMemory<float>& conv_input_data,
       const dnn::FilterDescriptor& filter_descriptor,

@@ -2374,4 +2374,67 @@ expected to invoke these operators.
 )doc");
 #endif  // INTEL_MKL
 
+#ifdef TENSORFLOW_USE_ROCM
+
+REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
+
+    .Input("conv_input: T")
+    .Input("filter: T")
+    .Input("bias: T")
+
+    .Output("output: T")
+
+    .Attr("T: {float}")
+    .Attr("strides: list(int)")
+    .Attr("padding: {'SAME', 'VALID'}")
+    .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("activation_mode: {'Relu', 'None'} = 'Relu'")
+
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      using shape_inference::DimensionHandle;
+      TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
+
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+      FilterTensorFormat filter_format;
+      FilterFormatFromString("HWIO", &filter_format);
+
+      constexpr int num_spatial_dims = 2;
+      const int rank =
+          GetTensorDimsFromSpatialDims(num_spatial_dims, data_format);
+      ShapeHandle filter_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), rank, &filter_shape));
+
+      DimensionHandle output_depth_dim =
+          c->Dim(filter_shape,
+                 GetFilterDimIndex<num_spatial_dims>(filter_format, 'O'));
+      int64 output_depth_dim_val = c->Value(output_depth_dim);
+
+      ShapeHandle bias_shape;
+      // Bias should be a 1-D tensor.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &bias_shape));
+      DimensionHandle bias_dim = c->Dim(bias_shape, 0);
+      int64 bias_dim_val = c->Value(bias_dim);
+
+      if (output_depth_dim_val != bias_dim_val) {
+        return errors::InvalidArgument(
+            "Output depth dimension (", output_depth_dim_val,
+            ") and bias dimension (", bias_dim_val, ") do not match.");
+      }
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+    Computes a fused kernel which implements: 2-D convolutions, then adds bias and
+    and then applies the activation function to the result. 
+    Supports only tensors of type float.
+)doc");
+
+#endif  //  TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow
