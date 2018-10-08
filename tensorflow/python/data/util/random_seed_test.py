@@ -41,6 +41,7 @@ class RandomSeedTest(test.TestCase):
         # (input_graph_seed, input_op_seed)
         # and output from get_seed:
         # (output_graph_seed, output_op_seed)
+        ((None, None), (0, 0)),
         ((None, 1), (random_seed.DEFAULT_GRAPH_SEED, 1)),
         ((1, 1), (1, 1)),
         ((0, 0), (0, 2**31 - 1)),  # Avoid nondeterministic (0, 0) output
@@ -77,18 +78,6 @@ class RandomSeedTest(test.TestCase):
       self.assertEqual((g_seed, op_seed), toutput, msg=msg)
       random_seed.set_random_seed(None)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testNondeterministicRandomSeed(self):
-    random_seed.set_random_seed(None)
-    op_seeds = []
-    for _ in range(50):
-      g_seed, op_seed = data_random_seed.get_seed(None)
-      g_seed = self.evaluate(g_seed)
-      op_seed = self.evaluate(op_seed)
-      self.assertEqual(0, g_seed)
-      self.assertNotEqual(0, op_seed)
-      op_seeds.append(op_seed)
-    self.assertGreater(len(set(op_seeds)), 1)
 
 if __name__ == '__main__':
   test.main()

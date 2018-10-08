@@ -24,7 +24,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 
 
 def get_seed(seed):
@@ -38,7 +37,7 @@ def get_seed(seed):
 
   Returns:
     A tuple of two `tf.int64` scalar tensors that should be used for the local
-    seeds of the calling dataset.
+    seed of the calling dataset.
   """
   seed, seed2 = random_seed.get_seed(seed)
   if seed is None:
@@ -46,7 +45,7 @@ def get_seed(seed):
   else:
     seed = ops.convert_to_tensor(seed, dtype=dtypes.int64, name="seed")
   if seed2 is None:
-    seed2 = random_ops.random_uniform([], 1, 2**63 - 1, dtype=dtypes.int64)
+    seed2 = constant_op.constant(0, dtype=dtypes.int64, name="seed2")
   else:
     with ops.name_scope("seed2") as scope:
       seed2 = ops.convert_to_tensor(seed2, dtype=dtypes.int64)
