@@ -30,3 +30,16 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+tf_cc_test(
+    name = "resolve_constant_unary_test",
+    srcs = ["resolve_constant_unary_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/contrib/lite/toco:graph_transformations",
+        "//tensorflow/contrib/lite/toco:model",
+        "//tensorflow/contrib/lite/toco:tooling_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
