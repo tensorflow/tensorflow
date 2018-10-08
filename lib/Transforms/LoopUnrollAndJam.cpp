@@ -220,7 +220,7 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
       // this unrolled instance.
       if (!forStmt->use_empty()) {
         // iv' = iv + i, i = 1 to unrollJamFactor-1.
-        auto d0 = builder.getDimExpr(0);
+        auto d0 = builder.getAffineDimExpr(0);
         auto *bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
         auto *ivUnroll =
             builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)

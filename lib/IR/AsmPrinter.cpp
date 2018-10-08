@@ -40,6 +40,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 using namespace mlir;
+using namespace mlir::detail;
 
 void Identifier::print(raw_ostream &os) const { os << str(); }
 
@@ -578,28 +579,28 @@ void ModulePrinter::printAffineExprInternal(
     AffineExprRef expr, BindingStrength enclosingTightness) {
   const char *binopSpelling = nullptr;
   switch (expr->getKind()) {
-  case AffineExpr::Kind::SymbolId:
+  case AffineExprKind::SymbolId:
     os << 's' << expr.cast<AffineSymbolExprRef>()->getPosition();
     return;
-  case AffineExpr::Kind::DimId:
+  case AffineExprKind::DimId:
     os << 'd' << expr.cast<AffineDimExprRef>()->getPosition();
     return;
-  case AffineExpr::Kind::Constant:
+  case AffineExprKind::Constant:
     os << expr.cast<AffineConstantExprRef>()->getValue();
     return;
-  case AffineExpr::Kind::Add:
+  case AffineExprKind::Add:
     binopSpelling = " + ";
     break;
-  case AffineExpr::Kind::Mul:
+  case AffineExprKind::Mul:
     binopSpelling = " * ";
     break;
-  case AffineExpr::Kind::FloorDiv:
+  case AffineExprKind::FloorDiv:
     binopSpelling = " floordiv ";
     break;
-  case AffineExpr::Kind::CeilDiv:
+  case AffineExprKind::CeilDiv:
     binopSpelling = " ceildiv ";
     break;
-  case AffineExpr::Kind::Mod:
+  case AffineExprKind::Mod:
     binopSpelling = " mod ";
     break;
   }
@@ -607,7 +608,7 @@ void ModulePrinter::printAffineExprInternal(
   auto binOp = expr.cast<AffineBinaryOpExprRef>();
 
   // Handle tightly binding binary operators.
-  if (binOp->getKind() != AffineExpr::Kind::Add) {
+  if (binOp->getKind() != AffineExprKind::Add) {
     if (enclosingTightness == BindingStrength::Strong)
       os << '(';
 
@@ -628,7 +629,7 @@ void ModulePrinter::printAffineExprInternal(
   // subtraction.
   AffineExprRef rhsExpr = binOp->getRHS();
   if (auto rhs = rhsExpr.dyn_cast<AffineBinaryOpExprRef>()) {
-    if (rhs->getKind() == AffineExpr::Kind::Mul) {
+    if (rhs->getKind() == AffineExprKind::Mul) {
       AffineExprRef rrhsExpr = rhs->getRHS();
       if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExprRef>()) {
         if (rrhs->getValue() == -1) {

@@ -40,14 +40,14 @@ static AffineExprRef toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
   assert(eq.size() - numDims - numSymbols - 1 == localExprs.size() &&
          "unexpected number of local expressions");
 
-  auto expr = AffineConstantExpr::get(0, context);
+  auto expr = getAffineConstantExpr(0, context);
   // Dimensions and symbols.
   for (unsigned j = 0; j < numDims + numSymbols; j++) {
     if (eq[j] == 0) {
       continue;
     }
-    auto id = j < numDims ? AffineDimExpr::get(j, context)
-                          : AffineSymbolExpr::get(j - numDims, context);
+    auto id = j < numDims ? getAffineDimExpr(j, context)
+                          : getAffineSymbolExpr(j - numDims, context);
     expr = expr + id * eq[j];
   }
 
@@ -190,9 +190,9 @@ public:
 
     // Add an existential quantifier. expr1 % expr2 is replaced by (expr1 -
     // q * expr2) where q is the existential quantifier introduced.
-    addLocalId(AffineBinaryOpExpr::getFloorDiv(
-        toAffineExpr(lhs, numDims, numSymbols, localExprs, context),
-        AffineConstantExpr::get(rhsConst, context), context));
+    auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
+    auto b = getAffineConstantExpr(rhsConst, context);
+    addLocalId(a.floorDiv(b));
     lhs[getLocalVarStartIndex() + numLocals - 1] = -rhsConst;
   }
   void visitCeilDivExpr(AffineBinaryOpExprRef expr) {
@@ -249,11 +249,13 @@ private:
     // the ceil/floor expr (simplified up until here). Add an existential
     // quantifier to express its result, i.e., expr1 div expr2 is replaced
     // by a new identifier, q.
-    auto divKind =
-        isCeil ? AffineExpr::Kind::CeilDiv : AffineExpr::Kind::FloorDiv;
-    addLocalId(AffineBinaryOpExpr::get(
-        divKind, toAffineExpr(lhs, numDims, numSymbols, localExprs, context),
-        AffineConstantExpr::get(denominator, context), context));
+    auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
+    auto b = getAffineConstantExpr(denominator, context);
+    if (isCeil) {
+      addLocalId(a.ceilDiv(b));
+    } else {
+      addLocalId(a.floorDiv(b));
+    }
     lhs.assign(lhs.size(), 0);
     lhs[getLocalVarStartIndex() + numLocals - 1] = 1;
   }

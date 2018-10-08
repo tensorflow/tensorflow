@@ -28,9 +28,13 @@
 
 namespace mlir {
 
+namespace detail {
+
 class AffineExpr;
+
+} // namespace detail
 template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<AffineExpr>;
+using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
 class MLIRContext;
 
 /// Simplify an affine expression through flattening and some amount of

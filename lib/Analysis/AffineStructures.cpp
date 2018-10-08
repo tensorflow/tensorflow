@@ -37,7 +37,7 @@ MutableAffineMap::MutableAffineMap(AffineMap *map, MLIRContext *context)
 }
 
 bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
-  if (const_cast<AffineExprRef &>(results[idx])->isMultipleOf(factor))
+  if (results[idx]->isMultipleOf(factor))
     return true;
 
   // TODO(bondhugula): use simplifyAffineExpr and FlatAffineConstraints to

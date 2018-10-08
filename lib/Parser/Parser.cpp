@@ -908,7 +908,7 @@ AffineExprRef AffineParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
     return builder.getAddExpr(lhs, rhs);
   case AffineLowPrecOp::Sub:
     return builder.getAddExpr(
-        lhs, builder.getMulExpr(rhs, builder.getConstantExpr(-1)));
+        lhs, builder.getMulExpr(rhs, builder.getAffineConstantExpr(-1)));
   case AffineLowPrecOp::LNoOp:
     llvm_unreachable("can't create affine expression for null low prec op");
     return nullptr;
@@ -1021,7 +1021,7 @@ AffineExprRef AffineParser::parseNegateExpression(AffineExprRef lhs) {
     // Extra error message although parseAffineOperandExpr would have
     // complained. Leads to a better diagnostic.
     return (emitError("missing operand of negation"), nullptr);
-  auto minusOne = builder.getConstantExpr(-1);
+  auto minusOne = builder.getAffineConstantExpr(-1);
   return builder.getMulExpr(minusOne, operand);
 }
 
@@ -1052,7 +1052,7 @@ AffineExprRef AffineParser::parseIntegerExpr() {
     return (emitError("constant too large for index"), nullptr);
 
   consumeToken(Token::integer);
-  return builder.getConstantExpr((int64_t)val.getValue());
+  return builder.getAffineConstantExpr((int64_t)val.getValue());
 }
 
 /// Parses an expression that can be a valid operand of an affine expression.
@@ -1196,7 +1196,7 @@ ParseResult AffineParser::parseIdentifierDefinition(AffineExprRef idExpr) {
 ParseResult AffineParser::parseSymbolIdList(unsigned &numSymbols) {
   consumeToken(Token::l_square);
   auto parseElt = [&]() -> ParseResult {
-    auto symbol = AffineSymbolExpr::get(numSymbols++, getContext());
+    auto symbol = getAffineSymbolExpr(numSymbols++, getContext());
     return parseIdentifierDefinition(symbol);
   };
   return parseCommaSeparatedListUntil(Token::r_square, parseElt);
@@ -1209,7 +1209,7 @@ ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
     return ParseFailure;
 
   auto parseElt = [&]() -> ParseResult {
-    auto dimension = AffineDimExpr::get(numDims++, getContext());
+    auto dimension = getAffineDimExpr(numDims++, getContext());
     return parseIdentifierDefinition(dimension);
   };
   return parseCommaSeparatedListUntil(Token::r_paren, parseElt);

@@ -28,9 +28,14 @@
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
+
+namespace detail {
+
 class AffineExpr;
+
+} // namespace detail
 template <typename T> class AffineExprBaseRef;
-using AffineExprRef = AffineExprBaseRef<AffineExpr>;
+using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
 class AffineMap;
 class Builder;
 class Function;

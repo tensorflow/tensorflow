@@ -116,7 +116,7 @@ static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
       topBuilder.create<AllocOp>(forStmt->getLoc(), newMemRefType)
           ->getResult());
 
-  auto d0 = bInner.getDimExpr(0);
+  auto d0 = bInner.getAffineDimExpr(0);
   auto *modTwoMap = bInner.getAffineMap(1, 0, {d0 % 2}, {});
   auto ivModTwoOp =
       bInner.create<AffineApplyOp>(forStmt->getLoc(), modTwoMap, forStmt);

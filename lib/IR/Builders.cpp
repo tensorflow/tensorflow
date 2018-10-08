@@ -155,72 +155,68 @@ AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
   return AffineMap::get(dimCount, symbolCount, results, rangeSizes, context);
 }
 
-AffineExprRef Builder::getDimExpr(unsigned position) {
-  return AffineDimExpr::get(position, context);
+AffineExprRef Builder::getAffineDimExpr(unsigned position) {
+  return mlir::getAffineDimExpr(position, context);
 }
 
-AffineExprRef Builder::getSymbolExpr(unsigned position) {
-  return AffineSymbolExpr::get(position, context);
+AffineExprRef Builder::getAffineSymbolExpr(unsigned position) {
+  return mlir::getAffineSymbolExpr(position, context);
 }
 
-AffineExprRef Builder::getConstantExpr(int64_t constant) {
-  return AffineConstantExpr::get(constant, context);
+AffineExprRef Builder::getAffineConstantExpr(int64_t constant) {
+  return mlir::getAffineConstantExpr(constant, context);
 }
 
 AffineExprRef Builder::getAddExpr(AffineExprRef lhs, AffineExprRef rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::Add, lhs, rhs, context);
+  return lhs + rhs;
 }
 
 AffineExprRef Builder::getAddExpr(AffineExprRef lhs, int64_t rhs) {
-  return AffineBinaryOpExpr::getAdd(lhs, rhs, context);
+  return lhs + rhs;
 }
 
 AffineExprRef Builder::getMulExpr(AffineExprRef lhs, AffineExprRef rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs, rhs, context);
+  return lhs * rhs;
 }
 
 // Most multiply expressions are pure affine (rhs is a constant).
 AffineExprRef Builder::getMulExpr(AffineExprRef lhs, int64_t rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs,
-                                 getConstantExpr(rhs), context);
+  return lhs * rhs;
 }
 
 AffineExprRef Builder::getSubExpr(AffineExprRef lhs, AffineExprRef rhs) {
-  return getAddExpr(lhs, getMulExpr(rhs, getConstantExpr(-1)));
+  return lhs - rhs;
 }
 
 AffineExprRef Builder::getSubExpr(AffineExprRef lhs, int64_t rhs) {
-  return AffineBinaryOpExpr::getAdd(lhs, -rhs, context);
+  return lhs - rhs;
 }
 
 AffineExprRef Builder::getModExpr(AffineExprRef lhs, AffineExprRef rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs, rhs, context);
+  return lhs % rhs;
 }
 
 // Most modulo expressions are pure affine.
 AffineExprRef Builder::getModExpr(AffineExprRef lhs, uint64_t rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs,
-                                 getConstantExpr(rhs), context);
+  return lhs % rhs;
 }
 
 AffineExprRef Builder::getFloorDivExpr(AffineExprRef lhs, AffineExprRef rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
+  return lhs.floorDiv(rhs);
 }
 
 // Most floordiv expressions are pure affine.
 AffineExprRef Builder::getFloorDivExpr(AffineExprRef lhs, uint64_t rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs,
-                                 getConstantExpr(rhs), context);
+  return lhs.floorDiv(rhs);
 }
 
 AffineExprRef Builder::getCeilDivExpr(AffineExprRef lhs, AffineExprRef rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
+  return lhs.ceilDiv(rhs);
 }
 
 // Most ceildiv expressions are pure affine.
 AffineExprRef Builder::getCeilDivExpr(AffineExprRef lhs, uint64_t rhs) {
-  return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs,
-                                 getConstantExpr(rhs), context);
+  return lhs.ceilDiv(rhs);
 }
 
 IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
@@ -231,22 +227,22 @@ IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
 
 AffineMap *Builder::getConstantAffineMap(int64_t val) {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/0,
-                        {getConstantExpr(val)}, {}, context);
+                        {getAffineConstantExpr(val)}, {}, context);
 }
 
 AffineMap *Builder::getDimIdentityMap() {
-  return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {getDimExpr(0)}, {},
-                        context);
+  return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
+                        {getAffineDimExpr(0)}, {}, context);
 }
 
 AffineMap *Builder::getSymbolIdentityMap() {
-  return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/1, {getSymbolExpr(0)},
-                        {}, context);
+  return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/1,
+                        {getAffineSymbolExpr(0)}, {}, context);
 }
 
 AffineMap *Builder::getSingleDimShiftAffineMap(int64_t shift) {
   // expr = d0 + shift.
-  auto expr = getDimExpr(0) + shift;
+  auto expr = getAffineDimExpr(0) + shift;
   return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {expr}, {}, context);
 }
 

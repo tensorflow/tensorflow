@@ -18,12 +18,20 @@
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
 
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
 
 namespace mlir {
+
+namespace detail {
+
+class AffineExpr;
+
+} // namespace detail
+
+template <typename T> class AffineExprBaseRef;
+using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
 class MLIRContext;
 class Module;
 class UnknownLoc;
@@ -45,10 +53,6 @@ class ArrayAttr;
 class FunctionAttr;
 class AffineMapAttr;
 class AffineMap;
-class AffineExpr;
-class AffineConstantExpr;
-class AffineDimExpr;
-class AffineSymbolExpr;
 
 /// This class is a general helper class for creating context-global objects
 /// like types, attributes, and affine expressions.
@@ -104,9 +108,9 @@ public:
   FunctionAttr *getFunctionAttr(const Function *value);
 
   // Affine expressions and affine maps.
-  AffineExprRef getDimExpr(unsigned position);
-  AffineExprRef getSymbolExpr(unsigned position);
-  AffineExprRef getConstantExpr(int64_t constant);
+  AffineExprRef getAffineDimExpr(unsigned position);
+  AffineExprRef getAffineSymbolExpr(unsigned position);
+  AffineExprRef getAffineConstantExpr(int64_t constant);
   AffineExprRef getAddExpr(AffineExprRef lhs, AffineExprRef rhs);
   AffineExprRef getAddExpr(AffineExprRef lhs, int64_t rhs);
   AffineExprRef getSubExpr(AffineExprRef lhs, AffineExprRef rhs);

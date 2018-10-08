@@ -266,7 +266,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
     // this unrolled instance.
     if (!forStmt->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
-      auto d0 = builder.getDimExpr(0);
+      auto d0 = builder.getAffineDimExpr(0);
       auto *bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
       auto *ivUnroll =
           builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)

@@ -63,7 +63,7 @@ AffineExprRef mlir::getTripCountExpr(const ForStmt &forStmt) {
         std::max(lbMap->getNumSymbols(), ubMap->getNumSymbols()));
     auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExprRef>();
     if (!cExpr)
-      return AffineBinaryOpExpr::getCeilDiv(loopSpanExpr, step, context);
+      return loopSpanExpr.ceilDiv(step);
     loopSpan = cExpr->getValue();
   }
 
@@ -71,8 +71,8 @@ AffineExprRef mlir::getTripCountExpr(const ForStmt &forStmt) {
   if (loopSpan < 0)
     return 0;
 
-  return AffineConstantExpr::get(static_cast<uint64_t>(ceilDiv(loopSpan, step)),
-                                 context);
+  return getAffineConstantExpr(static_cast<uint64_t>(ceilDiv(loopSpan, step)),
+                               context);
 }
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This

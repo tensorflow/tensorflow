@@ -82,39 +82,42 @@ public:
     static_assert(std::is_base_of<AffineExprVisitor, SubClass>::value,
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
-    case AffineExpr::Kind::Add: {
+    case AffineExprKind::Add: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitAddExpr(binOpExpr);
     }
-    case AffineExpr::Kind::Mul: {
+    case AffineExprKind::Mul: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitMulExpr(binOpExpr);
     }
-    case AffineExpr::Kind::Mod: {
+    case AffineExprKind::Mod: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitModExpr(binOpExpr);
     }
-    case AffineExpr::Kind::FloorDiv: {
+    case AffineExprKind::FloorDiv: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitFloorDivExpr(binOpExpr);
     }
-    case AffineExpr::Kind::CeilDiv: {
+    case AffineExprKind::CeilDiv: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       walkOperandsPostOrder(binOpExpr);
       return static_cast<SubClass *>(this)->visitCeilDivExpr(binOpExpr);
     }
-    case AffineExpr::Kind::Constant:
+    case AffineExprKind::Constant:
       return static_cast<SubClass *>(this)->visitConstantExpr(
+
           expr.cast<AffineConstantExprRef>());
-    case AffineExpr::Kind::DimId:
+    case AffineExprKind::DimId:
       return static_cast<SubClass *>(this)->visitDimExpr(
+
           expr.cast<AffineDimExprRef>());
-    case AffineExpr::Kind::SymbolId:
+    case AffineExprKind::SymbolId:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
+
           expr.cast<AffineSymbolExprRef>());
     }
   }
@@ -124,34 +127,37 @@ public:
     static_assert(std::is_base_of<AffineExprVisitor, SubClass>::value,
                   "Must instantiate with a derived type of AffineExprVisitor");
     switch (expr->getKind()) {
-    case AffineExpr::Kind::Add: {
+    case AffineExprKind::Add: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitAddExpr(binOpExpr);
     }
-    case AffineExpr::Kind::Mul: {
+    case AffineExprKind::Mul: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitMulExpr(binOpExpr);
     }
-    case AffineExpr::Kind::Mod: {
+    case AffineExprKind::Mod: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitModExpr(binOpExpr);
     }
-    case AffineExpr::Kind::FloorDiv: {
+    case AffineExprKind::FloorDiv: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitFloorDivExpr(binOpExpr);
     }
-    case AffineExpr::Kind::CeilDiv: {
+    case AffineExprKind::CeilDiv: {
       auto binOpExpr = expr.cast<AffineBinaryOpExprRef>();
       return static_cast<SubClass *>(this)->visitCeilDivExpr(binOpExpr);
     }
-    case AffineExpr::Kind::Constant:
+    case AffineExprKind::Constant:
       return static_cast<SubClass *>(this)->visitConstantExpr(
+
           expr.cast<AffineConstantExprRef>());
-    case AffineExpr::Kind::DimId:
+    case AffineExprKind::DimId:
       return static_cast<SubClass *>(this)->visitDimExpr(
+
           expr.cast<AffineDimExprRef>());
-    case AffineExpr::Kind::SymbolId:
+    case AffineExprKind::SymbolId:
       return static_cast<SubClass *>(this)->visitSymbolExpr(
+
           expr.cast<AffineSymbolExprRef>());
     }
   }
