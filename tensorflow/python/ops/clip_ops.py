@@ -161,7 +161,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     if isinstance(t, ops.IndexedSlices):
       return ops.IndexedSlices(values_clip, t.indices, t.dense_shape)
 
-    return values_clip     
+    return values_clip
 
 @tf_export("linalg.global_norm", "global_norm")
 @deprecation.deprecated_endpoints("global_norm")
