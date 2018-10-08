@@ -1,17 +1,17 @@
-/* Copyright 2018 Graphcore Ltd
+// /* Copyright 2018 Graphcore Ltd
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-==============================================================================*/
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
@@ -40,19 +40,22 @@ ENTRY c1 {
   p0 = s32[20] parameter(0)
   p1 = s32[20] parameter(1)
 
-  s = s32[20] subtract(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+  s = s32[20] subtract(p0, p1),
+  metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
 
   ROOT t = (s32[20]) tuple(s)
 }
 
 )";
 
-  auto module =
-      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -101,12 +104,14 @@ ENTRY c1 {
 
 )";
 
-  auto module =
-      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(3);
+  config.set_resource_update_to_input_index({0, 1, 2});
+  auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -139,13 +144,15 @@ ENTRY c1 {
  }
 )";
 
-  auto module =
-      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(1);
+  config.set_resource_update_to_input_index({2});
+  auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -195,19 +202,23 @@ TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
   ENTRY c1 {
     p0 = s32[20] parameter(0)
     p1 = s32[20] parameter(1)
-    u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
-    u1 = s32[20] subtract(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+    u0 = s32[20] add(p0, p1),
+    metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+    u1 = s32[20] subtract(p0, p1),
+    metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
     ROOT root = (s32[20], s32[20]) tuple(u0, u1)
    }
   )";
 
-  auto module =
-      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0, 1});
+  auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -256,8 +267,10 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
     ENTRY c1 {
       p0 = s32[20] parameter(0)
       p1 = s32[20] parameter(1)
-      u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
-      u1 = s32[20] subtract(u0, p0), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u0 = s32[20] add(p0, p1),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u1 = s32[20] subtract(u0, p0),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
       ROOT root = (s32[20]) tuple(u1)
      }
     )";
@@ -268,7 +281,7 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -316,19 +329,23 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
       p0 = s32[20] parameter(0)
       p1 = s32[20] parameter(1)
       p2 = s32[20] parameter(2)
-      u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
-      u1 = s32[20] add(p1, p2), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u0 = s32[20] add(p0, p1),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u1 = s32[20] add(p1, p2),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
       ROOT root = (s32[20], s32[20]) tuple(u0, u1)
      }
     )";
 
-  auto module =
-      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({1, 2});
+  auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -373,8 +390,10 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
     ENTRY c1 {
       p0 = s32[20] parameter(0)
       p1 = s32[20] parameter(1)
-      u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
-      u1 = s32[20] add(p0, u0), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u0 = s32[20] add(p0, p1),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u1 = s32[20] add(p0, u0),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
       ROOT root = (s32[20], s32[20]) tuple(u0, u1)
      }
     )";
@@ -385,7 +404,7 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -425,53 +444,7 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
   EXPECT_THAT(inst->name(), "u1");
 }
 
-TEST_F(HloInplaceDependencyTest, NoInplaceOnNonHighPriorityVariables) {
-  std::string hlo = R"(
-    HloModule top
-
-    ENTRY c1 {
-      p0 = s32[20] parameter(0)
-      p1 = s32[20] parameter(1)
-      u0 = s32[20] add(p0, p1)
-      ROOT root = (s32[20]) tuple(u0)
-     }
-    )";
-  const uint64 num_resource_inputs = 2;
-
-  auto config = GetModuleConfigForTest();
-  config.set_resource_input_count(num_resource_inputs);
-  auto module = ParseHloString(hlo, config);
-  EXPECT_TRUE(module.ok());
-  auto* module0 = module.ValueOrDie().get();
-  auto* entry = module0->entry_computation();
-
-  CompilerAnnotations annotations;
-  annotations.num_resource_inputs = num_resource_inputs;
-
-  InplaceFinder inplaceFinder(annotations);
-  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
-
-  auto& inplace_instructions_high =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::HIGH);
-  EXPECT_THAT(inplace_instructions_high.size(), 0);
-
-  std::set<std::string> in_place_ops_low = {"u0"};
-  auto& inplace_instructions_low =
-      annotations.inplace_instructions.GetPrioritySet(
-          InplaceInstructions::Priority::LOW);
-  EXPECT_THAT(inplace_instructions_low.size(), 1);
-  for (const auto* inst : inplace_instructions_low) {
-    EXPECT_THAT(in_place_ops_low.count(inst->name()), 1);
-  }
-
-  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
-  EXPECT_FALSE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
-  // Expect that the instruction did not get inplaced
-  ASSERT_THAT(inplace_instructions_high.size(), 0);
-}
-
-TEST_F(HloInplaceDependencyTest, InplaceInputOuputMappedVariableOnly) {
+TEST_F(HloInplaceDependencyTest, InplaceInputOuputStreamedAndResourceVariable) {
   std::string hlo = R"(
     HloModule top
 
@@ -479,21 +452,20 @@ TEST_F(HloInplaceDependencyTest, InplaceInputOuputMappedVariableOnly) {
       p0 = s32[20] parameter(0)
       p1 = s32[20] parameter(1)
       u0 = s32[20] add(p1, p0)
-      u1 = s32[20] add(p0, u0), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u1 = s32[20] add(p0, u0),
+      metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
       ROOT root = (s32[20], s32[20]) tuple(u0, u1)
      }
     )";
-  const uint64 num_resource_inputs = 2;
 
   auto config = GetModuleConfigForTest();
-  config.set_resource_input_count(num_resource_inputs);
+  config.set_resource_input_count(1);
+  config.set_resource_update_to_input_index({1});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
-  auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
-  annotations.num_resource_inputs = num_resource_inputs;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -519,10 +491,12 @@ TEST_F(HloInplaceDependencyTest, InplaceInputOuputMappedVariableOnly) {
   UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
   EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
   // Expect that only the high priority instruction got inplaced
-  ASSERT_THAT(inplace_instructions_high.size(), 1);
+  ASSERT_THAT(inplace_instructions_high.size(), 2);
 
-  auto* inst = *(inplace_instructions_high.begin());
-  EXPECT_THAT(inst->name(), "u1");
+  std::set<std::string> in_place_ops = {"u0", "u1"};
+  for (auto i : inplace_instructions_high) {
+    EXPECT_TRUE(in_place_ops.count(i->name()));
+  }
 }
 
 TEST_F(HloInplaceDependencyTest, InplaceLowPriority) {
@@ -535,17 +509,13 @@ TEST_F(HloInplaceDependencyTest, InplaceLowPriority) {
       ROOT u0 = s32[20] add(p1, p0)
      }
     )";
-  const uint64 num_resource_inputs = 0;
 
   auto config = GetModuleConfigForTest();
-  config.set_resource_input_count(num_resource_inputs);
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
-  auto* entry = module0->entry_computation();
 
-  CompilerAnnotations annotations;
-  annotations.num_resource_inputs = num_resource_inputs;
+  CompilerAnnotations annotations(module0);
 
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
@@ -583,7 +553,8 @@ ENTRY c1 {
   c = f32[] constant(2)
   c_bcast = f32[20] broadcast(f32[] %c), dimensions={}
   bc = f32[20] multiply(%b, %c_bcast)
-  ROOT res = f32[20] add(%a, %bc), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+  ROOT res = f32[20] add(%a, %bc),
+  metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
 }
 
 )";
@@ -593,7 +564,7 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   FuseOpsLate fuseOpsLate(annotations);
   EXPECT_TRUE(fuseOpsLate.Run(module0).ValueOrDie());
@@ -642,7 +613,7 @@ ENTRY c1 {
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module0);
 
   FuseOpsLate fuseOpsLate(annotations);
   EXPECT_TRUE(fuseOpsLate.Run(module0).ValueOrDie());

@@ -243,7 +243,7 @@ message ExecutionOptions {
   uint32 resource_input_count = 6;
 
   // The number of outputs which are updates for resource variables
-  uint32 resource_update_count = 7;
+  repeated int32 resource_update_to_input_index = 7;
 }
 
 message GetDeviceHandlesRequest {

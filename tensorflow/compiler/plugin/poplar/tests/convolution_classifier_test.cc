@@ -179,14 +179,14 @@ HloModule top
 
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  config.set_resource_update_count(4);
+  config.set_resource_update_to_input_index({2, 3, 4, 5});
   auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module);
   ConvolutionClassifier classifier(annotations);
 
-  auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
 
   EXPECT_TRUE(res.ok());
@@ -293,14 +293,14 @@ TEST_F(ConvolutionClassifierTest, SingleConvTraining) {
 
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  config.set_resource_update_count(1);
+  config.set_resource_update_to_input_index({2});
   auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module);
   ConvolutionClassifier classifier(annotations);
 
-  auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
 
   EXPECT_TRUE(res.ok());
@@ -400,14 +400,14 @@ ENTRY %cluster_1 {
 
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  config.set_resource_update_count(2);
+  config.set_resource_update_to_input_index({2, 3});
   auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module);
   ConvolutionClassifier classifier(annotations);
 
-  auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
 
   EXPECT_TRUE(res.ok());
@@ -474,14 +474,14 @@ ENTRY %cluster_9 {
 
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  config.set_resource_update_count(0);
+  config.set_resource_update_to_input_index({});
   auto module_or_status = ParseHloString(hlo_string, config);
   EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(module);
   ConvolutionClassifier classifier(annotations);
 
-  auto* module = module_or_status.ValueOrDie().get();
   auto res = classifier.Run(module);
 
   EXPECT_TRUE(res.ok());

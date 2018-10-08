@@ -87,7 +87,7 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
       {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -119,7 +119,7 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
       {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -171,7 +171,7 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
       {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "test2", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -224,7 +224,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
        {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "fuse", 1, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -272,7 +272,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
       {HloOpcode::kParameter, false, 0, nullptr, {}},
       {HloOpcode::kParameter, false, 1, nullptr, {}},
   }};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -314,7 +314,7 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
        {HloOpcode::kBroadcast, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 2, nullptr, {}}}};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -350,7 +350,7 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
       {{HloOpcode::kSubtract, true, 0, nullptr, {2, 1}},
        {HloOpcode::kConstant, true, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
@@ -391,7 +391,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
        {HloOpcode::kParameter, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 
@@ -453,7 +453,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsParameter) {
        {HloOpcode::kSubtract, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 
@@ -522,7 +522,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsLongerChain) {
        {HloOpcode::kParameter, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 
@@ -594,7 +594,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsChainTooLong) {
        {HloOpcode::kSubtract, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 
@@ -640,7 +640,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsPartialInChainUsed) {
        {HloOpcode::kSubtract, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 
@@ -677,7 +677,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsDifferentAssociativitySets) {
        {HloOpcode::kSubtract, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 
@@ -711,7 +711,7 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsRootNonAssociative) {
       {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},
        {HloOpcode::kConstant, true, 0, nullptr, {}}}};
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   TestMatcher matcher(patterns, annotations, "abc", 0, false,
                       look_through_depth);
 

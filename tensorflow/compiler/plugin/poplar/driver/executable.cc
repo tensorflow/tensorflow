@@ -27,17 +27,18 @@ PoplarExecutable::PoplarExecutable(
     std::unique_ptr<HloProfilePrinterData> profile_printer,
     std::unique_ptr<HloProfileIndexMap> profile_index_map,
     std::shared_ptr<poplar::Engine> engine,
-    const ::xla::poplarplugin::OutputMap& output_map,
-    std::vector<Literal> literal_output,
-    const std::vector<bool>& parameter_streamed,
-    const std::vector<bool>& output_streamed)
+    const InputOutputAliasingMap& input_output_aliasing_map,
+    const bool is_constant_graph,
+    std::vector<std::vector<Literal>> literal_output, const bool is_remap_graph,
+    std::vector<uint64> remaped_output)
     : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),
       poplar_engine_(std::move(engine)),
-      output_map_(std::move(output_map)),
+      input_output_aliasing_map_(std::move(input_output_aliasing_map)),
+      is_constant_graph_(is_constant_graph),
       literal_output_(std::move(literal_output)),
-      parameter_streamed_(std::move(parameter_streamed)),
-      output_streamed_(std::move(output_streamed)),
+      is_remap_graph_(is_remap_graph),
+      remaped_output_(std::move(remaped_output)),
       execution_count_(0) {}
 
 PoplarExecutable::~PoplarExecutable() {}

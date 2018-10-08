@@ -98,8 +98,10 @@ ExecutionOptions CreateExecutionOptions(
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
   execution_options.set_resource_input_count(
       build_options.resource_input_count());
-  execution_options.set_resource_update_count(
-      build_options.resource_update_count());
+  for (const int input_index : build_options.resource_update_to_input_index()) {
+    execution_options.add_resource_update_to_input_index(input_index);
+  }
+
   if (build_options.hlo_profile().has_value()) {
     execution_options.mutable_debug_options()->set_xla_hlo_profile(
         *build_options.hlo_profile());

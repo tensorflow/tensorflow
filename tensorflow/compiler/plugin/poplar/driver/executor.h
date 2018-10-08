@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
 #include "tensorflow/compiler/xla/literal.h"
@@ -70,14 +71,11 @@ enum PoplarProgramType {
 class PoplarExecutable;
 
 std::string GetInputCopyHandle(int64 parameter, int64 index);
-std::string GetOutputCopyHandle(int64 index);
+std::string GetOutputCopyHandle(int64 output_index, int64 flat_tensor_index);
 
 typedef std::vector<char> (*ConversionFn)(const void*, int64, int64);
 
 using Args = tensorflow::gtl::ArraySlice<se::DeviceMemoryBase>;
-
-// This maps outputs to inputs where the tensor is the same
-using OutputMap = std::map<int64, int64>;
 
 using ConversionList = std::vector<ConversionFn>;
 
@@ -325,40 +323,83 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   using OutputPairList = std::vector<OutputDef>;
   using OutputsHandleMap = std::map<std::string, OutputDef>;
 
-  static void FlattenedDeviceMemoryList(InputPairList&, const xla::Shape&,
-                                        void*, bool);
+  static void FlattenedDeviceMemoryList(
+      InputPairList&, const xla::Shape&, void*,
+      const InputOutputAliasingMap::InputInfo&);
 
-  static void FlattenedOutputDeviceMemoryList(OutputPairList&,
-                                              const xla::Shape&, void*, bool);
-
-  static void FlattenedOutputDeviceMemoryListOld(std::vector<void*>& list,
-                                                 const xla::Shape& shape,
-                                                 void* base);
+  static void FlattenedOutputDeviceMemoryList(
+      OutputPairList&, const xla::Shape&, void*,
+      const InputOutputAliasingMap::OutputInfo&);
 
   void UpdateArgsHandleMap(const Args&,
                            const xla::poplarplugin::PoplarExecutable&);
 
   void UpdateOutputsHandleMap(
       const xla::poplarplugin::PoplarExecutable& executable,
-      se::DeviceMemoryBase retbuf);
-  std::tuple<se::DeviceMemoryBase, int64> AllocateSingleOutput(
-      xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-      const int64 n, const OutputMap& map, const Args& args,
-      const std::vector<bool>& streamed);
+      const xla::Shape& shape, se::DeviceMemoryBase retbuf);
 
-  std::tuple<se::DeviceMemoryBase, int64> AllocateOutputBuffer(
-      xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-      const int64 n, const OutputMap& map, const Args& args,
-      const std::vector<bool>& streamed);
+  // These classes are used to pass around information for specific output
+  // allocation type
+  class OutputAllocation {
+   public:
+    virtual se::DeviceMemoryBase GetAllocation(
+        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        const Args&, const InputOutputAliasingMap::OutputInfo&,
+        const ArgsHandleMap&, const int) const = 0;
 
-  std::tuple<se::DeviceMemoryBase, int64> RemapArgs(const xla::Shape&,
-                                                    const int64,
-                                                    const OutputMap&,
-                                                    const Args&);
+   protected:
+    OutputAllocation(){};
+  };
 
-  std::tuple<se::DeviceMemoryBase, int64> ConstantOutput(
-      xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
-      const int64 n, const std::vector<Literal>& constant);
+  class ConstantOutputAllocation : public OutputAllocation {
+   public:
+    ConstantOutputAllocation(const std::vector<std::vector<Literal>>& constants)
+        : constants_(constants) {}
+
+    se::DeviceMemoryBase GetAllocation(
+        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        const Args&, const InputOutputAliasingMap::OutputInfo&,
+        const ArgsHandleMap&, const int) const override;
+
+   private:
+    const std::vector<std::vector<Literal>>& constants_;
+  };
+
+  class RemapOutputAllocation : public OutputAllocation {
+   public:
+    RemapOutputAllocation(const std::vector<uint64>& remap_map)
+        : remap_map_(remap_map) {}
+
+    se::DeviceMemoryBase GetAllocation(
+        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        const Args&, const InputOutputAliasingMap::OutputInfo&,
+        const ArgsHandleMap&, const int) const override;
+
+   private:
+    const std::vector<uint64>& remap_map_;
+  };
+
+  class BufferOutputAllocation : public OutputAllocation {
+   public:
+    BufferOutputAllocation(){};
+
+    se::DeviceMemoryBase GetAllocation(
+        xla::DeviceMemoryAllocator*, const xla::Shape&, const int64, int64&,
+        const Args&, const InputOutputAliasingMap::OutputInfo&,
+        const ArgsHandleMap&, const int) const override;
+  };
+
+  se::DeviceMemoryBase HandleOutputBuffer(
+      xla::DeviceMemoryAllocator* allocator,
+      const OutputAllocation& allocation_info, const xla::Shape& shape,
+      const int64 output_index, int64& flat_tensor_index, const Args& args,
+      const InputOutputAliasingMap::OutputInfo& output_info);
+
+  se::DeviceMemoryBase GetOutputBuffer(
+      const xla::poplarplugin::PoplarExecutable& executable,
+      xla::DeviceMemoryAllocator* allocator,
+      const OutputAllocation& allocation_info, const xla::Shape& shape,
+      const Args& args, const InputOutputAliasingMap& output_info);
 
   // Functions which check whether any resource variables need copying to/from
   // device

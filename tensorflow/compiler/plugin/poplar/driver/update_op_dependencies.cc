@@ -42,19 +42,6 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
         to_remove.push_back(inst);
         continue;
       }
-      // We do not allow parameter variables (non-streaming) which are not in
-      // High priority to be in-place, otherwise we would have to reload data
-      // which would perform poorly during inference
-      if (inst->operand(0)->opcode() == HloOpcode::kParameter) {
-        // Work out whether this parameter is streamed
-        auto num_streaming =
-            inst->parent()->num_parameters() - annotations_.num_resource_inputs;
-        if (inst->operand(0)->parameter_number() >= num_streaming &&
-            priority != InplaceInstructions::Priority::HIGH) {
-          to_remove.push_back(inst);
-          continue;
-        }
-      }
 
       bool add_to_inplace = true;
       std::vector<HloInstruction*> dependencies;

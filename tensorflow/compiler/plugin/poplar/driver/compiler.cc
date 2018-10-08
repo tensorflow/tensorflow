@@ -83,8 +83,8 @@ using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
-
-static std::string GetPathToGraphProgFile() {
+namespace {
+std::string GetPathToGraphProgFile() {
   Dl_info dlInfo;
   static const void* dummy;
   if (dladdr(&dummy, &dlInfo)) {
@@ -109,24 +109,73 @@ static std::string GetPathToGraphProgFile() {
 
   return "";
 }
-
-static bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
-                              std::vector<Literal>& result) {
+bool GetConstantSubOutput(const HloInstruction* root, const Shape& layout,
+                          std::vector<Literal>& sub_result) {
   if (root->opcode() == HloOpcode::kConstant) {
     auto literal = root->literal().Relayout(layout);
-    result.emplace_back(std::move(literal));
+    sub_result.emplace_back(std::move(literal));
     return true;
-  }
-  if (root->opcode() == HloOpcode::kTuple) {
+  } else if (root->opcode() == HloOpcode::kTuple) {
     for (unsigned int i = 0; i < root->operand_count(); i++) {
       auto& sub_shape = layout.tuple_shapes(i);
-      if (!GetConstantOutput(root->operand(i), sub_shape, result)) {
+      if (!GetConstantSubOutput(root->operand(i), sub_shape, sub_result)) {
         return false;
       }
     }
     return true;
   }
   return false;
+}
+
+// This function returns true if all the root outputs are constants and all the
+// constants are stored in result in a flat tuple order for each output
+bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
+                       std::vector<std::vector<Literal>>& result) {
+  if (root->opcode() == HloOpcode::kConstant) {
+    auto literal = root->literal().Relayout(layout);
+    std::vector<Literal> sub_result;
+    sub_result.emplace_back(std::move(literal));
+    result.emplace_back(std::move(sub_result));
+    return true;
+  } else if (root->opcode() == HloOpcode::kTuple) {
+    for (unsigned int i = 0; i < root->operand_count(); i++) {
+      auto& sub_shape = layout.tuple_shapes(i);
+      std::vector<Literal> sub_result;
+      if (!GetConstantSubOutput(root->operand(i), sub_shape, sub_result)) {
+        return false;
+      }
+      result.emplace_back(std::move(sub_result));
+    }
+    return true;
+  }
+  return false;
+}
+
+bool AreAllOutputsParameters(
+    const HloInstruction* root,
+    const std::set<const HloInstruction*>& non_standard_parameter_layout,
+    std::vector<uint64>& result) {
+  // Check if all the outputs are parameters so that we can simply remap input
+  // instead of executing the engine
+  // Note that all the parameters need to be stored in a standard layout format
+  if (root->opcode() == HloOpcode::kParameter) {
+    if (non_standard_parameter_layout.count(root)) {
+      return false;
+    }
+    result.push_back(root->parameter_number());
+    return true;
+  } else if (root->opcode() == HloOpcode::kTuple) {
+    for (auto op : root->operands()) {
+      if (op->opcode() != HloOpcode::kParameter ||
+          non_standard_parameter_layout.count(op)) {
+        return false;
+      }
+      result.push_back(op->parameter_number());
+    }
+    return true;
+  }
+  return false;
+}
 }
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
@@ -204,12 +253,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     seed = tensorflow::random::New64();
   }
 
-  CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode());
-  resources.annotations.num_resource_inputs =
-      module->config().resource_input_count();
-  resources.annotations.num_resource_outputs =
-      module->config().resource_update_count();
-
+  CompilerResources resources(seed + 1, poplarExecutor->GetRandomGenMode(),
+                              module.get());
   {
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<BatchNormExpander>(true, true, true);
@@ -268,22 +313,24 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
-  XLA_VLOG_LINES(1, entry->ToString());
+  XLA_VLOG_LINES(1, module->ToString());
 
   std::vector<const HloInstruction*> instruction_order;
   TF_ASSIGN_OR_RETURN(instruction_order, Scheduler::schedule(entry));
 
-  uint64 num_inputs = entry->num_parameters();
-  uint64 num_outputs = CountShapes(entry->root_instruction()->shape());
-
   std::shared_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
-  std::vector<Literal> constant_output;
+  EntryVisitor visitor(graph, resources);
 
-  EntryVisitor visitor(graph, resources, num_inputs, num_outputs);
+  std::vector<std::vector<Literal>> constant_output;
+  const auto is_constant_graph = GetConstantOutput(
+      entry->root_instruction(), comp_layout->shape(), constant_output);
 
-  if (!GetConstantOutput(entry->root_instruction(), comp_layout->shape(),
-                         constant_output)) {
+  std::vector<uint64> remaped_output;
+  bool is_remap_graph = false;
+  if (is_constant_graph) {
+    VLOG(1) << "Skip engine compilation - output is constant";
+  } else {
     try {
       TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
     } catch (std::logic_error e) {
@@ -304,7 +351,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       graph.outputVertexGraph(stream, progs);
     }
 
-    if (visitor.AreAllOutputsParameters()) {
+    is_remap_graph = AreAllOutputsParameters(
+        entry->root_instruction(), visitor.GetNonStandardParameterLayout(),
+        remaped_output);
+    if (is_remap_graph) {
       VLOG(1) << "Skip engine compilation - all outputs are inputs";
     } else {
       try {
@@ -324,8 +374,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
             StrCat("[Poplar Engine] ", e.what()));
       }
     }
-  } else {
-    VLOG(1) << "Skip engine compilation - output is constant";
   }
 
   if (poplarExecutor->CompilerReportingEnabled()) {
@@ -350,13 +398,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   std::unique_ptr<Executable> executable;
-  PoplarExecutable* poplar_executable;
-  poplar_executable = new PoplarExecutable(
+  PoplarExecutable* poplar_executable = new PoplarExecutable(
       std::move(module), std::move(profile_printer),
       std::move(profile_index_map), std::move(engine),
-      std::move(visitor.GetOutputMap()), std::move(constant_output),
-      std::move(visitor.GetParameterStreamed()),
-      std::move(visitor.GetOutputStreamed()));
+      std::move(resources.annotations.input_output_aliasing_map),
+      is_constant_graph, std::move(constant_output), is_remap_graph,
+      std::move(remaped_output));
   executable.reset(poplar_executable);
 
   if (poplarExecutor->HaveExecutableCache()) {

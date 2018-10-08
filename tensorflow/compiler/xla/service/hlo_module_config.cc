@@ -38,6 +38,13 @@ void HloModuleConfig::SetDefaultComputationLayout(
   entry_computation_layout_ = ComputationLayout(program_shape);
 }
 
+void HloModuleConfig::set_resource_update_to_input_index(
+    const std::vector<int32>& resource_update_to_input_index) {
+  std::copy(resource_update_to_input_index.begin(),
+            resource_update_to_input_index.end(),
+            std::back_inserter(resource_update_to_input_index_));
+}
+
 string HloModuleConfig::compilation_cache_key() const {
   string key = absl::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
@@ -59,8 +66,9 @@ string HloModuleConfig::compilation_cache_key() const {
   if (resource_input_count() != 0) {
     StrAppend(&key, "::resource_input_count=", resource_input_count());
   }
-  if (resource_update_count() != 0) {
-    StrAppend(&key, "::resource_update_count=", resource_update_count());
+  if (resource_update_to_input_index().size()) {
+    StrAppend(&key, "::resource_update_to_input_index=",
+              absl::StrJoin(resource_update_to_input_index(), ","));
   }
   StrAppend(&key, debug_options_.DebugString());
   if (intra_op_parallelism_threads() > 0) {
