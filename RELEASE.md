@@ -2,14 +2,15 @@
 
 ## Major Features and Improvements
 * Keras models can now be directly exported to the SavedModel format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow Serving.
-* Keras model now supports evaluating with a `tf.data.Dataset`.
+* Keras models now support evaluating with a `tf.data.Dataset`.
 * TensorFlow binaries are built with XLA support linked in by default.
 
 ## Bug Fixes and Other Changes
 
 * tf.data:
   * tf.data users can now represent, get, and set options of TensorFlow input pipelines using `tf.data.Options()`, `tf.data.Dataset.options()`, and `tf.data.Dataset.with_options()` respectively.
-* tf.data users can now use `tf.data.experimental.AUTOTUNE` for the num_parallel_calls argument of `tf.data.Dataset.interleave`, `tf.data.Dataset.map`, and `tf.data.experimental.map_and_batch` to dynamically tune the level of parallelism at runtime.
+  * New `tf.data.Dataset.reduce()` API allows users to reduce a finite dataset to a single element using a user-provided reduce function.
+  * New `tf.data.Dataset.window()` API allows users to create finite windows of input dataset; when combined with the `tf.data.Dataset.reduce()` API, this allows users to implement customized batching.
   * All C++ code moves to the `tensorflow::data` namespace.
   * Add support for `num_parallel_calls` to `tf.data.Dataset.interleave`.
 * `tf.contrib`:
@@ -18,7 +19,7 @@
 * `tf.contrib.data`
   * Deprecate, and replace by tf.data.experimental.
 * Other:
-  * Instead of jemalloc, revert back to using system malloc.
+  * Instead of jemalloc, revert back to using system malloc since it simplifies build and has comparable performance.
   * Remove integer types from `tf.nn.softplus` and `tf.nn.softsign` OpDefs. This is a bugfix; these ops were never meant to support integers.
   * Allow subslicing Tensors with a single dimension.
   * Add option to calculate string length in Unicode characters
