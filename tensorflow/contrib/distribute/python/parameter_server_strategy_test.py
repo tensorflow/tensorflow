@@ -262,7 +262,9 @@ class ParameterServerStrategyTestBase(
           h = f + 1.0
         self.assertEqual(
             device_util.canonicalize(u.device), tower_variable_device)
-        self.assertEqual(device_util.canonicalize(x.device), h.device)
+        self.assertEqual(
+            device_util.canonicalize(x.device),
+            device_util.canonicalize(h.device))
         return y_add, z_add, f
 
       y, z, f = d.call_for_each_tower(model_fn)
