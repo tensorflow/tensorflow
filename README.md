@@ -29,12 +29,12 @@ subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 
 **Tensorflow ROCm port**
-This project is based on TensorFlow 1.10.0. It has been verified to work with the latest ROCm1.9.0 release. Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
-
+This project is based on TensorFlow 1.11.0. It has been verified to work with the latest ROCm1.9.1 release.
+Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
 A docker container: **rocm/tensorflow:latest(https://hub.docker.com/r/rocm/tensorflow/)** is readily available to be used:
 ```
 alias drun='sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v $HOME/dockerx:/dockerx'
-drun rocm/tensorflow:rocm1.9.0-tf1.10-python3
+drun rocm/tensorflow
 ```
 We maintain `tensorflow-rocm` whl packages on PyPI [here](https://pypi.org/project/tensorflow-rocm), to install tensorflow-rocm package using pip:
 ```
