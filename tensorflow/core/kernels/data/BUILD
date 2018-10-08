@@ -45,6 +45,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "dataset_utils_test",
+    srcs = ["dataset_utils_test.cc"],
+    deps = [
+        ":dataset_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "captured_function",
     srcs = ["captured_function.cc"],
@@ -205,6 +215,7 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -232,6 +243,7 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -245,6 +257,7 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -285,6 +298,7 @@ tf_kernel_library(
     deps = [
         ":captured_function",
         ":dataset",
+        ":dataset_utils",
         ":parallel_map_iterator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
