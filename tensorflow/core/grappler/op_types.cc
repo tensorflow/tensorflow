@@ -102,15 +102,19 @@ bool IsConjugateTranspose(const NodeDef& node) {
 }
 
 bool IsControlFlow(const NodeDef& node) {
-  // clang-format off
-  return node.op() == "ControlTrigger" ||
-         node.op() == "Enter" ||
-         node.op() == "Exit" ||
-         node.op() == "LoopCond" ||
-         node.op() == "Merge" ||
-         node.op() == "NextIteration" ||
-         node.op() == "Switch";
-  // clang-format on
+  // TODO(williamchan): Add a microbenchmark to compare FlatSet vs. iterative
+  // string comparison.
+  static const gtl::FlatSet<string>* const kControFlowOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "ControlTrigger",
+          "Enter",
+          "Exit",
+          "LoopCond",
+          "Merge",
+          "NextIteration",
+          "Switch",
+      }));
+  return kControFlowOps->count(node.op()) > 0;
 }
 
 bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
