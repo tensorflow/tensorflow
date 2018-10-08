@@ -624,7 +624,9 @@ REGISTER_OP("ExtractGlimpse")
       string noise;
       TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
       if (uniform_noise && noise != "") {
-        return errors::InvalidArgument("The uniform_noise and noise should not be specified at the same time");
+        return errors::InvalidArgument(
+            "The uniform_noise and noise should not be specified at the same "
+            "time");
       }
 
       return SetOutputToSizedImage(c, batch_dim, 1 /* size_input_idx */,
