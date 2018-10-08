@@ -176,7 +176,7 @@ bool AreAllOutputsParameters(
   }
   return false;
 }
-}
+}  // namespace
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
   std::string buffer;
@@ -299,9 +299,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   HloComputation* entry = module->entry_computation();
 
   if (poplarExecutor->CompilerReportingEnabled()) {
-    poplarExecutor->AddEventRecord(tensorflow::IpuTraceEvent::COMPILE_BEGIN,
-                                   module->name(),
-                                   SerializeComputationToGraphDef(*entry), 0);
+    poplarExecutor->AddCompileBeginEventRecord(
+        module->name(), SerializeComputationToGraphDef(*entry));
   }
 
   // Set layout if there isn't one
@@ -393,8 +392,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
 
-    poplarExecutor->AddEventRecord(tensorflow::IpuTraceEvent::COMPILE_END,
-                                   module->name(), stream.str(), duration);
+    poplarExecutor->AddCompileEndEventRecord(module->name(), stream.str(),
+                                             duration);
   }
 
   std::unique_ptr<Executable> executable;

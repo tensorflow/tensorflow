@@ -2,6 +2,46 @@ syntax = "proto3";
 
 package tensorflow;
 
+message IpuTraceCompileBeginEvent {
+  // serialized final optimized XLA graph
+  bytes xla_graph = 1;
+
+  // The name of the module associated with the event
+  bytes module_name = 2;
+};
+
+message IpuTraceCompileEndEvent {
+  // Compilation report
+  bytes compilation_report = 1;
+
+  // duration of compilation
+  int64 duration = 2;
+
+  // The name of the module associated with the event
+  bytes module_name = 3;
+};
+
+message IpuTraceDataTransferEvent {
+  // JSON description fo IO transfer
+  bytes data_transfer = 1;
+};
+
+message IpuTraceLoadEngineEvent {
+  // The name of the module associated with the event
+  bytes module_name = 1;
+};
+
+message IpuTraceExecuteEvent {
+  // Execution report
+  bytes execution_report = 1;
+
+  // Activity trace
+  bytes activity_trace = 2;
+
+  // The name of the module associated with the event
+  bytes module_name = 3;
+};
+
 message IpuTraceEvent {
   // Timestamp. Seconds since the epoch. As python time()
   double timestamp = 1;
@@ -20,13 +60,11 @@ message IpuTraceEvent {
   };
   Type type = 3;
 
-  // The name of the module associated with the event
-  bytes module_name = 4;
-
-  // Arbitrary string/byte event data
-  bytes data_str = 5;
-
-  // Arbitrary integer event data
-  int64 data_int = 6;
-
+  oneof msg {
+    IpuTraceCompileBeginEvent compile_begin = 5;
+    IpuTraceCompileEndEvent compile_end = 6;
+    IpuTraceDataTransferEvent data_transfer = 7;
+    IpuTraceLoadEngineEvent load_engine = 8;
+    IpuTraceExecuteEvent execute = 9;
+  };
 };

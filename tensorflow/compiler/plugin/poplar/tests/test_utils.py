@@ -101,7 +101,18 @@ def extract_all_strings_from_event_trace(events):
   for e in events:
     evt = IpuTraceEvent.FromString(e)
     try:
-      result = result + evt.data_str.decode('utf-8')
+      if evt.type == IpuTraceEvent.COMPILE_BEGIN:
+        pass
+      if evt.type == IpuTraceEvent.COMPILE_END:
+        result = result + evt.compile_end.compilation_report.decode('utf-8')
+      if evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
+        result = result + evt.data_transfer.data_transfer.decode('utf-8')
+      if evt.type == IpuTraceEvent.DEVICE_TO_HOST_TRANSFER:
+        result = result + evt.data_transfer.data_transfer.decode('utf-8')
+      if evt.type == IpuTraceEvent.LOAD_ENGINE:
+        pass
+      if evt.type == IpuTraceEvent.EXECUTE:
+        result = result + evt.execute.execution_report.decode('utf-8')
     except UnicodeDecodeError:
       pass
   return result
@@ -127,7 +138,7 @@ def extract_all_io_events(events):
     if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
                     IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
       try:
-        payload = json.loads(evt.data_str.decode('utf-8'))
+        payload = json.loads(evt.data_transfer.data_transfer.decode('utf-8'))
         for t in payload["tensors"]:
           result += [(evt.type, t["name"])]
       except UnicodeDecodeError:

@@ -22,9 +22,10 @@ from tensorflow.python.platform import googletest
 from tensorflow.contrib import ipu
 from tensorflow.python.training import gradient_descent
 
-def count_event_type(events, type, payload=0):
-  return sum(map((lambda x: 1 if x.type==type and len(x.data_str) > payload
-                              else 0), events))
+def count_compile_end_events(events):
+  fn = (lambda x: 1 if x.type==IpuTraceEvent.COMPILE_END and len(x.compile_end.compilation_report) > 10
+                  else 0)
+  return sum(map(fn, events))
 
 class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
@@ -147,7 +148,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
       e = sess.run(events)
       evts = ipu.utils.extract_all_events(e)
-      self.assertEqual(count_event_type(evts, IpuTraceEvent.COMPILE_END, 10), 1)
+      self.assertEqual(count_compile_end_events(evts), 1)
 
   def testIpuWhileScope(self):
     # 1: design is targetted at the device

@@ -266,9 +266,22 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     }
   }
 
-  void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
-                      const std::string& module_name,
-                      const std::string& content, int value);
+  void AddCompileBeginEventRecord(const std::string& module_name,
+                                  const std::string& xla_graph);
+
+  void AddCompileEndEventRecord(const std::string& module_name,
+                                const std::string& compialtion_report,
+                                int64 duration);
+
+  void AddHostToDeviceEventRecord(const std::string& transfer_json);
+
+  void AddDeviceToHostEventRecord(const std::string& transfer_json);
+
+  void AddLoadEngineEventRecord(const std::string& module_name);
+
+  void AddExecuteEventRecord(const std::string& module_name,
+                             const std::string& report,
+                             const std::string& trace);
 
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
@@ -405,6 +418,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   // device
   StatusOr<bool> CheckMoveDeviceToHostRequired(const bool engine_changed);
   StatusOr<bool> CheckMoveHostToDeviceRequired(const bool engine_changed);
+
+  // Create a new trace event object
+  tensorflow::IpuTraceEvent NewTraceEvent();
 
   // Functions which move the resource variables to/from the device
   Status MoveDeviceToHost();

@@ -491,17 +491,69 @@ bool PoplarExecutor::HaveCachedExecutable(const std::string& filename) const {
   return false;
 }
 
-void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
-                                    const std::string& module_name,
-                                    const std::string& content, int value) {
+tensorflow::IpuTraceEvent PoplarExecutor::NewTraceEvent() {
   uint64 now = tensorflow::Env::Default()->NowMicros();
   tensorflow::IpuTraceEvent evt;
   evt.set_timestamp(static_cast<double>(now) / 1000000.0);
-  evt.set_type(type);
   evt.set_ordinal(ordinal_);
-  evt.set_module_name(std::move(module_name));
-  evt.set_data_str(std::move(content));
-  evt.set_data_int(value);
+  return evt;
+}
+
+void PoplarExecutor::AddCompileBeginEventRecord(const std::string& module_name,
+                                                const std::string& xla_graph) {
+  auto evt = NewTraceEvent();
+  evt.set_type(tensorflow::IpuTraceEvent::COMPILE_BEGIN);
+  evt.mutable_compile_begin()->set_module_name(std::move(module_name));
+  evt.mutable_compile_begin()->set_xla_graph(std::move(xla_graph));
+
+  reports_.push_back(evt);
+};
+
+void PoplarExecutor::AddCompileEndEventRecord(const std::string& module_name,
+                                              const std::string& report,
+                                              int64 duration) {
+  auto evt = NewTraceEvent();
+  evt.set_type(tensorflow::IpuTraceEvent::COMPILE_END);
+  evt.mutable_compile_end()->set_module_name(std::move(module_name));
+  evt.mutable_compile_end()->set_compilation_report(std::move(report));
+  evt.mutable_compile_end()->set_duration(duration);
+
+  reports_.push_back(evt);
+}
+
+void PoplarExecutor::AddHostToDeviceEventRecord(const std::string& json) {
+  auto evt = NewTraceEvent();
+  evt.set_type(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER);
+  evt.mutable_data_transfer()->set_data_transfer(std::move(json));
+
+  reports_.push_back(evt);
+}
+
+void PoplarExecutor::AddDeviceToHostEventRecord(const std::string& json) {
+  auto evt = NewTraceEvent();
+  evt.set_type(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER);
+  evt.mutable_data_transfer()->set_data_transfer(std::move(json));
+
+  reports_.push_back(evt);
+}
+
+void PoplarExecutor::AddLoadEngineEventRecord(const std::string& module_name) {
+  auto evt = NewTraceEvent();
+  evt.set_type(tensorflow::IpuTraceEvent::LOAD_ENGINE);
+  evt.mutable_load_engine()->set_module_name(std::move(module_name));
+
+  reports_.push_back(evt);
+}
+
+void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
+                                           const std::string& report,
+                                           const std::string& trace) {
+  auto evt = NewTraceEvent();
+  evt.set_type(tensorflow::IpuTraceEvent::EXECUTE);
+  evt.mutable_execute()->set_module_name(std::move(module_name));
+  evt.mutable_execute()->set_execution_report(std::move(report));
+  evt.mutable_execute()->set_activity_trace(std::move(trace));
+
   reports_.push_back(evt);
 }
 
@@ -869,8 +921,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
   }
 
   if (current_config_.profiling().enable_io_trace()) {
-    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
-                   json_msg, 0);
+    AddDeviceToHostEventRecord(json_msg);
   }
 
   // Post process upload
@@ -924,8 +975,7 @@ Status PoplarExecutor::MoveHostToDevice() {
     current_engine_->run(PoplarProgramType::HOST_TO_DEVICE);
 
     if (current_config_.profiling().enable_io_trace()) {
-      AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
-                     json_msg, 0);
+      AddHostToDeviceEventRecord(json_msg);
     }
 
     for (auto arg : args_map_) {
@@ -1036,8 +1086,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           engine->load(poplar_device_);
 
           if (current_config_.profiling().enable_io_trace()) {
-            AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
-                           executable.module().name(), "", 0);
+            AddLoadEngineEventRecord(executable.module().name());
           }
 
           executable.OnEngineLoaded();
@@ -1090,20 +1139,21 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
             opts.set("doLayerWisePerTileBreakdown", "true");
           }
 
-          std::stringstream stream;
+          std::stringstream report_stream;
+          std::stringstream trace_stream;
           if (executable.ExecutionCount() == 0) {
             auto rep = current_engine_->getExecutionReport(opts);
             if (CompilerReportingTextFormat()) {
-              rep.printSummary(stream);
+              rep.printSummary(report_stream);
             } else {
-              rep.serialize(stream, poplar::SerializationFormat::JSON);
+              rep.serialize(report_stream, poplar::SerializationFormat::JSON);
             }
 
-            current_engine_->reportIntervals(stream);
+            current_engine_->reportIntervals(trace_stream);
           }
 
-          AddEventRecord(tensorflow::IpuTraceEvent::EXECUTE, "", stream.str(),
-                         0);
+          AddExecuteEventRecord(executable.module().name(), report_stream.str(),
+                                trace_stream.str());
         }
       } catch (std::logic_error e) {
         VLOG(2) << "Error producing execution report: " << e.what();
