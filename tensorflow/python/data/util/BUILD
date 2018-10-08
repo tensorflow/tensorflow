@@ -142,7 +142,6 @@ py_test(
         ":random_seed",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:util",
     ],
 )

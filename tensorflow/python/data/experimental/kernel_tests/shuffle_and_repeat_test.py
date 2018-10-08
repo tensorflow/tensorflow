@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import shuffle_ops
@@ -28,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
+class ShuffleAndRepeatTest(test_base.DatasetTestBase):
 
   def _build_ds(self, seed, count=5, num_elements=20):
     return dataset_ops.Dataset.range(num_elements).apply(
@@ -110,24 +109,6 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
       get_next_op = ds.make_one_shot_iterator().get_next()
       with self.session(graph=g) as sess:
         sess.run(get_next_op)
-
-  @parameterized.named_parameters(
-      ("NoSeed", None),
-      ("WithSeed", 42),
-  )
-  def testShuffleAndRepeatAndZipDataset(self, seed):
-    dataset = dataset_ops.Dataset.range(10).apply(
-        shuffle_ops.shuffle_and_repeat(10, count=3, seed=seed))
-    dataset = dataset_ops.Dataset.zip((dataset, dataset))
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
-
-    with self.cached_session() as sess:
-      for _ in range(30):
-        x, y = sess.run(next_element)
-        self.assertEqual(x, y)
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
 
 
 if __name__ == "__main__":
