@@ -8,7 +8,7 @@ This repository hosts the port of [Tensorflow](https://github.com/tensorflow/ten
 
 For further background information on ROCm, refer [here](https://github.com/RadeonOpenCompute/ROCm/blob/master/README.md).
 
-The project is derived from TensorFlow 1.10.0 and has been verified to work with the latest ROCm 1.9.0 release.
+The project is derived from TensorFlow 1.11.0 and has been verified to work with the latest ROCm 1.9.1 release.
 
 For details on installation and usage, see these links:
 * [Basic installation](rocm_docs/tensorflow-install-basic.md)
