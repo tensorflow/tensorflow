@@ -1836,6 +1836,8 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SoftplusGrad", {true, {}}},
           {"Softsign", {true, {}}},
           {"ReluGrad", {true, {}}},
+          {"LeakyRelu", {true, {}}},
+          {"LeakyReluGrad", {true, {}}},
           {"Conv2D", {true, {}}},
           {"DepthwiseConv2dNative", {true, {}}},
           {"Dilation2D", {true, {}}},
