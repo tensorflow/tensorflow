@@ -323,13 +323,13 @@ class InferenceContext {
     return input_tensors_as_shapes_;
   }
 
-  ShapeHandle output(int64 idx) const { return outputs_[idx]; }
-  void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
+  ShapeHandle output(int64 idx) const { return outputs_.at(idx); }
+  void set_output(int idx, ShapeHandle shape) { outputs_.at(idx) = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
 
   int num_outputs() const { return outputs_.size(); }
-  ShapeHandle output(int idx) const { return outputs_[idx]; }
+  ShapeHandle output(int idx) const { return outputs_.at(idx); }
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
@@ -644,6 +644,9 @@ class InferenceContext {
       const {
     return merged_dims_;
   }
+
+  // Adds new outputs; useful when mutating the graph.
+  Status ExpandOutputs(int new_output_size);
 
  private:
   // Creates and stores shapes for use in InferenceContext.

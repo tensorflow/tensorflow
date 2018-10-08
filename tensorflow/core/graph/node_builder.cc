@@ -140,10 +140,10 @@ void NodeBuilder::AddIndexError(const Node* node, int i) {
         strings::StrCat("Attempt to add nullptr Node to node with type ",
                         def_builder_.op_def().name()));
   } else {
-    errors_.emplace_back(
-        strings::StrCat("Attempt to add output ", i, " of ", node->name(),
-                        " not in range [0, ", node->num_outputs(),
-                        ") to node with type ", def_builder_.op_def().name()));
+    errors_.emplace_back(strings::StrCat(
+        "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",
+        node->num_outputs(), ") to node with type ",
+        def_builder_.op_def().name(), ". Node: ", node->DebugString()));
   }
 }
 

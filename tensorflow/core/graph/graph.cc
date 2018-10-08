@@ -142,6 +142,19 @@ void Node::Clear() {
   assigned_device_name_index_ = 0;
 }
 
+void Node::UpdateProperties() {
+  DataTypeVector inputs;
+  DataTypeVector outputs;
+  Status status =
+      InOutTypesForNode(props_->node_def, *(props_->op_def), &inputs, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed at updating node: " << status;
+    return;
+  }
+  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
+                                            inputs, outputs);
+}
+
 const string& Node::name() const { return props_->node_def.name(); }
 const string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }

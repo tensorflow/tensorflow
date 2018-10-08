@@ -153,6 +153,7 @@ class CondV2Test(test.TestCase):
         self.assertIn("foo_cond_1_false", ops.get_default_graph()._functions)
 
   def testDefunInCond(self):
+    self.skipTest("b/117293122")
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
