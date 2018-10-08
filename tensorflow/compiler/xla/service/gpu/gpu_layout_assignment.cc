@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_options.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -125,14 +124,8 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     DataLayout input;
     FilterLayout filter;
     DataLayout output;
-    if (ConvUseLayoutHeuristic(instr->GetModule()->config())) {
-      std::tie(input, filter, output) =
-          HeuristicLayoutAssignment(instr, stream_executor_);
-    } else {
-      input = DataLayout::kBatchDepthYX;
-      filter = FilterLayout::kOutputInputYX;
-      output = DataLayout::kBatchDepthYX;
-    }
+    std::tie(input, filter, output) =
+        HeuristicLayoutAssignment(instr, stream_executor_);
 
     TF_ASSIGN_OR_RETURN(
         std::tie(*input_shape->mutable_layout(),

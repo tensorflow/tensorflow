@@ -224,4 +224,8 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 // The shape is represented as a Python tuple of integers.
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
+// Encodes the object as a tuple that is meant to be used as part of the key
+// for the defun function cache.
+PyObject* TFE_Py_EncodeArg(PyObject*);
+
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_TFE_H_

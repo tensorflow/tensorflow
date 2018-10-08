@@ -30,10 +30,14 @@ from tensorflow.python.util import tf_inspect
 
 
 def isbuiltin(f):
+  """Returns True if the argument is a built-in function."""
   # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
   # need to specifically check for them.
   if f in (range, int, float):
     return True
+  if six.PY2:
+    if f in (xrange,):
+      return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
   if tf_inspect.isbuiltin(f):

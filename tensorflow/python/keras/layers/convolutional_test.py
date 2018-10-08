@@ -113,7 +113,7 @@ class Conv2DTest(test.TestCase):
       test_kwargs[arg] = value
       with self.test_session(use_gpu=True):
         testing_utils.layer_test(
-            keras.layers.SeparableConv2D,
+            keras.layers.Conv2D,
             kwargs=test_kwargs,
             input_shape=(num_samples, num_row, num_col, stack_size))
 

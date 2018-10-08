@@ -4472,7 +4472,12 @@ cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@icu//:common",
+    ],
 )
 
 STRING_DEPS = [

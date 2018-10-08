@@ -203,24 +203,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(jhseu): Enable on other platforms other than Linux.
-config_setting(
-    name = "with_jemalloc_linux_x86_64",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "ppc"},
-    visibility = ["//visibility:public"],
-)
-
 config_setting(
     name = "with_default_optimizations",
     define_values = {"with_default_optimizations": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_ignite_support",
+    define_values = {"with_ignite_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -255,30 +246,6 @@ config_setting(
     name = "framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_x86_64_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "k8",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "ppc",
     },
     visibility = ["//visibility:public"],
 )

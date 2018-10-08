@@ -56,16 +56,24 @@ Status BuildXlaOps(const Scope& s, std::unique_ptr<Graph>* result) {
 }
 
 Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
-                             const string& node_name, Node** result) {
+                             const string& node_name, int num_constant_args,
+                             int num_resource_args, Node** result) {
   NodeDef call_node;
   call_node.set_name(node_name);
   call_node.set_op(callee_name);
   AddNodeAttr(kXlaCompiledKernelAttr, true, &call_node);
-  AddNodeAttr(kXlaNumConstantArgsAttr, 0, &call_node);
-  AddNodeAttr(kXlaNumResourceArgsAttr, 0, &call_node);
+  AddNodeAttr(kXlaNumConstantArgsAttr, num_constant_args, &call_node);
+  AddNodeAttr(kXlaNumResourceArgsAttr, num_resource_args, &call_node);
   Status s;
   *result = graph->AddNode(call_node, &s);
   return s;
+}
+
+Status MakeXlaCompiledKernel(Graph* graph, const string& callee_name,
+                             const string& node_name, Node** result) {
+  return MakeXlaCompiledKernel(graph, callee_name, node_name,
+                               /*num_constant_args=*/0, /*num_resource_args=*/0,
+                               result);
 }
 
 Node* MakeWrite(const Scope& scope, const string& id) {
@@ -106,6 +114,24 @@ TEST(BuildXlaOps, ControlDepsPreserved) {
   Node* write_op_new = FindNodeByName(graph.get(), write_op->name());
   ASSERT_NE(write_op_new, nullptr);
   EXPECT_THAT(write_op_new, NodeWith(CtrlDeps(NodeWith(Op("_XlaRun")))));
+}
+
+TEST(BuildXlaOps, CleanFailureOnBogusAttr) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  FunctionDefLibrary flib_def =
+      CreateFunctionDefLibWithConstFunction("cluster_0");
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
+  Node* call;
+  TF_ASSERT_OK(
+      MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", 100, 100, &call));
+  Node* write_op = MakeWrite(root, "write");
+  root.graph()->AddControlEdge(call, write_op);
+
+  std::unique_ptr<Graph> graph;
+  Status failure_status = BuildXlaOps(root, &graph);
+  ASSERT_FALSE(failure_status.ok());
+  EXPECT_EQ(failure_status.code(), error::INVALID_ARGUMENT);
 }
 
 }  // namespace

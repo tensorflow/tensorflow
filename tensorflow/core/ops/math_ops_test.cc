@@ -559,4 +559,16 @@ TEST(MathOpsTest, QuantizedAdd_ShapeFn) {
   INFER_ERROR("must be rank 0", op, "?;?;?;?;[3];?");
   INFER_ERROR("must be rank 0", op, "?;?;?;?;?;[4]");
 }
+
+TEST(MathOpsTest, Bincount_ShapeFn) {
+  ShapeInferenceTestOp op("Bincount");
+
+  // size should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1];?");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "?;[];?", "[?]");
+  INFER_OK(op, "[?];[];?", "[?]");
+  INFER_OK(op, "[?];[];[?]", "[?]");
+}
 }  // end namespace tensorflow

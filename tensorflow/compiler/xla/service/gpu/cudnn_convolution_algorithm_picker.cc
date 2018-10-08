@@ -145,7 +145,7 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
 // cache misses and doing extra work.  Overall, caching doesn't seem worth the
 // trouble, but we may want to revisit this if we ever find a model where
 // caching would speed up compilation a lot.
-StatusOr<std::tuple<int64, bool, int64>>
+StatusOr<CudnnConvolutionAlgorithmPicker::AutotuneResult>
 CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     HloCustomCallInstruction* instr) {
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
@@ -316,9 +316,10 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
             << AlgorithmToString(best_result.algorithm()) << ", takes "
             << best_result.elapsed_time_in_ms() << "ms, and uses "
             << best_result_bytes_used << "B of scratch memory.";
-    return std::make_tuple(best_result.algorithm().algo_id(),
-                           best_result.algorithm().tensor_ops_enabled(),
-                           best_result_bytes_used);
+    return AutotuneResult{best_result.algorithm().algo_id(),
+                          best_result.algorithm().tensor_ops_enabled(),
+                          best_result_bytes_used,
+                          absl::Milliseconds(best_result.elapsed_time_in_ms())};
   }
 
   return InternalError(
@@ -331,37 +332,30 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
     HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
-  StatusOr<std::tuple<int64, bool, int64>> alg_scratch_and_tc =
+  StatusOr<AutotuneResult> best_algo_or =
       PickBestAlgorithm(Cast<HloCustomCallInstruction>(instr));
-
-  if (!alg_scratch_and_tc.ok()) {
-    LOG(ERROR) << alg_scratch_and_tc.status();
+  if (!best_algo_or.ok()) {
+    LOG(ERROR) << best_algo_or.status();
     return false;
   }
 
-  int64 algorithm;
-  bool tensor_ops_enabled;
-  int64 scratch_bytes;
-
-  std::tie(algorithm, tensor_ops_enabled, scratch_bytes) =
-      alg_scratch_and_tc.ConsumeValueOrDie();
-
-  VLOG(1) << "Setting cudnn conv to use algorithm " << algorithm << " and "
-          << NumBytesToString(scratch_bytes)
+  auto best_algo = std::move(best_algo_or).ValueOrDie();
+  VLOG(1) << "Setting cudnn conv to use algorithm " << best_algo.algorithm
+          << " and " << NumBytesToString(best_algo.scratch_bytes)
           << " of scratch memory: " << instr->ToString()
-          << " tensor_ops_enabled: " << tensor_ops_enabled;
+          << " tensor_ops_enabled: " << best_algo.tensor_ops_enabled;
 
   // Replace instr with a new CustomCall which has the correct algorithm, and
   // whose output shape has the appropriate amount of scratch memory.
   HloComputation* computation = instr->parent();
-  Shape new_call_shape =
-      ShapeUtil::MakeTupleShape({instr->shape().tuple_shapes(0),
-                                 ShapeUtil::MakeShape(U8, {scratch_bytes})});
+  Shape new_call_shape = ShapeUtil::MakeTupleShape(
+      {instr->shape().tuple_shapes(0),
+       ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes})});
 
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
-  backend_config.set_algorithm(algorithm);
-  backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
+  backend_config.set_algorithm(best_algo.algorithm);
+  backend_config.set_tensor_ops_enabled(best_algo.tensor_ops_enabled);
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

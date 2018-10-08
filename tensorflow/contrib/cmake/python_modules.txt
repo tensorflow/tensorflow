@@ -134,7 +134,6 @@ tensorflow/contrib/cudnn_rnn/python/ops
 tensorflow/contrib/data
 tensorflow/contrib/data/python
 tensorflow/contrib/data/python/kernel_tests
-tensorflow/contrib/data/python/kernel_tests/serialization
 tensorflow/contrib/data/python/ops
 tensorflow/contrib/decision_trees
 tensorflow/contrib/decision_trees/proto
@@ -206,6 +205,8 @@ tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
 tensorflow/contrib/kafka/python
 tensorflow/contrib/kafka/python/ops
+tensorflow/contrib/ignite/python
+tensorflow/contrib/ignite/python/ops
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras

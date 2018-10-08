@@ -510,9 +510,9 @@ def disable_control_flow_v2(unused_msg):
 def assert_no_new_pyobjects_executing_eagerly(f):
   """Decorator for asserting that no new Python objects persist after a test.
 
-  Runs the test multiple times executing eagerly, first as a warmup and then
-  several times to let objects accumulate. The warmup helps ignore caches which
-  do not grow as the test is run repeatedly.
+  Runs the test multiple times executing eagerly, first as a warmup and then to
+  let objects accumulate. The warmup helps ignore caches which do not grow as
+  the test is run repeatedly.
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
@@ -522,7 +522,14 @@ def assert_no_new_pyobjects_executing_eagerly(f):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
-      f(self, **kwargs)
+      # Run the test 2 times as warmup, in an attempt to fill up caches, which
+      # should not grow as the test is run repeatedly below.
+      #
+      # TODO(b/117156879): Running warmup twice is black magic; we have seen
+      # tests that fail with 1 warmup run, and pass with 2, on various versions
+      # of python2.7.x.
+      for _ in range(2):
+        f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -2011,9 +2018,11 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      # Disable Grappler constant folding since some tests & benchmarks
+      # use constant input and become meaningless after constant folding.
+      # DO NOT DISABLE GRAPPLER OPTIMIZERS WITHOUT CONSULTING WITH THE
+      # GRAPPLER TEAM.
       config.graph_options.rewrite_options.constant_folding = (
-          rewriter_config_pb2.RewriterConfig.OFF)
-      config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)

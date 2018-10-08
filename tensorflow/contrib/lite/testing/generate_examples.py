@@ -762,8 +762,11 @@ def make_constant_tests(zip_path):
         dtype=parameters["dtype"],
         name="input1",
         shape=parameters["input_shape"])
-    out = tf.constant(
+    constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
+    # This maximum node is here to avoid the situation where a graph output is
+    # a constant, which is an error in toco.
+    out = tf.maximum(dummy_input, constant)
     return [dummy_input], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -2848,7 +2851,14 @@ def make_zeros_like_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.zeros_like(input_tensor)
+    zeros = tf.zeros_like(input_tensor)
+    # This maximum node is so that toco can perform the constants-propagation
+    # through the above zeros_like, which it can't do if the output of the
+    # zeros_like as an output of the whole graphs (graph outputs can't be
+    # constants). If toco does not perform such constants-propagation then
+    # the resulting tflite graph retains the zeros_like as a Fill op, which
+    # is unsupported by TFLite, even as a custom op.
+    out = tf.maximum(zeros, input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

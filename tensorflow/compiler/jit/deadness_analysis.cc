@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
 // ALGORITHM OVERVIEW
@@ -297,7 +299,7 @@ class SymbolPredicate : public Predicate {
 
 template <typename FunctionTy>
 /*static*/ void Predicate::Visit(Predicate* p, const FunctionTy& func) {
-  gtl::FlatSet<Predicate*> visited;
+  absl::flat_hash_set<Predicate*> visited;
   std::vector<Predicate*> stack;
 
   stack.push_back(p);
@@ -420,15 +422,15 @@ class PredicateFactory {
     }
   };
 
-  gtl::FlatMap<SignatureForAndOr, std::unique_ptr<Predicate>,
-               HashSignatureForAndOr>
+  absl::flat_hash_map<SignatureForAndOr, std::unique_ptr<Predicate>,
+                      HashSignatureForAndOr>
       interned_and_or_instances_;
-  gtl::FlatMap<SignatureForNot, std::unique_ptr<Predicate>>
+  absl::flat_hash_map<SignatureForNot, std::unique_ptr<Predicate>>
       interned_not_instances_;
-  gtl::FlatMap<SignatureForAndRec, std::unique_ptr<Predicate>>
+  absl::flat_hash_map<SignatureForAndRec, std::unique_ptr<Predicate>>
       interned_and_rec_instances_;
-  gtl::FlatMap<SignatureForSymbol, std::unique_ptr<Predicate>,
-               HashSignatureForSymbol>
+  absl::flat_hash_map<SignatureForSymbol, std::unique_ptr<Predicate>,
+                      HashSignatureForSymbol>
       interned_symbol_instances_;
 };
 
@@ -466,7 +468,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(
       is_and ? Predicate::Kind::kAnd : Predicate::Kind::kOr;
   Predicate::Kind other_pred_kind =
       is_and ? Predicate::Kind::kOr : Predicate::Kind::kAnd;
-  gtl::FlatSet<Predicate*> simplified_ops_set;
+  absl::flat_hash_set<Predicate*> simplified_ops_set;
   std::vector<Predicate*> simplified_ops;
   for (Predicate* op : operands) {
     // Simplify A&A => A and  A|A => A.
@@ -491,7 +493,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(
   }
 
   // Simplify "A&~A=>False" and "A|~A=>True".
-  gtl::FlatSet<Predicate*> negated_ops;
+  absl::flat_hash_set<Predicate*> negated_ops;
   for (Predicate* op : simplified_ops) {
     if (op->kind() == Predicate::Kind::kNot) {
       negated_ops.insert(dynamic_cast<NotPredicate&>(*op).operand());
@@ -511,7 +513,7 @@ Predicate* PredicateFactory::MakeAndOrImpl(
   //
   // First find any predicates contained in all subops.
   std::vector<Predicate*> common_inner_operands;
-  gtl::FlatSet<Predicate*> common_inner_operands_set;
+  absl::flat_hash_set<Predicate*> common_inner_operands_set;
   for (Predicate* op : simplified_ops) {
     if (op->kind() != other_pred_kind) {
       common_inner_operands.clear();
@@ -572,12 +574,14 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status PopulateWithReversePostOrder(absl::Span<Node* const> rpo);
   bool HasInputsWithMismatchingDeadness(const Node& node) override;
   void Print() const override;
-  gtl::FlatMap<TensorId, string, TensorId::Hasher> PredicateMapAsString() const;
+  absl::flat_hash_map<TensorId, string, TensorId::Hasher> PredicateMapAsString()
+      const;
 
  private:
   enum class EdgeKind { kDataAndControl, kDataOnly, kControlOnly };
 
-  std::vector<Predicate*> GetIncomingPreds(Node* n, EdgeKind edge_kind);
+  Status GetInputPreds(Node* n, EdgeKind edge_kind,
+                       std::vector<Predicate*>* result);
 
   // Sets the predicate for output `output_idx` of `n` to `pred`.  Sets the i'th
   // bit of `should_revisit` if `pred` is different from the current predicate
@@ -614,7 +618,7 @@ class DeadnessAnalysisImpl : public DeadnessAnalysis {
   Status HandleNode(Node* n, std::vector<bool>* should_revisit);
 
   const Graph& graph_;
-  gtl::FlatMap<TensorId, Predicate*, TensorId::Hasher> predicate_map_;
+  absl::flat_hash_map<TensorId, Predicate*, TensorId::Hasher> predicate_map_;
   PredicateFactory predicate_factory_;
   bool vlog_;
 };
@@ -623,9 +627,10 @@ TensorId InputEdgeToTensorId(const Edge* e) {
   return TensorId(e->src()->name(), e->src_output());
 }
 
-std::vector<Predicate*> DeadnessAnalysisImpl::GetIncomingPreds(
-    Node* n, DeadnessAnalysisImpl::EdgeKind edge_kind) {
-  std::vector<Predicate*> incoming_preds;
+Status DeadnessAnalysisImpl::GetInputPreds(
+    Node* n, DeadnessAnalysisImpl::EdgeKind edge_kind,
+    std::vector<Predicate*>* result) {
+  result->clear();
   for (const Edge* in_edge : n->in_edges()) {
     bool should_process =
         edge_kind == EdgeKind::kDataAndControl ||
@@ -634,17 +639,27 @@ std::vector<Predicate*> DeadnessAnalysisImpl::GetIncomingPreds(
 
     if (should_process) {
       auto it = predicate_map_.find(InputEdgeToTensorId(in_edge));
-      CHECK(it != predicate_map_.end()) << n->name();
-      incoming_preds.push_back(it->second);
+      if (it == predicate_map_.end()) {
+        GraphCycles graph_cycles;
+        TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(&graph_, &graph_cycles));
+
+        // If we didn't return with an error above then the graph is probably
+        // fine and we have a bug in deadness analysis.
+        return errors::Internal("Could not find input ", in_edge->DebugString(),
+                                " to ", n->name(),
+                                " when visiting the graph in post-order.  Most "
+                                "likely indicates a bug in deadness analysis.");
+      }
+      result->push_back(it->second);
     }
   }
-  return incoming_preds;
+  return Status::OK();
 }
 
 Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
                                           std::vector<bool>* should_revisit) {
-  std::vector<Predicate*> input_preds =
-      GetIncomingPreds(n, EdgeKind::kDataAndControl);
+  std::vector<Predicate*> input_preds;
+  TF_RETURN_IF_ERROR(GetInputPreds(n, EdgeKind::kDataAndControl, &input_preds));
   const Edge* pred_edge;
   TF_RETURN_IF_ERROR(n->input_edge(1, &pred_edge));
   Predicate* true_switch = predicate_factory_.MakeSymbolPredicate(
@@ -673,17 +688,31 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
 }
 
 namespace {
-const Edge* FindUniqueBackedge(Node* merge) {
-  CHECK(merge->IsMerge());
-  const Edge* result = nullptr;
-  for (const Edge* e : merge->in_edges()) {
-    if (e->src()->IsNextIteration()) {
-      CHECK_EQ(result, nullptr)
-          << "Multiple backedges to " << merge->DebugString();
-      result = e;
+Status CreateMultipleNextIterationInputsError(Node* merge) {
+  std::vector<string> backedges;
+  for (const Edge* backedge : merge->in_edges()) {
+    if (backedge->src()->IsNextIteration()) {
+      backedges.push_back(absl::StrCat("  ", SummarizeNode(*backedge->src())));
     }
   }
-  return result;
+  return errors::InvalidArgument(
+      "Multiple NextIteration inputs to merge node ", SummarizeNode(*merge),
+      ": \n", absl::StrJoin(backedges, "\n"),
+      "\nMerge nodes can have at most one incoming NextIteration edge.");
+}
+
+Status FindUniqueBackedge(Node* merge, const Edge** result) {
+  *result = nullptr;
+  CHECK(merge->IsMerge());
+  for (const Edge* e : merge->in_edges()) {
+    if (e->src()->IsNextIteration()) {
+      if (*result != nullptr) {
+        return CreateMultipleNextIterationInputsError(merge);
+      }
+      *result = e;
+    }
+  }
+  return Status::OK();
 }
 
 // If `backedge_predicate` is equal to `symbolic_predicate` & Step where Step
@@ -762,9 +791,12 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
       return Status::OK();
     }
 
+    std::vector<Predicate*> input_preds;
+    TF_RETURN_IF_ERROR(GetInputPreds(n, EdgeKind::kDataOnly, &input_preds));
+
     // We're visiting this merge for the first time and it is a acyclic merge.
-    Predicate* input_data_pred = predicate_factory_.MakeOrPredicate(
-        GetIncomingPreds(n, EdgeKind::kDataOnly));
+    Predicate* input_data_pred =
+        predicate_factory_.MakeOrPredicate(input_preds);
     SetPredicate(n, {0, 1, Graph::kControlSlot}, input_data_pred,
                  should_revisit);
     return Status::OK();
@@ -775,7 +807,9 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
     // of an unvisited backedge.  Try to pattern match the predicate expression
     // for that backedge (which should be visited now) into an and recurrence
     // for the merge node.
-    if (const Edge* unique_backedge = FindUniqueBackedge(n)) {
+    const Edge* unique_backedge;
+    TF_RETURN_IF_ERROR(FindUniqueBackedge(n, &unique_backedge));
+    if (unique_backedge) {
       if (Predicate* step = DeduceStepPredicate(
               &predicate_factory_, it->second,
               predicate_map_[InputEdgeToTensorId(unique_backedge)])) {
@@ -806,8 +840,8 @@ Status DeadnessAnalysisImpl::HandleRecv(Node* n,
                                         std::vector<bool>* should_revisit) {
   // In addition to being alive or dead based on the inputs, a _Recv can also
   // acquire a dead signal from a _Send.
-  std::vector<Predicate*> input_preds =
-      GetIncomingPreds(n, EdgeKind::kDataAndControl);
+  std::vector<Predicate*> input_preds;
+  TF_RETURN_IF_ERROR(GetInputPreds(n, EdgeKind::kDataAndControl, &input_preds));
   input_preds.push_back(predicate_factory_.MakeSymbolPredicate(
       TensorId(n->name(), 0), /*must_be_true=*/false));
   SetPredicate(n, {0, Graph::kControlSlot},
@@ -819,8 +853,9 @@ Status DeadnessAnalysisImpl::HandleRecv(Node* n,
 Status DeadnessAnalysisImpl::HandleGeneric(Node* n,
                                            std::vector<bool>* should_revisit) {
   // Generally nodes are alive iff all their inputs are alive.
-  Predicate* pred = predicate_factory_.MakeAndPredicate(
-      GetIncomingPreds(n, EdgeKind::kDataAndControl));
+  std::vector<Predicate*> input_preds;
+  TF_RETURN_IF_ERROR(GetInputPreds(n, EdgeKind::kDataAndControl, &input_preds));
+  Predicate* pred = predicate_factory_.MakeAndPredicate(input_preds);
   for (int output_idx = 0; output_idx < n->num_outputs(); output_idx++) {
     SetPredicate(n, output_idx, pred, should_revisit);
   }
@@ -977,9 +1012,9 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
   return Status::OK();
 }
 
-gtl::FlatMap<TensorId, string, TensorId::Hasher>
+absl::flat_hash_map<TensorId, string, TensorId::Hasher>
 DeadnessAnalysisImpl::PredicateMapAsString() const {
-  gtl::FlatMap<TensorId, string, TensorId::Hasher> result;
+  absl::flat_hash_map<TensorId, string, TensorId::Hasher> result;
   std::vector<TensorId> tensor_ids;
   for (const auto& kv_pair : predicate_map_) {
     CHECK(result.insert({kv_pair.first, kv_pair.second->ToString()}).second);

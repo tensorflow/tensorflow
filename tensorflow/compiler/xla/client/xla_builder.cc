@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace xla {
@@ -208,6 +208,9 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
     case HloOpcode::kWhile:
       // TODO(b/32495713): We aren't checking the condition and body
       // computations themselves.
+    case HloOpcode::kScatter:
+      // TODO(b/32495713): We aren't checking the embedded computation in
+      // Scatter.
     case HloOpcode::kSend:
     case HloOpcode::kRecv:
     case HloOpcode::kParameter:
@@ -1786,9 +1789,9 @@ XlaOp XlaBuilder::ReduceWindow(const XlaOp& operand, const XlaOp& init_value,
     std::vector<std::pair<int64, int64>> padding_values =
         MakePadding(AsInt64Slice(operand_shape.dimensions()), window_dimensions,
                     window_strides, padding);
-    return ReduceWindowWithGeneralPadding(operand, init_value, computation,
-                                          window_dimensions, window_strides,
-                                          padding_values);
+    return ReduceWindowWithGeneralPadding(
+        operand, init_value, computation, window_dimensions, window_strides,
+        /*base_dilations=*/{}, /*window_dilations=*/{}, padding_values);
   });
 }
 
@@ -1797,6 +1800,8 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -1807,7 +1812,8 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
                         computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
                         MakeWindow(window_dimensions, window_strides, padding,
-                                   /*lhs_dilation=*/{}, /*rhs_dilation=*/{}));
+                                   /*lhs_dilation=*/base_dilations,
+                                   /*rhs_dilation=*/window_dilations));
     TF_ASSIGN_OR_RETURN(
         *instr.mutable_shape(),
         ShapeInference::InferReduceWindowShape(operand_shape, init_shape,
@@ -2290,7 +2296,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   // also a valid dependency order). The related ops will be added to the
   // subgraph in the same order.
   std::set<int64> related_ops;
-  tensorflow::gtl::FlatSet<int64> related_calls;  // Related computations.
+  absl::flat_hash_set<int64> related_calls;  // Related computations.
   std::queue<int64> worklist;
   worklist.push(root->id());
   related_ops.insert(root->id());
@@ -2797,10 +2803,12 @@ XlaOp ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return operand.builder()->ReduceWindowWithGeneralPadding(
       operand, init_value, computation, window_dimensions, window_strides,
-      padding);
+      base_dilations, window_dilations, padding);
 }
 
 XlaOp CrossReplicaSum(const XlaOp& operand,

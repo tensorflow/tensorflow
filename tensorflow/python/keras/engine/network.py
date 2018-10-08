@@ -1028,7 +1028,10 @@ class Network(base_layer.Layer):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensor, **kwargs)
               else:
-                output_tensors = layer.call(computed_tensor, **kwargs)
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensor, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensor, **kwargs)
                 if hasattr(layer, 'compute_mask'):
                   output_masks = layer.compute_mask(computed_tensor,
                                                     computed_mask)
@@ -1049,7 +1052,10 @@ class Network(base_layer.Layer):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensors, **kwargs)
               else:
-                output_tensors = layer.call(computed_tensors, **kwargs)
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensors, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensors, **kwargs)
                 if hasattr(layer, 'compute_mask'):
                   output_masks = layer.compute_mask(computed_tensors,
                                                     computed_masks)
@@ -1526,6 +1532,7 @@ class Network(base_layer.Layer):
         # Restore existing variables (if any) immediately, and set up a
         # streaming restore for any variables created in the future.
         checkpointable_utils.streaming_restore(status=status, session=session)
+      status.assert_nontrivial_match()
       return status
     if h5py is None:
       raise ImportError(

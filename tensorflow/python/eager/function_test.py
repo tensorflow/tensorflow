@@ -1237,6 +1237,62 @@ class FunctionTest(test.TestCase):
     x = constant_op.constant([1.0, 2.0])
     self.assertAllEqual([2., 4.], self.evaluate(defined(x)))
 
+  def testCacheObjectHashCollisions(self):
+
+    class Foo(object):
+
+      def __hash__(self):
+        return 42
+
+    def func(foo):
+      del foo
+      return
+
+    defined = function.defun(func)
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 1)
+
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 2)
+
+  def testCacheTensorShapeDtypeCollision(self):
+
+    def func(t):
+      return t + t
+
+    defined = function.defun(func)
+    t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
+    defined(t)
+    self.assertEqual(len(defined._function_cache), 1)
+
+    t = constant_op.constant([1.0], dtype=dtypes.complex128)
+    defined(t)
+    self.assertEqual(len(defined._function_cache), 2)
+
+  def testCacheTensorUnknownShapesCollision(self):
+
+    def func(t):
+      return t + t
+
+    with context.graph_mode(), self.cached_session():
+      defined = function.defun(func)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 1)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 2)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 3)
+
+      t = constant_op.constant(1.0, dtype=dtypes.float32)
+      defined(t)
+      self.assertEqual(len(defined._function_cache), 4)
+
   def testPythonFunctionWithDefaultArgs(self):
 
     def func(foo, bar=1, baz=2):
@@ -1250,20 +1306,20 @@ class FunctionTest(test.TestCase):
 
     def cache_keys():
       """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[:3] for key in defined._function_cache)
+      return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn((0, 1, 20), cache_keys())
+    self.assertIn(('URRR', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn((1, 1, 2), cache_keys())
+    self.assertIn(('URRR', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
-    self.assertIn((1, 2, 3), cache_keys())
+    self.assertIn(('URRR', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -1686,6 +1742,21 @@ class FunctionTest(test.TestCase):
         for i in range(len(functions)):
           self.assertRegexpMatches(captured_function_names[i],
                                    expected_func_name_regex[i])
+
+        # Check the forward and backward function has the correct attributes.
+        self.assertEquals(
+            functions[1].definition.attr['backward_function_name'].s,
+            functions[2].name)
+        self.assertEquals(
+            functions[2].definition.attr['forward_function_name'].s,
+            functions[1].name)
+
+        self.assertEquals(
+            functions[4].definition.attr['backward_function_name'].s,
+            functions[5].name)
+        self.assertEquals(
+            functions[5].definition.attr['forward_function_name'].s,
+            functions[4].name)
 
         sq = defun_matmul(t, t)
         double = add(t, t)

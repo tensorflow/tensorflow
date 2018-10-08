@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace tensorflow {
 namespace {
-Status FindNodesToDecluster(const Graph& graph, gtl::FlatSet<Node*>* result,
+Status FindNodesToDecluster(const Graph& graph,
+                            absl::flat_hash_set<Node*>* result,
                             absl::Span<Node* const> post_order) {
   // Find nodes that have at least one user outside their cluster that expects
   // hostmem output.  These nodes should be cloned to outside the cluster to
@@ -171,7 +172,7 @@ Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
   GetPostOrder(*graph, &post_order, /*stable_comparator=*/NodeComparatorName(),
                /*edge_filter=*/NotBackedge);
 
-  gtl::FlatSet<Node*> nodes_to_partially_decluster;
+  absl::flat_hash_set<Node*> nodes_to_partially_decluster;
   TF_RETURN_IF_ERROR(
       FindNodesToDecluster(*graph, &nodes_to_partially_decluster, post_order));
 

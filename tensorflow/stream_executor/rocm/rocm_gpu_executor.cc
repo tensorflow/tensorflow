@@ -819,18 +819,18 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
     builder.set_name(device_name);
   }
 
-  for (size_t i = 0; i < TF_ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
-    const auto &params = kAllUnqueryableDeviceParams[i];
-    if (params.version == version_) {
-      builder.set_blocks_per_core_limit(params.blocks_per_core_limit);
-      builder.set_registers_per_core_limit(params.registers_per_core_limit);
-      builder.set_registers_per_thread_limit(params.registers_per_thread_limit);
-      builder.set_warp_alloc_granularity(params.warp_alloc_granularity);
-      builder.set_register_alloc_granularity(params.register_alloc_granularity);
-      builder.set_shared_memory_alloc_granularity(
-          params.shared_memory_alloc_granularity);
-    }
-  }
+  //for (size_t i = 0; i < TF_ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
+  //  const auto &params = kAllUnqueryableDeviceParams[i];
+  //  if (params.version == version_) {
+  //    //builder.set_blocks_per_core_limit(params.blocks_per_core_limit);
+  //    builder.set_registers_per_core_limit(params.registers_per_core_limit);
+  //    //builder.set_registers_per_thread_limit(params.registers_per_thread_limit);
+  //    //builder.set_warp_alloc_granularity(params.warp_alloc_granularity);
+  //    //builder.set_register_alloc_granularity(params.register_alloc_granularity);
+  //    //builder.set_shared_memory_alloc_granularity(
+  //    //    params.shared_memory_alloc_granularity);
+  //  }
+  //}
 
   builder.set_platform_version(
       port::StrCat("AMDGPU ISA version: gfx", version_));
@@ -853,6 +853,8 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
       ROCMDriver::GetMaxRegistersPerBlock(device_).ValueOrDie());
   builder.set_threads_per_warp(
       ROCMDriver::GetThreadsPerWarp(device_).ValueOrDie());
+  builder.set_registers_per_core_limit(
+      kAllUnqueryableDeviceParams[0].registers_per_core_limit);
 
   auto built = builder.Build();
   return built.release();

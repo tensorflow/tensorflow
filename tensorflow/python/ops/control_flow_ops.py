@@ -106,7 +106,7 @@ def _summarize_eager(tensor, summarize=None):
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
-@tf_export("Assert")
+@tf_export("debugging.Assert", "Assert")
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -1333,6 +1333,9 @@ class ControlFlowState(object):
     """
     if util.IsLoopSwitch(op):
       return None
+    if op.graph._building_function:  # pylint: disable=protected-access
+      # The optimization here is tricky to apply to functions
+      return array_ops.zeros_like(op.outputs[index])
     dead_branch = util.IsSwitch(op)
     forward_ctxt = _GetWhileContext(op)
     grad_state = self._map.get(forward_ctxt)
@@ -3225,7 +3228,8 @@ def while_loop(cond,
       raise ValueError("The while_v2 module is not set. Did you forget to "
                        "import tensorflow.python.ops."
                        "while_v2?")
-    return _while_v2.while_loop(cond, body, loop_vars, name)
+    return _while_v2.while_loop(
+        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
