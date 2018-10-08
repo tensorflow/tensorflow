@@ -44,23 +44,23 @@ class ClipOpsTest(test.TestCase):
                                    shape,
                                    max_norm,
                                    axes):
-     with self.cached_session() as sess:
-       values = constant_op.constant(values)
-       indices = constant_op.constant(indices)
-       shape = constant_op.constant(shape)
-       # IndexedSlices mode
-       indixed_slices = ops.IndexedSlices(values, indices, shape)
-       clipped = clip_ops.clip_by_norm(indixed_slices, max_norm, axes)
-       # clipped should be IndexedSlices
-       self.assertIsInstance(clipped, ops.IndexedSlices)
-       clipped = ops.convert_to_tensor(clipped)
-       
-       # Tensor mode
-       dense_tensor = ops.convert_to_tensor(indixed_slices)
-       dense_clipped = clip_ops.clip_by_norm(dense_tensor, max_norm, axes)
-       result, expected = sess.run([clipped, dense_clipped])
-     self.assertAllClose(result, expected)
-      
+    with self.cached_session() as sess:
+      values = constant_op.constant(values)
+      indices = constant_op.constant(indices)
+      shape = constant_op.constant(shape)
+      # IndexedSlices mode
+      indixed_slices = ops.IndexedSlices(values, indices, shape)
+      clipped = clip_ops.clip_by_norm(indixed_slices, max_norm, axes)
+      # clipped should be IndexedSlices
+      self.assertIsInstance(clipped, ops.IndexedSlices)
+      clipped = ops.convert_to_tensor(clipped)
+
+      # Tensor mode
+      dense_tensor = ops.convert_to_tensor(indixed_slices)
+      dense_clipped = clip_ops.clip_by_norm(dense_tensor, max_norm, axes)
+      result, expected = sess.run([clipped, dense_clipped])
+    self.assertAllClose(result, expected)
+
   def testClipTensorByNorm(self):
     # Simple example
     self._testClipTensorByNorm(
