@@ -20,12 +20,15 @@ load(
     "//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
     "def_file_filter_configure",
 )
+load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 
 def initialize_third_party():
+    """ Load third party repositories.  See above load() statements. """
+    aws()
     flatbuffers()
     icu()
     jpeg()
@@ -582,17 +585,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
             "https://github.com/edenhill/librdkafka/archive/v0.11.5.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "aws",
-        build_file = clean_dep("//third_party:aws.BUILD"),
-        sha256 = "b888d8ce5fc10254c3dd6c9020c7764dd53cf39cf011249d0b4deda895de1b7c",
-        strip_prefix = "aws-sdk-cpp-1.3.15",
-        urls = [
-            "https://mirror.bazel.build/github.com/aws/aws-sdk-cpp/archive/1.3.15.tar.gz",
-            "https://github.com/aws/aws-sdk-cpp/archive/1.3.15.tar.gz",
         ],
     )
 
