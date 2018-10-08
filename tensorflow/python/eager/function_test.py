@@ -1841,11 +1841,10 @@ class FunctionTest(test.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 3)
 
-        # Test input param shape mismatch
-        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        with self.assertRaisesRegexp(
-            ValueError, 'Python inputs incompatible with input_signature'):
-          function.register(defun_matmul, t2, t2)
+        # Test register function with cache, note inputs are ignored.
+        function.register(defun_matmul)
+        graph = ops.get_default_graph()
+        self.assertEqual(len(graph._functions), 3)
 
   def testRegisterFunctionWithCache(self):
     def matmul(x, y):
