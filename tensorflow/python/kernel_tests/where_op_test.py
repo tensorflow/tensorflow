@@ -230,6 +230,15 @@ class WhereOpTest(test.TestCase):
           constant_op.constant([True], dtype=dtypes.bool), x, y))
     self.assertAllEqual(tf_val, np_val)
 
+  def testV2PredBroadcasting(self):
+    pred = np.array([1, 0, 0]).reshape((3, 1))
+    x = np.random.randn(3, 4)
+    y = np.random.randn(3, 4)
+    np_val = np.where(pred, x, y)
+    with self.test_session(use_gpu=True):
+      tf_val = self.evaluate(array_ops.where_v2(pred, x, y))
+    self.assertAllClose(tf_val, np_val)
+
   def testBatchSelect(self):
     x = np.array([[-2, 3, -1] * 64, [1, -3, -3] * 64] * 8192)  # [16384, 192]
     c_mat = np.array([[False] * 192, [True] * 192] * 8192)  # [16384, 192]
