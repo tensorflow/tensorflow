@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 56
+// Next ID: 58
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -184,6 +184,13 @@ message HloInstructionProto {
   // Sharding for kDomain instructions.
   xla.OpSharding domain_entry_sharding = 54;
   xla.OpSharding domain_exit_sharding = 55;
+
+  // For custom call this indicates that the layouts are constrained. If
+  // constrain_layout is true then the 'shape' field must contain a layout, and
+  // 'operand_shapes_with_layout' must contain a shape with layout for each
+  // operand.
+  bool constrain_layout = 56;
+  repeated Shape operand_shapes_with_layout = 57;
 }
 
 // Serialization of HloComputation.

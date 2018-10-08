@@ -65,6 +65,12 @@ void SetDefaultLayoutToContainer(
   return layout;
 }
 
+/* static */ Layout LayoutUtil::MakeDescendingLayout(int64 rank) {
+  std::vector<int64> layout(rank);
+  std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
+  return MakeLayout(layout);
+}
+
 /* static */ Layout LayoutUtil::MakeLayoutFromMajorToMinor(
     absl::Span<const int64> major_to_minor) {
   Layout layout;

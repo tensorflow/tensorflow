@@ -396,9 +396,22 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           operands(1), operands(2), computations(1));
       break;
     case HloOpcode::kCustomCall:
-      instruction = CreateCustomCall(proto.shape(), all_operands(),
-                                     proto.custom_call_target(),
-                                     proto.custom_call_opaque());
+      if (proto.constrain_layout()) {
+        // A proto RepeatedPtrField cannot be converted to a Span (it is a
+        // vector of pointers essentially) so create a vector of shapes to pass
+        // in.
+        std::vector<Shape> operand_shapes;
+        for (const Shape& shape : proto.operand_shapes_with_layout()) {
+          operand_shapes.push_back(shape);
+        }
+        instruction = CreateCustomCall(
+            proto.shape(), all_operands(), proto.custom_call_target(),
+            operand_shapes, proto.custom_call_opaque());
+      } else {
+        instruction = CreateCustomCall(proto.shape(), all_operands(),
+                                       proto.custom_call_target(),
+                                       proto.custom_call_opaque());
+      }
       if (proto.has_window()) {
         static_cast<HloCustomCallInstruction*>(instruction.get())
             ->set_window(proto.window());
@@ -1140,6 +1153,15 @@ bool HloInstruction::HasSideEffect() const {
     absl::string_view custom_call_target, absl::string_view opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, opaque);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    absl::string_view custom_call_target,
+    absl::Span<const Shape> operand_shapes_with_layout,
+    absl::string_view opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, custom_call_target, opaque, operand_shapes_with_layout);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTuple(
