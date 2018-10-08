@@ -1865,6 +1865,10 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.compile(optimizer='rmsprop', loss='mse', target_tensors=[target])
       model.train_on_batch(input_val, None)
 
+      # single-output, as single tensor
+      model.compile(optimizer='rmsprop', loss='mse', target_tensors=target)
+      model.train_on_batch(input_val, None)
+
       # single-output, as dict
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors={'dense': target})
