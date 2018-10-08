@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test as test_lib
 
 
@@ -313,7 +314,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
       for num_rhs in 1, 2, matrix_shape[-1]:
 
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/cpu:0"):
           matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
           x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)
@@ -328,7 +329,7 @@ class MatrixSolveLsBenchmark(test_lib.Benchmark):
 
         if run_gpu_test and (len(matrix_shape) < 3 or matrix_shape[0] < 513):
           with ops.Graph().as_default(), \
-                session.Session() as sess, \
+                session.Session(config=benchmark.benchmark_config()) as sess, \
                 ops.device("/gpu:0"):
             matrix, rhs = _GenerateTestData(matrix_shape, num_rhs)
             x = linalg_ops.matrix_solve_ls(matrix, rhs, regularizer)

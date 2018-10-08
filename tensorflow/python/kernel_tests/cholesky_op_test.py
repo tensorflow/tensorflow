@@ -36,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -327,7 +328,7 @@ class CholeskyBenchmark(test.Benchmark):
   def benchmarkCholeskyOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
-          session.Session() as sess, \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
           ops.device("/cpu:0"):
         matrix = variables.Variable(self._GenerateMatrix(shape))
         l = linalg_ops.cholesky(matrix)
@@ -341,7 +342,7 @@ class CholeskyBenchmark(test.Benchmark):
 
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/device:GPU:0"):
           matrix = variables.Variable(self._GenerateMatrix(shape))
           l = linalg_ops.cholesky(matrix)
@@ -359,7 +360,7 @@ class CholeskyBenchmark(test.Benchmark):
       for shape in self.shapes:
         matrix = self._GenerateMatrix(shape)
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device(device):
           l = variables.Variable(np.linalg.cholesky(matrix))
           grad_matrix = variables.Variable(

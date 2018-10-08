@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -167,7 +168,7 @@ class MatrixSolveBenchmark(test.Benchmark):
         for num_rhs in 1, 2, matrix_shape[-1]:
 
           with ops.Graph().as_default(), \
-              session.Session() as sess, \
+              session.Session(config=benchmark.benchmark_config()) as sess, \
               ops.device("/cpu:0"):
             matrix, rhs = self._GenerateTestData(matrix_shape, num_rhs)
             x = linalg_ops.matrix_solve(matrix, rhs, adjoint=adjoint)
@@ -185,7 +186,7 @@ class MatrixSolveBenchmark(test.Benchmark):
 
           if run_gpu_test:
             with ops.Graph().as_default(), \
-                session.Session() as sess, \
+                session.Session(config=benchmark.benchmark_config()) as sess, \
                 ops.device("/gpu:0"):
               matrix, rhs = self._GenerateTestData(matrix_shape, num_rhs)
               x = linalg_ops.matrix_solve(matrix, rhs, adjoint=adjoint)

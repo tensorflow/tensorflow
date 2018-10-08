@@ -28,6 +28,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -179,7 +180,7 @@ class MatrixInverseBenchmark(test.Benchmark):
     for adjoint in False, True:
       for shape in self.shapes:
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/cpu:0"):
           matrix = self._GenerateMatrix(shape)
           inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
@@ -193,7 +194,7 @@ class MatrixInverseBenchmark(test.Benchmark):
 
         if test.is_gpu_available(True):
           with ops.Graph().as_default(), \
-              session.Session() as sess, \
+              session.Session(config=benchmark.benchmark_config()) as sess, \
               ops.device("/gpu:0"):
             matrix = self._GenerateMatrix(shape)
             inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)

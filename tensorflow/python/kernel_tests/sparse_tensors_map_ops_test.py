@@ -27,6 +27,7 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 # pylint: disable=protected-access
@@ -192,7 +193,7 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
         sorted(zip(indices_batch, indices_value)), dtype=np.int64)
     values = ["feature_value_for_embedding_lookup"] * num_elements
     shape = np.asarray([batch_size, num_elements], dtype=np.int64)
-    with session.Session() as sess:
+    with session.Session(config=benchmark.benchmark_config()) as sess:
       with ops.device("/cpu:0"):
         indices = variables.Variable(indices)
         values = variables.Variable(values)
