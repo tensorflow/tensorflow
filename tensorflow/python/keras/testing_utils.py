@@ -166,8 +166,9 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     if expected_dim is not None:
       if expected_dim != actual_dim:
         raise AssertionError(
-            'When testing layer %s, for input %s, found output_shape='
-            '%s but expected to find %s.\nFull kwargs: %s' %
+            'When testing layer %s **after deserialization**, '
+            'for input %s, found output_shape='
+            '%s but expected to find inferred shape %s.\nFull kwargs: %s' %
             (layer_cls.__name__,
              x,
              actual_output_shape,

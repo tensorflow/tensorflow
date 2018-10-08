@@ -781,6 +781,10 @@ class LearningRateScheduler(Callback):
       print('\nEpoch %05d: LearningRateScheduler reducing learning '
             'rate to %s.' % (epoch + 1, lr))
 
+  def on_epoch_end(self, epoch, logs=None):
+    logs = logs or {}
+    logs['lr'] = K.get_value(self.model.optimizer.lr)
+
 
 @tf_export('keras.callbacks.TensorBoard')
 class TensorBoard(Callback):
