@@ -198,7 +198,7 @@ class CheckpointInputPipelineHook(session_run_hook.SessionRunHook):
     # is run *after* this hook. That is troublesome because
     # 1. If a checkpoint exists and this hook restores it, the initializer hook
     #    will override it.
-    # 2. If no checkpoint exists, this hook will try to save an initialized
+    # 2. If no checkpoint exists, this hook will try to save an uninitialized
     #    iterator which will result in an exception.
     #
     # As a temporary fix we enter the following implicit contract between this
