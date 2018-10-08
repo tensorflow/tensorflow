@@ -1151,11 +1151,14 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->output_data_types.push_back(ConvertDataType(output_type));
   } else if (op_def != nullptr) {
     for (const auto& output_arg : op_def->output_arg()) {
-      if (HasAttr(node, output_arg.type_attr())) {
+      if (output_arg.type() != tensorflow::DT_INVALID) {
+        op->output_data_types.push_back(ConvertDataType(output_arg.type()));
+      } else if (HasAttr(node, output_arg.type_attr())) {
         op->output_data_types.push_back(
             ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
       } else {
-        LOG(INFO) << "Op node missing output type attribute: " << node.name();
+        LOG(WARNING) << "Op node missing output type attribute: "
+                     << node.name();
         op->output_data_types.clear();
         break;
       }
