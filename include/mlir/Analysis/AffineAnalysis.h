@@ -25,6 +25,7 @@
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
 
@@ -36,6 +37,8 @@ class AffineExpr;
 template <typename T> class AffineExprBaseRef;
 using AffineExprRef = AffineExprBaseRef<detail::AffineExpr>;
 class MLIRContext;
+class MLValue;
+class OperationStmt;
 
 /// Simplify an affine expression through flattening and some amount of
 /// simple analysis. This has complexity linear in the number of nodes in
@@ -43,6 +46,13 @@ class MLIRContext;
 //  expression if it can't be simplified.
 AffineExprRef simplifyAffineExpr(AffineExprRef expr, unsigned numDims,
                                  unsigned numSymbols);
+
+/// Returns the sequence of AffineApplyOp OperationStmts operation in
+/// 'affineApplyOps', which are reachable via a search starting from 'operands',
+/// and ending at operands which are not defined by AffineApplyOps.
+void getReachableAffineApplyOps(
+    const llvm::SmallVector<MLValue *, 4> &operands,
+    llvm::SmallVector<OperationStmt *, 4> *affineApplyOps);
 
 } // end namespace mlir
 

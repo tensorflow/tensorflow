@@ -23,6 +23,7 @@
 #define MLIR_ANALYSIS_AFFINE_STRUCTURES_H
 
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -44,9 +45,14 @@ public:
   MutableAffineMap(AffineMap *map, MLIRContext *context);
 
   AffineExprRef getResult(unsigned idx) const { return results[idx]; }
+  void setResult(unsigned idx, AffineExprRef result) { results[idx] = result; }
   unsigned getNumResults() const { return results.size(); }
   unsigned getNumDims() const { return numDims; }
+  void setNumDims(unsigned d) { numDims = d; }
   unsigned getNumSymbols() const { return numSymbols; }
+  void setNumSymbols(unsigned d) { numSymbols = d; }
+  MLIRContext *getContext() const { return context; }
+
   /// Returns true if the idx'th result expression is a multiple of factor.
   bool isMultipleOf(unsigned idx, int64_t factor) const;
 
@@ -112,6 +118,8 @@ public:
   AffineValueMap(const AffineApplyOp &op, MLIRContext *context);
   AffineValueMap(const AffineBound &bound, MLIRContext *context);
   AffineValueMap(AffineMap *map, MLIRContext *context);
+  AffineValueMap(AffineMap *map, ArrayRef<MLValue *> operands,
+                 MLIRContext *context);
 
   ~AffineValueMap();
 
@@ -128,6 +136,10 @@ public:
   void fwdSubstitute(const AffineValueMap &inputMap);
   void fwdSubstitute(const AffineApplyOp &inputOp);
 
+  // TODO(andydavis, bondhugula) Expose an affine map simplify function, which
+  // can be used to amortize the cost of simplification over multiple fwd
+  // substitutions).
+
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;
@@ -138,6 +150,11 @@ public:
 
   /// Return true if this is an identity map.
   bool isIdentity() const;
+
+  unsigned getNumOperands() const;
+  SSAValue *getOperand(unsigned i) const;
+  ArrayRef<MLValue *> getOperands() const;
+  AffineMap *getAffineMap();
 
 private:
   // A mutable affine map.

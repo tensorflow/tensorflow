@@ -51,6 +51,9 @@ FunctionPass *createSimplifyAffineExprPass();
 /// memory hierarchy.
 MLFunctionPass *createPipelineDataTransferPass();
 
+/// Creates a pass which composes all affine maps applied to loads and stores.
+MLFunctionPass *createComposeAffineMapsPass();
+
 /// Replaces all ML functions in the module with equivalent CFG functions.
 /// Function references are appropriately patched to refer to the newly
 /// generated CFG functions.

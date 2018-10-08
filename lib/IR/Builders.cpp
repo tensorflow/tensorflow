@@ -235,6 +235,15 @@ AffineMap *Builder::getDimIdentityMap() {
                         {getAffineDimExpr(0)}, {}, context);
 }
 
+AffineMap *Builder::getDimIdentityMap(unsigned rank) {
+  SmallVector<AffineExprRef, 4> dimExprs;
+  dimExprs.reserve(rank);
+  for (unsigned i = 0; i < rank; ++i)
+    dimExprs.push_back(getAffineDimExpr(i));
+  return AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/0, dimExprs, {},
+                        context);
+}
+
 AffineMap *Builder::getSymbolIdentityMap() {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/1,
                         {getAffineSymbolExpr(0)}, {}, context);

@@ -21,10 +21,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineExprVisitor.h"
+#include "mlir/IR/MLValue.h"
+#include "mlir/IR/StandardOps.h"
+#include "mlir/IR/Statements.h"
 #include "llvm/ADT/ArrayRef.h"
 
 using namespace mlir;
+using namespace llvm;
 
 /// Constructs an affine expression from a flat ArrayRef. If there are local
 /// identifiers (neither dimensional nor symbolic) that appear in the sum of
@@ -294,4 +299,45 @@ AffineExprRef mlir::simplifyAffineExpr(AffineExprRef expr, unsigned numDims,
   flattener.operandExprStack.pop_back();
   assert(flattener.operandExprStack.empty());
   return simplifiedExpr;
+}
+
+/// Returns the sequence of AffineApplyOp OperationStmts operation in
+/// 'affineApplyOps', which are reachable via a search starting from 'operands',
+/// and ending at operands which are not defined by AffineApplyOps.
+// TODO(andydavis) Consider moving this method to AffineValueMap.
+void mlir::getReachableAffineApplyOps(
+    const SmallVector<MLValue *, 4> &operands,
+    SmallVector<OperationStmt *, 4> *affineApplyOps) {
+  struct State {
+    MLValue *value;
+    unsigned operandIndex;
+  };
+  SmallVector<State, 4> worklist;
+  for (auto *operand : operands) {
+    worklist.push_back({operand, 0});
+  }
+
+  while (!worklist.empty()) {
+    State &state = worklist.back();
+    auto *opStmt = state.value->getDefiningStmt();
+    // Note: getDefiningStmt will return nullptr if the operand is not an
+    // OperationStmt (i.e. ForStmt), which is a terminator for the search.
+    if (opStmt == nullptr || !opStmt->is<AffineApplyOp>()) {
+      worklist.pop_back();
+      continue;
+    }
+    if (auto affineApplyOp = opStmt->getAs<AffineApplyOp>()) {
+      if (state.operandIndex == 0) {
+        // Pre-Visit: Add 'opStmt' to reachable sequence.
+        affineApplyOps->push_back(opStmt);
+      }
+      if (state.operandIndex < opStmt->getNumOperands()) {
+        // Visit: Add next 'affineApplyOp' operand to worklist.
+        worklist.push_back({opStmt->getOperand(state.operandIndex++), 0});
+      } else {
+        // Post-visit: done visiting operands AffineApplyOp, pop off stack.
+        worklist.pop_back();
+      }
+    }
+  }
 }

@@ -51,10 +51,6 @@ FunctionPass *mlir::createSimplifyAffineExprPass() {
   return new SimplifyAffineExpr();
 }
 
-AffineMap *MutableAffineMap::getAffineMap() {
-  return AffineMap::get(numDims, numSymbols, results, rangeSizes, context);
-}
-
 PassResult SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
   struct MapSimplifier : public StmtWalker<MapSimplifier> {
     MLIRContext *context;

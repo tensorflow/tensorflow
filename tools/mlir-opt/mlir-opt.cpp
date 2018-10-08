@@ -66,6 +66,7 @@ static cl::opt<bool>
                       cl::init(false));
 
 enum Passes {
+  ComposeAffineMaps,
   ConstantFold,
   ConvertToCFG,
   LoopUnroll,
@@ -79,7 +80,9 @@ enum Passes {
 
 static cl::list<Passes> passList(
     "", cl::desc("Compiler passes to run"),
-    cl::values(clEnumValN(ConstantFold, "constant-fold",
+    cl::values(clEnumValN(ComposeAffineMaps, "compose-affine-maps",
+                          "Compose affine maps"),
+               clEnumValN(ConstantFold, "constant-fold",
                           "Constant fold operations in functions"),
                clEnumValN(ConvertToCFG, "convert-to-cfg",
                           "Convert all ML functions in the module to CFG ones"),
@@ -171,6 +174,9 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     auto passKind = passList[i];
     Pass *pass = nullptr;
     switch (passKind) {
+    case ComposeAffineMaps:
+      pass = createComposeAffineMapsPass();
+      break;
     case ConstantFold:
       pass = createConstantFoldPass();
       break;
