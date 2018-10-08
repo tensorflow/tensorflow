@@ -5197,6 +5197,19 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "control_flow_ops_benchmark",
+    srcs = ["ops/control_flow_ops_benchmark.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":constant_op",
+        ":control_flow_ops",
+        ":framework_ops",
+        "//tensorflow/python/eager:function",
+    ],
+    main = "ops/control_flow_ops_benchmark.py",
+)
+
+cuda_py_test(
     name = "conv2d_benchmark",
     size = "large",
     srcs = ["ops/conv2d_benchmark.py"],
