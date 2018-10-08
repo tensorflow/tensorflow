@@ -4140,10 +4140,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-
-    if op is not None and not isinstance(op, Operation):
-      # We always want to colocate with the reference op.
-      op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+    op = _op_to_colocate_with(op)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -6166,6 +6163,29 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
   raise TypeError(("Can't convert Operation '%s' to Tensor "
                    "(target dtype=%r, name=%r, as_ref=%r)") % (op.name, dtype,
                                                                name, as_ref))
+
+
+def _op_to_colocate_with(v):
+  """Operation object corresponding to v to use for colocation constraints."""
+  if v is None:
+    return None
+  if isinstance(v, Operation):
+    return v
+  # We always want to colocate with the reference op.
+  # When 'v' is a ResourceVariable, the reference op is the handle creating op.
+  #
+  # What this should be is:
+  # if isinstance(v, ResourceVariable):
+  #   return v.handle.op
+  # However, that would require a circular import dependency.
+  # As of October 2018, there were attempts underway to remove
+  # colocation constraints altogether. Assuming that will
+  # happen soon, perhaps this hack to work around the circular
+  # import dependency is acceptable.
+  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
+      v.handle.op, Operation):
+    return v.handle.op
+  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
 
 
 register_tensor_conversion_function(Operation, _operation_conversion_error)
