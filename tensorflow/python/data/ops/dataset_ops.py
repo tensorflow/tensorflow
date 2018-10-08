@@ -2254,18 +2254,34 @@ class ShuffleDataset(UnaryDataset):
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
-    self._seed, self._seed2 = random_seed.get_seed(seed)
+
+    # NOTE(mrry): We generate the seed-pair once per graph in which the dataset
+    # is iterated over, and cache it in `self._graph_seed_map`. This supports
+    # two features: iterating over the same `ShuffleDataset` twice in the same
+    # pipeline and observing the same order (by tying the seeds together with
+    # a randomly-generated seed), and using `Dataset.make_one_shot_iterator()`,
+    # which requires the stateful RNG op to be created inside the same graph as
+    # the dataset.
+    self._original_seed = seed
+    self._graph_seed_map = {}
+
     if reshuffle_each_iteration is None:
       self._reshuffle_each_iteration = True
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
 
   def _as_variant_tensor(self):
+    try:
+      seed, seed2 = self._graph_seed_map[ops.get_default_graph()]
+    except KeyError:
+      seed, seed2 = random_seed.get_seed(self._original_seed)
+      self._graph_seed_map[ops.get_default_graph()] = (seed, seed2)
+
     return gen_dataset_ops.shuffle_dataset(
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
-        seed=self._seed,
-        seed2=self._seed2,
+        seed=seed,
+        seed2=seed2,
         reshuffle_each_iteration=self._reshuffle_each_iteration,
         **flat_structure(self))
 

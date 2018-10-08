@@ -453,6 +453,18 @@ cuda_py_test(
     tags = ["no_windows_gpu"],
 )
 
+py_test(
+    name = "random_dataset_test",
+    srcs = ["random_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/data/experimental/ops:random_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "reader_dataset_ops_test_base",
     testonly = 1,
@@ -562,6 +574,7 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
