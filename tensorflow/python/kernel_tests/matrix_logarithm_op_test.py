@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -159,7 +160,7 @@ class MatrixLogarithmBenchmark(test.Benchmark):
   def benchmarkMatrixLogarithmOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
-          session.Session() as sess, \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         logm = gen_linalg_ops.matrix_logarithm(matrix)
