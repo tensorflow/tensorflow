@@ -1,6 +1,16 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.5)
 
+if(WIN32)
+	if(${CMAKE_VERSION} VERSION_LESS "3.8")
+		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake.")
+	else()
+		if(NOT CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE OR NOT "${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}" STREQUAL "x64")
+			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake.")
+		endif()
+	endif()
+endif()
+
 # Project
 project(tensorflow C CXX)
 
