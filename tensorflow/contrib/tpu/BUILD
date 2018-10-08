@@ -299,6 +299,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         ":datasets",
     ],
+    flaky = 1,  # TODO(b/117363808): fails 1/1000 OSS runs
     grpc_enabled = True,
 )
 
