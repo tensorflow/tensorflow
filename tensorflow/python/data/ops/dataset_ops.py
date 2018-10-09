@@ -733,6 +733,11 @@ class Dataset(object):
   def shuffle(self, buffer_size, seed=None, reshuffle_each_iteration=None):
     """Randomly shuffles the elements of this dataset.
 
+    This dataset fills a buffer with `buffer_size` elements, then randomly
+    samples elements from this buffer, replacing the selected elements with new
+    elements. For perfect shuffling, a buffer size greater than or equal to the
+    full size of the dataset is required.
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
         number of elements from this dataset from which the new
