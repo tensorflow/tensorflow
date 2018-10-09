@@ -91,6 +91,7 @@ class Static(NoValue):
   DEFINED_VARS_IN = (
       'Symbols defined when entering the node. See reaching_definitions.py.')
   LIVE_VARS_OUT = ('Symbols live when exiting the node. See liveness.py.')
+  LIVE_VARS_IN = ('Symbols live when entering the node. See liveness.py.')
 
 
 FAIL = object()

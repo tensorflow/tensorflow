@@ -22,6 +22,10 @@ Once built, the CFG itself is immutable, but the values it holds need not be;
 they are usually annotated with information extracted by walking the graph.
 """
 
+# TODO(mdan): The notion of 'statements' below is inaccurate.
+# They should rather be called 'block statements', because they include
+# statements that may have a body, e.g. if and while.
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -763,9 +767,9 @@ class AstToCfg(gast.NodeVisitor):
 
     self.builder.enter_section(node)
 
-    # TODO(mdan): Strictly speaking, this should be node.target + node.iter.
-    # A blind dataflow analysis would have to process both node.target and
-    # node.iter to properly process read and write access.
+    # Note: Strictly speaking, this should be node.target + node.iter.
+    # However, the activity analysis accounts for this inconsistency,
+    # so dataflow analysis produces the correct values.
     self.builder.enter_loop_section(node, node.iter)
     for stmt in node.body:
       self.visit(stmt)
