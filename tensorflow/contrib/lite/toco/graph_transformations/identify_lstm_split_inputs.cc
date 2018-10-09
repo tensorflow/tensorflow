@@ -25,19 +25,22 @@ limitations under the License.
 
 namespace toco {
 
-bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status SplitLstmCellInputs::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
+  *modified = false;
   // Find lstm cell.
   auto op_it = model->operators.begin() + op_index;
   auto curr_op = op_it->get();
   if (curr_op->type != OperatorType::kLstmCell) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   const auto* curr_lstm_op = static_cast<LstmCellOperator*>(curr_op);
   // Already an extended LstmCell. Do not need to split cell inputs.
   if (curr_lstm_op->kernel_type != LstmCellOperator::KERNEL_BASIC ||
       curr_lstm_op->inputs.size() != LstmCellOperator::NUM_INPUTS) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Make sure the WEIGHTS_INPUT and BIASES_INPUT are constant arrays,
@@ -46,13 +49,13 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
           *model, curr_op->inputs[LstmCellOperator::WEIGHTS_INPUT]) ||
       !IsConstantParameterArray(
           *model, curr_op->inputs[LstmCellOperator::BIASES_INPUT])) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Make sure propagate_fixed_sizes has defined the size of the output.
   if (!model->GetArray(curr_op->outputs[LstmCellOperator::ACTIV_OUTPUT])
            .has_shape()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Emplace a new LstmCell operator with extended inputs (kernel/lstm.cc).
@@ -168,7 +171,8 @@ bool SplitLstmCellInputs::Run(Model* model, std::size_t op_index) {
   DeleteArrayIfUnused(curr_op->inputs[LstmCellOperator::BIASES_INPUT], model);
   model->operators.erase(FindOp(*model, curr_op));
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco
