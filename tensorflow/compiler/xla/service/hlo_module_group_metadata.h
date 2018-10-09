@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -102,14 +102,14 @@ class HloModuleGroupMetadata {
     HloInstruction* recv_done = nullptr;
   };
 
-  explicit HloModuleGroupMetadata(const std::vector<HloModule*>& modules)
-      : modules_(modules) {}
+  explicit HloModuleGroupMetadata(absl::Span<HloModule* const> modules)
+      : modules_(modules.begin(), modules.end()) {}
 
   ~HloModuleGroupMetadata() = default;
 
   // Build and return the metadata for the given modules.
   static StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
-      const std::vector<HloModule*>& modules);
+      absl::Span<HloModule* const> modules);
 
   // Returns true if the instruction is one of the 4 channel instructions (Send,
   // Recv, SendDone, RecvDone).
@@ -250,33 +250,33 @@ class HloModuleGroupMetadata {
   std::vector<std::unique_ptr<std::vector<HloInstruction*>>> companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int64> companion_set_index_;
+  absl::flat_hash_map<const HloInstruction*, int64> companion_set_index_;
 
   // Map from computation to the instruction using it (a kWhile, kConditional).
-  tensorflow::gtl::FlatMap<const HloComputation*, TrackedInstruction>
+  absl::flat_hash_map<const HloComputation*, TrackedInstruction>
       tracked_instructions_;
 
   // Maps tracked instructions (kWhile, kConditional, kCall, ...) to the set of
   // communicating instructions within the proper called computation(s).
-  tensorflow::gtl::FlatMap<HloInstruction*, std::vector<HloInstruction*>>
+  absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
       tracked_instructions_comms_;
 
   // All channels in the module.
   std::vector<Channel> channels_;
 
   // Map from channel ids to the index in channels_.
-  tensorflow::gtl::FlatMap<int64, int64> channel_id_map_;
+  absl::flat_hash_map<int64, int64> channel_id_map_;
 
   // Map from all-reduce ids to the all reduce instructions.
-  tensorflow::gtl::FlatMap<int64, std::vector<HloInstruction*>> all_reduce_map_;
+  absl::flat_hash_map<int64, std::vector<HloInstruction*>> all_reduce_map_;
 
   // The maximum channel id used in the module group.
   int64 max_channel_id_ = -1;
 
   // The modules that this metadata was built from.
-  const std::vector<HloModule*>& modules_;
+  const std::vector<HloModule*> modules_;
 
-  tensorflow::gtl::FlatMap<HloModule*, std::unique_ptr<TuplePointsToAnalysis>>
+  absl::flat_hash_map<HloModule*, std::unique_ptr<TuplePointsToAnalysis>>
       points_to_analyses_;
 };
 

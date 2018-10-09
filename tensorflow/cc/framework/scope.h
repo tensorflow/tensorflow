@@ -133,6 +133,10 @@ class Scope {
   /// the device field set to 'device'.
   Scope WithDevice(const string& device) const;
 
+  /// Returns a new scope.  All ops created within the returned scope will have
+  /// their assigned device set to `assigned_device`.
+  Scope WithAssignedDevice(const string& assigned_device) const;
+
   /// Return a new scope. All ops created within the returned scope will be
   /// co-located on the device where op is placed.
   /// NOTE: This function is intended to be use internal libraries only for

@@ -172,6 +172,43 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def testInputSpecGraphFunction(self):
+    matmul = function.defun(math_ops.matmul)
+
+    @function.defun
+    def sq(a):
+      return matmul(a, a)
+
+    sq_op = sq.get_concrete_function(
+        tensor_spec.TensorSpec((None, None), dtypes.float32))
+    self.assertEqual([None, None], sq_op.output_shapes.as_list())
+
+    t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    out1 = sq_op(t1)
+    self.assertAllEqual(out1, math_ops.matmul(t1, t1).numpy())
+
+    t2 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    out2 = sq_op(t2)
+    self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
+
+  def testNestedInputSpecGraphFunction(self):
+    matmul = function.defun(math_ops.matmul)
+
+    @function.defun
+    def sq(mats):
+      ((a, b),) = mats
+      return matmul(a, b)
+
+    sq_op = sq.get_concrete_function(
+        [(tensor_spec.TensorSpec((None, None), dtypes.float32),
+          tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    self.assertEqual([None, None], sq_op.output_shapes.as_list())
+
+    t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    t2 = constant_op.constant([[1.4, 2.4], [3.4, 4.4]])
+    out = sq_op(t1, t2)  # Flattened structure for inputs to the graph function
+    self.assertAllEqual(out, math_ops.matmul(t1, t2).numpy())
+
   def testExecutingStatelessDefunConcurrently(self):
 
     @function.defun
@@ -249,7 +286,23 @@ class FunctionTest(test.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertAllEqual(sess.run(g), [[1.0]])
+      self.assertAllEqual(sess.run(g).values, [[1.0]])
+
+  def testNoSymGradNestedDefun(self):
+
+    @function.defun
+    def outer():
+
+      @function.defun
+      def f(x):
+        return array_ops.gather_nd(x, [[0]])
+
+      c = constant_op.constant([[2.]])
+      f_c = f(c)
+      g, = gradients_impl.gradients(f_c, c)
+      self.assertTrue(isinstance(g, ops.IndexedSlices))
+
+    outer()
 
   def testNestedInputsGraphFunction(self):
     matmul = function.defun(math_ops.matmul)
@@ -1237,6 +1290,62 @@ class FunctionTest(test.TestCase):
     x = constant_op.constant([1.0, 2.0])
     self.assertAllEqual([2., 4.], self.evaluate(defined(x)))
 
+  def testCacheObjectHashCollisions(self):
+
+    class Foo(object):
+
+      def __hash__(self):
+        return 42
+
+    def func(foo):
+      del foo
+      return
+
+    defined = function.defun(func)
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 1)
+
+    defined(Foo())
+    self.assertEqual(len(defined._function_cache), 2)
+
+  def testCacheTensorShapeDtypeCollision(self):
+
+    def func(t):
+      return t + t
+
+    defined = function.defun(func)
+    t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
+    defined(t)
+    self.assertEqual(len(defined._function_cache), 1)
+
+    t = constant_op.constant([1.0], dtype=dtypes.complex128)
+    defined(t)
+    self.assertEqual(len(defined._function_cache), 2)
+
+  def testCacheTensorUnknownShapesCollision(self):
+
+    def func(t):
+      return t + t
+
+    with context.graph_mode(), self.cached_session():
+      defined = function.defun(func)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 1)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 2)
+
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+      defined(p)
+      self.assertEqual(len(defined._function_cache), 3)
+
+      t = constant_op.constant(1.0, dtype=dtypes.float32)
+      defined(t)
+      self.assertEqual(len(defined._function_cache), 4)
+
   def testPythonFunctionWithDefaultArgs(self):
 
     def func(foo, bar=1, baz=2):
@@ -1250,20 +1359,20 @@ class FunctionTest(test.TestCase):
 
     def cache_keys():
       """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[:3] for key in defined._function_cache)
+      return tuple(key[0] for key in defined._function_cache)
 
     # `True` corresponds to the fact that we're executing eagerly
-    self.assertIn((0, 1, 20), cache_keys())
+    self.assertIn(('URRR', (0, 1, 20)), cache_keys())
 
     defined(1)  # bar=1, baz=2
-    self.assertIn((1, 1, 2), cache_keys())
+    self.assertIn(('URRR', (1, 1, 2)), cache_keys())
 
     # This matches the previous call.
     defined(foo=1)
     self.assertEqual(len(defined._function_cache), 2)
 
     defined(1, 2, 3)
-    self.assertIn((1, 2, 3), cache_keys())
+    self.assertIn(('URRR', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
@@ -1669,12 +1778,38 @@ class FunctionTest(test.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 2)
+        self.assertEqual(len(graph._functions), 6)
+        # two sets of functions, each of them are (inference, forward, backward)
         functions = list(graph._functions.values())
-        pre_register_matmul_func_name = functions[0].definition.signature.name
-        self.assertRegexpMatches(pre_register_matmul_func_name, '.*matmul.*')
-        pre_register_add_func_name = functions[1].definition.signature.name
-        self.assertRegexpMatches(pre_register_add_func_name, '.*add.*')
+        captured_function_names = [
+            f.definition.signature.name for f in functions
+        ]
+        expected_func_name_regex = [
+            '.*inference.*matmul.*',
+            '.*forward.*matmul.*',
+            '.*inference.*backward.*matmul.*',
+            '.*inference.*add.*',
+            '.*forward.*add.*',
+            '.*inference.*backward.*add.*',
+        ]
+        for i in range(len(functions)):
+          self.assertRegexpMatches(captured_function_names[i],
+                                   expected_func_name_regex[i])
+
+        # Check the forward and backward function has the correct attributes.
+        self.assertEquals(
+            functions[1].definition.attr['backward_function_name'].s,
+            functions[2].name)
+        self.assertEquals(
+            functions[2].definition.attr['forward_function_name'].s,
+            functions[1].name)
+
+        self.assertEquals(
+            functions[4].definition.attr['backward_function_name'].s,
+            functions[5].name)
+        self.assertEquals(
+            functions[5].definition.attr['forward_function_name'].s,
+            functions[4].name)
 
         sq = defun_matmul(t, t)
         double = add(t, t)
@@ -1682,12 +1817,11 @@ class FunctionTest(test.TestCase):
         self.assertAllEqual(double.eval().reshape(-1), [2, 4, 6, 8])
         # Make sure the pre registered function is used, and no other function
         # is added.
-        self.assertEqual(len(graph._functions), 2)
+        self.assertEqual(len(graph._functions), 6)
         functions = list(graph._functions.values())
-        called_func_name = functions[0].definition.signature.name
-        self.assertEqual(pre_register_matmul_func_name, called_func_name)
-        called_func_name = functions[1].definition.signature.name
-        self.assertEqual(pre_register_add_func_name, called_func_name)
+        for i in range(len(functions)):
+          self.assertEquals(captured_function_names[i],
+                            functions[i].definition.signature.name)
 
   def testRegisterFunctionWithInputSignature(self):
     def matmul(x, y):
@@ -1705,13 +1839,12 @@ class FunctionTest(test.TestCase):
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 1)
+        self.assertEqual(len(graph._functions), 3)
 
-        # Test input param shape mismatch
-        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        with self.assertRaisesRegexp(
-            ValueError, 'Python inputs incompatible with input_signature'):
-          function.register(defun_matmul, t2, t2)
+        # Test register function with cache, note inputs are ignored.
+        function.register(defun_matmul)
+        graph = ops.get_default_graph()
+        self.assertEqual(len(graph._functions), 3)
 
   def testRegisterFunctionWithCache(self):
     def matmul(x, y):
@@ -1728,7 +1861,7 @@ class FunctionTest(test.TestCase):
         graph = ops.get_default_graph()
         # Only one function is registered since the input param are in same type
         # pylint: disable=protected-access
-        self.assertEqual(len(graph._functions), 1)
+        self.assertEqual(len(graph._functions), 3)
 
   def testCallingFunctionWithDifferentVariables(self):
 
@@ -1767,7 +1900,8 @@ class FunctionTest(test.TestCase):
                                  'be Tensors;.*'):
       graph_function('Not a Tensor.')
 
-  def testSwapImplementationWithGrapplerPlugin(self):
+  # TODO(scottzhu): Revive the test once the grappler plugin is updated.
+  def disabled_testSwapImplementationWithGrapplerPlugin(self):
     rewrites = rewriter_config_pb2.RewriterConfig()
     # function_optimizer has to be turn off, otherwise it will delete the
     # registered function if it does not get called.

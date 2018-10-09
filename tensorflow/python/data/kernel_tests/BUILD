@@ -115,8 +115,10 @@ tf_py_test(
     srcs = ["dataset_ops_test.py"],
     additional_deps = [
         ":test_base",
-        "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -168,20 +170,6 @@ tf_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-tf_py_test(
-    name = "inputs_test",
-    size = "small",
-    srcs = ["inputs_test.py"],
-    additional_deps = [
-        ":test_base",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -303,7 +291,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "multi_device_iterator_test",
-    size = "small",
+    size = "medium",
     srcs = ["multi_device_iterator_test.py"],
     additional_deps = [
         ":test_base",
@@ -405,6 +393,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "reduce_dataset_op_test",
+    size = "small",
+    srcs = ["reduce_dataset_op_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "sequence_dataset_op_test",
     size = "small",
     srcs = ["sequence_dataset_op_test.py"],
@@ -437,12 +443,15 @@ tf_py_test(
     srcs = ["shuffle_dataset_op_test.py"],
     additional_deps = [
         ":test_base",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
@@ -453,6 +462,9 @@ py_library(
     srcs = ["test_base.py"],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/util:nest",
     ],
 )
 

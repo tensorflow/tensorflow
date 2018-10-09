@@ -141,14 +141,21 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       else:
         assert False
 
-  def _update(self, var, fn, *args, **kwargs):
-    with ops.device(self._device), distribute_lib.UpdateContext(self._device):
-      return fn(var, *args, **kwargs)
+  def _update(self, var, options, fn, *args, **kwargs):
+    # The implementations of _update() and _update_non_slot() are identical
+    # except _update() passes `var` as the first argument to `fn()`.
+    return self._update_non_slot(var, options, fn, var, *args, **kwargs)
 
-  def _update_non_slot(self, colocate_with, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
     del colocate_with
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
-      return fn(*args, **kwargs)
+      result = fn(*args, **kwargs)
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
 
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""

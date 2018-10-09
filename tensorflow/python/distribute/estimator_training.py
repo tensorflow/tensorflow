@@ -62,7 +62,7 @@ def _get_global_id(cluster_spec, task_type, task_id, chief_task_type):
 
   # Sort task names in cluster by "chief"/"master", "evaluator", "worker"
   # and "ps". More details can be found at the documentation of
-  # @{tf.estimator.RunConfig.global_id_in_cluster}.
+  # `tf.estimator.RunConfig.global_id_in_cluster`.
   task_type_ordered_list = []
   if chief_task_type in cluster_spec.jobs:
     task_type_ordered_list = [chief_task_type]

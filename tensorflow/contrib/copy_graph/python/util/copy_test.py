@@ -36,7 +36,7 @@ class CopyVariablesTest(test.TestCase):
 
     with graph1.as_default():
       #Define a Variable in graph1
-      some_var = variables.Variable(2)
+      some_var = variables.VariableV1(2)
       #Initialize session
       sess1 = session_lib.Session()
       #Initialize the Variable
@@ -72,7 +72,7 @@ class CopyOpsTest(test.TestCase):
     with graph1.as_default():
       #Initialize a basic expression y = ax + b
       x = array_ops.placeholder("float")
-      a = variables.Variable(3.0)
+      a = variables.VariableV1(3.0)
       b = constant_op.constant(4.0)
       ax = math_ops.multiply(x, a)
       y = math_ops.add(ax, b)

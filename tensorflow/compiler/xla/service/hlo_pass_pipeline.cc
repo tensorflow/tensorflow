@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -74,8 +75,8 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
 std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
     const DebugOptions& debug_options) {
   auto repeated_field = debug_options.xla_disable_hlo_passes();
-  tensorflow::gtl::FlatSet<string> disabled_pass_names(repeated_field.begin(),
-                                                       repeated_field.end());
+  absl::flat_hash_set<string> disabled_pass_names(repeated_field.begin(),
+                                                  repeated_field.end());
   if (!disabled_pass_names.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
             << absl::StrJoin(disabled_pass_names, ", ");
@@ -98,7 +99,7 @@ void HloPassPipeline::MaybeDumpHlo(const HloModule& module,
   if (!proto_dump_path.empty()) {
     static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
     static auto* const module_id_to_pass_number =
-        new tensorflow::gtl::FlatMap<int64, int64>();
+        new absl::flat_hash_map<int64, int64>();
 
     tensorflow::mutex_lock lock(mu);
     const int64 pass_number = (*module_id_to_pass_number)[module.unique_id()]++;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -61,10 +62,10 @@ std::unordered_map<string, string> GetClusters(const Graph& graph) {
   return ids;
 }
 
-gtl::FlatMap<string, std::vector<string>> GetClusterSets(
+absl::flat_hash_map<string, std::vector<string>> GetClusterSets(
     const Graph& g, std::vector<string>* cluster_names = nullptr) {
   CHECK(cluster_names == nullptr || cluster_names->empty());
-  gtl::FlatMap<string, std::vector<string>> cluster_sets;
+  absl::flat_hash_map<string, std::vector<string>> cluster_sets;
   for (const auto& p : GetClusters(g)) {
     cluster_sets[p.second].push_back(p.first);
   }
@@ -566,7 +567,7 @@ TEST(XlaCompilationTest, ResourcesClusteringAllowed) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_EXPECT_OK(root.ToGraph(graph.get()));
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
-  gtl::FlatMap<string, std::vector<string>> cluster_sets =
+  absl::flat_hash_map<string, std::vector<string>> cluster_sets =
       GetClusterSets(*graph);
   ASSERT_EQ(cluster_sets.size(), 1);
   std::vector<string> expected_clustered_nodes = {"AssignmentW", "ReadR",
@@ -586,7 +587,7 @@ TEST(XlaCompilationTest, ResourcesClusteringDisallowed) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_EXPECT_OK(root.ToGraph(graph.get()));
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
-  gtl::FlatMap<string, std::vector<string>> cluster_sets =
+  absl::flat_hash_map<string, std::vector<string>> cluster_sets =
       GetClusterSets(*graph);
   ASSERT_EQ(cluster_sets.size(), 1);
   std::vector<string> expected_clustered_nodes = {"AssignmentW",
@@ -616,7 +617,7 @@ TEST(XlaCompilationTest, ChainOfOps) {
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
 
   std::vector<string> cluster_names;
-  gtl::FlatMap<string, std::vector<string>> cluster_sets =
+  absl::flat_hash_map<string, std::vector<string>> cluster_sets =
       GetClusterSets(*graph, &cluster_names);
 
   ASSERT_EQ(cluster_sets.size(), 2);

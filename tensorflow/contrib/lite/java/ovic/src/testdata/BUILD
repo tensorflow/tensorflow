@@ -14,6 +14,9 @@ filegroup(
 )
 
 exports_files(
-    ["labels.txt"],
+    [
+        "labels.txt",
+        "coco_labels.txt",
+    ],
     visibility = ["//visibility:public"],
 )

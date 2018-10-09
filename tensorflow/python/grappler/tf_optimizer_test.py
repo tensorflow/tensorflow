@@ -57,7 +57,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
-      a1 = variables.Variable(
+      a1 = variables.VariableV1(
           1.0)  # Must be preserved since it's in the collection 'variables'.
       a2 = constant_op.constant(0, shape=[50, 50], name='keep')
       ops.add_to_collection('a2', a2)  # Explicitly add to collection.

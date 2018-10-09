@@ -60,7 +60,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     # We'll create an input graph that has a single variable containing 1.0,
     # and that then multiplies it by 2.
     with ops.Graph().as_default():
-      variable_node = variables.Variable(1.0, name="variable_node")
+      variable_node = variables.VariableV1(1.0, name="variable_node")
       output_node = math_ops.multiply(variable_node, 2.0, name="output_node")
       sess = session.Session()
       init = variables.global_variables_initializer()
@@ -138,7 +138,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
       features = parsing_ops.parse_example(examples, feature_configs)
       feature = features[feature_name]
 
-      variable_node = variables.Variable(1.0, name="variable_node")
+      variable_node = variables.VariableV1(1.0, name="variable_node")
       scores = math_ops.multiply(variable_node, feature, name="output_node")
       class_feature = array_ops.fill(array_ops.shape(feature),
                                      "class_%s" % feature_name)
@@ -174,7 +174,7 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     output_graph_filename = os.path.join(tmp_dir, "output_graph.pb")
 
     with ops.Graph().as_default():
-      variable_node = variables.Variable(1.0, name="variable_node")
+      variable_node = variables.VariableV1(1.0, name="variable_node")
       output_node = math_ops.multiply(variable_node, 2.0, name="output_node")
       sess = session.Session()
       init = variables.global_variables_initializer()

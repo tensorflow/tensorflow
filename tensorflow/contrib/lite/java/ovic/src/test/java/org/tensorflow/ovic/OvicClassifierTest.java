@@ -1,4 +1,4 @@
-/*Copyright 2018 Google LLC
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public final class OvicClassifierTest {
   private MappedByteBuffer lowResModel = null;
   private ByteBuffer testImage = null;
   private ByteBuffer lowResTestImage = null;
-  private OvicSingleImageResult testResult = null;
+  private OvicClassificationResult testResult = null;
   private static final String LABELS_PATH =
       "tensorflow/contrib/lite/java/ovic/src/testdata/labels.txt";
   private static final String QUANTIZED_MODEL_PATH =
@@ -147,7 +147,7 @@ public final class OvicClassifierTest {
     return imgData;
   }
 
-  private static void assertCorrectTopK(OvicSingleImageResult testResult) {
+  private static void assertCorrectTopK(OvicClassificationResult testResult) {
     assertThat(testResult.topKClasses.size() > 0).isTrue();
     Boolean topKAccurate = false;
     // Assert that the correct class is in the top K.

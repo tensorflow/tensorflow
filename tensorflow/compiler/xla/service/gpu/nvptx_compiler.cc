@@ -232,14 +232,17 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // a layout-sensitive verifier!
     HloPassPipeline pipeline("layout assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(),
+        LayoutAssignment::InstructionCanChangeLayout, stream_exec);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {
     HloPassPipeline pipeline("post-layout_assignment");
-    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
-                                              /*allow_mixed_precision=*/false);
+    pipeline.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -285,8 +288,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
-    fusion.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
-                                            /*allow_mixed_precision=*/false);
+    fusion.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
@@ -298,7 +303,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
     HloPassPipeline reduce_pipeline("reduce-precision");
     reduce_pipeline.AddInvariantChecker<HloVerifier>(
-        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false);
+        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
@@ -324,8 +330,10 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
-                                            /*allow_mixed_precision=*/false);
+  pipeline.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false,
+      LayoutAssignment::InstructionCanChangeLayout);
 
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -400,7 +408,7 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
            "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
            "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
            "binary is sufficient.";
-  } else if ((vmaj < 9 || vmin < 2 || vdot < 88)) {
+  } else if (std::make_tuple(vmaj, vmin, vdot) < std::make_tuple(9, 2, 88)) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot

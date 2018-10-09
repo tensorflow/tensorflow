@@ -371,6 +371,25 @@ BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
 BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
 BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
 
+#define BM_ParseNodeNameAsStringPiece(I, NAME)                               \
+  static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) {              \
+    string input = I;                                                        \
+    for (int i = 0; i < iters; ++i) {                                        \
+      int position;                                                          \
+      const StringPiece name = ParseNodeNameAsStringPiece(input, &position); \
+      CHECK_GE(position, -1);                                                \
+      CHECK(!name.empty());                                                  \
+    }                                                                        \
+  }                                                                          \
+  BENCHMARK(BM_ParseNodeNameAsStringPiece_##NAME)
+
+BM_ParseNodeNameAsStringPiece("foo", foo);
+BM_ParseNodeNameAsStringPiece("foo/bar/baz", foo_bar_baz);
+BM_ParseNodeNameAsStringPiece("^foo/bar/baz", foo_bar_baz_ctrl);
+BM_ParseNodeNameAsStringPiece("foo:123", foo123);
+BM_ParseNodeNameAsStringPiece("foo/bar/baz:123", foo_bar_baz_123);
+BM_ParseNodeNameAsStringPiece("^foo/bar/baz:123", foo_bar_baz_123_ctrl);
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

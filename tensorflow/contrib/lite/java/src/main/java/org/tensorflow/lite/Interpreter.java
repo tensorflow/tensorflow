@@ -17,6 +17,7 @@ package org.tensorflow.lite;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -146,6 +147,20 @@ public final class Interpreter implements AutoCloseable {
   @Deprecated
   public Interpreter(@NonNull ByteBuffer byteBuffer, int numThreads) {
     this(byteBuffer, new Options().setNumThreads(numThreads));
+  }
+
+  /**
+   * Initializes a {@code Interpreter} with a {@code MappedByteBuffer} to the model file.
+   *
+   * <p>The {@code MappedByteBuffer} should remain unchanged after the construction of a {@code
+   * Interpreter}.
+   *
+   * @deprecated Prefer using the {@link #Interpreter(ByteBuffer,Options)} constructor. This method
+   *     will be removed in a future release.
+   */
+  @Deprecated
+  public Interpreter(@NonNull MappedByteBuffer mappedByteBuffer) {
+    this(mappedByteBuffer, /* options= */ null);
   }
 
   /**

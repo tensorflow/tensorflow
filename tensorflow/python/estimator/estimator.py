@@ -144,7 +144,7 @@ class Estimator(object):
           * `labels`: This is the second item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
                  single `tf.Tensor` or `dict` of same (for multi-head models).
-                 If mode is @{tf.estimator.ModeKeys.PREDICT}, `labels=None` will
+                 If mode is `tf.estimator.ModeKeys.PREDICT`, `labels=None` will
                  be passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
                  `labels=None`.
@@ -468,6 +468,10 @@ class Estimator(object):
 
       with ops.Graph().as_default():
         if self._eval_distribution:
+          # We want to create the iterations variable outside the distribution
+          # scope as that is just stored on the host and mainly used to drive
+          # the loop and doesn't need to be a Mirrored/Device variable.
+          training.get_or_create_steps_per_run_variable()
           with self._eval_distribution.scope():
             return _evaluate()
         else:
@@ -803,9 +807,9 @@ class Estimator(object):
     those features and labels, and restores the given checkpoint
     (or, lacking that, the most recent checkpoint) into the graph.
     Only one of the modes is used for saving variables to the `SavedModel`
-    (order of preference: @{tf.estimator.ModeKeys#TRAIN$TRAIN},
-    @{tf.estimator.ModeKeys#EVAL$EVAL}, then
-    @{tf.estimator.ModeKeys#PREDICT$PREDICT}), such that up to three
+    (order of preference: `tf.estimator.ModeKeys.TRAIN`,
+    `tf.estimator.ModeKeys.EVAL`, then
+    `tf.estimator.ModeKeys.PREDICT`), such that up to three
     `tf.MetaGraphDefs` are saved with a single set of variables in a single
     `SavedModel` directory.
 
@@ -1101,7 +1105,7 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection @{tf.GraphKeys#GLOBAL_STEP$GLOBAL_STEP}.
+    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
 
     Args:
       graph: The graph in which to create the global step tensor.
@@ -1414,6 +1418,36 @@ class Estimator(object):
         # It is expected to have one CheckpointSaverHook. If multiple, we pick
         # up the first one to add listener.
         saver_hooks[0]._listeners.extend(saving_listeners)  # pylint: disable=protected-access
+
+    # Add summary hooks to worker 0 if we are running with a master, to ensure
+    # that summaries are written at correct intervals even with long-running
+    # evaluations.
+    save_summary_steps = self._config.save_summary_steps
+    log_step_count_steps = self._config.log_step_count_steps
+    if (self._config.cluster_spec and self._config.cluster_spec.jobs and
+        (run_config.TaskType.MASTER in self._config.cluster_spec.jobs)):
+      # Update config values to prevent the default hooks from being created on
+      # the master or other workers.
+      save_summary_steps = 0
+      log_step_count_steps = None
+
+      if (self._config.task_type == run_config.TaskType.WORKER and
+          self._config.task_id == 0):
+        if (self._config.save_summary_steps and
+            self._config.save_summary_steps > 0):
+          worker_hooks.append(
+              training.SummarySaverHook(
+                  save_steps=self._config.save_summary_steps,
+                  output_dir=self._config.model_dir,
+                  scaffold=estimator_spec.scaffold))
+
+        if (self._config.log_step_count_steps and
+            self._config.log_step_count_steps > 0):
+          worker_hooks.append(
+              training.StepCounterHook(
+                  every_n_steps=self._config.log_step_count_steps,
+                  output_dir=self._config.model_dir))
+
     with training.MonitoredTrainingSession(
         master=self._config.master,
         is_chief=self._config.is_chief,
@@ -1423,9 +1457,9 @@ class Estimator(object):
         chief_only_hooks=(
             tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
         save_checkpoint_secs=0,  # Saving is handled by a hook.
-        save_summaries_steps=self._config.save_summary_steps,
+        save_summaries_steps=save_summary_steps,
         config=self._session_config,
-        log_step_count_steps=self._config.log_step_count_steps) as mon_sess:
+        log_step_count_steps=log_step_count_steps) as mon_sess:
       loss = None
       while not mon_sess.should_stop():
         _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])

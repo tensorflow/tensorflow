@@ -37,6 +37,7 @@ py_library(
     name = "doc_controls",
     srcs = ["doc_controls.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 py_test(
@@ -126,7 +127,6 @@ py_test(
     name = "build_docs_test",
     size = "small",
     srcs = ["build_docs_test.py"],
-    data = ["//tensorflow/docs_src"],
     srcs_version = "PY2AND3",
     tags = [
         # No reason to run sanitizers or fastbuild for this test.

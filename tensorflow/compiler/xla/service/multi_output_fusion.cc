@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/multi_output_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -50,7 +50,7 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
       all_fusion_candidates_.push_back(instruction);
 
       std::vector<HloInstruction*> candidates;
-      tensorflow::gtl::FlatSet<HloInstruction*> candidates_set;
+      absl::flat_hash_set<HloInstruction*> candidates_set;
       VLOG(10) << "Looking at instruction: " << instruction->name();
       for (auto operand : instruction->operands()) {
         // Filter out the non-interesting instructions -- they
@@ -172,7 +172,7 @@ void MultiOutputFusion::Update(HloInstruction* instr1, HloInstruction* instr2) {
   // Update the fusible list for fusion. Variable new_fusibles keeps
   // track of the new or changed entries.
   std::vector<std::pair<HloInstruction*, int64>> new_fusibles;
-  tensorflow::gtl::FlatSet<HloInstruction*> in_list;
+  absl::flat_hash_set<HloInstruction*> in_list;
   auto it = fusion_node.fusibles.begin();
   while (it != fusion_node.fusibles.end()) {
     HloInstruction* instr = it->first;

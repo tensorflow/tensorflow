@@ -200,6 +200,181 @@ if platform.system() != "Windows":
     return gen_tpu_ops.infeed_dequeue_tuple(dtypes, shapes, name=name)
   # pylint: enable=redefined-outer-name
 
+  # pylint: disable=protected-access
+  def send_tpu_embedding_gradients(inputs,
+                                   config,
+                                   learning_rates=None,
+                                   name=None):
+    """A placeholder op for feeding per-sample gradients to the embedding layer.
+
+    Args:
+      inputs: A TensorList of gradients with which to update embedding tables.
+        Contains one tensor per embedding table in the model.
+      config: Serialized TPUEmbeddingConfiguration proto.
+      learning_rates: A TensorList of float32 scalars, one for each embedding
+        table, containing the learning rates for each table when dynamic
+        learning rate is enabled through the OptimizationParameters in
+        TPUEmbeddingConfiguration. When the learning rate is constant, the list
+        should be empty (optional).
+      name: A name for the operation (optional).
+
+    Returns:
+      A SendTPUEmbeddingGradients operation.
+    """
+    if learning_rates is None:
+      learning_rates = []
+    return gen_tpu_ops._send_tpu_embedding_gradients(
+        inputs=inputs, learning_rates=learning_rates, config=config, name=name)
+
+
+  send_tpu_embedding_gradients.__doc__ = (
+      gen_tpu_ops._send_tpu_embedding_gradients.__doc__)
+
+  # pylint: disable=protected-access
+  def enqueue_tpu_embedding_integer_batch(batch,
+                                          device_ordinal,
+                                          mode_override=None,
+                                          name=None):
+    """A placeholder op for enqueueing embedding IDs to the TPU.
+
+    Args:
+      batch: A list of 1D tensors, one for each embedding table, containing the
+        indices into the tables.
+      device_ordinal: The TPU device to use. Should be >= 0 and less than the
+        number of TPU cores in the task on which the node is placed.
+      mode_override: A string input that overrides the mode specified in the
+        TPUEmbeddingConfiguration. Supported values are {'unspecified',
+        'inference', 'training', 'backward_pass_only'}. When set to
+        'unspecified', the mode set in TPUEmbeddingConfiguration is used,
+        otherwise mode_override is used (optional).
+      name: A name for the operation (optional).
+
+    Returns:
+      An EnqueueTPUEmbeddingIntegerBatch operation.
+    """
+    if mode_override is None:
+      mode_override = "unspecified"
+    return gen_tpu_ops._enqueue_tpu_embedding_integer_batch(
+        batch=batch,
+        device_ordinal=device_ordinal,
+        mode_override=mode_override,
+        name=name)
+
+  enqueue_tpu_embedding_integer_batch.__doc__ = (
+      gen_tpu_ops._enqueue_tpu_embedding_integer_batch.__doc__)
+
+  # pylint: disable=protected-access
+  def enqueue_tpu_embedding_sparse_batch(sample_indices,
+                                         embedding_indices,
+                                         aggregation_weights,
+                                         device_ordinal,
+                                         combiners=None,
+                                         mode_override=None,
+                                         name=None):
+    """A placeholder op for enqueueing embedding IDs to the TPU.
+
+    Args:
+      sample_indices: A list of rank 1 Tensors specifying the training example
+        and feature to which the corresponding embedding_indices and
+        aggregation_weights values belong. sample_indices[i] must equal b * nf +
+        f, where nf is the number of features from the corresponding table, f is
+        in [0, nf), and b is in [0, batch size).
+      embedding_indices: A list of rank 1 Tensors, indices into the embedding
+        tables.
+      aggregation_weights: A list of rank 1 Tensors containing per sample --
+        i.e. per (training example, feature) -- aggregation weights.
+      device_ordinal: The TPU device to use. Should be >= 0 and less than the
+        number of TPU cores in the task on which the node is placed.
+      combiners: A list of string scalars, one for each embedding table that
+        specify how to normalize the embedding activations after weighted
+        summation. Supported combiners are 'mean', 'sum', or 'sqrtn'. It is
+        invalid to have the sum of the weights be 0 for 'mean' or the sum of the
+        squared weights be 0 for 'sqrtn'. If combiners isn't passed, the default
+        is to use 'sum' for all tables (optional).
+      mode_override: A string input that overrides the mode specified in the
+        TPUEmbeddingConfiguration. Supported values are {'unspecified',
+        'inference', 'training', 'backward_pass_only'}. When set to
+        'unspecified', the mode set in TPUEmbeddingConfiguration is used,
+        otherwise mode_override is used (optional).
+      name: A name for the operation (optional).
+
+    Returns:
+      An EnqueueTPUEmbeddingSparseBatch operation.
+    """
+    if mode_override is None:
+      mode_override = "unspecified"
+    return gen_tpu_ops._enqueue_tpu_embedding_sparse_batch(
+        sample_indices=sample_indices,
+        embedding_indices=embedding_indices,
+        aggregation_weights=aggregation_weights,
+        device_ordinal=device_ordinal,
+        combiners=combiners,
+        mode_override=mode_override,
+        name=name)
+
+  enqueue_tpu_embedding_sparse_batch.__doc__ = (
+      gen_tpu_ops._enqueue_tpu_embedding_sparse_batch.__doc__)
+
+  # pylint: disable=protected-access
+  def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
+                                                embedding_indices,
+                                                aggregation_weights,
+                                                table_ids,
+                                                device_ordinal,
+                                                combiners=None,
+                                                mode_override=None,
+                                                name=None):
+    """A placeholder op for enqueueing embedding IDs to the TPU.
+
+    Args:
+      sample_indices: A list of rank 1 Tensors specifying the training example
+        to which the corresponding embedding_indices and aggregation_weights
+        values
+        belong. It corresponds to sp_ids.indices[:,0] in
+          embedding_lookup_sparse().
+      embedding_indices: A list of rank 1 Tensors, indices into the embedding
+        tables. It corresponds to sp_ids.values in embedding_lookup_sparse().
+      aggregation_weights: A list of rank 1 Tensors containing per training
+        example aggregation weights. It corresponds to sp_weights.values in
+        embedding_lookup_sparse().
+      table_ids: A list of integers specifying the identifier of the embedding
+        table (offset of TableDescriptor in the TPUEmbeddingConfiguration) to
+        lookup the corresponding input. The ith input is looked up using
+        table_ids[i]. The size of the table_ids list must be equal to that of
+        sample_indices, embedding_indices and aggregation_weights.
+      device_ordinal: The TPU device to use. Should be >= 0 and less than the
+        number of TPU cores in the task on which the node is placed.
+      combiners: A list of string scalars, one for each embedding table that
+        specify how to normalize the embedding activations after weighted
+        summation. Supported combiners are 'mean', 'sum', or 'sqrtn'. It is
+        invalid to have the sum of the weights be 0 for 'mean' or the sum of the
+        squared weights be 0 for 'sqrtn'. If combiners isn't passed, the default
+        is to use 'sum' for all tables (optional).
+      mode_override: A string input that overrides the mode specified in the
+        TPUEmbeddingConfiguration. Supported values are {'unspecified',
+        'inference', 'training', 'backward_pass_only'}. When set to
+        'unspecified', the mode set in TPUEmbeddingConfiguration is used,
+        otherwise mode_override is used (optional).
+      name: A name for the operation (optional).
+
+    Returns:
+      An EnqueueTPUEmbeddingSparseTensorBatch operation.
+    """
+    if mode_override is None:
+      mode_override = "unspecified"
+    return gen_tpu_ops._enqueue_tpu_embedding_sparse_tensor_batch(
+        sample_indices=sample_indices,
+        embedding_indices=embedding_indices,
+        aggregation_weights=aggregation_weights,
+        table_ids=table_ids,
+        device_ordinal=device_ordinal,
+        combiners=combiners,
+        mode_override=mode_override,
+        name=name)
+
+  enqueue_tpu_embedding_sparse_tensor_batch.__doc__ = (
+      gen_tpu_ops._enqueue_tpu_embedding_sparse_tensor_batch.__doc__)
+
 else:
   # We have already built the appropriate libraries into the binary via CMake
   # if we have built contrib, so we don't need this

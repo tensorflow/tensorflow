@@ -148,8 +148,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
           sess, "localhost:%d" % self._server_port, watch_fn="foo")
 
   def testGrpcDebugWrapperSessionWithoutWatchFnWorks(self):
-    u = variables.Variable(2.1, name="u")
-    v = variables.Variable(20.0, name="v")
+    u = variables.VariableV1(2.1, name="u")
+    v = variables.VariableV1(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
 
     sess = session.Session(
@@ -175,8 +175,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
       del feeds, fetch_keys
       return ["DebugIdentity", "DebugNumericSummary"], r".*/read", None
 
-    u = variables.Variable(2.1, name="u")
-    v = variables.Variable(20.0, name="v")
+    u = variables.VariableV1(2.1, name="u")
+    v = variables.VariableV1(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
 
     sess = session.Session(
@@ -209,8 +209,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
           op_type_regex_whitelist=None,
           tolerate_debug_op_creation_failures=True)
 
-    u = variables.Variable(2.1, name="u")
-    v = variables.Variable(20.0, name="v")
+    u = variables.VariableV1(2.1, name="u")
+    v = variables.VariableV1(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
 
     sess = session.Session(
@@ -241,8 +241,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
         14, len(dump.get_tensors("v/read", 0, "DebugNumericSummary")[0]))
 
   def testTensorBoardDebugHookWorks(self):
-    u = variables.Variable(2.1, name="u")
-    v = variables.Variable(20.0, name="v")
+    u = variables.VariableV1(2.1, name="u")
+    v = variables.VariableV1(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
 
     sess = session.Session(
@@ -286,8 +286,8 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
       self._server.query_source_file_line(__file__, 1)
 
   def testTensorBoardDebugHookDisablingTracebackSourceCodeSendingWorks(self):
-    u = variables.Variable(2.1, name="u")
-    v = variables.Variable(20.0, name="v")
+    u = variables.VariableV1(2.1, name="u")
+    v = variables.VariableV1(20.0, name="v")
     w = math_ops.multiply(u, v, name="w")
 
     sess = session.Session(
@@ -381,8 +381,8 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   def testToggleEnableTwoDebugWatchesNoCrosstalkBetweenDebugNodes(self):
     with session.Session(
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      v_1 = variables.Variable(50.0, name="v_1")
-      v_2 = variables.Variable(-50.0, name="v_1")
+      v_1 = variables.VariableV1(50.0, name="v_1")
+      v_2 = variables.VariableV1(-50.0, name="v_1")
       delta_1 = constant_op.constant(5.0, name="delta_1")
       delta_2 = constant_op.constant(-5.0, name="delta_2")
       inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
@@ -451,8 +451,8 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
 
     with session.Session(
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      v_1 = variables.Variable(50.0, name="v_1")
-      v_2 = variables.Variable(-50.0, name="v_1")
+      v_1 = variables.VariableV1(50.0, name="v_1")
+      v_2 = variables.VariableV1(-50.0, name="v_1")
       # These two nodes have names that match those in the
       # toggle_watch_on_core_metadata argument used when calling
       # start_server_on_separate_thread().
@@ -491,7 +491,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   def testToggleEnableTwoDebugWatchesNoCrosstalkBetweenServers(self):
     with session.Session(
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      v = variables.Variable(50.0, name="v")
+      v = variables.VariableV1(50.0, name="v")
       delta = constant_op.constant(5.0, name="delta")
       inc_v = state_ops.assign_add(v, delta, name="inc_v")
 
@@ -534,8 +534,8 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   def testToggleBreakpointsWorks(self):
     with session.Session(
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      v_1 = variables.Variable(50.0, name="v_1")
-      v_2 = variables.Variable(-50.0, name="v_2")
+      v_1 = variables.VariableV1(50.0, name="v_1")
+      v_2 = variables.VariableV1(-50.0, name="v_2")
       delta_1 = constant_op.constant(5.0, name="delta_1")
       delta_2 = constant_op.constant(-5.0, name="delta_2")
       inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
@@ -592,8 +592,8 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   def testTensorBoardDebuggerWrapperToggleBreakpointsWorks(self):
     with session.Session(
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      v_1 = variables.Variable(50.0, name="v_1")
-      v_2 = variables.Variable(-50.0, name="v_2")
+      v_1 = variables.VariableV1(50.0, name="v_1")
+      v_2 = variables.VariableV1(-50.0, name="v_2")
       delta_1 = constant_op.constant(5.0, name="delta_1")
       delta_2 = constant_op.constant(-5.0, name="delta_2")
       inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
@@ -665,8 +665,8 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   def testTensorBoardDebuggerWrapperDisablingTracebackSourceSendingWorks(self):
     with session.Session(
         config=session_debug_testlib.no_rewrite_session_config()) as sess:
-      v_1 = variables.Variable(50.0, name="v_1")
-      v_2 = variables.Variable(-50.0, name="v_2")
+      v_1 = variables.VariableV1(50.0, name="v_1")
+      v_2 = variables.VariableV1(-50.0, name="v_2")
       delta_1 = constant_op.constant(5.0, name="delta_1")
       delta_2 = constant_op.constant(-5.0, name="delta_2")
       inc_v_1 = state_ops.assign_add(v_1, delta_1, name="inc_v_1")
@@ -699,7 +699,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
 
   def testGetGrpcDebugWatchesReturnsCorrectAnswer(self):
     with session.Session() as sess:
-      v = variables.Variable(50.0, name="v")
+      v = variables.VariableV1(50.0, name="v")
       delta = constant_op.constant(5.0, name="delta")
       inc_v = state_ops.assign_add(v, delta, name="inc_v")
 
@@ -743,7 +743,7 @@ class DelayedDebugServerTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       a_init = constant_op.constant(42.0, name="a_init")
-      a = variables.Variable(a_init, name="a")
+      a = variables.VariableV1(a_init, name="a")
 
       def watch_fn(fetches, feeds):
         del fetches, feeds

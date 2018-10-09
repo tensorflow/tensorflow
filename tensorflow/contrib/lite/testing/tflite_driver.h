@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <map>
 
-#include "tensorflow/contrib/lite/delegates/eager/delegate.h"
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -53,7 +53,7 @@ class TfLiteDriver : public TestRunner {
 
   class Expectation;
 
-  std::unique_ptr<EagerDelegate> delegate_;
+  std::unique_ptr<FlexDelegate> delegate_;
   bool use_nnapi_ = false;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;

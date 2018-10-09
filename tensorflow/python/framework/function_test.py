@@ -113,7 +113,7 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      var = variables.Variable([18.0])
+      var = variables.VariableV1([18.0])
       call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():

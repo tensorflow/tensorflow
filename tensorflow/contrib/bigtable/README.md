@@ -203,7 +203,7 @@ def interleave_fn(index):
   start = tf.string_join(['training_data_', start_idx_str])
   end = tf.string_join(['training_data_', end_idx_str])
   return table.scan_range(start_idx, end_idx, columns=columns)
-ds = ds.apply(tf.contrib.data.parallel_interleave(
+ds = ds.apply(tf.data.experimental.parallel_interleave(
     interleave_fn, cycle_length=NUM_PARALLEL_READS, prefetch_input_elements=1))
 ```
 
@@ -249,7 +249,7 @@ def make_row_key_dataset():
    - ...
    - fake-data-23498103
   """
-  counter_dataset = tf.contrib.data.Counter()
+  counter_dataset = tf.data.experimental.Counter()
   width = 8
   row_key_prefix = 'fake-data-'
   ds = counter_dataset.map(lambda index: tf.as_string(index,

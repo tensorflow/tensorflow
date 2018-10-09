@@ -62,39 +62,6 @@ inline void FullyConnected(
   }
 }
 
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void FullyConnected(const float* input_data, const Dims<4>& input_dims,
-                           const float* weights_data,
-                           const Dims<4>& weights_dims, const float* bias_data,
-                           const Dims<4>& bias_dims,
-                           float output_activation_min,
-                           float output_activation_max, float* output_data,
-                           const Dims<4>& output_dims) {
-  tflite::FullyConnectedParams op_params;
-  op_params.float_activation_min = output_activation_min;
-  op_params.float_activation_max = output_activation_max;
-
-  FullyConnected(op_params, DimsToShape(input_dims), input_data,
-                 DimsToShape(weights_dims), weights_data,
-                 DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-                 output_data);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void FullyConnected(const float* input_data, const Dims<4>& input_dims,
-                    const float* weights_data, const Dims<4>& weights_dims,
-                    const float* bias_data, const Dims<4>& bias_dims,
-                    float* output_data, const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-  FullyConnected(input_data, input_dims, weights_data, weights_dims, bias_data,
-                 bias_dims, output_activation_min, output_activation_max,
-                 output_data, output_dims);
-}
-
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
@@ -142,32 +109,6 @@ inline void FullyConnected(
       output_data[out_c + output_depth * b] = static_cast<uint8>(acc);
     }
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, uint8* output_data,
-                           const Dims<4>& output_dims, void* gemm_context) {
-  tflite::FullyConnectedParams op_params;
-  op_params.input_offset = input_offset;
-  op_params.weights_offset = filter_offset;
-  op_params.output_offset = output_offset;
-  op_params.output_multiplier = output_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.output_shift = kReverseShift * output_shift;
-  op_params.quantized_activation_min = output_activation_min;
-  op_params.quantized_activation_max = output_activation_max;
-
-  FullyConnected(op_params, DimsToShape(input_dims), input_data,
-                 DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
-                 bias_data, DimsToShape(output_dims), output_data,
-                 gemm_context);
 }
 
 inline void FullyConnected(
@@ -222,32 +163,6 @@ inline void FullyConnected(
       output_data[out_c + output_depth * b] = accum;
     }
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, int16* output_data,
-                           const Dims<4>& output_dims, void* gemm_context) {
-  tflite::FullyConnectedParams op_params;
-  op_params.input_offset = input_offset;
-  op_params.weights_offset = filter_offset;
-  op_params.output_offset = output_offset;
-  op_params.output_multiplier = output_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.output_shift = kReverseShift * output_shift;
-  op_params.quantized_activation_min = output_activation_min;
-  op_params.quantized_activation_max = output_activation_max;
-
-  FullyConnected(op_params, DimsToShape(input_dims), input_data,
-                 DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
-                 bias_data, DimsToShape(output_dims), output_data,
-                 gemm_context);
 }
 
 inline void ShuffledFullyConnected(
@@ -403,55 +318,6 @@ inline void ShuffledFullyConnected(
     TFLITE_DCHECK(false);
     return;
   }
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// Legacy.
-inline void ShuffledFullyConnected(
-    const uint8* input_data, const Dims<4>& input_dims,
-    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
-    int output_shift, int32 output_activation_min, int32 output_activation_max,
-    int16* output_data, const Dims<4>& output_dims,
-    uint8* shuffled_input_workspace_data, void* gemm_context) {
-  tflite::FullyConnectedParams op_params;
-  op_params.output_multiplier = output_multiplier;
-  // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
-  op_params.output_shift = kReverseShift * output_shift;
-  op_params.quantized_activation_min = output_activation_min;
-  op_params.quantized_activation_max = output_activation_max;
-
-  ShuffledFullyConnected(op_params, DimsToShape(input_dims), input_data,
-                         DimsToShape(weights_dims), shuffled_weights_data,
-                         DimsToShape(bias_dims), bias_data,
-                         DimsToShape(output_dims), output_data,
-                         shuffled_input_workspace_data, gemm_context);
-}
-
-// TODO(b/80418076): Move to legacy ops file, update invocations.
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                    int32 input_offset, const uint8* filter_data,
-                    const Dims<4>& filter_dims, int32 filter_offset,
-                    const int32* bias_data, const Dims<4>& bias_dims,
-                    int32 output_offset, int32 output_multiplier,
-                    int output_shift, int32 output_activation_min,
-                    int32 output_activation_max, uint8* output_data,
-                    const Dims<4>& output_dims, void* gemm_context) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  FullyConnected(input_data, input_dims, input_offset, filter_data, filter_dims,
-                 filter_offset, bias_data, bias_dims, output_offset,
-                 output_multiplier, output_shift, output_activation_min,
-                 output_activation_max, output_data, output_dims, gemm_context);
 }
 
 }  // namespace reference_ops
