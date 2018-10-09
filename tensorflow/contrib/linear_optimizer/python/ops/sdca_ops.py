@@ -152,7 +152,8 @@ class SdcaModel(object):
         default_value=[0.0, 0.0, 0.0, 0.0],
         # SdcaFprint never returns 0 or 1 for the low64 bits, so this a safe
         # empty_key (that will never collide with actual payloads).
-        empty_key=[0, 0])
+        empty_key=[0, 0],
+        deleted_key=[1, 1])
 
     summary.scalar('approximate_duality_gap', self.approximate_duality_gap())
     summary.scalar('examples_seen', self._hashtable.size())
