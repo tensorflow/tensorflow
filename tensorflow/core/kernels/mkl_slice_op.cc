@@ -327,7 +327,7 @@ class MklDnnSliceOp : public OpKernel {
       output_mkl_shape->SetTfLayout(input_mkl_shape.GetDimension(), output_dims,
                                     input_mkl_shape.GetTfDataFormat());
 
-      output_tf_shape.AddDim((output_pd->get_size() / sizeof(T)) + 1);
+      output_tf_shape.AddDim(output_pd->get_size() / sizeof(T));
     } else {
       // If input is not in Mkl layout, then output won't be in Mkl layout.
       output_mkl_shape->SetMklTensor(false);
