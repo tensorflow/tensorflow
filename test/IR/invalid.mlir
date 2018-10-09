@@ -601,3 +601,10 @@ mlfunc @invalid_if_operands3(%N : index) {
     if @@set0(%i)[%i] {
     // expected-error@-1 {{value '%i' cannot be used as a symbol}}
 
+// -----
+// expected-error@+1 {{expected '"' in string literal}}
+"J// -----
+mlfunc @calls(%arg0 : i32) {
+  // expected-error@+1 {{expected type}}
+  %z = "casdasda"(%x) : (ppop32) -> i32
+}

@@ -323,7 +323,7 @@ Token Lexer::lexString(const char *tokStart) {
     switch (*curPtr++) {
     case '"':
       return formToken(Token::string, tokStart);
-    case '0':
+    case 0:
       // If this is a random nul character in the middle of a string, just
       // include it.  If it is the end of file, then it is an error.
       if (curPtr-1 != curBuffer.end())

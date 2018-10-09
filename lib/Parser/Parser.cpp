@@ -61,6 +61,13 @@ public:
       : context(module->getContext()), module(module), lex(sourceMgr, context),
         curToken(lex.lexToken()), operationSet(OperationSet::get(context)) {}
 
+  ~ParserState() {
+    // Destroy the forward references upon error.
+    for (auto forwardRef : functionForwardRefs)
+      forwardRef.second->destroy();
+    functionForwardRefs.clear();
+  }
+
   // A map from affine map identifier to AffineMap.
   llvm::StringMap<AffineMap *> affineMapDefinitions;
 
@@ -3035,6 +3042,7 @@ ParseResult ModuleParser::finalizeModule() {
   // resolved, we can deallocate the placeholders.
   for (auto forwardRef : getState().functionForwardRefs)
     forwardRef.second->destroy();
+  getState().functionForwardRefs.clear();
   return ParseSuccess;
 }
 
