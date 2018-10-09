@@ -868,6 +868,7 @@ class GradientTape(object):
     Raises:
       RuntimeError: if called inside the context of the tape, or if called more
        than once on a non-persistent tape.
+      ValueError: if called on variable target.
     """
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
@@ -887,6 +888,12 @@ class GradientTape(object):
                             "gradient in order to compute higher order "
                             "derrivatives.", 1)
 
+    flat_targets = nest.flatten(target)
+    for t in flat_targets:
+      if resource_variable_ops.is_resource_variable(t):
+        raise ValueError("GradientTape.gradient is not supported for variable "
+                         "targets.")
+
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 
@@ -896,7 +903,7 @@ class GradientTape(object):
 
     flat_grad = imperative_grad.imperative_grad(
         self._tape,
-        nest.flatten(target),
+        flat_targets,
         flat_sources,
         output_gradients=output_gradients)
 
