@@ -310,15 +310,8 @@ def generated_test_models_failing(conversion_mode):
     if conversion_mode == "toco-flex":
         # TODO(b/117328698): Fix and enable the known flex failures.
         return [
-            "arg_min_max",
-            "div",
-            "floor_div",
-            "gather",
             "lstm",
-            "resize_bilinear",
-            "space_to_batch_nd",
             "split",
-            "transpose",
             "unpack",
         ]
 
@@ -334,7 +327,8 @@ def generated_test_models_all():
     """Generates a list of all tests with the different converters.
 
     Returns:
-      List of tuples representing (conversion mode, name of test).
+      List of tuples representing:
+            (conversion mode, name of test, test tags, test args).
     """
     conversion_modes = generated_test_conversion_modes()
     tests = generated_test_models()
@@ -343,12 +337,18 @@ def generated_test_models_all():
         failing_tests = generated_test_models_failing(conversion_mode)
         for test in tests:
             tags = []
+            args = []
             if test in failing_tests:
                 tags.append("notap")
                 tags.append("manual")
             if conversion_mode:
                 test += "_%s" % conversion_mode
-            options.append((conversion_mode, test, tags))
+
+            # Flex conversion shouldn't suffer from the same conversion bugs
+            # listed for the default TFLite kernel backend.
+            if conversion_mode == "toco-flex":
+                args.append("--ignore_known_bugs=false")
+            options.append((conversion_mode, test, tags, args))
     return options
 
 def gen_zip_test(name, test_name, conversion_mode, **kwargs):
