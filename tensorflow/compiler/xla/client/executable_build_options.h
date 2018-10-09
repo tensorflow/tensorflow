@@ -65,8 +65,9 @@ class ExecutableBuildOptions {
 
   // An indicator of the number of resource variables updated by this
   // executable.
-  ExecutableBuildOptions& set_resource_update_count(int count);
-  int resource_update_count() const;
+  ExecutableBuildOptions& set_resource_update_to_input_index(
+      const std::vector<int>& resource_update_to_input_index);
+  const std::vector<int>& resource_update_to_input_index() const;
 
   // If set, specifies a dirpath to dump the end-of-optimization-pipeline HLO
   // protobuf to (as in DebugOptions).
@@ -117,7 +118,7 @@ class ExecutableBuildOptions {
   std::vector<std::string> disabled_hlo_passes_;
 
   int resource_input_count_ = 0;
-  int resource_update_count_ = 0;
+  std::vector<int> resource_update_to_input_index_ = std::vector<int>{};
 };
 
 }  // namespace xla

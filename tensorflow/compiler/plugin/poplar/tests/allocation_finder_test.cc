@@ -107,7 +107,7 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -173,7 +173,7 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   hlo_module->AddEmbeddedComputation(std::move(computation_sub));
   hlo_module->AddEntryComputation(std::move(computation_main));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -270,7 +270,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   hlo_module->AddEmbeddedComputation(std::move(computation_sub2));
   hlo_module->AddEntryComputation(std::move(computation_main));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   annotations.classification_map[conv1] = ConvClassificationType::FORWARD;
   annotations.classification_map[conv2] =
       ConvClassificationType::BACKPROP_INPUT;
@@ -381,7 +381,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   hlo_module->AddEmbeddedComputation(std::move(computation_sub2));
   hlo_module->AddEntryComputation(std::move(computation_main));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   annotations.classification_map[conv1] =
       ConvClassificationType::BACKPROP_INPUT;
   annotations.classification_map[conv2] = ConvClassificationType::FORWARD;
@@ -457,7 +457,7 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -506,7 +506,7 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
 
   hlo_module->AddEntryComputation(b.Build());
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -551,7 +551,7 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
 
   hlo_module->AddEntryComputation(b.Build());
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -651,7 +651,7 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
 
   hlo_module->AddEntryComputation(builder_main.Build());
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -712,7 +712,7 @@ TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
@@ -774,7 +774,7 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   hlo_module->AddEmbeddedComputation(std::move(computation_sub));
   hlo_module->AddEntryComputation(std::move(computation_main));
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
 
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());

@@ -53,8 +53,8 @@ struct CompilerResources {
 
   graph_caching_util::WeightUpdateConvolutionGraphCache wu_graph_cache;
 
-  CompilerResources(uint64 seed, poprand::RandomGenMode mode)
-      : random(mode, seed) {}
+  CompilerResources(uint64 seed, poprand::RandomGenMode mode, HloModule* module)
+      : annotations(module), random(mode, seed) {}
 };
 
 }  // namespace poplarplugin

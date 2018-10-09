@@ -82,16 +82,15 @@ class HloModuleConfig {
   int64 replica_count() const { return replica_count_; }
 
   // The number of inputs which are resource variables
-  void set_resource_input_count(int32 count) {
-    resource_input_count_ = count;
-  }
+  void set_resource_input_count(int32 count) { resource_input_count_ = count; }
   int32 resource_input_count() const { return resource_input_count_; }
 
   // The number of outputs which are updates of resource variables
-  void set_resource_update_count(int32 count) {
-    resource_update_count_ = count;
+  void set_resource_update_to_input_index(
+      const std::vector<int32>& resource_update_to_input_index);
+  const std::vector<int32>& resource_update_to_input_index() const {
+    return resource_update_to_input_index_;
   }
-  int32 resource_update_count() const { return resource_update_count_; }
 
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
@@ -129,7 +128,7 @@ class HloModuleConfig {
   int64 intra_op_parallelism_threads_ = -1;
 
   int32 resource_input_count_ = 0;
-  int32 resource_update_count_ = 0;
+  std::vector<int32> resource_update_to_input_index_ = std::vector<int32>{};
 
   DebugOptions debug_options_;
 };

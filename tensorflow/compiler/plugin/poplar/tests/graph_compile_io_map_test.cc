@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 
 #include "tensorflow/compiler/xla/test.h"
@@ -32,7 +33,9 @@ class GraphCompileIoMapTest : public HloTestBase {
  public:
   explicit GraphCompileIoMapTest(se::Platform* platform = nullptr)
       : HloTestBase() {}
-  const OutputMap& GetMap(PoplarExecutable* e) { return e->output_map_; }
+  const InputOutputAliasingMap& GetInputOutputAliasingMap(PoplarExecutable* e) {
+    return e->GetInputOutputAliasingMap();
+  }
 
   static std::unique_ptr<HloModule> CreateNewModuleWithConfig(
       const HloModuleConfig& config, const string& name = TestName()) {
@@ -78,7 +81,15 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  EXPECT_EQ(0, GetMap(e).size());
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
+
+  EXPECT_EQ(2, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsStreaming());
+  EXPECT_EQ(1, output_infos.size());
+  EXPECT_TRUE(output_infos[0].IsStreaming());
 }
 
 TEST_F(GraphCompileIoMapTest, Input1Shared) {
@@ -101,7 +112,8 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto computation = builder.Build();
 
   auto config = GetModuleConfigForTest();
-  config.set_resource_update_count(1);
+  config.set_resource_input_count(1);
+  config.set_resource_update_to_input_index({1});
   auto hlo_module = CreateNewModuleWithConfig(config);
   hlo_module->AddEntryComputation(std::move(computation));
 
@@ -124,55 +136,17 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  EXPECT_EQ(1, GetMap(e).size());
-  EXPECT_EQ(0, GetMap(e).at(0));
-}
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
 
-TEST_F(GraphCompileIoMapTest, Input2Shared) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
-
-  auto builder = HloComputation::Builder(TestName());
-  auto in1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
-  auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in2, in1));
-  builder.AddInstruction(HloInstruction::CreateTuple({add}));
-
-  OpMetadata metadata1;
-  metadata1.set_op_name("grad%1");
-  metadata1.set_op_type("ResourceApplyGradientDescent");
-  add->set_metadata(metadata1);
-
-  auto computation = builder.Build();
-
-  auto config = GetModuleConfigForTest();
-  config.set_resource_update_count(1);
-  auto hlo_module = CreateNewModuleWithConfig(config);
-  hlo_module->AddEntryComputation(std::move(computation));
-
-  auto* platform =
-      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
-  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
-
-  tensorflow::IPUOptions opts;
-  auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
-
-  PoplarCompiler compiler;
-
-  hlo_module =
-      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
-
-  std::unique_ptr<Executable> executable =
-      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
-
-  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  EXPECT_EQ(1, GetMap(e).size());
-  EXPECT_EQ(1, GetMap(e).at(0));
+  EXPECT_EQ(2, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsResource());
+  EXPECT_EQ(0, input_infos[1].GetOutputIndex());
+  EXPECT_EQ(1, output_infos.size());
+  EXPECT_TRUE(output_infos[0].IsResourceModified());
+  EXPECT_EQ(1, output_infos[0].GetInputIndex());
 }
 
 TEST_F(GraphCompileIoMapTest, TupleInTuple) {
@@ -227,8 +201,17 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  // Check that tuples are streamed
-  ASSERT_EQ(0, GetMap(e).size());
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
+
+  EXPECT_EQ(3, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsStreaming());
+  EXPECT_TRUE(input_infos[2].IsStreaming());
+  EXPECT_EQ(2, output_infos.size());
+  EXPECT_TRUE(output_infos[0].IsStreaming());
+  EXPECT_TRUE(output_infos[1].IsStreaming());
 }
 
 TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
@@ -249,7 +232,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   auto tup2 = builder.AddInstruction(HloInstruction::CreateTuple({add2, in3}));
   auto tup3 = builder.AddInstruction(HloInstruction::CreateTuple({tup1, tup2}));
   builder.AddInstruction(
-      HloInstruction::CreateGetTupleElement(tup3->shape(), tup3, 1));
+      HloInstruction::CreateGetTupleElement(tup2->shape(), tup3, 1));
 
   auto computation = builder.Build();
 
@@ -275,8 +258,17 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
           .ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
-  // Check that tuples are streamed
-  ASSERT_EQ(0, GetMap(e).size());
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
+
+  EXPECT_EQ(3, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsStreaming());
+  EXPECT_TRUE(input_infos[2].IsStreaming());
+  EXPECT_EQ(2, output_infos.size());
+  EXPECT_TRUE(output_infos[0].IsStreaming());
+  EXPECT_TRUE(output_infos[1].IsStreaming());
 }
 
 }  // namespace

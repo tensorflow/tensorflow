@@ -68,6 +68,18 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "resnet18_nobn_test",
+    size = "medium",
+    srcs = ["size_speed_tests/resnet18_nobn_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -80,6 +92,7 @@ test_suite(
 test_suite(
     name = "size_speed_tests",
     tests = [
+        "resnet18_nobn_test",
     ],
 )
 

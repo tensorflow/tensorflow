@@ -41,7 +41,7 @@ TEST_F(FuseWideConstTest, ReplaceWithWideConstant) {
   EXPECT_THAT(hlo_module->computation_count(), 1);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 2);
 
-  CompilerAnnotations annotations;
+  CompilerAnnotations annotations(hlo_module.get());
   FuseWideConst fwc(annotations);
   EXPECT_TRUE(fwc.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 1);

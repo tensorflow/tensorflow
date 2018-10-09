@@ -21,9 +21,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
-def count_event_type(events, type, payload=0):
-  return sum(map((lambda x: 1 if x.type==type and len(x.data_str) > payload
-                              else 0), events))
+def count_event_type(events, type):
+  return sum(map((lambda x: 1 if x.type==type else 0), events))
 
 class WhileLoopPerfTest(test_util.TensorFlowTestCase):
 

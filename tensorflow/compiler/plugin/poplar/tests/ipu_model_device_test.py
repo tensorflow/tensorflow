@@ -281,7 +281,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       for i, e in enumerate(evts):
         if i > 0:
-          self.assertTrue(len(e.data_str) == 0)
+          self.assertTrue(len(e.execute.execution_report) == 0)
 
       sess.close()
 
@@ -302,7 +302,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       for i, e in enumerate(evts):
         if i % 2 != 0:
-          self.assertTrue(len(e.data_str) == 0)
+          self.assertTrue(len(e.execute.execution_report) == 0)
 
       sess.close()
 
@@ -322,7 +322,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(evts), 5) # execute x 5
 
       for e in evts:
-        self.assertTrue(len(e.data_str) > 0)
+        self.assertTrue(len(e.execute.execution_report) > 0)
 
       sess.close()
 
@@ -345,8 +345,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       evts = tu.extract_all_events(rep)
       self.assertEqual(len(evts), 3) # begin, end, execute
 
-      self.assertEqual(evts[1].data_str.decode('utf-8')[0], '{')
-      self.assertEqual(evts[2].data_str.decode('utf-8')[0], '{')
+      self.assertEqual(evts[1].compile_end.compilation_report.decode('utf-8')[0], '{')
+      self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0], '{')
 
 if __name__ == "__main__":
   googletest.main()

@@ -20,6 +20,8 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 
+import json
+import re
 import time
 
 def create_ipu_config(type='IPU_MODEL', profiling=False, num_devices=1,
@@ -203,21 +205,26 @@ def extract_all_strings_from_event_trace(events):
              time.strftime('%F %T %z', time.localtime(evt.timestamp)) + ": "
 
     if evt.type == IpuTraceEvent.COMPILE_BEGIN:
-      evt_str = "Compile begin: " + evt.module_name.decode('utf-8') + "\n"
+      evt_str = "Compile begin: " + \
+                evt.compile_begin.module_name.decode('utf-8') + "\n"
     elif evt.type == IpuTraceEvent.COMPILE_END:
-      evt_str = "Compile end: " + evt.module_name.decode('utf-8') + "\n" + \
-                "Duration: " + str(evt.data_int) + " us\n" + \
-                evt.data_str.decode('utf-8')
+      evt_str = "Compile end: " + \
+                evt.compile_end.module_name.decode('utf-8') + "\n" + \
+                "Duration: " + str(evt.compile_end.duration) + " us\n" + \
+                evt.compile_end.compilation_report.decode('utf-8')
     elif evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
-      evt_str = "Host->Device\nHandle = " + evt.data_str.decode('utf-8') + "\n"
-                #"Bytes = " + str(evt.data_int)
+      evt_str = "Host->Device\n" + \
+                evt.data_transfer.data_transfer.decode('utf-8') + "\n"
     elif evt.type == IpuTraceEvent.DEVICE_TO_HOST_TRANSFER:
-      evt_str = "Device->Host\nHandle = " + evt.data_str.decode('utf-8') + "\n"
-                #"Bytes = " + str(evt.data_int)
+      evt_str = "Device->Host\n" + \
+                evt.data_transfer.data_transfer.decode('utf-8') + "\n"
     elif evt.type == IpuTraceEvent.LOAD_ENGINE:
-      evt_str = "Load engine: " + evt.module_name.decode('utf-8') + "\n"
+      evt_str = "Load engine: " + \
+                evt.load_engine.module_name.decode('utf-8') + "\n"
     elif evt.type == IpuTraceEvent.EXECUTE:
-      evt_str = "Execute\n" + evt.data_str.decode('utf-8')
+      evt_str = "Execute: " + \
+                evt.execute.module_name.decode('utf-8') + "\n" + \
+                evt.execute.execution_report.decode('utf-8')
     else:
       evt_str = "Unknown event"
 
@@ -259,12 +266,36 @@ def extract_all_io_events(events):
     if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
                     IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
       try:
-        payload = json.loads(evt.data_str.decode('utf-8'))
+        payload = json.loads(evt.data_transfer.data_transfer.decode('utf-8'))
         for t in payload["tensors"]:
           result += [(evt.type, t["name"])]
       except UnicodeDecodeError:
         pass
   return result
+
+def get_memory_size_from_events(events):
+  """Get the total memory consumption for the first compilation in the list
+  of events.
+  :param events: A list of IpuTraceEvent objects.
+  :return: The total size as an integer, or None.
+  """
+  size = None
+  for evt in events:
+    if evt.type == IpuTraceEvent.COMPILE_END:
+      in_memory_usage_section=False
+      try:
+        for l in evt.compile_end.compilation_report.decode('utf-8').split("\n"):
+          l = l.strip()
+          if l.startswith('Memory Usage'):
+            in_memory_usage_section=True
+          if l.startswith('Total') and in_memory_usage_section:
+              m = re.match(r'.+:\s+(\d+)', l)
+              if m:
+                return int(m.group(1))
+      except UnicodeDecodeError:
+        pass
+  return None
+
 
 def move_variable_initialization_to_cpu(graph=None):
   """For all variables in the VARIABLES collection, move any initialization

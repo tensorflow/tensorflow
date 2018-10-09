@@ -29,22 +29,13 @@ struct CompilerResources;
  */
 class EntryVisitor : public FullVisitor {
  public:
-  EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
-               uint64 num_parameters, uint64 num_outputs)
-      : FullVisitor(graph, resources),
-        parameter_streamed(num_parameters),
-        output_streamed(num_outputs),
-        all_outputs_are_parameters(false) {}
+  EntryVisitor(poplar::Graph& graph, CompilerResources& resources)
+      : FullVisitor(graph, resources) {}
 
   Status HandleParameter(HloInstruction* inst);
-  Status FinishVisit(HloInstruction* inst);
-  Status Postprocess(HloInstruction* inst);
+  Status FinishVisit(HloInstruction* root);
 
-  const OutputMap& GetOutputMap();
-  const std::vector<bool>& GetParameterStreamed();
-  const std::vector<bool>& GetOutputStreamed();
-
-  const bool AreAllOutputsParameters();
+  const std::set<const HloInstruction*>& GetNonStandardParameterLayout() const;
 
   const poplar::program::Sequence& GetHostToDevice();
   const poplar::program::Sequence& GetDeviceToHost();
@@ -53,13 +44,7 @@ class EntryVisitor : public FullVisitor {
   Status StreamOutputs(HloInstruction* inst, uint64 start_idx,
                        OutVector outputs);
 
-  std::set<HloInstruction*> non_standard_parameter_layout;
-
-  OutputMap output_map;
-  std::vector<bool> parameter_streamed;
-  std::vector<bool> output_streamed;
-
-  bool all_outputs_are_parameters;
+  std::set<const HloInstruction*> non_standard_parameter_layout;
 
   poplar::program::Sequence host_to_device;
   poplar::program::Sequence device_to_host;

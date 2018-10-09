@@ -284,10 +284,13 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   if (execution_options != nullptr) {
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
-    config->set_resource_input_count(
-        execution_options->resource_input_count());
-    config->set_resource_update_count(
-        execution_options->resource_update_count());
+    config->set_resource_input_count(execution_options->resource_input_count());
+    const auto& proto_resource_update_to_input_index =
+        execution_options->resource_update_to_input_index();
+    std::vector<int> resource_update_to_input_index(
+        proto_resource_update_to_input_index.begin(),
+        proto_resource_update_to_input_index.end());
+    config->set_resource_update_to_input_index(resource_update_to_input_index);
   } else {
     config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }

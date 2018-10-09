@@ -111,7 +111,8 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
         if val.tag == "compile_summary":
           for evt_str in val.tensor.string_val:
             evt = IpuTraceEvent.FromString(evt_str)
-            if evt.type == IpuTraceEvent.COMPILE_END and len(evt.data_str) > 0:
+            if (evt.type == IpuTraceEvent.COMPILE_END and
+                len(evt.compile_end.compilation_report)) > 0:
               compile_for_ipu_count += 1
 
     # Initialization graph and main graph

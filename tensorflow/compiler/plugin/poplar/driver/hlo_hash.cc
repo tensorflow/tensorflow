@@ -49,7 +49,10 @@ void HloHash::HashModule() {
 
   hash_ = std::hash<string>()(proto_str_);
   hash_ = Hash64Combine(hash_, module_->config().seed());
-  hash_ = Hash64Combine(hash_, module_->config().resource_update_count());
+  hash_ = Hash64Combine(hash_, module_->config().resource_input_count());
+  std::string s =
+      absl::StrJoin(module_->config().resource_update_to_input_index(), ",");
+  hash_ = Hash64Combine(hash_, std::hash<string>()(s));
   performed_hash_ = true;
 }
 

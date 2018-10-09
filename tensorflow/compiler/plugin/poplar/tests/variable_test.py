@@ -386,15 +386,15 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
 
       d_dl = "0.0"
-      d_ul = "0"
+      d_ul = "out_0.0"
       w_dl = "1.0"
-      w_ul = "1"
+      w_ul = "out_1.0"
       b_dl = "2.0"
-      b_ul = "2"
+      b_ul = "out_2.0"
 
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
-
+      self.assertEqual(len(list(io_evts)), 2)
       # The initialization is constant, so there are no events generated on the
       # IPU.
 
@@ -431,6 +431,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
       device_to_host = list(filter(
         lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
+      self.assertEqual(len(list(io_evts)), 2)
 
       # Weights/biases/inputs should not be downloaded at all
       self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
@@ -493,9 +494,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       b2_dl = "4.0"
 
       # biases are not outputs of the graph
-      d_ul = "0"
-      w1_ul = "1"
-      w2_ul = "2"
+      d_ul = "out_0.0"
+      w1_ul = "out_1.0"
+      w2_ul = "out_2.0"
 
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
@@ -507,6 +508,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
       device_to_host = list(filter(
         lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
+      self.assertEqual(len(list(io_evts)), 4)
 
       # Weights/biases should be downloaded once, and the input no times
       # because it is streamed
@@ -539,6 +541,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
       device_to_host = list(filter(
         lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
+      self.assertEqual(len(list(io_evts)), 2)
 
       # Weights/biases/inputs should not be downloaded at all
       self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
@@ -581,7 +584,51 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
       # No io_events implies the data was streamed
-      self.assertEqual(len(io_evts), 0)
+      self.assertEqual(len(list(io_evts)), 0)
+
+  def testNonModifiedResourceIsNotOverwrittenInPlaceOp(self):
+    # This test verifies that if we have a resource varaible (w) which is marked
+    # as not modified then a copy is inserted to make sure it is not overwritten
+    # between executions if it is used by an inplace op
+    w_val = [1, 2, 3, 4]
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
+        w = variable_scope.get_variable("w", shape=[4], dtype=np.float32,
+                                         initializer=init_ops.constant_initializer(
+                                           np.array(w_val,
+                                             dtype=np.float32)))
+
+      px = array_ops.placeholder(np.float32, shape=[4])
+      y = w + px
+
+      with ops.device('cpu'):
+        report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      sess.run(report)
+      xs = [np.array([7, 3, 5, 9], dtype=np.float32),
+            np.array([1, 8, 3, 4], dtype=np.float32),
+            np.array([9, 2, 2, 6], dtype=np.float32)]
+      for x in xs:
+        out = sess.run(y, {px: x})
+        self.assertAllClose(out, x + w_val)
+
+
+      rep = sess.run(report)
+      io_evts = tu.extract_all_io_events(rep)
+
+      host_to_device = list(filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
+      self.assertEqual(len(list(host_to_device)), 1)
+      device_to_host = list(filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
+      self.assertEqual(len(list(device_to_host)), 0)
+
+      # w should be copied to device once and that should be the only io event
+      w_dl = "1.0"
+      self.assertEqual(len(list(filter(lambda x:x[1]==w_dl, host_to_device))), 1)
 
 class IpuXlaVariableTestSyntheticData(test_util.TensorFlowTestCase):
   # This test is in its separate class to prevent messing up the enviroment for
@@ -633,62 +680,16 @@ class IpuXlaVariableTestSyntheticData(test_util.TensorFlowTestCase):
       sess.run([train,loss], {x: np.array([[1, 2, 3, 4]], dtype=np.float32)})
       sess.run([train,loss], {x: np.array([[7, 3, 5, 9]], dtype=np.float32)})
 
-      d_dl = "0.0"
-      w1_dl = "1.0"
-      b1_dl = "2.0"
-      w2_dl = "3.0"
-      b2_dl = "4.0"
-
-      # biases are not outputs of the graph
-      d_ul = "0"
-      w1_ul = "1"
-      w2_ul = "2"
-
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
-
-      # The initialization is constant, so there are no events generated on the
-      # IPU.
-
-      host_to_device = list(filter(
-        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
-      device_to_host = list(filter(
-        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
-
-      # No downloads should occur
-      self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w1_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==b1_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w2_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==b2_dl, host_to_device))), 0)
-
-      # No uploads should occur
-      self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w1_ul, device_to_host))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 0)
+      self.assertEqual(len(list(io_evts)), 0)
 
       # Explicitly fetch the first set of weights and biases
       sess.run([w1, b1])
 
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
-
-      host_to_device = list(filter(
-        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
-      device_to_host = list(filter(
-        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
-
-      # No downloads should occur
-      self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w1_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==b1_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w2_dl, host_to_device))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==b2_dl, host_to_device))), 0)
-
-      # No uploads should occur
-      self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w1_ul, device_to_host))), 0)
-      self.assertEqual(len(list(filter(lambda x:x[1]==w2_ul, device_to_host))), 0)
+      self.assertEqual(len(list(io_evts)), 0)
 
 if __name__ == "__main__":
     googletest.main()
