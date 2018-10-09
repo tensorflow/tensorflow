@@ -307,6 +307,21 @@ py_test(
 )
 
 py_test(
+    name = "numa_map_and_batch_dataset_serialization_test",
+    size = "medium",
+    srcs = ["numa_map_and_batch_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "map_dataset_serialization_test",
     size = "medium",
     srcs = ["map_dataset_serialization_test.py"],
