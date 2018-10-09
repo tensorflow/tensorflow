@@ -30,8 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -1680,7 +1680,9 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform softmax on its last dimension.
-  is_valid_dim = control_flow_ops.Assert(math_ops.logical_and(math_ops.greater_equal(dim, -shape.ndims), math_ops.less(dim, shape.ndims)), [dim])
+  is_valid_dim = control_flow_ops.Assert(math_ops.logical_and(
+      math_ops.greater_equal(dim, -shape.ndims),
+      math_ops.less(dim, shape.ndims)), [dim])
   with ops.control_dependencies([is_valid_dim]):
     # Swap logits' dimension of dim and its last dimension.
     input_rank = array_ops.rank(logits)
