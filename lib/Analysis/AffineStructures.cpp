@@ -156,8 +156,8 @@ private:
 } // end anonymous namespace
 
 static void
-fwdSubstituteMutableAffineMap(const AffineMapCompositionUpdate &mapUpdate,
-                              MutableAffineMap *map) {
+forwardSubstituteMutableAffineMap(const AffineMapCompositionUpdate &mapUpdate,
+                                  MutableAffineMap *map) {
   for (unsigned i = 0, e = map->getNumResults(); i < e; i++) {
     AffineExprComposer composer(mapUpdate);
     map->setResult(i, composer.walk(map->getResult(i)));
@@ -264,8 +264,8 @@ static bool findIndex(MLValue *valueToMatch, ArrayRef<MLValue *> valuesToSearch,
 //    into MutableAffineMap 'map'.
 //
 // TODO(andydavis) Move this to a function which can be shared with
-// fwdSubstitute(const AffineValueMap &inputMap).
-void AffineValueMap::fwdSubstitute(const AffineApplyOp &inputOp) {
+// forwardSubstitute(const AffineValueMap &inputMap).
+void AffineValueMap::forwardSubstitute(const AffineApplyOp &inputOp) {
   unsigned currNumDims = map.getNumDims();
   unsigned inputNumResults = inputOp.getNumResults();
 
@@ -389,7 +389,7 @@ void AffineValueMap::fwdSubstitute(const AffineApplyOp &inputOp) {
   // Update 'operands' with new 'outputOperands'.
   operands.swap(outputOperands);
   // Forward substitute 'mapUpdate' into 'map'.
-  fwdSubstituteMutableAffineMap(mapUpdate, &map);
+  forwardSubstituteMutableAffineMap(mapUpdate, &map);
 }
 
 inline bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {

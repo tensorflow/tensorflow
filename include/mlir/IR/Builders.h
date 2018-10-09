@@ -135,7 +135,7 @@ public:
   // One dimension id identity map: (i) -> (i).
   AffineMap *getDimIdentityMap();
   // Multi-dimensional identity map: (d0, d1, d2) -> (d0, d1, d2).
-  AffineMap *getDimIdentityMap(unsigned rank);
+  AffineMap *getMultiDimIdentityMap(unsigned rank);
   // One symbol identity map: ()[s] -> (s).
   AffineMap *getSymbolIdentityMap();
 

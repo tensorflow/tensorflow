@@ -135,8 +135,8 @@ public:
   // affine value map that has only the loop IVs and symbols as its operands.
   // Hence, the access pattern can then be analyzed for example.
   // TODO(bondhugula)
-  void fwdSubstitute(const AffineValueMap &inputMap);
-  void fwdSubstitute(const AffineApplyOp &inputOp);
+  void forwardSubstitute(const AffineValueMap &inputMap);
+  void forwardSubstitute(const AffineApplyOp &inputOp);
 
   // TODO(andydavis, bondhugula) Expose an affine map simplify function, which
   // can be used to amortize the cost of simplification over multiple fwd

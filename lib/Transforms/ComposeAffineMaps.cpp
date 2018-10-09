@@ -103,7 +103,7 @@ static void createComposedAffineApplyOp(
   unsigned rank = memrefType->getRank();
   assert(indices.size() == rank);
   // Create identity map with same number of dimensions as 'memrefType'.
-  auto *map = builder->getDimIdentityMap(rank);
+  auto *map = builder->getMultiDimIdentityMap(rank);
   // Initialize AffineValueMap with identity map.
   AffineValueMap valueMap(map, indices, builder->getContext());
 
@@ -111,7 +111,7 @@ static void createComposedAffineApplyOp(
     assert(opStmt->is<AffineApplyOp>());
     auto affineApplyOp = opStmt->getAs<AffineApplyOp>();
     // Forward substitute 'affineApplyOp' into 'valueMap'.
-    valueMap.fwdSubstitute(*affineApplyOp);
+    valueMap.forwardSubstitute(*affineApplyOp);
   }
   // Compose affine maps from all ancestor AffineApplyOps.
   // Create new AffineApplyOp from 'valueMap'.

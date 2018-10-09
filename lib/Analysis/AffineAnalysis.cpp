@@ -23,13 +23,10 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineExprVisitor.h"
-#include "mlir/IR/MLValue.h"
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Statements.h"
-#include "llvm/ADT/ArrayRef.h"
 
 using namespace mlir;
-using namespace llvm;
 
 /// Constructs an affine expression from a flat ArrayRef. If there are local
 /// identifiers (neither dimensional nor symbolic) that appear in the sum of
@@ -304,12 +301,15 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// Returns the sequence of AffineApplyOp OperationStmts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
-// TODO(andydavis) Consider moving this method to AffineValueMap.
+// TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
+// the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
     const SmallVector<MLValue *, 4> &operands,
     SmallVector<OperationStmt *, 4> *affineApplyOps) {
   struct State {
+    // The ssa value for this node in the DFS traversal.
     MLValue *value;
+    // The operand index of 'value' to explore next during DFS traversal.
     unsigned operandIndex;
   };
   SmallVector<State, 4> worklist;
@@ -333,7 +333,12 @@ void mlir::getReachableAffineApplyOps(
       }
       if (state.operandIndex < opStmt->getNumOperands()) {
         // Visit: Add next 'affineApplyOp' operand to worklist.
-        worklist.push_back({opStmt->getOperand(state.operandIndex++), 0});
+        // Get next operand to visit at 'operandIndex'.
+        auto *nextOperand = opStmt->getOperand(state.operandIndex);
+        // Increment 'operandIndex' in 'state'.
+        ++state.operandIndex;
+        // Add 'nextOperand' to worklist.
+        worklist.push_back({nextOperand, 0});
       } else {
         // Post-visit: done visiting operands AffineApplyOp, pop off stack.
         worklist.pop_back();
