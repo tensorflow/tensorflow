@@ -52,6 +52,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "mapping_test",
+    size = "small",
+    srcs = ["python/mapping_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/compiler/plugin/poplar:ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
     name = "conditional_test",
     size = "small",
     srcs = ["python/conditional_test.py"],
@@ -86,6 +103,7 @@ test_suite(
         "ops_test",
         "while_loop_perf_test",
         "conditional_test",
+        "mapping_test",
     ],
 )
 

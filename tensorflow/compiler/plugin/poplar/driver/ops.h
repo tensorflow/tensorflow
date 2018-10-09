@@ -33,6 +33,7 @@ namespace poplarplugin {
 struct CompilerResources;
 
 using TensorMap = std::map<std::pair<std::string, int64>, poplar::Tensor>;
+using TensorMaps = std::map<std::string, TensorMap>;
 
 using OutVector = std::vector<poplar::Tensor>;
 using ArgVector = std::vector<poplar::Tensor>;
@@ -128,11 +129,11 @@ ArgVector FindInstructionInputs(const TensorMap& map,
  */
 OutVector FindInstructionOutputs(const TensorMap& map,
                                  const HloInstruction* inst);
-/* This prints a JSON to VLOG lvl 2 which contains information about tile
- * mapping for all tensors in tensor_map
+
+/* Generate a JSON struture describing the tensor mappings
  */
-void PrintTensorMapping(const poplar::Graph& graph,
-                        const TensorMap& tensor_map);
+std::string GetTensorMappingJson(const poplar::Graph& graph,
+                                 const TensorMaps& tensor_map);
 
 /* Sometimes an inplace op cannot be performed because the input/output tensor
  * is not parallel writable or because further analysis has shown that the op

@@ -47,6 +47,8 @@ struct CompilerResources {
 
   poprand::Random random;
 
+  std::map<std::string, TensorMap> tensor_maps;
+
   graph_caching_util::ConvolutionGraphCache conv_graph_cache;
 
   graph_caching_util::BwdWeightGraphCache bwd_weight_graph_cache;

@@ -390,10 +390,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       }
     }
 
+    std::string map_json = GetTensorMappingJson(graph, resources.tensor_maps);
+
     uint64 duration = tensorflow::Env::Default()->NowMicros() - start_micros;
 
     poplarExecutor->AddCompileEndEventRecord(module->name(), stream.str(),
-                                             duration);
+                                             map_json, duration);
   }
 
   std::unique_ptr<Executable> executable;
