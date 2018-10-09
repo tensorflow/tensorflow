@@ -205,7 +205,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     return Status::OK();
   }
 
-  if (layout.format() == INVALID_FORMAT) {
+  if (layout.format() == INVALID_FORMAT || !Format_IsValid(layout.format())) {
     return InvalidArgument(
         "Layout does not have a valid format: layout {%s}, shape {%s}",
         layout.ShortDebugString(), shape.ShortDebugString());
