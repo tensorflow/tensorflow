@@ -258,6 +258,30 @@ class BackpropTest(test.TestCase):
       loss += v * v
     self.assertAllEqual(t.gradient(loss, v), 2.0)
 
+  def testAutomaticWatchedVariables(self):
+    with backprop.GradientTape() as t:
+      self.assertEqual(0, len(t.watched_variables()))
+      v = resource_variable_ops.ResourceVariable(1.0)
+      loss = v * v
+      self.assertAllEqual([v], t.watched_variables())
+
+      t.reset()
+      self.assertEqual(0, len(t.watched_variables()))
+      loss += v * v
+      self.assertAllEqual([v], t.watched_variables())
+
+  def testExplicitWatchedVariables(self):
+    with backprop.GradientTape() as t:
+      self.assertEqual(0, len(t.watched_variables()))
+      v = resource_variable_ops.ResourceVariable(1.0)
+      t.watch(v)
+      self.assertAllEqual([v], t.watched_variables())
+
+      t.reset()
+      self.assertEqual(0, len(t.watched_variables()))
+      t.watch(v)
+      self.assertAllEqual([v], t.watched_variables())
+
   @test_util.assert_no_new_tensors
   def testGradientNone(self):
 
