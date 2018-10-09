@@ -306,7 +306,7 @@ class AssertNoneEqualTest(test.TestCase):
     # Note that the following three strings are regexes
     expected_error_msg_full = r"""0.0, 1.0, 2.0, 3.0, 4.0, 5.0"""
     expected_error_msg_default = r"""0.0, 1.0, 2.0, \.\.\."""
-    expected_error_msg_short = r"""0.0, 1.0, .\.\."""
+    expected_error_msg_short = r"""0.0, 1.0, \.\.\."""
     with context.eager_mode():
       t = constant_op.constant(np.array(range(6)), shape=[2, 3], 
                                dtype=np.float32)
