@@ -6610,6 +6610,26 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "gpu_fusion_ops",
+    prefix = "gpu_fusion_ops",
+    deps = [
+        ":bounds_check",
+        ":conv_2d",
+        ":conv_ops_gpu_hdrs",
+        ":image_resizer_state",
+        ":fill_functor",
+        ":ops_util",
+        ":gpu_util_hdrs",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 
