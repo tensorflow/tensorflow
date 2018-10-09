@@ -137,6 +137,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               current_dir = ".";
               current_pattern_ = io::JoinPath(current_dir, current_pattern_);
             }
+            std::cout << "Input pattern: " << current_pattern_
+                      << "; Current dir: " << current_dir << std::endl;
 
             ret.Update(UpdateIterator(ctx, current_dir, current_pattern_));
             ++current_pattern_index_;
@@ -213,6 +215,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                 .substr(0, eval_pattern.find_first_of("*?[\\"));
 
         FileSystem* fs;
+        Status fs_status = ctx->env()->GetFileSystemForFile(dir, &fs);
+        std::cout << "GetFileSystemForFile status: " << fs_status << std::endl;
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSystemForFile(dir, &fs));
 
         filepath_queue_.push(PathStatus(dir, true));
@@ -234,6 +238,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           const string& current_dir = current_path.first;
           std::vector<string> children;
           Status s = fs->GetChildren(current_dir, &children);
+          std::cout << "GetChildren status: " << s.ToString()
+                    << "; Children size: " << children.size() << std::endl;
           ret.Update(s);
 
           // If GetChildren() fails, continue the next search.
