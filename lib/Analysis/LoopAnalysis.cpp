@@ -64,7 +64,7 @@ AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
     auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExpr>();
     if (!cExpr)
       return loopSpanExpr.ceilDiv(step);
-    loopSpan = cExpr->getValue();
+    loopSpan = cExpr.getValue();
   }
 
   // 0 iteration loops.
@@ -85,7 +85,7 @@ llvm::Optional<uint64_t> mlir::getConstantTripCount(const ForStmt &forStmt) {
     return None;
 
   if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExpr>())
-    return constExpr->getValue();
+    return constExpr.getValue();
 
   return None;
 }
@@ -100,7 +100,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
     return 1;
 
   if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExpr>()) {
-    uint64_t tripCount = constExpr->getValue();
+    uint64_t tripCount = constExpr.getValue();
 
     // 0 iteration loops (greatest divisor is 2^64 - 1).
     if (tripCount == 0)
@@ -111,5 +111,5 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   }
 
   // Trip count is not a known constant; return its largest known divisor.
-  return tripCountExpr->getLargestKnownDivisor();
+  return tripCountExpr.getLargestKnownDivisor();
 }

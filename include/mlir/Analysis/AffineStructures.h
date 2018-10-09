@@ -71,7 +71,7 @@ private:
   unsigned numDims;
   unsigned numSymbols;
   /// A pointer to the IR's context to store all newly created
-  /// AffineExprClass's.
+  /// AffineExprStorage's.
   MLIRContext *context;
 };
 
@@ -100,7 +100,7 @@ private:
   SmallVector<AffineExpr, 8> constraints;
   SmallVector<bool, 8> eqFlags;
   /// A pointer to the IR's context to store all newly created
-  /// AffineExprClass's.
+  /// AffineExprStorage's.
   MLIRContext *context;
 };
 

@@ -38,7 +38,7 @@ public:
   /// Attempt to constant fold the specified affine expr, or return null on
   /// failure.
   IntegerAttr *constantFold(AffineExpr expr) {
-    switch (expr->getKind()) {
+    switch (expr.getKind()) {
     case AffineExprKind::Add:
       return constantFoldBinExpr(
           expr, [](int64_t lhs, int64_t rhs) { return lhs + rhs; });
@@ -55,15 +55,14 @@ public:
       return constantFoldBinExpr(
           expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExprKind::Constant:
-      return IntegerAttr::get(expr.cast<AffineConstantExpr>()->getValue(),
-                              expr->getContext());
+      return IntegerAttr::get(expr.cast<AffineConstantExpr>().getValue(),
+                              expr.getContext());
     case AffineExprKind::DimId:
       return dyn_cast_or_null<IntegerAttr>(
-          operandConsts[expr.cast<AffineDimExpr>()->getPosition()]);
+          operandConsts[expr.cast<AffineDimExpr>().getPosition()]);
     case AffineExprKind::SymbolId:
       return dyn_cast_or_null<IntegerAttr>(
-          operandConsts[numDims +
-                        expr.cast<AffineSymbolExpr>()->getPosition()]);
+          operandConsts[numDims + expr.cast<AffineSymbolExpr>().getPosition()]);
     }
   }
 
@@ -72,12 +71,12 @@ private:
   constantFoldBinExpr(AffineExpr expr,
                       std::function<uint64_t(int64_t, uint64_t)> op) {
     auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
-    auto *lhs = constantFold(binOpExpr->getLHS());
-    auto *rhs = constantFold(binOpExpr->getRHS());
+    auto *lhs = constantFold(binOpExpr.getLHS());
+    auto *rhs = constantFold(binOpExpr.getRHS());
     if (!lhs || !rhs)
       return nullptr;
     return IntegerAttr::get(op(lhs->getValue(), rhs->getValue()),
-                            expr->getContext());
+                            expr.getContext());
   }
 
   // The number of dimension operands in AffineMap containing this expression.
@@ -94,22 +93,22 @@ AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
       results(results), rangeSizes(rangeSizes) {}
 
-/// Returns a single constant result affine map.
-AffineMap *AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
-  return get(/*dimCount=*/0, /*symbolCount=*/0,
-             {getAffineConstantExpr(val, context)}, {});
-}
-
 bool AffineMap::isIdentity() {
   if (getNumDims() != getNumResults())
     return false;
   ArrayRef<AffineExpr> results = getResults();
   for (unsigned i = 0, numDims = getNumDims(); i < numDims; ++i) {
     auto expr = results[i].dyn_cast<AffineDimExpr>();
-    if (!expr || expr->getPosition() != i)
+    if (!expr || expr.getPosition() != i)
       return false;
   }
   return true;
+}
+
+/// Returns a single constant result affine map.
+AffineMap *AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
+  return get(/*dimCount=*/0, /*symbolCount=*/0,
+             {getAffineConstantExpr(val, context)}, {});
 }
 
 bool AffineMap::isSingleConstant() {
@@ -118,7 +117,7 @@ bool AffineMap::isSingleConstant() {
 
 int64_t AffineMap::getSingleConstantResult() {
   assert(isSingleConstant() && "map must have a single constant result");
-  return getResult(0).cast<AffineConstantExpr>()->getValue();
+  return getResult(0).cast<AffineConstantExpr>().getValue();
 }
 
 AffineExpr AffineMap::getResult(unsigned idx) { return results[idx]; }
@@ -132,7 +131,7 @@ bool AffineMap::constantFold(ArrayRef<Attribute *> operandConstants,
 
   // Fold each of the result expressions.
   AffineExprConstantFolder exprFolder(getNumDims(), operandConstants);
-  // Constant fold each AffineExprClass in AffineMap and add to 'results'.
+  // Constant fold each AffineExpr in AffineMap and add to 'results'.
   for (auto expr : getResults()) {
     auto *folded = exprFolder.constantFold(expr);
     // If we didn't fold to a constant, then folding fails.

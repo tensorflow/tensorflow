@@ -40,7 +40,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 using namespace mlir;
-using namespace mlir::detail;
 
 void Identifier::print(raw_ostream &os) const { os << str(); }
 
@@ -294,7 +293,7 @@ protected:
   void printIntegerSetReference(IntegerSet *integerSet);
 
   /// This enum is used to represent the binding stength of the enclosing
-  /// context that an AffineExprClass is being printed in, so we can
+  /// context that an AffineExprStorage is being printed in, so we can
   /// intelligently produce parens.
   enum class BindingStrength {
     Weak,   // + and -
@@ -578,15 +577,15 @@ void ModulePrinter::printAffineExpr(AffineExpr expr) {
 void ModulePrinter::printAffineExprInternal(
     AffineExpr expr, BindingStrength enclosingTightness) {
   const char *binopSpelling = nullptr;
-  switch (expr->getKind()) {
+  switch (expr.getKind()) {
   case AffineExprKind::SymbolId:
-    os << 's' << expr.cast<AffineSymbolExpr>()->getPosition();
+    os << 's' << expr.cast<AffineSymbolExpr>().getPosition();
     return;
   case AffineExprKind::DimId:
-    os << 'd' << expr.cast<AffineDimExpr>()->getPosition();
+    os << 'd' << expr.cast<AffineDimExpr>().getPosition();
     return;
   case AffineExprKind::Constant:
-    os << expr.cast<AffineConstantExpr>()->getValue();
+    os << expr.cast<AffineConstantExpr>().getValue();
     return;
   case AffineExprKind::Add:
     binopSpelling = " + ";
@@ -608,13 +607,13 @@ void ModulePrinter::printAffineExprInternal(
   auto binOp = expr.cast<AffineBinaryOpExpr>();
 
   // Handle tightly binding binary operators.
-  if (binOp->getKind() != AffineExprKind::Add) {
+  if (binOp.getKind() != AffineExprKind::Add) {
     if (enclosingTightness == BindingStrength::Strong)
       os << '(';
 
-    printAffineExprInternal(binOp->getLHS(), BindingStrength::Strong);
+    printAffineExprInternal(binOp.getLHS(), BindingStrength::Strong);
     os << binopSpelling;
-    printAffineExprInternal(binOp->getRHS(), BindingStrength::Strong);
+    printAffineExprInternal(binOp.getRHS(), BindingStrength::Strong);
 
     if (enclosingTightness == BindingStrength::Strong)
       os << ')';
@@ -627,26 +626,26 @@ void ModulePrinter::printAffineExprInternal(
 
   // Pretty print addition to a product that has a negative operand as a
   // subtraction.
-  AffineExpr rhsExpr = binOp->getRHS();
+  AffineExpr rhsExpr = binOp.getRHS();
   if (auto rhs = rhsExpr.dyn_cast<AffineBinaryOpExpr>()) {
-    if (rhs->getKind() == AffineExprKind::Mul) {
-      AffineExpr rrhsExpr = rhs->getRHS();
+    if (rhs.getKind() == AffineExprKind::Mul) {
+      AffineExpr rrhsExpr = rhs.getRHS();
       if (auto rrhs = rrhsExpr.dyn_cast<AffineConstantExpr>()) {
-        if (rrhs->getValue() == -1) {
-          printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
+        if (rrhs.getValue() == -1) {
+          printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
           os << " - ";
-          printAffineExprInternal(rhs->getLHS(), BindingStrength::Weak);
+          printAffineExprInternal(rhs.getLHS(), BindingStrength::Weak);
 
           if (enclosingTightness == BindingStrength::Strong)
             os << ')';
           return;
         }
 
-        if (rrhs->getValue() < -1) {
-          printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
+        if (rrhs.getValue() < -1) {
+          printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
           os << " - ";
-          printAffineExprInternal(rhs->getLHS(), BindingStrength::Strong);
-          os << " * " << -rrhs->getValue();
+          printAffineExprInternal(rhs.getLHS(), BindingStrength::Strong);
+          os << " * " << -rrhs.getValue();
           if (enclosingTightness == BindingStrength::Strong)
             os << ')';
           return;
@@ -657,18 +656,18 @@ void ModulePrinter::printAffineExprInternal(
 
   // Pretty print addition to a negative number as a subtraction.
   if (auto rhs = rhsExpr.dyn_cast<AffineConstantExpr>()) {
-    if (rhs->getValue() < 0) {
-      printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
-      os << " - " << -rhs->getValue();
+    if (rhs.getValue() < 0) {
+      printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
+      os << " - " << -rhs.getValue();
       if (enclosingTightness == BindingStrength::Strong)
         os << ')';
       return;
     }
   }
 
-  printAffineExprInternal(binOp->getLHS(), BindingStrength::Weak);
+  printAffineExprInternal(binOp.getLHS(), BindingStrength::Weak);
   os << " + ";
-  printAffineExprInternal(binOp->getRHS(), BindingStrength::Weak);
+  printAffineExprInternal(binOp.getRHS(), BindingStrength::Weak);
 
   if (enclosingTightness == BindingStrength::Strong)
     os << ')';
@@ -1437,7 +1436,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
     // Print constant bound.
     if (map->getNumDims() == 0 && map->getNumSymbols() == 0) {
       if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-        os << constExpr->getValue();
+        os << constExpr.getValue();
         return;
       }
     }
@@ -1502,19 +1501,19 @@ void AffineMap::dump() {
   llvm::errs() << "\n";
 }
 
-void AffineExprClass::dump() {
-  print(llvm::errs());
-  llvm::errs() << "\n";
-}
-
 void IntegerSet::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
 
-void AffineExprClass::print(raw_ostream &os) {
+void AffineExpr::print(raw_ostream &os) const {
   ModuleState state(/*no context is known*/ nullptr);
-  ModulePrinter(os, state).printAffineExpr(this);
+  ModulePrinter(os, state).printAffineExpr(*this);
+}
+
+void AffineExpr::dump() const {
+  print(llvm::errs());
+  llvm::errs() << "\n";
 }
 
 void AffineMap::print(raw_ostream &os) {

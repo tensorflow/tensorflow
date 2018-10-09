@@ -16,7 +16,7 @@
 // =============================================================================
 //
 // This header file defines prototypes for methods that perform analysis
-// involving affine structures (AffineExprClass, AffineMap, IntegerSet, etc.)
+// involving affine structures (AffineExprStorage, AffineMap, IntegerSet, etc.)
 // and other IR structures that in turn use these.
 //
 //===----------------------------------------------------------------------===//
@@ -29,13 +29,7 @@
 
 namespace mlir {
 
-namespace detail {
-
-class AffineExprClass;
-
-} // namespace detail
-template <typename T> class AffineExprBase;
-using AffineExpr = AffineExprBase<detail::AffineExprClass>;
+class AffineExpr;
 class MLIRContext;
 class MLValue;
 class OperationStmt;

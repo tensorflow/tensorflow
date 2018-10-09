@@ -863,33 +863,33 @@ AffineExpr AffineParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
   // TODO: make the error location info accurate.
   switch (op) {
   case Mul:
-    if (!lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant()) {
+    if (!lhs.isSymbolicOrConstant() && !rhs.isSymbolicOrConstant()) {
       emitError(opLoc, "non-affine expression: at least one of the multiply "
                        "operands has to be either a constant or symbolic");
       return nullptr;
     }
-    return builder.getMulExpr(lhs, rhs);
+    return lhs * rhs;
   case FloorDiv:
-    if (!rhs->isSymbolicOrConstant()) {
+    if (!rhs.isSymbolicOrConstant()) {
       emitError(opLoc, "non-affine expression: right operand of floordiv "
                        "has to be either a constant or symbolic");
       return nullptr;
     }
-    return builder.getFloorDivExpr(lhs, rhs);
+    return lhs.floorDiv(rhs);
   case CeilDiv:
-    if (!rhs->isSymbolicOrConstant()) {
+    if (!rhs.isSymbolicOrConstant()) {
       emitError(opLoc, "non-affine expression: right operand of ceildiv "
                        "has to be either a constant or symbolic");
       return nullptr;
     }
-    return builder.getCeilDivExpr(lhs, rhs);
+    return lhs.ceilDiv(rhs);
   case Mod:
-    if (!rhs->isSymbolicOrConstant()) {
+    if (!rhs.isSymbolicOrConstant()) {
       emitError(opLoc, "non-affine expression: right operand of mod "
                        "has to be either a constant or symbolic");
       return nullptr;
     }
-    return builder.getModExpr(lhs, rhs);
+    return lhs % rhs;
   case HNoOp:
     llvm_unreachable("can't create affine expression for null high prec op");
     return nullptr;
@@ -901,10 +901,9 @@ AffineExpr AffineParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
                                                AffineExpr lhs, AffineExpr rhs) {
   switch (op) {
   case AffineLowPrecOp::Add:
-    return builder.getAddExpr(lhs, rhs);
+    return lhs + rhs;
   case AffineLowPrecOp::Sub:
-    return builder.getAddExpr(
-        lhs, builder.getMulExpr(rhs, builder.getAffineConstantExpr(-1)));
+    return lhs - rhs;
   case AffineLowPrecOp::LNoOp:
     llvm_unreachable("can't create affine expression for null low prec op");
     return nullptr;
@@ -1017,8 +1016,7 @@ AffineExpr AffineParser::parseNegateExpression(AffineExpr lhs) {
     // Extra error message although parseAffineOperandExpr would have
     // complained. Leads to a better diagnostic.
     return (emitError("missing operand of negation"), nullptr);
-  auto minusOne = builder.getAffineConstantExpr(-1);
-  return builder.getMulExpr(minusOne, operand);
+  return (-1) * operand;
 }
 
 /// Parse a bare id that may appear in an affine expression.
@@ -1267,7 +1265,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
       if (!elt)
         return ParseFailure;
 
-      if (!elt->isSymbolicOrConstant())
+      if (!elt.isSymbolicOrConstant())
         return emitError(loc,
                          "size expressions cannot refer to dimension values");
 

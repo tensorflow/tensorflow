@@ -81,7 +81,7 @@ public:
       : mapUpdate(mapUpdate), walkingInputMap(false) {}
 
   AffineExpr walk(AffineExpr expr) {
-    switch (expr->getKind()) {
+    switch (expr.getKind()) {
     case AffineExprKind::Add:
       return walkBinExpr(
           expr, [](AffineExpr lhs, AffineExpr rhs) { return lhs + rhs; });
@@ -102,16 +102,16 @@ public:
     case AffineExprKind::Constant:
       return expr;
     case AffineExprKind::DimId: {
-      unsigned dimPosition = expr.cast<AffineDimExpr>()->getPosition();
+      unsigned dimPosition = expr.cast<AffineDimExpr>().getPosition();
       if (walkingInputMap) {
         return getAffineDimExpr(mapUpdate.inputDimMap.lookup(dimPosition),
-                                expr->getContext());
+                                expr.getContext());
       }
       // Check if we are just mapping this dim to another position.
       if (mapUpdate.currDimMap.count(dimPosition) > 0) {
         assert(mapUpdate.currDimToInputResultMap.count(dimPosition) == 0);
         return getAffineDimExpr(mapUpdate.currDimMap.lookup(dimPosition),
-                                expr->getContext());
+                                expr.getContext());
       }
       // We are substituting an input map result at 'dimPositon'
       // Forward substitute currDimToInputResultMap[dimPosition] into this
@@ -123,14 +123,13 @@ public:
       return composer.walk(mapUpdate.inputResults[inputResultIndex]);
     }
     case AffineExprKind::SymbolId:
-      unsigned symbolPosition = expr.cast<AffineSymbolExpr>()->getPosition();
+      unsigned symbolPosition = expr.cast<AffineSymbolExpr>().getPosition();
       if (walkingInputMap) {
         return getAffineSymbolExpr(
-            mapUpdate.inputSymbolMap.lookup(symbolPosition),
-            expr->getContext());
+            mapUpdate.inputSymbolMap.lookup(symbolPosition), expr.getContext());
       }
       return getAffineSymbolExpr(mapUpdate.currSymbolMap.lookup(symbolPosition),
-                                 expr->getContext());
+                                 expr.getContext());
     }
   }
 
@@ -142,7 +141,7 @@ private:
   AffineExpr walkBinExpr(AffineExpr expr,
                          std::function<AffineExpr(AffineExpr, AffineExpr)> op) {
     auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
-    return op(walk(binOpExpr->getLHS()), walk(binOpExpr->getRHS()));
+    return op(walk(binOpExpr.getLHS()), walk(binOpExpr.getRHS()));
   }
 
   // Map update specifies to dim and symbol postion maps, as well as the input
@@ -177,7 +176,7 @@ MutableAffineMap::MutableAffineMap(AffineMap *map, MLIRContext *context)
 }
 
 bool MutableAffineMap::isMultipleOf(unsigned idx, int64_t factor) const {
-  if (results[idx]->isMultipleOf(factor))
+  if (results[idx].isMultipleOf(factor))
     return true;
 
   // TODO(bondhugula): use simplifyAffineExpr and FlatAffineConstraints to
@@ -295,10 +294,10 @@ void AffineValueMap::forwardSubstitute(const AffineApplyOp &inputOp) {
     AffineExprPositionGatherer(unsigned numDims, DenseSet<unsigned> *positions)
         : numDims(numDims), positions(positions) {}
     void visitDimExpr(AffineDimExpr expr) {
-      positions->insert(expr->getPosition());
+      positions->insert(expr.getPosition());
     }
     void visitSymbolExpr(AffineSymbolExpr expr) {
-      positions->insert(numDims + expr->getPosition());
+      positions->insert(numDims + expr.getPosition());
     }
   };
 

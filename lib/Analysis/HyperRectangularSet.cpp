@@ -40,10 +40,10 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
     for (it = ubs.begin(), e = ubs.end(); it != e; it++, j++) {
       if (auto cExpr = it->dyn_cast<AffineConstantExpr>()) {
         if (val == None) {
-          val = cExpr->getValue();
+          val = cExpr.getValue();
           *idx = j;
-        } else if (cmp(cExpr->getValue(), val.getValue())) {
-          val = cExpr->getValue();
+        } else if (cmp(cExpr.getValue(), val.getValue())) {
+          val = cExpr.getValue();
           *idx = j;
         }
       }
@@ -52,7 +52,7 @@ getReducedConstBound(const HyperRectangularSet &set, unsigned *idx,
   return val;
 }
 
-// Merge the two lists of AffineExprClass's into a single one, avoiding
+// Merge the two lists of AffineExpr's into a single one, avoiding
 // duplicates. lb specifies whether the bound lists are for a lower bound or an
 // upper bound.
 // TODO(bondhugula): clean this code up.
@@ -79,7 +79,7 @@ static void mergeBounds(const HyperRectangularSet &set,
             lhsList.push_back(expr);
             continue;
           }
-          if (cExpr->getValue() < cb)
+          if (cExpr.getValue() < cb)
             lhsList[idx] = expr;
           // A constant value >= the existing bound constant.
           continue;
@@ -93,7 +93,7 @@ static void mergeBounds(const HyperRectangularSet &set,
           lhsList.push_back(expr);
           continue;
         }
-        if (cExpr->getValue() > cb)
+        if (cExpr.getValue() > cb)
           lhsList[idx] = expr;
         continue;
       }
@@ -116,7 +116,7 @@ HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
   for (auto boundList : lbs) {
     AffineBoundExprList lb;
     for (auto expr : boundList) {
-      assert(expr->isSymbolicOrConstant() &&
+      assert(expr.isSymbolicOrConstant() &&
              "bound expression should be symbolic or constant");
       lb.push_back(expr);
     }
@@ -127,7 +127,7 @@ HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
   for (auto boundList : ubs) {
     AffineBoundExprList ub;
     for (auto expr : boundList) {
-      assert(expr->isSymbolicOrConstant() &&
+      assert(expr.isSymbolicOrConstant() &&
              "bound expression should be symbolic or constant");
       ub.push_back(expr);
     }
@@ -163,7 +163,7 @@ void HyperRectangularSet::print(raw_ostream &os) const {
   for (auto &lb : lowerBounds) {
     os << "Dim " << d++ << "\n";
     for (auto expr : lb) {
-      expr->print(os);
+      expr.print(os);
     }
   }
   d = 0;
@@ -171,7 +171,7 @@ void HyperRectangularSet::print(raw_ostream &os) const {
   for (auto &lb : upperBounds) {
     os << "Dim " << d++ << "\n";
     for (auto expr : lb) {
-      expr->print(os);
+      expr.print(os);
     }
   }
 }

@@ -167,58 +167,6 @@ AffineExpr Builder::getAffineConstantExpr(int64_t constant) {
   return mlir::getAffineConstantExpr(constant, context);
 }
 
-AffineExpr Builder::getAddExpr(AffineExpr lhs, AffineExpr rhs) {
-  return lhs + rhs;
-}
-
-AffineExpr Builder::getAddExpr(AffineExpr lhs, int64_t rhs) {
-  return lhs + rhs;
-}
-
-AffineExpr Builder::getMulExpr(AffineExpr lhs, AffineExpr rhs) {
-  return lhs * rhs;
-}
-
-// Most multiply expressions are pure affine (rhs is a constant).
-AffineExpr Builder::getMulExpr(AffineExpr lhs, int64_t rhs) {
-  return lhs * rhs;
-}
-
-AffineExpr Builder::getSubExpr(AffineExpr lhs, AffineExpr rhs) {
-  return lhs - rhs;
-}
-
-AffineExpr Builder::getSubExpr(AffineExpr lhs, int64_t rhs) {
-  return lhs - rhs;
-}
-
-AffineExpr Builder::getModExpr(AffineExpr lhs, AffineExpr rhs) {
-  return lhs % rhs;
-}
-
-// Most modulo expressions are pure affine.
-AffineExpr Builder::getModExpr(AffineExpr lhs, uint64_t rhs) {
-  return lhs % rhs;
-}
-
-AffineExpr Builder::getFloorDivExpr(AffineExpr lhs, AffineExpr rhs) {
-  return lhs.floorDiv(rhs);
-}
-
-// Most floordiv expressions are pure affine.
-AffineExpr Builder::getFloorDivExpr(AffineExpr lhs, uint64_t rhs) {
-  return lhs.floorDiv(rhs);
-}
-
-AffineExpr Builder::getCeilDivExpr(AffineExpr lhs, AffineExpr rhs) {
-  return lhs.ceilDiv(rhs);
-}
-
-// Most ceildiv expressions are pure affine.
-AffineExpr Builder::getCeilDivExpr(AffineExpr lhs, uint64_t rhs) {
-  return lhs.ceilDiv(rhs);
-}
-
 IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
                                    ArrayRef<AffineExpr> constraints,
                                    ArrayRef<bool> isEq) {
@@ -258,7 +206,7 @@ AffineMap *Builder::getShiftedAffineMap(AffineMap *map, int64_t shift) {
   SmallVector<AffineExpr, 4> shiftedResults;
   shiftedResults.reserve(map->getNumResults());
   for (auto resultExpr : map->getResults()) {
-    shiftedResults.push_back(getAddExpr(resultExpr, shift));
+    shiftedResults.push_back(resultExpr + shift);
   }
   return AffineMap::get(map->getNumDims(), map->getNumSymbols(), shiftedResults,
                         map->getRangeSizes());

@@ -34,11 +34,11 @@ class MLIRContext;
 
 namespace detail {
 
-class AffineExprClass;
-class AffineBinaryOpExprClass;
-class AffineDimExprClass;
-class AffineSymbolExprClass;
-class AffineConstantExprClass;
+class AffineExprStorage;
+class AffineBinaryOpExprStorage;
+class AffineDimExprStorage;
+class AffineSymbolExprStorage;
+class AffineConstantExprStorage;
 
 } // namespace detail
 
@@ -65,139 +65,74 @@ enum class AffineExprKind {
   SymbolId,
 };
 
-/// Helper structure to build AffineExprClass with intuitive operators in order
-/// to operate on chainable, lightweight, immutable value types instead of
-/// pointer types.
-/// TODO(ntv): Add extra out-of-class operators for int op AffineExprBase
-/// TODO(ntv): pointer pair
-template <typename AffineExprType> class AffineExprBase {
+/// Base type for affine expression.
+/// AffineExpr's are immutable value types with intuitive operators to
+/// operate on chainable, lightweight compositions.
+/// An AffineExpr is a POD interface to the underlying storage type pointer.
+class AffineExpr {
 public:
-  typedef AffineExprBase TemplateType;
-  typedef AffineExprType ImplType;
+  typedef detail::AffineExprStorage ImplType;
 
-  AffineExprBase() : expr(nullptr) {}
-  /* implicit */ AffineExprBase(const AffineExprType *expr)
-      : expr(const_cast<AffineExprType *>(expr)) {}
+  AffineExpr() : expr(nullptr) {}
+  /* implicit */ AffineExpr(const ImplType *expr)
+      : expr(const_cast<ImplType *>(expr)) {}
 
-  AffineExprBase(const AffineExprBase &other) : expr(other.expr) {}
-  AffineExprBase &operator=(AffineExprBase other) {
+  AffineExpr(const AffineExpr &other) : expr(other.expr) {}
+  AffineExpr &operator=(AffineExpr other) {
     expr = other.expr;
     return *this;
   }
 
-  bool operator==(AffineExprBase other) const { return expr == other.expr; }
-
-  explicit operator AffineExprType *() const {
-    return const_cast<AffineExprType *>(expr);
-  }
-  /* implicit */ operator AffineExprBase<detail::AffineExprClass>() const {
-    return const_cast<detail::AffineExprClass *>(
-        static_cast<const detail::AffineExprClass *>(expr));
-  }
+  bool operator==(AffineExpr other) const { return expr == other.expr; }
   explicit operator bool() const { return expr; }
 
   bool operator!() const { return expr == nullptr; }
-  AffineExprType *operator->() const { return expr; }
 
-  template <typename U> bool isa() const {
-    using PtrType = typename U::ImplType;
-    return llvm::isa<PtrType>(const_cast<AffineExprType *>(this->expr));
-  }
-  template <typename U> U dyn_cast() const {
-    using PtrType = typename U::ImplType;
-    return U(llvm::dyn_cast<PtrType>(const_cast<AffineExprType *>(this->expr)));
-  }
-  template <typename U> U cast() const {
-    using PtrType = typename U::ImplType;
-    return U(llvm::cast<PtrType>(const_cast<AffineExprType *>(this->expr)));
-  }
+  template <typename U> bool isa() const;
+  template <typename U> U dyn_cast() const;
+  template <typename U> U cast() const;
 
-  AffineExprBase operator+(int64_t v) const;
-  AffineExprBase operator+(AffineExprBase other) const;
-  AffineExprBase operator-() const;
-  AffineExprBase operator-(int64_t v) const;
-  AffineExprBase operator-(AffineExprBase other) const;
-  AffineExprBase operator*(int64_t v) const;
-  AffineExprBase operator*(AffineExprBase other) const;
-  AffineExprBase floorDiv(uint64_t v) const;
-  AffineExprBase floorDiv(AffineExprBase other) const;
-  AffineExprBase ceilDiv(uint64_t v) const;
-  AffineExprBase ceilDiv(AffineExprBase other) const;
-  AffineExprBase operator%(uint64_t v) const;
-  AffineExprBase operator%(AffineExprBase other) const;
+  MLIRContext *getContext() const;
 
-  friend ::llvm::hash_code hash_value(AffineExprBase arg);
-
-private:
-  AffineExprType *expr;
-};
-
-using AffineExpr = AffineExprBase<detail::AffineExprClass>;
-using AffineBinaryOpExpr = AffineExprBase<detail::AffineBinaryOpExprClass>;
-using AffineDimExpr = AffineExprBase<detail::AffineDimExprClass>;
-using AffineSymbolExpr = AffineExprBase<detail::AffineSymbolExprClass>;
-using AffineConstantExpr = AffineExprBase<detail::AffineConstantExprClass>;
-
-AffineExpr operator+(int64_t val, AffineExpr expr);
-AffineExpr operator-(int64_t val, AffineExpr expr);
-AffineExpr operator*(int64_t val, AffineExpr expr);
-
-// Make AffineExpr hashable.
-inline ::llvm::hash_code hash_value(AffineExpr arg) {
-  return ::llvm::hash_value(static_cast<detail::AffineExprClass *>(arg.expr));
-}
-
-// These free functions allow clients of the API to not use classes in detail.
-AffineExpr getAffineDimExpr(unsigned position, MLIRContext *context);
-AffineExpr getAffineSymbolExpr(unsigned position, MLIRContext *context);
-AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
-
-namespace detail {
-
-/// A one-dimensional affine expression.
-/// AffineExpression's are immutable (like Type's)
-class AffineExprClass {
-public:
   /// Return the classification for this type.
-  AffineExprKind getKind() { return kind; }
+  AffineExprKind getKind() const;
 
-  void print(raw_ostream &os);
-  void dump();
+  void print(raw_ostream &os) const;
+  void dump() const;
 
   /// Returns true if this expression is made out of only symbols and
   /// constants, i.e., it does not involve dimensional identifiers.
-  bool isSymbolicOrConstant();
+  bool isSymbolicOrConstant() const;
 
   /// Returns true if this is a pure affine expression, i.e., multiplication,
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
-  bool isPureAffine();
+  bool isPureAffine() const;
 
   /// Returns the greatest known integral divisor of this affine expression.
-  uint64_t getLargestKnownDivisor();
+  uint64_t getLargestKnownDivisor() const;
 
   /// Return true if the affine expression is a multiple of 'factor'.
-  bool isMultipleOf(int64_t factor);
+  bool isMultipleOf(int64_t factor) const;
 
-  MLIRContext *getContext();
+  AffineExpr operator+(int64_t v) const;
+  AffineExpr operator+(AffineExpr other) const;
+  AffineExpr operator-() const;
+  AffineExpr operator-(int64_t v) const;
+  AffineExpr operator-(AffineExpr other) const;
+  AffineExpr operator*(int64_t v) const;
+  AffineExpr operator*(AffineExpr other) const;
+  AffineExpr floorDiv(uint64_t v) const;
+  AffineExpr floorDiv(AffineExpr other) const;
+  AffineExpr ceilDiv(uint64_t v) const;
+  AffineExpr ceilDiv(AffineExpr other) const;
+  AffineExpr operator%(uint64_t v) const;
+  AffineExpr operator%(AffineExpr other) const;
+
+  friend ::llvm::hash_code hash_value(AffineExpr arg);
 
 protected:
-  explicit AffineExprClass(AffineExprKind kind, MLIRContext *context)
-      : kind(kind), context(context) {}
-  ~AffineExprClass() {}
-
-private:
-  AffineExprClass(const AffineExprClass &) = delete;
-  void operator=(const AffineExprClass &) = delete;
-
-  /// Classification of the subclass
-  const AffineExprKind kind;
-  MLIRContext *context;
+  ImplType *expr;
 };
-
-inline raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr) {
-  expr->print(os);
-  return os;
-}
 
 /// Affine binary operation expression. An affine binary operation could be an
 /// add, mul, floordiv, ceildiv, or a modulo operation. (Subtraction is
@@ -205,141 +140,81 @@ inline raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr) {
 /// constructed in a simplified form. For eg., the LHS and RHS operands can't
 /// both be constants. There are additional canonicalizing rules depending on
 /// the op type: see checks in the constructor.
-class AffineBinaryOpExprClass : public AffineExprClass {
+class AffineBinaryOpExpr : public AffineExpr {
 public:
-  static AffineExpr get(AffineExprKind kind, AffineExpr lhs, AffineExpr rhs);
-  static AffineExpr getAdd(AffineExpr lhs, AffineExpr rhs) {
-    return get(AffineExprKind::Add, lhs, rhs);
-  }
-  static AffineExpr getAdd(AffineExpr expr, int64_t rhs);
-  static AffineExpr getSub(AffineExpr lhs, AffineExpr rhs);
-
-  static AffineExpr getMul(AffineExpr lhs, AffineExpr rhs) {
-    return get(AffineExprKind::Mul, lhs, rhs);
-  }
-  static AffineExpr getMul(AffineExpr expr, int64_t rhs);
-  static AffineExpr getFloorDiv(AffineExpr lhs, AffineExpr rhs) {
-    return get(AffineExprKind::FloorDiv, lhs, rhs);
-  }
-  static AffineExpr getFloorDiv(AffineExpr lhs, uint64_t rhs);
-  static AffineExpr getCeilDiv(AffineExpr lhs, AffineExpr rhs) {
-    return get(AffineExprKind::CeilDiv, lhs, rhs);
-  }
-  static AffineExpr getCeilDiv(AffineExpr lhs, uint64_t rhs);
-  static AffineExpr getMod(AffineExpr lhs, AffineExpr rhs) {
-    return get(AffineExprKind::Mod, lhs, rhs);
-  }
-  static AffineExpr getMod(AffineExpr lhs, uint64_t rhs);
-
-  AffineExpr getLHS() { return lhs; }
-  AffineExpr getRHS() { return rhs; }
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExprClass *expr) {
-    return const_cast<AffineExprClass *>(expr)->getKind() <=
-           AffineExprKind::LAST_AFFINE_BINARY_OP;
-  }
-
-protected:
-  explicit AffineBinaryOpExprClass(AffineExprKind kind, AffineExpr lhs,
-                                   AffineExpr rhs);
-
-  const AffineExpr lhs;
-  const AffineExpr rhs;
-
-private:
-  ~AffineBinaryOpExprClass() = delete;
+  typedef detail::AffineBinaryOpExprStorage ImplType;
+  /* implicit */ AffineBinaryOpExpr(AffineExpr::ImplType *ptr);
+  AffineExpr getLHS() const;
+  AffineExpr getRHS() const;
 };
 
 /// A dimensional identifier appearing in an affine expression.
-///
-/// This is a POD type of int size; so it should be passed around by
-/// value.  The underlying data is owned by MLIRContext and is thus immortal for
-/// almost all clients.
-class AffineDimExprClass : public AffineExprClass {
+class AffineDimExpr : public AffineExpr {
 public:
-  static AffineExprBase<AffineExprClass> get(unsigned position,
-                                             MLIRContext *context);
-
-  unsigned getPosition() { return position; }
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExprClass *expr) {
-    return const_cast<AffineExprClass *>(expr)->getKind() ==
-           AffineExprKind::DimId;
-  }
-
-  friend AffineExpr mlir::getAffineDimExpr(unsigned position,
-                                           MLIRContext *context);
-
-private:
-  ~AffineDimExprClass() = delete;
-  explicit AffineDimExprClass(unsigned position, MLIRContext *context)
-      : AffineExprClass(AffineExprKind::DimId, context), position(position) {}
-
-  /// Position of this identifier in the argument list.
-  unsigned position;
+  typedef detail::AffineDimExprStorage ImplType;
+  /* implicit */ AffineDimExpr(AffineExpr::ImplType *ptr);
+  unsigned getPosition() const;
 };
 
 /// A symbolic identifier appearing in an affine expression.
-//
-/// This is a POD type of int size, so it should be passed around by
-/// value.  The underlying data is owned by MLIRContext and is thus immortal for
-/// almost all clients.
-class AffineSymbolExprClass : public AffineExprClass {
+class AffineSymbolExpr : public AffineExpr {
 public:
-  static AffineExprBase<AffineExprClass> get(unsigned position,
-                                             MLIRContext *context);
-
-  unsigned getPosition() { return position; }
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExprClass *expr) {
-    return const_cast<AffineExprClass *>(expr)->getKind() ==
-           AffineExprKind::SymbolId;
-  }
-
-  friend AffineExpr mlir::getAffineSymbolExpr(unsigned position,
-                                              MLIRContext *context);
-
-private:
-  ~AffineSymbolExprClass() = delete;
-  explicit AffineSymbolExprClass(unsigned position, MLIRContext *context)
-      : AffineExprClass(AffineExprKind::SymbolId, context), position(position) {
-  }
-
-  /// Position of this identifier in the symbol list.
-  unsigned position;
+  typedef detail::AffineSymbolExprStorage ImplType;
+  /* implicit */ AffineSymbolExpr(AffineExpr::ImplType *ptr);
+  unsigned getPosition() const;
 };
 
 /// An integer constant appearing in affine expression.
-class AffineConstantExprClass : public AffineExprClass {
+class AffineConstantExpr : public AffineExpr {
 public:
-  static AffineExprBase<AffineExprClass> get(int64_t constant,
-                                             MLIRContext *context);
-
-  int64_t getValue() { return constant; }
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExprClass *expr) {
-    return const_cast<AffineExprClass *>(expr)->getKind() ==
-           AffineExprKind::Constant;
-  }
-
-  friend AffineExpr mlir::getAffineConstantExpr(int64_t constant,
-                                                MLIRContext *context);
-
-private:
-  ~AffineConstantExprClass() = delete;
-  explicit AffineConstantExprClass(int64_t constant, MLIRContext *context)
-      : AffineExprClass(AffineExprKind::Constant, context), constant(constant) {
-  }
-
-  // The constant.
-  int64_t constant;
+  typedef detail::AffineConstantExprStorage ImplType;
+  /* implicit */ AffineConstantExpr(AffineExpr::ImplType *ptr);
+  int64_t getValue() const;
 };
 
-} // end namespace detail
+// Make AffineExpr hashable.
+inline ::llvm::hash_code hash_value(AffineExpr arg) {
+  return ::llvm::hash_value(arg.expr);
+}
+
+inline AffineExpr operator+(int64_t val, AffineExpr expr) { return expr + val; }
+inline AffineExpr operator*(int64_t val, AffineExpr expr) { return expr * val; }
+inline AffineExpr operator-(int64_t val, AffineExpr expr) {
+  return expr * (-1) + val;
+}
+
+// These free functions allow clients of the API to not use classes in detail.
+AffineExpr getAffineDimExpr(unsigned position, MLIRContext *context);
+AffineExpr getAffineSymbolExpr(unsigned position, MLIRContext *context);
+AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
+
+raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr);
+
+template <typename U> bool AffineExpr::isa() const {
+  if (std::is_same<U, AffineBinaryOpExpr>::value) {
+    return getKind() <= AffineExprKind::LAST_AFFINE_BINARY_OP;
+  }
+  if (std::is_same<U, AffineDimExpr>::value) {
+    return getKind() == AffineExprKind::DimId;
+  }
+  if (std::is_same<U, AffineSymbolExpr>::value) {
+    return getKind() == AffineExprKind::SymbolId;
+  }
+  if (std::is_same<U, AffineConstantExpr>::value) {
+    return getKind() == AffineExprKind::Constant;
+  }
+}
+template <typename U> U AffineExpr::dyn_cast() const {
+  if (isa<U>()) {
+    return U(expr);
+  }
+  return U(nullptr);
+}
+template <typename U> U AffineExpr::cast() const {
+  assert(isa<U>());
+  return U(expr);
+}
+
 } // namespace mlir
 
 namespace llvm {

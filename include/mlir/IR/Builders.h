@@ -24,14 +24,7 @@
 
 namespace mlir {
 
-namespace detail {
-
-class AffineExprClass;
-
-} // namespace detail
-
-template <typename T> class AffineExprBase;
-using AffineExpr = AffineExprBase<detail::AffineExprClass>;
+class AffineExpr;
 class MLIRContext;
 class Module;
 class UnknownLoc;
@@ -111,18 +104,6 @@ public:
   AffineExpr getAffineDimExpr(unsigned position);
   AffineExpr getAffineSymbolExpr(unsigned position);
   AffineExpr getAffineConstantExpr(int64_t constant);
-  AffineExpr getAddExpr(AffineExpr lhs, AffineExpr rhs);
-  AffineExpr getAddExpr(AffineExpr lhs, int64_t rhs);
-  AffineExpr getSubExpr(AffineExpr lhs, AffineExpr rhs);
-  AffineExpr getSubExpr(AffineExpr lhs, int64_t rhs);
-  AffineExpr getMulExpr(AffineExpr lhs, AffineExpr rhs);
-  AffineExpr getMulExpr(AffineExpr lhs, int64_t rhs);
-  AffineExpr getModExpr(AffineExpr lhs, AffineExpr rhs);
-  AffineExpr getModExpr(AffineExpr lhs, uint64_t rhs);
-  AffineExpr getFloorDivExpr(AffineExpr lhs, AffineExpr rhs);
-  AffineExpr getFloorDivExpr(AffineExpr lhs, uint64_t rhs);
-  AffineExpr getCeilDivExpr(AffineExpr lhs, AffineExpr rhs);
-  AffineExpr getCeilDivExpr(AffineExpr lhs, uint64_t rhs);
 
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
                           ArrayRef<AffineExpr> results,

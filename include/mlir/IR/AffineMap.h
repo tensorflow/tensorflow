@@ -30,13 +30,7 @@
 
 namespace mlir {
 
-namespace detail {
-
-class AffineExprClass;
-
-} // namespace detail
-template <typename T> class AffineExprBase;
-using AffineExpr = AffineExprBase<detail::AffineExprClass>;
+class AffineExpr;
 class Attribute;
 class MLIRContext;
 

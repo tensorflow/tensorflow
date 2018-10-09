@@ -30,7 +30,7 @@ using namespace mlir;
 
 /// Constructs an affine expression from a flat ArrayRef. If there are local
 /// identifiers (neither dimensional nor symbolic) that appear in the sum of
-/// products expression, 'localExprs' is expected to have the AffineExprClass
+/// products expression, 'localExprs' is expected to have the AffineExpr
 /// for it, and is substituted into. The ArrayRef 'eq' is expected to be in the
 /// format [dims, symbols, locals, constant term].
 //  TODO(bondhugula): refactor getAddMulPureAffineExpr to reuse it from here.
@@ -124,7 +124,7 @@ public:
   // Number of newly introduced identifiers to flatten mod/floordiv/ceildiv
   // expressions that could not be simplified.
   unsigned numLocals;
-  // AffineExprClass's corresponding to the floordiv/ceildiv/mod expressions for
+  // AffineExpr's corresponding to the floordiv/ceildiv/mod expressions for
   // which new identifiers were introduced; if the latter do not get canceled
   // out, these expressions are needed to reconstruct the AffineExpr / tree
   // form. Note that these expressions themselves would have been simplified
@@ -144,7 +144,7 @@ public:
   void visitMulExpr(AffineBinaryOpExpr expr) {
     assert(operandExprStack.size() >= 2);
     // This is a pure affine expr; the RHS will be a constant.
-    assert(expr->getRHS().isa<AffineConstantExpr>());
+    assert(expr.getRHS().isa<AffineConstantExpr>());
     // Get the RHS constant.
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     operandExprStack.pop_back();
@@ -171,7 +171,7 @@ public:
   void visitModExpr(AffineBinaryOpExpr expr) {
     assert(operandExprStack.size() >= 2);
     // This is a pure affine expr; the RHS will be a constant.
-    assert(expr->getRHS().isa<AffineConstantExpr>());
+    assert(expr.getRHS().isa<AffineConstantExpr>());
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     operandExprStack.pop_back();
     auto &lhs = operandExprStack.back();
@@ -206,23 +206,23 @@ public:
   void visitDimExpr(AffineDimExpr expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
-    eq[getDimStartIndex() + expr->getPosition()] = 1;
+    eq[getDimStartIndex() + expr.getPosition()] = 1;
   }
   void visitSymbolExpr(AffineSymbolExpr expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
-    eq[getSymbolStartIndex() + expr->getPosition()] = 1;
+    eq[getSymbolStartIndex() + expr.getPosition()] = 1;
   }
   void visitConstantExpr(AffineConstantExpr expr) {
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
-    eq[getConstantIndex()] = expr->getValue();
+    eq[getConstantIndex()] = expr.getValue();
   }
 
 private:
   void visitDivExpr(AffineBinaryOpExpr expr, bool isCeil) {
     assert(operandExprStack.size() >= 2);
-    assert(expr->getRHS().isa<AffineConstantExpr>());
+    assert(expr.getRHS().isa<AffineConstantExpr>());
     // This is a pure affine expr; the RHS is a positive constant.
     auto rhsConst = operandExprStack.back()[getConstantIndex()];
     // TODO(bondhugula): handle division by zero at the same time the issue is
@@ -285,14 +285,14 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                                     unsigned numSymbols) {
   // TODO(bondhugula): only pure affine for now. The simplification here can be
   // extended to semi-affine maps in the future.
-  if (!expr->isPureAffine())
+  if (!expr.isPureAffine())
     return nullptr;
 
-  AffineExprFlattener flattener(numDims, numSymbols, expr->getContext());
+  AffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
   flattener.walkPostOrder(expr);
   ArrayRef<int64_t> flattenedExpr = flattener.operandExprStack.back();
   auto simplifiedExpr = toAffineExpr(flattenedExpr, numDims, numSymbols,
-                                     flattener.localExprs, expr->getContext());
+                                     flattener.localExprs, expr.getContext());
   flattener.operandExprStack.pop_back();
   assert(flattener.operandExprStack.empty());
   return simplifiedExpr;
