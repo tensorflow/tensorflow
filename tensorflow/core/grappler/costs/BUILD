@@ -236,6 +236,7 @@ tf_cc_test(
     name = "virtual_scheduler_test",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
+        ":utils",
         ":virtual_placer",
         ":virtual_scheduler",
         "//tensorflow/cc:cc_ops",
