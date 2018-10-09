@@ -53,3 +53,4 @@ VariableOpsTest.testScatterMaxScalar
 VariableOpsTest.testScatterMax
 VariableOpsTest.testScatterDivScalar
 VariableOpsTest.testScatterDiv
+XlaPermuteOpTest # No sort

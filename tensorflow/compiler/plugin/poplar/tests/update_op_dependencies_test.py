@@ -74,7 +74,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np_result)
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 5)
+      self.assertTrue(len(result) == 3) #compile_begin, compile_end, execute
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
@@ -115,7 +115,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, np_result)
 
       result = sess.run(report)
-      self.assertTrue(len(result) == 5)
+      self.assertTrue(len(result) == 3) #compile_begin, compile_end, execute
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
