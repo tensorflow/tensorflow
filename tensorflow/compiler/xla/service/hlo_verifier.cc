@@ -1220,8 +1220,6 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(module->schedule().Verify());
   }
 
-  TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(*module));
-
   return false;
 }
 
