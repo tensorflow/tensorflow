@@ -432,6 +432,27 @@ class Network(base_layer.Layer):
           'assign variables to attributes and they will show up in the weights '
           'and variables properties.')
 
+  def add_weight(self,
+                 name,
+                 shape,
+                 dtype=None,
+                 initializer=None,
+                 regularizer=None,
+                 trainable=None,
+                 constraint=None,
+                 partitioner=None,
+                 use_resource=None,
+                 synchronization=variables.VariableSynchronization.AUTO,
+                 aggregation=variables.VariableAggregation.NONE,
+                 **kwargs):
+    if self._is_graph_network:
+      raise NotImplementedError('`add_weight` is not supported on Networks.')
+    else:
+      raise NotImplementedError(
+          '`add_weight` is not supported on Networks. However, you may '
+          'assign variables to attributes and they will show up in the weights '
+          'and variables properties.')
+
   def add_loss(self, *args, **kwargs):
     if context.executing_eagerly():
       raise NotImplementedError('`add_loss` is not supported on Networks '
