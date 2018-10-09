@@ -30,9 +30,11 @@ subscribing to
 
 ## Installation
 for install current release for CPU-only:
+
 pip install tensorflow 
 
 GPU package for CUDA-enabled GPU cards:
+
 pip install tensorflow-gpu
 
 
