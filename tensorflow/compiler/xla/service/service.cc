@@ -207,7 +207,7 @@ Status Service::ValidateResultShape(const Shape& client_shape,
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>>
 Service::ResolveAndValidateArguments(
     absl::Span<const GlobalDataHandle* const> arguments,
-    absl::Span<se::StreamExecutor* const> stream_executors) {
+    absl::Span<se::StreamExecutor* const> stream_executors) const {
   CHECK_EQ(options_.number_of_replicas(), stream_executors.size());
   std::vector<std::vector<const ShapedBuffer*>> replicated_arguments;
   replicated_arguments.resize(options_.number_of_replicas());
@@ -590,7 +590,7 @@ StatusOr<std::vector<se::StreamExecutor*>> Service::GetExecutors(
 
 StatusOr<std::vector<std::vector<const ShapedBuffer*>>> Service::GetArguments(
     const ExecutionOptions& execution_options,
-    absl::Span<const GlobalDataHandle* const> arguments) {
+    absl::Span<const GlobalDataHandle* const> arguments) const {
   // Resolve the allocations for the arguments of the computation, and create
   // a vector of device memory offsets for the arguments from the allocations.
   // In the case of partitioned computations, assume all arguments go on the
