@@ -81,22 +81,26 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
 
 }  // namespace
 
-bool RemoveTrivialReshape::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTrivialReshape::Run(Model* model,
+                                               std::size_t op_index,
+                                               bool* modified) {
+  *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
   if (reshape_op->type != OperatorType::kReshape) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (!IsReshapeTrivial(*model, *reshape_op, this)) {
     AddMessageF("%s is not trivial", LogName(*reshape_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   AddMessageF("Removing trivial %s", LogName(*reshape_op));
 
   CHECK_EQ(reshape_op->inputs.size(), 2);
-  return RemoveTrivialPassthroughOp(this, model, op_index);
+  *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

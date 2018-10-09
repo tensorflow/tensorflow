@@ -25,7 +25,9 @@ limitations under the License.
 
 namespace toco {
 
-bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveUnusedOp::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
+  *modified = false;
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
 
@@ -58,7 +60,7 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     }
     for (const string& output_array : model->flags.output_arrays()) {
       if (output == output_array) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
     }
     for (const auto& rnn_state : model->flags.rnn_states()) {
@@ -67,19 +69,19 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
         if (!IsDiscardableArray(*model, rnn_state.back_edge_source_array()) ||
             !IsDiscardableArray(*model, rnn_state.state_array()) ||
             CountOpsWithInput(*model, rnn_state.state_array())) {
-          return false;
+          return ::tensorflow::Status::OK();
         }
       }
     }
     if (CountOpsWithInput(*model, output)) {
-      return false;
+      return ::tensorflow::Status::OK();
     }
   }
 
   if (op->unresolved_outputs) {
     AddMessageF("Not discarding %s because it has unresolved outputs.",
                 LogName(*op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   AddMessageF("Discarding %s because none of its outputs is used.",
@@ -105,7 +107,8 @@ bool RemoveUnusedOp::Run(Model* model, std::size_t op_index) {
     }
   }
   model->operators.erase(it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

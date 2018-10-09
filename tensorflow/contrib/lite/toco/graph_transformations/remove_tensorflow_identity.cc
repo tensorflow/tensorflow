@@ -25,14 +25,18 @@ limitations under the License.
 
 namespace toco {
 
-bool RemoveTensorFlowIdentity::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTensorFlowIdentity::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
+  *modified = false;
   const auto passthru_it = model->operators.begin() + op_index;
   const auto* passthru_op = passthru_it->get();
   if (passthru_op->type != OperatorType::kIdentity) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
-  return RemoveTrivialPassthroughOp(this, model, op_index);
+  *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco
