@@ -30,6 +30,11 @@ struct GrapplerItem;
 constexpr int64 kMemoryUnknown = -1ll;
 constexpr int64 kZeroMemory = 0ll;
 
+struct DeviceInfo {
+  double gigaops;     // Billions of operations executed per second.
+  double gb_per_sec;  // Bandwidth to main memory in GB per second.
+};
+
 // Holds the set of things we might want to estimate or measure in Grappler.
 // Always produce execution time. Other fields are optional depending on the
 // estimator being used.
