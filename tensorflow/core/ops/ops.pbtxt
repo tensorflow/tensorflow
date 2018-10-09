@@ -10366,6 +10366,54 @@ op {
   is_stateful: true
 }
 op {
+  name: "ExperimentalNumaMapAndBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "batch_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_parallel_calls"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "drop_remainder"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "ExperimentalThreadPoolDataset"
   input_arg {
     name: "input_dataset"
@@ -22286,6 +22334,56 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "RaggedGather"
+  input_arg {
+    name: "params_nested_splits"
+    type: DT_INT64
+    number_attr: "PARAMS_RAGGED_RANK"
+  }
+  input_arg {
+    name: "params_dense_values"
+    type_attr: "Tvalues"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  output_arg {
+    name: "output_nested_splits"
+    type: DT_INT64
+    number_attr: "OUTPUT_RAGGED_RANK"
+  }
+  output_arg {
+    name: "output_dense_values"
+    type_attr: "Tvalues"
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "PARAMS_RAGGED_RANK"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "OUTPUT_RAGGED_RANK"
+    type: "int"
+    has_minimum: true
   }
 }
 op {
