@@ -825,18 +825,16 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
 }
 
 PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
-  PyObject* f1 = PyObject_GetAttrString(o1, "_fields");
-  PyObject* f2 = PyObject_GetAttrString(o2, "_fields");
+  Safe_PyObjectPtr f1 = make_safe(PyObject_GetAttrString(o1, "_fields"));
+  Safe_PyObjectPtr f2 = make_safe(PyObject_GetAttrString(o2, "_fields"));
   if (f1 == nullptr || f2 == nullptr) {
-    Py_XDECREF(f1);
-    Py_XDECREF(f2);
     PyErr_SetString(
         PyExc_RuntimeError,
         "Expected namedtuple-like objects (that have _fields attr)");
     return nullptr;
   }
 
-  if (PyObject_RichCompareBool(f1, f2, Py_NE)) {
+  if (PyObject_RichCompareBool(f1.get(), f2.get(), Py_NE)) {
     Py_RETURN_FALSE;
   }
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from functools import wraps
+import imp
 
 import six
 
@@ -126,6 +127,24 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(ns['closed_over_list'], closed_over_list)
     self.assertEqual(ns['closed_over_primitive'], closed_over_primitive)
     self.assertTrue('local_var' not in ns)
+
+  def test_getqualifiedname(self):
+    foo = object()
+    qux = imp.new_module('quxmodule')
+    bar = imp.new_module('barmodule')
+    baz = object()
+    bar.baz = baz
+
+    ns = {
+        'foo': foo,
+        'bar': bar,
+        'qux': qux,
+    }
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertEqual(inspect_utils.getqualifiedname(ns, foo), 'foo')
+    self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
+    self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
 
   def test_getmethodclass(self):
 

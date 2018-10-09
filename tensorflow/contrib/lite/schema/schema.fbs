@@ -176,6 +176,7 @@ enum BuiltinOperator : byte {
   SQUARE = 92,
   ZEROS_LIKE = 93,
   FILL = 94,
+  FLOOR_MOD = 95,
 }
 
 // Options for the builtin operators.
@@ -251,6 +252,7 @@ union BuiltinOptions {
   BidirectionalSequenceLSTMOptions,
   BidirectionalSequenceRNNOptions,
   UnidirectionalSequenceLSTMOptions,
+  FloorModOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -616,6 +618,9 @@ table ZerosLikeOptions {
 }
 
 table FillOptions {
+}
+
+table FloorModOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

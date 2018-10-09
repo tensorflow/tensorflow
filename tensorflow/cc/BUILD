@@ -411,6 +411,7 @@ tf_cc_test(
     srcs = ["gradients/nn_grad_test.cc"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":grad_testutil",
         ":gradient_checker",

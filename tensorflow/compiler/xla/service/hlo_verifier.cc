@@ -313,8 +313,9 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
        operand_dimension < ShapeUtil::Rank(operand_shape);
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK(broadcast->shape().dimensions(output_dimension) ==
-                 operand_shape.dimensions(operand_dimension))
+    TF_RET_CHECK((output_dimension < ShapeUtil::Rank(broadcast->shape())) &&
+                 (broadcast->shape().dimensions(output_dimension) ==
+                  operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
   }
   return Status::OK();
@@ -359,7 +360,27 @@ Status ShapeVerifier::HandleCall(HloInstruction* call) {
   return CheckShape(call, call->to_apply()->root_instruction()->shape());
 }
 
-Status ShapeVerifier::HandleCustomCall(HloInstruction*) { return Status::OK(); }
+Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
+  const HloCustomCallInstruction* custom_call =
+      DynCast<const HloCustomCallInstruction>(instruction);
+  TF_RET_CHECK(custom_call != nullptr);
+  if (custom_call->layout_constrained()) {
+    // If the layout is constrained, verify all the respective shapes have
+    // layouts and that the constrained operand shapes match the shapes of the
+    // operands.
+    TF_RET_CHECK(LayoutUtil::HasLayout(custom_call->shape()));
+    TF_RET_CHECK(custom_call->operand_count() ==
+                 custom_call->operand_shapes_with_layout().size());
+    for (int64 i = 0; i < custom_call->operand_count(); ++i) {
+      const Shape& operand_shape_with_layout =
+          custom_call->operand_shapes_with_layout()[i];
+      TF_RET_CHECK(ShapeUtil::Compatible(custom_call->operand(i)->shape(),
+                                         operand_shape_with_layout));
+      TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
+    }
+  }
+  return Status::OK();
+}
 
 Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
   return CheckShape(slice,
@@ -1198,6 +1219,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   if (module->has_schedule()) {
     TF_RETURN_IF_ERROR(module->schedule().Verify());
   }
+
+  TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(*module));
 
   return false;
 }

@@ -213,16 +213,6 @@ Status GpuLayoutAssignment::AddBackendConstraints(
   return Status::OK();
 }
 
-bool GpuLayoutAssignment::CustomCallRequiresMajorFirstLayout(
-    const HloInstruction* instruction) {
-  // - Inputs to cudnn batchnorm custom calls don't need the major-first layout
-  //   (i.e. {n, n-1, ...0}) -- we can handle any layout.
-  // - Inputs to cudnn convolution require custom layouts handled in
-  //   AddBackendConstraints.
-  return !IsCustomCallToDnnBatchNorm(*instruction) &&
-         !IsCustomCallToDnnConvolution(*instruction);
-}
-
 Status GpuLayoutAssignment::PropagateOperandConstraint(
     const OperandLayoutConstraint& layout_constraint,
     LayoutConstraints* constraints) {
