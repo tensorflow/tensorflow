@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
 #include <string>
 
@@ -34,6 +35,17 @@ HloProto MakeHloProto(const HloModule& module) {
   HloProto proto;
   proto.mutable_hlo_module()->Swap(&proto_module);
   return proto;
+}
+
+StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  TF_RETURN_IF_ERROR(
+      HloVerifier(/*layout_sensitive=*/true, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status());
+  return std::move(module);
 }
 
 StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(

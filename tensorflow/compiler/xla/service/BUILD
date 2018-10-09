@@ -3127,6 +3127,7 @@ cc_library(
         ":buffer_assignment",
         ":hlo",
         ":hlo_proto",
+        ":hlo_verifier",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
     ],
