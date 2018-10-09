@@ -511,12 +511,14 @@ void PoplarExecutor::AddCompileBeginEventRecord(const std::string& module_name,
 
 void PoplarExecutor::AddCompileEndEventRecord(const std::string& module_name,
                                               const std::string& report,
+                                              const std::string& tensor_map,
                                               int64 duration) {
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::COMPILE_END);
   evt.mutable_compile_end()->set_module_name(std::move(module_name));
   evt.mutable_compile_end()->set_compilation_report(std::move(report));
   evt.mutable_compile_end()->set_duration(duration);
+  evt.mutable_compile_end()->set_tensor_map(tensor_map);
 
   reports_.push_back(evt);
 }

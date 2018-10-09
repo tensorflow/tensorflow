@@ -19,6 +19,9 @@ message IpuTraceCompileEndEvent {
 
   // The name of the module associated with the event
   bytes module_name = 3;
+
+  // A JSON structure describing the tensor mappings
+  bytes tensor_map = 4;
 };
 
 message IpuTraceDataTransferEvent {

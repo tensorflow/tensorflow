@@ -270,7 +270,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
                                   const std::string& xla_graph);
 
   void AddCompileEndEventRecord(const std::string& module_name,
-                                const std::string& compialtion_report,
+                                const std::string& compilation_report,
+                                const std::string& tensor_map_json,
                                 int64 duration);
 
   void AddHostToDeviceEventRecord(const std::string& transfer_json);

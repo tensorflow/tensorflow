@@ -1,5 +1,4 @@
-#include <algorithm>
-#include <limits>
+#include "include/json/json.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -7,6 +6,9 @@
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
+
+#include <algorithm>
+#include <limits>
 
 namespace se = ::stream_executor;
 
@@ -202,65 +204,66 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
   return Status::OK();
 }
 
-void PrintTensorMapping(const poplar::Graph& graph,
-                        const TensorMap& tensor_map) {
-  if (VLOG_IS_ON(2)) {
-    std::stringstream ss;
-    VLOG(2) << "[Poplar] Dumping tensor mapping";
-    // Printed in JSON format where
-    // {"mapping": [
-    //  {
-    //    "inst_name": "name",
-    //    "output_index": output_index,
-    //    "tiles_used": tiles_used,
-    //    "total_memory_size": total_memory_size,
-    //    "tiles": [ {"tile_id": tile_id, "num_intervals": num_intervals,
-    //    "memory_size": memory_size}, ...]
-    //  } ...
-    //
-    //  ]
-    // }
-    ss << " {\"mapping\": [";
-    bool first_tensor = true;
-    for (auto pair : tensor_map) {
-      if (!first_tensor) ss << ",";
-      const auto inst_name = pair.first.first;
-      const auto output_index = pair.first.second;
-      const auto tensor = pair.second;
-      ss << " { "
-         << "\"inst_name\": \"" << inst_name << "\", "
-         << "\"output_index\": " << output_index << ", "
-         << "\"tiles\": [";
-      const auto mapping = graph.getTileMapping(tensor);
-      const poplar::Type elementType = tensor.elementType();
-      bool first_tile = true;
-      unsigned tilesUsed = 0;
-      size_t totalElements = 0;
-      for (size_t tileIdx = 0; tileIdx < mapping.size(); tileIdx++) {
-        const auto& tile = mapping[tileIdx];
+std::string GetTensorMappingJson(const poplar::Graph& graph,
+                                 const TensorMaps& tensor_maps) {
+  Json::Value mappings;
+
+  for (auto tm : tensor_maps) {
+    mappings[tm.first] = Json::Value(Json::arrayValue);
+
+    for (auto pair : tm.second) {
+      const auto& pop_tensor = pair.second;
+
+      Json::Value tensor;
+      tensor["inst_name"] = Json::Value(pair.first.first);
+      tensor["output_index"] = Json::Value::UInt64(pair.first.second);
+      tensor["constant"] = Json::Value::UInt64(pop_tensor.containsConstant());
+      tensor["tiles"] = Json::Value(Json::arrayValue);
+
+      const auto& mapping = graph.getTileMapping(pop_tensor);
+      unsigned tiles_used = 0;
+      size_t total_elements = 0;
+
+      for (size_t tile_idx = 0; tile_idx < mapping.size(); tile_idx++) {
+        const auto& tile = mapping[tile_idx];
         if (tile.size() != 0) {
-          if (!first_tile) ss << ", ";
-          tilesUsed++;
-          size_t tileElementCount = 0;
+          tiles_used++;
+          size_t tile_element_count = 0;
           for (const auto& interval : tile) {
-            tileElementCount += interval.size();
+            tile_element_count += interval.size();
           }
-          ss << "{\"tile_id\": " << tileIdx << ", "
-             << "\"num_intervals\": " << tile.size() << ", "
-             << "\"num_elements\": " << tileElementCount << ", "
-             << "\"element_type\": \"" << elementType << "\"}";
-          first_tile = false;
-          totalElements += tileElementCount;
+
+          Json::Value tile;
+          tile["tile_id"] = Json::Value::UInt64(tile_idx);
+          tile["num_intervals"] = Json::Value::UInt64(tile.size());
+          tile["num_elements"] = Json::Value::UInt64(tile_element_count);
+          tile["element_type"] =
+              Json::Value(pop_tensor.elementType().toString());
+          tensor["tiles"].append(tile);
+
+          total_elements += tile_element_count;
         }
       }
-      ss << "], "
-         << "\"total_elements\": " << totalElements << ", "
-         << "\"tiles_used\": " << tilesUsed << " }";
-      first_tensor = false;
+
+      tensor["tiles_used"] = Json::Value::UInt64(tiles_used);
+      tensor["total_elements"] = Json::Value::UInt64(total_elements);
+
+      mappings[tm.first].append(tensor);
     }
-    ss << "]}";
-    VLOG(2) << ss.str();
   }
+
+  Json::Value root;
+  root["mappings"] = mappings;
+
+  Json::StreamWriterBuilder json_builder;
+  std::string json_msg = Json::writeString(json_builder, root);
+
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "[Poplar] Dumping tensor mapping";
+    VLOG(2) << json_msg;
+  }
+
+  return json_msg;
 }
 
 }  // namespace poplarplugin

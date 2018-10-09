@@ -37,8 +37,8 @@ class EntryVisitor : public FullVisitor {
 
   const std::set<const HloInstruction*>& GetNonStandardParameterLayout() const;
 
-  const poplar::program::Sequence& GetHostToDevice();
-  const poplar::program::Sequence& GetDeviceToHost();
+  const poplar::program::Sequence& GetHostToDevice() const;
+  const poplar::program::Sequence& GetDeviceToHost() const;
 
  private:
   Status StreamOutputs(HloInstruction* inst, uint64 start_idx,

@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
@@ -52,7 +53,8 @@ Status InlineCallVisitor::HandleParameter(HloInstruction* inst) {
 
 Status InlineCallVisitor::FinishVisit(HloInstruction* inst) {
   outputs_ = FindInstructionOutputs(tensor_map, inst);
-  tensor_map.clear();
+  resources_.tensor_maps[inst->parent()->name()] = std::move(tensor_map);
+
   return Status::OK();
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
@@ -155,6 +156,8 @@ Status ArithmeticExprVisitor::FinishVisit(HloInstruction* inst) {
                                    GetDebugName(inst) + "_expression");
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, GetOutputShape(inst)));
   outputs_.push_back(out);
+
+  resources_.tensor_maps[inst->parent()->name()] = std::move(tensor_map);
 
   return Status::OK();
 }

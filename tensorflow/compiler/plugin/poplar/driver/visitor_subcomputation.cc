@@ -87,18 +87,19 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   std::vector<xla::Shape> shapes = FlattenedXlaShape(inst->shape());
   std::vector<bool> valid(shapes.size());
   for (unsigned int i = 0; i < shapes.size(); i++) {
+    auto& t = temp_inputs_[inst->parameter_number()][i];
+
     if (InputIsUnused(inst, shapes, i)) {
       valid[i] = false;
-      poplar::Tensor none;
-      inputs.push_back(none);
-      TF_CHECK_OK(AddOutputTensor(graph_, resources_, sequence, tensor_map,
-                                  inst, i, none)
-                      .status());
+      inputs.push_back(t);
+      TF_CHECK_OK(
+          AddOutputTensor(graph_, resources_, sequence, tensor_map, inst, i, t)
+              .status());
     } else {
       valid[i] = true;
-      auto& t = temp_inputs_[inst->parameter_number()][i];
-      auto src = std::make_pair(inst, i);
+
       if (t.containsConstant()) {
+        auto src = std::make_pair(inst, i);
         poplar::Tensor out;
         TF_ASSIGN_OR_RETURN(out, AddTensor(graph_, src, shapes[i], resources_));
         inputs.push_back(out);
@@ -126,7 +127,9 @@ Status SubComputationVisitor::FinishVisit(HloInstruction* inst) {
   outputs_ = FindInstructionOutputs(tensor_map, inst);
 
   temp_inputs_.clear();
-  tensor_map.clear();
+
+  resources_.tensor_maps[inst->parent()->name()] = std::move(tensor_map);
+
   return Status::OK();
 }
 

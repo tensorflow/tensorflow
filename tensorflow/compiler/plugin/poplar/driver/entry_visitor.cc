@@ -53,7 +53,7 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
           GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
           out.numElements());
 
-      seq.add(poplar::program::Copy(fifo, out));
+      seq.add(poplar::program::Copy(fifo, out, !in_info.IsStreaming()));
     }
 
     if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
@@ -144,15 +144,14 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
             out.elementType(), out.numElements());
 
         seq.add(poplar::program::Copy(
-            out, fifo, /* only rearrange on host when not streaming */ !out_info
-                           .IsStreaming()));
+            out, fifo, /* only rearrange on host when not streaming */
+            !out_info.IsStreaming()));
       }
     }
     from_tensor_index = to_tensor_index;
   }
 
-  PrintTensorMapping(graph_, tensor_map);
-  tensor_map.clear();
+  resources_.tensor_maps[comp->name()] = std::move(tensor_map);
 
   return Status::OK();
 }
@@ -162,10 +161,10 @@ EntryVisitor::GetNonStandardParameterLayout() const {
   return non_standard_parameter_layout;
 }
 
-const poplar::program::Sequence& EntryVisitor::GetHostToDevice() {
+const poplar::program::Sequence& EntryVisitor::GetHostToDevice() const {
   return host_to_device;
 }
-const poplar::program::Sequence& EntryVisitor::GetDeviceToHost() {
+const poplar::program::Sequence& EntryVisitor::GetDeviceToHost() const {
   return device_to_host;
 }
 
