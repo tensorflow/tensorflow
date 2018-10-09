@@ -20,8 +20,7 @@ load(
     name = "zip_test_%s" % test_name,
     size = "large",
     srcs = ["generated_examples_zip_test.cc"],
-    args = [
-    ] + select({
+    args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
             "--zip_file_path=$(location :zip_%s)" % test_name,
@@ -61,7 +60,7 @@ load(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name, tags in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
