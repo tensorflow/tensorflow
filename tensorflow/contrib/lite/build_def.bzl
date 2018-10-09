@@ -345,6 +345,7 @@ def generated_test_models_all():
             tags = []
             if test in failing_tests:
                 tags.append("notap")
+                tags.append("manual")
             if conversion_mode:
                 test += "_%s" % conversion_mode
             options.append((conversion_mode, test, tags))
@@ -450,6 +451,7 @@ def gen_full_model_test(conversion_modes, models, data, test_suite_tag):
                 "no_oss",
                 "no_windows",
                 "notap",
+                "manual",
             ] + [test_suite_tag],
             deps = [
                 "//tensorflow/contrib/lite/testing:model_coverage_lib",

@@ -380,6 +380,7 @@ py_test(
     srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "no_oss",
         "no_pip",
         "no_windows",
