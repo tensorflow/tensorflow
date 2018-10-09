@@ -20,9 +20,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
+#include <functional>
+#include <queue>
 #include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,9 +31,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -67,6 +71,62 @@ static bool SegmentReductionDoValidation(OpKernelContext* c,
   SegmentReductionValidationHelper(c, input, segment_ids);
   return c->status().ok();
 }
+
+template <typename Item>
+class AverageWorkSharder {
+ public:
+  struct WorksPerShard {
+    uint64 load{0};
+    std::vector<Item> works;
+  };
+  typedef std::function<void(const Item&)> WorkFn;
+
+  AverageWorkSharder(int n_shards)
+      : num_shards(n_shards),
+        all_shards(n_shards),
+        pq(std::bind(&AverageWorkSharder::ShardCompare, this,
+                     std::placeholders::_1, std::placeholders::_2)) {
+    for (int i = 0; i < num_shards; ++i) {
+      pq.push(i);
+    }
+  }
+
+  void AddWorkItem(const Item& item, uint64 load) {
+    int shard_with_min_load = pq.top();
+    pq.pop();
+    all_shards[shard_with_min_load].load += load;
+    all_shards[shard_with_min_load].works.emplace_back(item);
+    pq.push(shard_with_min_load);
+  }
+
+  void Shard(thread::ThreadPool* threads, const WorkFn& fn) {
+    BlockingCounter counter(num_shards);
+    auto work = [this, &fn, &counter](int index) {
+      const WorksPerShard& s = all_shards[index];
+      for (const auto& item : s.works) {
+        fn(item);
+      }
+      counter.DecrementCount();
+    };
+
+    for (int i = 0; i < num_shards - 1; ++i) {
+      int index = pq.top();
+      pq.pop();
+      threads->Schedule([&work, index]() { work(index); });
+    }
+    work(pq.top());
+    counter.Wait();
+  }
+
+ private:
+  int num_shards;
+  std::vector<WorksPerShard> all_shards;
+  std::priority_queue<int, std::vector<int>, std::function<bool(int, int)>> pq;
+
+  bool ShardCompare(int l, int r) const {
+    return all_shards[l].load > all_shards[r].load;
+  }
+};
 
 // This operator handles reducing segments along the first dimension.
 // See core/ops/math_ops.cc for more details.
@@ -115,16 +175,20 @@ class SegmentReductionOp : public OpKernel {
     Eigen::DSizes<Eigen::DenseIndex, 1> dims_to_reduce;
     dims_to_reduce[0] = 0;
 #else
-    Eigen::IndexList<Eigen::type2index<0> > dims_to_reduce;
+    Eigen::IndexList<Eigen::type2index<0>> dims_to_reduce;
 #endif
     Index start = 0, end = 1;
 
     Index uninitialized_index = 0;  // Index from which the output is not set.
     Index out_index = internal::SubtleMustCopy(segment_vec(start));
 
-    // TODO(agarwal): if this loop becomes a bottleneck, consider sharding it
-    // across threads.
     Eigen::DSizes<Eigen::DenseIndex, 1> out_slice_shape(num_col);
+    auto* threads = context->device()->tensorflow_cpu_worker_threads();
+    // 10000 is the MinCostPerShard from work_sharder.cc
+    int estimate_shards =
+        std::max<int>(1, std::min(input.NumElements() / 10000,
+                                  static_cast<int64>(threads->num_threads)));
+    AverageWorkSharder<std::pair<Index, Index>> sharder(estimate_shards);
     while (end <= num_indices) {
       // We initialize next_index to 0 to avoid "warning: 'next_index' may be
       // used uninitialized in this function" in the Mac build (since the
@@ -176,14 +240,7 @@ class SegmentReductionOp : public OpKernel {
         InT in_slice(in_slice_ptr, out_slice_shape);
         out_slice = in_slice;
       } else {
-        Eigen::DSizes<Eigen::DenseIndex, 2> in_slice_shape(end - start,
-                                                           num_col);
-        typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
-                                 Eigen::Unaligned>
-            InT;
-        InT in_slice(in_slice_ptr, in_slice_shape);
-
-        out_slice = in_slice.reduce(dims_to_reduce, Reducer());
+        sharder.AddWorkItem(std::make_pair(start, end), end - start);
       }
       if (end >= num_indices) break;
       start = end;
@@ -191,6 +248,26 @@ class SegmentReductionOp : public OpKernel {
       uninitialized_index = out_index + 1;
       out_index = next_index;
     }
+
+    auto work = [&](const std::pair<Index, Index>& seg) {
+      Eigen::DSizes<Eigen::DenseIndex, 2> in_slice_shape(seg.second - seg.first,
+                                                         num_col);
+
+      const T* in_slice_ptr = &input_flat(seg.first, 0);
+      typedef Eigen::TensorMap<Eigen::Tensor<const T, 2, Eigen::RowMajor>,
+                               Eigen::Unaligned>
+          InT;
+      InT in_slice(in_slice_ptr, in_slice_shape);
+
+      Index out_index = internal::SubtleMustCopy(segment_vec(seg.first));
+      typedef Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor>,
+                               Eigen::Unaligned>
+          OutT;
+      T* out_slice_ptr = &output_flat(out_index, 0);
+      OutT out_slice(out_slice_ptr, out_slice_shape);
+      out_slice = in_slice.reduce(dims_to_reduce, Reducer());
+    };
+    sharder.Shard(threads->workers, work);
   }
 };
 
@@ -249,11 +326,10 @@ class SegmentSumGPUOp : public AsyncOpKernel {
 
     auto stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(
-        context,
-        stream
-            ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
-                         sizeof(Index))
-            .ok(),
+        context, stream
+                     ->ThenMemcpy(output_rows_host.mutable_data(),
+                                  output_rows_device, sizeof(Index))
+                     .ok(),
         errors::Internal(
             "SegmentSumGPUOp: failed to copy output_rows from device"),
         done);
@@ -498,18 +574,17 @@ class UnsortedSegmentReductionOp : public OpKernel {
   DeviceReductionFunctor reduction_functor_;
 };
 
-#define REGISTER_CPU_KERNEL_UNSORTEDSEGMENT(                           \
-    name, type, index_type, initial_value_functor, reduction_functor)  \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name(name)                                                       \
-          .Device(DEVICE_CPU)                                          \
-          .TypeConstraint<type>("T")                                   \
-          .TypeConstraint<index_type>("Tindices"),                     \
-      UnsortedSegmentReductionOp<                                      \
-          type, index_type,                                            \
-          functor::UnsortedSegmentFunctor<CPUDevice, type, index_type, \
-                                          initial_value_functor,       \
-                                          reduction_functor> >)
+#define REGISTER_CPU_KERNEL_UNSORTEDSEGMENT(                          \
+    name, type, index_type, initial_value_functor, reduction_functor) \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name(name)                                                      \
+          .Device(DEVICE_CPU)                                         \
+          .TypeConstraint<type>("T")                                  \
+          .TypeConstraint<index_type>("Tindices"),                    \
+      UnsortedSegmentReductionOp<                                     \
+          type, index_type, functor::UnsortedSegmentFunctor<          \
+                                CPUDevice, type, index_type,          \
+                                initial_value_functor, reduction_functor>>)
 
 #define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                   \
   REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type,  \
@@ -564,7 +639,7 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
           type, index_type,                                                  \
           functor::UnsortedSegmentFunctor<GPUDevice, type, index_type,       \
                                           initial_value_functor,             \
-                                          reduction_kernel_functor> >)
+                                          reduction_kernel_functor>>)
 
 // sum is the only op that supports all input types currently
 #define REGISTER_REAL_GPU_UNSORTED_KERNELS(type, index_type)                   \
@@ -590,7 +665,6 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
 #define REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL(type) \
   REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int32);   \
   REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int64);
-
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
@@ -733,9 +807,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
           Reduce(input_flat, indices_vec, start, end - start, out);
       OP_REQUIRES(context, bad_offset < 0,
                   errors::InvalidArgument(
-                      "Bad: indices[", start + bad_offset,
-                      "] == ", indices_vec(start + bad_offset),
-                      " out of range [0, ", input_flat.dimension(0), ")"));
+                      "Bad: indices[", start + bad_offset, "] == ",
+                      indices_vec(start + bad_offset), " out of range [0, ",
+                      input_flat.dimension(0), ")"));
 
       start = end;
       ++end;
