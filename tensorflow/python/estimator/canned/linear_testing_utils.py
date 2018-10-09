@@ -400,6 +400,45 @@ class BaseLinearRegressorEvaluationTest(object):
     # [213.0, 421.0], while label is [213., 421.]. Loss = 0.
     self.assertAlmostEqual(0, eval_metrics[metric_keys.MetricKeys.LOSS])
 
+  def test_evaluation_for_multiple_feature_columns_mix(self):
+    with ops.Graph().as_default():
+      variables_lib.Variable([[10.0]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([[2.0]], name=HEIGHT_WEIGHT_NAME)
+      variables_lib.Variable([5.0], name=BIAS_NAME)
+      variables_lib.Variable(
+          100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
+      save_variables_to_ckpt(self._model_dir)
+
+    batch_size = 2
+    feature_columns = [
+        feature_column.numeric_column('age'),
+        feature_column_v2.numeric_column('height')
+    ]
+
+    def _input_fn():
+      features_ds = dataset_ops.Dataset.from_tensor_slices({
+          'age': np.array([20, 40]),
+          'height': np.array([4, 8])
+      })
+      labels_ds = dataset_ops.Dataset.from_tensor_slices(
+          np.array([[213.], [421.]]))
+      return (dataset_ops.Dataset.zip((features_ds, labels_ds))
+              .batch(batch_size).repeat(None))
+
+    est = self._linear_regressor_fn(
+        feature_columns=feature_columns, model_dir=self._model_dir)
+
+    eval_metrics = est.evaluate(input_fn=_input_fn, steps=1)
+    self.assertItemsEqual(
+        (metric_keys.MetricKeys.LOSS, metric_keys.MetricKeys.LOSS_MEAN,
+         metric_keys.MetricKeys.PREDICTION_MEAN,
+         metric_keys.MetricKeys.LABEL_MEAN, ops.GraphKeys.GLOBAL_STEP),
+        eval_metrics.keys())
+
+    # Logit is [(20. * 10.0 + 4 * 2.0 + 5.0), (40. * 10.0 + 8 * 2.0 + 5.0)] =
+    # [213.0, 421.0], while label is [213., 421.]. Loss = 0.
+    self.assertAlmostEqual(0, eval_metrics[metric_keys.MetricKeys.LOSS])
+
 
 class BaseLinearRegressorPredictTest(object):
 
@@ -493,6 +532,31 @@ class BaseLinearRegressorPredictTest(object):
         num_epochs=1,
         shuffle=False)
     predictions = linear_regressor.predict(input_fn=predict_input_fn)
+    predicted_scores = list([x['predictions'] for x in predictions])
+    # x0 * weight0 + x1 * weight1 + bias = 2. * 10. + 3. * 20 + .2 = 80.2
+    self.assertAllClose([[80.2]], predicted_scores)
+
+  def testTwoFeatureColumnsMix(self):
+    """Tests predict with two feature columns."""
+    with ops.Graph().as_default():
+      variables_lib.Variable([[10.]], name='linear/linear_model/x0/weights')
+      variables_lib.Variable([[20.]], name='linear/linear_model/x1/weights')
+      variables_lib.Variable([.2], name=BIAS_NAME)
+      variables_lib.Variable(100, name='global_step', dtype=dtypes.int64)
+      save_variables_to_ckpt(self._model_dir)
+
+    linear_regressor = self._linear_regressor_fn(
+        feature_columns=(feature_column.numeric_column('x0'),
+                         feature_column_v2.numeric_column('x1')),
+        model_dir=self._model_dir)
+
+    def _predict_input_fn():
+      return dataset_ops.Dataset.from_tensor_slices({
+          'x0': np.array([[2.]]),
+          'x1': np.array([[3.]])
+      }).batch(1)
+
+    predictions = linear_regressor.predict(input_fn=_predict_input_fn)
     predicted_scores = list([x['predictions'] for x in predictions])
     # x0 * weight0 + x1 * weight1 + bias = 2. * 10. + 3. * 20 + .2 = 80.2
     self.assertAllClose([[80.2]], predicted_scores)

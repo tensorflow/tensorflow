@@ -121,6 +121,10 @@ Example of building model using FeatureColumns, this can be used in a
 
 NOTE: Functions prefixed with "_" indicate experimental or private parts of
 the API subject to change, and should not be relied upon!
+
+NOTE: The new feature columns are being developed in feature_column_v2.py and
+are a somewhat duplicate of the code here. Please make sure to update logic
+in both places.
 """
 
 from __future__ import absolute_import
