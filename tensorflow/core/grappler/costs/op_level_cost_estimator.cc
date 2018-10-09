@@ -372,7 +372,7 @@ Costs OpLevelCostEstimator::PredictCosts(const OpContext& op_context) const {
   return costs;
 }
 
-OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
+DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
   double gb_per_sec = -1;

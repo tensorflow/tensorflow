@@ -209,6 +209,7 @@ limitations under the License.
     SWIG_fail;
   } else {
     int num_outputs = $1->size();
+    Py_CLEAR($result);
     $result = PyList_New(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
       PyObject *output;

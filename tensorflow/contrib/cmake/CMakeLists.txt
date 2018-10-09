@@ -1,6 +1,16 @@
 # Minimum CMake required
 cmake_minimum_required(VERSION 3.5)
 
+if(WIN32)
+	if(${CMAKE_VERSION} VERSION_LESS "3.8")
+		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake.")
+	else()
+		if(NOT CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE OR NOT "${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}" STREQUAL "x64")
+			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake.")
+		endif()
+	endif()
+endif()
+
 # Project
 project(tensorflow C CXX)
 
@@ -352,9 +362,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn_copy_shared_to_destination)
     include_directories(${mkldnn_INCLUDE_DIRS})
-  else (tensorflow_ENABLE_MKLDNN_SUPPORT)
-    add_definitions(-DINTEL_MKL_ML_ONLY)
-  endif()
+  endif(tensorflow_ENABLE_MKLDNN_SUPPORT)
 endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 if (tensorflow_ENABLE_GPU)

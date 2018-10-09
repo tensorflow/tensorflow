@@ -13,9 +13,19 @@ VECTORIZER_DEPS = [
 ] + tf_protos_all()
 
 cc_library(
+    name = "wrapped_tensor",
+    hdrs = ["wrapped_tensor.h"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "vectorizer",
     hdrs = ["vectorizer.h"],
     deps = [
+        ":wrapped_tensor",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
     ] + tf_protos_all(),

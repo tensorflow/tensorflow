@@ -13,21 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_OPTIONS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_OPTIONS_H_
+#include "tensorflow/core/framework/function.h"
 
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-
-// Helper functions for querying options that are specific to the GPU backend.
-
-namespace xla {
-namespace gpu {
-
-// Returns true if we should use heuristics to assign convolution layouts, as
-// opposed to always assigning NCHW.
-bool ConvUseLayoutHeuristic(const HloModuleConfig& config);
-
-}  // namespace gpu
-}  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_OPTIONS_H_
+namespace tensorflow {
+REGISTER_OP_NO_GRADIENT("StatelessRandomUniform");
+REGISTER_OP_NO_GRADIENT("StatelessRandomNormal");
+REGISTER_OP_NO_GRADIENT("StatelessTruncatedNormal");
+REGISTER_OP_NO_GRADIENT("StatelessMultinomial");
+}  // end namespace tensorflow

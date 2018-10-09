@@ -12,17 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_LEGACY_TYPES_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_LEGACY_TYPES_H_
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_options.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/contrib/lite/kernels/internal/types.h"
 
-namespace xla {
-namespace gpu {
+namespace tflite {
 
-bool ConvUseLayoutHeuristic(const HloModuleConfig& config) {
-  return !config.debug_options().xla_backend_extra_options().count(
-      "xla_gpu_experimental_conv_disable_layout_heuristic");
-}
+// TODO(b/116772710): Insert legacy Dims<> code in here.
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace tflite
+
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_LEGACY_TYPES_H_

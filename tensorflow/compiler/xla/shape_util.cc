@@ -461,8 +461,9 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
-/* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
-  return shape.element_type() == F32 && Rank(shape) == 0;
+/* static */ bool ShapeUtil::IsScalarWithElementType(
+    const Shape& shape, PrimitiveType element_type) {
+  return IsScalar(shape) && shape.element_type() == element_type;
 }
 
 namespace {
@@ -1645,7 +1646,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 }
 
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanString(shape);
+  out << ShapeUtil::HumanStringWithLayout(shape);
   return out;
 }
 

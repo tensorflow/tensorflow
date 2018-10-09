@@ -820,10 +820,6 @@ def _clone_and_build_model(model, inputs=None, targets=None):
     optimizer_config = model.optimizer.get_config()
     optimizer = model.optimizer.__class__.from_config(optimizer_config)
 
-  # TODO(priyag): Is there a cleaner way to do this? The API doc suggests a
-  # single tensor should be OK but it throws an error in that case.
-  if targets is not None and not isinstance(targets, (list, dict, tuple)):
-    targets = [targets]
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
   cloned_model.compile(

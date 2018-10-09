@@ -172,6 +172,43 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def testInputSpecGraphFunction(self):
+    matmul = function.defun(math_ops.matmul)
+
+    @function.defun
+    def sq(a):
+      return matmul(a, a)
+
+    sq_op = sq.get_concrete_function(
+        tensor_spec.TensorSpec((None, None), dtypes.float32))
+    self.assertEqual([None, None], sq_op.output_shapes.as_list())
+
+    t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    out1 = sq_op(t1)
+    self.assertAllEqual(out1, math_ops.matmul(t1, t1).numpy())
+
+    t2 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    out2 = sq_op(t2)
+    self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
+
+  def testNestedInputSpecGraphFunction(self):
+    matmul = function.defun(math_ops.matmul)
+
+    @function.defun
+    def sq(mats):
+      ((a, b),) = mats
+      return matmul(a, b)
+
+    sq_op = sq.get_concrete_function(
+        [(tensor_spec.TensorSpec((None, None), dtypes.float32),
+          tensor_spec.TensorSpec((None, None), dtypes.float32))])
+    self.assertEqual([None, None], sq_op.output_shapes.as_list())
+
+    t1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    t2 = constant_op.constant([[1.4, 2.4], [3.4, 4.4]])
+    out = sq_op(t1, t2)  # Flattened structure for inputs to the graph function
+    self.assertAllEqual(out, math_ops.matmul(t1, t2).numpy())
+
   def testExecutingStatelessDefunConcurrently(self):
 
     @function.defun
@@ -249,7 +286,23 @@ class FunctionTest(test.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertAllEqual(sess.run(g), [[1.0]])
+      self.assertAllEqual(sess.run(g).values, [[1.0]])
+
+  def testNoSymGradNestedDefun(self):
+
+    @function.defun
+    def outer():
+
+      @function.defun
+      def f(x):
+        return array_ops.gather_nd(x, [[0]])
+
+      c = constant_op.constant([[2.]])
+      f_c = f(c)
+      g, = gradients_impl.gradients(f_c, c)
+      self.assertTrue(isinstance(g, ops.IndexedSlices))
+
+    outer()
 
   def testNestedInputsGraphFunction(self):
     matmul = function.defun(math_ops.matmul)
@@ -1788,11 +1841,10 @@ class FunctionTest(test.TestCase):
         # pylint: disable=protected-access
         self.assertEqual(len(graph._functions), 3)
 
-        # Test input param shape mismatch
-        t2 = constant_op.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-        with self.assertRaisesRegexp(
-            ValueError, 'Python inputs incompatible with input_signature'):
-          function.register(defun_matmul, t2, t2)
+        # Test register function with cache, note inputs are ignored.
+        function.register(defun_matmul)
+        graph = ops.get_default_graph()
+        self.assertEqual(len(graph._functions), 3)
 
   def testRegisterFunctionWithCache(self):
     def matmul(x, y):

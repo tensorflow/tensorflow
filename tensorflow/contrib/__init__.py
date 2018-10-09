@@ -21,14 +21,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str=(
-        "tensorflow.contrib"),
-    child_package_str=(
-        "tensorflow_estimator.contrib.estimator"))
-del component_api_helper
-
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import autograph
 from tensorflow.contrib import batching

@@ -995,7 +995,30 @@ class ComputationBuilder(object):
         window_strides)
     return self._client.ReduceWindowWithGeneralPadding(
         operand, init_value, computation_to_apply.c_local_computation,
-        window_dimensions, window_strides, pads)
+        window_dimensions, window_strides, (), (), pads)
+
+  def ReduceWindowWithGeneralPadding(
+      self, operand, init_value, computation_to_apply, window_dimensions,
+      window_strides, base_dilations, window_dilations, padding):
+    """Enqueues a windowed reduction operation onto the computation.
+
+    Args:
+      operand: reduction operand (LocalOp).
+      init_value: reduction initial value (LocalOp).
+      computation_to_apply: a binary reduction function (Computation).
+      window_dimensions: dimensions of window (sequence of integers).
+      window_strides: strides for window (sequence of integers).
+      base_dilations: dilations for the base (sequence of integers).
+      window_dilations: dilations for window (sequence of integers).
+      padding: length-N array-like of pairs of integers of (low, high) padding.
+
+    Returns:
+      A LocalOp representing the added ReduceWindow op.
+    """
+    return self._client.ReduceWindowWithGeneralPadding(
+        operand, init_value, computation_to_apply.c_local_computation,
+        window_dimensions, window_strides, base_dilations, window_dilations,
+        padding)
 
   def RngNormal(self, mu, sigma, dims):
     """Enqueues an RngNormal operation onto the computation.

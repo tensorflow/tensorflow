@@ -278,6 +278,8 @@ class LocalComputationBuilder {
       const LocalComputation& local_computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64> > padding);
 
   LocalOp RngNormal(const LocalOp& mu, const LocalOp& sigma,
