@@ -548,6 +548,17 @@ class BackpropTest(test.TestCase):
     grad = g.gradient(y, [x])[0]
     self.assertEqual(self.evaluate(grad), 6.0)
 
+  @test_util.assert_no_new_tensors
+  @test_util.run_in_graph_and_eager_modes
+  def testGadientTapeCalledOnConstantTarget(self):
+    with backprop.GradientTape() as g:
+      x = variables.Variable([3.0])
+      y = variables.Variable([2.0])
+    with self.assertRaisesRegexp(
+        ValueError,
+        'GradientTape.gradient is not supported for variable targets.'):
+      g.gradient(x, y)
+
   @test_util.run_in_graph_and_eager_modes
   def testGradientTapeWithCond(self):
     x = constant_op.constant(3.0)
@@ -981,7 +992,6 @@ class BackpropTest(test.TestCase):
     self.evaluate([x1.initializer, x2.initializer])
     self.assertIsNone(dy)
     self.assertEqual(self.evaluate(dz), 3.0)
-
 
   @test_util.run_in_graph_and_eager_modes
   def testDifferentiatingScalarCache(self):
