@@ -176,13 +176,13 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
 }
 
 StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
-    const GlobalDataHandle& data) {
+    const GlobalDataHandle& data) const {
   tensorflow::mutex_lock lock(mutex_);
   return AllocationTracker::ResolveInternal(data);
 }
 
 StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
-    const GlobalDataHandle& data, int replica_id) {
+    const GlobalDataHandle& data, int replica_id) const {
   tensorflow::mutex_lock lock(mutex_);
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
@@ -196,7 +196,7 @@ StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
 }
 
 StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::ResolveInternal(
-    const GlobalDataHandle& data) {
+    const GlobalDataHandle& data) const {
   VLOG(2) << "resolve:" << data.handle();
   auto it = handle_to_shaped_buffers_.find(data.handle());
   if (it == handle_to_shaped_buffers_.end()) {
