@@ -24,16 +24,20 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveSpaceToBatchNDAttributes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveSpaceToBatchNDAttributes::Run(Model* model,
+                                                          std::size_t op_index,
+                                                          bool* modified) {
+  *modified = false;
   const auto op_it = model->operators.begin() + op_index;
-  if (op_it->get()->type != OperatorType::kSpaceToBatchND) return false;
+  if (op_it->get()->type != OperatorType::kSpaceToBatchND)
+    return ::tensorflow::Status::OK();
 
   auto* op = static_cast<SpaceToBatchNDOperator*>(op_it->get());
 
   // The attributes are resolved only when the 3 attributes (block_shape,
   // before_paddings, after_paddings) are all constant.
   if (!op->block_shape.empty()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   const int block_shape_index = 1;
@@ -42,16 +46,16 @@ bool ResolveSpaceToBatchNDAttributes::Run(Model* model, std::size_t op_index) {
   CHECK_EQ(op->inputs.size(), 3);
   if (!IsConstantParameterArray(*model, op->inputs[block_shape_index]) ||
       !IsConstantParameterArray(*model, op->inputs[paddings_index]))
-    return false;
+    return ::tensorflow::Status::OK();
 
   // Handle paddings.
   const auto& paddings_array = model->GetArray(op->inputs[paddings_index]);
-  if (!paddings_array.has_shape()) return false;
+  if (!paddings_array.has_shape()) return ::tensorflow::Status::OK();
   const std::vector<int>& paddings_dims = paddings_array.shape().dims();
   if (paddings_dims.size() != 2) {
     // Code only handles padding of 2 dimensions. Perhaps another transformation
     // will delete this op.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const std::vector<int>& paddings_buffer =
       paddings_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -63,7 +67,7 @@ bool ResolveSpaceToBatchNDAttributes::Run(Model* model, std::size_t op_index) {
   // Handle block_shape.
   const auto& block_shape_array =
       model->GetArray(op->inputs[block_shape_index]);
-  if (!block_shape_array.has_shape()) return false;
+  if (!block_shape_array.has_shape()) return ::tensorflow::Status::OK();
   const std::vector<int>& block_shape_dims = block_shape_array.shape().dims();
   CHECK_EQ(block_shape_dims.size(), 1);
   const std::vector<int>& block_shape_buffer =
@@ -72,7 +76,8 @@ bool ResolveSpaceToBatchNDAttributes::Run(Model* model, std::size_t op_index) {
     op->block_shape.push_back(block_shape_buffer[i]);
   }
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -25,17 +25,20 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveFakeQuantArgsFromVars::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveFakeQuantArgsFromVars::Run(Model* model,
+                                                       std::size_t op_index,
+                                                       bool* modified) {
+  *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;
   auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(fakequant_base_op);
 
   if (fakequant_op->minmax) {
     // Already resolved.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK_EQ(fakequant_op->inputs.size(), 3);
@@ -43,7 +46,7 @@ bool ResolveFakeQuantArgsFromVars::Run(Model* model, std::size_t op_index) {
   // resolved to constant arrays.
   for (int i = 1; i <= 2; i++) {
     if (!IsConstantParameterArray(*model, fakequant_op->inputs[i])) {
-      return false;
+      return ::tensorflow::Status::OK();
     }
   }
 
@@ -74,7 +77,8 @@ bool ResolveFakeQuantArgsFromVars::Run(Model* model, std::size_t op_index) {
     DeleteArrayIfUsedOnce(fakequant_op->inputs[i], model);
   }
   fakequant_op->inputs.resize(1);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -101,37 +101,40 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
 
 // Swaps reshape-transpose to transpose-reshape whenever possible. This is
 // possible when the reshape does not affect memory ordering.
-bool ReorderReshapeTranspose::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ReorderReshapeTranspose::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   auto transpose_it = model->operators.begin() + op_index;
 
   TransposeOperator* transpose_op = ConvertOperator<TransposeOperator*>(
       transpose_it->get(), OperatorType::kTranspose);
 
   if (transpose_op == nullptr) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (!OperatorReady(*model, transpose_op) || transpose_op->perm.empty()) {
     // Wait for values to propagate.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Find the operator that produces the transpose op.
   auto reshape_it = FindOpWithOutput(*model, transpose_op->inputs[0]);
   if (reshape_it == model->operators.end()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   TensorFlowReshapeOperator* reshape_op =
       ConvertOperator<TensorFlowReshapeOperator*>(reshape_it->get(),
                                                   OperatorType::kReshape);
   if (reshape_op == nullptr) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Ignore if the reshape is uninitialized.
   if (!OperatorReady(*model, reshape_op) || reshape_op->shape.empty()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Need to copy to keep static if permutated.
@@ -142,7 +145,7 @@ bool ReorderReshapeTranspose::Run(Model* model, std::size_t op_index) {
   // Intermediate should not be consumed by any other operators.
   if (CountOpsWithInput(*model, intermediate_name) != 1) {
     AddMessageF("Input %s used elsewhere", intermediate_name);
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Check that the intermediate is not an output array.
@@ -151,7 +154,7 @@ bool ReorderReshapeTranspose::Run(Model* model, std::size_t op_index) {
         "Cannot reorder reshape-transpose as it would invalidate %s which is "
         "an output array.",
         intermediate_name);
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Get the arrays.
@@ -173,7 +176,7 @@ bool ReorderReshapeTranspose::Run(Model* model, std::size_t op_index) {
   // dimensions then it can be moved between the transpose.
   if (!ReshapeIsEquivalentToTranspose(*model, reshape_op,
                                       true /*allow_extra_unary_dims*/)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (!IsDiscardableArray(*model, output_name)) {
@@ -242,7 +245,8 @@ bool ReorderReshapeTranspose::Run(Model* model, std::size_t op_index) {
   // Swap the order of the operators.
   transpose_it->swap(*reshape_it);
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

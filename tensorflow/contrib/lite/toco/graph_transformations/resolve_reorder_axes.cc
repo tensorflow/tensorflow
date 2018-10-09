@@ -78,11 +78,13 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   }
 }
 
-bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveReorderAxes::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   if (op->type != OperatorType::kReorderAxes) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* reorder_op = static_cast<ReorderAxesOperator*>(op);
 
@@ -93,11 +95,11 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
   auto& input_array = model->GetArray(input_array_name);
   auto& output_array = model->GetArray(output_array_name);
   if (!input_array.buffer) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   // Yield until output dims have been resolved.
   if (!output_array.has_shape()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   // Reorder the input array dims and buffer data
   if (input_array.buffer->type == ArrayDataType::kFloat) {
@@ -120,7 +122,8 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
   DeleteOpAndArraysIfUnused(model, op);
   RenameArray(model, output_array_name, input_array_name);
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

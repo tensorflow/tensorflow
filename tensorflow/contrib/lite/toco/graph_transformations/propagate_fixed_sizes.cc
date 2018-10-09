@@ -1622,7 +1622,10 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
 
 }  // namespace
 
-bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status PropagateFixedSizes::Run(Model* model,
+                                              std::size_t op_index,
+                                              bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   std::unordered_map<string, std::vector<int>> old_output_dims;
@@ -1836,7 +1839,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
           static_cast<TensorFlowUnsupportedOperator*>(op);
       // Attribute can be not specified, ignore it.
       if (unsupported_op->output_shapes.size() < op->outputs.size()) {
-        return false;
+        return ::tensorflow::Status::OK();
       }
       for (int i = 0; i < op->outputs.size(); ++i) {
         const string& output = op->outputs[i];
@@ -1886,10 +1889,11 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
         (old_output_dims[output] != model->GetArray(output).shape().dims())) {
       AddMessageF("Set shape of %s to [%s]", output,
                   absl::StrJoin(model->GetArray(output).shape().dims(), ","));
-      return true;
+      *modified = true;
+      return ::tensorflow::Status::OK();
     }
   }
-  return false;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

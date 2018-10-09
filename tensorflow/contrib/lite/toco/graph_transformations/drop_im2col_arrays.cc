@@ -19,15 +19,17 @@ limitations under the License.
 
 namespace toco {
 
-bool DropIm2colArrays::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status DropIm2colArrays::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
+  *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* conv_op = static_cast<ConvOperator*>(conv_it->get());
   if (conv_op->outputs.size() < 2) {
     // Conv op does not have im2col.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Drop the im2col array.
@@ -36,7 +38,8 @@ bool DropIm2colArrays::Run(Model* model, std::size_t op_index) {
   conv_op->outputs.resize(1);
   AddMessageF("Dropped an im2col array for %s", LogName(*conv_op));
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

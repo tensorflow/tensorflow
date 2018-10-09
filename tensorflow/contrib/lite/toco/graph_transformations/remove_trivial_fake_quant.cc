@@ -64,23 +64,27 @@ bool IsFakeQuantTrivial(GraphTransformation* transformation, const Model& model,
 }  // namespace
 
 // Removes FakeQuant ops that are trivial (have no effect, are redundant, etc).
-bool RemoveTrivialFakeQuant::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTrivialFakeQuant::Run(Model* model,
+                                                 std::size_t op_index,
+                                                 bool* modified) {
+  *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
   if (op->type != OperatorType::kFakeQuant) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* fakequant_op = static_cast<FakeQuantOperator*>(op);
 
   if (!IsFakeQuantTrivial(this, *model, *fakequant_op)) {
     AddMessageF("%s is not trivial", LogName(*fakequant_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   AddMessageF("Removing trivial %s", LogName(*fakequant_op));
 
   CHECK_EQ(fakequant_op->inputs.size(), 1);
-  return RemoveTrivialPassthroughOp(this, model, op_index);
+  *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

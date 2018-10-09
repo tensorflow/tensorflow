@@ -20,10 +20,13 @@ namespace toco {
 
 // This pass will convert an AddN operator with only 2 inputs into a regular Add
 // operator, to which more optimizations may apply.
-bool ConvertTrivialAddNToAdd::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ConvertTrivialAddNToAdd::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   auto addn_it = model->operators.begin() + op_index;
   if (addn_it->get()->type != OperatorType::kAddN) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   AddNOperator* addn_op = static_cast<AddNOperator*>(addn_it->get());
   CHECK_GE(addn_op->inputs.size(), 2);
@@ -31,7 +34,7 @@ bool ConvertTrivialAddNToAdd::Run(Model* model, std::size_t op_index) {
 
   // We only reduce AddN with N=2 to a regular Add.
   if (addn_op->inputs.size() != 2) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Copy inputs & outputs to regular Add.
@@ -45,7 +48,8 @@ bool ConvertTrivialAddNToAdd::Run(Model* model, std::size_t op_index) {
   addn_it = add_it + 1;
   CHECK_EQ(addn_it->get(), addn_op);
   model->operators.erase(addn_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

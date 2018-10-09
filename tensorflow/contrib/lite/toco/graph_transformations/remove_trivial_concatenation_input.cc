@@ -25,7 +25,10 @@ limitations under the License.
 
 namespace toco {
 
-bool RemoveTrivialConcatenationInput::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTrivialConcatenationInput::Run(Model* model,
+                                                          std::size_t op_index,
+                                                          bool* modified) {
+  *modified = false;
   // TensorFlow allows Concatenation nodes to have 0-D inputs,
   // and they are then treated as empty i.e. omitted from concatenation,
   // in violation of the notion that 0-D is equivalent to 1x1x1x1.
@@ -36,7 +39,7 @@ bool RemoveTrivialConcatenationInput::Run(Model* model, std::size_t op_index) {
   const auto concat_it = model->operators.begin() + op_index;
   auto* concat_op = concat_it->get();
   if (concat_op->type != OperatorType::kConcatenation) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   std::vector<string> trivial_inputs;
   std::vector<string> nontrivial_inputs;
@@ -52,7 +55,7 @@ bool RemoveTrivialConcatenationInput::Run(Model* model, std::size_t op_index) {
   }
 
   if (trivial_inputs.empty()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Drop trivial inputs.
@@ -63,7 +66,8 @@ bool RemoveTrivialConcatenationInput::Run(Model* model, std::size_t op_index) {
     }
   }
   concat_op->inputs = nontrivial_inputs;
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

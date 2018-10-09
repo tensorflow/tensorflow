@@ -23,11 +23,14 @@ limitations under the License.
 
 namespace toco {
 
-bool RemoveTensorFlowAssert::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTensorFlowAssert::Run(Model* model,
+                                                 std::size_t op_index,
+                                                 bool* modified) {
+  *modified = false;
   const auto assert_it = model->operators.begin() + op_index;
   const auto* assert_op = assert_it->get();
   if (assert_op->type != OperatorType::kAssert) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   bool changed = false;
@@ -54,7 +57,8 @@ bool RemoveTensorFlowAssert::Run(Model* model, std::size_t op_index) {
 
   // That's it. We can stop here, no need to duplicate the work that
   // RemoveUnusedOp will do removing this now-unused node.
-  return changed;
+  *modified = changed;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

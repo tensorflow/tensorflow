@@ -55,10 +55,13 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
 
 }  // namespace
 
-bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveTensorFlowMatMul::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   auto matmul_it = model->operators.begin() + op_index;
   if (matmul_it->get()->type != OperatorType::kMatMul) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const auto* matmul_op =
       static_cast<const TensorFlowMatMulOperator*>(matmul_it->get());
@@ -73,7 +76,7 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
         "Not replacing %s by a FullyConnected operator, because it has "
         "the transpose_a attribute",
         LogName(*matmul_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Reorder the axes on the second input. TensorFlow uses row-major ordering
@@ -198,7 +201,8 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
 
   // erase the MatMul operator
   model->operators.erase(matmul_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

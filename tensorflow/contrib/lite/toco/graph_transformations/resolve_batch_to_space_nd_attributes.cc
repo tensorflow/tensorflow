@@ -24,31 +24,35 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveBatchToSpaceNDAttributes::Run(Model* model,
+                                                          std::size_t op_index,
+                                                          bool* modified) {
+  *modified = false;
   const auto op_it = model->operators.begin() + op_index;
-  if (op_it->get()->type != OperatorType::kBatchToSpaceND) return false;
+  if (op_it->get()->type != OperatorType::kBatchToSpaceND)
+    return ::tensorflow::Status::OK();
 
   auto* op = static_cast<BatchToSpaceNDOperator*>(op_it->get());
 
   // The attributes are resolved only when the 3 attributes (block_shape,
   // before_crops, after_crops) are all constant.
   if (!op->block_shape.empty()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK_EQ(op->inputs.size(), 3);
   if (!IsConstantParameterArray(*model, op->inputs[1]) ||
       !IsConstantParameterArray(*model, op->inputs[2]))
-    return false;
+    return ::tensorflow::Status::OK();
 
   // Handle crops
   const auto& crops_array = model->GetArray(op->inputs[2]);
-  if (!crops_array.has_shape()) return false;
+  if (!crops_array.has_shape()) return ::tensorflow::Status::OK();
   const std::vector<int>& crops_dims = crops_array.shape().dims();
   if (crops_dims.size() != 2) {
     // Code only handles crops of 2 dimensions. Perhaps another transformation
     // will delete this op.
-    return false;
+    return ::tensorflow::Status::OK();
   }
   const std::vector<int>& crops_buffer =
       crops_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -59,7 +63,7 @@ bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
 
   // Handle block_shape
   const auto& block_shape_array = model->GetArray(op->inputs[1]);
-  if (!block_shape_array.has_shape()) return false;
+  if (!block_shape_array.has_shape()) return ::tensorflow::Status::OK();
   const std::vector<int>& block_shape_dims = block_shape_array.shape().dims();
   CHECK_EQ(block_shape_dims.size(), 1);
   const std::vector<int>& block_shape_buffer =
@@ -68,7 +72,8 @@ bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
     op->block_shape.push_back(block_shape_buffer[i]);
   }
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

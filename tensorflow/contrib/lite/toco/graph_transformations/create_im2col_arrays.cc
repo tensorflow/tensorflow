@@ -73,18 +73,22 @@ bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   return true;
 }
 
-bool CreateIm2colArrays::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status CreateIm2colArrays::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
+  *modified = false;
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
 
   switch (op->type) {
     case OperatorType::kConv:
-      return ProcessConvOperator(model, static_cast<ConvOperator*>(op));
+      *modified = ProcessConvOperator(model, static_cast<ConvOperator*>(op));
+      return ::tensorflow::Status::OK();
     case OperatorType::kTransposeConv:
-      return ProcessTransposeConvOperator(
+      *modified = ProcessTransposeConvOperator(
           model, static_cast<TransposeConvOperator*>(op));
+      return ::tensorflow::Status::OK();
     default:
-      return false;
+      return ::tensorflow::Status::OK();
   }
 }
 
