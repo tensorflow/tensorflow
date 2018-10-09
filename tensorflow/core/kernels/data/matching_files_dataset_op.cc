@@ -239,7 +239,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           std::vector<string> children;
           Status s = fs->GetChildren(current_dir, &children);
           std::cout << "GetChildren status: " << s.ToString()
-                    << "; Children size: " << children.size() << std::endl;
+                    << "; Children size: " << children.size()
+                    << "; Heap size: " << filepath_queue_.size() << std::endl;
           ret.Update(s);
 
           // If GetChildren() fails, continue the next search.
@@ -282,6 +283,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             const string& child_dir_path =
                 io::JoinPath(current_dir, children[i]);
             const Status& child_dir_status = children_dir_status[i];
+            std::cout << "Child dir path: " << child_dir_path << std::endl;
 
             // If the IsDirectory call was cancelled we bail.
             if (child_dir_status.code() == tensorflow::error::CANCELLED) {
