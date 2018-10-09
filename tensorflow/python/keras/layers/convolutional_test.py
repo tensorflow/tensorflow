@@ -790,6 +790,42 @@ class UpSamplingTest(test.TestCase):
             np.testing.assert_allclose(np_output, expected_out)
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_upsampling_2d_bilinear(self):
+    num_samples = 2
+    stack_size = 2
+    input_num_row = 11
+    input_num_col = 12
+    for data_format in ['channels_first', 'channels_last']:
+      if data_format == 'channels_first':
+        inputs = np.random.rand(num_samples, stack_size, input_num_row,
+                                input_num_col)
+      else:
+        inputs = np.random.rand(num_samples, input_num_row, input_num_col,
+                                stack_size)
+
+      testing_utils.layer_test(keras.layers.UpSampling2D,
+                               kwargs={'size': (2, 2),
+                                       'data_format': data_format,
+                                       'interpolation': 'bilinear'},
+                               input_shape=inputs.shape)
+
+      if not context.executing_eagerly():
+        for length_row in [2]:
+          for length_col in [2, 3]:
+            layer = keras.layers.UpSampling2D(
+                size=(length_row, length_col),
+                data_format=data_format)
+            layer.build(inputs.shape)
+            outputs = layer(keras.backend.variable(inputs))
+            np_output = keras.backend.eval(outputs)
+            if data_format == 'channels_first':
+              self.assertEqual(np_output.shape[2], length_row * input_num_row)
+              self.assertEqual(np_output.shape[3], length_col * input_num_col)
+            else:
+              self.assertEqual(np_output.shape[1], length_row * input_num_row)
+              self.assertEqual(np_output.shape[2], length_col * input_num_col)
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_3d(self):
     num_samples = 2
     stack_size = 2
