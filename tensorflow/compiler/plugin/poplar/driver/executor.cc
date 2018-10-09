@@ -290,7 +290,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
 
       if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-        if (device_list.size() > 0) {
+        if (device_list.size() > 0 && ordinal_ == 0) {
           type = tensorflow::IPUOptions::DeviceConfig::IPU;
         } else {
           type = tensorflow::IPUOptions::DeviceConfig::CPU;
