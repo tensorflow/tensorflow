@@ -371,7 +371,7 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   // Move 'G' parts of the B back to I
   out = out.reshapePartial(1, 2, {n_g, out.dim(1) / n_g});
   out = out.dimShufflePartial({1}, {0});
-  out = out.reshapePartial(0, 2, {in.dim(0) * in.dim(1)});
+  out = out.reshapePartial(0, 2, {out.dim(0) * out.dim(1)});
 
   out = ShuffleConvolutionOutputToTensorflow(conv, out);
 
