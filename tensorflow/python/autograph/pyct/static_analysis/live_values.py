@@ -28,7 +28,6 @@ import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.static_analysis.annos import NodeAnno
 
 
 # TODO(aqj): Do we need this? Do other builtins fail in similar ways
@@ -133,11 +132,9 @@ class LiveValueResolver(transformer.Base):
         anno.setanno(node, 'fqn',
                      anno.getanno(node.value, 'type_fqn') + (node.attr,))
     elif isinstance(node.value, gast.Name):
-      stem_name = node.value
-      # All nonlocal symbols should be fully resolved.
-      assert anno.hasanno(stem_name, NodeAnno.IS_LOCAL), stem_name
       # TODO(mdan): Figure out what to do when calling attribute on local object
       # Maybe just leave as-is?
+      pass
     return node
 
 
