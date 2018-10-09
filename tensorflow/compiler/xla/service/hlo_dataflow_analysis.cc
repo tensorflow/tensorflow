@@ -126,7 +126,7 @@ bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
 
 const HloValue& HloDataflowAnalysis::GetValueDefinedAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  CHECK(ValueIsDefinedAt(instruction, index)) << instruction->ToString();
+  CHECK(ValueIsDefinedAt(instruction, index));
   return GetUniqueValueAt(instruction, index);
 }
 

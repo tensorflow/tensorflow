@@ -225,32 +225,6 @@ message HloScheduleProto {
   map<int64, InstructionSequence> sequences = 1;
 }
 
-message HloInputOutputAliasProto {
-  // The following proto describes a pair of aliased an input
-  // (described by parameter number and a ShapeIndex of the parameter)
-  // and an output (described by a ShapeIndex of the root
-  // instruction). For example:
-  //
-  // entry = {
-  //  output_shape_index={1},
-  //  parameter_number=0,
-  //  parameter_shape_index={1, 2},
-  // }
-  //
-  // This entry indicates that the first paremter's {1, 2} element is
-  // aliased with the {1} element of the root instruction.
-  message AliasEntryProto {
-    // ShapeIndex of the root hlo.
-    repeated int64 output_shape_index = 1;
-    // Number of the parameter in entry computation.
-    int64 parameter_number = 2;
-    // ShapeIndex of the parameter instruction.
-    repeated int64 parameter_shape_index = 3;
-  }
-
-  repeated AliasEntryProto entries = 1;
-}
-
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
@@ -269,9 +243,6 @@ message HloModuleProto {
 
   // The schedule for this module.
   HloScheduleProto schedule = 7;
-
-  // Describes alias information between inputs and outputs.
-  HloInputOutputAliasProto input_output_alias = 8;
 }
 
 // Serialization of LogicalBuffer.
