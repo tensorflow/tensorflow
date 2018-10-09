@@ -1237,11 +1237,15 @@ void DedupeConstantArrays(Model* model, size_t min_size) {
         lhs_array.final_data_type != ArrayDataType::kNone
             ? lhs_array.final_data_type
             : lhs_array.data_type;
-    size_t array_byte_size =
-        lhs_array.buffer->Length() * ElementSize(final_data_type);
-    if (array_byte_size < min_size) {
-      // Too small; skip.
-      continue;
+    // Ignore small arrays, don't check string arrays because it is not possible
+    // to estimate its size.
+    if (final_data_type != ArrayDataType::kString) {
+      size_t array_byte_size =
+          lhs_array.buffer->Length() * ElementSize(final_data_type);
+      if (array_byte_size < min_size) {
+        // Too small; skip.
+        continue;
+      }
     }
 
     auto next_lhs_array_it = lhs_array_it;
