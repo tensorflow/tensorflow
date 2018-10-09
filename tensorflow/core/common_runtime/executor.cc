@@ -1771,14 +1771,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
             // The OpKernel may create child activities (such as GPU kernel
             // launches), so use a `ScopedAnnotation` to relate these activities
             // in the trace.
-            tracing::ScopedAnnotation activity(op_name,
-                                               op_kernel->type_string());
+            tracing::ScopedAnnotation activity(
+                op_name, strings::StrCat(op_kernel->type_string(),
+                                         "#id=", step_id_, "#"));
             device->Compute(op_kernel, &ctx);
           } else {
             // Use the cheaper `ScopedActivity` to trace just the OpKernel
             // execution.
-            tracing::ScopedActivity activity(op_name, op_kernel->type_string(),
-                                             item.kernel_is_expensive);
+            tracing::ScopedActivity activity(
+                op_name,
+                strings::StrCat(op_kernel->type_string(), "#id=", step_id_,
+                                "#"),
+                item.kernel_is_expensive);
             device->Compute(op_kernel, &ctx);
           }
         } else {
