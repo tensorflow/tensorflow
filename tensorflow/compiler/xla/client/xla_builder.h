@@ -2002,7 +2002,7 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must tensors with the same dimensions. The
+// * The keys and the values must be tensors with the same dimensions. The
 // element types of the tensors may be different.
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and a tensor with their
