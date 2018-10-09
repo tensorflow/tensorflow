@@ -297,7 +297,7 @@ def test_saved_model(directory, tag_set=None, signature_key=None, **kwargs):
   compare_models_random_data(tflite_model, tf_eval_func)
 
 
-def test_keras_model(filename, **kwargs):
+def test_keras_model(filename, input_arrays=None, input_shapes=None, **kwargs):
   """Validates the tf.keras model converts to a TFLite model.
 
   Converts the tf.keras model to TFLite and checks the accuracy of the model on
@@ -305,9 +305,15 @@ def test_keras_model(filename, **kwargs):
 
   Args:
     filename: Full filepath of HDF5 file containing the tf.keras model.
+    input_arrays: List of input tensors to freeze graph with.
+    input_shapes: Dict of strings representing input tensor names to list of
+      integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
+      Automatically determined when input shapes is None (e.g., {"foo" : None}).
+        (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
-  converter = _lite.TFLiteConverter.from_keras_model_file(filename)
+  converter = _lite.TFLiteConverter.from_keras_model_file(
+      filename, input_arrays=input_arrays, input_shapes=input_shapes)
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_keras_model(filename)
