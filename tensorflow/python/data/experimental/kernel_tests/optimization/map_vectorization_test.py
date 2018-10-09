@@ -105,15 +105,16 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testOptimizationWithCapturedInputs(self):
     # Tests that vectorization works with captured inputs
-    def map_fn(x):
-      return x + y
-
     y = constant_op.constant(1, shape=(2,))
+    z = constant_op.constant(2, shape=(2,))
+
+    def map_fn(x):
+      return x, y, z
+
     base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
                                                            [3, 4]]).repeat(5)
-    # TODO(rachelim): when this optimization works, turn on expect_optimized
     unoptimized, optimized = self._get_test_datasets(
-        base_dataset, map_fn, expect_optimized=False)
+        base_dataset, map_fn, expect_optimized=True)
     self.assertDatasetsEqual(optimized, unoptimized)
 
   def testOptimizationIgnoreStateful(self):
