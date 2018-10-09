@@ -1,3 +1,7 @@
+'''
+Code to train and create frozen graph for your speech model together
+'''
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
