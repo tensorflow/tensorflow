@@ -53,7 +53,7 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
           GetInputCopyHandle(inst->parameter_number(), i), out.elementType(),
           out.numElements());
 
-      seq.add(poplar::program::Copy(fifo, out));
+      seq.add(poplar::program::Copy(fifo, out, !in_info.IsStreaming()));
     }
 
     if (!LayoutUtil::IsMonotonicWithDim0Major(module_shapes[i].layout())) {
@@ -145,7 +145,7 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
 
         seq.add(poplar::program::Copy(
             out, fifo, /* only rearrange on host when not streaming */
-                       !out_info.IsStreaming()));
+            !out_info.IsStreaming()));
       }
     }
     from_tensor_index = to_tensor_index;
