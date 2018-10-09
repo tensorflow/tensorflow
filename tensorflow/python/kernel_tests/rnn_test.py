@@ -571,8 +571,8 @@ class RNNTest(test.TestCase):
       cell.set_weights(tf_weights)
       [tf_out, tf_state] = sess.run([tf_out, tf_state], {inputs: x_train})
 
-    self.assertAllClose(tf_out, k_out)
-    self.assertAllClose(tf_state, k_state)
+    self.assertAllClose(tf_out, k_out, atol=1e-5)
+    self.assertAllClose(tf_state, k_state, atol=1e-5)
 
   def testBasicLSTMCellInterchangeWithLSTMCell(self):
     with self.session(graph=ops_lib.Graph()) as sess:
