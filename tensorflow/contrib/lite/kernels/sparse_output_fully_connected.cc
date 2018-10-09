@@ -88,6 +88,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const bool is_hybrid_op =
       (weights->type == kTfLiteUInt8 && input->type == kTfLiteFloat32);
 
+  // Resize output.
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(1);
+  output_size_array->data[0] = 1;
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, output_size_array));
+
   if (is_hybrid_op) {
     TfLiteIntArrayFree(node->temporaries);
     node->temporaries = TfLiteIntArrayCreate(kNumTemporaryTensors);
