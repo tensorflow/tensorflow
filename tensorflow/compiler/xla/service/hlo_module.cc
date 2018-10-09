@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -71,6 +73,8 @@ HloComputation* HloModule::AddComputationInternal(
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
+    input_output_alias_config_ = HloInputOutputAliasConfig(
+        entry_computation_->root_instruction()->shape());
   }
 
   if (uniquify_identifiers) {
@@ -144,7 +148,8 @@ void HloModule::ReplaceComputations(
         case HloOpcode::kCall:
         case HloOpcode::kMap:
         case HloOpcode::kReduce:
-        case HloOpcode::kReduceWindow: {
+        case HloOpcode::kReduceWindow:
+        case HloOpcode::kScatter: {
           HloComputation* new_arg = tensorflow::gtl::FindWithDefault(
               replacements, instruction->to_apply(), nullptr);
           if (new_arg != nullptr) {
@@ -249,6 +254,9 @@ HloModuleProto HloModule::ToProto() const {
   if (has_schedule()) {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
+
+  *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
+
   return proto;
 }
 
@@ -285,8 +293,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
       << ShapeUtil::HumanStringWithLayout(expected_program_shape.result())
       << ", actual: " << ShapeUtil::HumanStringWithLayout(result_shape);
 
-  tensorflow::gtl::FlatMap<int64, HloComputation*> computation_map;
-  tensorflow::gtl::FlatMap<HloComputation*, int64> to_proto_id;
+  absl::flat_hash_map<int64, HloComputation*> computation_map;
+  absl::flat_hash_map<HloComputation*, int64> to_proto_id;
   std::vector<std::unique_ptr<HloComputation>> computations;
   HloComputation* entry = nullptr;
   for (const HloComputationProto& computation_proto : proto.computations()) {
@@ -325,12 +333,16 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
 
+  TF_ASSIGN_OR_RETURN(module->input_output_alias_config_,
+                      HloInputOutputAliasConfig::CreateFromProto(
+                          module.get(), proto.input_output_alias()));
+
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
-  tensorflow::gtl::FlatSet<string> computation_names;
-  tensorflow::gtl::FlatSet<string> instruction_names;
-  tensorflow::gtl::FlatSet<int> computation_ids;
-  tensorflow::gtl::FlatSet<int> instruction_ids;
+  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<int> instruction_ids;
   for (HloComputation* computation : module->computations()) {
     TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
         << "Computation name is not unique: " << computation->name();

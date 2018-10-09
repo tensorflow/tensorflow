@@ -172,17 +172,21 @@ REGISTER_KERNEL_BUILDER(
                               .Device(DEVICE_GPU)              \
                               .HostMemory("resource")          \
                               .TypeConstraint<type>("dtype"),  \
-                          ResourceHandleOp<Var>)               \
-  REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")                \
-                              .Device(DEVICE_GPU)              \
-                              .HostMemory("resources")         \
-                              .TypeConstraint<type>("dtypes"), \
-                          ResourceHandlesOp<Var>)
-
+                          ResourceHandleOp<Var>)
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_int64(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
+
+REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("resources")
+                            .TypeConstraint("dtypes",
+                                            {DT_INT64, DT_COMPLEX64,
+                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
+                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
+                        ResourceHandlesOp<Var>);
+
 #endif  // GOOGLE_CUDA
 
 template <typename T>
@@ -422,6 +426,12 @@ class AssignUpdateVariableOp : public OpKernel {
     // ADD if value's refcount was 1.
     mutex_lock ml(*variable->mu());
     Tensor* var_tensor = variable->tensor();
+    OP_REQUIRES(context, var_tensor->shape().IsSameSize(value.shape()),
+                errors::InvalidArgument("Cannot update variable with shape ",
+                                        var_tensor->shape().DebugString(),
+                                        " using a Tensor with shape ",
+                                        value.shape().DebugString(),
+                                        ", shapes must be equal."));
     OP_REQUIRES_OK(context,
                    PrepareToUpdateVariable<Device, T>(context, var_tensor));
     functor::DenseUpdate<Device, T, Op> update_functor;

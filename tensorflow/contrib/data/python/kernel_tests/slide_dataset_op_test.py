@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import sliding
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -30,7 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class SlideDatasetTest(test.TestCase, parameterized.TestCase):
+class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("1", 20, 14, 7, 1),
@@ -196,11 +197,6 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       dataset_ops.Dataset.range(10).map(lambda x: x).apply(
           sliding.sliding_window_batch(
               window_size=1, stride=1, window_shift=1, window_stride=1))
-
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testSlideSparse(self):
 

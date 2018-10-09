@@ -133,6 +133,12 @@ tf_custom_op_library(
 
 tf_gen_op_wrapper_py(
     name = "tpu_ops",
+    hidden = [
+        "SendTPUEmbeddingGradients",
+        "EnqueueTPUEmbeddingIntegerBatch",
+        "EnqueueTPUEmbeddingSparseBatch",
+        "EnqueueTPUEmbeddingSparseTensorBatch",
+    ],
     deps = [
         ":cross_replica_ops_op_lib",
         ":heartbeat_ops_op_lib",
@@ -252,7 +258,10 @@ py_library(
         ":tpu_py",
         "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
+        "//tensorflow/contrib/tpu/proto:optimization_parameters_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_py",
+        "//tensorflow/contrib/tpu/proto:tpu_embedding_output_layout_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -293,6 +302,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         ":datasets",
     ],
+    flaky = 1,  # TODO(b/117363808): fails 1/1000 OSS runs
     grpc_enabled = True,
 )
 

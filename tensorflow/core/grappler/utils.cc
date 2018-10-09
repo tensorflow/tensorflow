@@ -156,45 +156,6 @@ bool IsControlInput(const string& name) {
   return !name.empty() && name[0] == '^';
 }
 
-string NodeName(const string& name) {
-  int position;
-  return ParseNodeName(name, &position);
-}
-
-int NodePosition(const string& name) {
-  int position;
-  ParseNodeNameAsStringPiece(name, &position);
-  return position;
-}
-
-int NodePositionIfSameNode(const string& input_name, const string& node_name) {
-  const bool is_ctrl = input_name[0] == '^';
-  auto input_it = is_ctrl ? input_name.begin() + 1 : input_name.begin();
-  auto node_it = node_name.begin();
-  if (node_name.empty() ||
-      std::distance(input_it, input_name.end()) < node_name.size()) {
-    return -2;
-  }
-  while (node_it != node_name.end()) {
-    if (*input_it++ != *node_it++) {
-      return -2;
-    }
-  }
-  if (input_it == input_name.end()) {
-    return is_ctrl ? -1 : 0;
-  } else if (*input_it++ == ':') {
-    StringPiece remaining(&(*input_it),
-                          std::distance(input_it, input_name.end()));
-    int position;
-    if (!strings::safe_strto32(remaining, &position)) {
-      return -2;
-    }
-    return is_ctrl ? -1 : position;
-  } else {
-    return -2;
-  }
-}
-
 string AddPrefixToNodeName(const string& name, const string& prefix,
                            const string& delimiter) {
   if (!name.empty()) {

@@ -121,7 +121,7 @@ TEST_F(CpuNoAliasTest, Concat) {
     CHECK: %read_concat2_array = load {{.*}} !alias.scope [[concat1_noalias]], !noalias [[concat1_scope]]
     CHECK-DAG: [[buf_size32:![0-9]+]] = !{!"buffer:{{.*}} size:32
     CHECK-DAG: [[buf_size48:![0-9]+]] = !{!"buffer:{{.*}} size:48
-    CHECK-DAG: [[param_x_noalias]] = !{[[buf_size32]], [[buf_size48]]}
+    CHECK-DAG: [[param_x_noalias]] = !{[[buf_size48]], [[buf_size32]]}
     CHECK-DAG: [[concat1_scope]] = !{[[buf_size32]]}
     CHECK-DAG: [[concat1_noalias]] = !{[[buf_size48]]}
   )";

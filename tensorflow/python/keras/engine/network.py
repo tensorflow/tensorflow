@@ -1028,7 +1028,10 @@ class Network(base_layer.Layer):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensor, **kwargs)
               else:
-                output_tensors = layer.call(computed_tensor, **kwargs)
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensor, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensor, **kwargs)
                 if hasattr(layer, 'compute_mask'):
                   output_masks = layer.compute_mask(computed_tensor,
                                                     computed_mask)
@@ -1049,7 +1052,10 @@ class Network(base_layer.Layer):
                 output_tensors, output_masks = layer._call_and_compute_mask(
                     computed_tensors, **kwargs)
               else:
-                output_tensors = layer.call(computed_tensors, **kwargs)
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensors, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensors, **kwargs)
                 if hasattr(layer, 'compute_mask'):
                   output_masks = layer.compute_mask(computed_tensors,
                                                     computed_masks)
@@ -1526,6 +1532,7 @@ class Network(base_layer.Layer):
         # Restore existing variables (if any) immediately, and set up a
         # streaming restore for any variables created in the future.
         checkpointable_utils.streaming_restore(status=status, session=session)
+      status.assert_nontrivial_match()
       return status
     if h5py is None:
       raise ImportError(
@@ -1634,10 +1641,11 @@ class Network(base_layer.Layer):
         ValueError: if `summary()` is called before the model is built.
     """
     if not self.built:
-      raise ValueError('This model has never been called, thus its weights '
-                       'have not yet been created, so no summary can be '
-                       'displayed. Build the model first '
-                       '(e.g. by calling it on some data).')
+      raise ValueError('This model has not yet been built. '
+                       'Build the model first by calling `build()` or calling '
+                       '`fit()` with some data, or specify '
+                       'an `input_shape` argument in the first layer(s) for '
+                       'automatic build.')
     layer_utils.print_summary(self,
                               line_length=line_length,
                               positions=positions,

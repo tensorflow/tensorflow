@@ -453,6 +453,11 @@ message RunOptions {
     // same group_key value (in a distributed computation where tasks
     // run disjoint graphs).
     int64 collective_graph_key = 1;
+    // If true, then operations (using the inter-op pool) across all
+    // session::run() calls will be centrally scheduled, optimizing for (median
+    // and tail) latency.
+    // Consider using this option for CPU-bound workloads like inference.
+    bool use_run_handler_pool = 2;
   };
 
   Experimental experimental = 8;

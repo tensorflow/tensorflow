@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -1864,6 +1865,10 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.compile(optimizer='rmsprop', loss='mse', target_tensors=[target])
       model.train_on_batch(input_val, None)
 
+      # single-output, as single tensor
+      model.compile(optimizer='rmsprop', loss='mse', target_tensors=target)
+      model.train_on_batch(input_val, None)
+
       # single-output, as dict
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors={'dense': target})
@@ -2427,6 +2432,17 @@ class TestTrainingWithMetrics(test.TestCase):
       scores = model.train_on_batch(x, y, sample_weight=w)
       self.assertArrayNear(scores, [0.2, 0.8, 0.8], 0.1)
 
+  def test_losses_in_defun(self):
+    with context.eager_mode():
+      layer = keras.layers.Dense(1, kernel_regularizer='l1')
+      layer(array_ops.ones([1, 10]))
+
+      @function.defun
+      def get_losses():
+        return layer.losses
+
+      self.assertAllEqual(self.evaluate(layer.losses),
+                          self.evaluate(get_losses()))
 
 if __name__ == '__main__':
   test.main()

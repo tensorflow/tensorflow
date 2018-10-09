@@ -247,7 +247,8 @@ class Pruning(object):
 
     # Stores the tensorflow sparsity variable.
     # Built using self._setup_sparsity() or provided externally
-    self._sparsity = sparsity if sparsity else self._setup_sparsity()
+    self._sparsity = (sparsity
+                      if sparsity is not None else self._setup_sparsity())
 
     # List of tensorflow assignments ops for new masks and thresholds
     self._assign_ops = []

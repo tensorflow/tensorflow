@@ -83,7 +83,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'pool_size\', \'strides\', \'padding\', \'data_format\'], varargs=None, keywords=kwargs, defaults=[\'2\', \'None\', \'valid\', \'None\'], "
+    argspec: "args=[\'self\', \'pool_size\', \'strides\', \'padding\', \'data_format\'], varargs=None, keywords=kwargs, defaults=[\'2\', \'None\', \'valid\', \'channels_last\'], "
   }
   member_method {
     name: "add_loss"

@@ -471,7 +471,10 @@ class Optimizer(
 
       if var_list is None:
         var_list = tape.watched_variables()
-      grads = tape.gradient(loss_value, var_list, grad_loss)
+      # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+      # to be executed.
+      with ops.control_dependencies([loss_value]):
+        grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
 
     # Non-callable/Tensor loss case
@@ -689,7 +692,7 @@ class Optimizer(
       update_ops = [
           op
           for grad, var in grads_and_vars
-          for op in distribution.unwrap(distribution.update(var, update, grad))
+          for op in distribution.update(var, update, grad, grouped=False)
       ]
 
       def finish(self, update_ops):
@@ -697,13 +700,13 @@ class Optimizer(
 
       non_slot_devices = distribution.non_slot_devices(var_list)
       finish_updates = distribution.update_non_slot(
-          non_slot_devices, finish, self, update_ops)
+          non_slot_devices, finish, self, update_ops, grouped=False)
       if global_step is None:
         apply_updates = distribution.group(finish_updates, name=name)
       else:
-        with ops.control_dependencies(distribution.unwrap(finish_updates)):
-          apply_updates = distribution.group(distribution.update(
-              global_step, state_ops.assign_add, 1, name=name))
+        with ops.control_dependencies(finish_updates):
+          apply_updates = distribution.update(
+              global_step, state_ops.assign_add, 1, name=name)
 
       if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):

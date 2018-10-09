@@ -77,6 +77,15 @@ struct GrapplerItem {
   // Return a set of node names that must be preserved. This includes feed and
   // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
+
+  // Restrict types of optimizations that are allowed for this GrapplerItem.
+  struct AllowedOptimizations {
+    // Is it allowed to add nodes to the graph that do not have registered
+    // gradient function.
+    bool non_differentiable_rewrites = true;
+  };
+
+  AllowedOptimizations allowed_optimizations;
 };
 
 // Return the transitive fanin of a set of terminal nodes.

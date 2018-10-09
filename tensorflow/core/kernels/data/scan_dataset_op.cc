@@ -32,8 +32,7 @@ namespace {
 class ScanDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ScanDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tstate", &state_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
@@ -258,7 +257,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
   };
 
-  const int graph_def_version_;
   DataTypeVector state_types_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;

@@ -43,6 +43,9 @@ public final class InterpreterTest {
   private static final File MOBILENET_MODEL_FILE =
       new File("tensorflow/contrib/lite/java/src/testdata/mobilenet.tflite.bin");
 
+  private static final File FLEX_MODEL_FILE =
+      new File("tensorflow/contrib/lite/testdata/multi_add_flex.bin");
+
   @Test
   public void testInterpreter() throws Exception {
     Interpreter interpreter = new Interpreter(MODEL_FILE);
@@ -71,7 +74,7 @@ public final class InterpreterTest {
     Path path = MODEL_FILE.toPath();
     FileChannel fileChannel =
         (FileChannel) Files.newByteChannel(path, EnumSet.of(StandardOpenOption.READ));
-    MappedByteBuffer mappedByteBuffer =
+    ByteBuffer mappedByteBuffer =
         fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size());
     Interpreter interpreter = new Interpreter(mappedByteBuffer);
     float[] oneD = {1.23f, 6.54f, 7.81f};
@@ -118,7 +121,7 @@ public final class InterpreterTest {
     byteBuffer.order(ByteOrder.nativeOrder());
     fileChannel.read(byteBuffer);
     try {
-      Interpreter interpreter = new Interpreter(byteBuffer);
+      new Interpreter(byteBuffer);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e)
@@ -344,5 +347,16 @@ public final class InterpreterTest {
     Interpreter interpreter = new Interpreter(MODEL_FILE);
     interpreter.close();
     interpreter.close();
+  }
+
+  /** Smoke test validating that flex model loading fails when the flex delegate is not linked. */
+  @Test
+  public void testFlexModel() throws Exception {
+    try {
+      new Interpreter(FLEX_MODEL_FILE);
+      fail();
+    } catch (IllegalStateException e) {
+      // Expected failure.
+    }
   }
 }

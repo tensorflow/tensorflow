@@ -235,6 +235,21 @@ TEST_P(TypeImportTest, BasicTypeInference) {
 INSTANTIATE_TEST_CASE_P(BasicTypeInference, TypeImportTest,
                         ::testing::ValuesIn(UnaryTestTypes()));
 
+TEST(ImportTest, TypeInferenceWithFixedOutputType) {
+  // Create an op that has a fixed output type (bool).
+  Model model;
+  EXPECT_TRUE(ImportNode(BuildNode("IsFinite", {{1, 2}, {2, 3}}), &model).ok());
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kUnsupported);
+  const TensorFlowUnsupportedOperator* op =
+      static_cast<const TensorFlowUnsupportedOperator*>(
+          model.operators[0].get());
+
+  // The static output type should be indicated in the imported op.
+  ASSERT_THAT(op->output_data_types,
+              ::testing::ElementsAre(ArrayDataType::kBool));
+}
+
 TEST(ImportTest, FailedTypeInference) {
   // Create a unary op with no Type ("T") annotation.
   NodeDef node;

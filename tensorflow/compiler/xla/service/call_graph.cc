@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <queue>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -138,7 +139,7 @@ CallGraphNode& CallGraph::GetNode(const HloComputation* computation) {
 
 bool CallGraph::DominatesHelper(
     const HloComputation* a, const HloComputation* b,
-    tensorflow::gtl::FlatSet<const HloComputation*>* visited) const {
+    absl::flat_hash_set<const HloComputation*>* visited) const {
   if (a == b || ContainsKey(*visited, b)) {
     // The call graph is guaranteed to be acyclic so any previously visited node
     // we encounter was already determined to be dominated.
@@ -163,7 +164,7 @@ bool CallGraph::DominatesHelper(
 
 bool CallGraph::Dominates(const HloComputation* a,
                           const HloComputation* b) const {
-  tensorflow::gtl::FlatSet<const HloComputation*> visited;
+  absl::flat_hash_set<const HloComputation*> visited;
   return DominatesHelper(a, b, &visited);
 }
 
@@ -277,7 +278,7 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
 
 Status CallGraph::VisitNodesInternal(
     const VisitorFunction& visitor_func, const CallGraphNode& node,
-    tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const {
+    absl::flat_hash_set<const CallGraphNode*>* visited) const {
   auto pair = visited->insert(&node);
   if (!pair.second) {
     // Node was not inserted. Node has already been visited.
@@ -294,7 +295,7 @@ Status CallGraph::VisitNodesInternal(
 
 Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
                              bool visit_unreachable_nodes) const {
-  tensorflow::gtl::FlatSet<const CallGraphNode*> visited;
+  absl::flat_hash_set<const CallGraphNode*> visited;
   if (visit_unreachable_nodes) {
     // Traverse from all roots in the call graph.
     for (const CallGraphNode& node : nodes()) {

@@ -249,6 +249,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "UnconnectedGradients"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "VERSION"
     mtype: "<type \'str\'>"
   }
@@ -495,6 +499,10 @@ tf_module {
   member {
     name: "quint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "random"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "random_normal_initializer"
@@ -1230,7 +1238,7 @@ tf_module {
   }
   member_method {
     name: "gradients"
-    argspec: "args=[\'ys\', \'xs\', \'grad_ys\', \'name\', \'colocate_gradients_with_ops\', \'gate_gradients\', \'aggregation_method\', \'stop_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'gradients\', \'False\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'ys\', \'xs\', \'grad_ys\', \'name\', \'colocate_gradients_with_ops\', \'gate_gradients\', \'aggregation_method\', \'stop_gradients\', \'unconnected_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'gradients\', \'False\', \'False\', \'None\', \'None\', \'UnconnectedGradients.NONE\'], "
   }
   member_method {
     name: "greater"
@@ -1745,6 +1753,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "roll"
+    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "round"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2082,7 +2094,7 @@ tf_module {
   }
   member_method {
     name: "substr"
-    argspec: "args=[\'input\', \'pos\', \'len\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'pos\', \'len\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
   }
   member_method {
     name: "subtract"
@@ -2219,6 +2231,10 @@ tf_module {
   member_method {
     name: "variable_axis_size_partitioner"
     argspec: "args=[\'max_shard_bytes\', \'axis\', \'bytes_per_string_element\', \'max_shards\'], varargs=None, keywords=None, defaults=[\'0\', \'16\', \'None\'], "
+  }
+  member_method {
+    name: "variable_creator_scope"
+    argspec: "args=[\'variable_creator\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "variable_op_scope"

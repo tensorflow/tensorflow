@@ -3249,6 +3249,10 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   optimized_graph_ = &optimized_item.graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 
+  // Disable restricted graph rewrites.
+  options_.unary_ops_composition &=
+      item.allowed_optimizations.non_differentiable_rewrites;
+
   if (options_.dedup_computations) {
     DedupComputations();
   }

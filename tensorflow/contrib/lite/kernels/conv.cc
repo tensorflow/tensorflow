@@ -86,6 +86,18 @@ struct OpData {
   bool run_multithreaded_kernel;
 };
 
+inline PaddingType RuntimePaddingType(TfLitePadding padding) {
+  switch (padding) {
+    case TfLitePadding::kTfLitePaddingSame:
+      return PaddingType::kSame;
+    case TfLitePadding::kTfLitePaddingValid:
+      return PaddingType::kValid;
+    case TfLitePadding::kTfLitePaddingUnknown:
+    default:
+      return PaddingType::kNone;
+  }
+}
+
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to use as scratch space for im2col, and
@@ -487,18 +499,18 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   } else {
     effective_kernel_type = kernel_type;
   }
+  ConvParams op_params;
+  op_params.padding_type = RuntimePaddingType(params->padding);
+  op_params.padding_values.width = data->padding.width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.float_activation_min = output_activation_min;
+  op_params.float_activation_max = output_activation_max;
   switch (effective_kernel_type) {
     case kReference: {
-      ConvParams op_params;
-      op_params.padding_type = PaddingType::kSame;
-      op_params.padding_values.width = data->padding.width;
-      op_params.padding_values.height = data->padding.height;
-      op_params.stride_width = params->stride_width;
-      op_params.stride_height = params->stride_height;
-      op_params.dilation_width_factor = params->dilation_width_factor;
-      op_params.dilation_height_factor = params->dilation_height_factor;
-      op_params.float_activation_min = output_activation_min;
-      op_params.float_activation_max = output_activation_max;
       reference_ops::Conv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), GetTensorShape(filter),
                           GetTensorData<float>(filter), GetTensorShape(bias),
@@ -508,16 +520,6 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       break;
     }
     case kGenericOptimized: {
-      ConvParams op_params;
-      op_params.padding_type = PaddingType::kSame;
-      op_params.padding_values.width = data->padding.width;
-      op_params.padding_values.height = data->padding.height;
-      op_params.stride_width = params->stride_width;
-      op_params.stride_height = params->stride_height;
-      op_params.dilation_width_factor = params->dilation_width_factor;
-      op_params.dilation_height_factor = params->dilation_height_factor;
-      op_params.float_activation_min = output_activation_min;
-      op_params.float_activation_max = output_activation_max;
       optimized_ops::Conv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), GetTensorShape(filter),
                           GetTensorData<float>(filter), GetTensorShape(bias),
@@ -534,25 +536,21 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         filter_data = GetTensorData<float>(filter);
       }
       multithreaded_ops::Conv(
-          *eigen_support::GetThreadPoolDevice(context),
-          GetTensorData<float>(input), GetTensorDims(input), filter_data,
-          GetTensorDims(filter), GetTensorData<float>(bias),
-          GetTensorDims(bias), params->stride_width, params->stride_height,
-          data->padding.width, data->padding.height, params->padding,
-          output_activation_min, output_activation_max,
-          GetTensorData<float>(output), GetTensorDims(output),
-          GetTensorData<float>(im2col), GetTensorDims(im2col));
+          *eigen_support::GetThreadPoolDevice(context), op_params,
+          GetTensorShape(input), GetTensorData<float>(input),
+          GetTensorShape(filter), filter_data, GetTensorShape(bias),
+          GetTensorData<float>(bias), GetTensorShape(output),
+          GetTensorData<float>(output), GetTensorShape(im2col),
+          GetTensorData<float>(im2col));
       break;
     }
     case kCblasOptimized: {
-      cblas_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
-                      GetTensorData<float>(filter), GetTensorDims(filter),
-                      GetTensorData<float>(bias), GetTensorDims(bias),
-                      params->stride_width, params->stride_height,
-                      data->padding.width, data->padding.height,
-                      output_activation_min, output_activation_max,
-                      GetTensorData<float>(output), GetTensorDims(output),
-                      GetTensorData<float>(im2col), GetTensorDims(im2col));
+      cblas_ops::Conv(op_params, GetTensorShape(input),
+                      GetTensorData<float>(input), GetTensorShape(filter),
+                      GetTensorData<float>(filter), GetTensorShape(bias),
+                      GetTensorData<float>(bias), GetTensorShape(output),
+                      GetTensorData<float>(output), GetTensorShape(im2col),
+                      GetTensorData<float>(im2col));
       break;
     }
   }

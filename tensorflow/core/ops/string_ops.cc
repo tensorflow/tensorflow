@@ -223,6 +223,7 @@ REGISTER_OP("Substr")
     .Input("len: T")
     .Output("output: string")
     .Attr("T: {int32, int64}")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle pos_shape = c->input(1);
       ShapeHandle len_shape = c->input(2);
@@ -243,5 +244,10 @@ REGISTER_OP("Substr")
       // BroadcastBinaryOpShapeFn infers shape from c->input(0) and c->input(1).
       return shape_inference::BroadcastBinaryOpShapeFn(c);
     });
+
+REGISTER_OP("UnicodeScript")
+    .Input("input: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
 }  // namespace tensorflow

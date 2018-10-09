@@ -293,7 +293,8 @@ def _compile_internal(computation, inputs=None):
     saved_use_resource = vscope.use_resource
     vscope.set_use_resource(True)
 
-    outputs = computation(*computation_inputs)
+    with _disable_summary_context():
+      outputs = computation(*computation_inputs)
 
     # Restore variable scope after computation.
     vscope.set_use_resource(saved_use_resource)
@@ -371,13 +372,13 @@ def _disable_summary_context():
   Yields:
     None.
   """
-  origional_skip_summary_func = summary_op_util.skip_summary
+  original_skip_summary_func = summary_op_util.skip_summary
   summary_op_util.skip_summary = lambda: True
 
   try:
     yield
   finally:
-    summary_op_util.skip_summary = origional_skip_summary_func
+    summary_op_util.skip_summary = original_skip_summary_func
 
 
 class _CapturedObject(object):
@@ -436,8 +437,7 @@ class _ModelFnWrapper(object):
     if mode == model_fn_lib.ModeKeys.TRAIN:
       train_step, captured_scaffold_fn = self._make_train_step(
           features, labels, params)
-      with _disable_summary_context():
-        (loss,) = compile(train_step)
+      (loss,) = compile(train_step)
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=loss,
@@ -446,8 +446,7 @@ class _ModelFnWrapper(object):
     elif mode == model_fn_lib.ModeKeys.EVAL:
       eval_step, captured_eval_metric_fn, captured_scaffold_fn = (
           self._make_eval_step(features, labels, params))
-      with _disable_summary_context():
-        outputs = compile(eval_step)
+      outputs = compile(eval_step)
       loss = outputs[0]
 
       # Calculate eval_metric_ops if eval_metric_fn is set and captured.

@@ -67,12 +67,12 @@ class ConverterMode(enum.Enum):
   # Convert model using TOCO such that only unsupported operations are
   # represented as TensorFlow ops.
   # WARNING: Experimental interface, subject to change.
-  TOCO_EXTENDED = "TOCO_EXTENDED"
+  TOCO_FLEX = "TOCO_FLEX"
 
   # Convert model using TOCO such that all operations are represented as
   # TensorFlow ops.
   # WARNING: Experimental interface, subject to change.
-  TOCO_EXTENDED_ALL = "TOCO_EXTENDED_ALL"
+  TOCO_FLEX_ALL = "TOCO_FLEX_ALL"
 
   def __str__(self):
     return self.value
@@ -155,7 +155,8 @@ def build_toco_convert_protos(input_tensors,
                               post_training_quantize=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
-                              converter_mode=ConverterMode.DEFAULT):
+                              converter_mode=ConverterMode.DEFAULT,
+                              allow_nonexistent_arrays=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -212,6 +213,8 @@ def build_toco_convert_protos(input_tensors,
       every graph transformation. (default False)
     converter_mode: Experimental flag, subject to change. ConverterMode
       indicating which converter to use. (default ConverterMode.DEFAULT)
+    allow_nonexistent_arrays: Allow specifying array names that don't exist
+      or are unused in the final graph.  (default False)
 
   Returns:
     model_flags, toco_flags: two protocol buffers describing the conversion
@@ -240,11 +243,11 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
-  if converter_mode == ConverterMode.TOCO_EXTENDED:
-    toco.allow_eager_ops = True
-  elif converter_mode == ConverterMode.TOCO_EXTENDED_ALL:
-    toco.allow_eager_ops = True
-    toco.force_eager_ops = True
+  if converter_mode == ConverterMode.TOCO_FLEX:
+    toco.allow_flex_ops = True
+  elif converter_mode == ConverterMode.TOCO_FLEX_ALL:
+    toco.allow_flex_ops = True
+    toco.force_flex_ops = True
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
@@ -261,6 +264,9 @@ def build_toco_convert_protos(input_tensors,
 
   for output_tensor in output_tensors:
     model.output_arrays.append(tensor_name(output_tensor))
+
+  model.allow_nonexistent_arrays = allow_nonexistent_arrays
+
   return model, toco
 
 

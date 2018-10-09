@@ -185,6 +185,8 @@ REGISTER_OP("ParseExampleDataset")
 REGISTER_OP("SetStatsAggregatorDataset")
     .Input("input_dataset: variant")
     .Input("stats_aggregator: resource")
+    .Input("tag: string")
+    .Input("counter_prefix: string")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -756,6 +758,19 @@ REGISTER_OP("DatasetToSingleElement")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(IteratorGetNextShapeFn);
 
+REGISTER_OP("ReduceDataset")
+    .Input("input_dataset: variant")
+    .Input("initial_state: Tstate")
+    .Input("other_arguments: Targuments")
+    .Output("components: output_types")
+    .Attr("f: func")
+    .Attr("Tstate: list(type) >= 1")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_inter_op_parallelism: bool = true")
+    .SetShapeFn(IteratorGetNextShapeFn);
+
 REGISTER_OP("IteratorToStringHandle")
     .Input("resource_handle: resource")
     .Output("string_handle: string")
@@ -888,14 +903,18 @@ REGISTER_OP("ModelDataset")
 
 REGISTER_OP("MapDefun")
     .Input("arguments: Targuments")
+    .Input("captured_inputs: Tcaptured")
     .Output("output: output_types")
     .Attr("Targuments: list(type) >= 1")
+    .Attr("Tcaptured: list(type) >= 0 = []")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("f: func")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      DataTypeVector t_args;
+      TF_RETURN_IF_ERROR(c->GetAttr("Targuments", &t_args));
       if (output_shapes.size() != c->num_outputs()) {
         return errors::InvalidArgument(
             "`output_shapes` must be the same length as `output_types` (",
@@ -903,10 +922,11 @@ REGISTER_OP("MapDefun")
       }
 
       int64 dim_zero = -1;
-      for (size_t i = 0; i < static_cast<size_t>(c->num_inputs()); ++i) {
+      for (size_t i = 0; i < t_args.size(); ++i) {
         if (c->Rank(c->input(i)) == 0) {
           return errors::InvalidArgument(
-              "Inputs must have rank at least 1. Input ", i, " has rank of 0");
+              "Arguments must have rank at least 1. Input ", i,
+              " has rank of 0.");
         }
         auto dim_handle = c->Dim(c->input(i), 0);
         if (c->ValueKnown(dim_handle)) {
@@ -914,7 +934,7 @@ REGISTER_OP("MapDefun")
             dim_zero = c->Value(dim_handle);
           } else if (c->Value(dim_handle) != dim_zero) {
             return errors::InvalidArgument(
-                "Inputs must have the same dimension 0.");
+                "Arguments must have the same dimension 0.");
           }
         }
       }

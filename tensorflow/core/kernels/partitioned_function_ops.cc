@@ -97,7 +97,20 @@ class PartitionedCallOp : public AsyncOpKernel {
         OP_REQUIRES_ASYNC(ctx, fbody != nullptr,
                           errors::Internal("Could not find handle ", handle),
                           done);
+        OP_REQUIRES_ASYNC(
+            ctx, args.size() == fbody->arg_nodes.size(),
+            errors::InvalidArgument(
+                "Wrong number of arguments to the op; function expects ",
+                fbody->arg_nodes.size(), " but PartitionedCall received ",
+                args.size()),
+            done);
+        // We need to pass global op_registry as default_registry when creating
+        // graph. So that graph optimization passes can lookup all possible ops
+        // by name.
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
+        FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
+        TF_CHECK_OK(
+                    graph.get()->AddFunctionLibrary(global_flib.ToProto()));
         CopyGraph(*fbody->graph, graph.get());
         OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
@@ -250,9 +263,11 @@ class PartitionedCallOp : public AsyncOpKernel {
     VLOG(3) << "Partitioned function '" << func_.name() << "', yielding "
             << partitions.size() << " shards.";
 
-    const FunctionLibraryDefinition* flib_def = &graph->flib_def();
     for (const auto& partition : partitions) {
-      std::unique_ptr<Graph> subgraph(new Graph(flib_def));
+      std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
+      FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
+      TF_CHECK_OK(
+                subgraph.get()->AddFunctionLibrary(global_flib.ToProto()));
       GraphConstructorOptions opts;
       opts.allow_internal_ops = true;
       opts.expect_device_spec = true;
