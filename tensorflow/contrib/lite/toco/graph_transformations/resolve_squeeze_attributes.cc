@@ -25,10 +25,13 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveSqueezeAttributes::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveSqueezeAttributes::Run(Model* model,
+                                                   std::size_t op_index,
+                                                   bool* modified) {
+  *modified = false;
   auto* squeeze_op = model->operators[op_index].get();
   if (squeeze_op->type != OperatorType::kSqueeze) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   DCHECK_EQ(squeeze_op->inputs.size(), 1);
   DCHECK_EQ(squeeze_op->outputs.size(), 1);
@@ -42,10 +45,11 @@ bool ResolveSqueezeAttributes::Run(Model* model, std::size_t op_index) {
           "Reshape op",
           LogName(*squeeze_op));
 
-      return RemoveTrivialPassthroughOp(this, model, op_index);
+      *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+      return ::tensorflow::Status::OK();
     }
   }
-  return false;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

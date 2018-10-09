@@ -415,6 +415,40 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "map_and_batch_numa_aware_replacement",
+    srcs = ["map_and_batch_numa_aware_replacement.cc"],
+    hdrs = ["map_and_batch_numa_aware_replacement.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "map_and_batch_numa_aware_replacement_test",
+    srcs = ["map_and_batch_numa_aware_replacement_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_test_utils",
+        ":graph_utils",
+        ":map_and_batch_numa_aware_replacement",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
     name = "noop_elimination",
     srcs = ["noop_elimination.cc"],
     hdrs = [
@@ -490,6 +524,7 @@ cc_library(
         ":hoist_random_uniform",
         ":latency_all_edges",
         ":map_and_batch_fusion",
+        ":map_and_batch_numa_aware_replacement",
         ":map_and_filter_fusion",
         ":map_fusion",
         ":map_parallelization",

@@ -51,18 +51,19 @@ bool ApplyAttrsToArray(GraphTransformation* transformation, Model* model,
 
 }  // end namespace
 
-bool ReadArrayMinmaxAndNarrowRangeFromFakeQuant::Run(Model* model,
-                                                     std::size_t op_index) {
+::tensorflow::Status ReadArrayMinmaxAndNarrowRangeFromFakeQuant::Run(
+    Model* model, std::size_t op_index, bool* modified) {
+  *modified = false;
   const auto fakequant_it = model->operators.begin() + op_index;
   auto* fakequant_base_op = fakequant_it->get();
   if (fakequant_base_op->type != OperatorType::kFakeQuant) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto* fq_op = static_cast<FakeQuantOperator*>(fakequant_base_op);
 
   if (!fq_op->minmax) {
     // Need to be resolved first by ResolveFakeQuantArgsFromVars.
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // At this point, this FakeQuantOperator should have a MinMax
@@ -74,7 +75,8 @@ bool ReadArrayMinmaxAndNarrowRangeFromFakeQuant::Run(Model* model,
   bool changed = false;
   changed |= ApplyAttrsToArray(this, model, *fq_op, fq_op->inputs[0]);
   changed |= ApplyAttrsToArray(this, model, *fq_op, fq_op->outputs[0]);
-  return changed;
+  *modified = changed;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

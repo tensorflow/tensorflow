@@ -577,9 +577,10 @@ class XlaBuilder {
              absl::Span<const XlaOp> operands);
 
   // Enqueues a custom call instruction onto the computation.
-  XlaOp CustomCall(const string& call_target_name,
-                   absl::Span<const XlaOp> operands, const Shape& shape,
-                   const string& opaque);
+  XlaOp CustomCall(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape_with_layout, const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
@@ -671,6 +672,8 @@ class XlaBuilder {
       const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
 
   // Returns the sum of the operand value within each subgroup of replicas. All
@@ -1195,6 +1198,10 @@ class XlaBuilder {
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                           absl::Span<const XlaOp> operands, const Shape& shape,
                           const string& opaque);
+  friend XlaOp CustomCallWithLayout(
+      XlaBuilder* builder, const string& call_target_name,
+      absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
+      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque);
   friend XlaOp Complex(const XlaOp& real, const XlaOp& imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(const XlaOp& operand);
@@ -1245,6 +1252,8 @@ class XlaBuilder {
       const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(const XlaOp& operand,
                                absl::Span<const ReplicaGroup> replica_groups);
@@ -1728,6 +1737,17 @@ XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
                  const string& opaque = "");
 
+// Overload which constructs a custom call with fixed layouts. The operands will
+// have the layouts specified by |operand_shapes_with_layout| when provided to
+// external code, and the external code is expected to produce a result with the
+// layout specified by |shape_with_layout|. All shapes in |shape_with_layout|
+// and |operand_shapes_with_layout| must have layouts.
+XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
+                           absl::Span<const XlaOp> operands,
+                           const Shape& shape_with_layout,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           const string& opaque = "");
+
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
 // of the operands is a scalar, or an explicit broadcast dimension is given
@@ -1818,6 +1838,8 @@ XlaOp ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
@@ -1980,7 +2002,7 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must tensors with the same dimensions. The
+// * The keys and the values must be tensors with the same dimensions. The
 // element types of the tensors may be different.
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and a tensor with their

@@ -176,6 +176,7 @@ enum BuiltinOperator : byte {
   SQUARE = 92,
   ZEROS_LIKE = 93,
   FILL = 94,
+  FLOOR_MOD = 95,
 }
 
 // Options for the builtin operators.
@@ -250,6 +251,8 @@ union BuiltinOptions {
   FillOptions,
   BidirectionalSequenceLSTMOptions,
   BidirectionalSequenceRNNOptions,
+  UnidirectionalSequenceLSTMOptions,
+  FloorModOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -392,6 +395,13 @@ table LSTMOptions {
   // Parameters for LSTM version 2 or above.
   // Basic kernel is only supported in version 2 or above.
   kernel_type: LSTMKernelType = FULL;
+}
+
+// An implementation of TensorFlow dynamic_rnn with LSTMCell.
+table UnidirectionalSequenceLSTMOptions {
+  fused_activation_function:ActivationFunctionType;
+  cell_clip: float; // Optional, 0.0 means no clipping
+  proj_clip: float; // Optional, 0.0 means no clipping
 }
 
 table BidirectionalSequenceLSTMOptions {
@@ -608,6 +618,9 @@ table ZerosLikeOptions {
 }
 
 table FillOptions {
+}
+
+table FloorModOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

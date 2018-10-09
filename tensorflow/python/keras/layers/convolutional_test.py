@@ -204,6 +204,9 @@ class Conv2DTransposeTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, 'data_format', ['channels_first'])
 
+    kwargs['strides'] = (2, 2)
+    self._run_test(kwargs, 'output_padding', [(1, 1)])
+
   def test_conv2dtranspose_regularizers(self):
     kwargs = {
         'filters': 3,
@@ -239,6 +242,31 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_conv2d_transpose_dilation(self):
+    testing_utils.layer_test(keras.layers.Conv2DTranspose,
+                             kwargs={'filters': 2,
+                                     'kernel_size': 3,
+                                     'padding': 'same',
+                                     'data_format': 'channels_last',
+                                     'dilation_rate': (2, 2)},
+                             input_shape=(2, 5, 6, 3))
+
+    input_data = np.arange(48).reshape((1, 4, 4, 3)).astype(np.float32)
+    expected_output = np.float32([[192, 228, 192, 228],
+                                  [336, 372, 336, 372],
+                                  [192, 228, 192, 228],
+                                  [336, 372, 336, 372]]).reshape((1, 4, 4, 1))
+    testing_utils.layer_test(keras.layers.Conv2DTranspose,
+                             input_data=input_data,
+                             kwargs={'filters': 1,
+                                     'kernel_size': 3,
+                                     'padding': 'same',
+                                     'data_format': 'channels_last',
+                                     'dilation_rate': (2, 2),
+                                     'kernel_initializer': 'ones'},
+                             expected_output=expected_output)
+
 
 class Conv3DTransposeTest(test.TestCase):
 
@@ -269,6 +297,9 @@ class Conv3DTransposeTest(test.TestCase):
     self._run_test(kwargs, 'strides', [(2, 2, 2)])
     if test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, 'data_format', ['channels_first'])
+
+    kwargs['strides'] = (2, 2, 2)
+    self._run_test(kwargs, 'output_padding', [(1, 1, 1)])
 
   def test_conv3dtranspose_regularizers(self):
     kwargs = {

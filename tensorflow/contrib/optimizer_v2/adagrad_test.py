@@ -68,9 +68,6 @@ class AdagradOptimizerTest(test.TestCase):
   def testBasicResource(self):
     self.doTestBasic(use_locking=False, use_resource=True)
 
-  def testBasicLocked(self):
-    self.doTestBasic(use_locking=True)
-
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():

@@ -49,21 +49,24 @@ bool IsSliceTrivial(const Model& model, const Operator& op,
 
 }  // namespace
 
-bool RemoveTrivialSlice::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status RemoveTrivialSlice::Run(Model* model, std::size_t op_index,
+                                             bool* modified) {
+  *modified = false;
   const auto reshape_it = model->operators.begin() + op_index;
   auto* slice_op = reshape_it->get();
   if (slice_op->type != OperatorType::kSlice) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (!IsSliceTrivial(*model, *slice_op, this)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   AddMessageF("Removing trivial %s", LogName(*slice_op));
 
   CHECK_EQ(slice_op->inputs.size(), 3);
-  return RemoveTrivialPassthroughOp(this, model, op_index);
+  *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

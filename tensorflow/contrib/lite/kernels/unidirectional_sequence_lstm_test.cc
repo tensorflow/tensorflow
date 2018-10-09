@@ -110,11 +110,12 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
 
     output_ = AddOutput(TensorType_FLOAT32);
 
-    SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-                 BuiltinOptions_LSTMOptions,
-                 CreateLSTMOptions(builder_, ActivationFunctionType_TANH,
-                                   cell_clip, proj_clip)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+        BuiltinOptions_UnidirectionalSequenceLSTMOptions,
+        CreateUnidirectionalSequenceLSTMOptions(
+            builder_, ActivationFunctionType_TANH, cell_clip, proj_clip)
+            .Union());
     BuildInterpreter(input_shapes);
   }
 

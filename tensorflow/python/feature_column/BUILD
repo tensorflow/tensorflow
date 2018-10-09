@@ -54,6 +54,7 @@ py_library(
     srcs = ["feature_column_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":feature_column",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
