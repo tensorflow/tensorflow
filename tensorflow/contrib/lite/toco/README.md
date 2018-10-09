@@ -1,6 +1,6 @@
-# TOCO: TensorFlow Lite Optimizing Converter
+# TensorFlow Lite Converter
 
-The TensorFlow Lite Optimizing Converter converts TensorFlow graphs into
+The TensorFlow Lite Converter converts TensorFlow graphs into
 TensorFlow Lite graphs. There are additional usages that are also detailed in
 the usage documentation.
 
@@ -14,9 +14,10 @@ Usage information is given in these documents:
 
 ## Where the converter fits in the TensorFlow landscape
 
-Once an application developer has a trained TensorFlow model, TOCO will accept
+Once an application developer has a trained TensorFlow model, the TensorFlow
+Lite Converter will accept
 that model and generate a TensorFlow Lite
-[FlatBuffer](https://google.github.io/flatbuffers/) file. TOCO currently supports
+[FlatBuffer](https://google.github.io/flatbuffers/) file. The converter currently supports
 [SavedModels](https://www.tensorflow.org/guide/saved_model#using_savedmodel_with_estimators),
 frozen graphs (models generated via
 [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)),

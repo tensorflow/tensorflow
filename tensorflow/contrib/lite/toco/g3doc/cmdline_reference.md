@@ -1,8 +1,8 @@
-# TensorFlow Lite Optimizing Converter command-line glossary
+# TensorFlow Lite Converter command-line glossary
 
-This page is complete reference of command-line flags used by TOCO's command
-line starting from TensorFlow 1.9 up until the most recent build of TensorFlow.
-It is complemented by the following other documents:
+This page is complete reference of command-line flags used by the TensorFlow
+Lite Converter's command line starting from TensorFlow 1.9 up until the most
+recent build of TensorFlow. It is complemented by the following other documents:
 
 *   [README](../README.md)
 *   [Command-line examples](cmdline_examples.md)

@@ -1,7 +1,8 @@
-# TensorFlow Lite Optimizing Converter & Interpreter Python API reference
+# TensorFlow Lite Converter & Interpreter Python API reference
 
-This page provides examples on how to use TOCO and the TensorFlow Lite
-interpreter via the Python API. It is complemented by the following documents:
+This page provides examples on how to use the TensorFlow Lite Converter and the
+TensorFlow Lite interpreter using the Python API. It is complemented by the
+following documents:
 
 *   [README](../README.md)
 *   [Command-line examples](cmdline_examples.md)
@@ -23,38 +24,34 @@ Table of contents:
     *   [Using the interpreter from model data](#interpreter-data)
 *   [Additional instructions](#additional-instructions)
     *   [Build from source code](#latest-package)
-    *   [Converting models prior to TensorFlow 1.9.](#pre-tensorflow-1.9)
+    *   [Converting models in TensorFlow 1.9 to TensorFlow 1.11](#pre-tensorflow-1.11)
+    *   [Converting models prior to TensorFlow 1.9](#pre-tensorflow-1.9)
 
 ## High-level overview
 
-While the TensorFlow Lite Optimizing Converter can be used from the command
-line, it is often convenient to use it as part of a Python model build and
-training script. This is so that conversion can be part of your model
-development pipeline. This allows you to know early and often that you are
-designing a model that can be targeted to devices with mobile.
+While the TensorFlow Lite Converter can be used from the command line, it is
+often convenient to use in a Python script as part of the model development
+pipeline. This allows you to know early that you are designing a model that can
+be targeted to devices with mobile.
 
 ## API
 
 The API for converting TensorFlow models to TensorFlow Lite as of TensorFlow 1.9
-is `tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
-`tf.contrib.lite.Interpreter`.
+is `tf.contrib.lite.TFLiteConverter`. The API for calling the Python intepreter
+is `tf.contrib.lite.Interpreter`.
 
-**NOTE**: As of TensorFlow 1.12, the API for converting TensorFlow models to
-TFLite will be renamed to `TFLiteConverter`. `TFLiteConverter` is semantically
-identically to `TocoConverter`. The API is available at
-`tf.contrib.lite.TFLiteConverter` as of the Sept 26 `tf-nightly`.
+Note: Reference "Additional Instructions" sections for converting TensorFlow
+models to TensorFlow Lite
+[in TensorFlow 1.9 to TensorFlow 1.11](#pre-tensorflow-1.11) and
+[prior to TensorFlow 1.9](#pre-tensorflow-1.9)
 
-`TocoConverter` provides class methods based on the original format of the
-model. `TocoConverter.from_session()` is available for GraphDefs.
-`TocoConverter.from_saved_model()` is available for SavedModels.
-`TocoConverter.from_keras_model_file()` is available for `tf.Keras` files.
+`TFLiteConverter` provides class methods based on the original format of the
+model. `TFLiteConverter.from_session()` is available for GraphDefs.
+`TFLiteConverter.from_saved_model()` is available for SavedModels.
+`TFLiteConverter.from_keras_model_file()` is available for `tf.Keras` files.
 Example usages for simple float-point models are shown in
 [Basic Examples](#basic). Examples usages for more complex models is shown in
 [Complex Examples](#complex).
-
-**NOTE**: Currently, `TocoConverter` will cause a fatal error to the Python
-interpreter when the conversion fails. This will be remedied as soon as
-possible.
 
 ## Basic examples <a name="basic"></a>
 
@@ -76,7 +73,7 @@ out = tf.identity(val, name="out")
 
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
-  converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
+  converter = tf.contrib.lite.TFLiteConverter.from_session(sess, [img], [out])
   tflite_model = converter.convert()
   open("converted_model.tflite", "wb").write(tflite_model)
 ```
@@ -89,7 +86,7 @@ TensorFlow Lite FlatBuffer when the GraphDef is stored in a file. Both `.pb` and
 
 The example uses
 [Mobilenet_1.0_224](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_1.0_224_frozen.tgz).
-The function only supports GraphDefs frozen via
+The function only supports GraphDefs frozen using
 [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py).
 
 ```python
@@ -99,7 +96,7 @@ graph_def_file = "/path/to/Downloads/mobilenet_v1_1.0_224/frozen_graph.pb"
 input_arrays = ["input"]
 output_arrays = ["MobilenetV1/Predictions/Softmax"]
 
-converter = tf.contrib.lite.TocoConverter.from_frozen_graph(
+converter = tf.contrib.lite.TFLiteConverter.from_frozen_graph(
   graph_def_file, input_arrays, output_arrays)
 tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
@@ -113,25 +110,26 @@ FlatBuffer.
 ```python
 import tensorflow as tf
 
-converter = tf.contrib.lite.TocoConverter.from_saved_model(saved_model_dir)
+converter = tf.contrib.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
 For more complex SavedModels, the optional parameters that can be passed into
-`TocoConverter.from_saved_model()` are `input_arrays`, `input_shapes`,
+`TFLiteConverter.from_saved_model()` are `input_arrays`, `input_shapes`,
 `output_arrays`, `tag_set` and `signature_key`. Details of each parameter are
-available by running `help(tf.contrib.lite.TocoConverter)`.
+available by running `help(tf.contrib.lite.TFLiteConverter)`.
 
 ### Exporting a tf.keras File <a name="basic-keras-file"></a>
 
 The following example shows how to convert a `tf.keras` model into a TensorFlow
-Lite FlatBuffer.
+Lite FlatBuffer. This example requires
+[`h5py`](http://docs.h5py.org/en/latest/build.html) to be installed.
 
 ```python
 import tensorflow as tf
 
-converter = tf.contrib.lite.TocoConverter.from_keras_model_file("keras_model.h5")
+converter = tf.contrib.lite.TFLiteConverter.from_keras_model_file("keras_model.h5")
 tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
@@ -163,7 +161,7 @@ keras_file = "keras_model.h5"
 tf.keras.models.save_model(model, keras_file)
 
 # Convert to TensorFlow Lite model.
-converter = tf.contrib.lite.TocoConverter.from_keras_model_file(keras_file)
+converter = tf.contrib.lite.TFLiteConverter.from_keras_model_file(keras_file)
 tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
@@ -173,7 +171,7 @@ open("converted_model.tflite", "wb").write(tflite_model)
 For models where the default value of the attributes is not sufficient, the
 attribute's values should be set before calling `convert()`. In order to call
 any constants use `tf.contrib.lite.constants.<CONSTANT_NAME>` as seen below with
-`QUANTIZED_UINT8`. Run `help(tf.contrib.lite.TocoConverter)` in the Python
+`QUANTIZED_UINT8`. Run `help(tf.contrib.lite.TFLiteConverter)` in the Python
 terminal for detailed documentation on the attributes.
 
 Although the examples are demonstrated on GraphDefs containing only constants.
@@ -193,7 +191,7 @@ val = img + const
 out = tf.fake_quant_with_min_max_args(val, min=0., max=1., name="output")
 
 with tf.Session() as sess:
-  converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
+  converter = tf.contrib.lite.TFLiteConverter.from_session(sess, [img], [out])
   converter.inference_type = tf.contrib.lite.constants.QUANTIZED_UINT8
   input_arrays = converter.get_input_arrays()
   converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
@@ -250,7 +248,7 @@ val = img + const
 out = tf.identity(val, name="out")
 
 with tf.Session() as sess:
-  converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
+  converter = tf.contrib.lite.TFLiteConverter.from_session(sess, [img], [out])
   tflite_model = converter.convert()
 
 # Load TFLite model and allocate tensors.
@@ -262,13 +260,20 @@ interpreter.allocate_tensors()
 
 ### Build from source code <a name="latest-package"></a>
 
-In order to run the latest version of the TOCO Python API, clone the TensorFlow
-repository, configure the installation, and build and install the pip package.
-Detailed instructions are available
-[here](https://www.tensorflow.org/install/source).
+In order to run the latest version of the TensorFlow Lite Converter Python API,
+either install the nightly build with
+[pip](https://www.tensorflow.org/install/pip) (recommended) or
+[Docker](https://www.tensorflow.org/install/docker), or
+[build the pip package from source](https://www.tensorflow.org/install/source).
 
-### Converting models prior to TensorFlow 1.9. <a name="pre-tensorflow-1.9"></a>
+### Converting models in TensorFlow 1.9 to TensorFlow 1.11 <a name="#pre-tensorflow-1.11"></a>
 
-To use TOCO in TensorFlow 1.7 and TensorFlow 1.8, use the `toco_convert`
-function. Run `help(tf.contrib.lite.toco_convert)` to get details about accepted
-parameters.
+To convert TensorFlow models to TensorFlow Lite in TensorFlow 1.9 through
+TensorFlow 1.11, use `TocoConverter`. `TocoConverter` is semantically
+identically to `TFLiteConverter`.
+
+### Converting models prior to TensorFlow 1.9 <a name="pre-tensorflow-1.9"></a>
+
+To convert TensorFlow models to TensorFlow Lite in TensorFlow 1.7 and TensorFlow
+1.8, use the `toco_convert` function. Run `help(tf.contrib.lite.toco_convert)`
+to get details about accepted parameters.
