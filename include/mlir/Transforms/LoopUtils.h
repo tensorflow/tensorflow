@@ -71,15 +71,15 @@ void promoteSingleIterationLoops(MLFunction *f);
 
 /// Returns the lower bound of the cleanup loop when unrolling a loop
 /// with the specified unroll factor.
-AffineMap *getCleanupLoopLowerBound(const ForStmt &forStmt,
-                                    unsigned unrollFactor,
-                                    MLFuncBuilder *builder);
+AffineMap getCleanupLoopLowerBound(const ForStmt &forStmt,
+                                   unsigned unrollFactor,
+                                   MLFuncBuilder *builder);
 
 /// Returns the upper bound of an unrolled loop when unrolling with
 /// the specified trip count, stride, and unroll factor.
-AffineMap *getUnrolledLoopUpperBound(const ForStmt &forStmt,
-                                     unsigned unrollFactor,
-                                     MLFuncBuilder *builder);
+AffineMap getUnrolledLoopUpperBound(const ForStmt &forStmt,
+                                    unsigned unrollFactor,
+                                    MLFuncBuilder *builder);
 
 /// Skew the statements in the body of a 'for' statement with the specified
 /// statement-wise delays.

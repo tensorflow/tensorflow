@@ -90,7 +90,7 @@ FunctionType *Builder::getFunctionType(ArrayRef<Type *> inputs,
 }
 
 MemRefType *Builder::getMemRefType(ArrayRef<int> shape, Type *elementType,
-                                   ArrayRef<AffineMap *> affineMapComposition,
+                                   ArrayRef<AffineMap> affineMapComposition,
                                    unsigned memorySpace) {
   return MemRefType::get(shape, elementType, affineMapComposition, memorySpace);
 }
@@ -133,8 +133,8 @@ ArrayAttr *Builder::getArrayAttr(ArrayRef<Attribute *> value) {
   return ArrayAttr::get(value, context);
 }
 
-AffineMapAttr *Builder::getAffineMapAttr(AffineMap *map) {
-  return AffineMapAttr::get(map, context);
+AffineMapAttr *Builder::getAffineMapAttr(AffineMap map) {
+  return AffineMapAttr::get(map);
 }
 
 TypeAttr *Builder::getTypeAttr(Type *type) {
@@ -149,9 +149,9 @@ FunctionAttr *Builder::getFunctionAttr(const Function *value) {
 // Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//
 
-AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
-                                 ArrayRef<AffineExpr> results,
-                                 ArrayRef<AffineExpr> rangeSizes) {
+AffineMap Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
+                                ArrayRef<AffineExpr> results,
+                                ArrayRef<AffineExpr> rangeSizes) {
   return AffineMap::get(dimCount, symbolCount, results, rangeSizes);
 }
 
@@ -173,17 +173,17 @@ IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
 }
 
-AffineMap *Builder::getConstantAffineMap(int64_t val) {
+AffineMap Builder::getConstantAffineMap(int64_t val) {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/0,
                         {getAffineConstantExpr(val)}, {});
 }
 
-AffineMap *Builder::getDimIdentityMap() {
+AffineMap Builder::getDimIdentityMap() {
   return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
                         {getAffineDimExpr(0)}, {});
 }
 
-AffineMap *Builder::getMultiDimIdentityMap(unsigned rank) {
+AffineMap Builder::getMultiDimIdentityMap(unsigned rank) {
   SmallVector<AffineExpr, 4> dimExprs;
   dimExprs.reserve(rank);
   for (unsigned i = 0; i < rank; ++i)
@@ -191,25 +191,25 @@ AffineMap *Builder::getMultiDimIdentityMap(unsigned rank) {
   return AffineMap::get(/*dimCount=*/rank, /*symbolCount=*/0, dimExprs, {});
 }
 
-AffineMap *Builder::getSymbolIdentityMap() {
+AffineMap Builder::getSymbolIdentityMap() {
   return AffineMap::get(/*dimCount=*/0, /*symbolCount=*/1,
                         {getAffineSymbolExpr(0)}, {});
 }
 
-AffineMap *Builder::getSingleDimShiftAffineMap(int64_t shift) {
+AffineMap Builder::getSingleDimShiftAffineMap(int64_t shift) {
   // expr = d0 + shift.
   auto expr = getAffineDimExpr(0) + shift;
   return AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, {expr}, {});
 }
 
-AffineMap *Builder::getShiftedAffineMap(AffineMap *map, int64_t shift) {
+AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
   SmallVector<AffineExpr, 4> shiftedResults;
-  shiftedResults.reserve(map->getNumResults());
-  for (auto resultExpr : map->getResults()) {
+  shiftedResults.reserve(map.getNumResults());
+  for (auto resultExpr : map.getResults()) {
     shiftedResults.push_back(resultExpr + shift);
   }
-  return AffineMap::get(map->getNumDims(), map->getNumSymbols(), shiftedResults,
-                        map->getRangeSizes());
+  return AffineMap::get(map.getNumDims(), map.getNumSymbols(), shiftedResults,
+                        map.getRangeSizes());
 }
 
 //===----------------------------------------------------------------------===//
@@ -278,19 +278,19 @@ OperationStmt *MLFuncBuilder::createOperation(Location *location,
 
 ForStmt *MLFuncBuilder::createFor(Location *location,
                                   ArrayRef<MLValue *> lbOperands,
-                                  AffineMap *lbMap,
+                                  AffineMap lbMap,
                                   ArrayRef<MLValue *> ubOperands,
-                                  AffineMap *ubMap, int64_t step) {
-  auto *stmt = ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap,
-                               step, context);
+                                  AffineMap ubMap, int64_t step) {
+  auto *stmt =
+      ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;
 }
 
 ForStmt *MLFuncBuilder::createFor(Location *location, int64_t lb, int64_t ub,
                                   int64_t step) {
-  auto *lbMap = AffineMap::getConstantMap(lb, context);
-  auto *ubMap = AffineMap::getConstantMap(ub, context);
+  auto lbMap = AffineMap::getConstantMap(lb, context);
+  auto ubMap = AffineMap::getConstantMap(ub, context);
   return createFor(location, {}, lbMap, {}, ubMap, step);
 }
 

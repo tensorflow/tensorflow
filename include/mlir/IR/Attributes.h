@@ -18,11 +18,11 @@
 #ifndef MLIR_IR_ATTRIBUTES_H
 #define MLIR_IR_ATTRIBUTES_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-class AffineMap;
 class Function;
 class FunctionType;
 class MLIRContext;
@@ -182,22 +182,21 @@ private:
 
 class AffineMapAttr : public Attribute {
 public:
-  static AffineMapAttr *get(AffineMap *value, MLIRContext *context);
+  static AffineMapAttr *get(AffineMap value);
 
-  AffineMap *getValue() const {
-    return value;
-  }
+  AffineMap getValue() const { return value; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Attribute *attr) {
     return attr->getKind() == Kind::AffineMap;
   }
+
 private:
-  AffineMapAttr(AffineMap *value)
+  AffineMapAttr(AffineMap value)
       : Attribute(Kind::AffineMap, /*isOrContainsFunction=*/false),
         value(value) {}
   ~AffineMapAttr() = delete;
-  AffineMap *value;
+  AffineMap value;
 };
 
 class TypeAttr : public Attribute {

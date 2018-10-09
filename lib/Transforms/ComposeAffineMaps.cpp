@@ -103,9 +103,9 @@ static void createComposedAffineApplyOp(
   unsigned rank = memrefType->getRank();
   assert(indices.size() == rank);
   // Create identity map with same number of dimensions as 'memrefType'.
-  auto *map = builder->getMultiDimIdentityMap(rank);
+  auto map = builder->getMultiDimIdentityMap(rank);
   // Initialize AffineValueMap with identity map.
-  AffineValueMap valueMap(map, indices, builder->getContext());
+  AffineValueMap valueMap(map, indices);
 
   for (auto *opStmt : affineApplyOps) {
     assert(opStmt->is<AffineApplyOp>());

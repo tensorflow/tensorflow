@@ -408,7 +408,7 @@ public:
   /// Get or create a new MemRefType based on shape, element type, affine
   /// map composition, and memory space.
   static MemRefType *get(ArrayRef<int> shape, Type *elementType,
-                         ArrayRef<AffineMap*> affineMapComposition,
+                         ArrayRef<AffineMap> affineMapComposition,
                          unsigned memorySpace);
 
   unsigned getRank() const { return getShape().size(); }
@@ -426,7 +426,7 @@ public:
 
   /// Returns an array of affine map pointers representing the memref affine
   /// map composition.
-  ArrayRef<AffineMap*> getAffineMaps() const;
+  ArrayRef<AffineMap> getAffineMaps() const;
 
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const { return memorySpace; }
@@ -446,12 +446,12 @@ private:
   /// The number of affine maps in the 'affineMapList' array.
   const unsigned numAffineMaps;
   /// List of affine maps in the memref's layout/index map composition.
-  AffineMap *const *const affineMapList;
+  AffineMap const *affineMapList;
   /// Memory space in which data referenced by memref resides.
   const unsigned memorySpace;
 
   MemRefType(ArrayRef<int> shape, Type *elementType,
-             ArrayRef<AffineMap*> affineMapList, unsigned memorySpace,
+             ArrayRef<AffineMap> affineMapList, unsigned memorySpace,
              MLIRContext *context);
   ~MemRefType() = delete;
 };

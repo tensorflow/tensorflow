@@ -86,11 +86,11 @@ class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
                                 OpTrait::VariadicResults> {
 public:
   /// Builds an affine apply op with the specified map and operands.
-  static void build(Builder *builder, OperationState *result, AffineMap *map,
+  static void build(Builder *builder, OperationState *result, AffineMap map,
                     ArrayRef<SSAValue *> operands);
 
   /// Returns the affine map to be applied by this operation.
-  AffineMap *getAffineMap() const {
+  AffineMap getAffineMap() const {
     return getAttrOfType<AffineMapAttr>("map")->getValue();
   }
 

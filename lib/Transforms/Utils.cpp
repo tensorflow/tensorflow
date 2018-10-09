@@ -48,14 +48,14 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 // extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
                                     ArrayRef<SSAValue *> extraIndices,
-                                    AffineMap *indexRemap) {
+                                    AffineMap indexRemap) {
   unsigned newMemRefRank = cast<MemRefType>(newMemRef->getType())->getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = cast<MemRefType>(oldMemRef->getType())->getRank();
   (void)newMemRefRank;
   if (indexRemap) {
-    assert(indexRemap->getNumInputs() == oldMemRefRank);
-    assert(indexRemap->getNumResults() + extraIndices.size() == newMemRefRank);
+    assert(indexRemap.getNumInputs() == oldMemRefRank);
+    assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
     assert(oldMemRefRank + extraIndices.size() == newMemRefRank);
   }

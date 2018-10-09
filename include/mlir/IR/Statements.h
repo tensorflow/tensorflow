@@ -22,6 +22,7 @@
 #ifndef MLIR_IR_STATEMENTS_H
 #define MLIR_IR_STATEMENTS_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLValue.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/StmtBlock.h"
@@ -29,7 +30,6 @@
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
-class AffineMap;
 class AffineBound;
 class IntegerSet;
 class AffineCondition;
@@ -199,8 +199,8 @@ private:
 class ForStmt : public Statement, public MLValue, public StmtBlock {
 public:
   static ForStmt *create(Location *location, ArrayRef<MLValue *> lbOperands,
-                         AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
-                         AffineMap *ubMap, int64_t step, MLIRContext *context);
+                         AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
+                         AffineMap ubMap, int64_t step);
 
   ~ForStmt() {
     // Explicitly erase statements instead of relying of 'StmtBlock' destructor
@@ -235,20 +235,20 @@ public:
   int64_t getStep() const { return step; }
 
   /// Returns affine map for the lower bound.
-  AffineMap *getLowerBoundMap() const { return lbMap; }
+  AffineMap getLowerBoundMap() const { return lbMap; }
   /// Returns affine map for the upper bound.
-  AffineMap *getUpperBoundMap() const { return ubMap; }
+  AffineMap getUpperBoundMap() const { return ubMap; }
 
   /// Set lower bound.
-  void setLowerBound(ArrayRef<MLValue *> operands, AffineMap *map);
+  void setLowerBound(ArrayRef<MLValue *> operands, AffineMap map);
   /// Set upper bound.
-  void setUpperBound(ArrayRef<MLValue *> operands, AffineMap *map);
+  void setUpperBound(ArrayRef<MLValue *> operands, AffineMap map);
 
   /// Set the lower bound map without changing operands.
-  void setLowerBoundMap(AffineMap *map);
+  void setLowerBoundMap(AffineMap map);
 
   /// Set the upper bound map without changing operands.
-  void setUpperBoundMap(AffineMap *map);
+  void setUpperBoundMap(AffineMap map);
 
   /// Set loop step.
   void setStep(int64_t step) {
@@ -353,9 +353,9 @@ public:
 
 private:
   // Affine map for the lower bound.
-  AffineMap *lbMap;
+  AffineMap lbMap;
   // Affine map for the upper bound.
-  AffineMap *ubMap;
+  AffineMap ubMap;
   // Positive constant step. Since index is stored as an int64_t, we restrict
   // step to the set of positive integers that int64_t can represent.
   int64_t step;
@@ -364,8 +364,8 @@ private:
   // bound.
   std::vector<StmtOperand> operands;
 
-  explicit ForStmt(Location *location, unsigned numOperands, AffineMap *lbMap,
-                   AffineMap *ubMap, int64_t step, MLIRContext *context);
+  explicit ForStmt(Location *location, unsigned numOperands, AffineMap lbMap,
+                   AffineMap ubMap, int64_t step);
 };
 
 /// AffineBound represents a lower or upper bound in the for statement.
@@ -375,7 +375,7 @@ private:
 class AffineBound {
 public:
   const ForStmt *getForStmt() const { return &stmt; }
-  AffineMap *getMap() const { return map; }
+  AffineMap getMap() const { return map; }
 
   unsigned getNumOperands() const { return opEnd - opStart; }
   const MLValue *getOperand(unsigned idx) const {
@@ -411,12 +411,11 @@ private:
   // the containing 'for' statement operands.
   unsigned opStart, opEnd;
   // Affine map for this bound.
-  AffineMap *map;
+  AffineMap map;
 
-  AffineBound(const ForStmt &stmt, const unsigned opStart, const unsigned opEnd,
-              const AffineMap *map)
-      : stmt(stmt), opStart(opStart), opEnd(opEnd),
-        map(const_cast<AffineMap *>(map)) {}
+  AffineBound(const ForStmt &stmt, unsigned opStart, unsigned opEnd,
+              AffineMap map)
+      : stmt(stmt), opStart(opStart), opEnd(opEnd), map(map) {}
 
   friend class ForStmt;
 };

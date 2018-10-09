@@ -27,8 +27,15 @@
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMapInfo.h"
 
 namespace mlir {
+
+namespace detail {
+
+class AffineMapStorage;
+
+} // end namespace detail
 
 class AffineExpr;
 class Attribute;
@@ -41,71 +48,91 @@ class MLIRContext;
 /// is unique to this affine map.
 class AffineMap {
 public:
-  static AffineMap *get(unsigned dimCount, unsigned symbolCount,
-                        ArrayRef<AffineExpr> results,
-                        ArrayRef<AffineExpr> rangeSizes);
+  typedef detail::AffineMapStorage ImplType;
+
+  explicit AffineMap(ImplType *map = nullptr) : map(map) {}
+  static AffineMap Invalid() { return AffineMap(nullptr); }
+
+  static AffineMap get(unsigned dimCount, unsigned symbolCount,
+                       ArrayRef<AffineExpr> results,
+                       ArrayRef<AffineExpr> rangeSizes);
 
   /// Returns a single constant result affine map.
-  static AffineMap *getConstantMap(int64_t val, MLIRContext *context);
+  static AffineMap getConstantMap(int64_t val, MLIRContext *context);
+
+  explicit operator bool() { return map; }
+  bool operator==(const AffineMap &other) const { return other.map == map; }
 
   /// Returns true if the co-domain (or more loosely speaking, range) of this
   /// map is bounded. Bounded affine maps have a size (extent) for each of
   /// their range dimensions (more accurately co-domain dimensions).
-  bool isBounded() { return !rangeSizes.empty(); }
+  bool isBounded() const;
 
   /// Returns true if this affine map is an identity affine map.
   /// An identity affine map corresponds to an identity affine function on the
   /// dimensional identifiers.
-  bool isIdentity();
+  bool isIdentity() const;
 
   /// Returns true if this affine map is a single result constant function.
-  bool isSingleConstant();
+  bool isSingleConstant() const;
 
   /// Returns the constant result of this map. This methods asserts that the map
   /// has a single constant result.
-  int64_t getSingleConstantResult();
+  int64_t getSingleConstantResult() const;
 
   // Prints affine map to 'os'.
-  void print(raw_ostream &os);
-  void dump();
+  void print(raw_ostream &os) const;
+  void dump() const;
 
-  unsigned getNumDims() { return numDims; }
-  unsigned getNumSymbols() { return numSymbols; }
-  unsigned getNumResults() { return numResults; }
-  unsigned getNumInputs() { return numDims + numSymbols; }
+  unsigned getNumDims() const;
+  unsigned getNumSymbols() const;
+  unsigned getNumResults() const;
+  unsigned getNumInputs() const;
 
-  ArrayRef<AffineExpr> getResults() { return results; }
+  ArrayRef<AffineExpr> getResults() const;
+  AffineExpr getResult(unsigned idx) const;
 
-  AffineExpr getResult(unsigned idx);
-
-  ArrayRef<AffineExpr> getRangeSizes() { return rangeSizes; }
+  ArrayRef<AffineExpr> getRangeSizes() const;
 
   /// Folds the results of the application of an affine map on the provided
   /// operands to a constant if possible. Returns false if the folding happens,
   /// true otherwise.
   bool constantFold(ArrayRef<Attribute *> operandConstants,
-                    SmallVectorImpl<Attribute *> &results);
+                    SmallVectorImpl<Attribute *> &results) const;
+
+  friend ::llvm::hash_code hash_value(AffineMap arg);
 
 private:
-  AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-            ArrayRef<AffineExpr> results, ArrayRef<AffineExpr> rangeSizes);
-
-  AffineMap(const AffineMap &) = delete;
-  void operator=(const AffineMap &) = delete;
-
-  unsigned numDims;
-  unsigned numSymbols;
-  unsigned numResults;
-
-  /// The affine expressions for this (multi-dimensional) map.
-  /// TODO: use trailing objects for this.
-  ArrayRef<AffineExpr> results;
-
-  /// The extents along each of the range dimensions if the map is bounded,
-  /// nullptr otherwise.
-  ArrayRef<AffineExpr> rangeSizes;
+  ImplType *map;
 };
 
+// Make AffineExpr hashable.
+inline ::llvm::hash_code hash_value(AffineMap arg) {
+  return ::llvm::hash_value(arg.map);
+}
+
 } // end namespace mlir
+
+namespace llvm {
+
+// AffineExpr hash just like pointers
+template <> struct DenseMapInfo<mlir::AffineMap> {
+  static mlir::AffineMap getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::AffineMap(static_cast<mlir::AffineMap::ImplType *>(pointer));
+  }
+  static mlir::AffineMap getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::AffineMap(static_cast<mlir::AffineMap::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::AffineMap val) {
+    return mlir::hash_value(val);
+  }
+  static bool isEqual(mlir::AffineMap LHS, mlir::AffineMap RHS) {
+    return LHS == RHS;
+  }
+};
+
+} // namespace llvm
 
 #endif // MLIR_IR_AFFINE_MAP_H

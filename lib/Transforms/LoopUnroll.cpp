@@ -201,14 +201,14 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
   if (unrollFactor == 1 || forStmt->getStatements().empty())
     return false;
 
-  auto *lbMap = forStmt->getLowerBoundMap();
-  auto *ubMap = forStmt->getUpperBoundMap();
+  auto lbMap = forStmt->getLowerBoundMap();
+  auto ubMap = forStmt->getUpperBoundMap();
 
   // Loops with max/min expressions won't be unrolled here (the output can't be
   // expressed as an MLFunction in the general case). However, the right way to
   // do such unrolling for an MLFunction would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
-  if (lbMap->getNumResults() != 1 || ubMap->getNumResults() != 1)
+  if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
     return false;
 
   // Same operand list for lower and upper bound for now.
@@ -229,7 +229,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
     DenseMap<const MLValue *, MLValue *> operandMap;
     MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
-    auto *clLbMap = getCleanupLoopLowerBound(*forStmt, unrollFactor, &builder);
+    auto clLbMap = getCleanupLoopLowerBound(*forStmt, unrollFactor, &builder);
     assert(clLbMap &&
            "cleanup loop lower bound map for single result bound maps can "
            "always be determined");
@@ -238,7 +238,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
     promoteIfSingleIteration(cleanupForStmt);
 
     // Adjust upper bound.
-    auto *unrolledUbMap =
+    auto unrolledUbMap =
         getUnrolledLoopUpperBound(*forStmt, unrollFactor, &builder);
     assert(unrolledUbMap &&
            "upper bound map can alwayys be determined for an unrolled loop "
@@ -267,7 +267,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
     if (!forStmt->use_empty()) {
       // iv' = iv + 1/2/3...unrollFactor-1;
       auto d0 = builder.getAffineDimExpr(0);
-      auto *bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
+      auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
       auto *ivUnroll =
           builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)
               ->getResult(0);

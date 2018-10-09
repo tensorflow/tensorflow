@@ -35,50 +35,50 @@ using namespace mlir;
 /// Returns the upper bound of an unrolled loop with lower bound 'lb' and with
 /// the specified trip count, stride, and unroll factor. Returns nullptr when
 /// the trip count can't be expressed as an affine expression.
-AffineMap *mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
-                                           unsigned unrollFactor,
-                                           MLFuncBuilder *builder) {
-  auto *lbMap = forStmt.getLowerBoundMap();
+AffineMap mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
+                                          unsigned unrollFactor,
+                                          MLFuncBuilder *builder) {
+  auto lbMap = forStmt.getLowerBoundMap();
 
   // Single result lower bound map only.
-  if (lbMap->getNumResults() != 1)
-    return nullptr;
+  if (lbMap.getNumResults() != 1)
+    return AffineMap::Invalid();
 
   // Sometimes, the trip count cannot be expressed as an affine expression.
   auto tripCount = getTripCountExpr(forStmt);
   if (!tripCount)
-    return nullptr;
+    return AffineMap::Invalid();
 
-  AffineExpr lb(lbMap->getResult(0));
+  AffineExpr lb(lbMap.getResult(0));
   unsigned step = forStmt.getStep();
   auto newUb = lb + (tripCount - tripCount % unrollFactor - 1) * step;
 
-  return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),
+  return builder->getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(),
                                {newUb}, {});
 }
 
 /// Returns the lower bound of the cleanup loop when unrolling a loop with lower
 /// bound 'lb' and with the specified trip count, stride, and unroll factor.
-/// Returns nullptr when the trip count can't be expressed as an affine
-/// expression.
-AffineMap *mlir::getCleanupLoopLowerBound(const ForStmt &forStmt,
-                                          unsigned unrollFactor,
-                                          MLFuncBuilder *builder) {
-  auto *lbMap = forStmt.getLowerBoundMap();
+/// Returns an AffinMap with nullptr storage (that evaluates to false)
+/// when the trip count can't be expressed as an affine expression.
+AffineMap mlir::getCleanupLoopLowerBound(const ForStmt &forStmt,
+                                         unsigned unrollFactor,
+                                         MLFuncBuilder *builder) {
+  auto lbMap = forStmt.getLowerBoundMap();
 
   // Single result lower bound map only.
-  if (lbMap->getNumResults() != 1)
-    return nullptr;
+  if (lbMap.getNumResults() != 1)
+    return AffineMap::Invalid();
 
   // Sometimes the trip count cannot be expressed as an affine expression.
   AffineExpr tripCount(getTripCountExpr(forStmt));
   if (!tripCount)
-    return nullptr;
+    return AffineMap::Invalid();
 
-  AffineExpr lb(lbMap->getResult(0));
+  AffineExpr lb(lbMap.getResult(0));
   unsigned step = forStmt.getStep();
   auto newLb = lb + (tripCount - tripCount % unrollFactor) * step;
-  return builder->getAffineMap(lbMap->getNumDims(), lbMap->getNumSymbols(),
+  return builder->getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(),
                                {newLb}, {});
 }
 
@@ -91,7 +91,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
     return false;
 
   // TODO(mlir-team): there is no builder for a max.
-  if (forStmt->getLowerBoundMap()->getNumResults() != 1)
+  if (forStmt->getLowerBoundMap().getNumResults() != 1)
     return false;
 
   // Replaces all IV uses to its single iteration value.
@@ -140,7 +140,7 @@ void mlir::promoteSingleIterationLoops(MLFunction *f) {
 /// the pair specifies the delay applied to that group of statements. Returns
 /// nullptr if the generated loop simplifies to a single iteration one.
 static ForStmt *
-generateLoop(AffineMap *lb, AffineMap *ub,
+generateLoop(AffineMap lb, AffineMap ub,
              const std::vector<std::pair<uint64_t, ArrayRef<Statement *>>>
                  &stmtGroupQueue,
              unsigned offset, ForStmt *srcForStmt, MLFuncBuilder *b) {
@@ -296,7 +296,7 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
   // of statements is paired with its delay.
   std::vector<std::pair<uint64_t, ArrayRef<Statement *>>> stmtGroupQueue;
 
-  auto *origLbMap = forStmt->getLowerBoundMap();
+  auto origLbMap = forStmt->getLowerBoundMap();
   uint64_t lbDelay = 0;
   MLFuncBuilder b(forStmt);
   for (uint64_t d = 0, e = sortedStmtGroups.size(); d < e; ++d) {

@@ -22,6 +22,7 @@
 #ifndef MLIR_IR_OPIMPLEMENTATION_H
 #define MLIR_IR_OPIMPLEMENTATION_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SMLoc.h"
@@ -69,7 +70,7 @@ public:
   virtual void printType(const Type *type) = 0;
   virtual void printFunctionReference(const Function *func) = 0;
   virtual void printAttribute(const Attribute *attr) = 0;
-  virtual void printAffineMap(AffineMap *map) = 0;
+  virtual void printAffineMap(AffineMap map) = 0;
   virtual void printAffineExpr(AffineExpr expr) = 0;
 
   /// If the specified operation has attributes, print out an attribute
@@ -104,8 +105,8 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Attribute &attr) {
   return p;
 }
 
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const AffineMap &map) {
-  p.printAffineMap(&const_cast<AffineMap &>(map));
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, AffineMap map) {
+  p.printAffineMap(map);
   return p;
 }
 

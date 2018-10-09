@@ -100,7 +100,8 @@ static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
           ->getResult());
 
   auto d0 = bInner.getAffineDimExpr(0);
-  auto *modTwoMap = bInner.getAffineMap(1, 0, {d0 % 2}, {});
+  auto modTwoMap =
+      bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0, {d0 % 2}, {});
   auto ivModTwoOp =
       bInner.create<AffineApplyOp>(forStmt->getLoc(), modTwoMap, forStmt);
   if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef, ivModTwoOp->getResult(0)))

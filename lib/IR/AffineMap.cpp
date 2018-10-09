@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/AffineMap.h"
+#include "AffineMapDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Support/MathExtras.h"
@@ -87,13 +88,15 @@ private:
 
 } // end anonymous namespace
 
-AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-                     ArrayRef<AffineExpr> results,
-                     ArrayRef<AffineExpr> rangeSizes)
-    : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
-      results(results), rangeSizes(rangeSizes) {}
+/// Returns a single constant result affine map.
+AffineMap AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
+  return get(/*dimCount=*/0, /*symbolCount=*/0,
+             {getAffineConstantExpr(val, context)}, {});
+}
 
-bool AffineMap::isIdentity() {
+bool AffineMap::isBounded() const { return !map->rangeSizes.empty(); }
+
+bool AffineMap::isIdentity() const {
   if (getNumDims() != getNumResults())
     return false;
   ArrayRef<AffineExpr> results = getResults();
@@ -105,28 +108,35 @@ bool AffineMap::isIdentity() {
   return true;
 }
 
-/// Returns a single constant result affine map.
-AffineMap *AffineMap::getConstantMap(int64_t val, MLIRContext *context) {
-  return get(/*dimCount=*/0, /*symbolCount=*/0,
-             {getAffineConstantExpr(val, context)}, {});
-}
-
-bool AffineMap::isSingleConstant() {
+bool AffineMap::isSingleConstant() const {
   return getNumResults() == 1 && getResult(0).isa<AffineConstantExpr>();
 }
 
-int64_t AffineMap::getSingleConstantResult() {
+int64_t AffineMap::getSingleConstantResult() const {
   assert(isSingleConstant() && "map must have a single constant result");
   return getResult(0).cast<AffineConstantExpr>().getValue();
 }
 
-AffineExpr AffineMap::getResult(unsigned idx) { return results[idx]; }
+unsigned AffineMap::getNumDims() const { return map->numDims; }
+unsigned AffineMap::getNumSymbols() const { return map->numSymbols; }
+unsigned AffineMap::getNumResults() const { return map->numResults; }
+unsigned AffineMap::getNumInputs() const {
+  return map->numDims + map->numSymbols;
+}
+
+ArrayRef<AffineExpr> AffineMap::getResults() const { return map->results; }
+AffineExpr AffineMap::getResult(unsigned idx) const {
+  return map->results[idx];
+}
+ArrayRef<AffineExpr> AffineMap::getRangeSizes() const {
+  return map->rangeSizes;
+}
 
 /// Folds the results of the application of an affine map on the provided
 /// operands to a constant if possible. Returns false if the folding happens,
 /// true otherwise.
 bool AffineMap::constantFold(ArrayRef<Attribute *> operandConstants,
-                             SmallVectorImpl<Attribute *> &results) {
+                             SmallVectorImpl<Attribute *> &results) const {
   assert(getNumInputs() == operandConstants.size());
 
   // Fold each of the result expressions.

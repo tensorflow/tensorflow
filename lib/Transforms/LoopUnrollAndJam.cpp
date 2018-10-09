@@ -156,14 +156,14 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
       getLargestDivisorOfTripCount(*forStmt) % unrollJamFactor != 0)
     return false;
 
-  auto *lbMap = forStmt->getLowerBoundMap();
-  auto *ubMap = forStmt->getUpperBoundMap();
+  auto lbMap = forStmt->getLowerBoundMap();
+  auto ubMap = forStmt->getUpperBoundMap();
 
   // Loops with max/min expressions won't be unrolled here (the output can't be
   // expressed as an MLFunction in the general case). However, the right way to
   // do such unrolling for an MLFunction would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
-  if (lbMap->getNumResults() != 1 || ubMap->getNumResults() != 1)
+  if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
     return false;
 
   // Same operand list for lower and upper bound for now.
@@ -221,7 +221,7 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
       if (!forStmt->use_empty()) {
         // iv' = iv + i, i = 1 to unrollJamFactor-1.
         auto d0 = builder.getAffineDimExpr(0);
-        auto *bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
+        auto bumpMap = builder.getAffineMap(1, 0, {d0 + i * step}, {});
         auto *ivUnroll =
             builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)
                 ->getResult(0);

@@ -17,6 +17,7 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "AffineExprDetail.h"
+#include "AffineMapDetail.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -59,13 +60,13 @@ struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType *> {
   }
 };
 
-struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
+struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.
   using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr>,
                            ArrayRef<AffineExpr>>;
-  using DenseMapInfo<AffineMap *>::getHashValue;
-  using DenseMapInfo<AffineMap *>::isEqual;
+  using DenseMapInfo<AffineMap>::getHashValue;
+  using DenseMapInfo<AffineMap>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
@@ -74,11 +75,11 @@ struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
         hash_combine_range(std::get<3>(key).begin(), std::get<3>(key).end()));
   }
 
-  static bool isEqual(const KeyTy &lhs, AffineMap *rhs) {
+  static bool isEqual(const KeyTy &lhs, AffineMap rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs == std::make_tuple(rhs->getNumDims(), rhs->getNumSymbols(),
-                                  rhs->getResults(), rhs->getRangeSizes());
+    return lhs == std::make_tuple(rhs.getNumDims(), rhs.getNumSymbols(),
+                                  rhs.getResults(), rhs.getRangeSizes());
   }
 };
 
@@ -124,7 +125,7 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType *> {
   // MemRefs are uniqued based on their element type, shape, affine map
   // composition, and memory space.
   using KeyTy =
-      std::tuple<Type *, ArrayRef<int>, ArrayRef<AffineMap *>, unsigned>;
+      std::tuple<Type *, ArrayRef<int>, ArrayRef<AffineMap>, unsigned>;
   using DenseMapInfo<MemRefType *>::getHashValue;
   using DenseMapInfo<MemRefType *>::isEqual;
 
@@ -222,7 +223,7 @@ public:
       nullptr};
 
   // Affine map uniquing.
-  using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
+  using AffineMapSet = DenseSet<AffineMap, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
 
   // Affine binary op expression uniquing. Figure out uniquing of dimensional
@@ -267,7 +268,7 @@ public:
   StringMap<StringAttr *> stringAttrs;
   using ArrayAttrSet = DenseSet<ArrayAttr *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
-  DenseMap<AffineMap *, AffineMapAttr *> affineMapAttrs;
+  DenseMap<AffineMap, AffineMapAttr *> affineMapAttrs;
   DenseMap<Type *, TypeAttr *> typeAttrs;
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
@@ -558,7 +559,7 @@ UnrankedTensorType *UnrankedTensorType::get(Type *elementType) {
 }
 
 MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
-                            ArrayRef<AffineMap *> affineMapComposition,
+                            ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace) {
   auto *context = elementType->getContext();
   auto &impl = context->getImpl();
@@ -581,7 +582,7 @@ MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
   // Copy the affine map composition into the bump pointer.
   // TODO(andydavis) Assert that the structure of the composition is valid.
   affineMapComposition =
-      impl.copyInto(ArrayRef<AffineMap *>(affineMapComposition));
+      impl.copyInto(ArrayRef<AffineMap>(affineMapComposition));
 
   // Initialize the memory using placement new.
   new (result) MemRefType(shape, elementType, affineMapComposition, memorySpace,
@@ -675,8 +676,9 @@ ArrayAttr *ArrayAttr::get(ArrayRef<Attribute *> value, MLIRContext *context) {
   return *existing.first = result;
 }
 
-AffineMapAttr *AffineMapAttr::get(AffineMap *value, MLIRContext *context) {
-  auto *&result = context->getImpl().affineMapAttrs[value];
+AffineMapAttr *AffineMapAttr::get(AffineMap value) {
+  auto *context = value.getResult(0).getContext();
+  auto &result = context->getImpl().affineMapAttrs[value];
   if (result)
     return result;
 
@@ -802,9 +804,9 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
 // AffineMap and AffineExpr uniquing
 //===----------------------------------------------------------------------===//
 
-AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExpr> results,
-                          ArrayRef<AffineExpr> rangeSizes) {
+AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
+                         ArrayRef<AffineExpr> results,
+                         ArrayRef<AffineExpr> rangeSizes) {
   // The number of results can't be zero.
   assert(!results.empty());
 
@@ -814,25 +816,26 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
 
   // Check if we already have this affine map.
   auto key = std::make_tuple(dimCount, symbolCount, results, rangeSizes);
-  auto existing = impl.affineMaps.insert_as(nullptr, key);
+  auto existing = impl.affineMaps.insert_as(AffineMap(nullptr), key);
 
   // If we already have it, return that value.
   if (!existing.second)
     return *existing.first;
 
   // On the first use, we allocate them into the bump pointer.
-  auto *res = impl.allocator.Allocate<AffineMap>();
+  auto *res = impl.allocator.Allocate<detail::AffineMapStorage>();
 
   // Copy the results and range sizes into the bump pointer.
   results = impl.copyInto(results);
   rangeSizes = impl.copyInto(rangeSizes);
 
   // Initialize the memory using placement new.
-  new (res)
-      AffineMap(dimCount, symbolCount, results.size(), results, rangeSizes);
+  new (res) detail::AffineMapStorage{dimCount, symbolCount,
+                                     static_cast<unsigned>(results.size()),
+                                     results, rangeSizes};
 
   // Cache and return it.
-  return *existing.first = res;
+  return *existing.first = AffineMap(res);
 }
 
 /// Simplify add expression. Return nullptr if it can't be simplified.

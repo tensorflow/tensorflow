@@ -101,9 +101,9 @@ Attribute *AddIOp::constantFold(ArrayRef<Attribute *> operands,
 //===----------------------------------------------------------------------===//
 
 void AffineApplyOp::build(Builder *builder, OperationState *result,
-                          AffineMap *map, ArrayRef<SSAValue *> operands) {
+                          AffineMap map, ArrayRef<SSAValue *> operands) {
   result->addOperands(operands);
-  result->types.append(map->getNumResults(), builder->getIndexType());
+  result->types.append(map.getNumResults(), builder->getIndexType());
   result->addAttribute("map", builder->getAffineMapAttr(map));
 }
 
@@ -117,22 +117,22 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
       parseDimAndSymbolList(parser, result->operands, numDims) ||
       parser->parseOptionalAttributeDict(result->attributes))
     return true;
-  auto *map = mapAttr->getValue();
+  auto map = mapAttr->getValue();
 
-  if (map->getNumDims() != numDims ||
-      numDims + map->getNumSymbols() != result->operands.size()) {
+  if (map.getNumDims() != numDims ||
+      numDims + map.getNumSymbols() != result->operands.size()) {
     return parser->emitError(parser->getNameLoc(),
                              "dimension or symbol index mismatch");
   }
 
-  result->types.append(map->getNumResults(), affineIntTy);
+  result->types.append(map.getNumResults(), affineIntTy);
   return false;
 }
 
 void AffineApplyOp::print(OpAsmPrinter *p) const {
-  auto *map = getAffineMap();
-  *p << "affine_apply " << *map;
-  printDimAndSymbolList(operand_begin(), operand_end(), map->getNumDims(), p);
+  auto map = getAffineMap();
+  *p << "affine_apply " << map;
+  printDimAndSymbolList(operand_begin(), operand_end(), map.getNumDims(), p);
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
 }
 
@@ -143,15 +143,15 @@ bool AffineApplyOp::verify() const {
     return emitOpError("requires an affine map");
 
   // Check input and output dimensions match.
-  auto *map = affineMapAttr->getValue();
+  auto map = affineMapAttr->getValue();
 
   // Verify that operand count matches affine map dimension and symbol count.
-  if (getNumOperands() != map->getNumDims() + map->getNumSymbols())
+  if (getNumOperands() != map.getNumDims() + map.getNumSymbols())
     return emitOpError(
         "operand count and affine map dimension and symbol count must match");
 
   // Verify that result count matches affine map result count.
-  if (getNumResults() != map->getNumResults())
+  if (getNumResults() != map.getNumResults())
     return emitOpError("result count and affine map result count must match");
 
   return false;
@@ -183,8 +183,8 @@ bool AffineApplyOp::isValidSymbol() const {
 bool AffineApplyOp::constantFold(ArrayRef<Attribute *> operandConstants,
                                  SmallVectorImpl<Attribute *> &results,
                                  MLIRContext *context) const {
-  auto *map = getAffineMap();
-  if (map->constantFold(operandConstants, results))
+  auto map = getAffineMap();
+  if (map.constantFold(operandConstants, results))
     return true;
   // Return false on success.
   return false;
@@ -243,11 +243,11 @@ bool AllocOp::verify() const {
 
   unsigned numSymbols = 0;
   if (!memRefType->getAffineMaps().empty()) {
-    AffineMap *affineMap = memRefType->getAffineMaps()[0];
+    AffineMap affineMap = memRefType->getAffineMaps()[0];
     // Store number of symbols used in affine map (used in subsequent check).
-    numSymbols = affineMap->getNumSymbols();
+    numSymbols = affineMap.getNumSymbols();
     // Verify that the layout affine map matches the rank of the memref.
-    if (affineMap->getNumDims() != memRefType->getRank())
+    if (affineMap.getNumDims() != memRefType->getRank())
       return emitOpError("affine map dimension count must equal memref rank");
   }
   unsigned numDynamicDims = memRefType->getNumDynamicDims();

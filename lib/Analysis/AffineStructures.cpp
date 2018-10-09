@@ -166,12 +166,13 @@ forwardSubstituteMutableAffineMap(const AffineMapCompositionUpdate &mapUpdate,
   map->setNumSymbols(mapUpdate.outputNumSymbols);
 }
 
-MutableAffineMap::MutableAffineMap(AffineMap *map, MLIRContext *context)
-    : numDims(map->getNumDims()), numSymbols(map->getNumSymbols()),
-      context(context) {
-  for (auto result : map->getResults())
+MutableAffineMap::MutableAffineMap(AffineMap map)
+    : numDims(map.getNumDims()), numSymbols(map.getNumSymbols()),
+      // A map always has at leat 1 result by construction
+      context(map.getResult(0).getContext()) {
+  for (auto result : map.getResults())
     results.push_back(result);
-  for (auto rangeSize : map->getRangeSizes())
+  for (auto rangeSize : map.getRangeSizes())
     results.push_back(rangeSize);
 }
 
@@ -194,7 +195,7 @@ void MutableAffineMap::simplify() {
   }
 }
 
-AffineMap *MutableAffineMap::getAffineMap() {
+AffineMap MutableAffineMap::getAffineMap() {
   return AffineMap::get(numDims, numSymbols, results, rangeSizes);
 }
 
@@ -209,17 +210,16 @@ MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols,
                                      MLIRContext *context)
     : numDims(numDims), numSymbols(numSymbols), context(context) {}
 
-AffineValueMap::AffineValueMap(const AffineApplyOp &op, MLIRContext *context)
-    : map(op.getAffineMap(), context) {
+AffineValueMap::AffineValueMap(const AffineApplyOp &op)
+    : map(op.getAffineMap()) {
   for (auto *operand : op.getOperands())
     operands.push_back(cast<MLValue>(const_cast<SSAValue *>(operand)));
   for (unsigned i = 0, e = op.getNumResults(); i < e; i++)
     results.push_back(cast<MLValue>(const_cast<SSAValue *>(op.getResult(i))));
 }
 
-AffineValueMap::AffineValueMap(AffineMap *map, ArrayRef<MLValue *> operands,
-                               MLIRContext *context)
-    : map(map, context) {
+AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<MLValue *> operands)
+    : map(map) {
   for (MLValue *operand : operands) {
     this->operands.push_back(operand);
   }
@@ -303,20 +303,20 @@ void AffineValueMap::forwardSubstitute(const AffineApplyOp &inputOp) {
 
   // Gather dim and symbol positions from 'inputOp' on which
   // 'inputResultsUsed' depend.
-  AffineMap *inputMap = inputOp.getAffineMap();
-  unsigned inputNumDims = inputMap->getNumDims();
+  AffineMap inputMap = inputOp.getAffineMap();
+  unsigned inputNumDims = inputMap.getNumDims();
   DenseSet<unsigned> inputPositionsUsed;
   AffineExprPositionGatherer gatherer(inputNumDims, &inputPositionsUsed);
   for (unsigned i = 0; i < inputNumResults; ++i) {
     if (inputResultsUsed.count(i) == 0)
       continue;
-    gatherer.walkPostOrder(inputMap->getResult(i));
+    gatherer.walkPostOrder(inputMap.getResult(i));
   }
 
   // Build new output operands list and map update.
   SmallVector<MLValue *, 4> outputOperands;
   unsigned outputOperandPosition = 0;
-  AffineMapCompositionUpdate mapUpdate(inputOp.getAffineMap()->getResults());
+  AffineMapCompositionUpdate mapUpdate(inputOp.getAffineMap().getResults());
 
   // Add dim operands from current map.
   for (unsigned i = 0; i < currNumDims; ++i) {
@@ -405,7 +405,7 @@ ArrayRef<MLValue *> AffineValueMap::getOperands() const {
   return ArrayRef<MLValue *>(operands);
 }
 
-AffineMap *AffineValueMap::getAffineMap() { return map.getAffineMap(); }
+AffineMap AffineValueMap::getAffineMap() { return map.getAffineMap(); }
 
 AffineValueMap::~AffineValueMap() {}
 

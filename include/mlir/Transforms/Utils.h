@@ -25,11 +25,11 @@
 #ifndef MLIR_TRANSFORMS_UTILS_H
 #define MLIR_TRANSFORMS_UTILS_H
 
+#include "mlir/IR/AffineMap.h"
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
 
-class AffineMap;
 class MLValue;
 class SSAValue;
 
@@ -43,7 +43,7 @@ class SSAValue;
 // extended to add additional indices at any position.
 bool replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
                               llvm::ArrayRef<SSAValue *> extraIndices,
-                              AffineMap *indexRemap = nullptr);
+                              AffineMap indexRemap = AffineMap::Invalid());
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_UTILS_H

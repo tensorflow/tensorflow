@@ -59,10 +59,10 @@ PassResult SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
     void visitOperationStmt(OperationStmt *opStmt) {
       for (auto attr : opStmt->getAttrs()) {
         if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr.second)) {
-          MutableAffineMap mMap(mapAttr->getValue(), context);
+          MutableAffineMap mMap(mapAttr->getValue());
           mMap.simplify();
-          auto *map = mMap.getAffineMap();
-          opStmt->setAttr(attr.first, AffineMapAttr::get(map, context));
+          auto map = mMap.getAffineMap();
+          opStmt->setAttr(attr.first, AffineMapAttr::get(map));
         }
       }
     }

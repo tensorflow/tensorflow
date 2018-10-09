@@ -84,7 +84,7 @@ public:
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);
   MemRefType *getMemRefType(ArrayRef<int> shape, Type *elementType,
-                            ArrayRef<AffineMap *> affineMapComposition = {},
+                            ArrayRef<AffineMap> affineMapComposition = {},
                             unsigned memorySpace = 0);
   VectorType *getVectorType(ArrayRef<unsigned> shape, Type *elementType);
   RankedTensorType *getTensorType(ArrayRef<int> shape, Type *elementType);
@@ -96,7 +96,7 @@ public:
   FloatAttr *getFloatAttr(double value);
   StringAttr *getStringAttr(StringRef bytes);
   ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
-  AffineMapAttr *getAffineMapAttr(AffineMap *value);
+  AffineMapAttr *getAffineMapAttr(AffineMap map);
   TypeAttr *getTypeAttr(Type *type);
   FunctionAttr *getFunctionAttr(const Function *value);
 
@@ -105,30 +105,30 @@ public:
   AffineExpr getAffineSymbolExpr(unsigned position);
   AffineExpr getAffineConstantExpr(int64_t constant);
 
-  AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExpr> results,
-                          ArrayRef<AffineExpr> rangeSizes);
+  AffineMap getAffineMap(unsigned dimCount, unsigned symbolCount,
+                         ArrayRef<AffineExpr> results,
+                         ArrayRef<AffineExpr> rangeSizes);
 
   // Special cases of affine maps and integer sets
   /// Returns a single constant result affine map with 0 dimensions and 0
   /// symbols.  One constant result: () -> (val).
-  AffineMap *getConstantAffineMap(int64_t val);
+  AffineMap getConstantAffineMap(int64_t val);
   // One dimension id identity map: (i) -> (i).
-  AffineMap *getDimIdentityMap();
+  AffineMap getDimIdentityMap();
   // Multi-dimensional identity map: (d0, d1, d2) -> (d0, d1, d2).
-  AffineMap *getMultiDimIdentityMap(unsigned rank);
+  AffineMap getMultiDimIdentityMap(unsigned rank);
   // One symbol identity map: ()[s] -> (s).
-  AffineMap *getSymbolIdentityMap();
+  AffineMap getSymbolIdentityMap();
 
   /// Returns a map that shifts its (single) input dimension by 'shift'.
   /// (d0) -> (d0 + shift)
-  AffineMap *getSingleDimShiftAffineMap(int64_t shift);
+  AffineMap getSingleDimShiftAffineMap(int64_t shift);
 
   /// Returns an affine map that is a translation (shift) of all result
   /// expressions in 'map' by 'shift'.
   /// Eg: input: (d0, d1)[s0] -> (d0, d1 + s0), shift = 2
   ///   returns:    (d0, d1)[s0] -> (d0 + 2, d1 + s0 + 2)
-  AffineMap *getShiftedAffineMap(AffineMap *map, int64_t shift);
+  AffineMap getShiftedAffineMap(AffineMap map, int64_t shift);
 
   // Integer set.
   IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
@@ -392,8 +392,8 @@ public:
 
   // Creates a for statement. When step is not specified, it is set to 1.
   ForStmt *createFor(Location *location, ArrayRef<MLValue *> lbOperands,
-                     AffineMap *lbMap, ArrayRef<MLValue *> ubOperands,
-                     AffineMap *ubMap, int64_t step = 1);
+                     AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
+                     AffineMap ubMap, int64_t step = 1);
 
   // Creates a for statement with known (constant) lower and upper bounds.
   // Default step is 1.

@@ -69,7 +69,7 @@ public:
   }
 
   // A map from affine map identifier to AffineMap.
-  llvm::StringMap<AffineMap *> affineMapDefinitions;
+  llvm::StringMap<AffineMap> affineMapDefinitions;
 
   // A map from integer set identifier to IntegerSet.
   llvm::StringMap<IntegerSet *> integerSetDefinitions;
@@ -200,8 +200,8 @@ public:
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
   // Polyhedral structures.
-  AffineMap *parseAffineMapInline();
-  AffineMap *parseAffineMapReference();
+  AffineMap parseAffineMapInline();
+  AffineMap parseAffineMapReference();
   IntegerSet *parseIntegerSetInline();
   IntegerSet *parseIntegerSetReference();
 
@@ -521,7 +521,7 @@ Type *Parser::parseMemRefType() {
     return (emitError(typeLoc, "invalid memref element type"), nullptr);
 
   // Parse semi-affine-map-composition.
-  SmallVector<AffineMap *, 2> affineMapComposition;
+  SmallVector<AffineMap, 2> affineMapComposition;
   unsigned memorySpace = 0;
   bool parsedMemorySpace = false;
 
@@ -540,8 +540,8 @@ Type *Parser::parseMemRefType() {
       // Parse affine map.
       if (parsedMemorySpace)
         return emitError("affine map after memory space in memref type");
-      auto *affineMap = parseAffineMapReference();
-      if (affineMap == nullptr)
+      auto affineMap = parseAffineMapReference();
+      if (!affineMap)
         return ParseFailure;
       affineMapComposition.push_back(affineMap);
     }
@@ -728,7 +728,7 @@ Attribute *Parser::parseAttribute() {
   case Token::hash_identifier:
   case Token::l_paren: {
     // Try to parse affine map reference.
-    if (auto *affineMap = parseAffineMapReference())
+    if (auto affineMap = parseAffineMapReference())
       return builder.getAffineMapAttr(affineMap);
     return (emitError("expected constant attribute value"), nullptr);
   }
@@ -827,7 +827,7 @@ class AffineParser : public Parser {
 public:
   explicit AffineParser(ParserState &state) : Parser(state) {}
 
-  AffineMap *parseAffineMapInline();
+  AffineMap parseAffineMapInline();
   IntegerSet *parseIntegerSetInline();
 
 private:
@@ -1223,22 +1223,22 @@ ParseResult AffineParser::parseDimIdList(unsigned &numDims) {
 ///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-AffineMap *AffineParser::parseAffineMapInline() {
+AffineMap AffineParser::parseAffineMapInline() {
   unsigned numDims = 0, numSymbols = 0;
 
   // List of dimensional identifiers.
   if (parseDimIdList(numDims))
-    return nullptr;
+    return AffineMap::Invalid();
 
   // Symbols are optional.
   if (getToken().is(Token::l_square)) {
     if (parseSymbolIdList(numSymbols))
-      return nullptr;
+      return AffineMap::Invalid();
   }
 
   if (parseToken(Token::arrow, "expected '->' or '['") ||
       parseToken(Token::l_paren, "expected '(' at start of affine map range"))
-    return nullptr;
+    return AffineMap::Invalid();
 
   SmallVector<AffineExpr, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
@@ -1252,7 +1252,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
   // affine expressions); the list cannot be empty.
   // Grammar: multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
-    return nullptr;
+    return AffineMap::Invalid();
 
   // Parse optional range sizes.
   //  range-sizes ::= (`size` `(` dim-size (`,` dim-size)* `)`)?
@@ -1264,7 +1264,7 @@ AffineMap *AffineParser::parseAffineMapInline() {
     // Location of the l_paren token (if it exists) for error reporting later.
     auto loc = getToken().getLoc();
     if (parseToken(Token::l_paren, "expected '(' at start of affine map range"))
-      return nullptr;
+      return AffineMap::Invalid();
 
     auto parseRangeSize = [&]() -> ParseResult {
       auto loc = getToken().getLoc();
@@ -1281,30 +1281,30 @@ AffineMap *AffineParser::parseAffineMapInline() {
     };
 
     if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
-      return nullptr;
+      return AffineMap::Invalid();
     if (exprs.size() > rangeSizes.size())
       return (emitError(loc, "fewer range sizes than range expressions"),
-              nullptr);
+              AffineMap::Invalid());
     if (exprs.size() < rangeSizes.size())
       return (emitError(loc, "more range sizes than range expressions"),
-              nullptr);
+              AffineMap::Invalid());
   }
 
   // Parsed a valid affine map.
   return builder.getAffineMap(numDims, numSymbols, exprs, rangeSizes);
 }
 
-AffineMap *Parser::parseAffineMapInline() {
+AffineMap Parser::parseAffineMapInline() {
   return AffineParser(state).parseAffineMapInline();
 }
 
-AffineMap *Parser::parseAffineMapReference() {
+AffineMap Parser::parseAffineMapReference() {
   if (getToken().is(Token::hash_identifier)) {
     // Parse affine map identifier and verify that it exists.
     StringRef affineMapId = getTokenSpelling().drop_front();
     if (getState().affineMapDefinitions.count(affineMapId) == 0)
       return (emitError("undefined affine map id '" + affineMapId + "'"),
-              nullptr);
+              AffineMap::Invalid());
     consumeToken(Token::hash_identifier);
     return getState().affineMapDefinitions[affineMapId];
   }
@@ -2221,7 +2221,7 @@ private:
   ParseResult parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
                                     unsigned numDims, unsigned numOperands,
                                     const char *affineStructName);
-  ParseResult parseBound(SmallVectorImpl<MLValue *> &operands, AffineMap *&map,
+  ParseResult parseBound(SmallVectorImpl<MLValue *> &operands, AffineMap &map,
                          bool isLower);
   ParseResult parseIfStmt();
   ParseResult parseElseClause(IfClause *elseClause);
@@ -2261,7 +2261,7 @@ ParseResult MLFunctionParser::parseForStmt() {
 
   // Parse lower bound.
   SmallVector<MLValue *, 4> lbOperands;
-  AffineMap *lbMap = nullptr;
+  AffineMap lbMap;
   if (parseBound(lbOperands, lbMap, /*isLower*/ true))
     return ParseFailure;
 
@@ -2270,7 +2270,7 @@ ParseResult MLFunctionParser::parseForStmt() {
 
   // Parse upper bound.
   SmallVector<MLValue *, 4> ubOperands;
-  AffineMap *ubMap = nullptr;
+  AffineMap ubMap;
   if (parseBound(ubOperands, ubMap, /*isLower*/ false))
     return ParseFailure;
 
@@ -2388,7 +2388,7 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
 ///  shorthand-bound ::= ssa-id | `-`? integer-literal
 ///
 ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
-                                         AffineMap *&map, bool isLower) {
+                                         AffineMap &map, bool isLower) {
   // 'min' / 'max' prefixes are syntactic sugar. Ignore them.
   if (isLower)
     consumeIf(Token::kw_max);
@@ -2401,7 +2401,7 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
     if (!map)
       return ParseFailure;
 
-    if (parseDimAndSymbolList(operands, map->getNumDims(), map->getNumInputs(),
+    if (parseDimAndSymbolList(operands, map.getNumDims(), map.getNumInputs(),
                               "affine map"))
       return ParseFailure;
     return ParseSuccess;
@@ -2691,7 +2691,7 @@ ParseResult ModuleParser::parseAffineMapDef() {
   StringRef affineMapId = getTokenSpelling().drop_front();
 
   // Check for redefinitions.
-  auto *&entry = getState().affineMapDefinitions[affineMapId];
+  auto &entry = getState().affineMapDefinitions[affineMapId];
   if (entry)
     return emitError("redefinition of affine map id '" + affineMapId + "'");
 

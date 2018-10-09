@@ -42,7 +42,7 @@ class HyperRectangularSet;
 /// A mutable affine map. Its affine expressions are however unique.
 struct MutableAffineMap {
 public:
-  MutableAffineMap(AffineMap *map, MLIRContext *context);
+  MutableAffineMap(AffineMap map);
 
   AffineExpr getResult(unsigned idx) const { return results[idx]; }
   void setResult(unsigned idx, AffineExpr result) { results[idx] = result; }
@@ -60,9 +60,9 @@ public:
   //-simplify-affine-expr pass).
   void simplify();
   /// Get the AffineMap corresponding to this MutableAffineMap. Note that an
-  /// AffineMap * will be uniqued and stored in context, while a mutable one
+  /// AffineMap will be uniqued and stored in context, while a mutable one
   /// isn't.
-  AffineMap *getAffineMap();
+  AffineMap getAffineMap();
 
 private:
   // Same meaning as AffineMap's fields.
@@ -117,11 +117,10 @@ private:
 // TODO(bondhugula): Some of these classes could go into separate files.
 class AffineValueMap {
 public:
-  AffineValueMap(const AffineApplyOp &op, MLIRContext *context);
-  AffineValueMap(const AffineBound &bound, MLIRContext *context);
-  AffineValueMap(AffineMap *map, MLIRContext *context);
-  AffineValueMap(AffineMap *map, ArrayRef<MLValue *> operands,
-                 MLIRContext *context);
+  AffineValueMap(const AffineApplyOp &op);
+  AffineValueMap(const AffineBound &bound);
+  AffineValueMap(AffineMap map);
+  AffineValueMap(AffineMap map, ArrayRef<MLValue *> operands);
 
   ~AffineValueMap();
 
@@ -156,7 +155,7 @@ public:
   unsigned getNumOperands() const;
   SSAValue *getOperand(unsigned i) const;
   ArrayRef<MLValue *> getOperands() const;
-  AffineMap *getAffineMap();
+  AffineMap getAffineMap();
 
 private:
   // A mutable affine map.

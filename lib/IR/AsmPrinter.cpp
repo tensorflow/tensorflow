@@ -64,7 +64,7 @@ public:
   // Initializes module state, populating affine map state.
   void initialize(const Module *module);
 
-  int getAffineMapId(AffineMap *affineMap) const {
+  int getAffineMapId(AffineMap affineMap) const {
     auto it = affineMapIds.find(affineMap);
     if (it == affineMapIds.end()) {
       return -1;
@@ -72,7 +72,7 @@ public:
     return it->second;
   }
 
-  ArrayRef<AffineMap *> getAffineMapIds() const { return affineMapsById; }
+  ArrayRef<AffineMap> getAffineMapIds() const { return affineMapsById; }
 
   int getIntegerSetId(IntegerSet *integerSet) const {
     auto it = integerSetIds.find(integerSet);
@@ -85,7 +85,7 @@ public:
   ArrayRef<IntegerSet *> getIntegerSetIds() const { return integerSetsById; }
 
 private:
-  void recordAffineMapReference(AffineMap *affineMap) {
+  void recordAffineMapReference(AffineMap affineMap) {
     if (affineMapIds.count(affineMap) == 0) {
       affineMapIds[affineMap] = affineMapsById.size();
       affineMapsById.push_back(affineMap);
@@ -100,15 +100,15 @@ private:
   }
 
   // Return true if this map could be printed using the shorthand form.
-  static bool hasShorthandForm(AffineMap *boundMap) {
-    if (boundMap->isSingleConstant())
+  static bool hasShorthandForm(AffineMap boundMap) {
+    if (boundMap.isSingleConstant())
       return true;
 
     // Check if the affine map is single dim id or single symbol identity -
     // (i)->(i) or ()[s]->(i)
-    return boundMap->getNumInputs() == 1 && boundMap->getNumResults() == 1 &&
-           (boundMap->getResult(0).isa<AffineDimExpr>() ||
-            boundMap->getResult(0).isa<AffineSymbolExpr>());
+    return boundMap.getNumInputs() == 1 && boundMap.getNumResults() == 1 &&
+           (boundMap.getResult(0).isa<AffineDimExpr>() ||
+            boundMap.getResult(0).isa<AffineSymbolExpr>());
   }
 
   // Visit functions.
@@ -124,8 +124,8 @@ private:
   void visitAttribute(const Attribute *attr);
   void visitOperation(const Operation *op);
 
-  DenseMap<AffineMap *, int> affineMapIds;
-  std::vector<AffineMap *> affineMapsById;
+  DenseMap<AffineMap, int> affineMapIds;
+  std::vector<AffineMap> affineMapsById;
 
   DenseMap<IntegerSet *, int> integerSetIds;
   std::vector<IntegerSet *> integerSetsById;
@@ -142,7 +142,7 @@ void ModuleState::visitType(const Type *type) {
       visitType(result);
   } else if (auto *memref = dyn_cast<MemRefType>(type)) {
     // Visit affine maps in memref type.
-    for (auto *map : memref->getAffineMaps()) {
+    for (auto map : memref->getAffineMaps()) {
       recordAffineMapReference(map);
     }
   }
@@ -193,11 +193,11 @@ void ModuleState::visitIfStmt(const IfStmt *ifStmt) {
 }
 
 void ModuleState::visitForStmt(const ForStmt *forStmt) {
-  AffineMap *lbMap = forStmt->getLowerBoundMap();
+  AffineMap lbMap = forStmt->getLowerBoundMap();
   if (!hasShorthandForm(lbMap))
     recordAffineMapReference(lbMap);
 
-  AffineMap *ubMap = forStmt->getUpperBoundMap();
+  AffineMap ubMap = forStmt->getUpperBoundMap();
   if (!hasShorthandForm(ubMap))
     recordAffineMapReference(ubMap);
 
@@ -273,7 +273,7 @@ public:
   void print(const CFGFunction *fn);
   void print(const MLFunction *fn);
 
-  void printAffineMap(AffineMap *map);
+  void printAffineMap(AffineMap map);
   void printAffineExpr(AffineExpr expr);
   void printAffineConstraint(AffineExpr expr, bool isEq);
   void printIntegerSet(IntegerSet *set);
@@ -288,7 +288,7 @@ protected:
                              ArrayRef<const char *> elidedAttrs = {});
   void printFunctionResultType(const FunctionType *type);
   void printAffineMapId(int affineMapId) const;
-  void printAffineMapReference(AffineMap *affineMap);
+  void printAffineMapReference(AffineMap affineMap);
   void printIntegerSetId(int integerSetId) const;
   void printIntegerSetReference(IntegerSet *integerSet);
 
@@ -321,14 +321,14 @@ void ModulePrinter::printAffineMapId(int affineMapId) const {
   os << "#map" << affineMapId;
 }
 
-void ModulePrinter::printAffineMapReference(AffineMap *affineMap) {
+void ModulePrinter::printAffineMapReference(AffineMap affineMap) {
   int mapId = state.getAffineMapId(affineMap);
   if (mapId >= 0) {
     // Map will be printed at top of module so print reference to its id.
     printAffineMapId(mapId);
   } else {
     // Map not in module state so print inline.
-    affineMap->print(os);
+    affineMap.print(os);
   }
 }
 
@@ -352,7 +352,7 @@ void ModulePrinter::print(const Module *module) {
   for (const auto &map : state.getAffineMapIds()) {
     printAffineMapId(state.getAffineMapId(map));
     os << " = ";
-    map->print(os);
+    map.print(os);
     os << '\n';
   }
   for (const auto &set : state.getIntegerSetIds()) {
@@ -678,40 +678,40 @@ void ModulePrinter::printAffineConstraint(AffineExpr expr, bool isEq) {
   isEq ? os << " == 0" : os << " >= 0";
 }
 
-void ModulePrinter::printAffineMap(AffineMap *map) {
+void ModulePrinter::printAffineMap(AffineMap map) {
   // Dimension identifiers.
   os << '(';
-  for (int i = 0; i < (int)map->getNumDims() - 1; ++i)
+  for (int i = 0; i < (int)map.getNumDims() - 1; ++i)
     os << 'd' << i << ", ";
-  if (map->getNumDims() >= 1)
-    os << 'd' << map->getNumDims() - 1;
+  if (map.getNumDims() >= 1)
+    os << 'd' << map.getNumDims() - 1;
   os << ')';
 
   // Symbolic identifiers.
-  if (map->getNumSymbols() != 0) {
+  if (map.getNumSymbols() != 0) {
     os << '[';
-    for (unsigned i = 0; i < map->getNumSymbols() - 1; ++i)
+    for (unsigned i = 0; i < map.getNumSymbols() - 1; ++i)
       os << 's' << i << ", ";
-    if (map->getNumSymbols() >= 1)
-      os << 's' << map->getNumSymbols() - 1;
+    if (map.getNumSymbols() >= 1)
+      os << 's' << map.getNumSymbols() - 1;
     os << ']';
   }
 
   // AffineMap should have at least one result.
-  assert(!map->getResults().empty());
+  assert(!map.getResults().empty());
   // Result affine expressions.
   os << " -> (";
-  interleaveComma(map->getResults(),
+  interleaveComma(map.getResults(),
                   [&](AffineExpr expr) { printAffineExpr(expr); });
   os << ')';
 
-  if (!map->isBounded()) {
+  if (!map.isBounded()) {
     return;
   }
 
   // Print range sizes for bounded affine maps.
   os << " size (";
-  interleaveComma(map->getRangeSizes(),
+  interleaveComma(map.getRangeSizes(),
                   [&](AffineExpr expr) { printAffineExpr(expr); });
   os << ')';
 }
@@ -851,7 +851,7 @@ public:
   void printAttribute(const Attribute *attr) {
     ModulePrinter::printAttribute(attr);
   }
-  void printAffineMap(AffineMap *map) {
+  void printAffineMap(AffineMap map) {
     return ModulePrinter::printAffineMapReference(map);
   }
   void printIntegerSet(IntegerSet *set) {
@@ -1422,7 +1422,7 @@ void MLFunctionPrinter::printDimAndSymbolList(ArrayRef<StmtOperand> ops,
 }
 
 void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
-  AffineMap *map = bound.getMap();
+  AffineMap map = bound.getMap();
 
   // Check if this bound should be printed using short-hand notation.
   // The decision to restrict printing short-hand notation to trivial cases
@@ -1430,11 +1430,11 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
   // lossless way.
   // Therefore, short-hand parsing and printing is only supported for
   // zero-operand constant maps and single symbol operand identity maps.
-  if (map->getNumResults() == 1) {
-    AffineExpr expr = map->getResult(0);
+  if (map.getNumResults() == 1) {
+    AffineExpr expr = map.getResult(0);
 
     // Print constant bound.
-    if (map->getNumDims() == 0 && map->getNumSymbols() == 0) {
+    if (map.getNumDims() == 0 && map.getNumSymbols() == 0) {
       if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
         os << constExpr.getValue();
         return;
@@ -1443,7 +1443,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
 
     // Print bound that consists of a single SSA symbol if the map is over a
     // single symbol.
-    if (map->getNumDims() == 0 && map->getNumSymbols() == 1) {
+    if (map.getNumDims() == 0 && map.getNumSymbols() == 1) {
       if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>()) {
         printOperand(bound.getOperand(0));
         return;
@@ -1456,7 +1456,7 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
 
   // Print the map and its operands.
   printAffineMapReference(map);
-  printDimAndSymbolList(bound.getStmtOperands(), map->getNumDims());
+  printDimAndSymbolList(bound.getStmtOperands(), map.getNumDims());
 }
 
 void MLFunctionPrinter::print(const IfStmt *stmt) {
@@ -1496,7 +1496,7 @@ void Type::print(raw_ostream &os) const {
 
 void Type::dump() const { print(llvm::errs()); }
 
-void AffineMap::dump() {
+void AffineMap::dump() const {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
@@ -1516,9 +1516,9 @@ void AffineExpr::dump() const {
   llvm::errs() << "\n";
 }
 
-void AffineMap::print(raw_ostream &os) {
+void AffineMap::print(raw_ostream &os) const {
   ModuleState state(/*no context is known*/ nullptr);
-  ModulePrinter(os, state).printAffineMap(this);
+  ModulePrinter(os, state).printAffineMap(*this);
 }
 
 void IntegerSet::print(raw_ostream &os) {

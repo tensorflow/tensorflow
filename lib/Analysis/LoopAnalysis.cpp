@@ -44,10 +44,10 @@ AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
     int64_t ub = forStmt.getConstantUpperBound();
     loopSpan = ub - lb + 1;
   } else {
-    auto *lbMap = forStmt.getLowerBoundMap();
-    auto *ubMap = forStmt.getUpperBoundMap();
+    auto lbMap = forStmt.getLowerBoundMap();
+    auto ubMap = forStmt.getUpperBoundMap();
     // TODO(bondhugula): handle max/min of multiple expressions.
-    if (lbMap->getNumResults() != 1 || ubMap->getNumResults() != 1)
+    if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
       return nullptr;
 
     // TODO(bondhugula): handle bounds with different operands.
@@ -56,11 +56,11 @@ AffineExpr mlir::getTripCountExpr(const ForStmt &forStmt) {
       return nullptr;
 
     // ub_expr - lb_expr + 1
-    AffineExpr lbExpr(lbMap->getResult(0));
-    AffineExpr ubExpr(ubMap->getResult(0));
+    AffineExpr lbExpr(lbMap.getResult(0));
+    AffineExpr ubExpr(ubMap.getResult(0));
     auto loopSpanExpr = simplifyAffineExpr(
-        ubExpr - lbExpr + 1, std::max(lbMap->getNumDims(), ubMap->getNumDims()),
-        std::max(lbMap->getNumSymbols(), ubMap->getNumSymbols()));
+        ubExpr - lbExpr + 1, std::max(lbMap.getNumDims(), ubMap.getNumDims()),
+        std::max(lbMap.getNumSymbols(), ubMap.getNumSymbols()));
     auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExpr>();
     if (!cExpr)
       return loopSpanExpr.ceilDiv(step);
