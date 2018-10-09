@@ -43,6 +43,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "experimental_numa_aware"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "experimental_shuffle_and_repeat_fusion"
     mtype: "<type \'property\'>"
   }

@@ -1410,6 +1410,8 @@ class Options(object):
        "Whether to eliminate no-op transformations."),
       ("experimental_shuffle_and_repeat_fusion", bool,
        "Whether to fuse shuffle and repeat transformations."),
+      ("experimental_numa_aware", bool,
+       "Whether to use NUMA-aware operations."),
   ]:
 
     def _make_getter(name):  # pylint: disable=no-self-argument
@@ -1458,6 +1460,9 @@ class Options(object):
     for exp_opt in experimental_optimizations:
       if getattr(self, "experimental_" + exp_opt):
         result.append(exp_opt)
+
+    if getattr(self, "experimental_numa_aware"):
+      result.append("map_and_batch_numa_aware_replacement")
     return result
 
   def merge(self, options):
@@ -1485,7 +1490,7 @@ class Options(object):
           "experimental_map_and_filter_fusion", "experimental_map_fusion",
           "experimental_map_parallelization", "experimental_map_vectorization",
           "experimental_noop_elimination",
-          "experimental_shuffle_and_repeat_fusion"
+          "experimental_shuffle_and_repeat_fusion", "experimental_numa_aware",
       ]:
         this = getattr(result, name)
         that = getattr(other, name)
