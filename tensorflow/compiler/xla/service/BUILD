@@ -294,7 +294,6 @@ cc_library(
     srcs = [
         "dfs_hlo_visitor.cc",
         "hlo_computation.cc",
-        "hlo_input_output_alias_config.cc",
         "hlo_instruction.cc",
         "hlo_instructions.cc",
         "hlo_module.cc",
@@ -309,7 +308,6 @@ cc_library(
         "hlo_clone_context.h",
         "hlo_computation.h",
         "hlo_domain_metadata.h",
-        "hlo_input_output_alias_config.h",
         "hlo_instruction.h",
         "hlo_instructions.h",
         "hlo_module.h",
@@ -1255,25 +1253,6 @@ tf_cc_test(
     srcs = ["hlo_schedule_test.cc"],
     deps = [
         ":heap_simulator",
-        ":hlo",
-        ":hlo_dce",
-        ":hlo_memory_scheduler",
-        ":hlo_ordering",
-        ":hlo_parser",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/algorithm:container",
-    ],
-)
-
-tf_cc_test(
-    name = "hlo_input_output_alias_config_test",
-    srcs = ["hlo_input_output_alias_config_test.cc"],
-    deps = [
         ":hlo",
         ":hlo_dce",
         ":hlo_memory_scheduler",
