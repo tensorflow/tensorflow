@@ -1862,6 +1862,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kShiftLeft:
@@ -1899,7 +1900,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduce:
     case HloOpcode::kReshape:
     case HloOpcode::kRng:
-    case HloOpcode::kScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kAfterAll:
