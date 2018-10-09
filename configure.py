@@ -1566,7 +1566,6 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
-    environ_cp['TF_ENABLE_XLA'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1577,8 +1576,9 @@ def main():
 
   set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite',
                 'with_ignite_support', True, 'ignite')
+  xla_enabled_by_default = is_linux()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                True, 'xla')
+                xla_enabled_by_default, 'xla')
 
   set_action_env_var(environ_cp, 'TF_NEED_OPENCL_SYCL', 'OpenCL SYCL', False)
   if environ_cp.get('TF_NEED_OPENCL_SYCL') == '1':
