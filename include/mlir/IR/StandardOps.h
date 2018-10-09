@@ -366,6 +366,127 @@ private:
   explicit DimOp(const Operation *state) : Op(state) {}
 };
 
+// DmaStartOp starts a non-blocking DMA operation that transfers data from a
+// source memref to a destination memref. The source and destination memref need
+// not be of the same dimensionality, but need to have the same elemental type.
+// The operands include the source and destination memref's each followed by its
+// indices, size of the data transfer in terms of the number of elements (of the
+// elemental type of the memref), and a tag memref with its indices. The tag
+// location is used by a DmaWaitOp to check for completion. The indices of the
+// source memref, destination memref, and the tag memref have the same
+// restrictions as any load/store in MLFunctions.
+//
+// For example, a DmaStartOp operation that transfers one 8x128xf32
+// (%size = 1024) chunk of data from memref '%src' in HBM (memory space 0)
+// at indices [%i, %j] to memref '%dst' in VMEM (memory space 2) at
+// indices [%k, %l], would be specified as follows:
+//
+//   %tag = alloc() : memref<1 x i32, (d0) -> (d0), 4>
+//   %idx = constant 0 : index
+//   dma_start %src[%i, %j], %dst[%k, %l], %size, %tag[%idx] :
+//     memref<40 x 8 x vector<8x128xf32>, (d0) -> (d0), 0>,
+//     memref<2 x 4 x vector<8x128xf32>, (d0) -> (d0), 2>,
+//     memref<1 x i32>, (d0) -> (d0), 4>
+//
+// TODO(andydavis) Consider replacing src/dst memref indices with view memrefs.
+class DmaStartOp
+    : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+public:
+  // Returns the source MemRefType for this DMA operation.
+  const SSAValue *getSrcMemRef() const { return getOperand(0); }
+  // Returns the rank (number of indices) of the source MemRefType.
+  unsigned getSrcMemRefRank() const {
+    return cast<MemRefType>(getSrcMemRef()->getType())->getRank();
+  }
+  // Returns the source memerf indices for this DMA operation.
+  llvm::iterator_range<Operation::const_operand_iterator>
+  getSrcIndices() const {
+    return {getOperation()->operand_begin() + 1,
+            getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
+  }
+
+  // Returns the destination MemRefType for this DMA operations.
+  const SSAValue *getDstMemRef() const {
+    return getOperand(1 + getSrcMemRefRank());
+  }
+  // Returns the rank (number of indices) of the destination MemRefType.
+  unsigned getDstMemRefRank() const {
+    return cast<MemRefType>(getDstMemRef()->getType())->getRank();
+  }
+  unsigned getSrcMemorySpace() const {
+    return cast<MemRefType>(getSrcMemRef()->getType())->getMemorySpace();
+  }
+  unsigned getDstMemorySpace() const {
+    return cast<MemRefType>(getDstMemRef()->getType())->getMemorySpace();
+  }
+
+  // Returns the destination memref indices for this DMA operation.
+  llvm::iterator_range<Operation::const_operand_iterator>
+  getDstIndices() const {
+    return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1,
+            getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
+                getDstMemRefRank()};
+  }
+
+  // Returns the number of elements being transferred by this DMA operation.
+  const SSAValue *getNumElements() const {
+    return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank());
+  }
+
+  // Returns the Tag MemRef for this DMA operation.
+  const SSAValue *getTagMemRef() const {
+    return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1);
+  }
+  // Returns the tag memref index for this DMA operation.
+  llvm::iterator_range<Operation::const_operand_iterator>
+  getTagIndices() const {
+    return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
+                getDstMemRefRank() + 1 + 1,
+            getOperation()->operand_end()};
+  }
+
+  static StringRef getOperationName() { return "dma_start"; }
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+
+protected:
+  friend class ::mlir::Operation;
+  explicit DmaStartOp(const Operation *state) : Op(state) {}
+};
+
+// DmaWaitOp blocks until the completion of a DMA operation associated with the
+// tag element '%tag[%index]'. %tag is a memref, and %index has to be an index
+// with the same restrictions as any load/store index in MLFunctions. For
+// example:
+//
+//   dma_start %src[%i, %j], %dst[%k, %l], %tag[%index] :
+//     memref<3 x vector<8x128xf32>, (d0) -> (d0), 0>,
+//     memref<1 x vector<8x128xf32>, (d0) -> (d0), 2>
+//     memref<1 x i32>, (d0) -> (d0), 4>
+//   ...
+//   ...
+//   dma_wait %tag[%index] : memref<1 x i32, (d0) -> (d0), 4>
+//
+class DmaWaitOp
+    : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+public:
+  static StringRef getOperationName() { return "dma_wait"; }
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+
+  // Returns the Tag MemRef associated with the DMA operation being waited on.
+  const SSAValue *getTagMemRef() const { return getOperand(0); }
+  // Returns the tag memref index for this DMA operation.
+  llvm::iterator_range<Operation::const_operand_iterator>
+  getTagIndices() const {
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+  }
+
+protected:
+  friend class ::mlir::Operation;
+  explicit DmaWaitOp(const Operation *state) : Op(state) {}
+};
+
 /// The "extract_element" op reads a tensor or vector and returns one element
 /// from it specified by an index list. The output of extract is a new value
 /// with the same type as the elements of the tensor or vector. The arity of

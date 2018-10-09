@@ -612,6 +612,133 @@ Attribute *DimOp::constantFold(ArrayRef<Attribute *> operands,
   return nullptr;
 }
 
+// ---------------------------------------------------------------------------
+// DmaStartOp
+// ---------------------------------------------------------------------------
+
+void DmaStartOp::print(OpAsmPrinter *p) const {
+  *p << getOperationName() << ' ' << *getSrcMemRef() << '[';
+  p->printOperands(getSrcIndices());
+  *p << "], " << *getDstMemRef() << '[';
+  p->printOperands(getDstIndices());
+  *p << "], " << *getNumElements();
+  *p << ", " << *getTagMemRef() << '[';
+  p->printOperands(getTagIndices());
+  *p << ']';
+  p->printOptionalAttrDict(getAttrs());
+  *p << " : " << *getSrcMemRef()->getType();
+  *p << ", " << *getDstMemRef()->getType();
+  *p << ", " << *getTagMemRef()->getType();
+}
+
+// Parse DmaStartOp.
+// EX:
+//   %dma_id = dma_start %src[%i, %j], %dst[%k, %l], %size,
+//                             %tag[%index] :
+//    memref<3 x vector<8x128xf32>, (d0) -> (d0), 0>,
+//    memref<1 x vector<8x128xf32>, (d0) -> (d0), 2>,
+//    memref<1 x i32, (d0) -> (d0), 4>
+//
+bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType srcMemRefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> srcIndexInfos;
+  OpAsmParser::OperandType dstMemRefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> dstIndexInfos;
+  OpAsmParser::OperandType numElementsInfo;
+  OpAsmParser::OperandType tagMemrefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> tagIndexInfos;
+
+  SmallVector<Type *, 3> types;
+  auto *indexType = parser->getBuilder().getIndexType();
+
+  // Parse and resolve the following list of operands:
+  // *) source memref followed by its indices (in square brackets).
+  // *) destination memref followed by its indices (in square brackets).
+  // *) dma size in KiB.
+  if (parser->parseOperand(srcMemRefInfo) ||
+      parser->parseOperandList(srcIndexInfos, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseComma() || parser->parseOperand(dstMemRefInfo) ||
+      parser->parseOperandList(dstIndexInfos, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseComma() || parser->parseOperand(numElementsInfo) ||
+      parser->parseComma() || parser->parseOperand(tagMemrefInfo) ||
+      parser->parseOperandList(tagIndexInfos, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseColonTypeList(types))
+    return true;
+
+  if (types.size() != 3)
+    return parser->emitError(parser->getNameLoc(), "fewer/more types expected");
+
+  if (parser->resolveOperand(srcMemRefInfo, types[0], result->operands) ||
+      parser->resolveOperands(srcIndexInfos, indexType, result->operands) ||
+      parser->resolveOperand(dstMemRefInfo, types[1], result->operands) ||
+      parser->resolveOperands(dstIndexInfos, indexType, result->operands) ||
+      // size should be an index.
+      parser->resolveOperand(numElementsInfo, indexType, result->operands) ||
+      parser->resolveOperand(tagMemrefInfo, types[2], result->operands) ||
+      // tag indices should be index.
+      parser->resolveOperands(tagIndexInfos, indexType, result->operands))
+    return true;
+
+  // Check that source/destination index list size matches associated rank.
+  if (srcIndexInfos.size() != cast<MemRefType>(types[0])->getRank() ||
+      dstIndexInfos.size() != cast<MemRefType>(types[1])->getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "memref rank not equal to indices count");
+
+  if (tagIndexInfos.size() != cast<MemRefType>(types[2])->getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "tag memref rank not equal to indices count");
+
+  // These should be verified in verify(). TODO(b/116737205).
+  if (tagIndexInfos.size() != 1)
+    return parser->emitError(parser->getNameLoc(),
+                             "only 1-d tag memref supported");
+
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// DmaWaitOp
+// ---------------------------------------------------------------------------
+// Parse DmaWaitOp.
+// Eg:
+//   dma_wait %tag[%index] : memref<1 x i32, (d0) -> (d0), 4>
+//
+void DmaWaitOp::print(OpAsmPrinter *p) const {
+  *p << getOperationName() << ' ';
+  // Print operands.
+  p->printOperand(getTagMemRef());
+  *p << '[';
+  p->printOperands(getTagIndices());
+  *p << ']';
+  *p << " : " << *getTagMemRef()->getType();
+}
+
+bool DmaWaitOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType tagMemrefInfo;
+  SmallVector<OpAsmParser::OperandType, 2> tagIndexInfos;
+  Type *type;
+  auto *indexType = parser->getBuilder().getIndexType();
+
+  // Parse tag memref and index.
+  if (parser->parseOperand(tagMemrefInfo) ||
+      parser->parseOperandList(tagIndexInfos, -1,
+                               OpAsmParser::Delimiter::Square) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperand(tagMemrefInfo, type, result->operands) ||
+      parser->resolveOperands(tagIndexInfos, indexType, result->operands))
+    return true;
+
+  if (tagIndexInfos.size() != cast<MemRefType>(type)->getRank())
+    return parser->emitError(parser->getNameLoc(),
+                             "tag memref rank not equal to indices count");
+
+  return false;
+}
+
 //===----------------------------------------------------------------------===//
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
@@ -796,7 +923,7 @@ bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
 void ReturnOp::print(OpAsmPrinter *p) const {
   *p << "return";
   if (getNumOperands() > 0) {
-    *p << " ";
+    *p << ' ';
     p->printOperands(operand_begin(), operand_end());
     *p << " : ";
     interleave(operand_begin(), operand_end(),
@@ -982,8 +1109,8 @@ Attribute *SubIOp::constantFold(ArrayRef<Attribute *> operands,
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
   opSet.addOperations<AddFOp, AddIOp, AffineApplyOp, AllocOp, CallOp,
-                      CallIndirectOp, ConstantOp, DeallocOp, DimOp,
-                      ExtractElementOp, LoadOp, MulFOp, MulIOp, ReturnOp,
-                      ShapeCastOp, StoreOp, SubFOp, SubIOp>(
+                      CallIndirectOp, ConstantOp, DeallocOp, DimOp, DmaStartOp,
+                      DmaWaitOp, ExtractElementOp, LoadOp, MulFOp, MulIOp,
+                      ReturnOp, ShapeCastOp, StoreOp, SubFOp, SubIOp>(
       /*prefix=*/"");
 }

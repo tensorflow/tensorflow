@@ -212,7 +212,8 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
       return OptFailure;
 
     // Verify that the result of the pass is still valid.
-    module->verify();
+    if (module->verify())
+      return OptFailure;
   }
 
   // Print the output.

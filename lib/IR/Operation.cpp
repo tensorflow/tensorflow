@@ -239,8 +239,11 @@ bool OpTrait::impl::verifyOneOperand(const Operation *op) {
 }
 
 bool OpTrait::impl::verifyNOperands(const Operation *op, unsigned numOperands) {
-  if (op->getNumOperands() != numOperands)
-    return op->emitOpError("expected " + Twine(numOperands) + " operands");
+  if (op->getNumOperands() != numOperands) {
+    return op->emitOpError("expected " + Twine(numOperands) +
+                           " operands, but found " +
+                           Twine(op->getNumOperands()));
+  }
   return false;
 }
 

@@ -33,12 +33,9 @@ using namespace mlir;
 // Temporary utility: will be replaced when this is modeled through
 // side-effects/op traits. TODO(b/117228571)
 static bool isMemRefDereferencingOp(const Operation &op) {
-  if (op.is<LoadOp>() || op.is<StoreOp>() ||
-      op.getName().strref().contains("dma.in.start") ||
-      op.getName().strref().contains("dma.out.start") ||
-      op.getName().strref().contains("dma.finish")) {
+  if (op.is<LoadOp>() || op.is<StoreOp>() || op.is<DmaStartOp>() ||
+      op.is<DmaWaitOp>())
     return true;
-  }
   return false;
 }
 
