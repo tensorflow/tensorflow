@@ -248,7 +248,7 @@ def DNNClassifierWithLayerAnnotations(  # pylint: disable=invalid-name
       model. All items in the set should be instances of classes derived from
       `_FeatureColumn`.
     model_dir: Directory to save model parameters, graph and etc. This can also
-      be used to load checkpoints from the directory into a estimator to
+      be used to load checkpoints from the directory into an estimator to
       continue training a previously saved model.
     n_classes: Number of label classes. Defaults to 2, namely binary
       classification. Must be > 1.

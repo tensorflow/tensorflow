@@ -137,12 +137,6 @@ cc_binary(
         ":windows": ["config/msvc.h"],
         "//conditions:default": [],
     }),
-    includes = [
-        "asm",
-        "include",
-        "output",
-        "x86",
-    ],
     copts = select({
         ":windows": [],
         "//conditions:default": [
@@ -157,6 +151,12 @@ cc_binary(
             "HAVE_SYS_TYPES_H",
         ],
     }),
+    includes = [
+        "asm",
+        "include",
+        "output",
+        "x86",
+    ],
     visibility = ["@jpeg//:__pkg__"],
 )
 

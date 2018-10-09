@@ -29,6 +29,12 @@ NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
 NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
                        StringPiece function_name = "IsZero");
 
+NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece batch_size_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece drop_remainder_node_name,
+                            StringPiece function_name = "XTimesTwo");
+
 }  // end namespace graph_tests_utils
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -80,6 +80,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Basic", lambda x: (x, x + 1), None),
       ("Const", lambda x: 2, 12),
       ("Parallel", lambda x: (x, x + 1), 12),
+      ("Broadcast", lambda x: x + np.random.rand(5, 4, 3, 2), None),
       ("Gather", lambda x: array_ops.gather(x, 0), 12),
   )
   def testOptimization(self, map_fn, num_parallel_calls):
@@ -105,15 +106,16 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testOptimizationWithCapturedInputs(self):
     # Tests that vectorization works with captured inputs
-    def map_fn(x):
-      return x + y
-
     y = constant_op.constant(1, shape=(2,))
+    z = constant_op.constant(2, shape=(2,))
+
+    def map_fn(x):
+      return x, y, z
+
     base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
                                                            [3, 4]]).repeat(5)
-    # TODO(rachelim): when this optimization works, turn on expect_optimized
     unoptimized, optimized = self._get_test_datasets(
-        base_dataset, map_fn, expect_optimized=False)
+        base_dataset, map_fn, expect_optimized=True)
     self.assertDatasetsEqual(optimized, unoptimized)
 
   def testOptimizationIgnoreStateful(self):

@@ -95,11 +95,13 @@ OperatorKey GetOperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     bool allow_flex_ops) {
+  // Get the op name (by Toco definition).
   string name = HelpfulOperatorTypeName(op);
-  const auto& builtin_ops = GetBuiltinOpsMap();
 
   bool is_builtin = false;
   OperatorKey key;
+
+  const auto& builtin_ops = GetBuiltinOpsMap();
   if (ops_by_type.count(op.type) != 0) {
     key.version = ops_by_type.at(op.type)->GetVersion(op);
     name = ops_by_type.at(op.type)->name();
@@ -110,37 +112,46 @@ OperatorKey GetOperatorKey(
     // For TFLite supported builtin ops, find out its BuiltinOperator enum used
     // in FlatBuffer.
     key.type = builtin_ops.at(name);
-  } else {
-    key.type = BuiltinOperator_CUSTOM;
+    return key;
+  }
 
-    key.is_custom_op = true;
-    if (op.type == OperatorType::kUnsupported) {
-      const TensorFlowUnsupportedOperator& unsupported_op =
-          static_cast<const TensorFlowUnsupportedOperator&>(op);
-      const auto tensorflow_op = unsupported_op.tensorflow_op;
+  // The logic below is all for custom ops.
+  key.is_custom_op = true;
+  key.type = BuiltinOperator_CUSTOM;
 
-      // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
-      // to populate a regular custom op. We need to find a way to fix this.
-      if (allow_flex_ops) {
-        // Memorize the original TensorFlow op name.
-        key.flex_tensorflow_op = tensorflow_op;
-        // Prefix the custom code of the flex op.
-        key.custom_code =
-            string(::tflite::kFlexCustomCodePrefix) + tensorflow_op;
-        key.is_flex_op = true;
+  if (op.type == OperatorType::kUnsupported) {
+    const TensorFlowUnsupportedOperator& unsupported_op =
+        static_cast<const TensorFlowUnsupportedOperator&>(op);
+    const auto tensorflow_op = unsupported_op.tensorflow_op;
 
-        if (IsControlFlowOp(tensorflow_op)) {
-          key.is_unsupported_flex_op = true;
-        }
-      } else {
-        key.custom_code = tensorflow_op;
-      }
+    // TODO(b/113715895): When `allow_flex_ops` is on, for now there's no way
+    // to populate a regular custom op. We need to find a way to fix this.
+    if (allow_flex_ops) {
+      key.is_flex_op = true;
+      key.flex_tensorflow_op = tensorflow_op;
+      key.custom_code =
+          string(::tflite::kFlexCustomCodePrefix) + key.flex_tensorflow_op;
     } else {
-      // For Toco-supported/TFLite-unsupported ops, currently we produce a
-      // custom op. This gives developers a chance to implement custom ops.
-      // TODO(b/116800229): Also produce Toco-supported/TFLite-unsupported ops
-      // as Flex ops when Flex mode is enabled.
-      key.custom_code = name;
+      key.custom_code = tensorflow_op;
+    }
+  } else if (allow_flex_ops && !op.tensorflow_node_def.empty()) {
+    // For Toco-supported/TFLite-unsupported ops, if the TensorFlow NodeDef
+    // is retained in the Toco Operator, we produce a Flex op if Flex mode
+    // is enabled.
+    key.is_flex_op = true;
+    key.flex_tensorflow_op = name;
+    key.custom_code =
+        string(::tflite::kFlexCustomCodePrefix) + key.flex_tensorflow_op;
+  } else {
+    // If Flex is disabled or the original TensorFlow NodeDef isn't available,
+    // we produce a custom op. This gives developers a chance to implemenr
+    // custom ops.
+    key.custom_code = name;
+  }
+
+  if (key.is_flex_op) {
+    if (IsControlFlowOp(key.flex_tensorflow_op)) {
+      key.is_unsupported_flex_op = true;
     }
   }
   return key;
@@ -323,8 +334,9 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       outputs.push_back(tensors_map.at(output));
     }
 
-    int op_index = operators_map.at(
-        details::GetOperatorKey(*op, ops_by_type, params.allow_flex_ops));
+    const auto key =
+        details::GetOperatorKey(*op, ops_by_type, params.allow_flex_ops);
+    int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);
     BaseOperator* tflite_op = tflite_op_it == ops_by_type.end()
@@ -348,6 +360,11 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
           int32_t variable_tensor_index = tensors_map.at(op->inputs[i]);
           variable_tensor_indices->insert(variable_tensor_index);
         }
+      }
+    } else if (key.is_flex_op && !op->tensorflow_node_def.empty()) {
+      auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
+      if (fbb) {
+        options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
       }
     }
     // The only supported CustomOptionFormat is FLEXBUFFERS now.

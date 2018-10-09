@@ -135,7 +135,8 @@ TEST_F(HloInstructionTest, BasicProperties) {
   auto parameter = HloInstruction::CreateParameter(1, r0f32_, "foo");
 
   EXPECT_EQ(HloOpcode::kParameter, parameter->opcode());
-  EXPECT_TRUE(ShapeUtil::IsScalarF32(parameter->shape()));
+  EXPECT_TRUE(ShapeUtil::IsScalarWithElementType(parameter->shape(), F32));
+  EXPECT_FALSE(ShapeUtil::IsScalarWithElementType(parameter->shape(), S32));
   EXPECT_EQ(0, parameter->operand_count());
 }
 

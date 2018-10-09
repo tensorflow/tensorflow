@@ -195,8 +195,12 @@ class Scaffold(object):
           default_ready_op)
     if self._ready_for_local_init_op is None:
       def default_ready_for_local_init_op():
-        return variables.report_uninitialized_variables(
-            variables.global_variables())
+        return array_ops.concat([
+            variables.report_uninitialized_variables(
+                variables.global_variables()),
+            resources.report_uninitialized_resources(
+                resources.shared_resources())
+        ], 0)
       self._ready_for_local_init_op = Scaffold.get_or_default(
           'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
           default_ready_for_local_init_op)

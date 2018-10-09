@@ -313,8 +313,9 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
        operand_dimension < ShapeUtil::Rank(operand_shape);
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK(broadcast->shape().dimensions(output_dimension) ==
-                 operand_shape.dimensions(operand_dimension))
+    TF_RET_CHECK((output_dimension < ShapeUtil::Rank(broadcast->shape())) &&
+                 (broadcast->shape().dimensions(output_dimension) ==
+                  operand_shape.dimensions(operand_dimension)))
         << broadcast->ToString() << " operand shape " << operand_shape;
   }
   return Status::OK();
@@ -359,7 +360,27 @@ Status ShapeVerifier::HandleCall(HloInstruction* call) {
   return CheckShape(call, call->to_apply()->root_instruction()->shape());
 }
 
-Status ShapeVerifier::HandleCustomCall(HloInstruction*) { return Status::OK(); }
+Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
+  const HloCustomCallInstruction* custom_call =
+      DynCast<const HloCustomCallInstruction>(instruction);
+  TF_RET_CHECK(custom_call != nullptr);
+  if (custom_call->layout_constrained()) {
+    // If the layout is constrained, verify all the respective shapes have
+    // layouts and that the constrained operand shapes match the shapes of the
+    // operands.
+    TF_RET_CHECK(LayoutUtil::HasLayout(custom_call->shape()));
+    TF_RET_CHECK(custom_call->operand_count() ==
+                 custom_call->operand_shapes_with_layout().size());
+    for (int64 i = 0; i < custom_call->operand_count(); ++i) {
+      const Shape& operand_shape_with_layout =
+          custom_call->operand_shapes_with_layout()[i];
+      TF_RET_CHECK(ShapeUtil::Compatible(custom_call->operand(i)->shape(),
+                                         operand_shape_with_layout));
+      TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
+    }
+  }
+  return Status::OK();
+}
 
 Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
   return CheckShape(slice,
@@ -1042,7 +1063,10 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
-  InstructionVerifier() {}
+  explicit InstructionVerifier(std::function<bool(const HloInstruction*)>
+                                   instruction_can_change_layout_func)
+      : instruction_can_change_layout_func_(
+            instruction_can_change_layout_func) {}
 
   Status DefaultAction(HloInstruction*) override { return Status::OK(); }
 
@@ -1143,8 +1167,34 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status Postprocess(HloInstruction* instruction) override {
+    if (instruction_can_change_layout_func_ &&
+        LayoutUtil::IsDenseArray(instruction->shape()) &&
+        !instruction_can_change_layout_func_(instruction)) {
+      const Shape& result_shape = instruction->shape();
+      const Layout& result_layout = result_shape.layout();
+      for (HloInstruction* operand : instruction->operands()) {
+        const Shape& operand_shape = operand->shape();
+        if (LayoutUtil::IsDenseArray(operand_shape) &&
+            ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(result_shape)) {
+          const Layout& operand_layout = operand_shape.layout();
+          TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
+              << "Instruction shouldn't change layouts "
+              << instruction->ToString() << " From "
+              << ShapeUtil::HumanString(result_shape) << " To "
+              << ShapeUtil::HumanString(operand_shape);
+        }
+      }
+    }
+
+    return Status::OK();
+  }
+
  private:
   absl::flat_hash_map<string, const HloInstruction*> instructions_by_name_;
+  // Determines whether an instruction can change layouts.
+  std::function<bool(const HloInstruction*)>
+      instruction_can_change_layout_func_;
 };
 
 }  // namespace
@@ -1158,7 +1208,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
 
-    InstructionVerifier instruction_verifier;
+    InstructionVerifier instruction_verifier(
+        instruction_can_change_layout_func_);
     TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
   }
 
