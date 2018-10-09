@@ -38,6 +38,9 @@ GPU package for CUDA-enabled GPU cards:
 *pip install tensorflow-gpu*
 
 
+
+
+
 People who are a little more adventurous can also try our nightly binaries:
 
 **Nightly pip packages**
