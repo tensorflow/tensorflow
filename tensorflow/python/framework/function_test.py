@@ -1639,29 +1639,18 @@ class FunctionInlineControlTest(test.TestCase):
       self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
-@function.Defun(*[dtypes.float32] * 3)
-def Linear(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2(w1, b1, w2, b2, x):
-  return Linear(w2, b2, Linear(w1, b1, x))
-
-
-@function.Defun(*[dtypes.float32] * 3)
-def LinearWithCApi(w, b, x):
-  return nn_ops.relu(math_ops.matmul(x, w) + b)
-
-
-@function.Defun(*[dtypes.float32] * 5)
-def Linear2WithCApi(w1, b1, w2, b2, x):
-  return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
-
-
 class ModuleFunctionTest(test.TestCase):
 
   def testBasic(self):
+
+    @function.Defun(*[dtypes.float32] * 3)
+    def LinearWithCApi(w, b, x):
+      return nn_ops.relu(math_ops.matmul(x, w) + b)
+
+    @function.Defun(*[dtypes.float32] * 5)
+    def Linear2WithCApi(w1, b1, w2, b2, x):
+      return LinearWithCApi(w2, b2, LinearWithCApi(w1, b1, x))
+
     with ops.Graph().as_default():
       a, b, c, d, e = [
           constant_op.constant([[_]], dtype=dtypes.float32) for _ in range(5)
