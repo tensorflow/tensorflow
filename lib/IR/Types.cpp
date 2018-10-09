@@ -40,22 +40,33 @@ VectorOrTensorType::VectorOrTensorType(Kind kind, MLIRContext *context,
                                        Type *elementType, unsigned subClassData)
     : Type(kind, context, subClassData), elementType(elementType) {}
 
-/// If this is ranked tensor or vector type, return the rank.  If it is an
+/// If this is ranked tensor or vector type, return the rank. If it is an
 /// unranked tensor, return -1.
-int VectorOrTensorType::getRankIfPresent() const {
+int VectorOrTensorType::getRank() const {
   switch (getKind()) {
   default:
     llvm_unreachable("not a VectorOrTensorType");
   case Kind::Vector:
-    return cast<VectorType>(this)->getRank();
+    return cast<VectorType>(this)->getShape().size();
   case Kind::RankedTensor:
-    return cast<RankedTensorType>(this)->getRank();
+    return cast<RankedTensorType>(this)->getShape().size();
   case Kind::UnrankedTensor:
     return -1;
   }
 }
 
-VectorType::VectorType(ArrayRef<unsigned> shape, Type *elementType,
+int VectorOrTensorType::getDimSize(unsigned i) const {
+  switch (getKind()) {
+  case Kind::Vector:
+    return cast<VectorType>(this)->getShape()[i];
+  case Kind::RankedTensor:
+    return cast<RankedTensorType>(this)->getShape()[i];
+  default:
+    llvm_unreachable("not a VectorOrTensorType");
+  }
+}
+
+VectorType::VectorType(ArrayRef<int> shape, Type *elementType,
                        MLIRContext *context)
     : VectorOrTensorType(Kind::Vector, context, elementType, shape.size()),
       shapeElements(shape.data()) {}

@@ -86,7 +86,7 @@ public:
   MemRefType *getMemRefType(ArrayRef<int> shape, Type *elementType,
                             ArrayRef<AffineMap> affineMapComposition = {},
                             unsigned memorySpace = 0);
-  VectorType *getVectorType(ArrayRef<unsigned> shape, Type *elementType);
+  VectorType *getVectorType(ArrayRef<int> shape, Type *elementType);
   RankedTensorType *getTensorType(ArrayRef<int> shape, Type *elementType);
   UnrankedTensorType *getTensorType(Type *elementType);
 

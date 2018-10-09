@@ -95,8 +95,7 @@ MemRefType *Builder::getMemRefType(ArrayRef<int> shape, Type *elementType,
   return MemRefType::get(shape, elementType, affineMapComposition, memorySpace);
 }
 
-VectorType *Builder::getVectorType(ArrayRef<unsigned> shape,
-                                   Type *elementType) {
+VectorType *Builder::getVectorType(ArrayRef<int> shape, Type *elementType) {
   return VectorType::get(shape, elementType);
 }
 

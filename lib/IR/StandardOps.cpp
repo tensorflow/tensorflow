@@ -792,7 +792,7 @@ bool ExtractElementOp::verify() const {
       return emitOpError("index to extract_element must have 'index' type");
 
   // Verify the # indices match if we have a ranked type.
-  auto aggregateRank = aggregateType->getRankIfPresent();
+  auto aggregateRank = aggregateType->getRank();
   if (aggregateRank != -1 && aggregateRank != getNumOperands() - 1)
     return emitOpError("incorrect number of indices for extract_element");
 

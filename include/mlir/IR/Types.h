@@ -293,9 +293,25 @@ class VectorOrTensorType : public Type {
 public:
   Type *getElementType() const { return elementType; }
 
-  /// If this is ranked tensor or vector type, return the rank.  If it is an
+  /// If this is ranked tensor or vector type, return the rank. If it is an
   /// unranked tensor, return -1.
-  int getRankIfPresent() const;
+  int getRank() const;
+
+  /// If this is ranked tensor or vector type, return the shape. If it is an
+  /// unranked tensor, return an empty array.
+  ArrayRef<int> getShape() const;
+
+  /// If any dimension has unknown size (<0), it doesn't have static shape.
+  /// If all dimensions has known size (>= 0), it has static shape.
+  bool hasStaticShape() const {
+    auto dims = getShape();
+    return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
+  }
+
+  /// If this is ranked tensor or vector type, return the size of the specified
+  /// dimension. It aborts if the tensor is unranked (this can be checked by
+  /// the getRank call method).
+  int getDimSize(unsigned i) const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
@@ -315,16 +331,11 @@ public:
 /// known constant shape with one or more dimension.
 class VectorType : public VectorOrTensorType {
 public:
-  static VectorType *get(ArrayRef<unsigned> shape, Type *elementType);
+  static VectorType *get(ArrayRef<int> shape, Type *elementType);
 
-  unsigned getRank() const { return getSubclassData(); }
-
-  ArrayRef<unsigned> getShape() const {
-    return ArrayRef<unsigned>(shapeElements, getSubclassData());
+  ArrayRef<int> getShape() const {
+    return ArrayRef<int>(shapeElements, getSubclassData());
   }
-
-  /// Return the size of the specified dimension.
-  unsigned getDimSize(unsigned i) const { return getShape()[i]; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
@@ -332,10 +343,10 @@ public:
   }
 
 private:
-  const unsigned *shapeElements;
+  const int *shapeElements;
   Type *elementType;
 
-  VectorType(ArrayRef<unsigned> shape, Type *elementType, MLIRContext *context);
+  VectorType(ArrayRef<int> shape, Type *elementType, MLIRContext *context);
   ~VectorType() = delete;
 };
 
@@ -363,14 +374,9 @@ public:
   static RankedTensorType *get(ArrayRef<int> shape,
                                Type *elementType);
 
-  unsigned getRank() const { return getSubclassData(); }
-
   ArrayRef<int> getShape() const {
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
-
-  /// Return the size of the specified dimension, or -1 if unspecified.
-  int getDimSize(unsigned i) const { return getShape()[i]; }
 
   static bool classof(const Type *type) {
     return type->getKind() == Kind::RankedTensor;
@@ -389,6 +395,8 @@ private:
 class UnrankedTensorType : public TensorType {
 public:
   static UnrankedTensorType *get(Type *elementType);
+
+  ArrayRef<int> getShape() const { return ArrayRef<int>(); }
 
   static bool classof(const Type *type) {
     return type->getKind() == Kind::UnrankedTensor;

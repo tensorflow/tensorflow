@@ -85,7 +85,7 @@ struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
 
 struct VectorTypeKeyInfo : DenseMapInfo<VectorType *> {
   // Vectors are uniqued based on their element type and shape.
-  using KeyTy = std::pair<Type *, ArrayRef<unsigned>>;
+  using KeyTy = std::pair<Type *, ArrayRef<int>>;
   using DenseMapInfo<VectorType *>::getHashValue;
   using DenseMapInfo<VectorType *>::isEqual;
 
@@ -484,10 +484,13 @@ FunctionType *FunctionType::get(ArrayRef<Type *> inputs,
   return *existing.first = result;
 }
 
-VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
+VectorType *VectorType::get(ArrayRef<int> shape, Type *elementType) {
   assert(!shape.empty() && "vector types must have at least one dimension");
   assert((isa<FloatType>(elementType) || isa<IntegerType>(elementType)) &&
          "vectors elements must be primitives");
+  assert(!std::any_of(shape.begin(), shape.end(), [](int i) {
+    return i < 0;
+  }) && "vector types must have static shape");
 
   auto *context = elementType->getContext();
   auto &impl = context->getImpl();

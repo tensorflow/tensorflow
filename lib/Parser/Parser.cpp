@@ -372,13 +372,13 @@ VectorType *Parser::parseVectorType() {
   if (getToken().isNot(Token::integer))
     return (emitError("expected dimension size in vector type"), nullptr);
 
-  SmallVector<unsigned, 4> dimensions;
+  SmallVector<int, 4> dimensions;
   while (getToken().is(Token::integer)) {
     // Make sure this integer value is in bound and valid.
     auto dimension = getToken().getUnsignedIntegerValue();
     if (!dimension.hasValue())
       return (emitError("invalid dimension in vector type"), nullptr);
-    dimensions.push_back(dimension.getValue());
+    dimensions.push_back((int)dimension.getValue());
 
     consumeToken(Token::integer);
 
