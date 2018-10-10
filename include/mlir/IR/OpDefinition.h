@@ -606,7 +606,10 @@ public:
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
   static void printAssembly(const Operation *op, OpAsmPrinter *p) {
-    op->getAs<ConcreteType>()->print(p);
+    auto opPointer = op->getAs<ConcreteType>();
+    assert(opPointer &&
+           "op's name does not match name of concrete type instantiated with");
+    opPointer->print(p);
   }
 
   /// This is the hook that checks whether or not this instruction is well
