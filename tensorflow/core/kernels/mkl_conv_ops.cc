@@ -901,7 +901,7 @@ class MklConvOp : public OpKernel {
 
       // In some cases, primitve descriptor includes potentialy large buffers,
       // we don't cache those primitves if the env variable
-      // TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is true. MKL DNN allocates buffers
+      // TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is true. MKL DNN allocates buffers
       // in the following cases
       //   1. Legacy CPU without AVX512/AVX2, or
       //   2. 1x1 convolution with stride != 1

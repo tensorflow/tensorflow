@@ -131,9 +131,7 @@ class _DNNModel(training.Model):
                name=None,
                **kwargs):
     super(_DNNModel, self).__init__(name=name, **kwargs)
-    self._is_v2 = False
     if feature_column_v2.is_feature_column_v2(feature_columns):
-      self._is_v2 = True
       self._input_layer = feature_column_v2.FeatureLayer(
           feature_columns=feature_columns,
           name='input_layer',
@@ -190,7 +188,6 @@ class _DNNModel(training.Model):
           _scope=logits_scope)
       self._add_layer(self._logits_layer, logits_scope.name)
       self._logits_scope_name = logits_scope.name
-    self._logits_layer._use_resource_variables = False  # pylint: disable=protected-access
     self._input_layer_partitioner = input_layer_partitioner
 
   def call(self, features, mode):

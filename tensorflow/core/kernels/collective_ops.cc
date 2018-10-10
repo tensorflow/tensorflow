@@ -132,7 +132,6 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
-    col_params_.instance.shape = c->input(0).shape();
     // Allocate output on the first pass through this function.  This must be
     // done immediately, while we're still in the executor thread.  Otherwise
     // the memory is not guaranteed to be unused by any concurrently executing
@@ -144,6 +143,7 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                            c->forward_input_or_allocate_output(
                                {0}, 0, c->input(0).shape(), &output),
                            done);
+      col_params_.instance.shape = c->input(0).shape();
     }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
     auto actual_done = [c, col_exec, done](const Status& s) {

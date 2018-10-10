@@ -407,6 +407,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
     HANDLE_OPERATORTYPENAME_CASE(Unpack)
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
+    HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -843,24 +844,43 @@ void CheckNonAsciiIOArrays(const ModelFlags& model_flags) {
 }
 
 void CheckNonExistentIOArrays(const Model& model) {
+  // "non-existent" is interpreted in the stronger sense of
+  // "not actually produced/consumed by an op".
+  // Rationale: we have to artificially fix up TensorFlow graphs by creating
+  // any array that it refers to, so just checking that arrays exist isn't
+  // sufficient. The real invariant here is whether arrays are produced/consumed
+  // by something.
   if (model.flags.allow_nonexistent_arrays()) {
     return;
   }
+  static constexpr char general_comment[] =
+      "Is it a typo? To silence this message, pass this flag:  "
+      "allow_nonexistent_arrays";
   for (const auto& input_array : model.flags.input_arrays()) {
-    CHECK(model.HasArray(input_array.name()))
-        << "Input array not found: " << input_array.name();
+    QCHECK(GetOpWithInput(model, input_array.name()))
+        << "Specified input array \"" << input_array.name()
+        << "\" is not consumed by any op in this graph. " << general_comment;
   }
   for (const string& output_array : model.flags.output_arrays()) {
-    CHECK(model.HasArray(output_array))
-        << "Output array not found: " << output_array;
+    QCHECK(GetOpWithOutput(model, output_array))
+        << "Specified output array \"" << output_array
+        << "\" is not produced by any op in this graph. " << general_comment;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
-      CHECK(model.HasArray(rnn_state.state_array()));
-      CHECK(model.HasArray(rnn_state.back_edge_source_array()));
+      // Check that all RNN states are consumed
+      QCHECK(GetOpWithInput(model, rnn_state.state_array()))
+          << "Specified RNN state \"" << rnn_state.state_array()
+          << "\" is not consumed by any op in this graph. " << general_comment;
+      // Check that all RNN back-edge source arrays are produced
+      QCHECK(GetOpWithOutput(model, rnn_state.back_edge_source_array()))
+          << "Specified RNN back-edge source array \""
+          << rnn_state.back_edge_source_array()
+          << "\" is not produced by any op in this graph. " << general_comment;
     }
   }
 }
+
 }  // namespace
 
 void CheckNoMissingArray(const Model& model) {
@@ -879,12 +899,12 @@ void CheckNoMissingArray(const Model& model) {
 void FixNoMissingArray(Model* model) {
   for (const auto& op : model->operators) {
     for (const auto& input : op->inputs) {
-      if (!model->HasArray(input)) {
+      if (!model->HasArray(input) && !model->IsOptionalArray(input)) {
         model->GetOrCreateArray(input);
       }
     }
     for (const auto& output : op->outputs) {
-      if (!model->HasArray(output)) {
+      if (!model->HasArray(output) && !model->IsOptionalArray(output)) {
         model->GetOrCreateArray(output);
       }
     }
@@ -1218,11 +1238,15 @@ void DedupeConstantArrays(Model* model, size_t min_size) {
         lhs_array.final_data_type != ArrayDataType::kNone
             ? lhs_array.final_data_type
             : lhs_array.data_type;
-    size_t array_byte_size =
-        lhs_array.buffer->Length() * ElementSize(final_data_type);
-    if (array_byte_size < min_size) {
-      // Too small; skip.
-      continue;
+    // Ignore small arrays, don't check string arrays because it is not possible
+    // to estimate its size.
+    if (final_data_type != ArrayDataType::kString) {
+      size_t array_byte_size =
+          lhs_array.buffer->Length() * ElementSize(final_data_type);
+      if (array_byte_size < min_size) {
+        // Too small; skip.
+        continue;
+      }
     }
 
     auto next_lhs_array_it = lhs_array_it;
@@ -1597,6 +1621,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       input_array.GetOrCreateMinMax() = input_minmax;
     }
   }
+
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),

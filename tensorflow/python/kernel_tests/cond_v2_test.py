@@ -153,6 +153,7 @@ class CondV2Test(test.TestCase):
         self.assertIn("foo_cond_1_false", ops.get_default_graph()._functions)
 
   def testDefunInCond(self):
+    self.skipTest("b/117293122")
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
 
@@ -172,7 +173,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testNestedDefunInCond(self):
-    self.skipTest("b/110550782")
+    self.skipTest("b/117284369")
 
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -198,7 +199,7 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [y])
 
   def testDoubleNestedDefunInCond(self):
-    self.skipTest("b/110550782")
+    self.skipTest("b/117284369")
 
     x = constant_op.constant(1.0, name="x")
     y = constant_op.constant(2.0, name="y")
@@ -468,7 +469,6 @@ class CondV2Test(test.TestCase):
             }), [5., 0.])
 
   def testBuildCondAndGradientInsideDefun(self):
-    self.skipTest("b/110550782")
 
     def build_graph():
       pred_outer = array_ops.placeholder(dtypes.bool, name="pred_outer")
@@ -502,29 +502,29 @@ class CondV2Test(test.TestCase):
 
       return grads, pred_outer, pred_inner
 
-    with ops.Graph().as_default():
+    with ops.Graph().as_default(), self.session(
+        graph=ops.get_default_graph()) as sess:
       grads, pred_outer, pred_inner = build_graph()
-      with self.session(graph=ops.get_default_graph()) as sess:
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: True,
-                pred_inner: True
-            }), [0., 0.])
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: True,
-                pred_inner: False
-            }), [0., 0.])
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: False,
-                pred_inner: True
-            }), [4., 2.])
-        self.assertSequenceEqual(
-            sess.run(grads, {
-                pred_outer: False,
-                pred_inner: False
-            }), [5., 0.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: True,
+              pred_inner: True
+          }), [0., 0.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: True,
+              pred_inner: False
+          }), [0., 0.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: False,
+              pred_inner: True
+          }), [4., 2.])
+      self.assertSequenceEqual(
+          sess.run(grads, {
+              pred_outer: False,
+              pred_inner: False
+          }), [5., 0.])
 
   def testSecondDerivative(self):
     with self.cached_session() as sess:

@@ -51,7 +51,7 @@ public class OvicValidator {
       MappedByteBuffer model = loadModelFile(modelFile);
       OvicClassifier classifier = new OvicClassifier(labelsInputStream, model);
       ByteBuffer imgData = createByteBufferForClassifier(classifier);
-      OvicSingleImageResult testResult = classifier.classifyByteBuffer(imgData);
+      OvicClassificationResult testResult = classifier.classifyByteBuffer(imgData);
       if (testResult.topKClasses.isEmpty()) {
         throw new RuntimeException("Failed to return top K predictions.");
       }

@@ -653,6 +653,7 @@ def variable(value, dtype=None, name=None, constraint=None):
 
   Examples:
   ```python
+      >>> import numpy as np
       >>> from keras import backend as K
       >>> val = np.array([[1, 2], [3, 4]])
       >>> kvar = K.variable(value=val, dtype='float64', name='example_var')
@@ -773,6 +774,8 @@ def is_keras_tensor(x):
 
   Examples:
   ```python
+      >>> import tensorflow as tf
+      >>> import numpy
       >>> from keras import backend as K
       >>> from keras.layers import Input, Dense
       >>> np_var = numpy.array([1, 2])
@@ -1511,12 +1514,8 @@ def batch_dot(x, y, axes=None):
       out = math_ops.reduce_sum(
           math_ops.multiply(array_ops.transpose(x, [1, 0]), y), axes[1])
   else:
-    if axes is not None:
-      adj_x = None if axes[0] == ndim(x) - 1 else True
-      adj_y = True if axes[1] == ndim(y) - 1 else None
-    else:
-      adj_x = None
-      adj_y = None
+    adj_x = None if axes[0] == ndim(x) - 1 else True
+    adj_y = True if axes[1] == ndim(y) - 1 else None
     out = math_ops.matmul(x, y, adjoint_a=adj_x, adjoint_b=adj_y)
   if diff:
     if x_ndim > y_ndim:
@@ -2224,7 +2223,7 @@ def normalize_batch_in_training(x, gamma, beta, reduction_axes, epsilon=1e-3):
 
 
 @tf_export('keras.backend.batch_normalization')
-def batch_normalization(x, mean, var, beta, gamma, epsilon=1e-3):
+def batch_normalization(x, mean, var, beta, gamma, axis=-1, epsilon=1e-3):
   """Applies batch normalization on x given mean, var, beta and gamma.
 
   I.e. returns:
@@ -2236,11 +2235,49 @@ def batch_normalization(x, mean, var, beta, gamma, epsilon=1e-3):
       var: Variance of batch.
       beta: Tensor with which to center the input.
       gamma: Tensor by which to scale the input.
+      axis: Integer, the axis that should be normalized.
+          (typically the features axis).
       epsilon: Fuzz factor.
 
   Returns:
       A tensor.
   """
+  if ndim(x) == 4:
+    # The CPU implementation of `fused_batch_norm` only supports NHWC
+    if axis == 1 or axis == -3:
+      tf_data_format = 'NCHW'
+    elif axis == 3 or axis == -1:
+      tf_data_format = 'NHWC'
+    else:
+      tf_data_format = None
+
+    if (tf_data_format == 'NHWC' or
+        tf_data_format == 'NCHW' and _has_nchw_support()):
+      # The mean / var / beta / gamma tensors may be broadcasted
+      # so they may have extra axes of size 1, which should be squeezed.
+      if ndim(mean) > 1:
+        mean = array_ops.reshape(mean, [-1])
+      if ndim(var) > 1:
+        var = array_ops.reshape(var, [-1])
+      if beta is None:
+        beta = zeros_like(mean)
+      elif ndim(beta) > 1:
+        beta = array_ops.reshape(beta, [-1])
+      if gamma is None:
+        gamma = ones_like(mean)
+      elif ndim(gamma) > 1:
+        gamma = array_ops.reshape(gamma, [-1])
+    y, _, _ = nn.fused_batch_norm(
+        x,
+        gamma,
+        beta,
+        epsilon=epsilon,
+        mean=mean,
+        variance=var,
+        data_format=tf_data_format,
+        is_training=False
+    )
+    return y
   return nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
 
 
@@ -2301,7 +2338,8 @@ def permute_dimensions(x, pattern):
 
 
 @tf_export('keras.backend.resize_images')
-def resize_images(x, height_factor, width_factor, data_format):
+def resize_images(x, height_factor, width_factor, data_format,
+                  interpolation='nearest'):
   """Resizes the images contained in a 4D tensor.
 
   Arguments:
@@ -2309,40 +2347,55 @@ def resize_images(x, height_factor, width_factor, data_format):
       height_factor: Positive integer.
       width_factor: Positive integer.
       data_format: One of `"channels_first"`, `"channels_last"`.
+      interpolation: A string, one of `nearest` or `bilinear`.
 
   Returns:
       A tensor.
 
   Raises:
-      ValueError: if `data_format` is neither
-          `channels_last` or `channels_first`.
+      ValueError: in case of incorrect value for
+        `data_format` or `interpolation`.
   """
   if data_format == 'channels_first':
-    original_shape = int_shape(x)
-    new_shape = array_ops.shape(x)[2:]
-    new_shape *= constant_op.constant(
-        np.array([height_factor, width_factor]).astype('int32'))
-    x = permute_dimensions(x, [0, 2, 3, 1])
-    x = image_ops.resize_nearest_neighbor(x, new_shape)
-    x = permute_dimensions(x, [0, 3, 1, 2])
-    x.set_shape((None, None, original_shape[2] * height_factor
-                 if original_shape[2] is not None else None,
-                 original_shape[3] * width_factor
-                 if original_shape[3] is not None else None))
-    return x
+    rows, cols = 2, 3
   elif data_format == 'channels_last':
-    original_shape = int_shape(x)
-    new_shape = array_ops.shape(x)[1:3]
-    new_shape *= constant_op.constant(
-        np.array([height_factor, width_factor]).astype('int32'))
-    x = image_ops.resize_nearest_neighbor(x, new_shape)
-    x.set_shape((None, original_shape[1] * height_factor
-                 if original_shape[1] is not None else None,
-                 original_shape[2] * width_factor
-                 if original_shape[2] is not None else None, None))
-    return x
+    rows, cols = 1, 2
   else:
-    raise ValueError('Invalid data_format: ' + str(data_format))
+    raise ValueError('Invalid `data_format` argument: %s' % (data_format,))
+
+  original_shape = int_shape(x)
+  new_shape = array_ops.shape(x)[rows:cols + 1]
+  new_shape *= constant_op.constant(
+      np.array([height_factor, width_factor], dtype='int32'))
+
+  if data_format == 'channels_first':
+    x = permute_dimensions(x, [0, 2, 3, 1])
+  if interpolation == 'nearest':
+    x = image_ops.resize_nearest_neighbor(x, new_shape)
+  elif interpolation == 'bilinear':
+    x = image_ops.resize_bilinear(x, new_shape)
+  else:
+    raise ValueError('interpolation should be one '
+                     'of "nearest" or "bilinear".')
+  if data_format == 'channels_first':
+    x = permute_dimensions(x, [0, 3, 1, 2])
+
+  if original_shape[rows] is None:
+    new_height = None
+  else:
+    new_height = original_shape[rows] * height_factor
+
+  if original_shape[cols] is None:
+    new_width = None
+  else:
+    new_width = original_shape[cols] * width_factor
+
+  if data_format == 'channels_first':
+    output_shape = (None, None, new_height, new_width)
+  else:
+    output_shape = (None, new_height, new_width, None)
+  x.set_shape(output_shape)
+  return x
 
 
 @tf_export('keras.backend.resize_volumes')
@@ -2881,7 +2934,7 @@ class Function(object):
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
-                       'time: %s', session_kwargs.keys())
+                       'time: %s', (session_kwargs.keys(),))
 
     self._callable_fn = None
     self._feed_arrays = None
@@ -3062,7 +3115,8 @@ def rnn(step_function,
         mask=None,
         constants=None,
         unroll=False,
-        input_length=None):
+        input_length=None,
+        time_major=False):
   """Iterates over the time dimension of a tensor.
 
   Arguments:
@@ -3091,6 +3145,13 @@ def rnn(step_function,
       constants: List of constant values passed at each step.
       unroll: Whether to unroll the RNN or to use a symbolic `while_loop`.
       input_length: If specified, assume time dimension is of this length.
+      time_major: Boolean. If true, the inputs and outputs will be in shape
+          `(timesteps, batch, ...)`, whereas in the False case, it will be
+          `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+          efficient because it avoids transposes at the beginning and end of the
+          RNN calculation. However, most TensorFlow data is batch-major, so by
+          default this function accepts input and emits output in batch-major
+          form.
 
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
@@ -3112,15 +3173,17 @@ def rnn(step_function,
   if ndim < 3:
     raise ValueError('Input should be at least 3D.')
   inputs_shape = inputs.shape
-  axes = [1, 0] + list(range(2, ndim))
-  inputs = array_ops.transpose(inputs, (axes))
+  if not time_major:
+    axes = [1, 0] + list(range(2, ndim))
+    inputs = array_ops.transpose(inputs, axes)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
     if len(mask.shape) == ndim - 1:
       mask = expand_dims(mask)
-    mask = array_ops.transpose(mask, axes)
+    if not time_major:
+      mask = array_ops.transpose(mask, axes)
 
   if constants is None:
     constants = []
@@ -3301,10 +3364,11 @@ def rnn(step_function,
     outputs = output_ta.stack()
     last_output = output_ta.read(last_time - 1)
 
-  axes = [1, 0] + list(range(2, len(outputs.shape)))
-  outputs = array_ops.transpose(outputs, axes)
+  if not time_major:
+    axes = [1, 0] + list(range(2, len(outputs.shape)))
+    outputs = array_ops.transpose(outputs, axes)
 
-  # Static shape inference: (samples, time, ...)
+  # Static shape inference: (samples, time, ...) or (time, sample, ...)
   outputs_shape = outputs.shape.as_list()
   outputs_shape[0] = inputs_shape[0]
   outputs_shape[1] = inputs_shape[1]
@@ -3788,19 +3852,23 @@ def _preprocess_conv1d_input(x, data_format):
   return x, tf_data_format
 
 
-def _preprocess_conv2d_input(x, data_format):
+def _preprocess_conv2d_input(x, data_format, force_transpose=False):
   """Transpose and cast the input before the conv2d.
 
   Arguments:
       x: input tensor.
       data_format: string, `"channels_last"` or `"channels_first"`.
+      force_transpose: Boolean. If True, the input will always be transposed
+          from NCHW to NHWC if `data_format` is `"channels_first"`.
+          If False, the transposition only occurs on CPU (GPU ops are
+          assumed to support NCHW).
 
   Returns:
       A tensor.
   """
   tf_data_format = 'NHWC'
   if data_format == 'channels_first':
-    if not _has_nchw_support():
+    if not _has_nchw_support() or force_transpose:
       x = array_ops.transpose(x, (0, 2, 3, 1))  # NCHW -> NHWC
     else:
       tf_data_format = 'NCHW'
@@ -3948,7 +4016,8 @@ def conv2d_transpose(x,
                      output_shape,
                      strides=(1, 1),
                      padding='valid',
-                     data_format=None):
+                     data_format=None,
+                     dilation_rate=(1, 1)):
   """2D deconvolution (i.e.
 
   transposed convolution).
@@ -3962,6 +4031,7 @@ def conv2d_transpose(x,
       data_format: string, `"channels_last"` or `"channels_first"`.
           Whether to use Theano or TensorFlow/CNTK data format
           for inputs/kernels/outputs.
+      dilation_rate: Tuple of 2 integers.
 
   Returns:
       A tensor, result of transposed 2D convolution.
@@ -3977,7 +4047,13 @@ def conv2d_transpose(x,
   if isinstance(output_shape, (tuple, list)):
     output_shape = array_ops.stack(output_shape)
 
-  x, tf_data_format = _preprocess_conv2d_input(x, data_format)
+  # `atrous_conv2d_transpose` only supports NHWC format, even on GPU.
+  if data_format == 'channels_first' and dilation_rate != (1, 1):
+    force_transpose = True
+  else:
+    force_transpose = False
+
+  x, tf_data_format = _preprocess_conv2d_input(x, data_format, force_transpose)
 
   if data_format == 'channels_first' and tf_data_format == 'NHWC':
     output_shape = (output_shape[0], output_shape[2], output_shape[3],
@@ -3992,13 +4068,18 @@ def conv2d_transpose(x,
   else:
     strides = (1, 1) + strides
 
-  x = nn.conv2d_transpose(
-      x,
-      kernel,
-      output_shape,
-      strides,
-      padding=padding,
-      data_format=tf_data_format)
+  if dilation_rate == (1, 1):
+    x = nn.conv2d_transpose(x, kernel, output_shape, strides,
+                            padding=padding,
+                            data_format=tf_data_format)
+  else:
+    assert dilation_rate[0] == dilation_rate[1]
+    x = nn.atrous_conv2d_transpose(
+        x,
+        kernel,
+        output_shape,
+        rate=dilation_rate[0],
+        padding=padding)
   if data_format == 'channels_first' and tf_data_format == 'NHWC':
     x = array_ops.transpose(x, (0, 3, 1, 2))  # NHWC -> NCHW
   return x

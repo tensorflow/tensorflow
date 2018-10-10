@@ -76,6 +76,26 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
+      // Don't constant fold unless it's a net positive or the output is small.
+      if (ShapeUtil::IsArray(instruction->shape())) {
+        int64 elements_in_removed_operands = 0;
+        for (HloInstruction* operand : instruction->operands()) {
+          if (operand->user_count() == 1 &&
+              ShapeUtil::IsArray(operand->shape())) {
+            elements_in_removed_operands +=
+                ShapeUtil::ElementsIn(operand->shape());
+          }
+        }
+        int64 elements_in_constant =
+            ShapeUtil::ElementsIn(instruction->shape());
+
+        static const int64 kMaximumConstantSizeElements = 2 * 1000 * 1000;
+        if (elements_in_constant > elements_in_removed_operands &&
+            elements_in_constant > kMaximumConstantSizeElements) {
+          continue;
+        }
+      }
+
       Literal result;
       // Currently we skip unimplemented operations.
       // TODO(b/35975797): Fold constant computations for more operations.
@@ -84,6 +104,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
                 << instruction->ToString();
         continue;
       }
+      VLOG(4) << "Constant folded: " << instruction->ToString();
 
       TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
           instruction, HloInstruction::CreateConstant(std::move(result))));

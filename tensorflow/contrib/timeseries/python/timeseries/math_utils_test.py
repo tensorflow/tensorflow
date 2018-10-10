@@ -223,10 +223,12 @@ class TestLookupTable(test.TestCase):
     hash_table = math_utils.TupleOfTensorsLookup(
         key_dtype=dtypes.int64,
         default_values=[[
-            array_ops.ones([3, 2], dtype=dtypes.float32), array_ops.zeros(
-                [5], dtype=dtypes.float64)
-        ], array_ops.ones([7, 7], dtype=dtypes.int64)],
+            array_ops.ones([3, 2], dtype=dtypes.float32),
+            array_ops.zeros([5], dtype=dtypes.float64)
+        ],
+                        array_ops.ones([7, 7], dtype=dtypes.int64)],
         empty_key=-1,
+        deleted_key=-2,
         name="test_lookup")
     def stack_tensor(base_tensor):
       return array_ops.stack([base_tensor + 1, base_tensor + 2])

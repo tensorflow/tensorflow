@@ -47,8 +47,9 @@ def run_sync_and_async(f):
 
   @functools.wraps(f)
   def decorator(self, *args, **kwargs):
-    with context.execution_mode(context.ASYNC):
-      f(self, *args, **kwargs)
+    # TODO(b/117110239): Re-enable.
+    # with context.execution_mode(context.ASYNC):
+    #   f(self, *args, **kwargs)
 
     with context.execution_mode(context.SYNC):
       f(self, *args, **kwargs)

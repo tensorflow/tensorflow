@@ -58,6 +58,7 @@ enum class OperatorType : uint8 {
   kL2Normalization,
   kL2Pool,
   kLstmCell,
+  kUnidirectionalSequenceLstm,
   kLocalResponseNormalization,
   kLog,
   kLogistic,
@@ -376,6 +377,13 @@ struct Operator {
   // looks unused.
   bool unresolved_outputs = false;
 
+  // A serialized tensorflow::NodeDef string.
+  // The field is filled only when importing from TensorFlow.
+  // It's guaranteed to be filled for `TensorFlowUnsupportedOperator`.
+  // It's not guaranteed to be filled for other ops. Ops created by graph
+  // transformations won't have TensorFlow NodeDef.
+  string tensorflow_node_def;
+
  protected:
   // Constructor used by subclasses for specific OperatorType's.
   explicit Operator(OperatorType t)
@@ -626,6 +634,11 @@ struct LstmCellOperator : Operator {
       : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
 
   KernelType kernel_type;
+};
+
+struct UnidirectionalSequenceLstmOperator : Operator {
+  UnidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
 };
 
 // Element-wise multiplication operator.
@@ -1535,8 +1548,6 @@ struct TensorFlowUnsupportedOperator : Operator {
 
   // The original TF operation type. Used for diagnostic purposes.
   string tensorflow_op;
-  // A serialized tensorflow::NodeDef string.
-  string tensorflow_node_def;
   // A boolean indicating if the unsupported op should be treated as quantized.
   bool quantized = false;
   // A boolean indicating if the unsupported op output should allow float values

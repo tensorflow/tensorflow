@@ -67,8 +67,7 @@ class XlaBinaryOp : public XlaOpKernel {
   // 'broadcast_helper', yielding arguments 'lhs' and 'rhs' that have the same
   // shape.
   static std::pair<xla::XlaOp, xla::XlaOp> Broadcast(
-      xla::XlaBuilder* builder, const xla::XlaOp& lhs, const xla::XlaOp& rhs,
-      const BCast& broadcast_helper);
+      xla::XlaOp lhs, xla::XlaOp rhs, const BCast& broadcast_helper);
 };
 
 }  // namespace tensorflow

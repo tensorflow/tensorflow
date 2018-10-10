@@ -51,12 +51,11 @@ REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
-    'keras_applications >= 1.0.5',
-    'keras_preprocessing >= 1.0.3',
+    'keras_applications >= 1.0.6',
+    'keras_preprocessing >= 1.0.5',
     'numpy >= 1.13.3',
     'six >= 1.10.0',
-    'protobuf >= 3.6.0',
-    'setuptools <= 39.1.0',
+    'protobuf >= 3.6.1',
     'tensorboard >= 1.11.0, < 1.12.0',
     'termcolor >= 1.1.0',
 ]
@@ -227,13 +226,14 @@ if os.name == 'nt':
 else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
-headers = (list(find_files('*.h', 'tensorflow/core')) +
-           list(find_files('*.h', 'tensorflow/stream_executor')) +
-           list(find_files('*.h', 'google/protobuf_archive/src')) +
-           list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*.h',
-                           'tensorflow/include/external/com_google_absl')) +
-           list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+headers = (
+    list(find_files('*.h', 'tensorflow/core')) + list(
+        find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+        find_files('*', 'third_party/eigen3')) + list(
+            find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,

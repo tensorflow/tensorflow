@@ -234,7 +234,8 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
   config.set_side_input_scale(alpha_side_input);
   TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));
 
-  VLOG(1) << "Rewriting " << conv->name() << " to " << new_conv->name();
+  VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
+          << new_conv->ToString();
   return HloInstruction::CreateGetTupleElement(conv->shape().tuple_shapes(0),
                                                new_conv, 0);
 }

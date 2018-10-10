@@ -344,6 +344,7 @@ py_test(
         ":pandas_io",
         ":prediction_keys",
         "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

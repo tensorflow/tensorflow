@@ -30,10 +30,14 @@ from tensorflow.python.util import tf_inspect
 
 
 def isbuiltin(f):
+  """Returns True if the argument is a built-in function."""
   # Note these return false for isinstance(f, types.BuiltinFunctionType) so we
   # need to specifically check for them.
   if f in (range, int, float):
     return True
+  if six.PY2:
+    if f in (xrange,):
+      return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
   if tf_inspect.isbuiltin(f):
@@ -61,6 +65,40 @@ def getnamespace(f):
     for name, cell in zip(freevars, closure):
       namespace[name] = cell.cell_contents
   return namespace
+
+
+def getqualifiedname(namespace, object_, max_depth=2):
+  """Returns the name by which a value can be referred to in a given namespace.
+
+  This function will recurse inside modules, but it will not search objects for
+  attributes. The recursion depth is controlled by max_depth.
+
+  Args:
+    namespace: Dict[str, Any], the namespace to search into.
+    object_: Any, the value to search.
+    max_depth: Optional[int], a limit to the recursion depth when searching
+        inside modules.
+  Returns: Union[str, None], the fully-qualified name that resolves to the value
+      o, or None if it couldn't be found.
+  """
+  for name, value in namespace.items():
+    # The value may be referenced by more than one symbol, case in which
+    # any symbol will be fine. If the program contains symbol aliases that
+    # change over time, this may capture a symbol that will later point to
+    # something else.
+    # TODO(mdan): Prefer the symbol that matches the value type name.
+    if object_ is value:
+      return name
+
+  # TODO(mdan): Use breadth-first search and avoid visiting modules twice.
+  if max_depth:
+    for name, value in namespace.items():
+      if tf_inspect.ismodule(value):
+        name_in_module = getqualifiedname(value.__dict__, object_,
+                                          max_depth - 1)
+        if name_in_module is not None:
+          return '{}.{}'.format(name, name_in_module)
+  return None
 
 
 def _get_unbound_function(m):

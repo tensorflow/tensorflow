@@ -29,6 +29,7 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
@@ -112,6 +113,7 @@ class TestCase(test.TestCase):
       fake_ag.__dict__['utils'] = utils
       fake_ag.__dict__['rewrite_graph_construction_error'] = (
           errors.rewrite_graph_construction_error)
+      fake_ag.__dict__['function_scope'] = function_wrapping.function_scope
       result.__dict__['ag__'] = fake_ag
       for k, v in namespace.items():
         result.__dict__[k] = v
@@ -126,7 +128,13 @@ class TestCase(test.TestCase):
   @contextlib.contextmanager
   def converted(self, entity, converter_module, namespace, *tf_symbols):
     node, ctx = self.prepare(entity, namespace)
-    node = converter_module.transform(node, ctx)
+
+    if not isinstance(converter_module, (list, tuple)):
+      converter_module = (converter_module,)
+    for m in converter_module:
+      node = m.transform(node, ctx)
+      node = converter.standard_analysis(node, ctx, is_initial=True)
+
     with self.compiled(node, namespace, *tf_symbols) as result:
       yield result
 

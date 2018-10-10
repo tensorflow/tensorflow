@@ -151,7 +151,7 @@ def make_input_layer_with_layer_annotations(original_input_layer):
     # spec and looking at the keys.
     spec = feature_column_lib.make_parse_example_spec(feature_columns)
     for key in spec.keys():
-      tensor = ops.convert_to_tensor(features[key])
+      tensor = ops.convert_to_tensor_or_indexed_slices(features[key])
       ops.add_to_collection(
           LayerAnnotationsCollectionNames.keys(
               LayerAnnotationsCollectionNames.UNPROCESSED_FEATURES), key)
@@ -248,7 +248,7 @@ def DNNClassifierWithLayerAnnotations(  # pylint: disable=invalid-name
       model. All items in the set should be instances of classes derived from
       `_FeatureColumn`.
     model_dir: Directory to save model parameters, graph and etc. This can also
-      be used to load checkpoints from the directory into a estimator to
+      be used to load checkpoints from the directory into an estimator to
       continue training a previously saved model.
     n_classes: Number of label classes. Defaults to 2, namely binary
       classification. Must be > 1.

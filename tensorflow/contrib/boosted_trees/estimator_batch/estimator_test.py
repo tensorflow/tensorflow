@@ -238,8 +238,8 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
         output_leaf_index=False)
 
     classifier.fit(input_fn=_train_input_fn, steps=15)
-    # When no override of global steps, 6 steps were used.
-    self._assert_checkpoint(classifier.model_dir, global_step=6)
+    # When no override of global steps, 5 steps were used.
+    self._assert_checkpoint(classifier.model_dir, global_step=5)
 
   def testOverridesGlobalSteps(self):
     learner_config = learner_pb2.LearnerConfig()

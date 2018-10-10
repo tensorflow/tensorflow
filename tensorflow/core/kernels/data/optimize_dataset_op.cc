@@ -154,12 +154,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        IteratorContext::Params params = ctx->params();
         params.lib = dataset()->lib_;
-        params.allocator_getter = ctx->allocator_getter();
         return dataset()->optimized_input_->MakeIterator(
             IteratorContext(params), prefix(), &input_impl_);
       }
@@ -167,14 +163,10 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        params.stats_aggregator_getter = ctx->stats_aggregator_getter();
+        IteratorContext::Params params = ctx->params();
         params.lib = dataset()->lib_;
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext iter_ctx(params);
-        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+        return input_impl_->GetNext(IteratorContext(params), out_tensors,
+                                    end_of_sequence);
       }
 
      protected:

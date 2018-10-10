@@ -48,6 +48,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                value_dtype,
                default_value,
                empty_key,
+               deleted_key,
                num_shards=1,
                checkpoint=True,
                name='ShardedMutableHashTable'):
@@ -62,6 +63,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                 value_dtype=value_dtype,
                 default_value=default_value,
                 empty_key=empty_key,
+                deleted_key=deleted_key,
                 checkpoint=checkpoint,
                 name='%s-%d-of-%d' % (name, i + 1, num_shards)))
       self._table_shards = table_shards

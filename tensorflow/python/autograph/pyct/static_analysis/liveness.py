@@ -14,8 +14,13 @@
 # ==============================================================================
 """Live variable analysis.
 
-This analysis attaches a set containing the live symbols that are live at the
-exit of control flow statements.
+See https://en.wikipedia.org/wiki/Live_variable_analysis for a definition of
+the following idioms: live variable, live in, live out, which are used
+throughout this file.
+
+This analysis attaches the following:
+ * symbols that are live at the exit of control flow statements
+ * symbols that are live at the entry of control flow statements
 
 Requires activity analysis.
 """
@@ -164,23 +169,34 @@ class Annotator(transformer.Base):
     self.current_analyzer = parent_analyzer
     return node
 
-  def _aggregate_successors_live_in(self, node):
+  def _block_statement_live_out(self, node):
     successors = self.current_analyzer.graph.stmt_next[node]
-    node_live_out = set()
+    stmt_live_out = set()
     for s in successors:
-      node_live_out.update(self.current_analyzer.in_[s])
-    anno.setanno(node, anno.Static.LIVE_VARS_OUT, frozenset(node_live_out))
-    node = self.generic_visit(node)
+      stmt_live_out.update(self.current_analyzer.in_[s])
+    anno.setanno(node, anno.Static.LIVE_VARS_OUT, frozenset(stmt_live_out))
+    return node
+
+  def _block_statement_live_in(self, node, entry_node):
+    cfg_node = self.current_analyzer.graph.index[entry_node]
+    stmt_live_in = frozenset(self.current_analyzer.in_[cfg_node])
+    anno.setanno(node, anno.Static.LIVE_VARS_IN, stmt_live_in)
     return node
 
   def visit_If(self, node):
-    return self._aggregate_successors_live_in(node)
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.test)
 
   def visit_For(self, node):
-    return self._aggregate_successors_live_in(node)
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.iter)
 
   def visit_While(self, node):
-    return self._aggregate_successors_live_in(node)
+    node = self.generic_visit(node)
+    node = self._block_statement_live_out(node)
+    return self._block_statement_live_in(node, node.test)
 
 
 def resolve(node, source_info, graphs):
