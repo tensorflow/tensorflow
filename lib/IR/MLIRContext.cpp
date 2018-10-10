@@ -947,23 +947,24 @@ static AffineExpr simplifyFloorDiv(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
-  if (lhsConst && rhsConst && rhsConst.getValue() >= 1)
+  if (!rhsConst || rhsConst.getValue() < 1)
+    return nullptr;
+
+  if (lhsConst)
     return getAffineConstantExpr(
         floorDiv(lhsConst.getValue(), rhsConst.getValue()), lhs.getContext());
 
   // Fold floordiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) floordiv 64 = i * 2.
-  if (rhsConst) {
-    if (rhsConst.getValue() == 1)
-      return lhs;
+  if (rhsConst.getValue() == 1)
+    return lhs;
 
-    auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
-    if (lBin && lBin.getKind() == AffineExprKind::Mul) {
-      if (auto lrhs = lBin.getRHS().dyn_cast<AffineConstantExpr>()) {
-        // rhsConst is known to be positive if a constant.
-        if (lrhs.getValue() % rhsConst.getValue() == 0)
-          return lBin.getLHS() * (lrhs.getValue() / rhsConst.getValue());
-      }
+  auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
+  if (lBin && lBin.getKind() == AffineExprKind::Mul) {
+    if (auto lrhs = lBin.getRHS().dyn_cast<AffineConstantExpr>()) {
+      // rhsConst is known to be positive if a constant.
+      if (lrhs.getValue() % rhsConst.getValue() == 0)
+        return lBin.getLHS() * (lrhs.getValue() / rhsConst.getValue());
     }
   }
 
@@ -974,23 +975,24 @@ static AffineExpr simplifyCeilDiv(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
-  if (lhsConst && rhsConst && rhsConst.getValue() >= 1)
+  if (!rhsConst || rhsConst.getValue() < 1)
+    return nullptr;
+
+  if (lhsConst)
     return getAffineConstantExpr(
         ceilDiv(lhsConst.getValue(), rhsConst.getValue()), lhs.getContext());
 
   // Fold ceildiv of a multiply with a constant that is a multiple of the
   // divisor. Eg: (i * 128) ceildiv 64 = i * 2.
-  if (rhsConst) {
-    if (rhsConst.getValue() == 1)
-      return lhs;
+  if (rhsConst.getValue() == 1)
+    return lhs;
 
-    auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
-    if (lBin && lBin.getKind() == AffineExprKind::Mul) {
-      if (auto lrhs = lBin.getRHS().dyn_cast<AffineConstantExpr>()) {
-        // rhsConst is known to be positive if a constant.
-        if (lrhs.getValue() % rhsConst.getValue() == 0)
-          return lBin.getLHS() * (lrhs.getValue() / rhsConst.getValue());
-      }
+  auto lBin = lhs.dyn_cast<AffineBinaryOpExpr>();
+  if (lBin && lBin.getKind() == AffineExprKind::Mul) {
+    if (auto lrhs = lBin.getRHS().dyn_cast<AffineConstantExpr>()) {
+      // rhsConst is known to be positive if a constant.
+      if (lrhs.getValue() % rhsConst.getValue() == 0)
+        return lBin.getLHS() * (lrhs.getValue() / rhsConst.getValue());
     }
   }
 
@@ -1001,18 +1003,18 @@ static AffineExpr simplifyMod(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
-  if (lhsConst && rhsConst && rhsConst.getValue() >= 1)
+  if (!rhsConst || rhsConst.getValue() < 1)
+    return nullptr;
+
+  if (lhsConst)
     return getAffineConstantExpr(mod(lhsConst.getValue(), rhsConst.getValue()),
                                  lhs.getContext());
 
   // Fold modulo of an expression that is known to be a multiple of a constant
   // to zero if that constant is a multiple of the modulo factor. Eg: (i * 128)
   // mod 64 is folded to 0, and less trivially, (i*(j*4*(k*32))) mod 128 = 0.
-  if (rhsConst) {
-    // rhsConst is known to be positive if a constant.
-    if (lhs.getLargestKnownDivisor() % rhsConst.getValue() == 0)
-      return getAffineConstantExpr(0, lhs.getContext());
-  }
+  if (lhs.getLargestKnownDivisor() % rhsConst.getValue() == 0)
+    return getAffineConstantExpr(0, lhs.getContext());
 
   return nullptr;
   // TODO(bondhugula): In general, this can be simplified more by using the GCD
