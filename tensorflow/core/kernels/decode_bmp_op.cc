@@ -91,8 +91,10 @@ class DecodeBmpOp : public OpKernel {
                 errors::InvalidArgument(
                     "Number of channels must be 1, 3 or 4, was ", channels_));
 
-    OP_REQUIRES(context, width > 0 && header_size >= 0,
+    OP_REQUIRES(context, width > 0,
                 errors::InvalidArgument("Width must be positive"));
+    OP_REQUIRES(context, height != 0,
+                errors::InvalidArgument("Height must be nonzero"));
     OP_REQUIRES(context, header_size >= 0,
                 errors::InvalidArgument("header size must be nonnegative"));
 

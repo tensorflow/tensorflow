@@ -25,12 +25,15 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status ResolveTensorFlowConcat::Run(Model* model,
+                                                  std::size_t op_index,
+                                                  bool* modified) {
+  *modified = false;
   auto concat_it = model->operators.begin() + op_index;
   const auto* tf_concat_op = concat_it->get();
   if (tf_concat_op->type != OperatorType::kConcat &&
       tf_concat_op->type != OperatorType::kConcatV2) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK_GE(tf_concat_op->inputs.size(), 2);
@@ -54,7 +57,7 @@ bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
   if (!axis_array.buffer) {
     AddMessageF("Waiting for the axis of %s to be resolved to a constant",
                 LogName(*tf_concat_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK(axis_array.data_type == ArrayDataType::kInt32);
@@ -79,7 +82,8 @@ bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
   }
   // Remove the TensorFlowConcat op
   model->operators.erase(concat_it);
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

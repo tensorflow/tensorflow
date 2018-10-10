@@ -32,7 +32,6 @@ from tensorflow.python.util import tf_inspect
 
 tf = utils.fake_tf()
 
-
 class ApiTest(test.TestCase):
 
   def setUp(self):
@@ -56,7 +55,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -76,7 +75,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -97,7 +96,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -123,7 +122,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -146,7 +145,7 @@ class ApiTest(test.TestCase):
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
@@ -180,19 +179,20 @@ class ApiTest(test.TestCase):
       @api.convert(recursive=True)
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
-          x //= api.converted_call(self.called_member, False, False, False, {},
-                                   self, a)
+          x //= api.converted_call(
+              self.called_member,
+              api.ConversionOptions.new(), self, a)
         return x
 
     tc = TestClass()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
       self.assertListEqual([0, 1], sess.run(x).tolist())
 
   def test_converted_call_builtin(self):
-    x = api.converted_call(range, False, False, False, {}, 3)
+    x = api.converted_call(range, api.ConversionOptions.new(), 3)
     self.assertEqual((0, 1, 2), tuple(x))
 
   def test_converted_call_function(self):
@@ -202,8 +202,8 @@ class ApiTest(test.TestCase):
         return -x
       return x
 
-    with self.test_session() as sess:
-      x = api.converted_call(test_fn, False, False, False, {},
+    with self.cached_session() as sess:
+      x = api.converted_call(test_fn, api.ConversionOptions.new(),
                              constant_op.constant(-1))
       self.assertEqual(1, sess.run(x))
 
@@ -219,9 +219,9 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(tc.test_method, False, False, False, {}, tc)
+      x = api.converted_call(tc.test_method, api.ConversionOptions.new(), tc)
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_method_by_class(self):
@@ -236,9 +236,11 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(TestClass.test_method, False, False, False, {}, tc)
+      x = api.converted_call(
+          TestClass.test_method,
+          api.ConversionOptions.new(), tc)
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_callable_object(self):
@@ -253,9 +255,9 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
-      x = api.converted_call(tc, False, False, False, {})
+      x = api.converted_call(tc, api.ConversionOptions.new())
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_constructor(self):
@@ -270,8 +272,8 @@ class ApiTest(test.TestCase):
           return -self.x
         return self.x
 
-    with self.test_session() as sess:
-      tc = api.converted_call(TestClass, False, False, False, {},
+    with self.cached_session() as sess:
+      tc = api.converted_call(TestClass, api.ConversionOptions.new(),
                               constant_op.constant(-1))
       # tc is now a converted object.
       x = tc.test_method()
@@ -282,13 +284,13 @@ class ApiTest(test.TestCase):
     def f(x):
       return x == 0
 
-    with self.test_session() as sess:
-      x = api.converted_call(f, False, False, False, {},
+    with self.cached_session() as sess:
+      x = api.converted_call(f, api.ConversionOptions.new(),
                              constant_op.constant(0))
       self.assertTrue(sess.run(x))
 
       converted_f = api.to_graph(f)
-      x = api.converted_call(converted_f, False, False, False, {},
+      x = api.converted_call(converted_f, api.ConversionOptions.new(),
                              constant_op.constant(0))
       self.assertTrue(sess.run(x))
 
@@ -301,7 +303,7 @@ class ApiTest(test.TestCase):
 
     compiled_fn = api.to_graph(test_fn)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = compiled_fn(constant_op.constant([4, 8]), 4)
       self.assertListEqual([1, 2], sess.run(x).tolist())
 

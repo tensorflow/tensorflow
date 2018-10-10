@@ -22,6 +22,7 @@ import collections
 from six.moves import range
 
 from tensorflow.contrib.linear_optimizer.python.ops.sharded_mutable_dense_hashtable import ShardedMutableDenseHashTable
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -151,7 +152,8 @@ class SdcaModel(object):
         default_value=[0.0, 0.0, 0.0, 0.0],
         # SdcaFprint never returns 0 or 1 for the low64 bits, so this a safe
         # empty_key (that will never collide with actual payloads).
-        empty_key=[0, 0])
+        empty_key=[0, 0],
+        deleted_key=[1, 1])
 
     summary.scalar('approximate_duality_gap', self.approximate_duality_gap())
     summary.scalar('examples_seen', self._hashtable.size())
@@ -400,14 +402,16 @@ class SdcaModel(object):
 
       sparse_weights = []
       sparse_indices = []
-      # If we have partitioned variables, keep a few lists of Tensors around
-      # that we need for the assign_add after the op call to
-      # gen_sdca_ops.sdca_optimizer().
-      num_partitions_by_var = []
-      p_assignments_by_var = []
-      gather_ids_by_var = []
-      for w, i in zip(self._slots['unshrinked_sparse_features_weights'],
-                      sparse_feature_indices):
+      # If we have partitioned variables, keep a few dictionaries of Tensors
+      # around that we need for the assign_add after the op call to
+      # gen_sdca_ops.sdca_optimizer().  These are keyed because we may have a
+      # mix of partitioned and un-partitioned variables.
+      num_partitions_by_var = {}
+      p_assignments_by_var = {}
+      gather_ids_by_var = {}
+      for v_num, (w, i) in enumerate(
+          zip(self._slots['unshrinked_sparse_features_weights'],
+              sparse_feature_indices)):
         # Append the sparse_indices (in full-variable space).
         sparse_idx = math_ops.cast(
             array_ops.unique(math_ops.cast(i, dtypes.int32))[0],
@@ -456,10 +460,10 @@ class SdcaModel(object):
           gather_ids = data_flow_ops.dynamic_partition(new_ids,
                                                        p_assignments,
                                                        num_partitions)
-          # Append these to the lists for use in the later update.
-          num_partitions_by_var.append(num_partitions)
-          p_assignments_by_var.append(p_assignments)
-          gather_ids_by_var.append(gather_ids)
+          # Add these into the dictionaries for use in the later update.
+          num_partitions_by_var[v_num] = num_partitions
+          p_assignments_by_var[v_num] = p_assignments
+          gather_ids_by_var[v_num] = gather_ids
 
           # Gather the weights from each partition.
           partition_gathered_weights = []
@@ -483,24 +487,44 @@ class SdcaModel(object):
         sparse_weights.append(batch_gathered_weights)
 
       # pylint: disable=protected-access
-      esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
-          sparse_example_indices,
-          sparse_feature_indices,
-          sparse_features_values,
-          self._convert_n_to_tensor(self._examples['dense_features']),
-          internal_convert_to_tensor(self._examples['example_weights']),
-          internal_convert_to_tensor(self._examples['example_labels']),
-          sparse_indices,
-          sparse_weights,
-          self._convert_n_to_tensor(self._slots[
-              'unshrinked_dense_features_weights']),
-          example_state_data,
-          loss_type=self._options['loss_type'],
-          l1=self._options['symmetric_l1_regularization'],
-          l2=self._symmetric_l2_regularization(),
-          num_loss_partitions=self._num_loss_partitions(),
-          num_inner_iterations=1,
-          adaptative=self._adaptive())
+      if compat.forward_compatible(year=2018, month=10, day=30):
+        esu, sfw, dfw = gen_sdca_ops.sdca_optimizer_v2(
+            sparse_example_indices,
+            sparse_feature_indices,
+            sparse_features_values,
+            self._convert_n_to_tensor(self._examples['dense_features']),
+            internal_convert_to_tensor(self._examples['example_weights']),
+            internal_convert_to_tensor(self._examples['example_labels']),
+            sparse_indices,
+            sparse_weights,
+            self._convert_n_to_tensor(self._slots[
+                'unshrinked_dense_features_weights']),
+            example_state_data,
+            loss_type=self._options['loss_type'],
+            l1=self._options['symmetric_l1_regularization'],
+            l2=self._symmetric_l2_regularization(),
+            num_loss_partitions=self._num_loss_partitions(),
+            num_inner_iterations=1,
+            adaptive=self._adaptive())
+      else:
+        esu, sfw, dfw = gen_sdca_ops.sdca_optimizer(
+            sparse_example_indices,
+            sparse_feature_indices,
+            sparse_features_values,
+            self._convert_n_to_tensor(self._examples['dense_features']),
+            internal_convert_to_tensor(self._examples['example_weights']),
+            internal_convert_to_tensor(self._examples['example_labels']),
+            sparse_indices,
+            sparse_weights,
+            self._convert_n_to_tensor(self._slots[
+                'unshrinked_dense_features_weights']),
+            example_state_data,
+            loss_type=self._options['loss_type'],
+            l1=self._options['symmetric_l1_regularization'],
+            l2=self._symmetric_l2_regularization(),
+            num_loss_partitions=self._num_loss_partitions(),
+            num_inner_iterations=1,
+            adaptative=self._adaptive())
       # pylint: enable=protected-access
 
       with ops.control_dependencies([esu]):

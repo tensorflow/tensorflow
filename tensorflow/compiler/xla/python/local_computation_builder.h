@@ -248,7 +248,8 @@ class LocalComputationBuilder {
       absl::Span<const std::pair<int64, int64> > padding,
       absl::Span<const int64> lhs_dilation,
       absl::Span<const int64> rhs_dilation,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count);
 
   LocalOp ConvertElementType(const LocalOp& operand,
                              PrimitiveType new_element_type);
@@ -277,6 +278,8 @@ class LocalComputationBuilder {
       const LocalComputation& local_computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64> > padding);
 
   LocalOp RngNormal(const LocalOp& mu, const LocalOp& sigma,

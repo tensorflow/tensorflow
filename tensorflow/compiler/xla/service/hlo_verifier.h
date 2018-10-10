@@ -151,15 +151,21 @@ class ShapeVerifier : public DfsHloVisitor {
 
 // HLO pass that verifies invariants of HLO instructions for each computation in
 // the module.
-class HloVerifier : public HloPassInterface {
+class HloVerifier : public HloModulePass {
  public:
   using ShapeVerifierFactory = std::function<std::unique_ptr<ShapeVerifier>()>;
 
-  explicit HloVerifier(bool layout_sensitive, bool allow_mixed_precision)
+  explicit HloVerifier(bool layout_sensitive, bool allow_mixed_precision,
+                       std::function<bool(const HloInstruction*)>
+                           instruction_can_change_layout_func = {})
       : shape_verifier_factory_([layout_sensitive, allow_mixed_precision] {
           return absl::make_unique<ShapeVerifier>(layout_sensitive,
                                                   allow_mixed_precision);
-        }) {}
+        }),
+        instruction_can_change_layout_func_(
+            std::move(instruction_can_change_layout_func)) {
+    CHECK(instruction_can_change_layout_func_ == nullptr || layout_sensitive);
+  }
 
   // Uses custom shape verification.
   explicit HloVerifier(ShapeVerifierFactory shape_verifier_factory)
@@ -172,22 +178,15 @@ class HloVerifier : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  // CHECKs various invariants of a fusion instruction.
-  Status CheckFusionInstruction(HloInstruction* fusion) const;
-
-  Status CheckWhileInstruction(HloInstruction* instruction);
-
-  Status CheckConditionalInstruction(HloInstruction* instruction);
-
-  // Checks that the non-scalar operand shapes are compatible to the output
-  // shape, i.e., that there are no implicit broadcasts of size-one dimensions.
-  Status CheckElementwiseInstruction(HloInstruction* instruction);
-
   // Creates a ShapeVerifier that checks that shapes match inferred
   // expectations. This is a factory function because ShapeVerifier,
   // being a DfsHloVisitor, is stateful. We want a clean object
   // for each run of the verifier.
   ShapeVerifierFactory shape_verifier_factory_;
+
+  // Determines whether an instruction can change layouts.
+  std::function<bool(const HloInstruction*)>
+      instruction_can_change_layout_func_;
 };
 
 }  // namespace xla

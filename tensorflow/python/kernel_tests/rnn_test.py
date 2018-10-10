@@ -516,7 +516,7 @@ class RNNTest(test.TestCase):
     fix_weights_generator.build((None, input_shape))
     weights = fix_weights_generator.get_weights()
 
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape))
       cell = keras.layers.SimpleRNNCell(output_shape)
@@ -524,7 +524,7 @@ class RNNTest(test.TestCase):
           cell, inputs, dtype=dtypes.float32)
       cell.set_weights(weights)
       [tf_out, tf_state] = sess.run([tf_out, tf_state], {inputs: x_train})
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       k_input = keras.Input(shape=(timestep, input_shape),
                             dtype=dtypes.float32)
       cell = keras.layers.SimpleRNNCell(output_shape)
@@ -535,8 +535,47 @@ class RNNTest(test.TestCase):
     self.assertAllClose(tf_out, k_out)
     self.assertAllClose(tf_state, k_state)
 
-  def testBasicLSTMCellInterchangeWithLSTMCell(self):
+  def testSimpleRNNCellAndBasicRNNCellComparison(self):
+    input_shape = 10
+    output_shape = 5
+    timestep = 4
+    batch = 20
+    (x_train, _), _ = testing_utils.get_test_data(
+        train_samples=batch,
+        test_samples=0,
+        input_shape=(timestep, input_shape),
+        num_classes=output_shape)
+    fix_weights_generator = keras.layers.SimpleRNNCell(output_shape)
+    fix_weights_generator.build((None, input_shape))
+    # The SimpleRNNCell contains 3 weights: kernel, recurrent_kernel, and bias
+    # The BasicRNNCell contains 2 weight: kernel and bias, where kernel is
+    # zipped [kernel, recurrent_kernel] in SimpleRNNCell.
+    keras_weights = fix_weights_generator.get_weights()
+    kernel, recurrent_kernel, bias = keras_weights
+    tf_weights = [np.concatenate((kernel, recurrent_kernel)), bias]
+
     with self.test_session(graph=ops_lib.Graph()) as sess:
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      cell = keras.layers.SimpleRNNCell(output_shape)
+      k_out, k_state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      cell.set_weights(keras_weights)
+      [k_out, k_state] = sess.run([k_out, k_state], {inputs: x_train})
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      inputs = array_ops.placeholder(
+          dtypes.float32, shape=(None, timestep, input_shape))
+      cell = rnn_cell_impl.BasicRNNCell(output_shape)
+      tf_out, tf_state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32)
+      cell.set_weights(tf_weights)
+      [tf_out, tf_state] = sess.run([tf_out, tf_state], {inputs: x_train})
+
+    self.assertAllClose(tf_out, k_out, atol=1e-5)
+    self.assertAllClose(tf_state, k_state, atol=1e-5)
+
+  def testBasicLSTMCellInterchangeWithLSTMCell(self):
+    with self.session(graph=ops_lib.Graph()) as sess:
       basic_cell = rnn_cell_impl.BasicLSTMCell(1)
       basic_cell(array_ops.ones([1, 1]),
                  state=basic_cell.get_initial_state(inputs=None,
@@ -548,7 +587,7 @@ class RNNTest(test.TestCase):
       prefix = os.path.join(self.get_temp_dir(), "ckpt")
       save_path = save.save(sess, prefix)
 
-    with self.test_session(graph=ops_lib.Graph()) as sess:
+    with self.session(graph=ops_lib.Graph()) as sess:
       lstm_cell = rnn_cell_impl.LSTMCell(1, name="basic_lstm_cell")
       lstm_cell(array_ops.ones([1, 1]),
                 state=lstm_cell.get_initial_state(inputs=None,

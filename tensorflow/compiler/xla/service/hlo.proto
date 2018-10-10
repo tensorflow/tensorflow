@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 53
+// Next ID: 58
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -124,8 +124,12 @@ message HloInstructionProto {
   // The string representation of the infeed configuration.
   bytes infeed_config = 27;
 
-  // Name of a global symbol to call, only present for kCustomCall.
+  // Name of a external target (eg, global symbol) to call, only present for
+  // kCustomCall.
   string custom_call_target = 28;
+
+  // Opaque string, only present for kCustomCall.
+  string custom_call_opaque = 53;
 
   // Shape of outfeed request.
   xla.Shape outfeed_shape = 29;
@@ -176,6 +180,17 @@ message HloInstructionProto {
 
   // Collective permute field.
   repeated SourceTarget source_target_pairs = 52;
+
+  // Sharding for kDomain instructions.
+  xla.OpSharding domain_entry_sharding = 54;
+  xla.OpSharding domain_exit_sharding = 55;
+
+  // For custom call this indicates that the layouts are constrained. If
+  // constrain_layout is true then the 'shape' field must contain a layout, and
+  // 'operand_shapes_with_layout' must contain a shape with layout for each
+  // operand.
+  bool constrain_layout = 56;
+  repeated Shape operand_shapes_with_layout = 57;
 }
 
 // Serialization of HloComputation.
@@ -307,6 +322,13 @@ message HeapSimulatorTrace {
   }
   repeated Event events = 1;
   bool whole_module_simulation = 2;
+}
+
+// An abstraction representing a set of HLO module built to run concurrently
+// across different devices.
+message HloModuleGroupProto {
+  string name = 1;
+  repeated HloModuleProto hlo_modules = 2;
 }
 
 // Serialization of BufferAssignment.

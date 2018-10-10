@@ -1101,6 +1101,14 @@ Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
   return Status::OK();
 }
 
+Status FunctionLibraryDefinition::ReplaceGradient(const GradientDef& grad) {
+  mutex_lock l(mu_);
+  bool added;
+  TF_RETURN_IF_ERROR(RemoveGradient(grad.function_name()));
+  TF_RETURN_IF_ERROR(AddGradientDefHelper(grad, &added));
+  return Status::OK();
+}
+
 Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
   const auto& i = function_defs_.find(func);
   if (i == function_defs_.end()) {
@@ -1294,6 +1302,18 @@ FunctionDef FunctionDefHelper::Create(
   for (const auto& r : ret_def) {
     fdef.mutable_ret()->insert({r.first, r.second});
   }
+
+  auto* op_def_registry = OpRegistry::Global();
+  // Check if any op is stateful.
+  for (const auto& n : node_def) {
+    const OpDef* op_def = nullptr;
+    auto status = op_def_registry->LookUpOpDef(n.op, &op_def);
+    // Lookup can fail if e.g. we are calling a function that was not yet
+    // defined.  If it happens, conservatively assume the op is stateful.
+    if (!status.ok() || op_def->is_stateful()) {
+      fdef.mutable_signature()->set_is_stateful(true);
+    }
+  }
   return fdef;
 }
 
@@ -1355,6 +1375,7 @@ FunctionDef FunctionDefHelper::Define(const string& name,
             strings::StrCat(src.ret[0], ":", o.first, ":", i - o.second.first);
       }
     }
+    if (op_def->is_stateful()) fdef.mutable_signature()->set_is_stateful(true);
   }
 
   // Returns

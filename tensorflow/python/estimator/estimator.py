@@ -41,7 +41,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import metrics
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
@@ -145,7 +144,7 @@ class Estimator(object):
           * `labels`: This is the second item returned from the `input_fn`
                  passed to `train`, `evaluate`, and `predict`. This should be a
                  single `tf.Tensor` or `dict` of same (for multi-head models).
-                 If mode is @{tf.estimator.ModeKeys.PREDICT}, `labels=None` will
+                 If mode is `tf.estimator.ModeKeys.PREDICT`, `labels=None` will
                  be passed. If the `model_fn`'s signature does not accept
                  `mode`, the `model_fn` must still be able to handle
                  `labels=None`.
@@ -329,7 +328,7 @@ class Estimator(object):
                                  run_config.TaskType.PS):
       raise ValueError(
           'Train has been called wrong configuration. Please use '
-          'tf.estimator.train_and_evaluate which calls propper API according '
+          'tf.estimator.train_and_evaluate which calls proper API according '
           'to given configuration. Current configuration: {}.'.format(
               self.config))
 
@@ -469,17 +468,41 @@ class Estimator(object):
 
       with ops.Graph().as_default():
         if self._eval_distribution:
+          # We want to create the iterations variable outside the distribution
+          # scope as that is just stored on the host and mainly used to drive
+          # the loop and doesn't need to be a Mirrored/Device variable.
+          training.get_or_create_steps_per_run_variable()
           with self._eval_distribution.scope():
             return _evaluate()
         else:
           return _evaluate()
 
   def _convert_eval_steps_to_hooks(self, steps):
+    """Create hooks to run correct number of steps in evaluation.
+
+    Args:
+      steps: number of steps to run during evaluation.
+
+    Raises:
+      ValueError: if steps is less than or equal to zero.
+
+    Returns:
+      List of hooks to be passed to the estimator.
+    """
     if steps is None:
       return []
 
     if steps <= 0:
       raise ValueError('Must specify steps > 0, given: {}'.format(steps))
+
+    # The hooks are declared as private in evaluation.py discourage the use
+    # by other libraries or open source users. This should be the only usage
+    # of the estimator evaluation hooks.
+    if self._eval_distribution:
+      steps_per_run = getattr(self._eval_distribution, 'steps_per_run', 1)
+      if steps_per_run > 1:
+        return [evaluation._MultiStepStopAfterNEvalsHook(  # pylint: disable=protected-access
+            num_evals=steps, steps_per_run=steps_per_run)]
     return [evaluation._StopAfterNEvalsHook(num_evals=steps)]  # pylint: disable=protected-access
 
   def predict(self,
@@ -489,6 +512,10 @@ class Estimator(object):
               checkpoint_path=None,
               yield_single_examples=True):
     """Yields predictions for given features.
+
+    Please note that interleaving two predict outputs does not work. See:
+    [issue/20506](
+    https://github.com/tensorflow/tensorflow/issues/20506#issuecomment-422208517)
 
     Args:
       input_fn: A function that constructs the features. Prediction continues
@@ -611,7 +638,7 @@ class Estimator(object):
     # pylint: disable=line-too-long,g-doc-args,g-doc-return-or-yield
     """Exports inference graph as a `SavedModel` into the given dir.
 
-    Note that `export_to_savedmodel` will be renamed to `export_to_saved_model`
+    Note that `export_to_savedmodel` will be renamed to `export_saved_model`
     in TensorFlow 2.0. At that time, `export_to_savedmodel` without the
     additional underscore will be available only through tf.compat.v1.
 
@@ -696,7 +723,7 @@ class Estimator(object):
     """
     # pylint: enable=line-too-long
     # TODO(b/111442174): `export_to_savedmodel` will be renamed to
-    # `export_to_saved_model` in TensorFlow 2.0. This function is a wrapper
+    # `export_saved_model` in TensorFlow 2.0. This function is a wrapper
     # while staging the new version; do not add any logic here.
     return self.export_savedmodel(
         export_dir_base,
@@ -780,9 +807,9 @@ class Estimator(object):
     those features and labels, and restores the given checkpoint
     (or, lacking that, the most recent checkpoint) into the graph.
     Only one of the modes is used for saving variables to the `SavedModel`
-    (order of preference: @{tf.estimator.ModeKeys#TRAIN$TRAIN},
-    @{tf.estimator.ModeKeys#EVAL$EVAL}, then
-    @{tf.estimator.ModeKeys#PREDICT$PREDICT}), such that up to three
+    (order of preference: `tf.estimator.ModeKeys.TRAIN`,
+    `tf.estimator.ModeKeys.EVAL`, then
+    `tf.estimator.ModeKeys.PREDICT`), such that up to three
     `tf.MetaGraphDefs` are saved with a single set of variables in a single
     `SavedModel` directory.
 
@@ -1078,7 +1105,7 @@ class Estimator(object):
     """Creates the global step tensor in graph.
 
     The global step tensor must be an integer type with name 'global_step' and
-    be added to the collection @{tf.GraphKeys#GLOBAL_STEP$GLOBAL_STEP}.
+    be added to the collection `tf.GraphKeys.GLOBAL_STEP`.
 
     Args:
       graph: The graph in which to create the global step tensor.
@@ -1391,6 +1418,36 @@ class Estimator(object):
         # It is expected to have one CheckpointSaverHook. If multiple, we pick
         # up the first one to add listener.
         saver_hooks[0]._listeners.extend(saving_listeners)  # pylint: disable=protected-access
+
+    # Add summary hooks to worker 0 if we are running with a master, to ensure
+    # that summaries are written at correct intervals even with long-running
+    # evaluations.
+    save_summary_steps = self._config.save_summary_steps
+    log_step_count_steps = self._config.log_step_count_steps
+    if (self._config.cluster_spec and self._config.cluster_spec.jobs and
+        (run_config.TaskType.MASTER in self._config.cluster_spec.jobs)):
+      # Update config values to prevent the default hooks from being created on
+      # the master or other workers.
+      save_summary_steps = 0
+      log_step_count_steps = None
+
+      if (self._config.task_type == run_config.TaskType.WORKER and
+          self._config.task_id == 0):
+        if (self._config.save_summary_steps and
+            self._config.save_summary_steps > 0):
+          worker_hooks.append(
+              training.SummarySaverHook(
+                  save_steps=self._config.save_summary_steps,
+                  output_dir=self._config.model_dir,
+                  scaffold=estimator_spec.scaffold))
+
+        if (self._config.log_step_count_steps and
+            self._config.log_step_count_steps > 0):
+          worker_hooks.append(
+              training.StepCounterHook(
+                  every_n_steps=self._config.log_step_count_steps,
+                  output_dir=self._config.model_dir))
+
     with training.MonitoredTrainingSession(
         master=self._config.master,
         is_chief=self._config.is_chief,
@@ -1400,9 +1457,9 @@ class Estimator(object):
         chief_only_hooks=(
             tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
         save_checkpoint_secs=0,  # Saving is handled by a hook.
-        save_summaries_steps=self._config.save_summary_steps,
+        save_summaries_steps=save_summary_steps,
         config=self._session_config,
-        log_step_count_steps=self._config.log_step_count_steps) as mon_sess:
+        log_step_count_steps=log_step_count_steps) as mon_sess:
       loss = None
       while not mon_sess.should_stop():
         _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
@@ -1471,6 +1528,7 @@ class Estimator(object):
         self._eval_distribution.__class__.__name__ == 'TPUStrategy')
 
     if is_tpu_strategy:
+      steps_per_run_variable = training.get_or_create_steps_per_run_variable()
       def step_fn(ctx, features, labels=None):
         """Runs one step of the eval computation and captures outputs."""
         estimator_spec = self._eval_distribution.call_for_each_tower(
@@ -1487,7 +1545,7 @@ class Estimator(object):
 
       # TODO(priyag): Fix eval step hook to account for steps_per_run.
       ctx = self._eval_distribution.run_steps_on_dataset(
-          step_fn, iterator, iterations=self._eval_distribution.steps_per_run)
+          step_fn, iterator, iterations=steps_per_run_variable)
       update_op = ctx.run_op
       eval_dict = ctx.non_tensor_outputs['eval_dict']
       grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
@@ -1653,7 +1711,7 @@ def _combine_distributed_scaffold(grouped_scaffold, distribution):
   def _unwrap_and_concat(value):
     value = nest.flatten(distribution.unwrap(value))
     if len(value) != 1:
-      return array_ops.concat(value)
+      return array_ops.concat(value, 0)
     return value[0]
 
   ready_op = distribution.call_for_each_tower(
@@ -1788,18 +1846,9 @@ def _extract_metric_update_ops(eval_dict, distribution=None):
   value_ops = {}
   # Sort metrics lexicographically so graph is identical every time.
   for name, value in sorted(six.iteritems(eval_dict)):
-    if isinstance(value, metrics.Metric):
-      metric_result = value.result()
-      # We expect only one update op for every metric when there is no
-      # distribution strategy.
-      metric_update = value.updates if distribution else value.updates[0]
-    else:
-      metric_result = value[0]
-      metric_update = value[1]
-
-    value_ops[name] = metric_result
+    value_ops[name] = value[0]
     update_ops.append(
-        distribution.group(metric_update) if distribution else metric_update)
+        distribution.group(value[1]) if distribution else value[1])
 
   update_op = control_flow_ops.group(*update_ops) if update_ops else None
   return update_op, value_ops

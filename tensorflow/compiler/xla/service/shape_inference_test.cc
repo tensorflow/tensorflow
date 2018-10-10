@@ -1618,11 +1618,35 @@ TEST_F(ShapeInferenceTest, BadSort) {
   auto values = ShapeUtil::MakeShape(F32, {5});
   StatusOr<Shape> statusor =
       ShapeInference::InferVariadicOpShape(HloOpcode::kSort, {&keys, &values});
-  ASSERT_FALSE(statusor.ok());
-
+  EXPECT_FALSE(statusor.ok());
   EXPECT_THAT(statusor.status().error_message(),
               HasSubstr("dimensions must match"))
       << statusor.status();
+}
+
+TEST_F(ShapeInferenceTest, BadSortValuesMismatch) {
+  auto keys = ShapeUtil::MakeShape(F32, {4});
+  auto values_good = ShapeUtil::MakeShape(F32, {4});
+  auto values_bad = ShapeUtil::MakeShape(F32, {5});
+  StatusOr<Shape> statusor = ShapeInference::InferVariadicOpShape(
+      HloOpcode::kSort, {&keys, &values_good, &values_bad});
+  EXPECT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("dimensions must match"))
+      << statusor.status();
+}
+
+TEST_F(ShapeInferenceTest, SortManyValues) {
+  auto keys = ShapeUtil::MakeShape(F32, {4});
+  auto values_s32 = ShapeUtil::MakeShape(S32, {4});
+  auto values_u32 = ShapeUtil::MakeShape(U32, {4});
+  StatusOr<Shape> statusor = ShapeInference::InferVariadicOpShape(
+      HloOpcode::kSort, {&keys, &values_s32, &values_u32});
+  EXPECT_IS_OK(statusor);
+  Shape inferred_shape = statusor.ValueOrDie();
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      inferred_shape,
+      ShapeUtil::MakeTupleShape({keys, values_s32, values_u32})));
 }
 
 class ScatterGatherShapeInferenceTest : public ShapeInferenceTest {

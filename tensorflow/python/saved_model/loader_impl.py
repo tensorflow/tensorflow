@@ -34,6 +34,7 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -144,7 +145,10 @@ def _get_main_op_tensor(
   return main_op_tensor
 
 
-@tf_export("saved_model.loader.maybe_saved_model_directory")
+@tf_export("saved_model.maybe_saved_model_directory",
+           "saved_model.loader.maybe_saved_model_directory")
+@deprecation.deprecated_endpoints(
+    "saved_model.loader.maybe_saved_model_directory")
 def maybe_saved_model_directory(export_dir):
   """Checks whether the provided export directory could contain a SavedModel.
 
@@ -165,7 +169,7 @@ def maybe_saved_model_directory(export_dir):
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
-@tf_export("saved_model.loader.load")
+@tf_export("saved_model.load", "saved_model.loader.load")
 def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 

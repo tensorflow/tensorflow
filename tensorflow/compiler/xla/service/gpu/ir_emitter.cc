@@ -179,6 +179,21 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
   bool is_atomic_integral = element_type == S32 || element_type == U32 ||
                             element_type == S64 || element_type == U64;
   llvm::Value* source = Load(source_address, "source");
+
+  // kCopy of RHS -> atomic store.
+  if (root_opcode == HloOpcode::kCopy &&
+      (element_type == F32 || is_atomic_integral) &&
+      computation.root_instruction()->operand(0)->opcode() ==
+          HloOpcode::kParameter &&
+      computation.root_instruction()->operand(0)->parameter_number() == 1) {
+    llvm::StoreInst* store = Store(source, output_address);
+    store->setAtomic(llvm::AtomicOrdering::Unordered);
+    // Derive a minimum alignment from the type. The optimizer can increase it
+    // later.
+    store->setAlignment(ShapeUtil::ByteSizeOfPrimitiveType(element_type));
+    return true;
+  }
+
   if (root_opcode == HloOpcode::kAdd) {
     // NVPTX supports atomicAdd on F32 and integer types.
     if (element_type == F32) {

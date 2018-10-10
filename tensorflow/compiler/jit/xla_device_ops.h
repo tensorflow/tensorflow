@@ -65,6 +65,16 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .HostMemory("resources"),   \
                           KERNEL);
 
+#define REGISTER_XLA_COMPILE_KERNEL(DEVICE, KERNEL, TYPES) \
+  REGISTER_KERNEL_BUILDER(Name("_XlaCompile")              \
+                              .Device(DEVICE)              \
+                              .HostMemory("constants")     \
+                              .HostMemory("resources"),    \
+                          KERNEL);
+
+#define REGISTER_XLA_RUN_KERNEL(DEVICE, KERNEL, TYPES) \
+  REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE), KERNEL);
+
 #define REGISTER_XLA_DEVICE_KERNELS(DEVICE, TYPES)                             \
   REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE), SendOp);               \
   REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE), RecvOp);               \
@@ -90,8 +100,14 @@ class XlaAssignVariableOp : public AsyncOpKernel {
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
       ResourceHandleOp<Var>);                                                  \
   REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_VarHandlesOp").Device(DEVICE).HostMemory("resources"),            \
+      ResourceHandlesOp<Var>);                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_ReadVariablesOp").Device(DEVICE).HostMemory("resources"),         \
+      ReadVariablesOp);                                                        \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("DestroyResourceOp").Device(DEVICE).HostMemory("resource"),         \
       DestroyResourceOp);                                                      \

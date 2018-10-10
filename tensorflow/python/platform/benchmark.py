@@ -27,6 +27,7 @@ import time
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.platform import app
@@ -180,6 +181,19 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
     _global_report_benchmark(
         name=name, iters=iters, cpu_time=cpu_time, wall_time=wall_time,
         throughput=throughput, extras=extras)
+
+
+@tf_export("test.benchmark_config")
+def benchmark_config():
+  """Returns a tf.ConfigProto for disabling the dependency optimizer.
+
+    Returns:
+      A TensorFlow ConfigProto object.
+  """
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.dependency_optimization = (
+      rewriter_config_pb2.RewriterConfig.OFF)
+  return config
 
 
 @tf_export("test.Benchmark")

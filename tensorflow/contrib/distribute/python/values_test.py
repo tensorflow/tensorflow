@@ -375,8 +375,9 @@ class PerDeviceDatasetTest(test.TestCase):
       combined_expected = []
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        combined_actual.extend(self.evaluate([
-            values.select_device(d, next_element) for d in devices]))
+        combined_actual.extend(
+            self.evaluate(
+                [values.select_device(d, next_element) for d in devices]))
         combined_expected.extend(expected_value)
 
       self.assertEqual(set(combined_expected), set(combined_actual))
@@ -640,7 +641,7 @@ class MirroredVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -743,7 +744,7 @@ class MirroredVariableTest(test.TestCase):
     if context.num_gpus() < 1 or context.executing_eagerly():
       self.skipTest("A GPU is not available for this test or it's eager mode.")
 
-    with self.test_session(
+    with self.session(
         graph=ops.Graph()) as sess, mirrored_strategy.MirroredStrategy(
             ["/device:GPU:0"]).scope():
       with ops.device("/device:GPU:0"):
@@ -826,7 +827,7 @@ class TowerLocalVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
@@ -849,7 +850,7 @@ class TowerLocalVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, tower_local = _make_tower_local(
           variable_scope.VariableAggregation.MEAN)
 

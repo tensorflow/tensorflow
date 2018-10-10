@@ -34,7 +34,7 @@ class AckermannTest(test.TestCase):
     self.assertEqual(len(ackermann.OP_LIST.op), 1)
     self.assertEqual(ackermann.OP_LIST.op[0].name, 'Ackermann')
 
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(ackermann.ackermann().eval(), b'A(m, 0) == A(m-1, 1)')
 
 

@@ -87,11 +87,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                     "Expected len(dense_defaults) == len(dense_keys) but got: ",
                     dense_default_tensors.size(), " vs. ", dense_keys_.size()));
 
-    std::vector<Tensor> dense_defaults;
-    dense_defaults.reserve(dense_default_tensors.size());
-    for (const Tensor& dense_default_t : dense_default_tensors) {
-      dense_defaults.push_back(dense_default_t);
-    }
+    std::vector<Tensor> dense_defaults(dense_default_tensors.begin(),
+                                       dense_default_tensors.end());
 
     for (int d = 0; d < dense_keys_.size(); ++d) {
       const Tensor& def_value = dense_defaults[d];
@@ -185,7 +182,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      auto map_fn = [this](IteratorContext* ctx,
+      auto map_fn = [this](IteratorContext* ctx, const string& prefix,
                            std::vector<Tensor> input_element,
                            std::vector<Tensor>* result, StatusCallback done) {
         (*ctx->runner())([this, ctx, input_element, result, done]() {
@@ -256,7 +253,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
               for (example::PerExampleFeatureStats feature_stats :
                    example_result.feature_stats) {
                 stats_aggregator->AddToHistogram(
-                    strings::StrCat("record_stats", ":features"),
+                    "features",
                     {static_cast<double>(feature_stats.features_count)});
                 stats_aggregator->IncrementCounter(
                     "features_count", "trainer", feature_stats.features_count);
@@ -264,7 +261,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                     "feature_values_count", "trainer",
                     feature_stats.feature_values_count);
                 stats_aggregator->AddToHistogram(
-                    strings::StrCat("record_stats", ":feature-values"),
+                    "feature-values",
                     {static_cast<double>(feature_stats.feature_values_count)});
               }
             }

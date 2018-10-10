@@ -89,6 +89,7 @@ def get_tower_context():
   """Returns the current TowerContext or None if in a cross-tower context.
 
   Note that execution:
+
   1. starts in the default (single-tower) tower context (this function
      will return the default TowerContext object);
   2. switches to cross-tower context (in which case this will return
@@ -121,6 +122,7 @@ def get_cross_tower_context():
   """Returns the current DistributionStrategy if in a cross-tower context.
 
   Note that execution:
+
   1. starts in the default (single-tower) tower context;
   2. switches to cross-tower context when entering a
      `with DistributionStrategy.scope():` block;

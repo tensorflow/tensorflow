@@ -31,11 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -77,7 +79,10 @@ Status FunctionalizeControlFlowForFunction(
     const string& func_name, const string& new_func_name,
     const protobuf::Map<string, tensorflow::AttrValue>& attrs,
     FunctionLibraryDefinition* fld, FunctionLibraryRuntime* flr,
-    std::map<string, string>* canonicalized_name_to_new_name) {
+    std::map<string, absl::optional<string>>* canonicalized_name_to_new_name,
+    bool* modified) {
+  *modified = false;
+
   // Convert the function to Graph.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(flr->Instantiate(func_name, AttrSlice(&attrs), &handle));
@@ -89,7 +94,20 @@ Status FunctionalizeControlFlowForFunction(
     }
   });
   const FunctionBody* body = flr->GetFunctionBody(handle);
-  const FunctionDef& fdef = body->fdef;
+  Graph* g = body->graph;
+
+  // Check if the graph has Switch or Merge node.
+  bool has_switch_or_merge = false;
+  for (Node* n : body->graph->nodes()) {
+    if (n->type_string() == "Switch" || n->type_string() == "Merge") {
+      has_switch_or_merge = true;
+      break;
+    }
+  }
+  // We cannot return here directly if the graph has no Switch/Merge.
+  // It might contain function call nodes, or If/While nodes with Switch/Merge
+  // in function body. We still need to rewrite those functions and modify
+  // corresponding nodes.
 
   // If any node has associated functions, functionalize them first.
   // Gather nodes with associated functions first, because rewriting those nodes
@@ -97,7 +115,7 @@ Status FunctionalizeControlFlowForFunction(
   // it.
   std::vector<std::pair<Node*, std::vector<AssociatedFunctionInfo>>>
       nodes_to_associated_functions;
-  for (auto* n : body->graph->nodes()) {
+  for (auto* n : g->nodes()) {
     auto associated_functions = GetAssociatedFunctions(*n, flr);
     if (!associated_functions.empty()) {
       nodes_to_associated_functions.push_back({n, associated_functions});
@@ -108,57 +126,86 @@ Status FunctionalizeControlFlowForFunction(
     auto associated_functions = iter.second;
     for (auto& associated_function : associated_functions) {
       string name = associated_function.func_name();
-      string canonicalized_name = Canonicalize(name, AttrSlice(&attrs));
+      string canonicalized_name =
+          Canonicalize(name, AttrSlice(&associated_function.attrs()));
       auto iter = canonicalized_name_to_new_name->find(canonicalized_name);
       string new_name;
+      bool function_modified;
       if (iter != canonicalized_name_to_new_name->end()) {
-        // If we already functionalized this function, skip functionalization
-        // but still rewrite the node.
-        new_name = iter->second;
+        // If we already processed this function, check if it was rewritten. If
+        // the function was rewritten, the entry will be non-empty. Otherwise
+        // the entry will be empty.
+        function_modified = iter->second.has_value();
+        if (function_modified) {
+          new_name = iter->second.value();
+        }
       } else {
-        new_name = fld->UniqueFunctionName(absl::StrCat(name, "_f15n_"));
+        if (associated_function.type() ==
+            AssociatedFunctionInfo::AssociatedFunctionType::kSymbolicGradient) {
+          // For SymbolicGradient, `name` is always "SymbolicGradient",
+          // which is not very informative. Use node name instead.
+          new_name = fld->UniqueFunctionName(absl::StrCat(n->name(), "_f15n_"));
+        } else {
+          new_name = fld->UniqueFunctionName(absl::StrCat(name, "_f15n_"));
+        }
         TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
-            name, new_name, attrs, fld, flr, canonicalized_name_to_new_name));
-        (*canonicalized_name_to_new_name)[canonicalized_name] = new_name;
+            name, new_name, associated_function.attrs(), fld, flr,
+            canonicalized_name_to_new_name, &function_modified));
+        if (function_modified) {
+          // If the function was rewritten, add an non-empty entry. So later we
+          // know we have processed this function, and it was rewritten into
+          // another function.
+          (*canonicalized_name_to_new_name)[canonicalized_name] = new_name;
+        } else {
+          // If the function was not rewritten, add an empty entry. So later
+          // we know we have processed this function, and it does not need to be
+          // rewritten.
+          (*canonicalized_name_to_new_name)[canonicalized_name] = absl::nullopt;
+        }
       }
-      // Notice that if "n" is a function call, RewriteAssociatedFunction() will
-      // delete it and create a new node instead, making "n" an invalid pointer.
-      // That's fine because in that case, associated_functions will only have
-      // one member and the loop will only run once.
-      TF_RETURN_IF_ERROR(RewriteAssociatedFunction(
-          body->graph, n, fld, associated_function, new_name));
+      if (function_modified) {
+        *modified = true;
+
+        // Notice that if "n" is a function call, RewriteAssociatedFunction()
+        // will delete it and create a new node instead, making "n" an invalid
+        // pointer. That's fine because in that case, associated_functions will
+        // only have one member and the loop will only run once.
+        TF_RETURN_IF_ERROR(RewriteAssociatedFunction(
+            g, n, fld, associated_function, new_name));
+      }
     }
   }
 
-  // Functionalize the function body.
-  if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
-        absl::StrCat("functionalize_control_flow_before_fdef_", func_name),
-        *body->graph, fld);
-  }
-  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(body->graph, fld));
-  if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
-        absl::StrCat("functionalize_control_flow_after_fdef_", func_name),
-        *body->graph, fld);
-  }
-  FunctionDef functionalized_fdef;
-  TF_RETURN_IF_ERROR(
-      GraphToFunctionDef(*body->graph, new_func_name, &functionalized_fdef));
+  if (has_switch_or_merge) {
+    *modified = true;
 
-  // Copy signature and ret from original FunctionDef.
-  *functionalized_fdef.mutable_signature() = fdef.signature();
-  *functionalized_fdef.mutable_ret() = fdef.ret();
-  functionalized_fdef.mutable_signature()->set_name(new_func_name);
+    // Functionalize the function body.
+    if (VLOG_IS_ON(4)) {
+      dump_graph::DumpGraphToFile(
+          absl::StrCat("functionalize_control_flow_before_fdef_", func_name),
+          *g, fld);
+    }
+    TF_RETURN_IF_ERROR(FunctionalizeControlFlow(g, fld));
+    if (VLOG_IS_ON(4)) {
+      dump_graph::DumpGraphToFile(
+          absl::StrCat("functionalize_control_flow_after_fdef_", func_name), *g,
+          fld);
+    }
+  }
 
-  // Add rewritten FunctionDef into library.
-  if (func_name == new_func_name) {
-    VLOG(2) << "Replacing function " << func_name;
+  if (*modified) {
+    // Add rewritten FunctionDef into library.
+    FunctionDef functionalized_fdef;
     TF_RETURN_IF_ERROR(
-        fld->ReplaceFunction(new_func_name, functionalized_fdef));
-  } else {
-    VLOG(2) << "Adding function " << new_func_name;
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(functionalized_fdef));
+        GraphToFunctionDef(*g, new_func_name, &functionalized_fdef));
+    if (func_name == new_func_name) {
+      VLOG(2) << "Replacing function " << func_name;
+      TF_RETURN_IF_ERROR(
+          fld->ReplaceFunction(new_func_name, functionalized_fdef));
+    } else {
+      VLOG(2) << "Adding function " << new_func_name;
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(functionalized_fdef));
+    }
   }
 
   return ret_status;
@@ -184,7 +231,7 @@ Status FunctionalizeControlFlowPass::Run(
           {"TPUCompile", "function"},
           {"XlaLaunch", "function"},
       };
-  std::map<string, string> canonicalized_name_to_new_name;
+  std::map<string, absl::optional<string>> canonicalized_name_to_new_name;
   for (Node* n : graph->nodes()) {
     auto it = kNodeTypeToFunctionAttrMapping->find(n->type_string());
     if (it == kNodeTypeToFunctionAttrMapping->end()) {
@@ -199,12 +246,15 @@ Status FunctionalizeControlFlowPass::Run(
               << ". Corresponding function: " << func.name();
       string new_func_name = options.flib_def->UniqueFunctionName(
           absl::StrCat(func.name(), "_f15n_"));
+      bool modified;
       TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
           func.name(), new_func_name, func.attr(), options.flib_def, flr,
-          &canonicalized_name_to_new_name));
-      n->ClearAttr(func_attr);
-      func.set_name(new_func_name);
-      n->AddAttr(func_attr, func);
+          &canonicalized_name_to_new_name, &modified));
+      if (modified) {
+        n->ClearAttr(func_attr);
+        func.set_name(new_func_name);
+        n->AddAttr(func_attr, func);
+      }
     }
   }
 

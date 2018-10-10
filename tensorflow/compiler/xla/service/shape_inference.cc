@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -577,7 +577,7 @@ Status ValidateDotDimensionNumbers(
   // Check that dimension numbers are unique.
   auto dims_unique = [](absl::Span<const int64> contracting_dims,
                         absl::Span<const int64> batch_dims) -> bool {
-    tensorflow::gtl::FlatSet<int64> dim_set;
+    absl::flat_hash_set<int64> dim_set;
     auto is_unique = [&dim_set](int64 i) -> bool {
       return dim_set.insert(i).second;
     };
@@ -1029,17 +1029,22 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case HloOpcode::kSort: {
       if (operand_shapes.size() == 1) {
         return *operand_shapes[0];
-      } else if (operand_shapes.size() == 2) {
-        if (!ShapeUtil::SameDimensions(*operand_shapes[0],
-                                       *operand_shapes[1])) {
-          return InvalidArgument(
-              "Sort keys and values dimensions must match. "
-              "Keys shape is: %s\n, Values shape is: %s",
-              ShapeUtil::HumanString(*operand_shapes[0]),
-              ShapeUtil::HumanString(*operand_shapes[1]));
+      } else {
+        for (int64 operand = 1; operand < operand_shapes.size(); ++operand) {
+          if (!ShapeUtil::SameDimensions(*operand_shapes[0],
+                                         *operand_shapes[operand])) {
+            return InvalidArgument(
+                "Sort keys and values dimensions must match. "
+                "Keys shape is: %s\n, Values shape (operand index %lld) is: %s",
+                ShapeUtil::HumanString(*operand_shapes[0]), operand,
+                ShapeUtil::HumanString(*operand_shapes[operand]));
+          }
         }
-        return ShapeUtil::MakeTupleShape(
-            {*operand_shapes[0], *operand_shapes[1]});
+        std::vector<Shape> operand_shape_values;
+        for (const Shape* operand_shape : operand_shapes) {
+          operand_shape_values.push_back(*operand_shape);
+        }
+        return ShapeUtil::MakeTupleShape(operand_shape_values);
       }
       return InvalidArgument("Unexpected number of operands for sort");
     }
@@ -1665,10 +1670,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   if (input_features != kernel_input_features * feature_group_count) {
     return InvalidArgument(
         "Expected LHS feature dimension (value %d) to match RHS "
-        "input feature dimension * feature_group_count (value %d); "
+        "input feature dimension * feature_group_count (value %d * %d = %d); "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_features, kernel_input_features * feature_group_count,
+        input_features, kernel_input_features, feature_group_count,
+        kernel_input_features * feature_group_count,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
@@ -2379,7 +2385,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
-        "Transpose dimensions not a permutation of the operand dimensions.");
+        "Transpose dimensions [%s] are not a permutation of the operand "
+        "dimensions (operand shape is %s).",
+        StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
   // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,

@@ -46,8 +46,8 @@ class DebugUtilsTest(test_util.TensorFlowTestCase):
       cls._b_init = constant_op.constant(
           cls._b_init_val, shape=[2, 1], name="b_init")
 
-      cls._a = variables.Variable(cls._a_init, name="a1")
-      cls._b = variables.Variable(cls._b_init, name="b")
+      cls._a = variables.VariableV1(cls._a_init, name="a1")
+      cls._b = variables.VariableV1(cls._b_init, name="b")
       cls._c = constant_op.constant(cls._c_val, shape=[2, 1], name="c")
 
       # Matrix product of a and b.

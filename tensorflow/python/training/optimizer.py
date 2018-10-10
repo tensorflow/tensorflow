@@ -385,13 +385,12 @@ class Optimizer(
 
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
-    takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
-    Minimization (and gradient computation) is done with respect to the
-    elements of `var_list` if not None, else with respect to any trainable
-    variables created during the execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    takes no arguments and computes the value to be minimized. Minimization (and
+    gradient computation) is done with respect to the elements of `var_list` if
+    not None, else with respect to any trainable variables created during the
+    execution of the `loss` function. `gate_gradients`, `aggregation_method`,
+    `colocate_gradients_with_ops` and `grad_loss` are ignored when eager
+    execution is enabled.
     @end_compatibility
     """
     grads_and_vars = self.compute_gradients(
@@ -472,7 +471,10 @@ class Optimizer(
 
       if var_list is None:
         var_list = tape.watched_variables()
-      grads = tape.gradient(loss_value, var_list, grad_loss)
+      # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+      # to be executed.
+      with ops.control_dependencies([loss_value]):
+        grads = tape.gradient(loss_value, var_list, grad_loss)
       return list(zip(grads, var_list))
 
     # Non-callable/Tensor loss case
@@ -586,7 +588,7 @@ class Optimizer(
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s." %
-                       ([str(v) for _, _, v in converted_grads_and_vars],))
+                       ([str(v) for _, v, _ in converted_grads_and_vars],))
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []
@@ -690,7 +692,7 @@ class Optimizer(
       update_ops = [
           op
           for grad, var in grads_and_vars
-          for op in distribution.unwrap(distribution.update(var, update, grad))
+          for op in distribution.update(var, update, grad, grouped=False)
       ]
 
       def finish(self, update_ops):
@@ -698,13 +700,13 @@ class Optimizer(
 
       non_slot_devices = distribution.non_slot_devices(var_list)
       finish_updates = distribution.update_non_slot(
-          non_slot_devices, finish, self, update_ops)
+          non_slot_devices, finish, self, update_ops, grouped=False)
       if global_step is None:
         apply_updates = distribution.group(finish_updates, name=name)
       else:
-        with ops.control_dependencies(distribution.unwrap(finish_updates)):
-          apply_updates = distribution.group(distribution.update(
-              global_step, state_ops.assign_add, 1, name=name))
+        with ops.control_dependencies(finish_updates):
+          apply_updates = distribution.update(
+              global_step, state_ops.assign_add, 1, name=name)
 
       if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):

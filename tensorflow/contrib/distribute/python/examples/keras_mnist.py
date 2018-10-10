@@ -113,7 +113,7 @@ def main(_):
                 distribute=strategy)
 
   # Train the model with the train dataset.
-  model.fit(x=train_ds, epochs=20, steps_per_epoch=310)
+  model.fit(x=train_ds, epochs=20, steps_per_epoch=468)
 
   # Evaluate the model with the eval dataset.
   score = model.evaluate(eval_ds, steps=10, verbose=0)

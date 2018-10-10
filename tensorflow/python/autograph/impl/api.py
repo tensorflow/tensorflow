@@ -18,7 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import wraps
+import collections
+import functools
 
 from enum import Enum
 
@@ -36,6 +37,41 @@ from tensorflow.python.util import tf_inspect
 # TODO(mdan): Properly document the type hints.
 # TODO(mdan): Reduce the type hint information to (module, type).
 # (currently we require (module + class name, type))
+
+
+class ConversionOptions(
+    collections.namedtuple('ConversionOptions',
+                           ('recursive', 'verbose', 'strip_decorators',
+                            'force_conversion', 'arg_types'))):
+  """Container for conversion flags.
+
+  Attributes:
+    recursive: bool, whether to recursively convert any user functions or
+        classes that the converted function may use.
+    verbose: bool, whether to log the compiled code.
+    strip_decorators: Tuple[Callable], contains decorators that should be in
+        excluded from the compiled output. By default, when converting a
+        function before the decorators are applied, the compiled output will
+        include those decorators.
+    force_conversion: bool, whether to force convertinng the target entity.
+        When force_conversion is turned off, the converter may decide to
+        return the function as-is.
+    arg_types: Optional[Dict[Text, Type]], type hints for symbols including
+        function arguments.
+  """
+
+  @classmethod
+  def new(cls,
+          recursive=False,
+          verbose=False,
+          strip_decorators=None,
+          force_conversion=False,
+          arg_types=None):
+    return cls(recursive=recursive,
+               verbose=verbose,
+               strip_decorators=strip_decorators or (),
+               force_conversion=force_conversion,
+               arg_types=arg_types or {})
 
 
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
@@ -59,9 +95,15 @@ def convert(recursive=False, verbose=False):
   def decorator(f):
     """Decorator implementation."""
 
-    @wraps(f)
+    @functools.wraps(f)
     def wrapper(*args, **kwargs):
-      return converted_call(f, recursive, verbose, True, {}, *args, **kwargs)
+      return converted_call(
+          f,
+          ConversionOptions.new(
+              recursive=recursive,
+              verbose=verbose,
+              force_conversion=True,
+          ), *args, **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -107,11 +149,11 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   def decorator(f):
     """Decorator implementation."""
 
-    @wraps(f)
+    @functools.wraps(f)
     def graph_wrapper(*args, **kwargs):
       return f(*args, **kwargs)
 
-    @wraps(f)
+    @functools.wraps(f)
     def py_func_wrapper(*args, **kwargs):
       if kwargs:
         raise NotImplementedError('RunMode.PY_FUNC does not yet support kwargs')
@@ -135,12 +177,11 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 
 # TODO(mdan): Move to a private, undocumented module.
-def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
-                   **kwargs):
+def converted_call(f, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
-  if not force_conversion and conversion.is_whitelisted_for_graph(f):
+  if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
     return f(*args, **kwargs)
 
   unknown_arg_value = object()  # Sentinel for arguments of unknown value
@@ -183,8 +224,8 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
       continue
     arg_class = arg.__class__
     # If arg_value_hints specifies any name, use that instead.
-    if name not in arg_types:
-      arg_types[name] = (arg_class.__name__, arg_class)
+    if name not in options.arg_types:
+      options.arg_types[name] = (arg_class.__name__, arg_class)
 
   # When called from within a decorator, this is the only indication that
   # the function is a method - it appears that the decorator is applied
@@ -199,23 +240,25 @@ def converted_call(f, recursive, verbose, force_conversion, arg_types, *args,
 
   converted_f = to_graph(
       target_entity,
-      recursive=recursive,
-      verbose=verbose,
+      recursive=options.recursive,
+      verbose=options.verbose,
       arg_values=arg_values,
-      arg_types=arg_types,
-      partial_types=partial_types)
+      arg_types=options.arg_types,
+      partial_types=partial_types,
+      strip_decorators=options.strip_decorators)
   return converted_f(*effective_args, **kwargs)
 
 
 # TODO(mdan): Rename: to_ops?
-# TODO(mdan): Looki into overloading as function and decorator, like tfe.defun.
+# TODO(mdan): Look into overloading as function and decorator, like tfe.defun?
 # TODO(mdan): Remove partial_types.
 def to_graph(e,
              recursive=True,
              verbose=False,
              arg_values=None,
              arg_types=None,
-             partial_types=None):
+             partial_types=None,
+             strip_decorators=None):
   """Converts a Python entity into equivalent code that uses TensorFlow ops.
 
   Supported Python entities include:
@@ -234,6 +277,8 @@ def to_graph(e,
     arg_types: Optional[Dict[Text, Type]], type hints for symbols including
         function arguments.
     partial_types: Set[Type], reserved for internal use.
+    strip_decorators: Tuple[Callable], same as
+        ConversionOptions.strip_decorators.
 
   Returns:
     Union[Callable, Type], the converted entity, which is the same kind as e
@@ -243,9 +288,13 @@ def to_graph(e,
   Raises:
     ValueError: If the entity could not be converted.
   """
+  if strip_decorators is None:
+    strip_decorators = ()
+  strip_decorators += (convert, do_not_convert, converted_call)
+
   program_ctx = converter.ProgramContext(
       recursive=recursive,
-      autograph_decorators=(convert, do_not_convert, converted_call),
+      autograph_decorators=strip_decorators,
       partial_types=partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
@@ -253,8 +302,9 @@ def to_graph(e,
                                                   arg_types)
 
   nodes = []
-  for dep in reversed(tuple(program_ctx.dependency_cache.values())):
-    nodes.extend(dep)
+  for dep in reversed(program_ctx.conversion_order):
+    nodes.extend(program_ctx.dependency_cache[dep])
+
   compiled_module, compiled_src = compiler.ast_to_object(
       nodes,
       source_prefix=program_ctx.required_imports,
@@ -322,7 +372,7 @@ def to_code(e,
   conversion.entity_to_graph(e, program_ctx, arg_values, arg_types)
 
   code = '\n'.join(
-      compiler.ast_to_source(dep, indentation)
-      for dep in reversed(tuple(program_ctx.dependency_cache.values())))
+      compiler.ast_to_source(program_ctx.dependency_cache[dep], indentation)
+      for dep in reversed(program_ctx.conversion_order))
 
   return program_ctx.required_imports + '\n\n' + code

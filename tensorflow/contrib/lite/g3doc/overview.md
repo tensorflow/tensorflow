@@ -25,7 +25,7 @@ models.
 
 TensorFlow Lite defines a new model file format, based on
 [FlatBuffers](https://google.github.io/flatbuffers/). FlatBuffers is an
-open-sourced, efficient cross platform serialization library. It is similar to
+efficient open-source cross-platform serialization library. It is similar to
 [protocol buffers](https://developers.google.com/protocol-buffers/?hl=en), but
 the primary difference is that FlatBuffers does not need a parsing/unpacking
 step to a secondary representation before you can access data, often coupled

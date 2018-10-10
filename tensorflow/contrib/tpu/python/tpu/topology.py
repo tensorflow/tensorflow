@@ -112,6 +112,11 @@ class Topology(object):
     return self._mesh_shape
 
   @property
+  def mesh_rank(self):
+    """Returns the number of dimensions in the mesh."""
+    return len(self._mesh_shape)
+
+  @property
   def device_coordinates(self):
     """Describes the mapping from TPU devices to topology coordinates.
 
@@ -124,6 +129,16 @@ class Topology(object):
       dimensions `(x, y, core number)`.
     """
     return self._device_coordinates
+
+  @property
+  def num_tasks(self):
+    """Returns the number of TensorFlow tasks in the TPU slice."""
+    return self._device_coordinates.shape[0]
+
+  @property
+  def num_tpus_per_task(self):
+    """Returns the number of TPU devices per task in the TPU slice."""
+    return self._device_coordinates.shape[1]
 
   def serialized(self):
     """Returns the serialized form of the topology."""

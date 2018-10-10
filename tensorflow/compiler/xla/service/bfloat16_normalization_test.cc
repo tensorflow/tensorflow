@@ -284,7 +284,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
       HloInstruction::CreateParameter(1, s32_shape, "value"));
 
   HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}), 0, key, value));
+      ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}), 0, key, {value}));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 

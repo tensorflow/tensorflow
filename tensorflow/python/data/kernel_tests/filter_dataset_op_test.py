@@ -22,6 +22,7 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -33,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class FilterDatasetTest(test.TestCase):
+class FilterDatasetTest(test_base.DatasetTestBase):
 
   def testFilterDataset(self):
     components = (
@@ -129,11 +130,6 @@ class FilterDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
-
   def testSparse(self):
 
     def _map_fn(i):
@@ -160,7 +156,7 @@ class FilterDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testReturnComponent(self):
+  def testShortCircuit(self):
     iterator = (
         dataset_ops.Dataset.zip(
             (dataset_ops.Dataset.range(10),

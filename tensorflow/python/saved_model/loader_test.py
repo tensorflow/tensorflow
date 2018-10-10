@@ -47,8 +47,8 @@ class SavedModelLoaderTest(test.TestCase):
   def setUp(self):
     """Write test SavedModels to a temp directory."""
     with session.Session(graph=ops.Graph()) as sess:
-      x = variables.Variable(5, name="x")
-      y = variables.Variable(11, name="y")
+      x = variables.VariableV1(5, name="x")
+      y = variables.VariableV1(11, name="y")
       z = x + y
       sess.run(variables.global_variables_initializer())
 
@@ -134,8 +134,8 @@ class SavedModelLoaderTest(test.TestCase):
   def test_restore_variables(self):
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
     with self.session(graph=ops.Graph()) as sess:
-      x = variables.Variable(0, name="x")
-      y = variables.Variable(0, name="y")
+      x = variables.VariableV1(0, name="x")
+      y = variables.VariableV1(0, name="y")
       z = x * y
 
       sess.run(variables.global_variables_initializer())
@@ -186,8 +186,10 @@ class SavedModelLoaderTest(test.TestCase):
     """
     path = _get_export_dir("no_variable_saved_model")
     with session.Session(graph=ops.Graph()) as sess:
-      x = variables.Variable(5, name="x", collections=["not_global_variable"])
-      y = variables.Variable(11, name="y", collections=["not_global_variable"])
+      x = variables.VariableV1(
+          5, name="x", collections=["not_global_variable"])
+      y = variables.VariableV1(
+          11, name="y", collections=["not_global_variable"])
       self.assertFalse(variables._all_saveable_objects())
       z = x + y
       sess.run(variables.variables_initializer([x, y]))

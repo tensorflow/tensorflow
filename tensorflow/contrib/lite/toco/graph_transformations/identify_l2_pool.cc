@@ -38,11 +38,13 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
 }
 }  // namespace
 
-bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status IdentifyL2Pool::Run(Model* model, std::size_t op_index,
+                                         bool* modified) {
+  *modified = false;
   const auto sqrt_it = model->operators.begin() + op_index;
   const auto* sqrt_op = sqrt_it->get();
   if (sqrt_op->type != OperatorType::kSqrt) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   CHECK_EQ(sqrt_op->inputs.size(), 1);
@@ -56,7 +58,7 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
     AddMessageF(
         "Giving up trying to identify L2Pool subgraph: "
         "expected AveragePool op, but Sqrt op has no preceding op");
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (prev_to_sqrt_op->type != OperatorType::kAveragePool) {
@@ -64,7 +66,7 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
         "Giving up trying to identify L2Pool subgraph: "
         "expected AveragePool op, got %s",
         LogName(*prev_to_sqrt_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   avpool_op = static_cast<const AveragePoolOperator*>(prev_to_sqrt_op);
@@ -77,7 +79,7 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
         "Giving up trying to identify L2Pool subgraph: "
         "expected Square op, got %s",
         LogName(*square_op));
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Create and emplace L2Pool node.
@@ -107,7 +109,8 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
   model->operators.erase(FindOperator(model, avpool_op));
   model->operators.erase(FindOperator(model, sqrt_op));
 
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

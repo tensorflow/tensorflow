@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -41,19 +42,18 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
   fused_node.set_op("MapDataset");
   fused_node.add_input(map_node.input(0));
 
-  auto copy_attribute = [](const string& attribute_name, const NodeDef& from,
-                           NodeDef* to) {
-    (*to->mutable_attr())[attribute_name] = from.attr().at(attribute_name);
-  };
-
   auto attr = map_node.attr().at("f");
   attr.mutable_func()->set_name(fused_function.signature().name());
   (*fused_node.mutable_attr())["f"] = std::move(attr);
 
-  copy_attribute("Targuments", map_node, &fused_node);
+  graph_utils::CopyAttribute("Targuments", map_node, &fused_node);
 
   for (auto key : {"output_shapes", "output_types"})
-    copy_attribute(key, map_node, &fused_node);
+    graph_utils::CopyAttribute(key, map_node, &fused_node);
+
+  if (const auto* attr =
+          gtl::FindOrNull(map_node.attr(), "use_inter_op_parallelism"))
+    (*fused_node.mutable_attr())["use_inter_op_parallelism"] = *attr;
 
   // Add the predicate output attributes.
   (*fused_node.mutable_attr())["output_types"]

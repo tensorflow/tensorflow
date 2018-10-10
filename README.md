@@ -29,7 +29,7 @@ subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 
 ## Installation
-*See [Installing TensorFlow](https://www.tensorflow.org/get_started/os_setup.html) for instructions on how to install our release binaries or how to build from source.*
+*See [Installing TensorFlow](https://www.tensorflow.org/install) for instructions on how to install our release binaries or how to build from source.*
 
 People who are a little more adventurous can also try our nightly binaries:
 
@@ -48,15 +48,12 @@ $ python
 ```
 ```python
 >>> import tensorflow as tf
+>>> tf.enable_eager_execution()
+>>> tf.add(1, 2)
+3
 >>> hello = tf.constant('Hello, TensorFlow!')
->>> sess = tf.Session()
->>> sess.run(hello)
+>>> hello.numpy()
 'Hello, TensorFlow!'
->>> a = tf.constant(10)
->>> b = tf.constant(32)
->>> sess.run(a + b)
-42
->>> sess.close()
 ```
 Learn more examples about how to do specific tasks in TensorFlow at the [tutorials page of tensorflow.org](https://www.tensorflow.org/tutorials/).
 
@@ -106,13 +103,13 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 
 
 ## For more information
+* [TensorFlow Website](https://www.tensorflow.org)
+* [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
+* [TensorFlow Model Zoo](https://github.com/tensorflow/models)
+* [TensorFlow Twitter](https://twitter.com/tensorflow)
 * [TensorFlow Blog](https://medium.com/tensorflow)
 * [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
-* [TensorFlow Model Zoo](https://github.com/tensorflow/models)
-* [TensorFlow MOOC on Udacity](https://www.udacity.com/course/deep-learning--ud730)
 * [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
-* [TensorFlow Twitter](https://twitter.com/tensorflow)
-* [TensorFlow Website](https://www.tensorflow.org)
 * [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 * [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
 
