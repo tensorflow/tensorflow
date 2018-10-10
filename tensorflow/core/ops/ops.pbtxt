@@ -15117,6 +15117,22 @@ op {
   is_stateful: true
 }
 op {
+  name: "LookupTableRemoveV2"
+  input_arg {
+    name: "table_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "keys"
+    type_attr: "Tin"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+  }
+  is_stateful: true
+}
+op {
   name: "LookupTableSize"
   input_arg {
     name: "table_handle"
@@ -17699,6 +17715,10 @@ op {
   name: "MutableDenseHashTableV2"
   input_arg {
     name: "empty_key"
+    type_attr: "key_dtype"
+  }
+  input_arg {
+    name: "deleted_key"
     type_attr: "key_dtype"
   }
   output_arg {
