@@ -38,6 +38,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.operators.control_flow import for_stmt
+from tensorflow.python.autograph.operators.control_flow import if_stmt
 from tensorflow.python.autograph.operators.control_flow import while_stmt
 from tensorflow.python.autograph.operators.data_structures import list_append
 from tensorflow.python.autograph.operators.data_structures import list_pop
