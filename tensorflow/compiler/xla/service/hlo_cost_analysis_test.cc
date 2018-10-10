@@ -556,5 +556,30 @@ TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
   EXPECT_EQ(analysis.bytes_accessed(), 8);
 }
 
+TEST_F(HloCostAnalysisTest, Gather) {
+  // Test the analysis on a gather.
+  XlaBuilder builder("gather");
+  Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+
+  auto operand = Parameter(&builder, 0, operand_shape, "operand");
+  auto indices = Parameter(&builder, 1, indices_shape, "indices");
+  GatherDimensionNumbers dim_numbers;
+  dim_numbers.add_offset_dims(1);
+  dim_numbers.add_collapsed_slice_dims(0);
+  dim_numbers.add_start_index_map(0);
+  dim_numbers.set_index_vector_dim(1);
+  Gather(operand, indices, dim_numbers, {1, 3});
+
+  auto hlo_module = BuildHloGraph(&builder);
+
+  // Run HLO cost analysis.
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  EXPECT_EQ(analysis.bytes_accessed(), 56);
+}
+
 }  // namespace
 }  // namespace xla
