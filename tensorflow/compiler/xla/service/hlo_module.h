@@ -92,6 +92,8 @@ class HloModule {
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
+  std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
+                                   const string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
