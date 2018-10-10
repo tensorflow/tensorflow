@@ -1005,6 +1005,21 @@ ENTRY Sort {
 
 )"
 },
+// Sort (Key, Value, Value, Value)
+{
+"SortManyValues",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024,16]{0,1} parameter(0)
+  values.0 = s32[1024,16]{0,1} parameter(1)
+  values.1 = u32[1024,16]{0,1} parameter(2)
+  values.2 = f32[1024,16]{0,1} parameter(3)
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}
+}
+
+)"
+},
 // Conditional
 {
 "Conditional",

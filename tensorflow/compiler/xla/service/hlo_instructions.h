@@ -418,7 +418,7 @@ class HloSortInstruction : public HloInstruction {
  public:
   explicit HloSortInstruction(const Shape& shape, int64 dimension,
                               HloInstruction* keys,
-                              HloInstruction* values = nullptr);
+                              absl::Span<HloInstruction* const> values = {});
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }

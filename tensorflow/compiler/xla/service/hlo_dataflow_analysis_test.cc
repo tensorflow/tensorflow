@@ -2346,7 +2346,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
   auto sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys,
+      {values}));
 
   BuildModuleAndRunAnalysis(builder.Build());
 

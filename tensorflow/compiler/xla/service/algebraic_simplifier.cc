@@ -2209,7 +2209,7 @@ Status AlgebraicSimplifierVisitor::HandleSort(HloInstruction* sort) {
     }
     // If it is key/value sort, the output of sort is a tuple.
     return ReplaceWithNewInstruction(
-        sort, HloInstruction::CreateTuple({operand, sort->mutable_operand(1)}));
+        sort, HloInstruction::CreateTuple(sort->operands()));
   }
   return Status::OK();
 }
