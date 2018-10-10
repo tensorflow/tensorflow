@@ -1130,7 +1130,6 @@ tensorflow::Status ConvertUnsupportedOperator(
     for (int i = 0; i < op_def->output_arg_size(); ++i) {
       string multiples = op_def->output_arg(i).number_attr();
       int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
-      LOG(INFO) << "dddddddd " << num_outputs;
       for (int j = 0; j < num_outputs; ++j) {
         if (next_output == 0) {
           op->outputs.push_back(node.name());  // Implicit :0.
@@ -1141,7 +1140,6 @@ tensorflow::Status ConvertUnsupportedOperator(
       }
     }
   } else {
-    LOG(INFO) << "nodef!!!!!!!!!!! ";
     op->outputs.push_back(node.name());  // Implicit :0.
   }
 
