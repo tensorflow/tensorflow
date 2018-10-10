@@ -40,7 +40,7 @@ converter.ProgramContext contains mutable state across related entities. For
 example, when converting several functions that call one another, the
 ProgramContext should be shared across these entities.
 
-Below is the overal flow at conversion:
+Below is the overall flow at conversion:
 
     program_ctx = ProgramContext(<entities to convert>, <global settings>, ...)
     while <program_ctx has more entities to convert>:
@@ -71,7 +71,10 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
+from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import live_values
@@ -86,43 +89,107 @@ from tensorflow.python.autograph.pyct.static_analysis import type_info
 # TODO(mdan): Add a test specific to this converter.
 
 
+class ConversionOptions(object):
+  """Immutable container for global conversion flags.
+
+  Attributes:
+    recursive: bool, whether to recursively convert any user functions or
+      classes that the converted function may use.
+    verbose: bool, whether to log the converted code.
+    strip_decorators: Tuple[Callable], contains decorators that should be in
+      excluded from the compiled output. By default, when converting a function
+      before the decorators are applied, the compiled output will include those
+      decorators.
+    force_conversion: bool, whether to force convertinng the target entity. When
+      force_conversion is turned off, the converter may decide to return the
+      function as-is.
+  """
+
+  def __init__(self,
+               recursive=False,
+               verbose=False,
+               strip_decorators=None,
+               force_conversion=False):
+    self.recursive = recursive
+    self.verbose = verbose
+    self.strip_decorators = strip_decorators or ()
+    self.force_conversion = force_conversion
+
+  def to_ast(self, namespace):
+    """Returns a representation of this object as an AST node.
+
+    The AST node encodes a constructor that would create an object with the
+    same contents.
+
+    Args:
+      namespace: Dict[str, Any], the namespace to use when serializing values to
+        names.
+
+    Returns:
+      ast.Node
+    """
+    template = """
+      constructor_name(
+          recursive=recursive_val,
+          verbose=verbose_val,
+          strip_decorators=strip_decorator_names,
+          force_conversion=force_conversion_val)
+    """
+
+    def as_qualified_name(o):
+      name = inspect_utils.getqualifiedname(namespace, o)
+      if not name:
+        raise ValueError('Could not locate entity {} in {}'.format(
+            o, namespace))
+      return name
+
+    strip_decorators_code = '({})'.format(', '.join(
+        tuple(as_qualified_name(o) for o in self.strip_decorators)))
+
+    expr_ast = templates.replace(
+        template,
+        constructor_name=parser.parse_expression(
+            as_qualified_name(ConversionOptions)),
+        recursive_val=parser.parse_expression(str(self.recursive)),
+        verbose_val=parser.parse_expression(str(self.verbose)),
+        strip_decorator_names=parser.parse_expression(strip_decorators_code),
+        force_conversion_val=parser.parse_expression(
+            str(self.force_conversion)))
+    return expr_ast[0].value
+
+
 class ProgramContext(object):
   """ProgramContext keeps track of converting function hierarchies.
 
   This object is mutable, and is updated during conversion. Not thread safe.
 
   Attributes:
-    recursive: bool, whether to recursively convert any functions that the
-        decorator function may call.
-    autograph_decorators: Tuple[Callable, ...], decorator functions that belong
-        to AutoGraph. These require special treatment.
+    options: ConversionOptions
     dependency_cache: Dict[Any, ast.AST], the original entities mapped to their
-        converted AST
+      converted AST
     additional_imports: Set[Any], additional entities which for any reason
-        cannot be attached after loading and need to be explicitly imported
-        in the generated code
-    name_map: Dict[str, str], map of original entity name to the name of
-        their converted counterparts
-    autograph_module: Module, a reference to the autograph module. This
-        needs to be specified by the caller to avoid circular dependencies.
+      cannot be attached after loading and need to be explicitly imported in the
+      generated code
+    name_map: Dict[str, str], map of original entity name to the name of their
+      converted counterparts
+    autograph_module: Module, a reference to the autograph module. This needs to
+      be specified by the caller to avoid circular dependencies.
     uncompiled_modules: Set[Tuple[str, ...]], with each tuple representing the
-        fully qualified name of a package containing functions that will not be
-        compiled.
+      fully qualified name of a package containing functions that will not be
+      compiled.
     required_imports: str, containing an import statement on each line. These
-        are all the imports necessary for the compiled code to run, in addition
-        to the closures of each entity, which are attached dynamically.
+      are all the imports necessary for the compiled code to run, in addition to
+      the closures of each entity, which are attached dynamically.
   """
 
   def __init__(
       self,
-      recursive,
-      autograph_decorators,
+      options,
       partial_types,
       autograph_module,
       uncompiled_modules,
   ):
-    self.recursive = recursive
-    self.autograph_decorators = autograph_decorators
+    self.options = options
     self.partial_types = partial_types if partial_types else ()
     self.autograph_module = autograph_module
     self.uncompiled_modules = uncompiled_modules
@@ -140,7 +207,7 @@ class ProgramContext(object):
                      tuple(self.additional_imports))
 
   def new_namer(self, namespace):
-    return naming.Namer(namespace, self.recursive, self.name_map,
+    return naming.Namer(namespace, self.options.recursive, self.name_map,
                         self.partial_types)
 
   def update_name_map(self, namer):
@@ -294,7 +361,7 @@ def standard_analysis(node, context, is_initial=False):
     node: ast.AST
     context: converter.EntityContext
     is_initial: bool, whether this is the initial analysis done on the input
-        source code
+      source code
 
   Returns:
     ast.AST, same as node, with the static analysis annotations added

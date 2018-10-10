@@ -145,7 +145,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.recursive:
+  if program_ctx.options.recursive:
     while True:
       candidate = None
       for obj in program_ctx.name_map.keys():
@@ -256,7 +256,7 @@ def _add_self_references(namespace, autograph_module):
     # internal modules.
     ag_internal = imp.new_module('autograph')
     ag_internal.converted_call = autograph_module.converted_call
-    ag_internal.ConversionOptions = autograph_module.ConversionOptions
+    ag_internal.ConversionOptions = converter.ConversionOptions
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (

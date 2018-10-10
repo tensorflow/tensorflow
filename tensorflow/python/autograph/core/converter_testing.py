@@ -94,21 +94,13 @@ class TestCase(test.TestCase):
       self.dynamic_calls.append(args)
       return 7
 
-    class ConversionOptions(object):
-      """Mock version of api.ConversionOptions."""
-
-      def __init__(self, recursive):
-        self.recursive = recursive
-
-      @classmethod
-      def new(cls, recursive):
-        cls(recursive)
-
     try:
       result, source = compiler.ast_to_object(node, include_source_map=True)
 
+      # TODO(mdan): Move this into self.prepare()
       result.tf = self.make_fake_mod('fake_tf', *symbols)
-      fake_ag = self.make_fake_mod('fake_ag', converted_call, ConversionOptions)
+      fake_ag = self.make_fake_mod('fake_ag', converted_call,
+                                   converter.ConversionOptions)
       fake_ag.__dict__.update(operators.__dict__)
       fake_ag.__dict__['utils'] = utils
       fake_ag.__dict__['rewrite_graph_construction_error'] = (
@@ -161,14 +153,16 @@ class TestCase(test.TestCase):
               arg_types=None,
               owner_type=None,
               recursive=True,
-              autograph_decorators=()):
+              strip_decorators=()):
+    namespace['ConversionOptions'] = converter.ConversionOptions
+
     node, source = parser.parse_entity(test_fn)
     node = node.body[0]
     if namer is None:
       namer = FakeNamer()
     program_ctx = converter.ProgramContext(
-        recursive=recursive,
-        autograph_decorators=autograph_decorators,
+        options=converter.ConversionOptions(
+            recursive=recursive, strip_decorators=strip_decorators),
         partial_types=None,
         autograph_module=None,
         uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)

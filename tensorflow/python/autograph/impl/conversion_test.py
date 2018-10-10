@@ -34,8 +34,7 @@ class ConversionTest(test.TestCase):
 
   def _simple_program_ctx(self):
     return converter.ProgramContext(
-        recursive=True,
-        autograph_decorators=(),
+        options=converter.ConversionOptions(recursive=True),
         partial_types=(),
         autograph_module=api,
         uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
