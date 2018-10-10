@@ -104,7 +104,8 @@ class BufferInfo {
  private:
   BufferInfo() = default;
 
-  enum class Kind : unsigned {
+  // Enum type needs to match size of member "size_" so bitfields get merged.
+  enum class Kind : uint64 {
     kConstant,
     kTempBuffer,
     kEntryParameter,
