@@ -42,21 +42,19 @@ class MatchingFilesDatasetSerializationTest(
                                 *[str(dir_name) for dir_name in range(j)])
         if not os.path.exists(new_base):
           os.makedirs(new_base)
-        for f in ['a.txt', 'b.py', 'c.pyc']:
+        child_files = ['a.py', 'b.pyc'] if j < depth - 1 else ['c.txt', 'd.log']
+        for f in child_files:
           filename = os.path.join(new_base, f)
           open(filename, 'w').close()
 
-    patterns = []
-    for i in range(depth):
-      pattern = os.path.join(tmp_dir,
-                             os.path.join(*['**' for _ in range(i + 1)]),
-                             '*.txt')
-      patterns.append(pattern)
+    patterns = [
+        os.path.join(tmp_dir, os.path.join(*['**' for _ in range(depth)]),
+                     suffix) for suffix in ['*.txt', '*.log']]
 
-    num_outputs = width * depth
+    num_outputs = width * len(patterns)
     self.run_core_tests(
         lambda: self._build_iterator_graph(patterns),
-        lambda: self._build_iterator_graph(patterns[0:depth // 2]), num_outputs)
+        lambda: self._build_iterator_graph(patterns[0:1]), num_outputs)
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
