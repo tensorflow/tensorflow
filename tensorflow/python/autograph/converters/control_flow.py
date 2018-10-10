@@ -49,12 +49,23 @@ class ControlFlowTransformer(converter.Base):
 
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
+    if len(returns) == 1:
+      template = """
+        return retval
+      """
+      return_stmt = templates.replace(template, retval=returns[0])
+    else:
+      template = """
+        return (retvals,)
+      """
+      return_stmt = templates.replace(template, retvals=returns)
+
     if aliased_orig_names:
       template = """
         def body_name():
           aliased_new_names, = aliased_orig_names,
           body
-          return (returns,)
+          return_stmt
       """
       return templates.replace(
           template,
@@ -62,20 +73,20 @@ class ControlFlowTransformer(converter.Base):
           body=body,
           aliased_orig_names=aliased_orig_names,
           aliased_new_names=aliased_new_names,
-          returns=returns)
+          return_stmt=return_stmt)
     else:
       template = """
         def body_name():
           body
-          return (returns,)
+          return_stmt
       """
       return templates.replace(
-          template, body_name=body_name, body=body, returns=returns)
+          template, body_name=body_name, body=body, return_stmt=return_stmt)
 
   def _create_cond_expr(self, results, test, body_name, orelse_name):
     if results is not None:
       template = """
-        results = ag__.utils.run_cond(test, body_name, orelse_name)
+        results = ag__.if_stmt(test, body_name, orelse_name)
       """
       return templates.replace(
           template,
@@ -85,7 +96,7 @@ class ControlFlowTransformer(converter.Base):
           orelse_name=orelse_name)
     else:
       template = """
-        ag__.utils.run_cond(test, body_name, orelse_name)
+        ag__.if_stmt(test, body_name, orelse_name)
       """
       return templates.replace(
           template, test=test, body_name=body_name, orelse_name=orelse_name)
@@ -111,7 +122,7 @@ class ControlFlowTransformer(converter.Base):
       elif s.is_composite():
         # Special treatment for compound objects: if any of their owner entities
         # are live, then they are outputs as well.
-        if any(owner in live_out for owner in s.owner_set):
+        if live_out & s.owner_set:
           returned_from_cond.add(s)
 
     need_alias_in_body = body_scope.modified & defined_in
@@ -152,7 +163,6 @@ class ControlFlowTransformer(converter.Base):
     returned_from_cond = tuple(returned_from_cond)
     if returned_from_cond:
       if len(returned_from_cond) == 1:
-        # TODO(mdan): Move this quirk into the operator implementation.
         cond_results = returned_from_cond[0]
       else:
         cond_results = gast.Tuple([s.ast() for s in returned_from_cond], None)
@@ -171,8 +181,9 @@ class ControlFlowTransformer(converter.Base):
       # actually has some return value as well.
       cond_results = None
       # TODO(mdan): This doesn't belong here; it's specific to the operator.
-      returned_from_body = templates.replace_as_expression('tf.constant(1)')
-      returned_from_orelse = templates.replace_as_expression('tf.constant(1)')
+      returned_from_body = (templates.replace_as_expression('tf.constant(1)'),)
+      returned_from_orelse = (
+          templates.replace_as_expression('tf.constant(1)'),)
 
     body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
     orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)
