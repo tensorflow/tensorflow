@@ -100,8 +100,13 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        Status ret;
         FileSystem* fs;
+
+        TF_RETURN_IF_ERROR(ctx->env()->GetFileSystemForFile(
+            dataset()->patterns_[(current_pattern_index_ > 0)
+                                     ? current_pattern_index_ - 1
+                                     : 0],
+            &fs));
 
         while (!filepath_queue_.empty() ||
                current_pattern_index_ < dataset()->patterns_.size()) {
@@ -111,13 +116,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             PathStatus current_path = filepath_queue_.top();
             filepath_queue_.pop();
 
-            TF_RETURN_IF_ERROR(
-                ctx->env()->GetFileSystemForFile(current_path.first, &fs));
-
             if (!current_path.second) {
               Tensor filepath_tensor(ctx->allocator({}), DT_STRING, {});
 
-              // Replace the forward slash by the backslash for Windows path
+              // Replace the forward slash with the backslash for Windows path
               if (dataset()->patterns_[current_pattern_index_ - 1].find('\\') !=
                   std::string::npos) {
                 std::replace(current_path.first.begin(),
@@ -133,13 +135,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
             // In this case, current_path is a directory. Then continue the
             // search.
-            ret.Update(
+            TF_RETURN_IF_ERROR(
                 UpdateIterator(ctx, fs, current_path.first, current_pattern_));
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
-            TF_RETURN_IF_ERROR(
-                ctx->env()->GetFileSystemForFile(current_pattern_, &fs));
 
             // Windows paths contain backslashes and Windows APIs accept forward
             // and backslashes equivalently, so we convert the pattern to use
@@ -163,16 +163,15 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
               current_dir = ".";
               current_pattern_ = io::JoinPath(current_dir, current_pattern_);
             }
-            std::cout << "Input pattern: " << current_pattern_
-                      << "; Current dir: " << current_dir << std::endl;
 
-            ret.Update(UpdateIterator(ctx, fs, current_dir, current_pattern_));
+            TF_RETURN_IF_ERROR(
+                UpdateIterator(ctx, fs, current_dir, current_pattern_));
             ++current_pattern_index_;
           }
         }
 
         *end_of_sequence = true;
-        return ret;
+        return Status::OK();
       }
 
      protected:
@@ -259,14 +258,13 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           const string& current_dir = current_path.first;
           std::vector<string> children;
           Status s = fs->GetChildren(current_dir, &children);
-          std::cout << "GetChildren status: " << s.ToString()
-                    << "; Children size: " << children.size()
-                    << "; Heap size: " << filepath_queue_.size() << std::endl;
           ret.Update(s);
 
           // If GetChildren() fails, continue the next search.
-          if (!s.ok()) {
+          if (ret.code() == error::NOT_FOUND) {
             continue;
+          } else if (!ret.ok()) {
+            return ret;
           }
 
           // children_dir_status holds is_dir status for children. It can have
@@ -304,7 +302,6 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             const string& child_dir_path =
                 io::JoinPath(current_dir, children[i]);
             const Status& child_dir_status = children_dir_status[i];
-            std::cout << "Child dir path: " << child_dir_path << std::endl;
 
             // If the IsDirectory call was cancelled we bail.
             if (child_dir_status.code() == tensorflow::error::CANCELLED) {
