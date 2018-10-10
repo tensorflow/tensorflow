@@ -350,6 +350,7 @@ tf_cc_test(
     deps = [
         ":tflite_diff_flags",
         ":tflite_diff_util",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -359,6 +360,7 @@ cc_binary(
     deps = [
         ":tflite_diff_flags",
         ":tflite_diff_util",
+        "//tensorflow/core:lib",
     ],
 )
 
