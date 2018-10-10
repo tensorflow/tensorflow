@@ -679,10 +679,6 @@ class AstToCfg(gast.NodeVisitor):
     self.cfgs[node] = self.builder.build()
     self.builder = self.builder_stack.pop()
 
-  def visit_Lambda(self, node):
-    # TODO(mdan): Treat like FunctionDef? That would be a separate CFG.
-    raise NotImplementedError()
-
   def visit_Return(self, node):
     self._process_exit_statement(node, gast.FunctionDef)
 
