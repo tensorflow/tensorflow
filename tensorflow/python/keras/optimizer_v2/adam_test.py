@@ -329,5 +329,16 @@ class AdamOptimizerTest(test.TestCase):
       # for v1 and v2 respectively.
       self.assertEqual(6, len(set(opt.variables())))
 
+  def testConfig(self):
+    opt = adam.Adam(learning_rate=1.0, beta_1=2.0, beta_2=3.0, epsilon=4.0)
+    config = opt.get_config()
+    opt2 = adam.Adam.from_config(config)
+    self.assertEqual(opt._hyper["learning_rate"][1],
+                     opt2._hyper["learning_rate"][1])
+    self.assertEqual(opt._hyper["beta_1"][1], opt2._hyper["beta_1"][1])
+    self.assertEqual(opt._hyper["beta_2"][1], opt2._hyper["beta_2"][1])
+    self.assertEqual(opt._hyper["epsilon"][1], opt2._hyper["epsilon"][1])
+
+
 if __name__ == "__main__":
   test.main()

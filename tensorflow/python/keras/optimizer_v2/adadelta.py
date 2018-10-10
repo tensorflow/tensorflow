@@ -37,6 +37,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
   Tensor or a Python value.
 
   Arguments:
+
       learning_rate: float hyperparameter >= 0. Learning rate. It is recommended
         to leave it at the default value.
       rho: float hyperparameter >= 0. The decay rate.
@@ -114,3 +115,12 @@ class Adadelta(optimizer_v2.OptimizerV2):
         grad,
         indices,
         use_locking=self._use_locking)
+
+  def get_config(self):
+    config = super(Adadelta, self).get_config()
+    config.update({
+        "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "rho": self._serialize_hyperparameter("rho"),
+        "epsilon": self._serialize_hyperparameter("epsilon")
+    })
+    return config
