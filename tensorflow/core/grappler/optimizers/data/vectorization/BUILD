@@ -9,7 +9,13 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
 VECTORIZER_DEPS = [
     ":vectorizer_registry",
+    "//tensorflow/cc:ops",
     "//tensorflow/core/grappler/optimizers/data:graph_utils",
+    "//tensorflow/core:core_cpu",
+    "//tensorflow/cc:scope_internal",
+    "//tensorflow/cc:math_ops",
+    "//tensorflow/cc:array_ops",
+    "//tensorflow/cc:const_op",
 ] + tf_protos_all()
 
 cc_library(
@@ -42,6 +48,26 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "vectorizer_registry_test",
+    srcs = ["vectorizer_registry_test.cc"],
+    deps = [
+        ":vectorizer_registry",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + tf_protos_all(),
+)
+
+cc_library(
+    name = "add_vectorizer",
+    srcs = [
+        "add_vectorizer.cc",
+    ],
+    deps = VECTORIZER_DEPS,
+    alwayslink = 1,
+)
+
 cc_library(
     name = "cast_vectorizer",
     srcs = ["cast_vectorizer.cc"],
@@ -61,20 +87,10 @@ cc_library(
     hdrs = ["vectorizer_registry.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":add_vectorizer",
         ":cast_vectorizer",
         ":unpack_vectorizer",
         ":vectorizer",
         ":vectorizer_registry",
     ],
-)
-
-tf_cc_test(
-    name = "vectorizer_registry_test",
-    srcs = ["vectorizer_registry_test.cc"],
-    deps = [
-        ":vectorizer_registry",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ] + tf_protos_all(),
 )
