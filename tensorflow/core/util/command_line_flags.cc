@@ -70,7 +70,7 @@ bool ParseInt64Flag(tensorflow::StringPiece arg, tensorflow::StringPiece flag,
       str_util::ConsumePrefix(&arg, "=")) {
     char extra;
     int64_t parsed_int64;
-    if (sscanf(arg.data(), "%ld%c", &parsed_int64, &extra) != 1) {
+    if (sscanf(arg.data(), "%lld%c", &parsed_int64, &extra) != 1) {
       LOG(ERROR) << "Couldn't interpret value " << arg << " for flag " << flag
                  << ".";
       *value_parsing_ok = false;
