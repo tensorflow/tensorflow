@@ -2,18 +2,9 @@
 
 This page is complete reference of command-line flags used by the TensorFlow
 Lite Converter's command line starting from TensorFlow 1.9 up until the most
-recent build of TensorFlow. It is complemented by the following other documents:
+recent build of TensorFlow.
 
-*   [README](../README.md)
-*   [Command-line examples](cmdline_examples.md)
-*   [Python API examples](python_api.md)
-
-Table of contents:
-
-*   [High-level flags](#high-level-flags)
-*   [Model flags](#model-flags)
-*   [Transformation flags](#transformation-flags)
-*   [Logging flags](#logging-flags)
+[TOC]
 
 ## High-level flags
 
@@ -32,7 +23,7 @@ files. The flag `--output_file` is always required. Additionally, either
 *   `--output_format`. Type: string. Default: `TFLITE`. Specifies the format of
     the output file. Allowed values:
     *   `TFLITE`: TensorFlow Lite FlatBuffer format.
-    *   `GRAPHVIZ_DOT`: GraphViz `.dot` format containg a visualization of the
+    *   `GRAPHVIZ_DOT`: GraphViz `.dot` format containing a visualization of the
         graph after graph transformations.
         *   Note that passing `GRAPHVIZ_DOT` to `--output_format` leads to loss
             of TFLite specific transformations. Therefore, the resulting
@@ -68,7 +59,7 @@ based on index.
 *   `--input_shapes`. Type: colon-separated list of comma-separated lists of
     integers. Each comma-separated list of integers gives the shape of one of
     the input arrays specified in
-    [TensorFlow convention](https://www.tensorflow.org/versions/r1.2/programmers_guide/dims_types#shape).
+    [TensorFlow convention](https://www.tensorflow.org/guide/dims_types#shape).
     *   Example: `--input_shapes=1,60,80,3` for a typical vision model means a
         batch size of 1, an input image height of 60, an input image width of
         80, and an input image depth of 3 (representing RGB channels).
