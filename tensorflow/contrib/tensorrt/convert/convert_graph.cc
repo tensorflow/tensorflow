@@ -115,6 +115,8 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Sqrt",
     "Abs",
     "Neg",
+    "Transpose",
+    "Reshape",
 #if NV_TENSORRT_MAJOR > 3
     "MatMul",
     "BatchMatMul",

@@ -1467,6 +1467,59 @@ tensorflow::Status ConvertPlugin(Converter& ctx,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertTranspose(
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
+    std::vector<TRT_TensorOrWeights>* outputs) {
+  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
+      !inputs.at(1).is_weights()) {
+    return tensorflow::errors::InvalidArgument(
+        "Input expects tensor and weights, at", node_def.name());
+  }
+  nvinfer1::ITensor* input_tensor = const_cast<nvinfer1::ITensor*>(
+      inputs.at(0).tensor());
+
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  const int* weights_ptr = static_cast<int*>(const_cast<void*>(
+      weights.GetValues()));
+  std::vector<int> perm(weights.count());
+  for (int i = 0; i < weights.count(); i++) {
+    perm[i] = weights_ptr[i];
+  }
+
+  nvinfer1::ITensor* output_tensor = ctx.TransposeTensor(input_tensor, perm);
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertReshape(
+    Converter& ctx, const tensorflow::NodeDef& node_def,
+    const std::vector<TRT_TensorOrWeights>& inputs,
+    std::vector<TRT_TensorOrWeights>* outputs) {
+  if (inputs.size() != 2 || !inputs.at(1).is_weights()) {
+    return tensorflow::errors::InvalidArgument(
+        "Input expects weights for shape, at", node_def.name());
+  }
+
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  const int* weights_ptr = static_cast<int*>(const_cast<void*>(
+      weights.GetValues()));
+  nvinfer1::Dims new_shape;
+  // Ignore first (batch) dimension because TRT abstracts batch away
+  new_shape.nbDims = weights.count() - 1;
+  for (int i = 1; i < weights.count(); i++) {
+    new_shape.d[i-1] = weights_ptr[i];
+  }
+
+  const nvinfer1::ITensor* output_tensor;
+  TFTRT_RETURN_ERROR_IF_FALSE(
+      PrepareTensorForShape(ctx, inputs.at(0), new_shape, &output_tensor),
+      node_def.name());
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertConv2D(Converter& ctx,
                                  const tensorflow::NodeDef& node_def,
                                  const std::vector<TRT_TensorOrWeights>& inputs,
@@ -2666,6 +2719,10 @@ void Converter::register_op_converters() {
   op_registry_["Sqrt"] = ConvertUnary;
   op_registry_["Abs"] = ConvertUnary;
   op_registry_["Neg"] = ConvertUnary;
+
+  op_registry_["Transpose"] = ConvertTranspose;
+  op_registry_["Reshape"] = ConvertReshape;
+
 #if NV_TENSORRT_MAJOR == 3
   op_registry_["Mean"] = ConvertReducePool;
 #endif
