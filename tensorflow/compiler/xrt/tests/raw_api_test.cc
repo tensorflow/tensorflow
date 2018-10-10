@@ -437,6 +437,27 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 }
 
+TEST(RawApiTest, LeakCompilationReference) {
+  xrt::XLAComputation c;
+  auto config = c.mutable_config();
+  auto shapes = config->mutable_program_shape();
+  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
+  *shapes->add_parameters() = xla::ShapeUtil::MakeShape(xla::F32, {2});
+  *shapes->mutable_result() = xla::ShapeUtil::MakeTupleShape(
+      {xla::ShapeUtil::MakeShape(xla::F32, {2})});
+  StoreComputationSnapshot(AddAndTuple(), c.mutable_hlo_snapshot());
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c.SerializeAsString());
+  auto c_handle = ops::XRTCompile(root, computation);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({c_handle}, &outputs));
+}
+
 }  // namespace
 
 }  // namespace tensorflow
