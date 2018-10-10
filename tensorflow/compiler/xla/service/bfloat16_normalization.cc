@@ -231,6 +231,10 @@ Status BFloat16NormalizationVisitor::HandleMultipleOutputs(
   for (auto* user : materialized_users) {
     TF_RETURN_IF_ERROR(hlo->ReplaceUseWith(user, tuple));
   }
+  bool is_root = computation_->root_instruction() == hlo;
+  if (is_root) {
+    computation_->set_root_instruction(tuple);
+  }
   *tuple->mutable_shape() = original_shape;
   return Status::OK();
 }

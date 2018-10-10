@@ -878,10 +878,8 @@ Status CheckEntryComputationLayout(const HloModule& module) {
   const HloComputation* computation = module.entry_computation();
   const auto& layout = module.entry_computation_layout();
 
-  // TODO(117498192): Change into a call to Compatible(...).
-  if (!ShapeUtil::CompatibleIgnoringFpPrecision(
-          computation->root_instruction()->shape(),
-          layout.result_layout().shape())) {
+  if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
+                             layout.result_layout().shape())) {
     return InternalError(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
