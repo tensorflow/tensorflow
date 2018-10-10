@@ -90,7 +90,7 @@ tf_module {
   }
   member_method {
     name: "ctc_beam_search_decoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'100\', \'1\', \'True\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'beam_width\', \'top_paths\'], varargs=None, keywords=None, defaults=[\'100\', \'1\'], "
   }
   member_method {
     name: "ctc_greedy_decoder"
