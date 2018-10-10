@@ -105,6 +105,7 @@ BLACKLIST = [
     "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
     "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
     "//tensorflow/contrib/image:sparse_image_warp_test_data",
+    "//tools/build_defs/apple:ios.bzl",
 ]
 
 

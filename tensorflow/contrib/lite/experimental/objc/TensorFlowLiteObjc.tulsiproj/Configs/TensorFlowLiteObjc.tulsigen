@@ -1,0 +1,60 @@
+{
+  "sourceFilters" : [
+    "third_party/tensorflow/contrib/lite",
+    "third_party/tensorflow/contrib/lite/experimental/c",
+    "third_party/tensorflow/contrib/lite/experimental/objc",
+    "third_party/tensorflow/contrib/lite/experimental/objc/apis",
+    "third_party/tensorflow/contrib/lite/experimental/objc/sources",
+    "third_party/tensorflow/contrib/lite/experimental/objc/tests",
+    "third_party/tensorflow/contrib/lite/kernels",
+    "third_party/tensorflow/contrib/lite/kernels/internal",
+    "third_party/tensorflow/contrib/lite/nnapi",
+    "third_party/tensorflow/contrib/lite/schema",
+  ],
+  "buildTargets" : [
+    "//third_party/tensorflow/contrib/lite/experimental/objc:TensorFlowLiteObjCLib",
+    "//third_party/tensorflow/contrib/lite/experimental/objc:TensorFlowLiteObjCTests",
+  ],
+  "projectName" : "TensorFlowLiteObjC",
+  "optionSet" : {
+    "LaunchActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsRelease" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "EnvironmentVariables" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "CommandlineArguments" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPreActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "BazelBuildStartupOptionsDebug" : {
+      "p" : "$(inherited)"
+    },
+    "BuildActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "TestActionPostActionScript" : {
+      "p" : "$(inherited)"
+    },
+    "LaunchActionPostActionScript" : {
+      "p" : "$(inherited)"
+    }
+  },
+  "additionalFilePaths" : [
+    "third_party/tensorflow/contrib/lite/experimental/objc/BUILD",
+  ]
+}
