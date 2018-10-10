@@ -129,14 +129,14 @@ enum TemporaryTensor {
   kBwScratchBuffer = 1,
   // Quantized tensors needed for the hybrid kernel.
   kInputQuantized = 2,
-  kAuxInputQuantized = 3,  // Quantized tensor needed for auxiliary input.
-  kFwActivationStateQuantized = 4,
-  kBwActivationStateQuantized = 5,
-  kFwCellStateQuantized = 6,
-  kBwCellStateQuantized = 7,
-  kScalingFactors = 8,
-  kProductScalingFactors = 9,
-  kRecoveredCellWeights = 10,
+  kFwActivationStateQuantized = 3,
+  kBwActivationStateQuantized = 4,
+  kFwCellStateQuantized = 5,
+  kBwCellStateQuantized = 6,
+  kScalingFactors = 7,
+  kProductScalingFactors = 8,
+  kRecoveredCellWeights = 9,
+  kAuxInputQuantized = 10,  // Optional, quantized tensor for auxiliary input.
   kNumTemporaryTensors = 11
 };
 
@@ -469,7 +469,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(kNumTemporaryTensors);
+    node->temporaries = TfLiteIntArrayCreate(
+        has_aux_input ? kNumTemporaryTensors : kNumTemporaryTensors - 1);
   } else {
     node->temporaries = TfLiteIntArrayCreate(2);  // the two scratch buffers.
   }
@@ -568,22 +569,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
                                                        input_quantized_size));
-    }
-
-    if (has_aux_input) {
-      node->temporaries->data[kAuxInputQuantized] =
-          *scratch_tensor_index + kAuxInputQuantized;
-      TfLiteTensor* aux_input_quantized =
-          GetTemporary(context, node, kAuxInputQuantized);
-      aux_input_quantized->type = kTfLiteUInt8;
-      aux_input_quantized->allocation_type = kTfLiteArenaRw;
-      if (!TfLiteIntArrayEqual(aux_input_quantized->dims, aux_input->dims)) {
-        TfLiteIntArray* aux_input_quantized_size =
-            TfLiteIntArrayCopy(aux_input->dims);
-        TF_LITE_ENSURE_OK(context,
-                          context->ResizeTensor(context, aux_input_quantized,
-                                                aux_input_quantized_size));
-      }
     }
 
     node->temporaries->data[kFwActivationStateQuantized] =
@@ -690,6 +675,24 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, recovered_cell_weights,
                                               recovered_cell_weights_size));
+    }
+
+    // Only allocate a temporary tensor for quantized auxiliary input if we are
+    // actually going to use it.
+    if (has_aux_input) {
+      node->temporaries->data[kAuxInputQuantized] =
+          *scratch_tensor_index + kAuxInputQuantized;
+      TfLiteTensor* aux_input_quantized =
+          GetTemporary(context, node, kAuxInputQuantized);
+      aux_input_quantized->type = kTfLiteUInt8;
+      aux_input_quantized->allocation_type = kTfLiteArenaRw;
+      if (!TfLiteIntArrayEqual(aux_input_quantized->dims, aux_input->dims)) {
+        TfLiteIntArray* aux_input_quantized_size =
+            TfLiteIntArrayCopy(aux_input->dims);
+        TF_LITE_ENSURE_OK(context,
+                          context->ResizeTensor(context, aux_input_quantized,
+                                                aux_input_quantized_size));
+      }
     }
   }
   return kTfLiteOk;
@@ -868,8 +871,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8: {
       TfLiteTensor* input_quantized =
           GetTemporary(context, node, kInputQuantized);
-      TfLiteTensor* aux_input_quantized =
-          GetTemporary(context, node, kAuxInputQuantized);
       TfLiteTensor* fw_activation_state_quantized =
           GetTemporary(context, node, kFwActivationStateQuantized);
       TfLiteTensor* bw_activation_state_quantized =
@@ -884,6 +885,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kProductScalingFactors);
       TfLiteTensor* recovered_cell_weights =
           GetTemporary(context, node, kRecoveredCellWeights);
+      TfLiteTensor* aux_input_quantized =
+          (aux_input == nullptr)
+              ? nullptr
+              : GetTemporary(context, node, kAuxInputQuantized);
 
       TfLiteStatus fw_pass_status = lstm_eval::EvalHybrid(
           input, fw_input_to_input_weights, fw_input_to_forget_weights,
