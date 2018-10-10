@@ -101,17 +101,29 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         Status ret;
+        FileSystem* fs;
 
         while (!filepath_queue_.empty() ||
                current_pattern_index_ < dataset()->patterns_.size()) {
           // All the elements in the heap will be the matched filenames or the
           // potential directories.
           if (!filepath_queue_.empty()) {
-            const PathStatus current_path = filepath_queue_.top();
+            PathStatus current_path = filepath_queue_.top();
             filepath_queue_.pop();
+
+            TF_RETURN_IF_ERROR(
+                ctx->env()->GetFileSystemForFile(current_path.first, &fs));
 
             if (!current_path.second) {
               Tensor filepath_tensor(ctx->allocator({}), DT_STRING, {});
+
+              // Replace the forward slash by the backslash for Windows path
+              if (dataset()->patterns_[current_pattern_index_ - 1].find('\\') !=
+                  std::string::npos) {
+                std::replace(current_path.first.begin(),
+                             current_path.first.end(), '/', '\\');
+              }
+
               filepath_tensor.scalar<string>()() =
                   std::move(current_path.first);
               out_tensors->emplace_back(std::move(filepath_tensor));
@@ -122,10 +134,24 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             // In this case, current_path is a directory. Then continue the
             // search.
             ret.Update(
-                UpdateIterator(ctx, current_path.first, current_pattern_));
+                UpdateIterator(ctx, fs, current_path.first, current_pattern_));
           } else {
             // search a new pattern
             current_pattern_ = dataset()->patterns_[current_pattern_index_];
+            TF_RETURN_IF_ERROR(
+                ctx->env()->GetFileSystemForFile(current_pattern_, &fs));
+
+            // Windows paths contain backslashes and Windows APIs accept forward
+            // and backslashes equivalently, so we convert the pattern to use
+            // forward slashes exclusively. The backslash is used as the
+            // indicator of Windows paths. Note that this is not ideal, since
+            // the API expects backslash as an escape character, but no code
+            // appears to rely on this behavior
+            if (current_pattern_.find('\\') != std::string::npos) {
+              std::replace(current_pattern_.begin(), current_pattern_.end(),
+                           '\\', '/');
+            }
+
             StringPiece fixed_prefix =
                 StringPiece(current_pattern_)
                     .substr(0, current_pattern_.find_first_of("*?[\\"));
@@ -140,7 +166,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
             std::cout << "Input pattern: " << current_pattern_
                       << "; Current dir: " << current_dir << std::endl;
 
-            ret.Update(UpdateIterator(ctx, current_dir, current_pattern_));
+            ret.Update(UpdateIterator(ctx, fs, current_dir, current_pattern_));
             ++current_pattern_index_;
           }
         }
@@ -207,17 +233,12 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       }
 
      private:
-      Status UpdateIterator(IteratorContext* ctx, const string& dir,
-                            const string& eval_pattern)
+      Status UpdateIterator(IteratorContext* ctx, FileSystem* fs,
+                            const string& dir, const string& eval_pattern)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         StringPiece fixed_prefix =
             StringPiece(eval_pattern)
                 .substr(0, eval_pattern.find_first_of("*?[\\"));
-
-        FileSystem* fs;
-        Status fs_status = ctx->env()->GetFileSystemForFile(dir, &fs);
-        std::cout << "GetFileSystemForFile status: " << fs_status << std::endl;
-        TF_RETURN_IF_ERROR(ctx->env()->GetFileSystemForFile(dir, &fs));
 
         filepath_queue_.push(PathStatus(dir, true));
         Status ret;  // Status to return
