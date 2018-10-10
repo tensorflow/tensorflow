@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
@@ -206,18 +207,27 @@ bool IsIntraClusterEdge(const Edge& edge) {
   return src_cluster_name.has_value() && src_cluster_name == dst_cluster_name;
 }
 
-Status MustCompileNode(const Node* n, bool* result) {
+bool IsMustCompileDevice(const DeviceType& device_type) {
+  const XlaOpRegistry::DeviceRegistration* registration;
+  if (XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
+    return registration->requires_compilation;
+  }
+
+  return false;
+}
+
+Status MustCompileNode(const Node* n, bool* must_compile) {
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(
       DeviceToDeviceType(n->assigned_device_name(), &device_type));
 
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    *result = false;
-  } else {
-    *result = registration->requires_compilation;
+  if (IsMustCompileDevice(device_type)) {
+    *must_compile = true;
+    return Status::OK();
   }
 
+  // We must compile `n` if it does not have a TensorFlow kernel.
+  *must_compile = !FindKernelDef(device_type, n->def(), nullptr, nullptr).ok();
   return Status::OK();
 }
 
