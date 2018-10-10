@@ -699,7 +699,7 @@ class XlaBuilder {
   // the same channel_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
   //
-  // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+  // TODO(b/117564385): Rename this to AllReduce when it's ready to use.
   XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
@@ -1864,7 +1864,7 @@ XlaOp CrossReplicaSum(const XlaOp& operand,
 // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
 // applied cross modules.
 //
-// TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+// TODO(b/117564385): Rename this to AllReduce when it's ready to use.
 XlaOp CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups = {},
