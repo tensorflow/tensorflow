@@ -44,22 +44,31 @@ def eye(num_rows,
     is_square = num_columns is None
     batch_shape = [] if batch_shape is None else batch_shape
     num_columns = num_rows if num_columns is None else num_columns
-    if isinstance(num_rows, ops.Tensor) or isinstance(
-        num_columns, ops.Tensor) or isinstance(batch_shape, ops.Tensor):
-      batch_shape = ops.convert_to_tensor(
-          batch_shape, name='shape', dtype=dtypes.int32)
+
+    # We cannot statically infer what the diagonal size should be:
+    if (isinstance(num_rows, ops.Tensor) or
+        isinstance(num_columns, ops.Tensor)):
       diag_size = math_ops.minimum(num_rows, num_columns)
-      diag_shape = array_ops.concat((batch_shape, [diag_size]), 0)
-      if not is_square:
-        shape = array_ops.concat((batch_shape, [num_rows, num_columns]), 0)
     else:
+      # We can statically infer the diagonal size, and whether it is square.
       if not isinstance(num_rows, compat.integral_types) or not isinstance(
           num_columns, compat.integral_types):
         raise TypeError(
             'num_rows and num_columns must be positive integer values.')
-      batch_shape = [dim for dim in batch_shape]
       is_square = num_rows == num_columns
-      diag_shape = batch_shape + [np.minimum(num_rows, num_columns)]
+      diag_size = np.minimum(num_rows, num_columns)
+
+    # We can not statically infer the shape of the tensor.
+    if isinstance(batch_shape, ops.Tensor) or isinstance(diag_size, ops.Tensor):
+      batch_shape = ops.convert_to_tensor(
+          batch_shape, name='shape', dtype=dtypes.int32)
+      diag_shape = array_ops.concat((batch_shape, [diag_size]), axis=0)
+      if not is_square:
+        shape = array_ops.concat((batch_shape, [num_rows, num_columns]), axis=0)
+    # We can statically infer everything.
+    else:
+      batch_shape = list(batch_shape)
+      diag_shape = batch_shape + [diag_size]
       if not is_square:
         shape = batch_shape + [num_rows, num_columns]
 
