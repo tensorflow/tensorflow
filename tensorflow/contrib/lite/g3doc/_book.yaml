@@ -38,6 +38,15 @@ upper_tabs:
         path: /lite/ios
       - title: TensorFlow Lite for Raspberry Pi
         path: /lite/rpi
+      - heading: TFLite Converter
+      - title: Overview
+        path: /lite/tflite_convert/
+      - title: Python API
+        path: /lite/tflite_convert/python_api
+      - title: Command Line Examples
+        path: /lite/tflite_convert/cmdline_examples
+      - title: Command Line Reference
+        path: /lite/tflite_convert/cmdline_reference
 
       - title: TF Mobile
         style: accordion

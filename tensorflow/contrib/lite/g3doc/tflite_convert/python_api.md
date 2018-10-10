@@ -1,31 +1,10 @@
 # TensorFlow Lite Converter & Interpreter Python API reference
 
 This page provides examples on how to use the TensorFlow Lite Converter and the
-TensorFlow Lite interpreter using the Python API. It is complemented by the
-following documents:
+TensorFlow Lite interpreter using the Python API. 
 
-*   [README](../README.md)
-*   [Command-line examples](cmdline_examples.md)
-*   [Command-line glossary](cmdline_reference.md)
+[TOC]
 
-Table of contents:
-
-*   [High-level overview](#high-level-overview)
-*   [API](#api)
-*   [Basic examples](#basic)
-    *   [Exporting a GraphDef from tf.Session](#basic-graphdef-sess)
-    *   [Exporting a GraphDef from file](#basic-graphdef-file)
-    *   [Exporting a SavedModel](#basic-savedmodel)
-    *   [Exporting a tf.keras File](#basic-keras-file)
-*   [Complex examples](#complex)
-    *   [Exporting a quantized GraphDef](#complex-quant)
-*   [TensorFlow Lite Python interpreter](#interpreter)
-    *   [Using the interpreter from a model file](#interpreter-file)
-    *   [Using the interpreter from model data](#interpreter-data)
-*   [Additional instructions](#additional-instructions)
-    *   [Build from source code](#latest-package)
-    *   [Converting models in TensorFlow 1.9 to TensorFlow 1.11](#pre-tensorflow-1.11)
-    *   [Converting models prior to TensorFlow 1.9](#pre-tensorflow-1.9)
 
 ## High-level overview
 

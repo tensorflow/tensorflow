@@ -1,33 +1,8 @@
 # TensorFlow Lite Converter command-line examples
 
-This page shows how to use the TensorFlow Lite Converter in the command line. It
-is complemented by the following documents:
+This page shows how to use the TensorFlow Lite Converter in the command line.
 
-*   [README](../README.md)
-*   [Command-line glossary](cmdline_reference.md)
-*   [Python API examples](python_api.md)
-
-Table of contents:
-
-*   [Command-line tools](#tools)
-    *   [Converting models prior to TensorFlow 1.9](#pre-tensorflow-1.9)
-*   [Basic examples](#basic)
-    *   [Convert a TensorFlow GraphDef](#graphdef)
-    *   [Convert a TensorFlow SavedModel](#savedmodel)
-    *   [Convert a tf.keras model](#keras)
-*   [Quantization](#quantization)
-    *   [Convert a TensorFlow GraphDef for quantized inference](#graphdef-quant)
-    *   [Use "dummy-quantization" to try out quantized inference on a float
-        graph](#dummy-quant)
-*   [Specifying input and output arrays](#specifying-input-and-output-arrays)
-    *   [Multiple input arrays](#multiple-input-arrays)
-    *   [Multiple output arrays](#multiple-output-arrays)
-    *   [Specifying subgraphs](#specifying-subgraphs)
-*   [Graph visualizations](#graph-visualizations)
-    *   [Using --output_format=GRAPHVIZ_DOT](#using-output-format-graphviz-dot)
-    *   [Using --dump_graphviz_dir](#using-dump-graphviz-dir)
-    *   [Graph "video" logging](#graph-video-logging)
-    *   [Legend for the graph visualizations](#graphviz-legend)
+[TOC]
 
 ## Command-line tools <a name="tools"></a>
 
@@ -325,10 +300,23 @@ As before, these can be rendered to PDFs:
 dot -Tpdf -O /tmp/toco_*.dot
 ```
 
-Sample output files can be seen here:
+Sample output files can be seen here below. Note that it is the same
+`AveragePool` node in the top right of each image.
 
-*   [toco_AT_IMPORT.dot.pdf](https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AT_IMPORT.dot.pdf)
-*   [toco_AFTER_TRANSFORMATIONS.dot.pdf](https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AFTER_TRANSFORMATIONS.dot.pdf).
+<table><tr>
+  <td>
+    <a target="_blank" href="https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AT_IMPORT.dot.pdf">
+      <img src="https://www.tensorflow.org/images/tflite_convert/tflite_convert_before.png"/>
+    </a>
+  </td>
+  <td>
+    <a target="_blank" href="https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AFTER_TRANSFORMATIONS.dot.pdf">
+      <img src="https://www.tensorflow.org/images/tflite_convert/tflite_convert_after.png"/>
+    </a>
+  </td>
+</tr>
+<tr><td>before</td><td>after</td></tr>
+</table>
 
 ### Graph "video" logging
 
@@ -347,7 +335,7 @@ change was introduced in the graph.
     *   Some typically heavy operators (e.g. Conv) are rendered in a
         <span style="background-color:#c53929;color:white;border:1px;border-style:solid;border-color:black;padding:1px">darker
         red</span>.
-*   Arrays are octogons with the following colors:
+*   Arrays are octagons with the following colors:
     *   Constant arrays are
         <span style="background-color:#4285f4;color:white;border:1px;border-style:solid;border-color:black;padding:1px">blue</span>.
     *   Activation arrays are gray:
