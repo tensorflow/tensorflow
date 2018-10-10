@@ -59,9 +59,15 @@ int64 Model::Node::ProcessingTimeLocked() {
       return NanosPerElementLocked() + batch_size * ProcessingTimeForInputs();
     }
     case Type::FILTER: {
+      if (inputs_.size() <= 1) {
+        return NanosPerElementLocked();
+      }
       std::shared_ptr<Node> input = inputs_.front();
-      double ratio = static_cast<double>(input->num_elements()) /
-                     static_cast<double>(num_elements_);
+      double ratio = 0.0L;
+      if (num_elements_ > 0) {
+        ratio = static_cast<double>(input->num_elements()) /
+                static_cast<double>(num_elements_);
+      }
       return NanosPerElementLocked() +
              static_cast<int64>(ratio *
                                 static_cast<double>(ProcessingTimeForInputs()));
@@ -115,15 +121,21 @@ int64 Model::Node::OutputTimeLocked(std::vector<int64>* input_times) {
              batch_size * OutputTimeForInputs(input_times);
     }
     case Type::FILTER: {
+      if (inputs_.size() <= 1) {
+        return NanosPerElementLocked();
+      }
       std::shared_ptr<Node> input = inputs_.front();
-      int64 old_value = (*input_times)[input_times->size() - 1];
-      double ratio = static_cast<double>(input->num_elements()) /
-                     static_cast<double>(num_elements_);
-      (*input_times)[input_times->size() - 1] = static_cast<int64>(
-          static_cast<double>(old_value + NanosPerElementLocked()) / ratio);
-      auto cleanup = gtl::MakeCleanup([input_times, old_value]() {
-        (*input_times)[input_times->size() - 1] = old_value;
-      });
+      double ratio = 0.0L;
+      if (num_elements_ > 0) {
+        ratio = static_cast<double>(input->num_elements()) /
+                static_cast<double>(num_elements_);
+        int64 old_value = (*input_times)[input_times->size() - 1];
+        (*input_times)[input_times->size() - 1] = static_cast<int64>(
+            static_cast<double>(old_value + NanosPerElementLocked()) / ratio);
+        auto cleanup = gtl::MakeCleanup([input_times, old_value]() {
+          (*input_times)[input_times->size() - 1] = old_value;
+        });
+      }
       return NanosPerElementLocked() +
              static_cast<int64>(
                  static_cast<double>(OutputTimeForInputs(input_times)) * ratio);
