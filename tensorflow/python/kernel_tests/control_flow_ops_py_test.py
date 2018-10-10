@@ -1116,8 +1116,8 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(10.0, r.eval())
 
   def testWhile_Gpu_2(self):
-    self._testWhile_Gpu_1(use_gpu=False)
-    self._testWhile_Gpu_1(use_gpu=True)
+    self._testWhile_Gpu_2(use_gpu=False)
+    self._testWhile_Gpu_2(use_gpu=True)
 
   def testWhileShape(self):
     with self.cached_session():
