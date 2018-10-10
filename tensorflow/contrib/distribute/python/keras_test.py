@@ -592,33 +592,37 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
     # meaningful values. Currently we don't pass the learning phase if the
     # Lambda layer uses the learning phase.
     with self.cached_session():
-      x = keras.layers.Input(shape=(16,), name='input')
-      y = keras.layers.Dense(16)(x)
+      x = keras.layers.Input(shape=(1,), name='input')
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
       z = keras.layers.Dropout(0.9999)(y)
       model = keras.Model(x, z)
+      initial_weights = model.get_weights()
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.005)
       loss = 'mse'
       metrics = ['acc']
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
-                                                     '/device:CPU:0'])
+      strategy = mirrored_strategy.MirroredStrategy(
+          ['/device:GPU:0', '/device:GPU:1'])
 
       model.compile(optimizer, loss, metrics=metrics, distribute=strategy)
 
-      inputs = np.random.rand(10, 16)
-      targets = np.ones((10, 16), dtype=np.float32)
+      inputs = np.ones((10, 1), dtype=np.float32)
+      targets = np.ones((10, 1), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-      dataset = dataset.repeat(100)
-      dataset = dataset.batch(8)
+      dataset = dataset.repeat().batch(8)
+      hist = model.fit(dataset, epochs=1, steps_per_epoch=20, verbose=1)
+      self.assertAlmostEqual(hist.history['acc'][0], 0, 0)
 
-      hist = model.fit(dataset, epochs=5, steps_per_epoch=20, verbose=1)
-      self.assertEqual(hist.history['acc'][0], 1)
-
+      model.set_weights(initial_weights)
       evaluate_output = model.evaluate(dataset, steps=20)
-      self.assertEqual(evaluate_output[1], 0)
+      self.assertAlmostEqual(evaluate_output[1], 1, 0)
 
-      predict_output = model.predict(dataset, steps=1)
-      self.assertNotEqual(np.mean(predict_output), 0)
+      inputs = np.ones((10, 1), dtype=np.float32)
+      predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
+      predict_dataset = predict_dataset.repeat().batch(5)
+      output = model.predict(predict_dataset, steps=10)
+      ref_output = np.ones((50, 1), dtype=np.float32)
+      self.assertArrayNear(output[0], ref_output, 1e-1)
 
 
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
