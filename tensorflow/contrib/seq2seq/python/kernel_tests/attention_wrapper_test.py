@@ -181,7 +181,7 @@ class AttentionWrapperTest(test.TestCase):
         for creator, depth in zip(create_attention_mechanisms,
                                   attention_mechanism_depths)]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with vs.variable_scope(
           'root',
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
@@ -724,7 +724,7 @@ class AttentionWrapperTest(test.TestCase):
   def testBahdanauMonotonicHard(self):
     # Run attention mechanism with mode='hard', make sure probabilities are hard
     b, t, u, d = 10, 20, 30, 40
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       a = wrapper.BahdanauMonotonicAttention(
           d,
           random_ops.random_normal((b, t, u)),
@@ -898,7 +898,7 @@ class AttentionWrapperTest(test.TestCase):
   def testLuongMonotonicHard(self):
     # Run attention mechanism with mode='hard', make sure probabilities are hard
     b, t, u, d = 10, 20, 30, 40
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       a = wrapper.LuongMonotonicAttention(
           d,
           random_ops.random_normal((b, t, u)),
