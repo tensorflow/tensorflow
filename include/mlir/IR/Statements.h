@@ -23,6 +23,7 @@
 #define MLIR_IR_STATEMENTS_H
 
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/StmtBlock.h"
@@ -447,7 +448,7 @@ private:
 class IfStmt : public Statement {
 public:
   static IfStmt *create(Location *location, ArrayRef<MLValue *> operands,
-                        IntegerSet *set);
+                        IntegerSet set);
   ~IfStmt();
 
   //===--------------------------------------------------------------------===//
@@ -467,7 +468,7 @@ public:
 
   const AffineCondition getCondition() const;
 
-  IntegerSet *getIntegerSet() const { return set; }
+  IntegerSet getIntegerSet() const { return set; }
 
   //===--------------------------------------------------------------------===//
   // Operands
@@ -528,12 +529,12 @@ private:
   IfClause *elseClause;
 
   // The integer set capturing the conditional guard.
-  IntegerSet *set;
+  IntegerSet set;
 
   // Condition operands.
   std::vector<StmtOperand> operands;
 
-  explicit IfStmt(Location *location, unsigned numOperands, IntegerSet *set);
+  explicit IfStmt(Location *location, unsigned numOperands, IntegerSet set);
 };
 
 /// AffineCondition represents a condition of the 'if' statement.
@@ -546,16 +547,15 @@ private:
 class AffineCondition {
 public:
   const IfStmt *getIfStmt() const { return &stmt; }
-  IntegerSet *getSet() const { return set; }
+  IntegerSet getSet() const { return set; }
 
 private:
   // 'if' statement that contains this affine condition.
   const IfStmt &stmt;
   // Integer set for this affine condition.
-  IntegerSet *set;
+  IntegerSet set;
 
-  AffineCondition(const IfStmt &stmt, const IntegerSet *set)
-      : stmt(stmt), set(const_cast<IntegerSet *>(set)) {}
+  AffineCondition(const IfStmt &stmt, IntegerSet set) : stmt(stmt), set(set) {}
 
   friend class IfStmt;
 };

@@ -84,6 +84,7 @@ public:
   }
 
   bool operator==(AffineExpr other) const { return expr == other.expr; }
+  bool operator!=(AffineExpr other) const { return !(*this == other); }
   explicit operator bool() const { return expr; }
 
   bool operator!() const { return expr == nullptr; }

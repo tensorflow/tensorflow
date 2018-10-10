@@ -132,9 +132,9 @@ public:
   AffineMap getShiftedAffineMap(AffineMap map, int64_t shift);
 
   // Integer set.
-  IntegerSet *getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExpr> constraints,
-                            ArrayRef<bool> isEq);
+  IntegerSet getIntegerSet(unsigned dimCount, unsigned symbolCount,
+                           ArrayRef<AffineExpr> constraints,
+                           ArrayRef<bool> isEq);
   // TODO: Helpers for affine map/exprs, etc.
 protected:
   MLIRContext *context;
@@ -402,7 +402,7 @@ public:
 
   /// Creates if statement.
   IfStmt *createIf(Location *location, ArrayRef<MLValue *> operands,
-                   IntegerSet *set);
+                   IntegerSet set);
 
 private:
   StmtBlock *block = nullptr;

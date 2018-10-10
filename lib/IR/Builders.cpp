@@ -171,9 +171,9 @@ AffineExpr Builder::getAffineConstantExpr(int64_t constant) {
   return mlir::getAffineConstantExpr(constant, context);
 }
 
-IntegerSet *Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                                   ArrayRef<AffineExpr> constraints,
-                                   ArrayRef<bool> isEq) {
+IntegerSet Builder::getIntegerSet(unsigned dimCount, unsigned symbolCount,
+                                  ArrayRef<AffineExpr> constraints,
+                                  ArrayRef<bool> isEq) {
   return IntegerSet::get(dimCount, symbolCount, constraints, isEq, context);
 }
 
@@ -299,7 +299,7 @@ ForStmt *MLFuncBuilder::createFor(Location *location, int64_t lb, int64_t ub,
 }
 
 IfStmt *MLFuncBuilder::createIf(Location *location,
-                                ArrayRef<MLValue *> operands, IntegerSet *set) {
+                                ArrayRef<MLValue *> operands, IntegerSet set) {
   auto *stmt = IfStmt::create(location, operands, set);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;

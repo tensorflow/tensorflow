@@ -26,6 +26,7 @@
 
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/IntegerSet.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 
@@ -95,7 +96,7 @@ public:
   HyperRectangularSet(unsigned numDims, unsigned numSymbols,
                       ArrayRef<ArrayRef<AffineExpr>> lbs,
                       ArrayRef<ArrayRef<AffineExpr>> ubs, MLIRContext *context,
-                      IntegerSet *symbolContext = nullptr);
+                      IntegerSet symbolContext = IntegerSet());
 
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return numSymbols; }

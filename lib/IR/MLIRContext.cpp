@@ -19,6 +19,7 @@
 #include "AffineExprDetail.h"
 #include "AffineMapDetail.h"
 #include "AttributeListStorage.h"
+#include "IntegerSetDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -1126,21 +1127,24 @@ AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
 // But they aren't uniqued like AffineMap's; there isn't an advantage to.
 //===----------------------------------------------------------------------===//
 
-IntegerSet *IntegerSet::get(unsigned dimCount, unsigned symbolCount,
-                            ArrayRef<AffineExpr> constraints,
-                            ArrayRef<bool> eqFlags, MLIRContext *context) {
+IntegerSet IntegerSet::get(unsigned dimCount, unsigned symbolCount,
+                           ArrayRef<AffineExpr> constraints,
+                           ArrayRef<bool> eqFlags, MLIRContext *context) {
   assert(eqFlags.size() == constraints.size());
 
   auto &impl = context->getImpl();
 
   // Allocate them into the bump pointer.
-  auto *res = impl.allocator.Allocate<IntegerSet>();
+  auto *res = impl.allocator.Allocate<IntegerSetStorage>();
 
   // Copy the equalities and inequalities into the bump pointer.
   constraints = impl.copyInto(ArrayRef<AffineExpr>(constraints));
   eqFlags = impl.copyInto(ArrayRef<bool>(eqFlags));
 
   // Initialize the memory using placement new.
-  return new (res) IntegerSet(dimCount, symbolCount, constraints.size(),
-                              constraints, eqFlags);
+  res = new (res) IntegerSetStorage{dimCount, symbolCount,
+                                    static_cast<unsigned>(constraints.size()),
+                                    constraints, eqFlags};
+
+  return IntegerSet(res);
 }

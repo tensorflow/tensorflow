@@ -38,55 +38,81 @@
 
 namespace mlir {
 
+namespace detail {
+struct IntegerSetStorage;
+}
+
 class MLIRContext;
 
 /// An integer set representing a conjunction of affine equalities and
 /// inequalities. An integer set in the IR is immutable like the affine map, but
 /// integer sets are not unique'd. The affine expressions that make up the
-/// equalities and inequalities of an integer set are themselves unique.
+/// equalities and inequalities of an integer set are themselves unique and live
+/// in the bump allocator.
 class IntegerSet {
 public:
-  static IntegerSet *get(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr> constraints,
-                         ArrayRef<bool> eqFlags, MLIRContext *context);
+  typedef detail::IntegerSetStorage ImplType;
 
-  unsigned getNumDims() { return dimCount; }
-  unsigned getNumSymbols() { return symbolCount; }
-  unsigned getNumOperands() { return dimCount + symbolCount; }
-  unsigned getNumConstraints() { return numConstraints; }
+  explicit IntegerSet(ImplType *set = nullptr) : set(set) {}
 
-  ArrayRef<AffineExpr> getConstraints() { return constraints; }
+  static IntegerSet get(unsigned dimCount, unsigned symbolCount,
+                        ArrayRef<AffineExpr> constraints,
+                        ArrayRef<bool> eqFlags, MLIRContext *context);
 
-  AffineExpr getConstraint(unsigned idx) { return getConstraints()[idx]; }
+  explicit operator bool() { return set; }
+  bool operator==(IntegerSet other) const { return set == other.set; }
+
+  unsigned getNumDims() const;
+  unsigned getNumSymbols() const;
+  unsigned getNumOperands() const;
+  unsigned getNumConstraints() const;
+
+  ArrayRef<AffineExpr> getConstraints() const;
+
+  AffineExpr getConstraint(unsigned idx) const;
 
   /// Returns the equality bits, which specify whether each of the constraints
   /// is an equality or inequality.
-  ArrayRef<bool> getEqFlags() { return eqFlags; }
+  ArrayRef<bool> getEqFlags() const;
 
   /// Returns true if the idx^th constraint is an equality, false if it is an
   /// inequality.
-  bool isEq(unsigned idx) { return getEqFlags()[idx]; }
+  bool isEq(unsigned idx) const;
 
-  void print(raw_ostream &os);
-  void dump();
+  void print(raw_ostream &os) const;
+  void dump() const;
+
+  friend ::llvm::hash_code hash_value(IntegerSet arg);
 
 private:
-  IntegerSet(unsigned dimCount, unsigned symbolCount, unsigned numConstraints,
-             ArrayRef<AffineExpr> constraints, ArrayRef<bool> eqFlags);
-
-  ~IntegerSet() = delete;
-
-  unsigned dimCount;
-  unsigned symbolCount;
-  unsigned numConstraints;
-
-  /// Array of affine constraints: a constaint is either an equality
-  /// (affine_expr == 0) or an inequality (affine_expr >= 0).
-  ArrayRef<AffineExpr> constraints;
-
-  // Bits to check whether a constraint is an equality or an inequality.
-  ArrayRef<bool> eqFlags;
+  ImplType *set;
 };
 
+// Make AffineExpr hashable.
+inline ::llvm::hash_code hash_value(IntegerSet arg) {
+  return ::llvm::hash_value(arg.set);
+}
+
 } // end namespace mlir
+namespace llvm {
+
+// IntegerSet hash just like pointers
+template <> struct DenseMapInfo<mlir::IntegerSet> {
+  static mlir::IntegerSet getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::IntegerSet(static_cast<mlir::IntegerSet::ImplType *>(pointer));
+  }
+  static mlir::IntegerSet getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::IntegerSet(static_cast<mlir::IntegerSet::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::IntegerSet val) {
+    return mlir::hash_value(val);
+  }
+  static bool isEqual(mlir::IntegerSet LHS, mlir::IntegerSet RHS) {
+    return LHS == RHS;
+  }
+};
+
+} // namespace llvm
 #endif // MLIR_IR_INTEGER_SET_H

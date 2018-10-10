@@ -109,7 +109,7 @@ HyperRectangularSet::HyperRectangularSet(unsigned numDims, unsigned numSymbols,
                                          ArrayRef<ArrayRef<AffineExpr>> lbs,
                                          ArrayRef<ArrayRef<AffineExpr>> ubs,
                                          MLIRContext *context,
-                                         IntegerSet *symbolContext)
+                                         IntegerSet symbolContext)
     : context(symbolContext ? MutableIntegerSet(symbolContext, context)
                             : MutableIntegerSet(numDims, numSymbols, context)) {
   unsigned d = 0;

@@ -78,7 +78,7 @@ private:
 /// A mutable integer set. Its affine expressions are however unique.
 struct MutableIntegerSet {
 public:
-  MutableIntegerSet(IntegerSet *set, MLIRContext *context);
+  MutableIntegerSet(IntegerSet set, MLIRContext *context);
 
   /// Create a universal set (no constraints).
   MutableIntegerSet(unsigned numDims, unsigned numSymbols,

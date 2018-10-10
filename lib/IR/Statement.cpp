@@ -439,7 +439,7 @@ bool ForStmt::constantFoldBound(bool lower) {
 // IfStmt
 //===----------------------------------------------------------------------===//
 
-IfStmt::IfStmt(Location *location, unsigned numOperands, IntegerSet *set)
+IfStmt::IfStmt(Location *location, unsigned numOperands, IntegerSet set)
     : Statement(Kind::If, location), thenClause(this), elseClause(nullptr),
       set(set) {
   operands.reserve(numOperands);
@@ -454,9 +454,9 @@ IfStmt::~IfStmt() {
 }
 
 IfStmt *IfStmt::create(Location *location, ArrayRef<MLValue *> operands,
-                       IntegerSet *set) {
+                       IntegerSet set) {
   unsigned numOperands = operands.size();
-  assert(numOperands == set->getNumOperands() &&
+  assert(numOperands == set.getNumOperands() &&
          "operand cound does not match the integer set operand count");
 
   IfStmt *stmt = new IfStmt(location, numOperands, set);

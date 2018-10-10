@@ -72,7 +72,7 @@ public:
   llvm::StringMap<AffineMap> affineMapDefinitions;
 
   // A map from integer set identifier to IntegerSet.
-  llvm::StringMap<IntegerSet *> integerSetDefinitions;
+  llvm::StringMap<IntegerSet> integerSetDefinitions;
 
   // This keeps track of all forward references to functions along with the
   // temporary function used to represent them.
@@ -202,8 +202,8 @@ public:
   // Polyhedral structures.
   AffineMap parseAffineMapInline();
   AffineMap parseAffineMapReference();
-  IntegerSet *parseIntegerSetInline();
-  IntegerSet *parseIntegerSetReference();
+  IntegerSet parseIntegerSetInline();
+  IntegerSet parseIntegerSetReference();
 
 private:
   // The Parser is subclassed and reinstantiated.  Do not add additional
@@ -866,7 +866,7 @@ public:
   explicit AffineParser(ParserState &state) : Parser(state) {}
 
   AffineMap parseAffineMapInline();
-  IntegerSet *parseIntegerSetInline();
+  IntegerSet parseIntegerSetInline();
 
 private:
   // Binary affine op parsing.
@@ -2522,23 +2522,23 @@ AffineExpr AffineParser::parseAffineConstraint(bool *isEq) {
 ///  affine-constraint-conjunction ::= /*empty*/
 ///                                 | affine-constraint (`,` affine-constraint)*
 ///
-IntegerSet *AffineParser::parseIntegerSetInline() {
+IntegerSet AffineParser::parseIntegerSetInline() {
   unsigned numDims = 0, numSymbols = 0;
 
   // List of dimensional identifiers.
   if (parseDimIdList(numDims))
-    return nullptr;
+    return IntegerSet();
 
   // Symbols are optional.
   if (getToken().is(Token::l_square)) {
     if (parseSymbolIdList(numSymbols))
-      return nullptr;
+      return IntegerSet();
   }
 
   if (parseToken(Token::colon, "expected ':' or '['") ||
       parseToken(Token::l_paren,
                  "expected '(' at start of integer set constraint list"))
-    return nullptr;
+    return IntegerSet();
 
   SmallVector<AffineExpr, 4> constraints;
   SmallVector<bool, 4> isEqs;
@@ -2557,13 +2557,13 @@ IntegerSet *AffineParser::parseIntegerSetInline() {
   // Grammar: affine-constraint-conjunct ::= `(` affine-constraint (`,`
   // affine-constraint)* `)
   if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
-    return nullptr;
+    return IntegerSet();
 
   // Parsed a valid integer set.
   return builder.getIntegerSet(numDims, numSymbols, constraints, isEqs);
 }
 
-IntegerSet *Parser::parseIntegerSetInline() {
+IntegerSet Parser::parseIntegerSetInline() {
   return AffineParser(state).parseIntegerSetInline();
 }
 
@@ -2571,14 +2571,14 @@ IntegerSet *Parser::parseIntegerSetInline() {
 ///  integer-set ::= integer-set-id | integer-set-inline
 ///  integer-set-id ::= `@@` suffix-id
 ///
-IntegerSet *Parser::parseIntegerSetReference() {
+IntegerSet Parser::parseIntegerSetReference() {
   // TODO: change '@@' integer set prefix to '#'.
   if (getToken().is(Token::double_at_identifier)) {
     // Parse integer set identifier and verify that it exists.
     StringRef integerSetId = getTokenSpelling().drop_front(2);
     if (getState().integerSetDefinitions.count(integerSetId) == 0)
       return (emitError("undefined integer set id '" + integerSetId + "'"),
-              nullptr);
+              IntegerSet());
     consumeToken(Token::double_at_identifier);
     return getState().integerSetDefinitions[integerSetId];
   }
@@ -2597,12 +2597,12 @@ ParseResult MLFunctionParser::parseIfStmt() {
   auto loc = getToken().getLoc();
   consumeToken(Token::kw_if);
 
-  IntegerSet *set = parseIntegerSetReference();
+  IntegerSet set = parseIntegerSetReference();
   if (!set)
     return ParseFailure;
 
   SmallVector<MLValue *, 4> operands;
-  if (parseDimAndSymbolList(operands, set->getNumDims(), set->getNumOperands(),
+  if (parseDimAndSymbolList(operands, set.getNumDims(), set.getNumOperands(),
                             "integer set"))
     return ParseFailure;
 
@@ -2757,7 +2757,7 @@ ParseResult ModuleParser::parseIntegerSetDef() {
   StringRef integerSetId = getTokenSpelling().drop_front(2);
 
   // Check for redefinitions (a default entry is created if one doesn't exist)
-  auto *&entry = getState().integerSetDefinitions[integerSetId];
+  auto &entry = getState().integerSetDefinitions[integerSetId];
   if (entry)
     return emitError("redefinition of integer set id '" + integerSetId + "'");
 

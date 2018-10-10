@@ -199,8 +199,8 @@ AffineMap MutableAffineMap::getAffineMap() {
   return AffineMap::get(numDims, numSymbols, results, rangeSizes);
 }
 
-MutableIntegerSet::MutableIntegerSet(IntegerSet *set, MLIRContext *context)
-    : numDims(set->getNumDims()), numSymbols(set->getNumSymbols()),
+MutableIntegerSet::MutableIntegerSet(IntegerSet set, MLIRContext *context)
+    : numDims(set.getNumDims()), numSymbols(set.getNumSymbols()),
       context(context) {
   // TODO(bondhugula)
 }

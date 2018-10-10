@@ -78,7 +78,7 @@ public:
 
   ArrayRef<AffineMap> getAffineMapIds() const { return affineMapsById; }
 
-  int getIntegerSetId(IntegerSet *integerSet) const {
+  int getIntegerSetId(IntegerSet integerSet) const {
     auto it = integerSetIds.find(integerSet);
     if (it == integerSetIds.end()) {
       return -1;
@@ -86,7 +86,7 @@ public:
     return it->second;
   }
 
-  ArrayRef<IntegerSet *> getIntegerSetIds() const { return integerSetsById; }
+  ArrayRef<IntegerSet> getIntegerSetIds() const { return integerSetsById; }
 
 private:
   void recordAffineMapReference(AffineMap affineMap) {
@@ -96,7 +96,7 @@ private:
     }
   }
 
-  void recordIntegerSetReference(IntegerSet *integerSet) {
+  void recordIntegerSetReference(IntegerSet integerSet) {
     if (integerSetIds.count(integerSet) == 0) {
       integerSetIds[integerSet] = integerSetsById.size();
       integerSetsById.push_back(integerSet);
@@ -131,8 +131,8 @@ private:
   DenseMap<AffineMap, int> affineMapIds;
   std::vector<AffineMap> affineMapsById;
 
-  DenseMap<IntegerSet *, int> integerSetIds;
-  std::vector<IntegerSet *> integerSetsById;
+  DenseMap<IntegerSet, int> integerSetIds;
+  std::vector<IntegerSet> integerSetsById;
 };
 } // end anonymous namespace
 
@@ -280,7 +280,7 @@ public:
   void printAffineMap(AffineMap map);
   void printAffineExpr(AffineExpr expr);
   void printAffineConstraint(AffineExpr expr, bool isEq);
-  void printIntegerSet(IntegerSet *set);
+  void printIntegerSet(IntegerSet set);
 
 protected:
   raw_ostream &os;
@@ -294,7 +294,7 @@ protected:
   void printAffineMapId(int affineMapId) const;
   void printAffineMapReference(AffineMap affineMap);
   void printIntegerSetId(int integerSetId) const;
-  void printIntegerSetReference(IntegerSet *integerSet);
+  void printIntegerSetReference(IntegerSet integerSet);
 
   /// This enum is used to represent the binding stength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
@@ -341,14 +341,14 @@ void ModulePrinter::printIntegerSetId(int integerSetId) const {
   os << "@@set" << integerSetId;
 }
 
-void ModulePrinter::printIntegerSetReference(IntegerSet *integerSet) {
+void ModulePrinter::printIntegerSetReference(IntegerSet integerSet) {
   int setId;
   if ((setId = state.getIntegerSetId(integerSet)) >= 0) {
     // The set will be printed at top of module; so print reference to its id.
     printIntegerSetId(setId);
   } else {
     // Set not in module state so print inline.
-    integerSet->print(os);
+    integerSet.print(os);
   }
 }
 
@@ -362,7 +362,7 @@ void ModulePrinter::print(const Module *module) {
   for (const auto &set : state.getIntegerSetIds()) {
     printIntegerSetId(state.getIntegerSetId(set));
     os << " = ";
-    set->print(os);
+    set.print(os);
     os << '\n';
   }
   for (auto const &fn : *module)
@@ -729,35 +729,35 @@ void ModulePrinter::printAffineMap(AffineMap map) {
   os << ')';
 }
 
-void ModulePrinter::printIntegerSet(IntegerSet *set) {
+void ModulePrinter::printIntegerSet(IntegerSet set) {
   // Dimension identifiers.
   os << '(';
-  for (unsigned i = 1; i < set->getNumDims(); ++i)
+  for (unsigned i = 1; i < set.getNumDims(); ++i)
     os << 'd' << i - 1 << ", ";
-  if (set->getNumDims() >= 1)
-    os << 'd' << set->getNumDims() - 1;
+  if (set.getNumDims() >= 1)
+    os << 'd' << set.getNumDims() - 1;
   os << ')';
 
   // Symbolic identifiers.
-  if (set->getNumSymbols() != 0) {
+  if (set.getNumSymbols() != 0) {
     os << '[';
-    for (unsigned i = 0; i < set->getNumSymbols() - 1; ++i)
+    for (unsigned i = 0; i < set.getNumSymbols() - 1; ++i)
       os << 's' << i << ", ";
-    if (set->getNumSymbols() >= 1)
-      os << 's' << set->getNumSymbols() - 1;
+    if (set.getNumSymbols() >= 1)
+      os << 's' << set.getNumSymbols() - 1;
     os << ']';
   }
 
   // Print constraints.
   os << " : (";
-  auto numConstraints = set->getNumConstraints();
+  auto numConstraints = set.getNumConstraints();
   for (int i = 1; i < numConstraints; ++i) {
-    printAffineConstraint(set->getConstraint(i - 1), set->isEq(i - 1));
+    printAffineConstraint(set.getConstraint(i - 1), set.isEq(i - 1));
     os << ", ";
   }
   if (numConstraints >= 1)
-    printAffineConstraint(set->getConstraint(numConstraints - 1),
-                          set->isEq(numConstraints - 1));
+    printAffineConstraint(set.getConstraint(numConstraints - 1),
+                          set.isEq(numConstraints - 1));
   os << ')';
 }
 
@@ -867,7 +867,7 @@ public:
   void printAffineMap(AffineMap map) {
     return ModulePrinter::printAffineMapReference(map);
   }
-  void printIntegerSet(IntegerSet *set) {
+  void printIntegerSet(IntegerSet set) {
     return ModulePrinter::printIntegerSetReference(set);
   }
   void printAffineExpr(AffineExpr expr) {
@@ -1474,9 +1474,9 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
 
 void MLFunctionPrinter::print(const IfStmt *stmt) {
   os.indent(numSpaces) << "if ";
-  IntegerSet *set = stmt->getIntegerSet();
+  IntegerSet set = stmt->getIntegerSet();
   printIntegerSetReference(set);
-  printDimAndSymbolList(stmt->getStmtOperands(), set->getNumDims());
+  printDimAndSymbolList(stmt->getStmtOperands(), set.getNumDims());
   os << " {\n";
   print(stmt->getThen());
   os.indent(numSpaces) << "}";
@@ -1514,7 +1514,7 @@ void AffineMap::dump() const {
   llvm::errs() << "\n";
 }
 
-void IntegerSet::dump() {
+void IntegerSet::dump() const {
   print(llvm::errs());
   llvm::errs() << "\n";
 }
@@ -1534,9 +1534,9 @@ void AffineMap::print(raw_ostream &os) const {
   ModulePrinter(os, state).printAffineMap(*this);
 }
 
-void IntegerSet::print(raw_ostream &os) {
+void IntegerSet::print(raw_ostream &os) const {
   ModuleState state(/*no context is known*/ nullptr);
-  ModulePrinter(os, state).printIntegerSet(this);
+  ModulePrinter(os, state).printIntegerSet(*this);
 }
 
 void SSAValue::print(raw_ostream &os) const {
