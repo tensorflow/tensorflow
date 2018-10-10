@@ -407,6 +407,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(CTCBeamSearchDecoder)
     HANDLE_OPERATORTYPENAME_CASE(Unpack)
     HANDLE_OPERATORTYPENAME_CASE(ZerosLike)
+    HANDLE_OPERATORTYPENAME_CASE(UnidirectionalSequenceLstm)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -898,12 +899,12 @@ void CheckNoMissingArray(const Model& model) {
 void FixNoMissingArray(Model* model) {
   for (const auto& op : model->operators) {
     for (const auto& input : op->inputs) {
-      if (!model->HasArray(input)) {
+      if (!model->HasArray(input) && !model->IsOptionalArray(input)) {
         model->GetOrCreateArray(input);
       }
     }
     for (const auto& output : op->outputs) {
-      if (!model->HasArray(output)) {
+      if (!model->HasArray(output) && !model->IsOptionalArray(output)) {
         model->GetOrCreateArray(output);
       }
     }
