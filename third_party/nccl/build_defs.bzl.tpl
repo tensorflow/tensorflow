@@ -152,6 +152,14 @@ def device_link(name, srcs):
         suffix = ".pic.a",
     )
 
+    cpu_arch = "X86_64"
+    native.genrule(
+        name = "get_cpu_gen",
+        outs = [cpu_arch],
+        cmd = "uname -m",
+    )
+    cpu_arch = cpu_arch.upper()
+
     # Device-link to cubins for each architecture.
     images = []
     cubins = []
@@ -159,7 +167,7 @@ def device_link(name, srcs):
         cubin = "%s_%s.cubin" % (name, arch)
         register_hdr = "%s_%s.h" % (name, arch)
         nvlink = "@local_config_nccl//:nvlink"
-        cmd = ("$(location %s) --cpu-arch=X86_64 " % nvlink +
+        cmd = ("$(location %s) --cpu-arch=%s " % (nvlink, cpu_arch) +
             "--arch=%s $(SRCS) " % arch +
             "--register-link-binaries=$(location %s) " % register_hdr +
             "--output-file=$(location %s)" % cubin)
@@ -207,4 +215,5 @@ def device_link(name, srcs):
             "@local_config_cuda//cuda:cuda_headers",
             "@local_config_cuda//cuda:cudart_static",
         ],
+        defines = ["__NV_EXTRA_INITIALIZATION=", "__NV_EXTRA_FINALIZATION="]
     )
