@@ -155,7 +155,8 @@ def build_toco_convert_protos(input_tensors,
                               post_training_quantize=False,
                               dump_graphviz_dir=None,
                               dump_graphviz_video=False,
-                              converter_mode=ConverterMode.DEFAULT):
+                              converter_mode=ConverterMode.DEFAULT,
+                              allow_nonexistent_arrays=False):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -212,6 +213,8 @@ def build_toco_convert_protos(input_tensors,
       every graph transformation. (default False)
     converter_mode: Experimental flag, subject to change. ConverterMode
       indicating which converter to use. (default ConverterMode.DEFAULT)
+    allow_nonexistent_arrays: Allow specifying array names that don't exist
+      or are unused in the final graph.  (default False)
 
   Returns:
     model_flags, toco_flags: two protocol buffers describing the conversion
@@ -261,6 +264,9 @@ def build_toco_convert_protos(input_tensors,
 
   for output_tensor in output_tensors:
     model.output_arrays.append(tensor_name(output_tensor))
+
+  model.allow_nonexistent_arrays = allow_nonexistent_arrays
+
   return model, toco
 
 

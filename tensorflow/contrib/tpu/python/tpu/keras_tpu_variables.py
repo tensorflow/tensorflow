@@ -25,10 +25,15 @@ from __future__ import print_function
 
 import contextlib
 
+import numpy as np
+
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 
 
@@ -73,7 +78,7 @@ class ReplicatedVariable(object):
     if tpu_context is None:
       return self._primary_var.handle
 
-    return tpu_context.get_replicated_var_handle(self)
+    return tpu_context.get_replicated_var_handle(self._name, self._vars)
 
   @contextlib.contextmanager
   def _assign_dependencies(self):
@@ -285,3 +290,51 @@ def replicated_scope(num_replicas):
 
   return variable_scope.variable_scope(
       "", custom_getter=_replicated_variable_getter)
+
+
+@contextlib.contextmanager
+def replicated_variable_for_optimizer(num_replicas):
+  """Context manager for optimizer weights. Overrides K.variable."""
+  if num_replicas == 1:
+    yield
+    return
+
+  try:
+    old_v = backend.variable
+
+    def opt_variable(value, dtype=None, name=None, constraint=None):
+      """Instantiates a variable and returns it."""
+      if dtype is None:
+        dtype = backend.floatx()
+
+      variables = []
+      for i in range(num_replicas):
+        # Keras holds the variables in optimizer class instance , so the name
+        # does not matter here. ResourceVariable constructor will find a unique
+        # name (including name=None) for each replica.
+        with ops.device("device:TPU:{}".format(i)):
+          v = resource_variable_ops.ResourceVariable(
+              value,
+              dtype=dtypes_module.as_dtype(dtype),
+              name=name,
+              constraint=constraint)
+          variables.append(v)
+      name = "replicate_{}_{}".format("variable" if name is None else name,
+                                      ops.uid())
+      v = ReplicatedVariable(name, variables)
+
+      # pylint: disable=protected-access
+
+      if isinstance(value, np.ndarray):
+        v._keras_shape = value.shape
+      elif hasattr(value, "shape"):
+        v._keras_shape = backend.int_shape(value)
+      v._uses_learning_phase = False
+      backend.track_variable(v)
+      return v
+
+    backend.variable = opt_variable
+    yield
+
+  finally:
+    backend.variable = old_v

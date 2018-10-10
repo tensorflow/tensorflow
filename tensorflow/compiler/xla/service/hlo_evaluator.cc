@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/index_util.h"
@@ -1279,7 +1280,9 @@ StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
                     return SafeLess<KeyType>(a.first, b.first);
                   });
         std::vector<KeyType> result_keys;
-        std::vector<ValueType> result_values;
+        // We use a InlinedVector here because we need to convert it to an
+        // absl::Span later, and this would not work with std::vector<bool>.
+        absl::InlinedVector<ValueType, 10> result_values;
         for (const auto& key_value : key_value_vector) {
           result_keys.push_back(key_value.first);
           result_values.push_back(key_value.second);
@@ -1316,6 +1319,9 @@ StatusOr<Literal> EvaluateSortCurried(HloInstruction* sort,
                                       const Literal& keys_literal,
                                       const Literal& values_literal) {
   switch (sort->operand(1)->shape().element_type()) {
+    case PRED:
+      return EvaluateSortInternal<KeyType, bool>(sort, keys_literal,
+                                                 values_literal);
     case F32:
       return EvaluateSortInternal<KeyType, float>(sort, keys_literal,
                                                   values_literal);
@@ -1378,7 +1384,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
             "unsupported");
       }
     }
-    return reduce->Visit(typed_visitors_.at(first_element_type).get());
+    return reduce->Visit(typed_visitors_[first_element_type].get());
   }
 }
 

@@ -129,7 +129,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
                sloppy, buffer_output_elements, prefetch_input_elements):
-    """See `tf.contrib.data.parallel_interleave()` for details."""
+    """See `tf.data.experimental.parallel_interleave()` for details."""
     super(ParallelInterleaveDataset, self).__init__(input_dataset, map_func,
                                                     cycle_length, block_length)
     self._sloppy = ops.convert_to_tensor(
@@ -158,7 +158,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
     # pylint: enable=protected-access
 
   def _transformation_name(self):
-    return "tf.contrib.data.parallel_interleave()"
+    return "tf.data.experimental.parallel_interleave()"
 
 
 @tf_export("data.TFRecordDataset")

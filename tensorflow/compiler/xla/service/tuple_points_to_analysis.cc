@@ -280,16 +280,6 @@ Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleSlice(HloInstruction* slice) {
-  // A kSlice instruction aliases its operand if the backend lowers it to an
-  // in-place implementation.
-  if (slice->IsInPlaceSlice()) {
-    CreateCopiedPointsToSet(slice, slice->operand(0));
-    return Status::OK();
-  }
-  return DefaultAction(slice);
-}
-
 Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
   // RecvDone aliases its input (Recv) tuple element {0} to element {0} of its
   // output. The other indices ({} and {1}) define their own buffers.
@@ -455,15 +445,10 @@ bool TuplePointsToAnalysis::InstructionDefinesBufferAtIndex(
 
 Status TuplePointsToAnalysis::VerifyBuffer(const LogicalBuffer& buffer) const {
   if (!InstructionDefinesBufferAtIndex(buffer.instruction(), buffer.index())) {
-    // kSlice ops that are lowered to an in-place version are expected to not
-    // define their output buffer.
-    if (buffer.instruction()->opcode() != HloOpcode::kSlice ||
-        !buffer.instruction()->IsInPlaceSlice()) {
-      return FailedPrecondition(
-          "LogicalBuffer %s is ill-defined: instruction %s does not define a "
-          "buffer at that index",
-          buffer.ToString(), buffer.instruction()->name());
-    }
+    return FailedPrecondition(
+        "LogicalBuffer %s is ill-defined: instruction %s does not define a "
+        "buffer at that index",
+        buffer.ToString(), buffer.instruction()->name());
   }
 
   if (buffer.id() < 0 ||
@@ -771,6 +756,7 @@ bool TuplePointsToAnalysis::CanShareOperandBufferWithUser(
     }
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kScatter ||
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.

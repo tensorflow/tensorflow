@@ -939,7 +939,8 @@ class _VariableStore(object):
     if regularizer:
       with ops.colocate_with(v):
         with ops.name_scope(name + "/Regularizer/"):
-          loss = regularizer(v)
+          with ops.init_scope():
+            loss = regularizer(v)
         if loss is not None:
           if context.executing_eagerly():
             v_name = "v_%s" % type(v)

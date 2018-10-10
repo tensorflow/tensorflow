@@ -24,8 +24,8 @@ from collections import OrderedDict
 import contextlib
 import gc
 import itertools
-import os
 import math
+import os
 import random
 import re
 import tempfile
@@ -402,11 +402,14 @@ def with_c_shapes(cls):
   return cls
 
 
-def enable_cond_v2(fn):
-  """Decorator for enabling CondV2 on a test.
+def enable_control_flow_v2(fn):
+  """Decorator for enabling CondV2 and WhileV2 on a test.
 
-  Note this enables using CondV2 after running the test class's setup/teardown
-  methods.
+  Note this enables using CondV2 and WhileV2 after running the test class's
+  setup/teardown methods.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
 
   Args:
     fn: the function to be wrapped
@@ -416,21 +419,56 @@ def enable_cond_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops.ENABLE_COND_V2
+    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
+    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
     control_flow_ops.ENABLE_COND_V2 = True
+    control_flow_ops.ENABLE_WHILE_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = prev_value
+      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
+      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
 
   return wrapper
 
 
-def with_cond_v2(cls):
-  """Adds methods that call original methods but with CondV2 enabled.
+def with_control_flow_v2(cls):
+  """Adds methods that call original methods with WhileV2 and CondV2 enabled.
 
-  Note this enables CondV2 in new methods after running the test class's
-  setup method.
+  Note this enables CondV2 and WhileV2 in new methods after running the test
+  class's setup method.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
+
+  If a test function has _disable_control_flow_v2 attr set to True (using the
+  @disable_control_flow_v2 decorator), the v2 function is not generated for it.
+
+  Example:
+
+  @test_util.with_control_flow_v2
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    @test_util.disable_control_flow_v2("b/xyzabc")
+    def testDisabledForV2(self):
+      ...
+
+  Generated class:
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    def testEnabledForV2WithControlFlowV2(self):
+      // Enable V2 flags.
+      testEnabledForV2(self)
+      // Restore V2 flags.
+
+    def testDisabledForV2(self):
+      ...
 
   Args:
     cls: class to decorate
@@ -438,21 +476,39 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCondV2", enable_cond_v2(value))
+    if (callable(value) and name.startswith("test") and
+        not getattr(value, "_disable_control_flow_v2", False)):
+      setattr(cls, name + "WithControlFlowV2", enable_control_flow_v2(value))
   return cls
+
+
+def disable_control_flow_v2(unused_msg):
+  """Decorator for a function in a with_control_flow_v2 enabled test class.
+
+  Blocks the function from being run with v2 control flow ops.
+
+  Args:
+    unused_msg: Reason for disabling.
+
+  Returns:
+    The wrapped function with _disable_control_flow_v2 attr set to True.
+  """
+  def wrapper(func):
+    func._disable_control_flow_v2 = True
+    return func
+  return wrapper
 
 
 def assert_no_new_pyobjects_executing_eagerly(f):
   """Decorator for asserting that no new Python objects persist after a test.
 
-  Runs the test multiple times executing eagerly, first as a warmup and then
-  several times to let objects accumulate. The warmup helps ignore caches which
-  do not grow as the test is run repeatedly.
+  Runs the test multiple times executing eagerly, first as a warmup and then to
+  let objects accumulate. The warmup helps ignore caches which do not grow as
+  the test is run repeatedly.
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
@@ -462,7 +518,14 @@ def assert_no_new_pyobjects_executing_eagerly(f):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
-      f(self, **kwargs)
+      # Run the test 2 times as warmup, in an attempt to fill up caches, which
+      # should not grow as the test is run repeatedly below.
+      #
+      # TODO(b/117156879): Running warmup twice is black magic; we have seen
+      # tests that fail with 1 warmup run, and pass with 2, on various versions
+      # of python2.7.x.
+      for _ in range(2):
+        f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -1936,9 +1999,11 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      # Disable Grappler constant folding since some tests & benchmarks
+      # use constant input and become meaningless after constant folding.
+      # DO NOT DISABLE GRAPPLER OPTIMIZERS WITHOUT CONSULTING WITH THE
+      # GRAPPLER TEAM.
       config.graph_options.rewrite_options.constant_folding = (
-          rewriter_config_pb2.RewriterConfig.OFF)
-      config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)

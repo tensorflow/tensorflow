@@ -853,7 +853,7 @@ class MklConvCustomBackpropFilterOp
 
       // MKL DNN allocates large buffers when a conv gradient filter primtive is
       // created. So we don't cache conv backward primitives when the env
-      // variable TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE is set to true.
+      // variable TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is set to true.
       bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
       conv_bwd_filter = MklConvBwdFilterPrimitiveFactory<T>::Get(
           convBwdFilterDims, do_not_cache);

@@ -94,12 +94,13 @@ bool IsTrivialFusedActivationFunc(
 // Attempts to remove both fused and unfused activation functions if the
 // quantization params indicate that the representable values fall inside the
 // activation range.
-bool RemoveTrivialQuantizedActivationFunc::Run(Model* model,
-                                               std::size_t op_index) {
+::tensorflow::Status RemoveTrivialQuantizedActivationFunc::Run(
+    Model* model, std::size_t op_index, bool* modified) {
+  *modified = false;
   const auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   if (op->inputs.empty()) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   if (IsTrivialUnfusedActivationFunc(this, *model, op->type, op->inputs[0])) {
@@ -107,7 +108,8 @@ bool RemoveTrivialQuantizedActivationFunc::Run(Model* model,
         "Removing trivial unfused activation function %s because the input "
         "minmax imply at least as tight a clamp anyway.",
         LogName(*op));
-    return RemoveTrivialPassthroughOp(this, model, op_index);
+    *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+    return ::tensorflow::Status::OK();
   }
   if (IsTrivialFusedActivationFunc(this, *model, op->fused_activation_function,
                                    op->outputs[0])) {
@@ -117,9 +119,10 @@ bool RemoveTrivialQuantizedActivationFunc::Run(Model* model,
         "because the output quantization parameters imply at least as tight "
         "a clamp anyway.",
         LogName(*op));
-    return true;
+    *modified = true;
+    return ::tensorflow::Status::OK();
   }
-  return false;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

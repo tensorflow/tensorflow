@@ -137,24 +137,6 @@ genrule(
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + select({
-        "//tensorflow:with_aws_support": [
-            "@aws//:LICENSE",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_gcp_support": [
-            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
-    }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
         ],
@@ -171,7 +153,14 @@ genrule(
             "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ),
+    ) + select({
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "@aws//:LICENSE",
+            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
+        ],
+    }),
     outs = ["include/tensorflow/c/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
@@ -205,24 +194,6 @@ genrule(
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + select({
-        "//tensorflow:with_aws_support": [
-            "@aws//:LICENSE",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_gcp_support": [
-            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
-    }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
         ],
@@ -232,7 +203,14 @@ genrule(
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]),
+    ]) + select({
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "@aws//:LICENSE",
+            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
+        ],
+    }),
     outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],

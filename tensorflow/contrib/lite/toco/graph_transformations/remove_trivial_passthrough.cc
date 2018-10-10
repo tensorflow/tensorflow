@@ -29,19 +29,33 @@ namespace {
 // array instead. from_array is assumed to be discardable, and consequently
 // this only updates operator edges (since discardable arrays only
 // appear there, and not e.g. in model flags).
-void RerouteEdges(const string& from_array, const string& to_array,
-                  Model* model) {
+void Reroute(const string& from, const string& to, Model* model) {
   for (const auto& op : model->operators) {
     for (auto& output : op->outputs) {
-      if (output == from_array) {
-        output = to_array;
+      if (output == from) {
+        output = to;
       }
     }
     for (auto& input : op->inputs) {
-      if (input == from_array) {
-        input = to_array;
+      if (input == from) {
+        input = to;
       }
     }
+  }
+  const Array& from_array = model->GetArray(from);
+  Array& to_array = model->GetOrCreateArray(to);
+  // Preserve minmax information if to_array didn't already have any.
+  if (from_array.minmax && !to_array.minmax) {
+    to_array.GetOrCreateMinMax() = from_array.GetMinMax();
+    // If we're copying minmax info, then we should also be copying
+    // narrow_range, which affects how minmax info is to be interpreted.
+    to_array.narrow_range = from_array.narrow_range;
+  }
+  // Separately, also preserve final_data_type if to_array didn't already
+  // have any.
+  if (from_array.final_data_type != ArrayDataType::kNone &&
+      to_array.final_data_type == ArrayDataType::kNone) {
+    to_array.final_data_type = from_array.final_data_type;
   }
 }
 
@@ -90,14 +104,14 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
     transformation->AddMessageF(
         "Removing %s, keeping its non-constant input array %s and removing %s",
         LogName(*passthru_op), main_input_name, output_name);
-    RerouteEdges(output_name, main_input_name, model);
+    Reroute(output_name, main_input_name, model);
   } else if (IsDiscardableArray(*model, main_input_name) &&
              !IsConstantParameterArray(*model, main_input_name)) {
     transformation->AddMessageF(
         "Removing %s, keeping its output array %s and removing non-constant "
         "input %s",
         LogName(*passthru_op), output_name, main_input_name);
-    RerouteEdges(main_input_name, output_name, model);
+    Reroute(main_input_name, output_name, model);
   } else {
     transformation->AddMessageF(
         "Cannot remove %s, neither its main input nor its output may be "

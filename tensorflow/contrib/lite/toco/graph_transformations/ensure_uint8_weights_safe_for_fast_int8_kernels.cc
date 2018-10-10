@@ -108,8 +108,9 @@ namespace toco {
 // we can foresee these 'fast int8 kernels' to remain important to have into
 // the 2020s.
 //
-bool EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
-                                                   std::size_t op_index) {
+::tensorflow::Status EnsureUint8WeightsSafeForFastInt8Kernels::Run(
+    Model* model, std::size_t op_index, bool* modified) {
+  *modified = false;
   const auto& op = *model->operators[op_index];
   int weights_index = 0;
   switch (op.type) {
@@ -148,16 +149,16 @@ bool EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
       // That's why at the moment we only handle operators that use a GEMM
       // (Conv, fully-connected --- note that LSTM merely wraps a
       // fully-connected operator).
-      return false;
+      return ::tensorflow::Status::OK();
   }
 
   const string& name = op.inputs[weights_index];
   auto& array = model->GetArray(name);
   if (!array.buffer) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   if (array.data_type != ArrayDataType::kUint8) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   auto& buffer_data = array.GetMutableBuffer<ArrayDataType::kUint8>().data;
 
@@ -212,7 +213,8 @@ bool EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
     AddMessageF("Tweaked weights values for %s", LogName(op));
   }
 
-  return changed;
+  *modified = changed;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

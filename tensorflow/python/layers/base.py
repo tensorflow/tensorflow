@@ -131,10 +131,20 @@ class Layer(base_layer.Layer):
 
   def add_loss(self, losses, inputs=None):
     previous_losses_length = len(self._losses)
+    previous_callable_losses_length = len(self._callable_losses)
     super(Layer, self).add_loss(losses, inputs=inputs)
-    # TODO(fchollet): deprecate collection below.
-    new_losses = self._losses[previous_losses_length:]
-    _add_elements_to_collection(new_losses, ops.GraphKeys.REGULARIZATION_LOSSES)
+    if not context.executing_eagerly():
+      # TODO(fchollet): deprecate collection below.
+      new_losses = self._losses[previous_losses_length:]
+      new_callable_losses = self._callable_losses[
+          previous_callable_losses_length:]
+      for regularizer in new_callable_losses:
+        loss_tensor = regularizer()
+        if loss_tensor is not None:
+          new_losses.append(loss_tensor)
+      _add_elements_to_collection(
+          new_losses,
+          ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def _name_scope(self):
     """Determines op naming for the Layer."""

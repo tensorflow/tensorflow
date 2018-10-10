@@ -1,7 +1,27 @@
 path: "tensorflow.dtypes"
 tf_module {
+  member {
+    name: "DType"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "as_dtype"
+    argspec: "args=[\'type_value\'], varargs=None, keywords=None, defaults=None"
+  }
   member_method {
     name: "as_string"
     argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "cast"
+    argspec: "args=[\'x\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "complex"
+    argspec: "args=[\'real\', \'imag\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "saturate_cast"
+    argspec: "args=[\'value\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }
