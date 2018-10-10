@@ -179,6 +179,7 @@ HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CrossReplicaSum);
 HLO_MATCHER(Divide);
+HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Eq);
