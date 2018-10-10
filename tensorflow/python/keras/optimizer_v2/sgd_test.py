@@ -754,6 +754,20 @@ class MomentumOptimizerTest(test.TestCase):
                     (0.9 * 0.01 + 0.01) * 2.0)
             ]), var1.eval())
 
+  def testConfig(self):
+    opt = sgd.SGD(learning_rate=1.0, momentum=2.0, nesterov=True)
+    config = opt.get_config()
+    opt2 = sgd.SGD.from_config(config)
+    self.assertEqual(opt._hyper["learning_rate"][1],
+                     opt2._hyper["learning_rate"][1])
+    self.assertEqual(opt._hyper["momentum"][1], opt2._hyper["momentum"][1])
+    self.assertEqual(opt2._use_nesterov, True)
+
+    opt = sgd.SGD(momentum=None)
+    config = opt.get_config()
+    opt2 = sgd.SGD.from_config(config)
+    self.assertEqual(False, opt2._use_momentum)
+
 
 if __name__ == "__main__":
   test.main()
