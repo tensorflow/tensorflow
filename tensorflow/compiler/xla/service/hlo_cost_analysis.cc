@@ -664,6 +664,11 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
 }
 
 Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather doesn't read the whole input buffer, it's equivalent to a copy the
+  // size of the output shape and a read of the gather indices.
+  current_properties_[kBytesAccessedKey] =
+      GetShapeSize(gather->shape()) * 2 +
+      GetShapeSize(gather->operand(1)->shape());
   // Gather does not issue any flops.
   return Status::OK();
 }
