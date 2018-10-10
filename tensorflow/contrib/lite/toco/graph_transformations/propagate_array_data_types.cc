@@ -239,6 +239,12 @@ void SetDataTypeForAllOutputs(Model* model, Operator* op,
       }
       break;
     }
+    case OperatorType::kUnidirectionalSequenceLstm: {
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      if (data_type != ArrayDataType::kFloat) return ::tensorflow::Status::OK();
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);

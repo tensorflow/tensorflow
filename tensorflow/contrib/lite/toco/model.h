@@ -58,6 +58,7 @@ enum class OperatorType : uint8 {
   kL2Normalization,
   kL2Pool,
   kLstmCell,
+  kUnidirectionalSequenceLstm,
   kLocalResponseNormalization,
   kLog,
   kLogistic,
@@ -633,6 +634,11 @@ struct LstmCellOperator : Operator {
       : Operator(OperatorType::kLstmCell), kernel_type(KERNEL_BASIC) {}
 
   KernelType kernel_type;
+};
+
+struct UnidirectionalSequenceLstmOperator : Operator {
+  UnidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
 };
 
 // Element-wise multiplication operator.
