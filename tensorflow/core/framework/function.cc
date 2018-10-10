@@ -796,12 +796,28 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
   return h;
 }
 
+static constexpr const char* const kExecutorAttr = "_executor";
+
+/* static */
+string FunctionLibraryRuntime::ExecutorType(const InstantiateOptions& options,
+                                            AttrSlice attrs) {
+  if (!options.executor_type.empty()) {
+    return options.executor_type;
+  } else if (const AttrValue* executor_attr = attrs.Find(kExecutorAttr)) {
+    return executor_attr->s();
+  } else {
+    return string();
+  }
+}
+
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
   entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
   for (auto p : attrs) {
-    entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+    if (p.first != kExecutorAttr) {
+      entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+    }
   }
   if (!options.target.empty()) {
     entries.push_back(
@@ -815,9 +831,9 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(
         strings::StrCat("_state_handle", "=", options.state_handle));
   }
-  if (!options.executor_type.empty()) {
-    entries.push_back(
-        strings::StrCat("_executor_type", "=", options.executor_type));
+  string executor_type = FunctionLibraryRuntime::ExecutorType(options, attrs);
+  if (!executor_type.empty()) {
+    entries.push_back(strings::StrCat(kExecutorAttr, "=", executor_type));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
