@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <utility>
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
 
 namespace tensorflow {
 
@@ -25,21 +24,14 @@ namespace {
 
 // The URL to retrieve metadata when running in Google Compute Engine.
 constexpr char kGceMetadataBaseUrl[] = "http://metadata/computeMetadata/v1/";
-// The default initial delay between retries with exponential backoff.
-constexpr int kInitialRetryDelayUsec = 500000;  // 0.5 sec
 
 }  // namespace
 
 ComputeEngineMetadataClient::ComputeEngineMetadataClient(
-    std::shared_ptr<HttpRequest::Factory> http_request_factory)
-    : ComputeEngineMetadataClient(std::move(http_request_factory),
-                                  kInitialRetryDelayUsec) {}
-
-ComputeEngineMetadataClient::ComputeEngineMetadataClient(
     std::shared_ptr<HttpRequest::Factory> http_request_factory,
-    int64 initial_retry_delay_usec)
+    const RetryConfig& config)
     : http_request_factory_(std::move(http_request_factory)),
-      initial_retry_delay_usec_(initial_retry_delay_usec) {}
+      retry_config_(config) {}
 
 Status ComputeEngineMetadataClient::GetMetadata(
     const string& path, std::vector<char>* response_buffer) {
@@ -52,8 +44,7 @@ Status ComputeEngineMetadataClient::GetMetadata(
     return Status::OK();
   };
 
-  return RetryingUtils::CallWithRetries(get_metadata_from_gce,
-                                        initial_retry_delay_usec_);
+  return RetryingUtils::CallWithRetries(get_metadata_from_gce, retry_config_);
 }
 
 }  // namespace tensorflow

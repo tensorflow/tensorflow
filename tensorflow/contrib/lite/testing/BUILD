@@ -13,14 +13,14 @@ load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite"
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "py_test",
 )
 
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
     size = "large",
     srcs = ["generated_examples_zip_test.cc"],
-    args = [
-    ] + select({
+    args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
             "--zip_file_path=$(location :zip_%s)" % test_name,
@@ -34,7 +34,7 @@ load(
         ":zip_%s" % test_name,
     ],
     shard_count = 20,
-    tags = [
+    tags = tags + [
         "gen_zip_test",
         "no_oss",
         "tflite_not_portable_intentional",
@@ -60,7 +60,7 @@ load(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
     }),
-) for conversion_mode, test_name in generated_test_models_all()]
+) for conversion_mode, test_name, tags, args in generated_test_models_all()]
 
 test_suite(
     name = "generated_zip_tests",
@@ -163,7 +163,7 @@ cc_library(
         ":test_runner",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite/delegates/eager:delegate",
+        "//tensorflow/contrib/lite/delegates/flex:delegate",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
@@ -359,6 +359,35 @@ cc_binary(
     deps = [
         ":tflite_diff_flags",
         ":tflite_diff_util",
+    ],
+)
+
+py_binary(
+    name = "model_coverage_lib",
+    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    visibility = ["//tensorflow/contrib/lite:__subpackages__"],
+    deps = [
+        "//tensorflow/contrib/lite/python:lite",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "model_coverage_lib_test",
+    srcs = ["//tensorflow/contrib/lite/testing:model_coverage/model_coverage_lib_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "no_oss",
+        "no_pip",
+        "no_windows",
+        "notap",
+    ],
+    deps = [
+        ":model_coverage_lib",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

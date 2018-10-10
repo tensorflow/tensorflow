@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/run_handler.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/device_tracer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -244,6 +246,21 @@ void DirectSession::SchedClosure(thread::ThreadPool* pool,
 #endif  // __ANDROID__
 }
 
+static RunHandlerPool* GetOrCreateRunHandlerPool(
+    const SessionOptions& options) {
+  static RunHandlerPool* pool =
+      new RunHandlerPool(NumInterOpThreadsFromSessionOptions(options));
+  return pool;
+}
+
+bool DirectSession::ShouldUseRunHandlerPool() const {
+  if (options_.config.session_inter_op_thread_pool_size() > 0 ||
+      options_.config.use_per_session_threads()) {
+    return false;
+  }
+  return true;
+}
+
 DirectSession::DirectSession(const SessionOptions& options,
                              const DeviceMgr* device_mgr,
                              DirectSessionFactory* const factory)
@@ -363,7 +380,7 @@ Status DirectSession::MaybeInitializeExecutionState(
 Status DirectSession::Create(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(init_error_);
   if (graph.node_size() > 0) {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     if (graph_created_) {
       return errors::AlreadyExists(
           "A Graph has already been created for this session.");
@@ -375,7 +392,7 @@ Status DirectSession::Create(const GraphDef& graph) {
 
 Status DirectSession::Extend(const GraphDef& graph) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
-  mutex_lock l(graph_def_lock_);
+  mutex_lock l(graph_state_lock_);
   return ExtendLocked(graph);
 }
 
@@ -437,6 +454,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
+  string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
+  tracing::ScopedActivity activity(session_id_meta);
+
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -582,16 +602,37 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
   }
 
-  Executor::Args::Runner default_runner = [this,
-                                           pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
-  };
+  std::unique_ptr<RunHandler> handler;
+  if (ShouldUseRunHandlerPool() &&
+      run_options.experimental().use_run_handler_pool()) {
+    // Non-null only when a global inter-op pool is used.
+    VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
+    handler = GetOrCreateRunHandlerPool(options_)->Get();
+  }
+  auto* handler_ptr = handler.get();
+
+  Executor::Args::Runner default_runner = nullptr;
+
+  if (pool == nullptr) {
+    default_runner = [](Executor::Args::Closure c) { c(); };
+  } else if (handler_ptr != nullptr) {
+    default_runner = [handler_ptr](Executor::Args::Closure c) {
+      handler_ptr->ScheduleInterOpClosure(std::move(c));
+    };
+  } else {
+    default_runner = [this, pool](Executor::Args::Closure c) {
+      SchedClosure(pool, std::move(c));
+    };
+  }
+
   for (const auto& item : executors_and_keys->items) {
-    // TODO(zhengxq): support partial run.
-    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    // TODO(azaks): support partial run.
+    // TODO(azaks): if the device picks its own threadpool, we need to assign
     //     less threads to the main compute pool by default.
     thread::ThreadPool* device_thread_pool =
         item.device->tensorflow_device_thread_pool();
+    // TODO(crk): Investigate usage of RunHandlerPool when using device specific
+    // thread pool(s).
     if (!device_thread_pool) {
       args.runner = default_runner;
     } else {
@@ -1172,7 +1213,7 @@ Status DirectSession::CreateExecutors(
 
   int graph_def_version;
   {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     graph_def_version =
         execution_state_->original_graph_def().versions().producer();
   }
@@ -1202,14 +1243,11 @@ Status DirectSession::CreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
-      // We do not share the kernel via the OpSegment if the node is
-      // stateless, or a function.
       // NOTE(mrry): We must not share function kernels (implemented
       // using `CallOp`) between subgraphs, because `CallOp::handle_`
       // is tied to a particular subgraph. Even if the function itself
       // is stateful, the `CallOp` that invokes it is not.
-      if (!lib->IsStateful(ndef.op()) ||
-          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
+      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -1222,13 +1260,11 @@ Status DirectSession::CreateExecutors(
                                  create_fn);
     };
     params.delete_kernel = [lib](OpKernel* kernel) {
-      // If the node is stateful, opseg owns it. Otherwise, delete it.
-      if (kernel && !lib->IsStateful(kernel->type_string())) {
+      if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
-      }
     };
 
-    optimizer.Optimize(lib, options_.env, device, &iter->second,
+    optimizer.Optimize(lib, options_.env, device, &partition_graph,
                        /*shape_map=*/nullptr);
 
     // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
@@ -1405,7 +1441,7 @@ Status DirectSession::CreateGraphs(
     std::unique_ptr<FunctionLibraryDefinition>* flib_def,
     RunStateArgs* run_state_args, DataTypeVector* input_types,
     DataTypeVector* output_types, int64* collective_graph_key) {
-  mutex_lock l(graph_def_lock_);
+  mutex_lock l(graph_state_lock_);
   std::unique_ptr<ClientGraph> client_graph;
 
   std::unique_ptr<GraphExecutionState> temp_exec_state_holder;

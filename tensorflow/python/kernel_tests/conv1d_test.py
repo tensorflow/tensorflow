@@ -53,7 +53,7 @@ class Conv1DTest(test.TestCase):
             self.assertAllClose(output, [2 * 1 + 1 * 2, 2 * 3 + 1 * 4])
 
   def testConv1DTranspose(self):
-    with self.test_session():
+    with self.cached_session():
       stride = 2
 
       # Input, output: [batch, width, depth]

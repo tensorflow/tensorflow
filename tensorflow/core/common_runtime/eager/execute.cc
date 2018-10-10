@@ -251,26 +251,6 @@ Status EagerLocalExecute(EagerOperation* op,
   EagerContext* ctx = op->EagerContext();
   auto status = ctx->GetStatus();
   if (!status.ok()) return status;
-  // Ensure all resource-touching ops run in the device the resource is,
-  // regardless of anything else that has been specified. This is identical to
-  // the graph mode behavior.
-  for (int i = 0; i < op->Inputs().size(); ++i) {
-    Device* input_op_device = nullptr;
-    status = op->Inputs()[i]->OpDevice(&input_op_device);
-    if (!status.ok()) return status;
-    VLOG(2) << "for op " << op->Name() << " input " << i << " "
-            << DataTypeString(op->Inputs()[i]->dtype) << " "
-            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
-            << " " << (op->Device() == nullptr ? "cpu" : op->Device()->name());
-    if (op->Inputs()[i]->dtype == DT_RESOURCE &&
-        (input_op_device != op->Device() || input_op_device == nullptr)) {
-      Device* d = input_op_device == nullptr ? ctx->HostCPU() : input_op_device;
-      VLOG(1) << "Changing device of operation " << op->Name() << " to "
-              << d->name() << " because input #" << i
-              << " is a resource in this device.";
-      op->SetDevice(d);
-    }
-  }
   Device* device = op->Device();
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(
@@ -599,11 +579,81 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   return Status::OK();
 #endif
 }
+
+// The Op device may be updated if:
+// - A resource touching input is specified: all resource-touching ops run in
+// the device the resource is, regardless of anything else that has been
+// specified. This is identical to the graph mode behavior.
+//
+// - All op inputs are on the CPU, small (<64 elements) and integers
+// (int32/int64). This can be disabled by setting the environment variable
+// "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
+Status MaybeUpdateOpDevice(EagerOperation* op) {
+  EagerContext* ctx = op->EagerContext();
+  bool device_set_for_resource_variable = false;
+  bool all_inputs_eligible_for_cpu_pinning = ctx->PinSmallOpsToCPU();
+
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    Device* input_op_device = nullptr;
+    TF_RETURN_IF_ERROR(op->Inputs()[i]->OpDevice(&input_op_device));
+    VLOG(2) << "for op " << op->Name() << " input " << i << " "
+            << DataTypeString(op->Inputs()[i]->dtype) << " "
+            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
+            << " " << (op->Device() == nullptr ? "cpu" : op->Device()->name());
+    if (op->Inputs()[i]->dtype == DT_RESOURCE &&
+        (input_op_device != op->Device() || input_op_device == nullptr)) {
+      Device* d = input_op_device == nullptr ? ctx->HostCPU() : input_op_device;
+      VLOG(1) << "Changing device of operation " << op->Name() << " to "
+              << d->name() << " because input #" << i
+              << " is a resource in this device.";
+      op->SetDevice(d);
+
+      device_set_for_resource_variable = true;
+      all_inputs_eligible_for_cpu_pinning = false;
+    } else if (all_inputs_eligible_for_cpu_pinning) {
+      TensorHandle* handle = op->Inputs()[i];
+
+      // Input is on CPU.
+      if (input_op_device != nullptr && input_op_device != ctx->HostCPU()) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+
+      if (handle->dtype != DataType::DT_INT32 &&
+          handle->dtype != DataType::DT_INT64) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+
+      int64 num_elements;
+      TF_RETURN_IF_ERROR(handle->NumElements(&num_elements));
+      if (num_elements > 64) {
+        all_inputs_eligible_for_cpu_pinning = false;
+      }
+    }
+  }
+
+  // Ops without inputs are usually ops that generate a tensor in some way and
+  // usually require being present on whatever device they are scheduled on
+  // - for e.g. VarHandleOp or _Recv).
+  // TODO(nareshmodi): Is it possible there is no int32/int64 CPU kernel for
+  // an op, but there is a GPU kernel?
+  if (!op->Inputs().empty() && all_inputs_eligible_for_cpu_pinning) {
+    VLOG(1) << "Forcing op " << op->Name()
+            << " to be on the CPU since all input tensors have an "
+               "int32/int64 dtype, and are small (less than 64 elements).";
+    op->SetDevice(ctx->HostCPU());
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 Status EagerExecute(EagerOperation* op,
                     gtl::InlinedVector<TensorHandle*, 2>* retvals,
                     int* num_retvals) {
+  TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
+
   bool op_is_local = IsLocal(op->EagerContext(), op->Device());
 
   if (op_is_local) {

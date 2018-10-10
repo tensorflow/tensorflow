@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/util.h"
 
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/mkl_tfconversion_pass.h"
@@ -133,7 +134,9 @@ class MklToTfConversionPass : public GraphOptimizationPass {
 // complete picture of inputs and outputs of the nodes in the graphs.
 const OptimizationPassRegistry::Grouping kMklTfConvPassGroup =
     OptimizationPassRegistry::POST_PARTITIONING;
+#ifdef ENABLE_MKL
 REGISTER_OPTIMIZATION(kMklTfConvPassGroup, 2, MklToTfConversionPass);
+#endif  // ENABLE_MKL
 
 Status MklToTfConversionPass::InsertConversionNodeOnEdge(
     std::unique_ptr<Graph>* g, Edge* e) {
@@ -420,6 +423,10 @@ bool InsertMklToTfConversionNodes(std::unique_ptr<Graph>* g) {
 
 Status MklToTfConversionPass::Run(const GraphOptimizationPassOptions& options) {
   if (options.graph == nullptr && options.partition_graphs == nullptr) {
+    return Status::OK();
+  }
+  if (DisableMKL()) {
+    VLOG(2) << "TF-MKL: Disabling MKL";
     return Status::OK();
   }
 

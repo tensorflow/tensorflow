@@ -33,11 +33,7 @@ class TensorDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
     // TODO(mrry): Validate that the shapes of the "components" tensors match
     // the "shapes" attr.;
-    std::vector<Tensor> components;
-    components.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      components.push_back(t);
-    }
+    std::vector<Tensor> components(inputs.begin(), inputs.end());
     *output = new Dataset(ctx, std::move(components));
   }
 

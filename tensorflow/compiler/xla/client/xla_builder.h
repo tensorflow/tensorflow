@@ -21,6 +21,8 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -34,8 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
@@ -577,11 +577,10 @@ class XlaBuilder {
              absl::Span<const XlaOp> operands);
 
   // Enqueues a custom call instruction onto the computation.
-  // During code generation, a call instruction is emitted which targets a
-  // symbol with the name |call_target_name|.  The |operands| are passed to the
-  // call instruction.  |shape| is the resultant shape.
-  XlaOp CustomCall(const string& call_target_name,
-                   absl::Span<const XlaOp> operands, const Shape& shape);
+  XlaOp CustomCall(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape_with_layout, const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
@@ -673,6 +672,8 @@ class XlaBuilder {
       const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
 
   // Returns the sum of the operand value within each subgroup of replicas. All
@@ -1029,7 +1030,7 @@ class XlaBuilder {
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
-  tensorflow::gtl::FlatMap<int64, int64> handle_to_index_;
+  absl::flat_hash_map<int64, int64> handle_to_index_;
 
   // The embedded computations used by this computation. Each computation was
   // the entry computation of some XlaComputation, the key is the unique id of
@@ -1037,7 +1038,7 @@ class XlaBuilder {
   std::map<int64, HloComputationProto> embedded_;
 
   // The unique parameter numbers.
-  tensorflow::gtl::FlatSet<int64> parameter_numbers_;
+  absl::flat_hash_set<int64> parameter_numbers_;
 
   // The metadata to attach to each op. This is structured as a "modal"-like
   // operation, in order to simplify client code (and not sprinkle this metadata
@@ -1195,7 +1196,12 @@ class XlaBuilder {
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands);
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                          absl::Span<const XlaOp> operands, const Shape& shape);
+                          absl::Span<const XlaOp> operands, const Shape& shape,
+                          const string& opaque);
+  friend XlaOp CustomCallWithLayout(
+      XlaBuilder* builder, const string& call_target_name,
+      absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
+      absl::Span<const Shape> operand_shapes_with_layout, const string& opaque);
   friend XlaOp Complex(const XlaOp& real, const XlaOp& imag,
                        absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Conj(const XlaOp& operand);
@@ -1246,6 +1252,8 @@ class XlaBuilder {
       const XlaComputation& computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(const XlaOp& operand,
                                absl::Span<const ReplicaGroup> replica_groups);
@@ -1717,12 +1725,28 @@ XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands);
 
-// Enqueues a custom call instruction onto the computation.
-// During code generation, a call instruction is emitted which targets a
-// symbol with the name |call_target_name|.  The |operands| are passed to the
-// call instruction.  |shape| is the resultant shape.
+// Enqueues a custom call instruction onto the computation. A custom call
+// invokes code external to XLA. The |operands| are passed to the external code,
+// and the external code is expected to produce a result of the given
+// |shape|. The exact mechanism is backend-specific. For example, in the CPU
+// backend, a call instruction is emitted which targets a symbol with the name
+// |call_target_name|.  |call_target_name| and |opaque| can arbitrary strings,
+// but |call_target_name| should be short as it may be used in labels. |opaque|
+// can encode arbitrarily large amounts of information.
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
-                 absl::Span<const XlaOp> operands, const Shape& shape);
+                 absl::Span<const XlaOp> operands, const Shape& shape,
+                 const string& opaque = "");
+
+// Overload which constructs a custom call with fixed layouts. The operands will
+// have the layouts specified by |operand_shapes_with_layout| when provided to
+// external code, and the external code is expected to produce a result with the
+// layout specified by |shape_with_layout|. All shapes in |shape_with_layout|
+// and |operand_shapes_with_layout| must have layouts.
+XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
+                           absl::Span<const XlaOp> operands,
+                           const Shape& shape_with_layout,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           const string& opaque = "");
 
 // The following methods enqueue element-wise binary arithmetic operations
 // onto the computation. The shapes of the operands have to match unless one
@@ -1814,6 +1838,8 @@ XlaOp ReduceWindowWithGeneralPadding(
     const XlaComputation& computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding);
 
 // Returns the sum of the operand value within each subgroup of replicas. All
@@ -1976,7 +2002,7 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must tensors with the same dimensions. The
+// * The keys and the values must be tensors with the same dimensions. The
 // element types of the tensors may be different.
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and a tensor with their

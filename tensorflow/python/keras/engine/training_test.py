@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -1864,6 +1865,10 @@ class TestTrainingWithDataTensors(test.TestCase):
       model.compile(optimizer='rmsprop', loss='mse', target_tensors=[target])
       model.train_on_batch(input_val, None)
 
+      # single-output, as single tensor
+      model.compile(optimizer='rmsprop', loss='mse', target_tensors=target)
+      model.train_on_batch(input_val, None)
+
       # single-output, as dict
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors={'dense': target})
@@ -2256,7 +2261,26 @@ class TestTrainingWithMetrics(test.TestCase):
         'dense_binary_accuracy', 'dropout_mean_squared_error',
         'dropout_binary_accuracy'
     ]
+    reference_stateful_metric_names = [
+        'dense_binary_accuracy', 'dropout_binary_accuracy'
+    ]
     self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
+
+    # Verify that model metric names are not altered during training.
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+    self.assertEqual(reference_metric_names, model.metrics_names)
+    self.assertEqual(reference_stateful_metric_names,
+                     model.stateful_metric_names)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness(self):
@@ -2408,6 +2432,17 @@ class TestTrainingWithMetrics(test.TestCase):
       scores = model.train_on_batch(x, y, sample_weight=w)
       self.assertArrayNear(scores, [0.2, 0.8, 0.8], 0.1)
 
+  def test_losses_in_defun(self):
+    with context.eager_mode():
+      layer = keras.layers.Dense(1, kernel_regularizer='l1')
+      layer(array_ops.ones([1, 10]))
+
+      @function.defun
+      def get_losses():
+        return layer.losses
+
+      self.assertAllEqual(self.evaluate(layer.losses),
+                          self.evaluate(get_losses()))
 
 if __name__ == '__main__':
   test.main()

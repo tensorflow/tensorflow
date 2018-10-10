@@ -20,14 +20,45 @@ py_library(
         "config.py",
         "converter.py",
         "errors.py",
+        "function_wrapping.py",
         "naming.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
+    ],
+)
+
+py_library(
+    name = "test_lib",
+    srcs = [
+        "converter_testing.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":core",
+        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct/static_analysis",
+        "//tensorflow/python/autograph/utils",
+        "@gast_archive//:gast",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "converter_test",
+    srcs = ["converter_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":core",
+        ":test_lib",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -47,8 +78,8 @@ py_test(
 )
 
 py_test(
-    name = "naming_test",
-    srcs = ["naming_test.py"],
+    name = "function_wrapping_test",
+    srcs = ["function_wrapping_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -56,20 +87,12 @@ py_test(
     ],
 )
 
-py_library(
-    name = "test_lib",
-    srcs = [
-        "converter_testing.py",
-    ],
+py_test(
+    name = "naming_test",
+    srcs = ["naming_test.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":core",
-        "//tensorflow/python/autograph/operators",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/pyct/static_analysis",
-        "//tensorflow/python/autograph/utils",
-        "@gast_archive//:gast",
-        "@six_archive//:six",
+        "//tensorflow/python:client_testlib",
     ],
 )

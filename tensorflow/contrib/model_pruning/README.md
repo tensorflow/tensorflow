@@ -62,6 +62,7 @@ The pruning library allows for specification of the following hyper parameters:
 | sparsity_function_begin_step | integer | 0 | The global step at this which the gradual sparsity function begins to take effect |
 | sparsity_function_end_step | integer | 100 | The global step used as the end point for the gradual sparsity function |
 | sparsity_function_exponent | float | 3.0 | exponent = 1 is linearly varying sparsity between initial and final. exponent > 1 varies more slowly towards the end than the beginning |
+| use_tpu | bool | False | Training using TPUs? |
 
 The sparsity $$s_t$$ at global step $$t$$ is given by:
 

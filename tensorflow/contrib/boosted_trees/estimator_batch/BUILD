@@ -173,6 +173,7 @@ py_library(
 py_test(
     name = "dnn_tree_combined_estimator_test",
     size = "medium",
+    timeout = "long",
     srcs = ["dnn_tree_combined_estimator_test.py"],
     srcs_version = "PY2AND3",
     tags = [

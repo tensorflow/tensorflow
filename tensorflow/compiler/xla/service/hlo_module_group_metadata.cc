@@ -59,7 +59,7 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
 }
 
 /* static */ StatusOr<std::unique_ptr<HloModuleGroupMetadata>>
-HloModuleGroupMetadata::Build(const std::vector<HloModule*>& modules) {
+HloModuleGroupMetadata::Build(absl::Span<HloModule* const> modules) {
   auto metadata = absl::make_unique<HloModuleGroupMetadata>(modules);
   TF_RETURN_IF_ERROR(metadata->Build());
   return std::move(metadata);
@@ -392,22 +392,28 @@ Status HloModuleGroupMetadata::AddCompanion(HloInstruction* instruction1,
   if (!ContainsKey(companion_set_index_, instruction1) &&
       !ContainsKey(companion_set_index_, instruction2)) {
     companion_sets_.push_back(
-        absl::make_unique<std::unordered_set<HloInstruction*>>());
+        absl::make_unique<std::vector<HloInstruction*>>());
     auto companion_set = companion_sets_.back().get();
-    companion_set->insert(instruction1);
-    companion_set->insert(instruction2);
+    companion_set->push_back(instruction1);
+    companion_set->push_back(instruction2);
     companion_set_index_[instruction1] = companion_sets_.size() - 1;
     companion_set_index_[instruction2] = companion_sets_.size() - 1;
   } else if (!ContainsKey(companion_set_index_, instruction1)) {
-    companion_sets_[companion_set_index_[instruction2]]->insert(instruction1);
+    companion_sets_[companion_set_index_[instruction2]]->push_back(
+        instruction1);
     companion_set_index_[instruction1] = companion_set_index_[instruction2];
   } else if (!ContainsKey(companion_set_index_, instruction2)) {
-    companion_sets_[companion_set_index_[instruction1]]->insert(instruction2);
+    companion_sets_[companion_set_index_[instruction1]]->push_back(
+        instruction2);
     companion_set_index_[instruction2] = companion_set_index_[instruction1];
   } else if (companion_set_index_[instruction1] !=
              companion_set_index_[instruction2]) {
-    companion_sets_[companion_set_index_[instruction1]]->insert(
-        Companions(instruction2).begin(), Companions(instruction2).end());
+    // At any point while building the companion sets, each instruction belongs
+    // to at most 1 companion set, so the union of two companion sets is
+    // concatenating two disjoint sets.
+    absl::c_copy(Companions(instruction2),
+                 std::back_inserter(
+                     *companion_sets_[companion_set_index_[instruction1]]));
     int64 index_to_remove = companion_set_index_[instruction2];
     for (HloInstruction* hlo : Companions(instruction2)) {
       companion_set_index_[hlo] = companion_set_index_[instruction1];

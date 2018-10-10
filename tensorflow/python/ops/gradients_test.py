@@ -273,7 +273,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
   def testVariableRefGradient(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0)
-      var = variables.Variable(init)
+      var = variables.VariableV1(init)
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
@@ -349,6 +349,40 @@ class GradientsTest(test_util.TensorFlowTestCase):
     for (npgrad1, npgrad2), case in zip(results, cases):
       for a, b in zip(npgrad1, npgrad2):
         np.testing.assert_allclose(a, b)
+
+  def testUnconnectedGradientsNoneUnconnectedGradients(self):
+    with ops.Graph().as_default():
+      x = constant(1.0, shape=[2, 2])
+      y = constant(3.0, shape=[3, 1])
+      grad = gradients.gradients(
+          [y], [x], unconnected_gradients="none")
+    self.assertIsNone(grad[0])
+
+  def testUnconnectedGradientsZerosUnconnectedGradients(self):
+    with ops.Graph().as_default():
+      x = constant(1.0, shape=[2, 2])
+      y = constant(3.0, shape=[3, 1])
+      grads = gradients.gradients(
+          [y], [x], unconnected_gradients="zero")
+      with self.cached_session() as sess:
+        self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], sess.run(grads)[0])
+
+  def testUnconnectedGradientsZeroConnectedGradients(self):
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = x * 3.0
+      grad = gradients.gradients(
+          [y], [x], unconnected_gradients="zero")
+      with self.cached_session() as sess:
+        self.assertEquals(3.0, sess.run(grad)[0])
+
+  def testUnknownUnconnectedGradientsValueGiven(self):
+    with ops.Graph().as_default():
+      x = constant(1.0)
+      y = constant(1.0)
+      with self.assertRaisesRegexp(
+          ValueError, "Unknown value for unconnected_gradients: 'nonsense'"):
+        gradients.gradients([y], [x], unconnected_gradients="nonsense")
 
 
 class FunctionGradientsTest(test_util.TensorFlowTestCase):
@@ -530,6 +564,24 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       z_grad = Outer()
       with self.cached_session() as sess:
         self.assertEqual(sess.run(z_grad), 3.0)
+
+  def testCapturedEagerTensors(self):
+    # Test that we can handle captured eager tensors unrelated to the gradient
+    # computation (i.e. we need to ignore them).
+    # TODO(skyewm): make it an error if you try to take the gradient wrt a
+    # captured EagerTensor
+    with context.eager_mode():
+      c = constant_op.constant(2.0, name="c")
+
+      @function.defun
+      def Foo():
+        x = constant_op.constant(10.0, name="x")
+        y = math_ops.multiply(x, c, name="y")
+        z = math_ops.multiply(y, 3.0, name="z")
+        g = gradients_impl.gradients(z, x)
+        return g[0]
+
+      self.assertEqual(Foo().numpy(), 6.0)
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):

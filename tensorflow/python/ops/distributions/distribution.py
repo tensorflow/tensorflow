@@ -25,6 +25,7 @@ import types
 import numpy as np
 import six
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -33,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
@@ -127,6 +129,18 @@ def _update_docstring(old_str, append_str):
     return old_str + "\n\n" + append_str
 
 
+def _convert_to_tensor(value, name=None, preferred_dtype=None):
+  """Converts to tensor avoiding an eager bug that loses float precision."""
+  # TODO(b/116672045): Remove this function.
+  if (context.executing_eagerly() and preferred_dtype is not None and
+      (preferred_dtype.is_integer or preferred_dtype.is_bool)):
+    v = ops.convert_to_tensor(value, name=name)
+    if v.dtype.is_floating:
+      return v
+  return ops.convert_to_tensor(
+      value, name=name, preferred_dtype=preferred_dtype)
+
+
 class _DistributionMeta(abc.ABCMeta):
 
   def __new__(mcs, classname, baseclasses, attrs):
@@ -216,6 +230,14 @@ class ReparameterizationType(object):
     gradients / surrogate loss instead.
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self, rep_type):
     self._rep_type = rep_type
 
@@ -392,6 +414,14 @@ class Distribution(_BaseDistribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                dtype,
                reparameterization_type,
@@ -601,7 +631,8 @@ class Distribution(_BaseDistribution):
     return type(self)(**parameters)
 
   def _batch_shape_tensor(self):
-    raise NotImplementedError("batch_shape_tensor is not implemented")
+    raise NotImplementedError(
+        "batch_shape_tensor is not implemented: {}".format(type(self).__name__))
 
   def batch_shape_tensor(self, name="batch_shape_tensor"):
     """Shape of a single sample from a single event index as a 1-D `Tensor`.
@@ -640,7 +671,8 @@ class Distribution(_BaseDistribution):
     return tensor_shape.as_shape(self._batch_shape())
 
   def _event_shape_tensor(self):
-    raise NotImplementedError("event_shape_tensor is not implemented")
+    raise NotImplementedError(
+        "event_shape_tensor is not implemented: {}".format(type(self).__name__))
 
   def event_shape_tensor(self, name="event_shape_tensor"):
     """Shape of a single sample from a single batch as a 1-D int32 `Tensor`.
@@ -701,7 +733,8 @@ class Distribution(_BaseDistribution):
           name="is_scalar_batch")
 
   def _sample_n(self, n, seed=None):
-    raise NotImplementedError("sample_n is not implemented")
+    raise NotImplementedError("sample_n is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_sample_n(self, sample_shape, seed, name, **kwargs):
     with self._name_scope(name, values=[sample_shape]):
@@ -733,15 +766,20 @@ class Distribution(_BaseDistribution):
     return self._call_sample_n(sample_shape, seed, name)
 
   def _log_prob(self, value):
-    raise NotImplementedError("log_prob is not implemented")
+    raise NotImplementedError("log_prob is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_log_prob(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._log_prob(value, **kwargs)
-      except NotImplementedError:
-        return math_ops.log(self._prob(value, **kwargs))
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.log(self._prob(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
 
   def log_prob(self, value, name="log_prob"):
     """Log probability density/mass function.
@@ -757,15 +795,20 @@ class Distribution(_BaseDistribution):
     return self._call_log_prob(value, name)
 
   def _prob(self, value):
-    raise NotImplementedError("prob is not implemented")
+    raise NotImplementedError("prob is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_prob(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._prob(value, **kwargs)
-      except NotImplementedError:
-        return math_ops.exp(self._log_prob(value, **kwargs))
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.exp(self._log_prob(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
 
   def prob(self, value, name="prob"):
     """Probability density/mass function.
@@ -781,15 +824,20 @@ class Distribution(_BaseDistribution):
     return self._call_prob(value, name)
 
   def _log_cdf(self, value):
-    raise NotImplementedError("log_cdf is not implemented")
+    raise NotImplementedError("log_cdf is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_log_cdf(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._log_cdf(value, **kwargs)
-      except NotImplementedError:
-        return math_ops.log(self._cdf(value, **kwargs))
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.log(self._cdf(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
 
   def log_cdf(self, value, name="log_cdf"):
     """Log cumulative distribution function.
@@ -815,15 +863,20 @@ class Distribution(_BaseDistribution):
     return self._call_log_cdf(value, name)
 
   def _cdf(self, value):
-    raise NotImplementedError("cdf is not implemented")
+    raise NotImplementedError("cdf is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_cdf(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._cdf(value, **kwargs)
-      except NotImplementedError:
-        return math_ops.exp(self._log_cdf(value, **kwargs))
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.exp(self._log_cdf(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
 
   def cdf(self, value, name="cdf"):
     """Cumulative distribution function.
@@ -845,15 +898,21 @@ class Distribution(_BaseDistribution):
     return self._call_cdf(value, name)
 
   def _log_survival_function(self, value):
-    raise NotImplementedError("log_survival_function is not implemented")
+    raise NotImplementedError(
+        "log_survival_function is not implemented: {}".format(
+            type(self).__name__))
 
   def _call_log_survival_function(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._log_survival_function(value, **kwargs)
-      except NotImplementedError:
-        return math_ops.log1p(-self.cdf(value, **kwargs))
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.log1p(-self.cdf(value, **kwargs))
+        except NotImplementedError:
+          raise original_exception
 
   def log_survival_function(self, value, name="log_survival_function"):
     """Log survival function.
@@ -880,15 +939,20 @@ class Distribution(_BaseDistribution):
     return self._call_log_survival_function(value, name)
 
   def _survival_function(self, value):
-    raise NotImplementedError("survival_function is not implemented")
+    raise NotImplementedError("survival_function is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_survival_function(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       try:
         return self._survival_function(value, **kwargs)
-      except NotImplementedError:
-        return 1. - self.cdf(value, **kwargs)
+      except NotImplementedError as original_exception:
+        try:
+          return 1. - self.cdf(value, **kwargs)
+        except NotImplementedError:
+          raise original_exception
 
   def survival_function(self, value, name="survival_function"):
     """Survival function.
@@ -912,7 +976,8 @@ class Distribution(_BaseDistribution):
     return self._call_survival_function(value, name)
 
   def _entropy(self):
-    raise NotImplementedError("entropy is not implemented")
+    raise NotImplementedError("entropy is not implemented: {}".format(
+        type(self).__name__))
 
   def entropy(self, name="entropy"):
     """Shannon entropy in nats."""
@@ -920,7 +985,8 @@ class Distribution(_BaseDistribution):
       return self._entropy()
 
   def _mean(self):
-    raise NotImplementedError("mean is not implemented")
+    raise NotImplementedError("mean is not implemented: {}".format(
+        type(self).__name__))
 
   def mean(self, name="mean"):
     """Mean."""
@@ -928,11 +994,13 @@ class Distribution(_BaseDistribution):
       return self._mean()
 
   def _quantile(self, value):
-    raise NotImplementedError("quantile is not implemented")
+    raise NotImplementedError("quantile is not implemented: {}".format(
+        type(self).__name__))
 
   def _call_quantile(self, value, name, **kwargs):
     with self._name_scope(name, values=[value]):
-      value = ops.convert_to_tensor(value, name="value")
+      value = _convert_to_tensor(
+          value, name="value", preferred_dtype=self.dtype)
       return self._quantile(value, **kwargs)
 
   def quantile(self, value, name="quantile"):
@@ -955,7 +1023,8 @@ class Distribution(_BaseDistribution):
     return self._call_quantile(value, name)
 
   def _variance(self):
-    raise NotImplementedError("variance is not implemented")
+    raise NotImplementedError("variance is not implemented: {}".format(
+        type(self).__name__))
 
   def variance(self, name="variance"):
     """Variance.
@@ -979,11 +1048,15 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       try:
         return self._variance()
-      except NotImplementedError:
-        return math_ops.square(self._stddev())
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.square(self._stddev())
+        except NotImplementedError:
+          raise original_exception
 
   def _stddev(self):
-    raise NotImplementedError("stddev is not implemented")
+    raise NotImplementedError("stddev is not implemented: {}".format(
+        type(self).__name__))
 
   def stddev(self, name="stddev"):
     """Standard deviation.
@@ -1008,11 +1081,15 @@ class Distribution(_BaseDistribution):
     with self._name_scope(name):
       try:
         return self._stddev()
-      except NotImplementedError:
-        return math_ops.sqrt(self._variance())
+      except NotImplementedError as original_exception:
+        try:
+          return math_ops.sqrt(self._variance())
+        except NotImplementedError:
+          raise original_exception
 
   def _covariance(self):
-    raise NotImplementedError("covariance is not implemented")
+    raise NotImplementedError("covariance is not implemented: {}".format(
+        type(self).__name__))
 
   def covariance(self, name="covariance"):
     """Covariance.
@@ -1054,7 +1131,8 @@ class Distribution(_BaseDistribution):
       return self._covariance()
 
   def _mode(self):
-    raise NotImplementedError("mode is not implemented")
+    raise NotImplementedError("mode is not implemented: {}".format(
+        type(self).__name__))
 
   def mode(self, name="mode"):
     """Mode."""
@@ -1080,7 +1158,7 @@ class Distribution(_BaseDistribution):
     where `F` denotes the support of the random variable `X ~ P`.
 
     Args:
-      other: `tf.distributions.Distribution` instance.
+      other: `tfp.distributions.Distribution` instance.
       name: Python `str` prepended to names of ops created by this function.
 
     Returns:
@@ -1111,7 +1189,7 @@ class Distribution(_BaseDistribution):
     denotes (Shanon) cross entropy, and `H[.]` denotes (Shanon) entropy.
 
     Args:
-      other: `tf.distributions.Distribution` instance.
+      other: `tfp.distributions.Distribution` instance.
       name: Python `str` prepended to names of ops created by this function.
 
     Returns:
@@ -1123,7 +1201,7 @@ class Distribution(_BaseDistribution):
       return self._kl_divergence(other)
 
   def __str__(self):
-    return ("tf.distributions.{type_name}("
+    return ("tfp.distributions.{type_name}("
             "\"{self_name}\""
             "{maybe_batch_shape}"
             "{maybe_event_shape}"
@@ -1139,7 +1217,7 @@ class Distribution(_BaseDistribution):
                 dtype=self.dtype.name))
 
   def __repr__(self):
-    return ("<tf.distributions.{type_name} "
+    return ("<tfp.distributions.{type_name} "
             "'{self_name}'"
             " batch_shape={batch_shape}"
             " event_shape={event_shape}"

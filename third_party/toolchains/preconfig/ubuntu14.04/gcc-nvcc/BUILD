@@ -2,6 +2,20 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+toolchain(
+    name = "toolchain-linux-x86_64",
+    exec_compatible_with = [
+        "@bazel_tools//platforms:linux",
+        "@bazel_tools//platforms:x86_64",
+    ],
+    target_compatible_with = [
+        "@bazel_tools//platforms:linux",
+        "@bazel_tools//platforms:x86_64",
+    ],
+    toolchain = ":cc-compiler-local",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
 cc_toolchain_suite(
     name = "toolchain",
     toolchains = {

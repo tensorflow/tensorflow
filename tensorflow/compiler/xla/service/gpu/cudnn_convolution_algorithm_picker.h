@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
 
+#include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -30,7 +31,7 @@ namespace gpu {
 
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
-class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
+class CudnnConvolutionAlgorithmPicker : public HloModulePass {
  public:
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
@@ -47,10 +48,16 @@ class CudnnConvolutionAlgorithmPicker : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  struct AutotuneResult {
+    int64 algorithm;
+    bool tensor_ops_enabled;
+    int64 scratch_bytes;
+    absl::Duration runtime;
+  };
+
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  StatusOr<std::tuple<int64, bool, int64>> PickBestAlgorithm(
-      const HloCustomCallInstruction* instr);
+  StatusOr<AutotuneResult> PickBestAlgorithm(HloCustomCallInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null

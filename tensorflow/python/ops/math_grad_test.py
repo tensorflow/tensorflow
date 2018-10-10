@@ -256,5 +256,93 @@ class DivNoNanGradientTest(test.TestCase):
       self.assertAllClose(dy.eval(), np.zeros(y.shape.as_list()))
 
 
+class XlogyTest(test.TestCase):
+
+  def _xlogy_gradients(self, x, y):
+    xlogy_xgrad = self.evaluate(gradients.gradients(math_ops.xlogy(x, y), x)[0])
+    xlogy_ygrad = self.evaluate(gradients.gradients(math_ops.xlogy(x, y), y)[0])
+    return xlogy_xgrad, xlogy_ygrad
+
+  def testNonZeroValuesGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+      xlogy_expected_xgrad = self.evaluate(math_ops.log(y))
+      xlogy_expected_ygrad = self.evaluate(x / y)
+      self.assertAllClose(xlogy_expected_xgrad, xlogy_xgrad)
+      self.assertAllClose(xlogy_expected_ygrad, xlogy_ygrad)
+
+  def testZeroXGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xlogy_xgrad)
+      self.assertAllClose(zero, xlogy_ygrad)
+
+  def testZeroYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(0., dtype=dtype)
+      xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+      self.assertAllClose(-np.inf, xlogy_xgrad)
+      self.assertAllClose(np.inf, xlogy_ygrad)
+
+  def testZeroXYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(0., dtype=dtype)
+      xlogy_xgrad, xlogy_ygrad = self._xlogy_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xlogy_xgrad)
+      self.assertAllClose(zero, xlogy_ygrad)
+
+
+class XdivyTest(test.TestCase):
+
+  def _xdivy_gradients(self, x, y):
+    xdivy_xgrad = self.evaluate(gradients.gradients(math_ops.xdivy(x, y), x)[0])
+    xdivy_ygrad = self.evaluate(gradients.gradients(math_ops.xdivy(x, y), y)[0])
+    return xdivy_xgrad, xdivy_ygrad
+
+  def testNonZeroValuesGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+      xdivy_expected_xgrad = self.evaluate(1 / y)
+      xdivy_expected_ygrad = self.evaluate(-x / y**2)
+      self.assertAllClose(xdivy_expected_xgrad, xdivy_xgrad)
+      self.assertAllClose(xdivy_expected_ygrad, xdivy_ygrad)
+
+  def testZeroXGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xdivy_xgrad)
+      self.assertAllClose(zero, xdivy_ygrad)
+
+  def testZeroYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(0., dtype=dtype)
+      xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+      self.assertAllClose(np.inf, xdivy_xgrad)
+      self.assertAllClose(-np.inf, xdivy_ygrad)
+
+  def testZeroXYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(0., dtype=dtype)
+      xdivy_xgrad, xdivy_ygrad = self._xdivy_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xdivy_xgrad)
+      self.assertAllClose(zero, xdivy_ygrad)
+
+
 if __name__ == "__main__":
   test.main()

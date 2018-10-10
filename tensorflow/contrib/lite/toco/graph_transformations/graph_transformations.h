@@ -27,7 +27,8 @@ namespace toco {
 
 class GraphTransformation {
  public:
-  virtual bool Run(Model* model, std::size_t op_index) = 0;
+  virtual ::tensorflow::Status Run(Model* model, std::size_t op_index,
+                                   bool* modified) = 0;
   virtual const char* Name() const = 0;
   virtual ~GraphTransformation() {}
   // Returns the list of messages that this graph transformation
@@ -104,11 +105,12 @@ class GraphTransformationsSet {
 void RunGraphTransformations(Model* model, const string& message,
                              const GraphTransformationsSet& transformations);
 
-#define DECLARE_GRAPH_TRANSFORMATION(GTName)               \
-  class GTName : public GraphTransformation {              \
-   public:                                                 \
-    bool Run(Model* model, std::size_t op_index) override; \
-    const char* Name() const override { return #GTName; }  \
+#define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \
+  class GTName : public GraphTransformation {                    \
+   public:                                                       \
+    ::tensorflow::Status Run(Model* model, std::size_t op_index, \
+                             bool* modified) override;           \
+    const char* Name() const override { return #GTName; }        \
   };
 
 // List of all graph transformations
@@ -133,7 +135,6 @@ DECLARE_GRAPH_TRANSFORMATION(MergeLstmCellInputs)
 DECLARE_GRAPH_TRANSFORMATION(MergeReshapeIntoPrecedingTranspose)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyRelu1)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyPRelu)
-DECLARE_GRAPH_TRANSFORMATION(IdentifyDilatedConv)
 DECLARE_GRAPH_TRANSFORMATION(MakeInitialDequantizeOperator)
 DECLARE_GRAPH_TRANSFORMATION(MoveBinaryOperatorBeforeReshape)
 DECLARE_GRAPH_TRANSFORMATION(PropagateActivationFunctionIntoConstants)
@@ -201,7 +202,8 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveGatherAttributes)
 
 class PropagateDefaultMinMax : public GraphTransformation {
  public:
-  bool Run(Model* model, std::size_t op_index) override;
+  ::tensorflow::Status Run(Model* model, std::size_t op_index,
+                           bool* modified) override;
   const char* Name() const override { return "PropagateDefaultMinMax"; }
 
   bool has_any_ranges_defined() const { return !type_ranges_.empty(); }
@@ -219,7 +221,8 @@ class PropagateDefaultMinMax : public GraphTransformation {
 
 class RemoveTrivialReshape : public GraphTransformation {
  public:
-  bool Run(Model* model, std::size_t op_index) override;
+  ::tensorflow::Status Run(Model* model, std::size_t op_index,
+                           bool* modified) override;
   const char* Name() const override { return "RemoveTrivialReshape"; }
   bool treat_expand_dims_as_trivial() const {
     return treat_expand_dims_as_trivial_;
@@ -234,7 +237,8 @@ class RemoveTrivialReshape : public GraphTransformation {
 
 class ResolveConstantFakeQuant : public GraphTransformation {
  public:
-  bool Run(Model* model, std::size_t op_index) override;
+  ::tensorflow::Status Run(Model* model, std::size_t op_index,
+                           bool* modified) override;
   const char* Name() const override { return "ResolveConstantFakeQuant"; }
 
   // True if the num_bits should adjust the final data type.
@@ -251,7 +255,8 @@ class ResolveConstantFakeQuant : public GraphTransformation {
 
 class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
  public:
-  bool Run(Model* model, std::size_t op_index) override;
+  ::tensorflow::Status Run(Model* model, std::size_t op_index,
+                           bool* modified) override;
   const char* Name() const override {
     return "EnsureUint8WeightsSafeForFastInt8Kernels";
   }
@@ -264,6 +269,18 @@ class EnsureUint8WeightsSafeForFastInt8Kernels : public GraphTransformation {
  private:
   bool allow_nudging_weights_ = false;
   bool has_default_ranges_flag_ = false;
+};
+
+class IdentifyDilatedConv : public GraphTransformation {
+ public:
+  ::tensorflow::Status Run(Model* model, std::size_t op_index,
+                           bool* modified) override;
+  const char* Name() const override { return "IdentifyDilatedConv"; }
+  bool identify_depthwise_conv() const { return identify_depthwise_conv_; }
+  void set_identify_depthwise_conv(bool val) { identify_depthwise_conv_ = val; }
+
+ private:
+  bool identify_depthwise_conv_ = true;
 };
 
 #undef DECLARE_GRAPH_TRANSFORMATION

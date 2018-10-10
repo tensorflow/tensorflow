@@ -25,6 +25,9 @@ extern "C" {
 
 // TODO(aselle): Consider using "if this then that" for testing.
 
+// IMPORTANT: All new members of structs must be added at the end to ensure
+// backwards compatibility.
+
 // Possible padding types (for convolutions)
 typedef enum {
   kTfLitePaddingUnknown = 0,
@@ -71,11 +74,15 @@ typedef struct {
 } TfLitePoolParams;
 
 typedef struct {
+  // Parameters for DepthwiseConv version 1 or above.
   TfLitePadding padding;
   int stride_width;
   int stride_height;
   int depth_multiplier;
   TfLiteFusedActivation activation;
+  // Parameters for DepthwiseConv version 2 or above.
+  int dilation_width_factor;
+  int dilation_height_factor;
 } TfLiteDepthwiseConvParams;
 
 typedef struct {
@@ -91,6 +98,12 @@ typedef struct {
   bool time_major;
   TfLiteFusedActivation activation;
 } TfLiteSequenceRNNParams;
+
+typedef struct {
+  bool time_major;
+  TfLiteFusedActivation activation;
+  bool merge_outputs;
+} TfLiteBidirectionalSequenceRNNParams;
 
 typedef enum {
   kTfLiteFullyConnectedWeightsFormatDefault = 0,
@@ -172,6 +185,23 @@ typedef struct {
   // kTfLiteLSTMBasicKernel is only supported in version 2 or above.
   TfLiteLSTMKernelType kernel_type;
 } TfLiteLSTMParams;
+
+typedef struct {
+  // Parameters for the LSTM kernel.
+  TfLiteFusedActivation activation;
+  float cell_clip;
+  float proj_clip;
+} TfLiteUnidirectionalSequenceLSTMParams;
+
+typedef struct {
+  // Parameters for the LSTM kernel.
+  TfLiteFusedActivation activation;
+  float cell_clip;
+  float proj_clip;
+
+  // If true, store the outputs of both directions in the first output.
+  bool merge_outputs;
+} TfLiteBidirectionalSequenceLSTMParams;
 
 typedef struct {
   bool align_corners;

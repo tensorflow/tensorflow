@@ -602,20 +602,19 @@ class AdjustHueBenchmark(test.Benchmark):
     if cpu_count is not None:
       config.inter_op_parallelism_threads = 1
       config.intra_op_parallelism_threads = cpu_count
-    with session.Session("", graph=ops.Graph(), config=config) as sess:
-      with ops.device(device):
-        inputs = variables.Variable(
-            random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
-            trainable=False,
-            dtype=dtypes.float32)
-        delta = constant_op.constant(0.1, dtype=dtypes.float32)
-        outputs = image_ops.adjust_hue(inputs, delta)
-        run_op = control_flow_ops.group(outputs)
-        sess.run(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds + benchmark_rounds):
-          if i == warmup_rounds:
-            start = time.time()
-          sess.run(run_op)
+    with self.benchmark_session(config=config, device=device) as sess:
+      inputs = variables.Variable(
+          random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
+          trainable=False,
+          dtype=dtypes.float32)
+      delta = constant_op.constant(0.1, dtype=dtypes.float32)
+      outputs = image_ops.adjust_hue(inputs, delta)
+      run_op = control_flow_ops.group(outputs)
+      sess.run(variables.global_variables_initializer())
+      for i in xrange(warmup_rounds + benchmark_rounds):
+        if i == warmup_rounds:
+          start = time.time()
+        sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -646,21 +645,20 @@ class AdjustSaturationBenchmark(test.Benchmark):
     if cpu_count is not None:
       config.inter_op_parallelism_threads = 1
       config.intra_op_parallelism_threads = cpu_count
-    with session.Session("", graph=ops.Graph(), config=config) as sess:
-      with ops.device(device):
-        inputs = variables.Variable(
-            random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
-            trainable=False,
-            dtype=dtypes.float32)
-        delta = constant_op.constant(0.1, dtype=dtypes.float32)
-        outputs = image_ops.adjust_saturation(inputs, delta)
-        run_op = control_flow_ops.group(outputs)
-        sess.run(variables.global_variables_initializer())
-        for _ in xrange(warmup_rounds):
-          sess.run(run_op)
-        start = time.time()
-        for _ in xrange(benchmark_rounds):
-          sess.run(run_op)
+    with self.benchmark_session(config=config, device=device) as sess:
+      inputs = variables.Variable(
+          random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
+          trainable=False,
+          dtype=dtypes.float32)
+      delta = constant_op.constant(0.1, dtype=dtypes.float32)
+      outputs = image_ops.adjust_saturation(inputs, delta)
+      run_op = control_flow_ops.group(outputs)
+      sess.run(variables.global_variables_initializer())
+      for _ in xrange(warmup_rounds):
+        sess.run(run_op)
+      start = time.time()
+      for _ in xrange(benchmark_rounds):
+        sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -699,7 +697,7 @@ class ResizeBilinearBenchmark(test.Benchmark):
         deps = [resize_op]
       benchmark_op = control_flow_ops.group(*deps)
 
-    with session.Session() as sess:
+    with self.benchmark_session() as sess:
       sess.run(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
@@ -747,7 +745,7 @@ class ResizeBicubicBenchmark(test.Benchmark):
         deps = [resize_op]
       benchmark_op = control_flow_ops.group(*deps)
 
-    with session.Session() as sess:
+    with self.benchmark_session() as sess:
       sess.run(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
@@ -804,7 +802,7 @@ class ResizeAreaBenchmark(test.Benchmark):
         deps = [resize_op]
       benchmark_op = control_flow_ops.group(*deps)
 
-    with session.Session() as sess:
+    with self.benchmark_session() as sess:
       sess.run(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
@@ -2687,6 +2685,12 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
 
+  def testPreserveAspectRatioSquare(self):
+    x_shape = [299, 299, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
+
 
 class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
@@ -3667,7 +3671,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     # Note: There are multiple versions of non_max_suppression v2, v3, v4.
     # gen_image_ops.non_max_suppression_v2:
     for dtype in [np.float16, np.float32]:
-      with self.test_session():
+      with self.cached_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
         scores = constant_op.constant(scores_np, dtype=dtype)
         max_output_size = constant_op.constant(max_output_size_np)
@@ -3677,7 +3681,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
         self.assertAllClose(selected_indices, [3, 0, 5])
     # image_ops.non_max_suppression = gen_image_ops.non_max_suppression_v3.
     for dtype in [np.float16, np.float32]:
-      with self.test_session():
+      with self.cached_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
         scores = constant_op.constant(scores_np, dtype=dtype)
         max_output_size = constant_op.constant(max_output_size_np)
@@ -3688,7 +3692,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     # gen_image_ops.non_max_suppression_v4.
     score_threshold = float('-inf')
     for dtype in [np.float16, np.float32]:
-      with self.test_session():
+      with self.cached_session():
         boxes = constant_op.constant(boxes_np, dtype=dtype)
         scores = constant_op.constant(scores_np, dtype=dtype)
         max_output_size = constant_op.constant(max_output_size_np)

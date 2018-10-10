@@ -22,6 +22,7 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -30,7 +31,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
-class InterleaveDatasetTest(test.TestCase, parameterized.TestCase):
+class InterleaveDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _interleave(self, lists, cycle_length, block_length):
     num_open = 0
@@ -134,7 +135,7 @@ class InterleaveDatasetTest(test.TestCase, parameterized.TestCase):
         result.append([value] * value)
       return result * count
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for expected_element in self._interleave(
           repeat(input_values, count), cycle_length, block_length):
         self.assertEqual(expected_element, sess.run(get_next))
@@ -169,7 +170,7 @@ class InterleaveDatasetTest(test.TestCase, parameterized.TestCase):
             num_parallel_calls)
     get_next = dataset.make_one_shot_iterator().get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for value in input_values:
         if np.isnan(value):
           with self.assertRaises(errors.InvalidArgumentError):
@@ -195,7 +196,7 @@ class InterleaveDatasetTest(test.TestCase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for i in range(10):
         for j in range(2):

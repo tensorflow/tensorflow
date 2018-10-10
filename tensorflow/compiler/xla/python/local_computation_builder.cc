@@ -469,9 +469,11 @@ LocalOp LocalComputationBuilder::ConvGeneralDilated(
     absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
-    const ConvolutionDimensionNumbers& dimension_numbers) {
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count) {
   return xla::ConvGeneralDilated(lhs.op(), rhs.op(), window_strides, padding,
-                                 lhs_dilation, rhs_dilation, dimension_numbers);
+                                 lhs_dilation, rhs_dilation, dimension_numbers,
+                                 feature_group_count);
 }
 
 LocalOp LocalComputationBuilder::ConvertElementType(
@@ -530,10 +532,13 @@ LocalOp LocalComputationBuilder::ReduceWindowWithGeneralPadding(
     const LocalComputation& local_computation,
     absl::Span<const int64> window_dimensions,
     absl::Span<const int64> window_strides,
+    absl::Span<const int64> base_dilations,
+    absl::Span<const int64> window_dilations,
     absl::Span<const std::pair<int64, int64>> padding) {
   return xla::ReduceWindowWithGeneralPadding(
       operand.op(), init_value.op(), local_computation.computation(),
-      window_dimensions, window_strides, padding);
+      window_dimensions, window_strides, base_dilations, window_dilations,
+      padding);
 }
 
 LocalOp LocalComputationBuilder::RngNormal(const LocalOp& mu,

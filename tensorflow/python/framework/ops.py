@@ -2532,8 +2532,8 @@ def _set_shape_and_handle_data_for_outputs_c_api(op):
     output._shape_val = output._c_api_shape()
     # Set the resource handle data for compatibility with the Python shape
     # inference code.
-    serialized = c_api.GetResourceHandleShapeAndType(op._graph._c_graph,
-                                                     output._as_tf_output())
+    serialized = c_api.GetHandleShapeAndType(op._graph._c_graph,  # pylint: disable=protected-access
+                                             output._as_tf_output())
     if serialized:
       output._handle_data = (
           cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
@@ -4140,10 +4140,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-
-    if op is not None and not isinstance(op, Operation):
-      # We always want to colocate with the reference op.
-      op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+    op = _op_to_colocate_with(op)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -5460,8 +5457,7 @@ def enable_eager_execution_internal(config=None,
         "tf.contrib.eager.ASYNC")
   if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
-        _default_session_stack.stack
-        or len(get_default_graph().get_operations()) > 0)  # pylint: disable=g-explicit-length-test
+        _default_graph_stack._global_default_graph is not None) # pylint: disable=protected-access
     if graph_mode_has_been_used:
       raise ValueError(
           "tf.enable_eager_execution must be called at program startup.")
@@ -6166,6 +6162,29 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
   raise TypeError(("Can't convert Operation '%s' to Tensor "
                    "(target dtype=%r, name=%r, as_ref=%r)") % (op.name, dtype,
                                                                name, as_ref))
+
+
+def _op_to_colocate_with(v):
+  """Operation object corresponding to v to use for colocation constraints."""
+  if v is None:
+    return None
+  if isinstance(v, Operation):
+    return v
+  # We always want to colocate with the reference op.
+  # When 'v' is a ResourceVariable, the reference op is the handle creating op.
+  #
+  # What this should be is:
+  # if isinstance(v, ResourceVariable):
+  #   return v.handle.op
+  # However, that would require a circular import dependency.
+  # As of October 2018, there were attempts underway to remove
+  # colocation constraints altogether. Assuming that will
+  # happen soon, perhaps this hack to work around the circular
+  # import dependency is acceptable.
+  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
+      v.handle.op, Operation):
+    return v.handle.op
+  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
 
 
 register_tensor_conversion_function(Operation, _operation_conversion_error)

@@ -1,0 +1,41 @@
+op {
+  graph_op_name: "MultiDeviceIteratorGetNextFromShard"
+  in_arg {
+    name: "multi_device_iterator"
+    description: <<END
+A MultiDeviceIterator resource.
+END
+  }
+  in_arg {
+    name: "shard_num"
+    description: <<END
+Integer representing which shard to fetch data for.
+END
+  }
+  in_arg {
+    name: "incarnation_id"
+    description: <<END
+Which incarnation of the MultiDeviceIterator is running.
+END
+  }
+  out_arg {
+    name: "components"
+    description: <<END
+Result of the get_next on the dataset.
+END
+  }
+  attr {
+    name: "output_types"
+    description: <<END
+The type list for the return values.
+END
+  }
+  attr {
+    name: "output_shapes"
+    description: <<END
+The list of shapes being produced.
+END
+  }
+  summary: "Gets next element for the provided shard number."
+  visibility: HIDDEN
+}

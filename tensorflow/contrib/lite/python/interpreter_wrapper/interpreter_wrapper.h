@@ -59,13 +59,14 @@ class InterpreterWrapper {
   PyObject* OutputIndices() const;
   PyObject* ResizeInputTensor(int i, PyObject* value);
 
+  int NumTensors() const;
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
   PyObject* TensorQuantization(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
-  PyObject* ResetVariableTensorsToZero();
+  PyObject* ResetVariableTensors();
 
   // Returns a reference to tensor index i as a numpy array. The base_object
   // should be the interpreter object providing the memory.

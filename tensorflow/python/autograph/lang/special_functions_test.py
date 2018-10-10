@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,6 +29,37 @@ from tensorflow.python.platform import test
 
 
 class SpecialFunctionsTest(test.TestCase):
+
+  def test_tensor_list_empty_list(self):
+    l = special_functions.tensor_list([],
+                                      element_dtype=dtypes.int32,
+                                      element_shape=())
+    sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
+    with self.test_session() as sess:
+      self.assertAllEqual(sess.run(sl), [])
+
+    l = special_functions.tensor_list((),
+                                      element_dtype=dtypes.int32,
+                                      element_shape=())
+    sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
+    with self.test_session() as sess:
+      self.assertAllEqual(sess.run(sl), [])
+
+  def test_tensor_list_tensor(self):
+    l = special_functions.tensor_list(
+        constant_op.constant([], dtype=dtypes.int32))
+    sl = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
+    with self.test_session() as sess:
+      self.assertAllEqual(sess.run(sl), [])
+
+  def test_tensor_list_unsupported_initializer(self):
+    with self.assertRaisesRegexp(ValueError, 'unknown type'):
+      special_functions.tensor_list(np.array([1, 2, 3]))
+
+  def test_tensor_list_empty_list_no_type(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'element_dtype and element_shape are required'):
+      special_functions.tensor_list([])
 
   def test_tensor_list_from_elements(self):
     elements = [constant_op.constant([1, 2]), constant_op.constant([3, 4])]

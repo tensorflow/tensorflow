@@ -186,7 +186,7 @@ def iterator_fit_loop(model,
   # make sure either x,y or x,y,sample_weights is provided
   if (not isinstance(inputs.output_shapes, (list, tuple)) or
       len(inputs.output_shapes) not in (2, 3)):
-    raise ValueError('Please provide either inputs and targets'
+    raise ValueError('Please provide either inputs and targets '
                      'or inputs, targets, and sample_weights')
 
   for step_index in range(steps_per_epoch):
@@ -739,7 +739,8 @@ def test_loop(model, inputs, targets,
       y=targets,
       sample_weights=sample_weights,
       batch_size=batch_size,
-      steps_per_epoch=steps)
+      steps_per_epoch=steps,
+      is_validation=True)
   with backend.learning_phase_scope(0):
     return iterator_test_loop(model, inputs, steps, verbose=verbose)
 

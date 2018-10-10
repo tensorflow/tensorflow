@@ -28,6 +28,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras import activations
+from tensorflow.python.keras import initializers
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -1108,7 +1110,7 @@ _Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
 class AttentionCellWrapper(rnn_cell_impl.RNNCell):
   """Basic attention cell wrapper.
 
-  Implementation based on https://arxiv.org/abs/1409.0473.
+  Implementation based on https://arxiv.org/abs/1601.06733.
   """
 
   def __init__(self,
@@ -3394,3 +3396,246 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
 
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
+
+
+class MinimalRNNCell(rnn_cell_impl.LayerRNNCell):
+  """MinimalRNN cell.
+
+  The implementation is based on:
+
+    https://arxiv.org/pdf/1806.05394v2.pdf
+
+  Minmin Chen, Jeffrey Pennington, Samuel S. Schoenholz.
+  "Dynamical Isometry and a Mean Field Theory of RNNs: Gating Enables Signal
+   Propagation in Recurrent Neural Networks." ICML, 2018.
+
+  A MinimalRNN cell first projects the input to the hidden space. The new
+  hidden state is then calcuated as a weighted sum of the projected input and
+  the previous hidden state, using a single update gate.
+  """
+
+  def __init__(self,
+               units,
+               activation="tanh",
+               kernel_initializer="glorot_uniform",
+               bias_initializer="ones",
+               name=None,
+               dtype=None,
+               **kwargs):
+    """Initialize the parameters for a MinimalRNN cell.
+
+    Args:
+      units: int, The number of units in the MinimalRNN cell.
+      activation: Nonlinearity to use in the feedforward network. Default:
+        `tanh`.
+      kernel_initializer: The initializer to use for the weight in the update
+        gate and feedforward network. Default: `glorot_uniform`.
+      bias_initializer: The initializer to use for the bias in the update
+        gate. Default: `ones`.
+      name: String, the name of the cell.
+      dtype: Default dtype of the cell.
+      **kwargs: Dict, keyword named properties for common cell attributes.
+    """
+    super(MinimalRNNCell, self).__init__(name=name, dtype=dtype, **kwargs)
+
+    # Inputs must be 2-dimensional.
+    self.input_spec = base_layer.InputSpec(ndim=2)
+
+    self.units = units
+    self.activation = activations.get(activation)
+    self.kernel_initializer = initializers.get(kernel_initializer)
+    self.bias_initializer = initializers.get(bias_initializer)
+
+  @property
+  def state_size(self):
+    return self.units
+
+  @property
+  def output_size(self):
+    return self.units
+
+  def build(self, inputs_shape):
+    if inputs_shape[-1] is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % str(inputs_shape))
+
+    input_size = inputs_shape[-1]
+    # pylint: disable=protected-access
+    # self._kernel contains W_x, W, V
+    self.kernel = self.add_weight(
+        name=rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+        shape=[input_size + 2 * self.units, self.units],
+        initializer=self.kernel_initializer)
+    self.bias = self.add_weight(
+        name=rnn_cell_impl._BIAS_VARIABLE_NAME,
+        shape=[self.units],
+        initializer=self.bias_initializer)
+    # pylint: enable=protected-access
+
+    self.built = True
+
+  def call(self, inputs, state):
+    """Run one step of MinimalRNN.
+
+    Args:
+      inputs: input Tensor, must be 2-D, `[batch, input_size]`.
+      state: state Tensor, must be 2-D, `[batch, state_size]`.
+
+    Returns:
+      A tuple containing:
+
+      - Output: A `2-D` tensor with shape `[batch_size, state_size]`.
+      - New state: A `2-D` tensor with shape `[batch_size, state_size]`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    input_size = inputs.get_shape()[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    feedforward_weight, gate_weight = array_ops.split(
+        value=self.kernel,
+        num_or_size_splits=[input_size.value, 2 * self.units],
+        axis=0)
+
+    feedforward = math_ops.matmul(inputs, feedforward_weight)
+    feedforward = self.activation(feedforward)
+
+    gate_inputs = math_ops.matmul(
+        array_ops.concat([feedforward, state], 1), gate_weight)
+    gate_inputs = nn_ops.bias_add(gate_inputs, self.bias)
+    u = math_ops.sigmoid(gate_inputs)
+
+    new_h = u * state + (1 - u) * feedforward
+    return new_h, new_h
+
+
+class CFNCell(rnn_cell_impl.LayerRNNCell):
+  """Chaos Free Network cell.
+
+  The implementation is based on:
+
+    https://openreview.net/pdf?id=S1dIzvclg
+
+  Thomas Laurent, James von Brecht.
+  "A recurrent neural network without chaos." ICLR, 2017.
+
+  A CFN cell first projects the input to the hidden space. The hidden state
+  goes through a contractive mapping. The new hidden state is then calcuated
+  as a linear combination of the projected input and the contracted previous
+  hidden state, using decoupled input and forget gates.
+  """
+
+  def __init__(self,
+               units,
+               activation="tanh",
+               kernel_initializer="glorot_uniform",
+               bias_initializer="ones",
+               name=None,
+               dtype=None,
+               **kwargs):
+    """Initialize the parameters for a CFN cell.
+
+    Args:
+      units: int, The number of units in the CFN cell.
+      activation: Nonlinearity to use. Default: `tanh`.
+      kernel_initializer: Initializer for the `kernel` weights
+        matrix. Default: `glorot_uniform`.
+      bias_initializer: The initializer to use for the bias in the
+        gates. Default: `ones`.
+      name: String, the name of the cell.
+      dtype: Default dtype of the cell.
+      **kwargs: Dict, keyword named properties for common cell attributes.
+    """
+    super(CFNCell, self).__init__(name=name, dtype=dtype, **kwargs)
+
+    # Inputs must be 2-dimensional.
+    self.input_spec = base_layer.InputSpec(ndim=2)
+
+    self.units = units
+    self.activation = activations.get(activation)
+    self.kernel_initializer = initializers.get(kernel_initializer)
+    self.bias_initializer = initializers.get(bias_initializer)
+
+  @property
+  def state_size(self):
+    return self.units
+
+  @property
+  def output_size(self):
+    return self.units
+
+  def build(self, inputs_shape):
+    if inputs_shape[-1] is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % str(inputs_shape))
+
+    input_size = inputs_shape[-1]
+    # pylint: disable=protected-access
+    # `self.kernel` contains V_{\theta}, V_{\eta}, W.
+    # `self.recurrent_kernel` contains U_{\theta}, U_{\eta}.
+    # `self.bias` contains b_{\theta}, b_{\eta}.
+    self.kernel = self.add_weight(
+        shape=[input_size, 3 * self.units],
+        name=rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+        initializer=self.kernel_initializer)
+    self.recurrent_kernel = self.add_weight(
+        shape=[self.units, 2 * self.units],
+        name="recurrent_%s" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+        initializer=self.kernel_initializer)
+    self.bias = self.add_weight(
+        shape=[2 * self.units],
+        name=rnn_cell_impl._BIAS_VARIABLE_NAME,
+        initializer=self.bias_initializer)
+    # pylint: enable=protected-access
+
+    self.built = True
+
+  def call(self, inputs, state):
+    """Run one step of CFN.
+
+    Args:
+      inputs: input Tensor, must be 2-D, `[batch, input_size]`.
+      state: state Tensor, must be 2-D, `[batch, state_size]`.
+
+    Returns:
+      A tuple containing:
+
+      - Output: A `2-D` tensor with shape `[batch_size, state_size]`.
+      - New state: A `2-D` tensor with shape `[batch_size, state_size]`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    input_size = inputs.get_shape()[-1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    # The variable names u, v, w, b are consistent with the notations in the
+    # original paper.
+    v, w = array_ops.split(
+        value=self.kernel,
+        num_or_size_splits=[2 * self.units, self.units],
+        axis=1)
+    u = self.recurrent_kernel
+    b = self.bias
+
+    gates = math_ops.matmul(state, u) + math_ops.matmul(inputs, v)
+    gates = nn_ops.bias_add(gates, b)
+    gates = math_ops.sigmoid(gates)
+    theta, eta = array_ops.split(value=gates,
+                                 num_or_size_splits=2,
+                                 axis=1)
+
+    proj_input = math_ops.matmul(inputs, w)
+
+    # The input gate is (1 - eta), which is different from the original paper.
+    # This is for the propose of initialization. With the default
+    # bias_initializer `ones`, the input gate is initialized to a small number.
+    new_h = theta * self.activation(state) + (1 - eta) * self.activation(
+        proj_input)
+
+    return new_h, new_h

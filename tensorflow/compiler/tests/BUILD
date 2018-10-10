@@ -277,9 +277,10 @@ tf_xla_py_test(
     ],
 )
 
+# This test is large because occasionally the cpu test is long for testConcatLargeNumberOfTensors
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",
@@ -894,6 +895,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tensor_list_ops_test",
+    size = "small",
+    srcs = ["tensor_list_ops_test.py"],
+    # TensorList ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = "cpu_ondemand",
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],
@@ -977,7 +994,7 @@ tf_xla_py_test(
     name = "gather_test",
     size = "medium",
     srcs = ["gather_test.py"],
-    tags = ["noasan"],  # times out, http://b/78599043
+    tags = ["optonly"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1024,6 +1041,19 @@ tf_xla_py_test(
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
+    ],
+)
+
+tf_xla_py_test(
+    name = "permute_test",
+    size = "small",
+    srcs = ["permute_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:nn_ops",
     ],
 )
 
@@ -1104,6 +1134,7 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1197,8 +1228,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "xla_ops_test",
+    name = "quantized_ops_test",
     size = "small",
+    srcs = ["quantized_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "xla_ops_test",
+    size = "medium",
     srcs = ["xla_ops_test.py"],
     disabled_backends = ["cpu_ondemand"],
     deps = [
