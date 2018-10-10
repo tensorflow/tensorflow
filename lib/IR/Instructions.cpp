@@ -147,7 +147,7 @@ void Instruction::emitError(const Twine &message) const {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specified fields.
-OperationInst *OperationInst::create(Location *location, Identifier name,
+OperationInst *OperationInst::create(Location *location, OperationName name,
                                      ArrayRef<CFGValue *> operands,
                                      ArrayRef<Type *> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -186,7 +186,7 @@ OperationInst *OperationInst::clone() const {
                 getContext());
 }
 
-OperationInst::OperationInst(Location *location, Identifier name,
+OperationInst::OperationInst(Location *location, OperationName name,
                              unsigned numOperands, unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)

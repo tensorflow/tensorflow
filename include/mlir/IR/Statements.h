@@ -41,7 +41,7 @@ class OperationStmt final
       private llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult> {
 public:
   /// Create a new OperationStmt with the specific fields.
-  static OperationStmt *create(Location *location, Identifier name,
+  static OperationStmt *create(Location *location, OperationName name,
                                ArrayRef<MLValue *> operands,
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
@@ -180,7 +180,7 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationStmt(Location *location, Identifier name, unsigned numOperands,
+  OperationStmt(Location *location, OperationName name, unsigned numOperands,
                 unsigned numResults, ArrayRef<NamedAttribute> attributes,
                 MLIRContext *context);
   ~OperationStmt();

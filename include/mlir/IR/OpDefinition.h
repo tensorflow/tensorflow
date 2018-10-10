@@ -34,11 +34,6 @@
 
 namespace mlir {
 class Builder;
-class Type;
-class OpAsmParser;
-class OpAsmPrinter;
-namespace OpTrait {
-}
 
 /// This type trait produces true if the specified type is in the specified
 /// type list.
@@ -597,7 +592,7 @@ public:
   /// the subclass of Base.
   ///
   static bool isClassFor(const Operation *op) {
-    return op->getName().is(ConcreteType::getOperationName());
+    return op->getName().getStringRef() == ConcreteType::getOperationName();
   }
 
   /// This is the hook used by the AsmParser to parse the custom form of this

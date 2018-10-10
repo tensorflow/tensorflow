@@ -45,6 +45,10 @@ void Identifier::print(raw_ostream &os) const { os << str(); }
 
 void Identifier::dump() const { print(llvm::errs()); }
 
+void OperationName::print(raw_ostream &os) const { os << getStringRef(); }
+
+void OperationName::dump() const { print(llvm::errs()); }
+
 OpAsmPrinter::~OpAsmPrinter() {}
 
 //===----------------------------------------------------------------------===//
@@ -1022,7 +1026,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
 
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
-  if (auto *opInfo = state.operationSet->lookup(op->getName())) {
+  if (auto *opInfo = op->getAbstractOperation()) {
     opInfo->printAssembly(op, this);
     return;
   }
@@ -1033,7 +1037,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
 
 void FunctionPrinter::printDefaultOp(const Operation *op) {
   os << '"';
-  printEscapedString(op->getName(), os);
+  printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
 
   interleaveComma(op->getOperands(),

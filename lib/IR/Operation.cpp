@@ -27,7 +27,36 @@
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
-Operation::Operation(bool isInstruction, Identifier name,
+/// Form the OperationName for an op with the specified string.  This either is
+/// a reference to an AbstractOperation if one is known, or a uniqued Identifier
+/// if not.
+OperationName::OperationName(StringRef name, MLIRContext *context) {
+  if (auto *op = OperationSet::get(context).lookup(name))
+    representation = op;
+  else
+    representation = Identifier::get(name, context);
+}
+
+/// Return the name of this operation.  This always succeeds.
+StringRef OperationName::getStringRef() const {
+  if (auto *op = representation.dyn_cast<const AbstractOperation *>())
+    return op->name;
+  return representation.get<Identifier>().strref();
+}
+
+const AbstractOperation *OperationName::getAbstractOperation() const {
+  return representation.dyn_cast<const AbstractOperation *>();
+}
+
+OperationName OperationName::getFromOpaquePointer(void *pointer) {
+  return OperationName(RepresentationUnion::getFromOpaqueValue(pointer));
+}
+
+//===----------------------------------------------------------------------===//
+// Operation class
+//===----------------------------------------------------------------------===//
+
+Operation::Operation(bool isInstruction, OperationName name,
                      ArrayRef<NamedAttribute> attrs, MLIRContext *context)
     : nameAndIsInstruction(name, isInstruction) {
   this->attrs = AttributeListStorage::get(attrs, context);
@@ -173,7 +202,7 @@ void Operation::emitError(const Twine &message) const {
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
 bool Operation::emitOpError(const Twine &message) const {
-  emitError(Twine('\'') + getName().str() + "' op " + message);
+  emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
   return true;
 }
 

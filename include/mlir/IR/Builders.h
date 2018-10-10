@@ -25,7 +25,6 @@
 namespace mlir {
 
 class AffineExpr;
-class MLIRContext;
 class Module;
 class UnknownLoc;
 class UniquedFilename;
@@ -340,7 +339,7 @@ public:
   OperationStmt *createOperation(const OperationState &state);
 
   /// Creates an operation given the fields.
-  OperationStmt *createOperation(Location *location, Identifier name,
+  OperationStmt *createOperation(Location *location, OperationName name,
                                  ArrayRef<MLValue *> operands,
                                  ArrayRef<Type *> types,
                                  ArrayRef<NamedAttribute> attrs);

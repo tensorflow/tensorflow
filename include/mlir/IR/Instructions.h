@@ -173,7 +173,7 @@ class OperationInst final
       private llvm::TrailingObjects<OperationInst, InstOperand, InstResult> {
 public:
   /// Create a new OperationInst with the specified fields.
-  static OperationInst *create(Location *location, Identifier name,
+  static OperationInst *create(Location *location, OperationName name,
                                ArrayRef<CFGValue *> operands,
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
@@ -312,7 +312,7 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationInst(Location *location, Identifier name, unsigned numOperands,
+  OperationInst(Location *location, OperationName name, unsigned numOperands,
                 unsigned numResults, ArrayRef<NamedAttribute> attributes,
                 MLIRContext *context);
   ~OperationInst();

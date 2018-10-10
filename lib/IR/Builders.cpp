@@ -265,7 +265,7 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
 
 /// Create an operation given the fields.
 OperationStmt *MLFuncBuilder::createOperation(Location *location,
-                                              Identifier name,
+                                              OperationName name,
                                               ArrayRef<MLValue *> operands,
                                               ArrayRef<Type *> types,
                                               ArrayRef<NamedAttribute> attrs) {

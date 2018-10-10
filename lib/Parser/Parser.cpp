@@ -1402,7 +1402,7 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   //
   // We create these placeholders as having an empty name, which we know cannot
   // be created through normal user input, allowing us to distinguish them.
-  auto name = Identifier::get("placeholder", getContext());
+  auto name = OperationName("placeholder", getContext());
   auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
                                      /*operands=*/{}, type,
                                      /*attributes=*/{}, getContext());

@@ -18,72 +18,17 @@
 #ifndef MLIR_IR_OPERATION_H
 #define MLIR_IR_OPERATION_H
 
-#include "mlir/IR/Identifier.h"
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/OperationSupport.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/Twine.h"
 
 namespace mlir {
-class Attribute;
 class AttributeListStorage;
-class AbstractOperation;
-class Location;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
 class Function;
-class SSAValue;
-class Type;
-
-/// NamedAttribute is a used for operation attribute lists, it holds an
-/// identifier for the name and a value for the attribute.  The attribute
-/// pointer should always be non-null.
-typedef std::pair<Identifier, Attribute*> NamedAttribute;
-
-/// This represents an operation in an abstracted form, suitable for use with
-/// the builder APIs.  This object is a large and heavy weight object meant to
-/// be used as a temporary object on the stack.  It is generally unwise to put
-/// this in a collection.
-struct OperationState {
-  MLIRContext *const context;
-  Location *location;
-  Identifier name;
-  SmallVector<SSAValue *, 4> operands;
-  /// Types of the results of this operation.
-  SmallVector<Type *, 4> types;
-  SmallVector<NamedAttribute, 4> attributes;
-
-public:
-  OperationState(MLIRContext *context, Location *location, StringRef name)
-      : context(context), location(location),
-        name(Identifier::get(name, context)) {}
-
-  OperationState(MLIRContext *context, Location *location, Identifier name)
-      : context(context), location(location), name(name) {}
-
-  OperationState(MLIRContext *context, Location *location, StringRef name,
-                 ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
-                 ArrayRef<NamedAttribute> attributes = {})
-      : context(context), location(location),
-        name(Identifier::get(name, context)),
-        operands(operands.begin(), operands.end()),
-        types(types.begin(), types.end()),
-        attributes(attributes.begin(), attributes.end()) {}
-
-  void addOperands(ArrayRef<SSAValue *> newOperands) {
-    operands.append(newOperands.begin(), newOperands.end());
-  }
-
-  void addTypes(ArrayRef<Type *> newTypes) {
-    types.append(newTypes.begin(), newTypes.end());
-  }
-
-  void addAttribute(StringRef name, Attribute *attr) {
-    attributes.push_back({Identifier::get(name, context), attr});
-  }
-};
 
 /// Operations represent all of the arithmetic and other basic computation in
 /// MLIR.  This class is the common implementation details behind OperationInst
@@ -106,7 +51,7 @@ public:
   }
 
   /// The name of an operation is the key identifier for it.
-  Identifier getName() const { return nameAndIsInstruction.getPointer(); }
+  OperationName getName() const { return nameAndIsInstruction.getPointer(); }
 
   /// Return the number of operands this operation has.
   unsigned getNumOperands() const;
@@ -219,7 +164,9 @@ public:
 
   /// If this operation has a registered operation description in the
   /// OperationSet, return it.  Otherwise return null.
-  const AbstractOperation *getAbstractOperation() const;
+  const AbstractOperation *getAbstractOperation() const {
+    return getName().getAbstractOperation();
+  }
 
   // Return a null OpPointer for the specified type.
   template <typename OpClass> static OpPointer<OpClass> getNull() {
@@ -267,8 +214,8 @@ public:
                     SmallVectorImpl<Attribute *> &results) const;
 
 protected:
-  Operation(bool isInstruction, Identifier name, ArrayRef<NamedAttribute> attrs,
-            MLIRContext *context);
+  Operation(bool isInstruction, OperationName name,
+            ArrayRef<NamedAttribute> attrs, MLIRContext *context);
   ~Operation();
 
 private:
@@ -277,7 +224,7 @@ private:
 
   /// This holds the name of the operation, and a bool.  The bool is true if
   /// this operation is an OperationInst, false if it is a OperationStmt.
-  llvm::PointerIntPair<Identifier, 1, bool> nameAndIsInstruction;
+  llvm::PointerIntPair<OperationName, 1, bool> nameAndIsInstruction;
 
   /// This holds general named attributes for the operation.
   AttributeListStorage *attrs;

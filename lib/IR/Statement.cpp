@@ -195,7 +195,7 @@ void Statement::eraseFromBlock() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationStmt with the specific fields.
-OperationStmt *OperationStmt::create(Location *location, Identifier name,
+OperationStmt *OperationStmt::create(Location *location, OperationName name,
                                      ArrayRef<MLValue *> operands,
                                      ArrayRef<Type *> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -219,7 +219,7 @@ OperationStmt *OperationStmt::create(Location *location, Identifier name,
   return stmt;
 }
 
-OperationStmt::OperationStmt(Location *location, Identifier name,
+OperationStmt::OperationStmt(Location *location, OperationName name,
                              unsigned numOperands, unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
