@@ -2127,6 +2127,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/optimizers:meta_optimizer",
     ],
 )
 

@@ -23,6 +23,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -979,8 +980,19 @@ def For(start,
   return ret
 # pylint: enable=invalid-name,protected-access
 
+_rewriter_config_optimizer_disabled = None
 
-def partitioned_call(args, f, tout=None, executing_eagerly=None):
+
+def _get_disabled_rewriter_config():
+  global _rewriter_config_optimizer_disabled
+  if _rewriter_config_optimizer_disabled is None:
+    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    rewriter_config.disable_meta_optimizer = True
+    _rewriter_config_optimizer_disabled = rewriter_config.SerializeToString()
+  return _rewriter_config_optimizer_disabled
+
+
+def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None):
   """Executes a function while respecting device annotations.
 
   Currently, only those functions that execute within the same address space
@@ -994,6 +1006,9 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
       the signature of `f`.
     executing_eagerly: (Optional) A boolean indicating whether the context is
       executing eagerly. If `None`, fetched from the global context.
+    config: (Optional) A tensorflow::RewriterConfig proto, serialized. If
+      `None`, all optimizations are disabled. Currently only handled for eager
+      defined functions.
 
   Returns:
     The list of `Tensor`s returned by invoking `f(args)`. If the function does
@@ -1007,12 +1022,16 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
   if executing_eagerly is None:
     executing_eagerly = context.executing_eagerly()
 
+  if config is None:
+    config = _get_disabled_rewriter_config()
+
   if executing_eagerly or len(tout):
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
-          args=args, Tout=tout, f=f)
+          args=args, Tout=tout, f=f, config=config)
     else:
-      outputs = gen_functional_ops.partitioned_call(args=args, Tout=tout, f=f)
+      outputs = gen_functional_ops.partitioned_call(
+          args=args, Tout=tout, f=f, config=config)
     return outputs if outputs else None
 
   # The generated binding returns an empty list for functions that don't
@@ -1026,6 +1045,11 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
   func_attr = attr_value_pb2.AttrValue(
       func=attr_value_pb2.NameAttrList(name=f.name))
 
+  # When running in graph mode, the graph and function graphs are optimized
+  # (i.e. run through grappler) per the session options, so we can disable any
+  # eager-specific rewriting.
+  rewriter_config = attr_value_pb2.AttrValue(s=_get_disabled_rewriter_config())
+
   graph = ops.get_default_graph()
   f.add_to_graph(graph)
   op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
@@ -1035,6 +1059,11 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None):
       tout,
       compute_shapes=False,
       name="PartitionedFunctionCall",
-      attrs={"Tin": tin_attr, "Tout": tout_attr, "f": func_attr})
+      attrs={
+          "Tin": tin_attr,
+          "Tout": tout_attr,
+          "f": func_attr,
+          "config": rewriter_config
+      })
   outputs = op.outputs
   return outputs if outputs else op
