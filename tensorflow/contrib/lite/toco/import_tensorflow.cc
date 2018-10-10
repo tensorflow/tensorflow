@@ -1122,13 +1122,27 @@ tensorflow::Status ConvertUnsupportedOperator(
     op->inputs.push_back(node.input(i));
   }
 
-  // Parse outputs.
-  op->outputs.push_back(node.name());  // Implicit :0.
+  // Parse outputs. Name them after the node's name, plus an ordinal suffix.
+  // Note that some outputs are to be multipled by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
-    for (int i = 1; i < op_def->output_arg_size(); ++i) {
-      op->outputs.push_back(absl::StrCat(node.name(), ":", i));
+    int next_output = 0;
+    for (int i = 0; i < op_def->output_arg_size(); ++i) {
+      string multiples = op_def->output_arg(i).number_attr();
+      int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
+      LOG(INFO) << "dddddddd " << num_outputs;
+      for (int j = 0; j < num_outputs; ++j) {
+        if (next_output == 0) {
+          op->outputs.push_back(node.name());  // Implicit :0.
+        } else {
+          op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
+        }
+        ++next_output;
+      }
     }
+  } else {
+    LOG(INFO) << "nodef!!!!!!!!!!! ";
+    op->outputs.push_back(node.name());  // Implicit :0.
   }
 
   // Parse if the op supports quantization
