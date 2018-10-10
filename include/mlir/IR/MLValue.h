@@ -45,9 +45,10 @@ using StmtOperand = IROperandImpl<MLValue, Statement>;
 /// MLValue is the base class for SSA values in ML functions.
 class MLValue : public SSAValueImpl<StmtOperand, Statement, MLValueKind> {
 public:
-  /// Returns true if this MLValue can be used as a dimension id.
+  /// Returns true if the given MLValue can be used as a dimension id.
   bool isValidDim() const;
-  /// Returns true if this MLValue can be used as a symbol.
+
+  /// Returns true if the given MLValue can be used as a symbol.
   bool isValidSymbol() const;
 
   static bool classof(const SSAValue *value) {

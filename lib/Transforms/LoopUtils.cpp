@@ -25,9 +25,10 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/StandardOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
+#include "mlir/StandardOps/StandardOps.h"
 #include "llvm/ADT/DenseMap.h"
 
 using namespace mlir;

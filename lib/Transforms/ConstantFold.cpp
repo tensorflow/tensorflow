@@ -16,11 +16,12 @@
 // =============================================================================
 
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/StandardOps.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
+
 using namespace mlir;
 
 namespace {

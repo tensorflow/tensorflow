@@ -23,13 +23,13 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSet.h"
-#include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
@@ -39,6 +39,7 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
+
 using namespace mlir;
 
 void Identifier::print(raw_ostream &os) const { os << str(); }

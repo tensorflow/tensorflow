@@ -23,7 +23,8 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/StandardOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Utils.h"

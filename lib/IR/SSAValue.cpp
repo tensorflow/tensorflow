@@ -19,8 +19,8 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Instructions.h"
 #include "mlir/IR/MLFunction.h"
-#include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Statements.h"
+
 using namespace mlir;
 
 /// If this value is the result of an OperationInst, return the instruction
@@ -90,40 +90,4 @@ CFGFunction *BBArgument::getFunction() {
 /// Return the function that this MLValue is defined in.
 MLFunction *MLValue::getFunction() {
   return cast<MLFunction>(static_cast<SSAValue *>(this)->getFunction());
-}
-
-// MLValue can be used a a dimension id if it is valid as a symbol, or
-// it is an induction variable, or it is a result of affine apply operation
-// with dimension id arguments.
-bool MLValue::isValidDim() const {
-  if (auto *stmt = getDefiningStmt()) {
-    // Top level statement or constant operation is ok.
-    if (stmt->getParentStmt() == nullptr || stmt->is<ConstantOp>())
-      return true;
-    // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = stmt->getAs<AffineApplyOp>())
-      return op->isValidDim();
-    return false;
-  }
-  // This value is either a function argument or an induction variable. Both
-  // are ok.
-  return true;
-}
-
-// MLValue can be used as a symbol if it is a constant, or it is defined at
-// the top level, or it is a result of affine apply operation with symbol
-// arguments.
-bool MLValue::isValidSymbol() const {
-  if (auto *stmt = getDefiningStmt()) {
-    // Top level statement or constant operation is ok.
-    if (stmt->getParentStmt() == nullptr || stmt->is<ConstantOp>())
-      return true;
-    // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = stmt->getAs<AffineApplyOp>())
-      return op->isValidSymbol();
-    return false;
-  }
-  // This value is either a function argument or an induction variable.
-  // Function argument is ok, induction variable is not.
-  return isa<MLFuncArgument>(this);
 }

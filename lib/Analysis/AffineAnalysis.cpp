@@ -23,7 +23,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineExprVisitor.h"
-#include "mlir/IR/StandardOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 
 using namespace mlir;

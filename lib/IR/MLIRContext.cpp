@@ -23,12 +23,12 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OperationSet.h"
-#include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
@@ -279,9 +279,7 @@ public:
       splatElementsAttrs;
 
 public:
-  MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {
-    registerStandardOperations(operationSet);
-  }
+  MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {}
 
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
@@ -294,6 +292,7 @@ public:
 } // end namespace mlir
 
 MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
+  registerBuiltinOperations(this);
   initializeAllRegisteredOps(this);
 }
 

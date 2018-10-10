@@ -48,7 +48,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/StandardOps.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Pass.h"
