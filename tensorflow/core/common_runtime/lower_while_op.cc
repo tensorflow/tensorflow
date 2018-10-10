@@ -53,8 +53,9 @@ using NodeOut = NodeBuilder::NodeOut;
 class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const string& cond_fn_name,
-                    const string& body_fn_name, Graph* graph) {
-    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name, graph);
+                    const string& body_fn_name, Graph* graph,
+                    const FunctionLibraryDefinition& flib) {
+    LowerWhileHelper helper(while_op, cond_fn_name, body_fn_name, graph, flib);
     return helper.RunInternal();
   }
 
@@ -63,7 +64,8 @@ class LowerWhileHelper {
   // and body functions named `cond_fn_name` and `body_fn_name` respectively in
   // the given graph.
   LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                   const string& body_fn_name, Graph* graph);
+                   const string& body_fn_name, Graph* graph,
+                   const FunctionLibraryDefinition& flib);
 
   Status RunInternal();
 
@@ -127,6 +129,7 @@ class LowerWhileHelper {
   // The IdentityN node with the same outputs as the original While op.
   Node* lowered_while_output_;
   Graph* graph_;
+  const FunctionLibraryDefinition& flib_;
   // Name of the `while_op_`.
   string name_;
 
@@ -143,9 +146,11 @@ class LowerWhileHelper {
 };
 
 LowerWhileHelper::LowerWhileHelper(Node* while_op, const string& cond_fn_name,
-                                   const string& body_fn_name, Graph* graph)
+                                   const string& body_fn_name, Graph* graph,
+                                   const FunctionLibraryDefinition& flib)
     : while_op_(while_op),
       graph_(graph),
+      flib_(flib),
       name_(while_op->name()),
       cond_call_builder_(NewName("cond"), cond_fn_name, graph->op_registry()),
       body_call_builder_(NewName("body"), body_fn_name, graph->op_registry()),
@@ -346,8 +351,8 @@ string LowerWhileHelper::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
 }
 
-Status InlineCallInGraph(Node* n, Graph* g) {
-  const auto& lib = g->flib_def();
+Status InlineCallInGraph(Node* n, Graph* g,
+                         const FunctionLibraryDefinition& lib) {
   const FunctionDef* fdef = lib.Find(n->type_string());
   CHECK(fdef != nullptr);
   FunctionBody* fbody;
@@ -365,46 +370,15 @@ Status InlineCallInGraph(Node* n, Graph* g) {
 }
 
 Status LowerWhileHelper::InlineCallNodes() {
-  TF_RETURN_IF_ERROR(InlineCallInGraph(cond_call_node_, graph_));
-  TF_RETURN_IF_ERROR(InlineCallInGraph(body_call_node_, graph_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph(cond_call_node_, graph_, flib_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph(body_call_node_, graph_, flib_));
   return Status::OK();
 }
 
 }  // namespace
 
-Status LowerWhileOpPass::Run(const GraphOptimizationPassOptions& options) {
-  if (options.partition_graphs != nullptr) {
-    return errors::Internal(
-        "Lowering While op should happen before partitioning.");
-  }
-  if (options.graph == nullptr) {
-    return Status::OK();
-  }
-
-  Graph* g = options.graph->get();
-  if (g == nullptr) {
-    return errors::Internal(
-        "Lowering While op requires a graph to be available.");
-  }
-
-  // Match all the nodes that need to be rewritten.
-  gtl::InlinedVector<Node*, 2> matches;
-  for (Node* n : g->op_nodes()) {
-    if (n->type_string() == "While") {
-      // Only rewrite if the While op is marked as needing to be lowered.
-      bool match;
-      Status s = GetNodeAttr(n->attrs(),
-                             LowerIfOpPass::kLowerUsingSwitchMergeAttr, &match);
-      if (s.ok() && match) matches.push_back(n);
-    }
-  }
-  for (Node* n : matches) {
-    TF_RETURN_IF_ERROR(RewriteNode(n, g));
-  }
-  return Status::OK();
-}
-
-Status LowerWhileOpPass::RewriteNode(Node* n, Graph* g) {
+Status RewriteWhileNode(Node* n, Graph* g,
+                        const FunctionLibraryDefinition& flib) {
   const AttrValue* cond_attr = n->attrs().Find("cond");
   if (cond_attr == nullptr) {
     return errors::InvalidArgument("While cond function missing");
@@ -415,13 +389,10 @@ Status LowerWhileOpPass::RewriteNode(Node* n, Graph* g) {
   }
 
   TF_RETURN_IF_ERROR(LowerWhileHelper::Run(n, cond_attr->func().name(),
-                                           body_attr->func().name(), g));
+                                           body_attr->func().name(), g, flib));
   g->RemoveNode(n);
 
   return Status::OK();
 }
-
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      LowerWhileOpPass);
 
 }  // namespace tensorflow
