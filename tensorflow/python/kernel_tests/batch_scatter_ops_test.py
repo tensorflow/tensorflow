@@ -73,16 +73,6 @@ class ScatterTest(test.TestCase):
           tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
 
-  def _VariableRankTests(self,
-                         tf_scatter):
-    vtypes = [np.float32, np.float64]
-    if tf_scatter != state_ops.scatter_div:
-      vtypes.append(np.int32)
-
-    for vtype in vtypes:
-      for itype in (np.int32, np.int64):
-        self._VariableRankTest(tf_scatter, vtype, itype)
-
   def testVariableRankUpdate(self):
     vtypes = [np.float32, np.float64]
     for vtype in vtypes:
