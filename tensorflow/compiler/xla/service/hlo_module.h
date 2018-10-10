@@ -99,7 +99,7 @@ class HloModule {
   HloComputation* DeepCloneComputation(HloComputation* computation,
                                        HloCloneContext* context = nullptr);
 
-  // Return a pointer to the entry computation of the module..
+  // Return a pointer to the entry computation of the module.
   const HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
@@ -107,6 +107,14 @@ class HloModule {
   HloComputation* entry_computation() {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
+  }
+
+  // Returns the root instruction shape of entry computation.
+  //
+  // Precondition: entry_computation_ is not nullptr.
+  const Shape& result_shape() const {
+    CHECK_NE(nullptr, entry_computation_);
+    return entry_computation()->root_instruction()->shape();
   }
 
   // Creates the ComputationLayout which describes the current status of the HLO

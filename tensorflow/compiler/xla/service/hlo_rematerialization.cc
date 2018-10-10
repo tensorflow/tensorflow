@@ -1215,7 +1215,7 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
   // by the caller.
   int64 module_output_size = 0;
   ShapeUtil::ForEachSubshape(
-      module->entry_computation()->root_instruction()->shape(),
+      module->result_shape(),
       [&module_output_size, this](const Shape& subshape,
                                   const ShapeIndex& /*index*/) {
         module_output_size += size_function_(subshape);

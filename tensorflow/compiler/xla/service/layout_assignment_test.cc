@@ -1284,8 +1284,7 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
            ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0})}));
   AssignLayouts(module.get(), &computation_layout);
 
-  ExpectTupleLayoutIs(module->entry_computation()->root_instruction()->shape(),
-                      {{1, 0}, {1, 0}});
+  ExpectTupleLayoutIs(module->result_shape(), {{1, 0}, {1, 0}});
 
   const HloInstruction* custom_call =
       FindInstruction(module.get(), "custom-call");

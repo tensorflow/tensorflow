@@ -959,9 +959,8 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
       FindOrDie(computation_layouts_, module->entry_computation())
           .result_layout();
   if (result_layout.LayoutIsSet()) {
-    TF_RET_CHECK(ShapeUtil::Equal(
-        module->entry_computation()->root_instruction()->shape(),
-        result_layout.shape()));
+    TF_RET_CHECK(
+        ShapeUtil::Equal(module->result_shape(), result_layout.shape()));
   }
   return Status::OK();
 }
