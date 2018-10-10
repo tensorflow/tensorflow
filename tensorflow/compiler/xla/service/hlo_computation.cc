@@ -215,7 +215,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 
     if (removed.count(item) != 0 || item->user_count() != 0 ||
         item == root_instruction() || !IsRemovable(item) ||
-        item->HasSideEffect()) {
+        (item->HasSideEffect() && item != instruction)) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {
