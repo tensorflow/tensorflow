@@ -384,6 +384,33 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
+  // TODO(b/117561550): Move flex delegate application to the OpResolver.
+  if (AcquireFlexDelegate == nullptr) {
+    return kTfLiteOk;
+  }
+
+  bool has_flex_op = false;
+  for (const auto* registration : flatbuffer_op_index_to_registration_) {
+    if ((registration->builtin_code == BuiltinOperator_CUSTOM) &&
+        IsFlexOp(registration->custom_name)) {
+      has_flex_op = true;
+      break;
+    }
+  }
+
+  if (!has_flex_op) {
+    return kTfLiteOk;
+  }
+
+  if (auto flex_delegate = AcquireFlexDelegate()) {
+    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate),
+                                                /*allow_dynamic_tensors=*/true);
+  }
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter) {
   return operator()(interpreter, /*num_threads=*/-1);
@@ -466,14 +493,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
   (**interpreter).SetVariables(std::move(variables));
 
-  // TODO(b/116667551): Only create the flex delegate if the model has flex ops.
-  if (AcquireFlexDelegate != nullptr) {
-    if (auto flex_delegate = AcquireFlexDelegate()) {
-      (**interpreter)
-          .ModifyGraphWithDelegate(std::move(flex_delegate),
-                                   /*allow_dynamic_tensors=*/true);
-    }
-  }
+  if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
+    return cleanup_and_error();
 
   return kTfLiteOk;
 }
