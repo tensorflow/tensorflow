@@ -92,7 +92,10 @@ def getqualifiedname(namespace, object_, max_depth=2):
 
   # TODO(mdan): Use breadth-first search and avoid visiting modules twice.
   if max_depth:
-    for name, value in namespace.items():
+    # Iterating over a copy prevents "changed size due to iteration" errors.
+    # It's unclear why those occur - suspecting new modules may load during
+    # iteration.
+    for name, value in namespace.copy().items():
       if tf_inspect.ismodule(value):
         name_in_module = getqualifiedname(value.__dict__, object_,
                                           max_depth - 1)
