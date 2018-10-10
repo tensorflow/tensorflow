@@ -501,7 +501,8 @@ class _EagerDefinedFunction(object):
           args=args,
           f=self,
           tout=self._output_types,
-          executing_eagerly=executing_eagerly)
+          executing_eagerly=executing_eagerly,
+          config=ctx.rewriter_config_string)  # pylint: disable=protected-access
 
     if executing_eagerly:
       return outputs
