@@ -551,7 +551,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       item->func_graph = fbody;
       item->overlay_lib = options.overlay_lib;
       item->instantiation_counter = 1;
-      item->executor_type = options.executor_type;
+      item->executor_type = ExecutorType(options, attrs);
       items_.emplace(next_handle_, std::unique_ptr<Item>(item));
       next_handle_++;
     }
