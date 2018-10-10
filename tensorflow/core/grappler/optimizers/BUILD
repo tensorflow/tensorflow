@@ -113,6 +113,7 @@ tf_cc_test(
     deps = [
         ":constant_folding",
         ":dependency_optimizer",
+        "//tensorflow/cc:array_ops_internal",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:all_kernels",
