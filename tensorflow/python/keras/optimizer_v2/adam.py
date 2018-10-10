@@ -201,3 +201,13 @@ class Adam(optimizer_v2.OptimizerV2):
     update_beta_2 = beta_2_power.assign(
         beta_2_power * state.get_hyper("beta_2"), use_locking=self._use_locking)
     return control_flow_ops.group(update_beta_1, update_beta_2)
+
+  def get_config(self):
+    config = super(Adam, self).get_config()
+    config.update({
+        "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "beta_1": self._serialize_hyperparameter("beta_1"),
+        "beta_2": self._serialize_hyperparameter("beta_2"),
+        "epsilon": self._serialize_hyperparameter("epsilon")
+    })
+    return config

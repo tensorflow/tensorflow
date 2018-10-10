@@ -168,3 +168,17 @@ class SGD(optimizer_v2.OptimizerV2):
           grad.values * state.get_hyper("learning_rate", var.dtype.base_dtype),
           grad.indices, grad.dense_shape)
       return var.scatter_sub(delta, use_locking=self._use_locking)
+
+  def get_config(self):
+    config = super(SGD, self).get_config()
+    # Control whether momentum variables are created.
+    if not self._use_momentum:
+      momentum = None
+    else:
+      momentum = self._serializer_hyperparameter("momentum")
+    config.update({
+        "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "momentum": momentum,
+        "nesterov": self._use_nesterov
+    })
+    return config
