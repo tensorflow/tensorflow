@@ -19982,6 +19982,13 @@ op {
     name: "f"
     type: "func"
   }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "Placeholder"
@@ -33087,6 +33094,13 @@ op {
   attr {
     name: "f"
     type: "func"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
