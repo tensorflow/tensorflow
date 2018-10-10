@@ -947,7 +947,7 @@ static AffineExpr simplifyFloorDiv(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
-  if (lhsConst && rhsConst)
+  if (lhsConst && rhsConst && rhsConst.getValue() >= 1)
     return getAffineConstantExpr(
         floorDiv(lhsConst.getValue(), rhsConst.getValue()), lhs.getContext());
 
@@ -974,7 +974,7 @@ static AffineExpr simplifyCeilDiv(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
-  if (lhsConst && rhsConst)
+  if (lhsConst && rhsConst && rhsConst.getValue() >= 1)
     return getAffineConstantExpr(
         ceilDiv(lhsConst.getValue(), rhsConst.getValue()), lhs.getContext());
 
@@ -1001,7 +1001,7 @@ static AffineExpr simplifyMod(AffineExpr lhs, AffineExpr rhs) {
   auto lhsConst = lhs.dyn_cast<AffineConstantExpr>();
   auto rhsConst = rhs.dyn_cast<AffineConstantExpr>();
 
-  if (lhsConst && rhsConst)
+  if (lhsConst && rhsConst && rhsConst.getValue() >= 1)
     return getAffineConstantExpr(mod(lhsConst.getValue(), rhsConst.getValue()),
                                  lhs.getContext());
 
