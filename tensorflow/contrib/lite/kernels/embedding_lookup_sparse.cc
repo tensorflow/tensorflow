@@ -188,7 +188,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     int idx = ids->data.i32[i];
     if (idx >= num_rows || idx < 0) {
       context->ReportError(context,
-                           "Embedding Lookup Sparse: index out of bounds.");
+                           "Embedding Lookup Sparse: index out of bounds. "
+                           "Got %d, and bounds are [0, %d]",
+                           idx, num_rows - 1);
       return kTfLiteError;
     }
 
