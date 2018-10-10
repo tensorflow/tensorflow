@@ -274,6 +274,8 @@ public:
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
   DenseMap<const Function *, FunctionAttr *> functionAttrs;
+  DenseMap<std::pair<VectorOrTensorType *, Attribute *>, SplatElementsAttr *>
+      splatElementsAttrs;
 
 public:
   MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {
@@ -775,7 +777,6 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
     }
   }
 
-  // Ok, now that we've canonicalized our attributes, unique them.
   auto &impl = context->getImpl();
 
   // Look to see if we already have this.
@@ -795,6 +796,23 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
   std::uninitialized_copy(attrs.begin(), attrs.end(),
                           result->getTrailingObjects<NamedAttribute>());
   return *existing.first = result;
+}
+
+ElementsAttr *SplatElementsAttr::get(VectorOrTensorType *type, Attribute *elt) {
+  auto &impl = type->getContext()->getImpl();
+
+  // Look to see if we already have this.
+  auto *&result = impl.splatElementsAttrs[{type, elt}];
+
+  // If we already have it, return that value.
+  if (result)
+    return result;
+
+  // Otherwise, allocate them into the bump pointer.
+  result = impl.allocator.Allocate<SplatElementsAttr>();
+  new (result) SplatElementsAttr(type, elt);
+
+  return result;
 }
 
 //===----------------------------------------------------------------------===//

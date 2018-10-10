@@ -456,6 +456,15 @@ void ModulePrinter::printAttribute(const Attribute *attr) {
     }
     break;
   }
+  case Attribute::Kind::SplatElements: {
+    auto *elementsAttr = cast<SplatElementsAttr>(attr);
+    os << "splat<";
+    printType(elementsAttr->getType());
+    os << ", ";
+    printAttribute(elementsAttr->getValue());
+    os << '>';
+    break;
+  }
   }
 }
 

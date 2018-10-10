@@ -144,6 +144,11 @@ FunctionAttr *Builder::getFunctionAttr(const Function *value) {
   return FunctionAttr::get(value, context);
 }
 
+ElementsAttr *Builder::getSplatElementsAttr(VectorOrTensorType *type,
+                                            Attribute *elt) {
+  return SplatElementsAttr::get(type, elt);
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions, Affine Maps, and Integet Sets.
 //===----------------------------------------------------------------------===//

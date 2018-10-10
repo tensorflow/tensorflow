@@ -47,9 +47,8 @@ int VectorOrTensorType::getRank() const {
   default:
     llvm_unreachable("not a VectorOrTensorType");
   case Kind::Vector:
-    return cast<VectorType>(this)->getShape().size();
   case Kind::RankedTensor:
-    return cast<RankedTensorType>(this)->getShape().size();
+    return getShape().size();
   case Kind::UnrankedTensor:
     return -1;
   }
@@ -58,12 +57,29 @@ int VectorOrTensorType::getRank() const {
 int VectorOrTensorType::getDimSize(unsigned i) const {
   switch (getKind()) {
   case Kind::Vector:
-    return cast<VectorType>(this)->getShape()[i];
   case Kind::RankedTensor:
-    return cast<RankedTensorType>(this)->getShape()[i];
+    return getShape()[i];
   default:
     llvm_unreachable("not a VectorOrTensorType");
   }
+}
+
+ArrayRef<int> VectorOrTensorType::getShape() const {
+  switch (getKind()) {
+  case Kind::Vector:
+    return cast<VectorType>(this)->getShape();
+  case Kind::RankedTensor:
+    return cast<RankedTensorType>(this)->getShape();
+  case Kind::UnrankedTensor:
+    return cast<RankedTensorType>(this)->getShape();
+  default:
+    llvm_unreachable("not a VectorOrTensorType");
+  }
+}
+
+bool VectorOrTensorType::hasStaticShape() const {
+  auto dims = getShape();
+  return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
 }
 
 VectorType::VectorType(ArrayRef<int> shape, Type *elementType,

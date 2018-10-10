@@ -484,3 +484,17 @@ mlfunc @mlfuncsimplemap(%arg0 : index, %arg1 : index) -> () {
   }
   return
 }
+
+// CHECK-LABEL: cfgfunc @tensorattr
+cfgfunc @tensorattr() -> () {
+bb0:
+// CHECK: "splatIntTensor"() {bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
+  "splatIntTensor"(){bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
+// CHECK: "splatFloatTensor"() {bar: splat<tensor<2x1x4xf32>, -5.000000e+00>} : () -> ()
+  "splatFloatTensor"(){bar: splat<tensor<2x1x4xf32>, -5.0>} : () -> ()
+// CHECK: "splatIntVector"() {bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
+  "splatIntVector"(){bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
+// CHECK: "splatFloatVector"() {bar: splat<vector<2x1x4xf16>, -5.000000e+00>} : () -> ()
+  "splatFloatVector"(){bar: splat<vector<2x1x4xf16>, -5.0>} : () -> ()
+  return
+}

@@ -303,10 +303,7 @@ public:
 
   /// If any dimension has unknown size (<0), it doesn't have static shape.
   /// If all dimensions has known size (>= 0), it has static shape.
-  bool hasStaticShape() const {
-    auto dims = getShape();
-    return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
-  }
+  bool hasStaticShape() const;
 
   /// If this is ranked tensor or vector type, return the size of the specified
   /// dimension. It aborts if the tensor is unranked (this can be checked by

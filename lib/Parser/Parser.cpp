@@ -658,6 +658,8 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | function-id `:` function-type
+///                    | `splat<` (tensor-type | vector-type)`,`
+///                          attribute-value `>`
 ///
 Attribute *Parser::parseAttribute() {
   switch (getToken().getKind()) {
@@ -750,6 +752,42 @@ Attribute *Parser::parseAttribute() {
 
     auto *function = resolveFunctionReference(nameStr, nameLoc, fnType);
     return function ? builder.getFunctionAttr(function) : nullptr;
+  }
+
+  case Token::kw_splat: {
+    consumeToken(Token::kw_splat);
+    if (parseToken(Token::less, "Expected '<' after 'elements'"))
+      return nullptr;
+
+    auto *type = dyn_cast<VectorOrTensorType>(parseType());
+    if (!type) {
+      return (
+          emitError("expected elements literal has a tensor or vector type"),
+          nullptr);
+    }
+
+    if (parseToken(Token::comma, "Expected ','"))
+      return nullptr;
+
+    if (!type->hasStaticShape() || type->getRank() == -1) {
+      return (emitError("tensor literals must be ranked and have static shape"),
+              nullptr);
+    }
+
+    switch (getToken().getKind()) {
+    case Token::floatliteral:
+    case Token::integer:
+    case Token::minus: {
+      auto *scalar = parseAttribute();
+      if (parseToken(Token::greater, "expected '>'"))
+        return nullptr;
+      return builder.getSplatElementsAttr(type, scalar);
+    }
+    default:
+      return (
+          emitError("expected '[' or scalar constant inside tensor literal"),
+          nullptr);
+    }
   }
 
   default: {

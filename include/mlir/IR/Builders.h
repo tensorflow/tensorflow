@@ -43,6 +43,7 @@ class StringAttr;
 class TypeAttr;
 class ArrayAttr;
 class FunctionAttr;
+class ElementsAttr;
 class AffineMapAttr;
 class AffineMap;
 
@@ -98,6 +99,7 @@ public:
   AffineMapAttr *getAffineMapAttr(AffineMap map);
   TypeAttr *getTypeAttr(Type *type);
   FunctionAttr *getFunctionAttr(const Function *value);
+  ElementsAttr *getSplatElementsAttr(VectorOrTensorType *type, Attribute *elt);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);

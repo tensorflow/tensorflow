@@ -27,6 +27,7 @@ class Function;
 class FunctionType;
 class MLIRContext;
 class Type;
+class VectorOrTensorType;
 
 /// Attributes are known-constant values of operations and functions.
 ///
@@ -43,6 +44,10 @@ public:
     Array,
     AffineMap,
     Function,
+
+    SplatElements,
+    FIRST_ELEMENTS_ATTR = SplatElements,
+    LAST_ELEMENTS_ATTR = SplatElements,
   };
 
   /// Return the classification for this attribute.
@@ -249,6 +254,41 @@ private:
   Function *value;
 };
 
+/// A base attribute represents a reference to a vector or tensor constant.
+class ElementsAttr : public Attribute {
+public:
+  ElementsAttr(Kind kind, VectorOrTensorType *type)
+      : Attribute(kind, /*isOrContainsFunction=*/false), type(type) {}
+
+  VectorOrTensorType *getType() const { return type; }
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() >= Kind::FIRST_ELEMENTS_ATTR &&
+           attr->getKind() <= Kind::LAST_ELEMENTS_ATTR;
+  }
+
+private:
+  VectorOrTensorType *type;
+};
+
+/// An attribute represents a reference to a splat vecctor or tensor constant,
+/// meaning all of the elements have the same value.
+class SplatElementsAttr : public ElementsAttr {
+public:
+  static ElementsAttr *get(VectorOrTensorType *type, Attribute *elt);
+  Attribute *getValue() const { return elt; }
+
+  /// Method for support type inquiry through isa, cast and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::SplatElements;
+  }
+
+private:
+  SplatElementsAttr(VectorOrTensorType *type, Attribute *elt)
+      : ElementsAttr(Kind::SplatElements, type), elt(elt) {}
+  Attribute *elt;
+};
 } // end namespace mlir.
 
 #endif
