@@ -1154,6 +1154,7 @@ py_library(
         ":tensor_shape",
         ":util",
         ":variable_scope",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
     ],
 )
