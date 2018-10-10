@@ -220,10 +220,6 @@ class HloModule {
     return result;
   }
 
-  // Returns the number of unique intruction ids given out.  All ids up to
-  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
-  int NumUniqueInstructionIds() const { return next_unique_id_; }
-
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
