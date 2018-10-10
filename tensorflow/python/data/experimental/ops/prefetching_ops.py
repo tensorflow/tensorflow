@@ -506,6 +506,15 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
     else:
       return super(_CopyToDeviceDataset, self).make_one_shot_iterator()
 
+  def make_initializable_iterator(self):
+    if self._is_gpu_target:
+      # TODO(b/116140813) : Enable dynamic optimizations.
+      options = dataset_ops.Options()
+      options.experimental_autotune = False
+      return self.with_options(options).make_initializable_iterator()
+    else:
+      return super(_CopyToDeviceDataset, self).make_initializable_iterator()
+
   def _as_variant_tensor(self):
     with ops.device(self._target_device):
       return gen_dataset_ops.generator_dataset(

@@ -48,18 +48,6 @@ class AssertNextDatasetTest(test_base.DatasetTestBase):
           "Map transformation instead."):
         sess.run(get_next)
 
-  def testAssertNextShort(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted next 2 transformations but encountered only 1."):
-        sess.run(get_next)
-
 
 if __name__ == "__main__":
   test.main()
