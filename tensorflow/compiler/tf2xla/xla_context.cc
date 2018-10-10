@@ -138,7 +138,8 @@ Status XlaContext::CreateResource(
     const std::set<string>& tensor_array_gradients, XlaResource** resource) {
   resources_.emplace_back(
       new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
-                      handle, tensor_array_size, tensor_array_gradients));
+                      handle, tensor_array_size, tensor_array_gradients,
+                      /*tensor_array_multiple_writes_aggregate=*/false));
   *resource = resources_.back().get();
   return Status::OK();
 }
