@@ -1508,7 +1508,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowMaxWindowDilation) {
 
   module().AddEntryComputation(b.Build());
 
-  Literal result = Evaluate();
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
   auto expected = LiteralUtil::CreateR2<float>({{11}});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
@@ -2862,7 +2862,7 @@ ENTRY main {
   Literal arg = LiteralUtil::CreateR3WithLayout<float>(
       {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
       LayoutUtil::MakeLayout({0, 1, 2}));
-  Literal actual = Evaluate({&arg});
+  TF_ASSERT_OK_AND_ASSIGN(Literal actual, Evaluate({&arg}));
   EXPECT_TRUE(LiteralTestUtil::Equal(arg, actual));
 }
 
