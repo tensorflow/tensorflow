@@ -73,6 +73,7 @@ py_test(
     data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [
@@ -171,6 +172,7 @@ py_test(
     srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "no_windows",
     ],
     visibility = ["//visibility:public"],
