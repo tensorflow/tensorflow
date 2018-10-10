@@ -36,7 +36,6 @@ class SimpleReshapeTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing single segment."""
-    # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [100, 24, 24, 2]
@@ -65,7 +64,6 @@ class ReshapeInverseTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing single segment."""
-    # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [100, 24, 24, 2]
@@ -94,7 +92,6 @@ class ManyReshapeTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing single segment."""
-    # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [100, 24, 24, 2]
@@ -128,7 +125,6 @@ class SimpleTransposeTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing single segment."""
-    # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [100, 24, 24, 2]
@@ -157,7 +153,6 @@ class TransposeInverseTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Create a graph containing single segment."""
-    # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
     input_name = "input"
     input_dims = [100, 24, 24, 2]
