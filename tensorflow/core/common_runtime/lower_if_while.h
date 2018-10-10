@@ -13,19 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_WHILE_OP_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_WHILE_OP_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_IF_WHILE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_IF_WHILE_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
-// Replaces While node `n` with its lowered form that uses Enter, Exit, Switch,
-// Merge, NextIteration and LoopCond nodes.
-Status RewriteWhileNode(Node* n, Graph* g,
-                        const FunctionLibraryDefinition& flib);
+// Rewrite If and While ops to use lower level control flow primitives instead.
+class LowerIfWhilePass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+#if defined(_MSC_VER)
+  static constexpr char* kLowerUsingSwitchMergeAttr =
+#else
+  static constexpr char kLowerUsingSwitchMergeAttr[] =
+#endif
+      "_lower_using_switch_merge";
+};
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_WHILE_OP_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_IF_WHILE_H_
