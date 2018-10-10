@@ -318,7 +318,7 @@ class KerasIntegrationTest(test.TestCase):
     with self.cached_session():
       v = variable_scope.get_variable(
           "v",
-          shape = [4, 4],
+          shape=[4, 4],
           initializer=keras.initializers.glorot_uniform(),
           regularizer=keras.regularizers.l2(0.))
 
