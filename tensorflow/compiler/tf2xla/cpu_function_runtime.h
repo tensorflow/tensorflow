@@ -68,7 +68,11 @@ class BufferInfo {
   // because we use BufferInfo in places where using protocol buffers would
   // negatively impact binary size.
   std::pair<uint64, uint64> Encode() const {
-    static_assert(sizeof(*this) == 16, "");
+    static_assert(sizeof(*this) == 16,
+                  "BufferInfo class size needs to be 64 bit.");
+    static_assert(sizeof(_size) == sizeof(Kind),
+                  "Enum type \"Kind\" needs to match size of \"size_\" so "
+                  "bitfields get merged by MSVC.");
     uint64 upper = Pack(kind(), size_);
     uint64 lower = entry_param_number_;
     return {upper, lower};
@@ -104,7 +108,6 @@ class BufferInfo {
  private:
   BufferInfo() = default;
 
-  // Enum type needs to match size of member "size_" so bitfields get merged.
   enum class Kind : uint64 {
     kConstant,
     kTempBuffer,
