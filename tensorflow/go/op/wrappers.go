@@ -24277,7 +24277,7 @@ func DequantizeMode(value string) DequantizeAttr {
 // In 'MIN_COMBINED' mode, each value of the tensor will undergo the following:
 //
 // ```
-// if T == qint8: in[i] += (range(T) + 1)/ 2.0
+// if T == qint8: in[i] += (range(T) + 1) / 2.0
 // out[i] = min_range + (in[i]* (max_range - min_range) / range(T))
 // ```
 // here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
