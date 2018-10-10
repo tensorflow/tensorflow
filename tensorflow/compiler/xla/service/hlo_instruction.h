@@ -670,10 +670,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64> dimensions);
 
-  // Creates a sort op, with a keys operand, and an optional values operand.
+  // Creates a sort op, with a keys operand, and optional values operands.
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension, HloInstruction* keys,
-      HloInstruction* values = nullptr);
+      absl::Span<HloInstruction* const> values = {});
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
