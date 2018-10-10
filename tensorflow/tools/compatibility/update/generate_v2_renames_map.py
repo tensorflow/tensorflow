@@ -88,6 +88,7 @@ def update_renames_v2(output_file_path):
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
+  visitor.do_not_descend_map['tf.compat'] = ['v1', 'v2']
   traverse.traverse(tf, visitor)
 
   renames_file_text = '%srenames = {\n%s\n}\n' % (
