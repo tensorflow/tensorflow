@@ -1491,6 +1491,16 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       whiten_np = whiten.eval()
       self.assertFalse(np.any(np.isnan(whiten_np)))
 
+  def testBatchWhitening(self):
+    imgs_np = np.random.uniform(0., 255., [4, 24, 24, 3])
+    whiten_np = [self._NumpyPerImageWhitening(img) for img in imgs_np]
+    with self.test_session(use_gpu=True):
+      imgs = constant_op.constant(imgs_np)
+      whiten = image_ops.per_image_standardization(imgs)
+      whiten_tf = whiten.eval()
+      for w_tf, w_np in zip(whiten_tf, whiten_np):
+        self.assertAllClose(w_tf, w_np, atol=1e-4)
+
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 
