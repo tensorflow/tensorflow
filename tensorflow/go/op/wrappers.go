@@ -19685,7 +19685,7 @@ func QuantizeV2RoundMode(value string) QuantizeV2Attr {
 //
 // ```
 // out[i] = (in[i] - min_range) * range(T) / (max_range - min_range)
-// if T == qint8, out[i] -= (range(T) + 1) / 2.0
+// if T == qint8: out[i] -= (range(T) + 1) / 2.0
 // ```
 //
 // here `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`
