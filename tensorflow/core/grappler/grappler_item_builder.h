@@ -58,6 +58,12 @@ struct ItemConfig {
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
 
+// Factory method for creating a GrapplerItem from a file
+// containing a MetaGraphDef in either binary or text format.
+// Returns nullptr if the given meta_graph cannot be converted.
+std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
+    const string& id, const string& meta_graph_file, const ItemConfig& cfg);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

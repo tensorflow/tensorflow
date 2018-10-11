@@ -35,11 +35,19 @@ bool FileExists(const string& file, Status* status) {
   return status->ok();
 }
 
-Status ReadGraphDefFromFile(const string& graph_def_pbtxt_path,
-                            GraphDef* result) {
+Status ReadGraphDefFromFile(const string& graph_def_path, GraphDef* result) {
   Status status;
-  if (FileExists(graph_def_pbtxt_path, &status)) {
-    return ReadTextProto(Env::Default(), graph_def_pbtxt_path, result);
+  if (!ReadBinaryProto(Env::Default(), graph_def_path, result).ok()) {
+    return ReadTextProto(Env::Default(), graph_def_path, result);
+  }
+  return status;
+}
+
+Status ReadMetaGraphDefFromFile(const string& graph_def_path,
+                                MetaGraphDef* result) {
+  Status status;
+  if (!ReadBinaryProto(Env::Default(), graph_def_path, result).ok()) {
+    return ReadTextProto(Env::Default(), graph_def_path, result);
   }
   return status;
 }
