@@ -1112,7 +1112,7 @@ Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
                                                   const FunctionDef& fdef) {
   mutex_lock l(mu_);
   bool added;
-  TF_RETURN_IF_ERROR(RemoveFunction(func));
+  TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
   TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, &added));
   return Status::OK();
 }
@@ -1126,6 +1126,12 @@ Status FunctionLibraryDefinition::ReplaceGradient(const GradientDef& grad) {
 }
 
 Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
+  mutex_lock l(mu_);
+  TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
+  return Status::OK();
+}
+
+Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   const auto& i = function_defs_.find(func);
   if (i == function_defs_.end()) {
     return errors::InvalidArgument("Tried to remove non-existent function ",
@@ -1149,7 +1155,7 @@ void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    Status s = RemoveFunction(f);
+    Status s = RemoveFunctionHelper(f);
     DCHECK(s.ok());
   }
   for (const string& f : funcs_with_grads) {
