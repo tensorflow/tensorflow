@@ -23,11 +23,18 @@ import os as _os
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorflow_estimator.python.estimator.api.estimator'))
-del component_api_helper
+try:
+  # Add `estimator` attribute to allow access to estimator APIs via
+  # "tf.estimator..."
+  from tensorflow.python.estimator.api import estimator  # pylint: disable=g-import-not-at-top
+
+  # Add `estimator` to the __path__ to allow "from tensorflow.estimator..."
+  # style imports.
+  from tensorflow.python.estimator import api as estimator_api  # pylint: disable=g-import-not-at-top
+  __path__ += [_os.path.dirname(estimator_api.__file__)]
+  del estimator_api
+except (ImportError, AttributeError):
+  print('tf.estimator package not installed.')
 
 # API IMPORTS PLACEHOLDER
 

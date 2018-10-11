@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""prediction_keys python module.
-
-Importing from tensorflow.python.estimator
-is unsupported and will soon break!
-"""
-# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
+"""Enum for model prediction keys."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow_estimator.python.estimator.canned import prediction_keys
 
-# Include attrs that start with single underscore.
-prediction_keys.__all__ = [
-    s for s in dir(prediction_keys) if not s.startswith('__')
-]
+class PredictionKeys(object):
+  """Enum for canonical model prediction keys.
 
-# pylint: disable=g-import-not-at-top
-from tensorflow_estimator.python.estimator.canned.prediction_keys import *
+  The following values are defined:
+  PREDICTIONS: Used by models that predict values, such as regressor models.
+  """
+
+  CLASSES = 'classes'
+  CLASS_IDS = 'class_ids'
+  LOGISTIC = 'logistic'
+  LOGITS = 'logits'
+  PREDICTIONS = 'predictions'
+  PROBABILITIES = 'probabilities'
+  TOP_K = 'top_k'
