@@ -28,6 +28,7 @@ import types
 import weakref
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -172,20 +173,29 @@ def weakmethod(method):
 
 
 def safe_div(numerator, denominator):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
+  """Computes a safe divide which returns 0 if the denominator is zero.
+
+  Note that the function contains an additional conditional check that is
+  necessary for avoiding situations where the loss is zero causing NaNs to
+  creep into the gradient computation.
 
   Args:
-    numerator: A `Tensor`.
-    denominator: A `Tensor`, with dtype matching `numerator`.
+    numerator: An arbitrary `Tensor`.
+    denominator: A `Tensor` whose shape matches `numerator` and whose values are
+      assumed to be non-negative.
 
   Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
+    The element-wise value of the numerator divided by the denominator.
   """
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero)
+  if compat.forward_compatible(2018, 11, 1):
+    return math_ops.div_no_nan(numerator, denominator)
+  return array_ops.where(
+      math_ops.greater(denominator, 0),
+      math_ops.div(numerator,
+                   array_ops.where(
+                       math_ops.equal(denominator, 0),
+                       array_ops.ones_like(denominator), denominator)),
+      array_ops.zeros_like(numerator))
 
 
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):

@@ -117,11 +117,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "cd1650daecfdd5591502bb017c70777c959cf604a962352bd5312bef8d78a8c6",
-        strip_prefix = "abseil-cpp-445998d7ac4e5d3c50411d377e3b50e960d2d6c2",
+        sha256 = "2809f7d97d126ad341c3126711df7bae6336278d959144db293a9b2756b726a8",
+        strip_prefix = "abseil-cpp-f340f773edab951656b19b6f1a77c964a78ec4c2",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/445998d7ac4e5d3c50411d377e3b50e960d2d6c2.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/445998d7ac4e5d3c50411d377e3b50e960d2d6c2.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f340f773edab951656b19b6f1a77c964a78ec4c2.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/f340f773edab951656b19b6f1a77c964a78ec4c2.tar.gz",
         ],
     )
 
@@ -694,11 +694,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "bazel_toolchains",
-        sha256 = "3b604699685c5c65dd3f6f17425570a4b2f00ddba2f750db15acc72e55bb098b",
-        strip_prefix = "bazel-toolchains-37acf1841ab1475c98a152cb9e446460c8ae29e1",
+        sha256 = "07dfbe80638eb1fe681f7c07e61b34b579c6710c691e49ee90ccdc6e9e75ebbb",
+        strip_prefix = "bazel-toolchains-9a111bd82161c1fbe8ed17a593ca1023fd941c70",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/37acf1841ab1475c98a152cb9e446460c8ae29e1.tar.gz",
-            "https://github.com/bazelbuild/bazel-toolchains/archive/37acf1841ab1475c98a152cb9e446460c8ae29e1.tar.gz",
+            "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/9a111bd82161c1fbe8ed17a593ca1023fd941c70.tar.gz",
+            "https://github.com/bazelbuild/bazel-toolchains/archive/9a111bd82161c1fbe8ed17a593ca1023fd941c70.tar.gz",
         ],
     )
 

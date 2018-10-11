@@ -59,7 +59,7 @@ based on index.
 *   `--input_shapes`. Type: colon-separated list of comma-separated lists of
     integers. Each comma-separated list of integers gives the shape of one of
     the input arrays specified in
-    [TensorFlow convention](https://www.tensorflow.org/guide/dims_types#shape).
+    [TensorFlow convention](https://www.tensorflow.org/guide/tensors#shape).
     *   Example: `--input_shapes=1,60,80,3` for a typical vision model means a
         batch size of 1, an input image height of 60, an input image width of
         80, and an input image depth of 3 (representing RGB channels).

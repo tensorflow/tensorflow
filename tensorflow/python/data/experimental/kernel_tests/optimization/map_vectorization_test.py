@@ -80,6 +80,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Basic", lambda x: (x, x + 1), None),
       ("Const", lambda x: 2, 12),
       ("Parallel", lambda x: (x, x + 1), 12),
+      ("Broadcast", lambda x: x + np.random.rand(5, 4, 3, 2), None),
       ("Gather", lambda x: array_ops.gather(x, 0), 12),
   )
   def testOptimization(self, map_fn, num_parallel_calls):

@@ -32,7 +32,9 @@ from tensorflow.python.platform import tf_logging as logging
 _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
 
 # Activations that are supported by the quantization rewrite.
-_ACTIVATION_TYPES = {'Relu', 'Relu6'}
+_ACTIVATION_TYPES = {'Relu', 'Relu6', 'Identity'}
+
+_RELU_TYPES = {'Relu', 'Relu6'}
 
 
 def Quantize(graph,
@@ -172,7 +174,7 @@ def Quantize(graph,
       # Add at inference time.
       consumers = input_to_ops_map.ConsumerOperations(
           layer_match.post_activation_bypass_op)
-      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+      if any([consumer.type in _RELU_TYPES for consumer in consumers]):
         logging.info('Skipping %s, because its followed by an activation.',
                      layer_match.post_activation_bypass_op.name)
       else:
@@ -384,10 +386,11 @@ def _FindLayersToQuantize(graph):
       bias_add_op = match_result.get_op(folded_bias_add_pattern)
     bypass_op = match_result.get_op(bypass_pattern)
     if layer_op not in matched_layer_set:
-      matched_layer_set.add(layer_op)
-      layer_matches.append(
-          _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op, None,
-                      bias_add_op))
+      if not _IsSkipLayer(activation_op):
+        matched_layer_set.add(layer_op)
+        layer_matches.append(
+            _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op, None,
+                        bias_add_op))
 
   # Match the final layer, where there may not be an activation and instead
   # the output of the final BiasAdd must be quantized. So we treat the BiasAdd
@@ -422,6 +425,32 @@ def _FindLayersToQuantize(graph):
           _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
 
   return layer_matches
+
+
+def _IsSkipLayer(activation_op):
+  """Skip quantizing conv->identity->Batch norm layers.
+
+  Args:
+    activation_op: Activation op detected by layer matching pattern
+
+  Returns:
+    skip_layer: boolean, true when conv->identity->batch norm is detected.
+  """
+
+  # Exclude quantization of conv->identity->BN,
+  # After folding, this part corresponds to estimation of mean and variance
+  # and should not be quantized.
+  skip_layer = False
+  if activation_op.type == 'Identity' and len(activation_op.outputs) == 1:
+    if len(activation_op.outputs[0].consumers()) == 1:
+      consumer = activation_op.outputs[0].consumers()[0]
+      if consumer.type == 'FusedBatchNorm':
+        skip_layer = True
+        logging.info(
+            'Skipping quantizing %s, because it is the output of a conv/fc'
+            'followed by a identity, feeding a fused batch norm.',
+            activation_op.name)
+  return skip_layer
 
 
 class _LayerMatch(object):
@@ -461,8 +490,8 @@ class _LayerMatch(object):
     return self._bias_add_op
 
 
-def _FollowedByFakeQuant(tensor):
-  """Returns True if the tensor is followed by a FakeQuant."""
+def _GetFollowingFakeQuantOp(tensor):
+  """Returns the following FakeQuant op if it exists else None."""
   fake_quant_ops = set([
       'FakeQuantWithMinMaxVars', 'FakeQuantWithMinMaxArgs',
       'FakeQuantWithMinMaxVarsPerChannel'
@@ -472,11 +501,11 @@ def _FollowedByFakeQuant(tensor):
   while consumers:
     c = consumers.pop()
     if c.type in fake_quant_ops:
-      return True
+      return c
     elif c.type in pass_through_ops:
       for output in c.outputs:
         consumers.extend(output.consumers())
-  return False
+  return None
 
 
 def _InsertQuantOp(context,
@@ -559,44 +588,78 @@ def _InsertQuantOp(context,
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes
   # overlap between multiple matches, so we need to ensure that we don't
   # add duplicate FakeQuant operations.
-  if _FollowedByFakeQuant(inputs):
-    return
+  fake_quant_op = _GetFollowingFakeQuantOp(inputs)
 
-  if moving_avg:
-    quant = (
-        quant_ops.MovingAvgQuantize(
-            inputs,
-            init_min=init_min,
-            init_max=init_max,
-            ema_decay=ema_decay,
-            is_training=is_training,
-            num_bits=bits,
-            narrow_range=narrow_range,
-            vars_collection=vars_collection,
-            name_prefix=name_prefix))
+  # If we find that we are attempting to insert a fake quant op following
+  # a fake quant, we skip inserting a fake quant op
+
+  if fake_quant_op is None:
+    if moving_avg:
+      quant = (
+          quant_ops.MovingAvgQuantize(
+              inputs,
+              init_min=init_min,
+              init_max=init_max,
+              ema_decay=ema_decay,
+              is_training=is_training,
+              num_bits=bits,
+              narrow_range=narrow_range,
+              vars_collection=vars_collection,
+              name_prefix=name_prefix))
+    else:
+      quant = (
+          quant_ops.LastValueQuantize(
+              inputs,
+              init_min=init_min,
+              init_max=init_max,
+              is_training=is_training,
+              num_bits=bits,
+              narrow_range=narrow_range,
+              vars_collection=vars_collection,
+              name_prefix=name_prefix))
+
+    if quant_delay and quant_delay > 0:
+      activate_quant = math_ops.greater_equal(
+          common.CreateOrGetQuantizationStep(),
+          quant_delay,
+          name=name_prefix + '/activate_quant')
+      quant = control_flow_ops.cond(
+          activate_quant,
+          lambda: quant,
+          lambda: inputs,
+          name=name_prefix + '/delayed_quant')
   else:
-    quant = (
-        quant_ops.LastValueQuantize(
-            inputs,
-            init_min=init_min,
-            init_max=init_max,
-            is_training=is_training,
-            num_bits=bits,
-            narrow_range=narrow_range,
-            vars_collection=vars_collection,
-            name_prefix=name_prefix))
+    #  return
+    # If a fake quant op is present already, make sure that
+    # any downstream use of the tensor reroutes to the appropriate quantized
+    # tensor. If there is no quant_delay, this is simply the output of the
+    # fake quant op. If there is a quant delay, we reroute to the output
+    # of the delayed quant operation, which inserts quantization only after
+    # a specified quant_delay
 
-  if quant_delay and quant_delay > 0:
-    activate_quant = math_ops.greater_equal(
-        common.CreateOrGetQuantizationStep(),
-        quant_delay,
-        name=name_prefix + '/activate_quant')
-    quant = control_flow_ops.cond(
-        activate_quant,
-        lambda: quant,
-        lambda: inputs,
-        name=name_prefix + '/delayed_quant')
+    quant = fake_quant_op.outputs[0]
+    if quant_delay and quant_delay > 0:
+      name_prefix = '/'.join(quant.name.split('/')[:-1])
+      quant = quant.graph.get_tensor_by_name(name_prefix +
+                                             '/delayed_quant/Merge:0')
+    pruned_consumer_set = set()
+    for consumer in consumers:
+      fake_quant_dest_op = _GetFollowingFakeQuantOp(consumer.outputs[0])
+      if (fake_quant_dest_op is None or
+          fake_quant_dest_op.name != fake_quant_op.name):
+        pruned_consumer_set.add(consumer)
+    consumers = pruned_consumer_set
 
+    # If we have
+    # input->pass_through->fake_quant
+    # there is nothing to reroute.
+    #
+    # If we have
+    #  input-> pass_through->fake_quant
+    #                |-> consumer
+    # Then we reroute such that:
+    # input-> pass_through->fake_quant
+    #                            |-> consumer
   if consumers:
     tensors_modified_count = common.RerouteTensor(
         quant, inputs, can_modify=consumers)

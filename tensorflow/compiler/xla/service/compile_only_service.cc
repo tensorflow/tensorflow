@@ -89,6 +89,8 @@ CompileOnlyService::CompileAheadOfTime(
     const auto& program_shape = instance.computation.program_shape();
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;
+    *execution_options.mutable_shape_with_output_layout() =
+        *instance.result_layout;
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(program_shape, instance.argument_layouts,

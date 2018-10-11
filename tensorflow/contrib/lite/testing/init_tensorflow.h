@@ -12,26 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_INIT_TENSORFLOW_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_INIT_TENSORFLOW_H_
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_FUSED_CONVOLUTION_REWRITER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_FUSED_CONVOLUTION_REWRITER_H_
+namespace tflite {
 
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+// Initializes tensorflow's libraries. Note that this simulates an empty
+// command line, so flags are not initialized.
+void InitTensorFlow();
 
-namespace xla {
-namespace gpu {
+}  // namespace tflite
 
-class CudnnFusedConvolutionRewriter : public HloModulePass {
- public:
-  absl::string_view name() const override {
-    return "cudnn-fused-convolution-rewriter";
-  }
-
-  StatusOr<bool> Run(HloModule* module) override;
-};
-
-}  // namespace gpu
-}  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_FUSED_CONVOLUTION_REWRITER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_INIT_TENSORFLOW_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PAD_INSERTION_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PAD_INSERTION_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PADDING_LEGALIZATION_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PADDING_LEGALIZATION_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -24,9 +24,11 @@ namespace gpu {
 // An HLO pass that canonicalizes convolution instructions for GPU codegen. It
 // inserts Pad instructions before Convolution instructions with uncanonicalized
 // padding, so that they can be lowered to cuDNN convolution.
-class PadInsertion : public HloModulePass {
+class CudnnConvPaddingLegalization : public HloModulePass {
  public:
-  absl::string_view name() const override { return "pad insertion"; }
+  absl::string_view name() const override {
+    return "cudnn-conv-padding-legalization";
+  }
 
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -41,4 +43,4 @@ class PadInsertion : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PAD_INSERTION_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PADDING_LEGALIZATION_H_

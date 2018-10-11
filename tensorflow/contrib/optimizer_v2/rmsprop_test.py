@@ -89,7 +89,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
   def testDense(self, dtype, param_value):
     (learning_rate, decay, momentum, epsilon, centered, use_resource) = tuple(
         param_value)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Initialize variables for numpy implementation.
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
       grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -213,7 +213,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
   def testSparse(self, dtype, param_value):
     (learning_rate, decay, momentum, epsilon, centered, _) = tuple(
         param_value)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       # Initialize variables for numpy implementation.
       var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
       grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -287,7 +287,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_TYPES)
   def testWithoutMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
       var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -353,7 +353,7 @@ class RMSPropOptimizerTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_TYPES)
   def testWithMomentum(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       var0 = variables.Variable([1.0, 2.0], dtype=dtype)
       var1 = variables.Variable([3.0, 4.0], dtype=dtype)
       grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)

@@ -52,6 +52,9 @@ _gradients_impl = None
 
 def cond_v2(pred, true_fn, false_fn, name="cond"):
   """Like tf.cond, except emits a single If op."""
+  if isinstance(pred, bool):
+    raise TypeError("pred must not be a Python bool", pred)
+
   if not name:
     name = "cond"
 

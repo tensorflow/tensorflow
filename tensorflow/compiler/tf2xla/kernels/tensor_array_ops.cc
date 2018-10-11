@@ -223,9 +223,16 @@ class TensorArrayWriteOp : public XlaOpKernel {
     slice_shape.InsertDim(0, 1LL);
     auto update = xla::Reshape(value, slice_shape.dim_sizes());
 
-    xla::XlaOp written = DynamicAddSlice(b, ta, update, slice_shape.dim_sizes(),
-                                         start_indices, dtype_);
-
+    xla::XlaOp written;
+    if (resource->tensor_array_multiple_writes_aggregate()) {
+      written = DynamicAddSlice(b, ta, update, slice_shape.dim_sizes(),
+                                start_indices, dtype_);
+    } else {
+      // TODO(b/117569591): Ideally we would report an error in the case that we
+      // see multiple writes to the same offset. Unfortunately there is no way
+      // to report errors at the moment, so we silently overwrite.
+      written = xla::DynamicUpdateSlice(ta, update, start_indices);
+    }
     OP_REQUIRES_OK(ctx, resource->SetValue(written));
     ctx->SetOutput(0, flow);
   }

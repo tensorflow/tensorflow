@@ -24,6 +24,10 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 
@@ -35,7 +39,6 @@ namespace tensorflow {
 typedef FunctionLibraryRuntime::Handle FHandle;
 
 namespace {
-
 // A `PartitionedCallOp` asynchronously executes a function, potentially across
 // multiple devices but within a single process. The kernel places and
 // partitions a given function's underlying graph, and executes each of the
@@ -46,6 +49,12 @@ class PartitionedCallOp : public AsyncOpKernel {
  public:
   explicit PartitionedCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
+    string rewriter_config_serialized;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &rewriter_config_serialized));
+    OP_REQUIRES(
+        ctx, rewriter_config_.ParseFromString(rewriter_config_serialized),
+        errors::InvalidArgument("Unable to parse rewriter_config string as "
+                                "tensorflow::RewriterConfig proto."));
   }
 
   ~PartitionedCallOp() override {}
@@ -109,8 +118,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         // by name.
         auto graph = tensorflow::MakeUnique<Graph>(fbody->graph->flib_def());
         FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-        TF_CHECK_OK(
-                    graph.get()->AddFunctionLibrary(global_flib.ToProto()));
+        TF_CHECK_OK(graph->AddFunctionLibrary(global_flib.ToProto()));
         CopyGraph(*fbody->graph, graph.get());
         OP_REQUIRES_OK_ASYNC(ctx, PinResourceArgs(graph.get(), args), done);
 
@@ -158,6 +166,17 @@ class PartitionedCallOp : public AsyncOpKernel {
                 OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
                 optimization_options),
             done);
+
+        Device* cpu_device;
+        OP_REQUIRES_OK_ASYNC(
+            ctx, lib->device_mgr()->LookupDevice("CPU:0", &cpu_device), done);
+
+        // Run grappler passes on the graph. It is possible that these are
+        // optimized by the graph executor already.
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
+                                           device_set, cpu_device, &graph),
+                             done);
 
         std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
         OP_REQUIRES_OK_ASYNC(
@@ -266,8 +285,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     for (const auto& partition : partitions) {
       std::unique_ptr<Graph> subgraph(new Graph(graph->flib_def()));
       FunctionLibraryDefinition global_flib(OpRegistry::Global(), {});
-      TF_CHECK_OK(
-                subgraph.get()->AddFunctionLibrary(global_flib.ToProto()));
+      TF_CHECK_OK(subgraph->AddFunctionLibrary(global_flib.ToProto()));
       GraphConstructorOptions opts;
       opts.allow_internal_ops = true;
       opts.expect_device_spec = true;
@@ -317,14 +335,6 @@ class PartitionedCallOp : public AsyncOpKernel {
       }
     }
 
-    // Rewrite the indices of the Arg and Retval nodes for this function
-    // to range from 0 to the number of Arg nodes, Retval nodes, respectively.
-    auto sort_by_index = [](std::pair<Node*, int> one,
-                            std::pair<Node*, int> two) -> bool {
-      return one.second < two.second;
-    };
-    std::sort(arg_nodes.begin(), arg_nodes.end(), sort_by_index);
-    std::sort(ret_nodes.begin(), ret_nodes.end(), sort_by_index);
     for (int i = 0; i < arg_nodes.size(); ++i) {
       Node* arg = arg_nodes[i].first;
       arg->AddAttr("index", i);
@@ -470,7 +480,56 @@ class PartitionedCallOp : public AsyncOpKernel {
     }
   }
 
+  Status OptimizeGraph(OpKernelContext* ctx,
+                       const gtl::InlinedVector<Node*, 4>& ret_nodes,
+                       FunctionLibraryDefinition* flib,
+                       const DeviceSet& device_set, Device* cpu_device,
+                       std::unique_ptr<Graph>* graph) {
+    if (!tensorflow::grappler::MetaOptimizerEnabled(rewriter_config_)) {
+      return Status::OK();
+    }
+
+    tensorflow::grappler::GrapplerItem item;
+
+    // Add fetches so that the graph can be pruned.
+    for (Node* node : ret_nodes) {
+      item.fetch.push_back(node->name());
+    }
+
+    (*graph)->ToGraphDef(&item.graph);
+
+    if (flib) {
+      *item.graph.mutable_library() = flib->ToProto();
+    }
+
+    tensorflow::GraphDef out_graph;
+
+    tensorflow::grappler::VirtualCluster cluster(&device_set);
+
+    // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
+    // proto (which also contain the OptimizerOptions).
+    TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
+        item, rewriter_config_, cpu_device, &cluster, &out_graph));
+
+    std::unique_ptr<Graph> optimized_graph(new Graph(OpRegistry::Global()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        GraphConstructorOptions(), out_graph, optimized_graph.get()));
+
+    *graph = std::move(optimized_graph);
+
+    // The graph conversion sets the requested device names but not the
+    // assigned device names. However, since at this point the graph is
+    // placed TF expects an assigned device name for every node. Therefore
+    // we copy the requested device into the assigned device field.
+    for (Node* node : graph->get()->nodes()) {
+      node->set_assigned_device_name(node->requested_device());
+    }
+
+    return Status::OK();
+  }
+
   NameAttrList func_;
+  RewriterConfig rewriter_config_;
   string local_device_name_;
   // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated

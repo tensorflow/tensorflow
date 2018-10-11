@@ -92,6 +92,8 @@ class HloModule {
 
   // Returns a deep copy of this module including all computations.
   std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
+  std::unique_ptr<HloModule> Clone(const HloModuleConfig& config,
+                                   const string& suffix = "clone") const;
 
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
@@ -99,7 +101,7 @@ class HloModule {
   HloComputation* DeepCloneComputation(HloComputation* computation,
                                        HloCloneContext* context = nullptr);
 
-  // Return a pointer to the entry computation of the module..
+  // Return a pointer to the entry computation of the module.
   const HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
@@ -107,6 +109,14 @@ class HloModule {
   HloComputation* entry_computation() {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
+  }
+
+  // Returns the root instruction shape of entry computation.
+  //
+  // Precondition: entry_computation_ is not nullptr.
+  const Shape& result_shape() const {
+    CHECK_NE(nullptr, entry_computation_);
+    return entry_computation()->root_instruction()->shape();
   }
 
   // Creates the ComputationLayout which describes the current status of the HLO
@@ -211,10 +221,6 @@ class HloModule {
     next_unique_id_++;
     return result;
   }
-
-  // Returns the number of unique intruction ids given out.  All ids up to
-  // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
-  int NumUniqueInstructionIds() const { return next_unique_id_; }
 
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.

@@ -95,6 +95,20 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
 
+  def testWastedAdd(self):
+
+    @function.defun()
+    def add(x, y):
+      _ = x * y
+      return x + y
+
+    # The default config allows everything.
+    rewrites = rewriter_config_pb2.RewriterConfig()
+
+    with context.rewriter_config(rewrites):
+      t = constant_op.constant(1.0)
+      self.assertAllEqual(add(t, t).numpy(), 2.0)
+
   def testBasicGraphMode(self):
     matmul = function.defun(math_ops.matmul)
 

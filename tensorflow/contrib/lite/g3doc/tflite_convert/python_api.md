@@ -1,7 +1,7 @@
 # TensorFlow Lite Converter & Interpreter Python API reference
 
 This page provides examples on how to use the TensorFlow Lite Converter and the
-TensorFlow Lite interpreter using the Python API. 
+TensorFlow Lite interpreter using the Python API.
 
 [TOC]
 
@@ -21,8 +21,8 @@ is `tf.contrib.lite.Interpreter`.
 
 Note: Reference "Additional Instructions" sections for converting TensorFlow
 models to TensorFlow Lite
-[in TensorFlow 1.9 to TensorFlow 1.11](#pre-tensorflow-1.11) and
-[prior to TensorFlow 1.9](#pre-tensorflow-1.9)
+[in TensorFlow 1.9 to TensorFlow 1.11](#pre_tensorflow_1.11) and
+[prior to TensorFlow 1.9](#pre_tensorflow_1.9)
 
 `TFLiteConverter` provides class methods based on the original format of the
 model. `TFLiteConverter.from_session()` is available for GraphDefs.
@@ -37,7 +37,7 @@ Example usages for simple float-point models are shown in
 The following section shows examples of how to convert a basic float-point model
 from each of the supported data formats into a TensorFlow Lite FlatBuffers.
 
-### Exporting a GraphDef from tf.Session <a name="basic-graphdef-sess"></a>
+### Exporting a GraphDef from tf.Session <a name="basic_graphdef_sess"></a>
 
 The following example shows how to convert a TensorFlow GraphDef into a
 TensorFlow Lite FlatBuffer from a `tf.Session` object.
@@ -57,7 +57,7 @@ with tf.Session() as sess:
   open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-### Exporting a GraphDef from file <a name="basic-graphdef-file"></a>
+### Exporting a GraphDef from file <a name="basic_graphdef_file"></a>
 
 The following example shows how to convert a TensorFlow GraphDef into a
 TensorFlow Lite FlatBuffer when the GraphDef is stored in a file. Both `.pb` and
@@ -81,7 +81,7 @@ tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-### Exporting a SavedModel <a name="basic-savedmodel"></a>
+### Exporting a SavedModel <a name="basic_savedmodel"></a>
 
 The following example shows how to convert a SavedModel into a TensorFlow Lite
 FlatBuffer.
@@ -99,7 +99,7 @@ For more complex SavedModels, the optional parameters that can be passed into
 `output_arrays`, `tag_set` and `signature_key`. Details of each parameter are
 available by running `help(tf.contrib.lite.TFLiteConverter)`.
 
-### Exporting a tf.keras File <a name="basic-keras-file"></a>
+### Exporting a tf.keras File <a name="basic_keras_file"></a>
 
 The following example shows how to convert a `tf.keras` model into a TensorFlow
 Lite FlatBuffer. This example requires
@@ -156,7 +156,7 @@ terminal for detailed documentation on the attributes.
 Although the examples are demonstrated on GraphDefs containing only constants.
 The same logic can be applied irrespective of the input data format.
 
-### Exporting a quantized GraphDef <a name="complex-quant"></a>
+### Exporting a quantized GraphDef <a name="complex_quant"></a>
 
 The following example shows how to convert a quantized model into a TensorFlow
 Lite FlatBuffer.
@@ -180,7 +180,7 @@ with tf.Session() as sess:
 
 ## TensorFlow Lite Python interpreter <a name="interpreter"></a>
 
-### Using the interpreter from a model file <a name="interpreter-file"></a>
+### Using the interpreter from a model file <a name="interpreter_file"></a>
 
 The following example shows how to use the TensorFlow Lite Python interpreter
 when provided a TensorFlow Lite FlatBuffer file. The example also demonstrates
@@ -210,7 +210,7 @@ output_data = interpreter.get_tensor(output_details[0]['index'])
 print(output_data)
 ```
 
-### Using the interpreter from model data <a name="interpreter-data"></a>
+### Using the interpreter from model data <a name="interpreter_data"></a>
 
 The following example shows how to use the TensorFlow Lite Python interpreter
 when starting with the TensorFlow Lite Flatbuffer model previously loaded. This
@@ -237,7 +237,7 @@ interpreter.allocate_tensors()
 
 ## Additional instructions
 
-### Build from source code <a name="latest-package"></a>
+### Build from source code <a name="latest_package"></a>
 
 In order to run the latest version of the TensorFlow Lite Converter Python API,
 either install the nightly build with
@@ -245,13 +245,13 @@ either install the nightly build with
 [Docker](https://www.tensorflow.org/install/docker), or
 [build the pip package from source](https://www.tensorflow.org/install/source).
 
-### Converting models in TensorFlow 1.9 to TensorFlow 1.11 <a name="#pre-tensorflow-1.11"></a>
+### Converting models in TensorFlow 1.9 to TensorFlow 1.11 <a name="pre_tensorflow_1.11"></a>
 
 To convert TensorFlow models to TensorFlow Lite in TensorFlow 1.9 through
 TensorFlow 1.11, use `TocoConverter`. `TocoConverter` is semantically
 identically to `TFLiteConverter`.
 
-### Converting models prior to TensorFlow 1.9 <a name="pre-tensorflow-1.9"></a>
+### Converting models prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>
 
 To convert TensorFlow models to TensorFlow Lite in TensorFlow 1.7 and TensorFlow
 1.8, use the `toco_convert` function. Run `help(tf.contrib.lite.toco_convert)`

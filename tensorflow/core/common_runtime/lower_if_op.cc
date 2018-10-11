@@ -22,10 +22,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(jpienaar): Consider making it a public attribute.
-const char* const LowerIfOpPass::kLowerUsingSwitchMergeAttr =
-    "_lower_using_switch_merge";
-
 namespace {
 
 using NodeOut = NodeBuilder::NodeOut;
@@ -237,45 +233,7 @@ Status CondBuilder::InlineCallNodes() {
 
 }  // namespace
 
-Status LowerIfOpPass::Run(const GraphOptimizationPassOptions& options) {
-  if (options.partition_graphs != nullptr) {
-    return errors::Internal(
-        "Lowering If op should happen before partitioning.");
-  }
-  if (options.graph == nullptr) {
-    return Status::OK();
-  }
-
-  Graph* g = options.graph->get();
-  if (g == nullptr) {
-    return errors::Internal("Lowering If op requires a graph to be available.");
-  }
-
-  FunctionLibraryDefinition* flib = options.flib_def;
-  if (flib == nullptr) {
-    return errors::Internal(
-        "Lowering If op requires a FunctionLibraryDefinition to be available.");
-  }
-
-  // Match all the nodes that need to be rewritten.
-  gtl::InlinedVector<Node*, 2> matches;
-  for (Node* n : g->op_nodes()) {
-    if (n->type_string() == "If") {
-      // Only rewrite if the If op is marked as needing to be lowered.
-      bool match;
-      Status s = GetNodeAttr(n->attrs(), kLowerUsingSwitchMergeAttr, &match);
-      if (s.ok() && match) matches.push_back(n);
-    }
-  }
-  for (Node* n : matches) {
-    TF_RETURN_IF_ERROR(RewriteNode(n, *flib, g));
-  }
-  return Status::OK();
-}
-
-Status LowerIfOpPass::RewriteNode(Node* n,
-                                  const FunctionLibraryDefinition& flib,
-                                  Graph* g) {
+Status RewriteIfNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib) {
   const AttrValue* then_attr = n->attrs().Find("then_branch");
   if (then_attr == nullptr) {
     return errors::InvalidArgument("Then branch function missing");
@@ -295,8 +253,5 @@ Status LowerIfOpPass::RewriteNode(Node* n,
 
   return Status::OK();
 }
-
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
-                      LowerIfOpPass);
 
 }  // namespace tensorflow

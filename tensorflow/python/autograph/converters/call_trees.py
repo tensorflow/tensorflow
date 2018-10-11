@@ -141,7 +141,7 @@ class CallTreeTransformer(converter.Base):
       if hasattr(target_entity, '__pyct_is_compile_decorator'):
         return False
 
-      if target_entity in self.ctx.program.autograph_decorators:
+      if target_entity in self.ctx.program.options.strip_decorators:
         return False
 
       # Inspect the target function decorators. If any include a @convert
@@ -160,7 +160,7 @@ class CallTreeTransformer(converter.Base):
       for dec in target_node.decorator_list:
         decorator_fn = self._resolve_name(dec)
         if (decorator_fn is not None and
-            decorator_fn in self.ctx.program.autograph_decorators):
+            decorator_fn in self.ctx.program.options.strip_decorators):
           return False
 
     return True
@@ -238,15 +238,12 @@ class CallTreeTransformer(converter.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      ag__.converted_call(
-          func,
-          ag__.ConversionOptions.new(recursive=recursive_val),
-          args)
+      ag__.converted_call(func, options, args)
     """
     call_expr = templates.replace(
         template,
         func=node.func,
-        recursive_val=parser.parse_expression(str(self.ctx.program.recursive)),
+        options=self.ctx.program.options.to_ast(self.ctx.info.namespace),
         args=node.args)
     new_call = call_expr[0].value
     # TODO(mdan): Improve the template mechanism to better support this.
@@ -276,7 +273,7 @@ class CallTreeTransformer(converter.Base):
     # consider it graph ready.
     if anno.hasanno(node.func, 'live_val'):
       target_entity = anno.getanno(node.func, 'live_val')
-      if target_entity in self.ctx.program.autograph_decorators:
+      if target_entity in self.ctx.program.options.strip_decorators:
         if len(node.args) < 1:
           raise ValueError(
               'Found call to decorator function "%s", but it had no arguments. '
@@ -318,7 +315,7 @@ class CallTreeTransformer(converter.Base):
         # ensure that they return the correct value.
         return node
 
-      if self.ctx.program.recursive:
+      if self.ctx.program.options.recursive:
         node = self._insert_dynamic_conversion(node)
     return node
 

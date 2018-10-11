@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
@@ -110,10 +110,10 @@ class ScratchBufAllocator : public se::ScratchAllocator {
 };
 
 template <typename T>
-Status RunCudnnConvolutionImpl(CudnnConvParams params,
-                               se::ScratchAllocator* scratch_allocator,
-                               se::Stream* stream,
-                               se::dnn::ProfileResult* profile_result) {
+Status RunCudnnConvImpl(CudnnConvParams params,
+                        se::ScratchAllocator* scratch_allocator,
+                        se::Stream* stream,
+                        se::dnn::ProfileResult* profile_result) {
   CudnnConvKind kind = params.kind;
   const Shape& input_shape = *params.input_shape;
   const Shape& filter_shape = *params.filter_shape;
@@ -380,22 +380,21 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
 
 }  // anonymous namespace
 
-Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
-                           absl::Span<se::DeviceMemoryBase> operand_buffers,
-                           se::DeviceMemoryBase result_buffer,
-                           se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                           se::dnn::ProfileResult* profile_result) {
+Status RunCudnnConv(const HloCustomCallInstruction* conv,
+                    absl::Span<se::DeviceMemoryBase> operand_buffers,
+                    se::DeviceMemoryBase result_buffer,
+                    se::DeviceMemoryBase scratch_buf, se::Stream* stream,
+                    se::dnn::ProfileResult* profile_result) {
   ScratchBufAllocator scratch_allocator(scratch_buf);
-  return RunCudnnConvolution(conv, operand_buffers, result_buffer,
-                             &scratch_allocator, stream, profile_result);
+  return RunCudnnConv(conv, operand_buffers, result_buffer, &scratch_allocator,
+                      stream, profile_result);
 }
 
-Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
-                           absl::Span<se::DeviceMemoryBase> operand_buffers,
-                           se::DeviceMemoryBase result_buffer,
-                           se::ScratchAllocator* scratch_allocator,
-                           se::Stream* stream,
-                           se::dnn::ProfileResult* profile_result) {
+Status RunCudnnConv(const HloCustomCallInstruction* conv,
+                    absl::Span<se::DeviceMemoryBase> operand_buffers,
+                    se::DeviceMemoryBase result_buffer,
+                    se::ScratchAllocator* scratch_allocator, se::Stream* stream,
+                    se::dnn::ProfileResult* profile_result) {
   TF_ASSIGN_OR_RETURN(CudnnConvParams params,
                       GetCudnnConvParams(conv, operand_buffers, result_buffer));
 
@@ -403,14 +402,14 @@ Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
       conv->shape().tuple_shapes(0).element_type();
   switch (output_primitive_type) {
     case F16:
-      return RunCudnnConvolutionImpl<Eigen::half>(params, scratch_allocator,
-                                                  stream, profile_result);
+      return RunCudnnConvImpl<Eigen::half>(params, scratch_allocator, stream,
+                                           profile_result);
     case F32:
-      return RunCudnnConvolutionImpl<float>(params, scratch_allocator, stream,
-                                            profile_result);
+      return RunCudnnConvImpl<float>(params, scratch_allocator, stream,
+                                     profile_result);
     case F64:
-      return RunCudnnConvolutionImpl<double>(params, scratch_allocator, stream,
-                                             profile_result);
+      return RunCudnnConvImpl<double>(params, scratch_allocator, stream,
+                                      profile_result);
     default:
       LOG(FATAL) << ShapeUtil::HumanString(*params.output_shape);
   }

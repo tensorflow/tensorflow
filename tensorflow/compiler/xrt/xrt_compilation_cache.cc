@@ -46,12 +46,17 @@ XRTCompilationCache::XRTCompilationCache(int max_number_of_entries)
 
 XRTCompilationCache::~XRTCompilationCache() {
   VLOG(1) << "XRTCompilationCache::~XRTCompilationCache()";
+  // A buggy client may be holding onto a reference, or a client might have
+  // crashed while holding onto a reference. In either case, discard all
+  // outstanding client references to avoid leaking storage.
+  for (const auto& entry : entries_by_uid_) {
+    while (!entry.second->RefCountIsOne()) {
+      entry.second->Unref();
+    }
+  }
   while (!entries_by_last_use_.empty()) {
     MarkOldestEntryForEviction();
   }
-  // By the time the cache is deleted all reference holders should have already
-  // been deleted, since they were holding references to the cache. So all
-  // entries should be gone at this point.
   CHECK_EQ(cache_.size(), 0);
   CHECK_EQ(entries_by_uid_.size(), 0);
   CHECK_EQ(cache_entries_, 0);

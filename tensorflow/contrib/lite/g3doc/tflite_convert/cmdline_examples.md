@@ -21,10 +21,10 @@ There are two approaches to running the converter in the command line.
         //tensorflow/contrib/lite/python:tflite_convert --
         --output_file=...`
 
-### Converting models prior to TensorFlow 1.9 <a name="pre-tensorflow-1.9"></a>
+### Converting models prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>
 
 The recommended approach for using the converter prior to TensorFlow 1.9 is the
-[Python API](python_api.md#pre-tensorflow-1.9). If a command line tool is
+[Python API](python_api.md#pre_tensorflow_1.9). If a command line tool is
 desired, the `toco` command line tool was available in TensorFlow 1.7. Enter
 `toco --help` in Terminal for additional details on the command-line flags
 available. There were no command line tools in TensorFlow 1.8.
@@ -91,7 +91,7 @@ tflite_convert \
 
 ## Quantization
 
-### Convert a TensorFlow GraphDef for quantized inference <a name="graphdef-quant"></a>
+### Convert a TensorFlow GraphDef for quantized inference <a name="graphdef_quant"></a>
 
 The TensorFlow Lite Converter is compatible with fixed point quantization models
 described [here](https://www.tensorflow.org/performance/quantization). These are
@@ -115,7 +115,7 @@ tflite_convert \
   --std_dev_values=127
 ```
 
-### Use \"dummy-quantization\" to try out quantized inference on a float graph <a name="dummy-quant"></a>
+### Use \"dummy-quantization\" to try out quantized inference on a float graph <a name="dummy_quant"></a>
 
 In order to evaluate the possible benefit of generating a quantized graph, the
 converter allows "dummy-quantization" on float graphs. The flags
@@ -185,7 +185,7 @@ tflite_convert \
 Any array in the input file can be specified as an input or output array in
 order to extract subgraphs out of an input graph file. The TensorFlow Lite
 Converter discards the parts of the graph outside of the specific subgraph. Use
-[graph visualizations](#graph-visualizations) to identify the input and output
+[graph visualizations](#graph_visualizations) to identify the input and output
 arrays that make up the desired subgraph.
 
 The follow command shows how to extract a single fused layer out of a TensorFlow
@@ -228,7 +228,7 @@ visualization using either the `--output_format` flag or the
 `--dump_graphviz_dir` flag. The subsections below outline the use cases for
 each.
 
-### Using `--output_format=GRAPHVIZ_DOT` <a name="using-output-format-graphviz-dot"></a>
+### Using `--output_format=GRAPHVIZ_DOT` <a name="using_output_format_graphviz_dot"></a>
 
 The first way to get a Graphviz rendering is to pass `GRAPHVIZ_DOT` into
 `--output_format`. This results in a plausible visualization of the graph. This
@@ -326,7 +326,7 @@ each individual graph transformation, resulting in thousands of files.
 Typically, one would then bisect into these files to understand when a given
 change was introduced in the graph.
 
-### Legend for the graph visualizations <a name="graphviz-legend"></a>
+### Legend for the graph visualizations <a name="graphviz_legend"></a>
 
 *   Operators are red square boxes with the following hues of red:
     *   Most operators are

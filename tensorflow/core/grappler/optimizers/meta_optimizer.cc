@@ -123,6 +123,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 
 MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
     : cpu_device_(cpu_device), cfg_(cfg) {
+  DCHECK(cpu_device_ == nullptr ||
+         cpu_device_->attributes().device_type() == "CPU");
   // TODO(rmlarsen): Increase kNumThreads to, say, port::NumSchedulableCPUs()
   // if we want to the threadpool for parallelizing Grappler
   const int kNumThreads = 1;

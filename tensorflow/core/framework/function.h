@@ -609,6 +609,13 @@ class FunctionLibraryRuntime {
   virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                        std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
                        FunctionLibraryRuntime** out_flr) = 0;
+
+  // Returns the name of the executor class (in the sense of
+  // `ExecutorFactory::GetFactory()`) that will be used based on the given
+  // dynamic `options` and static `attrs`. If none is specified, this method
+  // will return an empty string, which leaves the decision up to the runtime.
+  static string ExecutorType(const InstantiateOptions& options,
+                             AttrSlice attrs);
 };
 
 // Returns a canonicalized string for the instantiation of the
