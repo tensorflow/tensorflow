@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import quantize_graph
 from tensorflow.python import training
@@ -26,8 +28,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import template
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import template
 from tensorflow.python.platform import googletest
 
 
@@ -49,6 +51,8 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     rewrite_fns = [
         quantize_graph.create_training_graph,
         quantize_graph.experimental_create_training_graph,
+        functools.partial(
+            quantize_graph.experimental_create_training_graph, symmetric=True),
     ]
     for fn in rewrite_fns:
       test_fn(fn)
@@ -57,6 +61,8 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     rewrite_fns = [
         quantize_graph.create_eval_graph,
         quantize_graph.experimental_create_eval_graph,
+        functools.partial(
+            quantize_graph.experimental_create_eval_graph, symmetric=True),
     ]
     for fn in rewrite_fns:
       test_fn(fn)

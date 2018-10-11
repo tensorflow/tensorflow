@@ -41,6 +41,7 @@ def Quantize(graph,
              is_training,
              weight_bits=8,
              activation_bits=8,
+             symmetric=False,
              ema_decay=0.999,
              quant_delay=None,
              vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
@@ -58,6 +59,8 @@ def Quantize(graph,
     is_training: Whether quantizing training graph or eval graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
+    symmetric: (Optional) If true, use symmetric quantization limits instead of
+      training the minimum and maximum of each quantization range separately.
     ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
       quantization intervals for quantizing activations (see here about EMA:
       https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
@@ -92,6 +95,7 @@ def Quantize(graph,
         narrow_range=True,
         vars_collection=vars_collection,
         bits=weight_bits,
+        symmetric=symmetric,
         consumer_scope=scope)
 
     # Quantize the activations.
@@ -117,6 +121,7 @@ def Quantize(graph,
         quant_delay=quant_delay,
         vars_collection=vars_collection,
         bits=activation_bits,
+        symmetric=symmetric,
         init_min=0.0,
         producer_scope=scope)
 
@@ -135,6 +140,7 @@ def Quantize(graph,
           quant_delay=quant_delay,
           vars_collection=vars_collection,
           bits=activation_bits,
+          symmetric=symmetric,
           producer_scope=scope,
           consumer_scope=scope)
       # Make sure the op following this isn't an activation. In which case, we
@@ -156,6 +162,7 @@ def Quantize(graph,
             quant_delay=quant_delay,
             vars_collection=vars_collection,
             bits=activation_bits,
+            symmetric=symmetric,
             producer_scope=scope,
             consumer_scope=scope)
 
@@ -189,6 +196,7 @@ def Quantize(graph,
             quant_delay=quant_delay,
             vars_collection=vars_collection,
             bits=activation_bits,
+            symmetric=symmetric,
             producer_scope=scope)
 
 
@@ -517,6 +525,7 @@ def _InsertQuantOp(context,
                    init_min=-6.0,
                    init_max=6.0,
                    bits=8,
+                   symmetric=False,
                    ema_decay=0.999,
                    quant_delay=None,
                    vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
@@ -537,6 +546,8 @@ def _InsertQuantOp(context,
     init_min: Starting minimum value for the new quantization op.
     init_max: Starting maximum value for the new quantization op.
     bits: Number of bits to use for quantization, must be between 2 and 8.
+    symmetric: (Optional) If true, use symmetric quantization limits instead of
+      training the minimum and maximum of each quantization range separately.
     ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
       quantization intervals for quantizing activations (see here about EMA:
       https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
@@ -603,6 +614,7 @@ def _InsertQuantOp(context,
               ema_decay=ema_decay,
               is_training=is_training,
               num_bits=bits,
+              symmetric=symmetric,
               narrow_range=narrow_range,
               vars_collection=vars_collection,
               name_prefix=name_prefix))
@@ -614,6 +626,7 @@ def _InsertQuantOp(context,
               init_max=init_max,
               is_training=is_training,
               num_bits=bits,
+              symmetric=symmetric,
               narrow_range=narrow_range,
               vars_collection=vars_collection,
               name_prefix=name_prefix))
