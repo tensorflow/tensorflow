@@ -3070,3 +3070,25 @@ crop_and_resize_deprecation = deprecation.deprecated_args(
     None, 'box_ind is deprecated, use box_indices instead', 'box_ind')
 tf_export(v1=['image.crop_and_resize'])(
     crop_and_resize_deprecation(gen_image_ops.crop_and_resize))
+
+@tf_export('image.extract_glimpse')
+def extract_glimpse(
+    input,
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    uniform_noise=True,
+    name=None,
+    noise=""):
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      uniform_noise=uniform_noise,
+      noise=noise,
+      name=name)
+
+extract_glimpse.__doc__ = gen_image_ops.extract_glimpse.__doc__
