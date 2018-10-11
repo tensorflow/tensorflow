@@ -102,6 +102,7 @@ py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "no_windows",
     ],
     deps = [
         ":feature_column",
@@ -135,6 +136,7 @@ py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "no_windows",
     ],
     deps = [
         ":feature_column_py",

@@ -1242,7 +1242,10 @@ py_test(
     data = ["//tensorflow/python:meta_graph_testdata"],
     main = "framework/meta_graph_test.py",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":array_ops",
         ":client_testlib",
