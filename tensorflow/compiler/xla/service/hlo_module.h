@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
@@ -222,6 +223,15 @@ class HloModule {
     return result;
   }
 
+  // input_output_alias_config indicates the list of aliased buffers that are
+  // expected from the module.
+  HloInputOutputAliasConfig& input_output_alias_config() {
+    return input_output_alias_config_;
+  }
+  const HloInputOutputAliasConfig& input_output_alias_config() const {
+    return input_output_alias_config_;
+  }
+
   // Returns an id that is unique to this module across all modules created over
   // the lifetime of this process.
   int unique_id() const { return unique_id_; }
@@ -290,6 +300,10 @@ class HloModule {
   // sequential order of instructions for each non-fusion computation in the
   // module.
   absl::optional<HloSchedule> schedule_;
+
+  // alias_config indicates the alias information of input/output buffers that
+  // are expected from the module.
+  HloInputOutputAliasConfig input_output_alias_config_;
 };
 
 }  // namespace xla
