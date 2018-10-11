@@ -45,12 +45,14 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.pyct import ast_util
+from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -105,6 +107,9 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
+  if program_ctx.options.verbose:
+    logging.info('Converting {}'.format(o))
+
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
@@ -144,6 +149,10 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   node.extend(templates.replace(template, entity=name))
 
   program_ctx.add_to_cache(o, node)
+
+  if program_ctx.options.verbose:
+    logging.info('Compiled output of {}:\n\n{}\n'.format(
+        o, compiler.ast_to_source(node)))
 
   if program_ctx.options.recursive:
     while True:

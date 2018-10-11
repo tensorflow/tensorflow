@@ -224,5 +224,6 @@ tflite_jni_binary(
     deps = [
         "//tensorflow/contrib/lite/delegates/flex:delegate",
         "//tensorflow/contrib/lite/java/src/main/native",
+        "//tensorflow/contrib/lite/java/src/main/native:init_tensorflow",
     ],
 )
