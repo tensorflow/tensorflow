@@ -738,15 +738,41 @@ bool CompareArrayBuffers(const Array& lhs_array, const Array& rhs_array) {
   }
   return true;
 }
+
+bool HaveSameMinMax(const Array& lhs_array, const Array& rhs_array) {
+  if (lhs_array.minmax || rhs_array.minmax) {
+    if (!lhs_array.minmax || !rhs_array.minmax) {
+      return false;
+    }
+    if (!(*lhs_array.minmax == *rhs_array.minmax)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool HaveSameQuantizationParams(const Array& lhs_array,
+                                const Array& rhs_array) {
+  if (lhs_array.quantization_params || rhs_array.quantization_params) {
+    if (!lhs_array.quantization_params || !rhs_array.quantization_params) {
+      return false;
+    }
+    if (!(*lhs_array.quantization_params == *rhs_array.quantization_params)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 bool CompareConstantArrays(const Array& lhs_array, const Array& rhs_array) {
-  bool attrs_equal =
-      lhs_array.shape() == rhs_array.shape() &&
-      lhs_array.data_type == rhs_array.data_type &&
-      lhs_array.final_data_type == rhs_array.final_data_type &&
-      lhs_array.minmax == rhs_array.minmax &&
-      lhs_array.quantization_params == rhs_array.quantization_params;
+  bool attrs_equal = lhs_array.shape() == rhs_array.shape() &&
+                     lhs_array.data_type == rhs_array.data_type &&
+                     lhs_array.final_data_type == rhs_array.final_data_type &&
+                     HaveSameMinMax(lhs_array, rhs_array) &&
+                     HaveSameQuantizationParams(lhs_array, rhs_array) &&
+                     lhs_array.narrow_range == rhs_array.narrow_range;
   if (!attrs_equal) {
     return false;
   }
