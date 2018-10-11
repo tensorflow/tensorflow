@@ -461,6 +461,17 @@ class ActivityAnalyzerTest(test.TestCase):
     self.assertScopeIs(body_scope, ('b', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
 
+  def test_lambda_nested(self):
+
+    def test_fn(a, b, c, d, e):  # pylint: disable=unused-argument
+      a = lambda a, b: d(lambda b: a + b + c)  # pylint: disable=undefined-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
+    self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+
 
 if __name__ == '__main__':
   test.main()

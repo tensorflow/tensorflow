@@ -133,6 +133,14 @@ class Scope(object):
       self.parent.mark_returned(name)
 
 
+class _Lambda(object):
+
+  no_root = True
+
+  def __init__(self):
+    self.args = set()
+
+
 class ActivityAnalyzer(transformer.Base):
   """Annotates nodes with local scope information.
 
@@ -151,10 +159,7 @@ class ActivityAnalyzer(transformer.Base):
     # leaves in the AST, that is, they cannot contain other statements.
     self._in_return_statement = False
     self._in_aug_assign = False
-    self._in_lambda = False
     self._in_function_def_args = False
-
-    self._untracked_symbols = None
 
   @property
   def _in_constructor(self):
@@ -179,11 +184,12 @@ class ActivityAnalyzer(transformer.Base):
       return
     qn = anno.getanno(node, anno.Basic.QN)
 
-    # Ignore any untracked symbols.
-    if self._untracked_symbols:
-      if qn in self._untracked_symbols:
+    # When inside a lambda, ignore any of the lambda's arguments.
+    # This includes attributes or slices of those arguments.
+    for l in self.state[_Lambda]:
+      if qn in l.args:
         return
-      if qn.owner_set & set(self._untracked_symbols):
+      if qn.owner_set & set(l.args):
         return
 
     if isinstance(node.ctx, gast.Store):
@@ -199,11 +205,11 @@ class ActivityAnalyzer(transformer.Base):
         # In function defs have the meaning of defining a variable.
         self.scope.mark_modified(qn)
         self.scope.mark_param(qn, self.enclosing_entities[-1])
-      elif self._in_lambda:
-        assert isinstance(self._untracked_symbols, set)
-        self._untracked_symbols.add(qn)
+      elif self.state[_Lambda].level:
+        # In lambdas, they are tracked separately.
+        self.state[_Lambda].args.add(qn)
       else:
-        # TODO(mdan): Is this case even possible?
+        # TODO(mdan): Is this case possible at all?
         raise NotImplementedError(
             'Param "{}" outside a function arguments or lambda.'.format(qn))
     else:
@@ -317,12 +323,10 @@ class ActivityAnalyzer(transformer.Base):
     return parent
 
   def visit_Lambda(self, node):
-    assert not self._in_lambda or self._in_function_def_args
-    self._in_lambda = True
-    self._untracked_symbols = set()
+    assert not self._in_function_def_args
+    self.state[_Lambda].enter()
     node = self.generic_visit(node)
-    self._untracked_symbols = None
-    self._in_lambda = False
+    self.state[_Lambda].exit()
     return node
 
   def visit_arguments(self, node):
@@ -339,7 +343,7 @@ class ActivityAnalyzer(transformer.Base):
 
     # A separate Scope tracks the actual function definition.
     self._enter_scope(True)
-    assert not self._in_function_def_args
+    assert not (self._in_function_def_args or self.state[_Lambda].level)
     self._in_function_def_args = True
     node.args = self.visit(node.args)
     self._in_function_def_args = False

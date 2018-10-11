@@ -92,7 +92,8 @@ class _StateStack(object):
     # the superclass' setattr.
     object.__setattr__(self, 'type', type_)
     object.__setattr__(self, '_stack', [])
-    self.enter()
+    if not hasattr(type_, 'no_root'):
+      self.enter()
 
   def enter(self):
     self._stack.append(self.type())
@@ -107,6 +108,9 @@ class _StateStack(object):
   @property
   def value(self):
     return self._stack[-1]
+
+  def __iter__(self):
+    return iter(self._stack)
 
   def __getattr__(self, key):
     return getattr(self._stack[-1], key)
