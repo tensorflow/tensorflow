@@ -29,11 +29,8 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xrt:xrt_proto",
         "//tensorflow/compiler/xrt:xrt_server",
         "//tensorflow/compiler/xrt/cc:xrt_ops",
@@ -52,10 +49,7 @@ tf_cc_test(
     name = "raw_api_test_cpu",
     size = "medium",
     srcs = [],
-    args = [
-        "--xla_test_device=XLA_CPU",
-        "--xla_platform=CPU",
-    ],
+    args = ["--xla_test_device=XLA_CPU"],
     deps = [
         ":raw_api_test_lib",
         "//tensorflow/compiler/jit:xla_cpu_device",
@@ -66,10 +60,7 @@ tf_cuda_cc_test(
     name = "raw_api_test_gpu",
     size = "medium",
     srcs = [],
-    args = [
-        "--xla_test_device=XLA_GPU",
-        "--xla_platform=GPU",
-    ],
+    args = ["--xla_test_device=XLA_GPU"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":raw_api_test_lib",

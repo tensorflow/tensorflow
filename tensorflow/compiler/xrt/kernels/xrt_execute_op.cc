@@ -64,6 +64,14 @@ uint32 GetXLARandomSeed() {
   return counter.fetch_add(2);
 }
 
+// Looks up the input `key` in the compilation cache.
+Status GetComputationCacheEntry(
+    XRTCompilationCache* cache, int64 key,
+    std::unique_ptr<XRTCompilationCacheEntryRef>* entry) {
+  TF_RETURN_IF_ERROR(cache->Lookup(key, entry));
+  return Status::OK();
+}
+
 // Populates `inputs` with the input tensors to the computation.
 Status GetComputationInputs(OpKernelContext* context, ResourceMgr* rm,
                             bool release_inputs,
