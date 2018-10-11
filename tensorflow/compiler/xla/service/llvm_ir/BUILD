@@ -204,7 +204,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@llvm//:core",
         "@llvm//:support",
     ],
