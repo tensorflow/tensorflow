@@ -28,7 +28,6 @@ from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import py_func
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -62,7 +61,7 @@ def convert(recursive=False, verbose=False):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
       return converted_call(
-          f,
+          f, None,
           converter.ConversionOptions(
               recursive=recursive,
               verbose=verbose,
@@ -141,8 +140,22 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 
 # TODO(mdan): Move to a private, undocumented module.
-def converted_call(f, options, *args, **kwargs):
+def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
+  if owner is not None:
+    if not isinstance(f, str):
+      raise ValueError(
+          'When owner is specified, the function name must be specified as'
+          ' a string: {}'.format(f))
+
+    # Special case when the owner is a 'super' object. In that case lookups of
+    # dynamic attributes won't work. See
+    # inspect_utils.SuperWrapperForDynamicAttrs.
+    if isinstance(owner, super):
+      owner = inspect_utils.SuperWrapperForDynamicAttrs(owner)
+
+    f = getattr(owner, f)
+
   # TODO(mdan): This needs cleanup.
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
@@ -157,12 +170,24 @@ def converted_call(f, options, *args, **kwargs):
     # Regular functions
     target_entity = f
     arg_map_target = f
-    effective_args = args
     f_class = inspect_utils.getmethodclass(f)
 
     if f_class is not None:
+      # If this is a method call, it may or may not include self.
+      #
+      # Example when self is included:
+      #   converted_call(to_graph(foo.bar), foo)
+      #
+      # Example when self is not included:
+      #   super(...).foo(args)
+      #
+      if owner is not None and (not args or args[0] is not owner):
+        effective_args = (owner,) + args
+      else:
+        effective_args = args
       partial_types = (f_class,)
     else:
+      effective_args = args
       partial_types = ()
 
   elif tf_inspect.isclass(f):
@@ -297,9 +322,6 @@ def to_graph(e,
                      (compiled, source_map_attribute_name))
   setattr(compiled, source_map_attribute_name,
           compiled_module.__dict__['ag_source_map__'])
-
-  if verbose:
-    logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
 
   return compiled
 

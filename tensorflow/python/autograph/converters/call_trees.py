@@ -135,7 +135,19 @@ class CallTreeTransformer(converter.Base):
     # The decorators themselves are not to be converted.
     # If present, the decorators should appear as static functions.
     target_entity = self._try_resolve_target(node.func)
+
     if target_entity is not None:
+
+      # This may be reached when "calling" a callable attribute of an object.
+      # For example:
+      #
+      #   self.fc = tf.keras.layers.Dense()
+      #   self.fc()
+      #
+      for mod in self.ctx.program.uncompiled_modules:
+        if target_entity.__module__.startswith(mod[0] + '.'):
+          return False
+
       # This attribute is set by the decorator itself.
       # TODO(mdan): This may not play nicely with other wrapping decorators.
       if hasattr(target_entity, '__pyct_is_compile_decorator'):
@@ -238,11 +250,18 @@ class CallTreeTransformer(converter.Base):
     # Before we could convert all the time though, we'd need a reasonable
     # caching mechanism.
     template = """
-      ag__.converted_call(func, options, args)
+      ag__.converted_call(func, owner, options, args)
     """
+    if isinstance(node.func, gast.Attribute):
+      func = gast.Str(node.func.attr)
+      owner = node.func.value
+    else:
+      func = node.func
+      owner = parser.parse_expression('None')
     call_expr = templates.replace(
         template,
-        func=node.func,
+        func=func,
+        owner=owner,
         options=self.ctx.program.options.to_ast(self.ctx.info.namespace),
         args=node.args)
     new_call = call_expr[0].value
