@@ -244,6 +244,9 @@ struct FillOptionsT;
 struct FloorModOptions;
 struct FloorModOptionsT;
 
+struct RangeOptions;
+struct RangeOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -405,11 +408,12 @@ enum BuiltinOperator {
   BuiltinOperator_ZEROS_LIKE = 93,
   BuiltinOperator_FILL = 94,
   BuiltinOperator_FLOOR_MOD = 95,
+  BuiltinOperator_RANGE = 96,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_FLOOR_MOD
+  BuiltinOperator_MAX = BuiltinOperator_RANGE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[95] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[96] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -505,7 +509,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[95] {
     BuiltinOperator_SQUARE,
     BuiltinOperator_ZEROS_LIKE,
     BuiltinOperator_FILL,
-    BuiltinOperator_FLOOR_MOD
+    BuiltinOperator_FLOOR_MOD,
+    BuiltinOperator_RANGE
   };
   return values;
 }
@@ -608,6 +613,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "ZEROS_LIKE",
     "FILL",
     "FLOOR_MOD",
+    "RANGE",
     nullptr
   };
   return names;
@@ -692,11 +698,12 @@ enum BuiltinOptions {
   BuiltinOptions_BidirectionalSequenceRNNOptions = 70,
   BuiltinOptions_UnidirectionalSequenceLSTMOptions = 71,
   BuiltinOptions_FloorModOptions = 72,
+  BuiltinOptions_RangeOptions = 73,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_FloorModOptions
+  BuiltinOptions_MAX = BuiltinOptions_RangeOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[73] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[74] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -770,7 +777,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[73] {
     BuiltinOptions_BidirectionalSequenceLSTMOptions,
     BuiltinOptions_BidirectionalSequenceRNNOptions,
     BuiltinOptions_UnidirectionalSequenceLSTMOptions,
-    BuiltinOptions_FloorModOptions
+    BuiltinOptions_FloorModOptions,
+    BuiltinOptions_RangeOptions
   };
   return values;
 }
@@ -850,6 +858,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "BidirectionalSequenceRNNOptions",
     "UnidirectionalSequenceLSTMOptions",
     "FloorModOptions",
+    "RangeOptions",
     nullptr
   };
   return names;
@@ -1150,6 +1159,10 @@ template<> struct BuiltinOptionsTraits<UnidirectionalSequenceLSTMOptions> {
 
 template<> struct BuiltinOptionsTraits<FloorModOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_FloorModOptions;
+};
+
+template<> struct BuiltinOptionsTraits<RangeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RangeOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1758,6 +1771,14 @@ struct BuiltinOptionsUnion {
   const FloorModOptionsT *AsFloorModOptions() const {
     return type == BuiltinOptions_FloorModOptions ?
       reinterpret_cast<const FloorModOptionsT *>(value) : nullptr;
+  }
+  RangeOptionsT *AsRangeOptions() {
+    return type == BuiltinOptions_RangeOptions ?
+      reinterpret_cast<RangeOptionsT *>(value) : nullptr;
+  }
+  const RangeOptionsT *AsRangeOptions() const {
+    return type == BuiltinOptions_RangeOptions ?
+      reinterpret_cast<const RangeOptionsT *>(value) : nullptr;
   }
 };
 
@@ -6302,6 +6323,46 @@ inline flatbuffers::Offset<FloorModOptions> CreateFloorModOptions(
 
 flatbuffers::Offset<FloorModOptions> CreateFloorModOptions(flatbuffers::FlatBufferBuilder &_fbb, const FloorModOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct RangeOptionsT : public flatbuffers::NativeTable {
+  typedef RangeOptions TableType;
+  RangeOptionsT() {
+  }
+};
+
+struct RangeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef RangeOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  RangeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RangeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<RangeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct RangeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit RangeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  RangeOptionsBuilder &operator=(const RangeOptionsBuilder &);
+  flatbuffers::Offset<RangeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<RangeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<RangeOptions> CreateRangeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  RangeOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<RangeOptions> CreateRangeOptions(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -6651,6 +6712,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const FloorModOptions *builtin_options_as_FloorModOptions() const {
     return builtin_options_type() == BuiltinOptions_FloorModOptions ? static_cast<const FloorModOptions *>(builtin_options()) : nullptr;
   }
+  const RangeOptions *builtin_options_as_RangeOptions() const {
+    return builtin_options_type() == BuiltinOptions_RangeOptions ? static_cast<const RangeOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -6968,6 +7032,10 @@ template<> inline const UnidirectionalSequenceLSTMOptions *Operator::builtin_opt
 
 template<> inline const FloorModOptions *Operator::builtin_options_as<FloorModOptions>() const {
   return builtin_options_as_FloorModOptions();
+}
+
+template<> inline const RangeOptions *Operator::builtin_options_as<RangeOptions>() const {
+  return builtin_options_as_RangeOptions();
 }
 
 struct OperatorBuilder {
@@ -9377,6 +9445,29 @@ inline flatbuffers::Offset<FloorModOptions> CreateFloorModOptions(flatbuffers::F
       _fbb);
 }
 
+inline RangeOptionsT *RangeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new RangeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void RangeOptions::UnPackTo(RangeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<RangeOptions> RangeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRangeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<RangeOptions> CreateRangeOptions(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RangeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRangeOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -9854,6 +9945,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const FloorModOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<const RangeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -10160,6 +10255,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const FloorModOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<const RangeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -10454,6 +10553,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const FloorModOptionsT *>(value);
       return CreateFloorModOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<const RangeOptionsT *>(value);
+      return CreateRangeOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -10746,6 +10849,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_FloorModOptions: {
       value = new FloorModOptionsT(*reinterpret_cast<FloorModOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_RangeOptions: {
+      value = new RangeOptionsT(*reinterpret_cast<RangeOptionsT *>(u.value));
       break;
     }
     default:
@@ -11112,6 +11219,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_FloorModOptions: {
       auto ptr = reinterpret_cast<FloorModOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_RangeOptions: {
+      auto ptr = reinterpret_cast<RangeOptionsT *>(value);
       delete ptr;
       break;
     }
