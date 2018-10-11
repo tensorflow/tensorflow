@@ -57,10 +57,13 @@ TEST_F(GpuHloSupportCheckerTest, SparseUnimplemented) {
       HloInstruction::CreateParameter(1, sparse_shape, "param1"));
   builder.AddInstruction(HloInstruction::CreateBinary(
       sparse_shape, HloOpcode::kAdd, param0, param1));
-  auto module = CreateNewModule();
+  // Since verifier is reporting sparse layouts as errors, we should
+  // use a regular HloModule instead of VerifiedHloModule to avoid
+  // verifier errors being triggered in the destructor.
+  auto module = HloTestBase::CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  Status status = checker().Run(module).status();
+  Status status = checker().Run(module.get()).status();
   ASSERT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
   EXPECT_THAT(status.error_message(),
               HasSubstr("GPU backend does not support"));
