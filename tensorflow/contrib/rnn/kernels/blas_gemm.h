@@ -28,8 +28,8 @@ namespace functor {
 template <typename T>
 struct TensorCuBlasGemm {
   void operator()(OpKernelContext* ctx, bool transa, bool transb, uint64 m,
-                  uint64 n, uint64 k, T alpha, const T* a, int lda, const T* b,
-                  int ldb, T beta, T* c, int ldc);
+                  uint64 n, uint64 k, float alpha, const T* a, int lda,
+                  const T* b, int ldb, float beta, T* c, int ldc);
 };
 
 template <typename Device, typename T, bool USE_CUBLAS>
@@ -38,8 +38,9 @@ struct TensorBlasGemm;
 template <typename Device, typename T>
 struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
   static void compute(OpKernelContext* ctx, const Device& d, bool transa,
-                      bool transb, T alpha, typename TTypes<T>::ConstMatrix a,
-                      typename TTypes<T>::ConstMatrix b, T beta,
+                      bool transb, float alpha,
+                      typename TTypes<T>::ConstMatrix a,
+                      typename TTypes<T>::ConstMatrix b, float beta,
                       typename TTypes<T>::Matrix c) {
     int64 m = c.dimensions()[0];
     int64 n = c.dimensions()[1];
