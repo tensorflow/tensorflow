@@ -138,12 +138,13 @@ class MatrixBandPartBenchmark(test_lib.Benchmark):
 
 
 if __name__ == "__main__":
-  dtypes = (np.bool, np.int32, np.int64, np.float32, np.float64, np.complex64,
-            np.complex128)
+  dtypes = (np.bool, np.int32, np.int64, np.float16,
+            dtypes_lib.bfloat16.as_numpy_dtype, np.float32, np.float64,
+            np.complex64, np.complex128)
   for dtype in dtypes:
     for batch_shape in ((), (2,), (1, 3, 2)):
-      for rows in 1, 2, 7:
-        for cols in 1, 2, 7:
+      for rows in 1, 2, 7, 23:
+        for cols in 1, 2, 7, 23:
           shape = (rows, cols)
           name = "%s_%s" % (dtype.__name__,
                             "_".join(map(str, batch_shape + shape)))

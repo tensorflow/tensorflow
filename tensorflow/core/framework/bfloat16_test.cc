@@ -23,6 +23,20 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+TEST(Bfloat16Test, DefaultValueIsZero) {
+  EXPECT_EQ(0.0f, static_cast<float>(bfloat16()));
+}
+
+TEST(Bfloat16Test, RepresentableFloatsRoundTripViaBfloat16) {
+  const std::vector<float> values = {
+      -std::numeric_limits<float>::infinity(), -1.0, -0.5, -0.0, 0.0, 0.5, 1.0,
+      std::numeric_limits<float>::infinity(),
+  };
+  for (float v : values) {
+    EXPECT_EQ(v, static_cast<float>(static_cast<bfloat16>(v)));
+  }
+}
+
 TEST(Bfloat16Test, Simple) {
   bfloat16 a(12);
   // Floating point representation of 12: 0x41400000
