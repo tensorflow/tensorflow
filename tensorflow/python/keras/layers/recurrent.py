@@ -653,14 +653,12 @@ class RNN(Layer):
     additional_inputs = []
     additional_specs = []
     if initial_state is not None:
-      kwargs['initial_state'] = initial_state
       additional_inputs += initial_state
       self.state_spec = [
           InputSpec(shape=K.int_shape(state)) for state in initial_state
       ]
       additional_specs += self.state_spec
     if constants is not None:
-      kwargs['constants'] = constants
       additional_inputs += constants
       self.constants_spec = [
           InputSpec(shape=K.int_shape(constant)) for constant in constants
@@ -688,6 +686,10 @@ class RNN(Layer):
       self.input_spec = original_input_spec
       return output
     else:
+      if initial_state is not None:
+        kwargs['initial_state'] = initial_state
+      if constants is not None:
+        kwargs['constants'] = constants
       return super(RNN, self).__call__(inputs, **kwargs)
 
   def call(self,
@@ -706,6 +708,7 @@ class RNN(Layer):
         initial_state = inputs[1:]
       else:
         initial_state = inputs[1:-self._num_constants]
+        constants = inputs[-self._num_constants:]
       if len(initial_state) == 0:
         initial_state = None
       inputs = inputs[0]
@@ -2458,7 +2461,7 @@ def _generate_zero_filled_state_for_cell(cell, inputs, batch_size, dtype):
 
 def _generate_zero_filled_state(batch_size_tensor, state_size, dtype):
   """Generate a zero filled tensor with shape [batch_size, state_size]."""
-  if None in [batch_size_tensor, dtype]:
+  if batch_size_tensor is None or dtype is None:
     raise ValueError(
         'batch_size and dtype cannot be None while constructing initial state: '
         'batch_size={}, dtype={}'.format(batch_size_tensor, dtype))
