@@ -2677,7 +2677,6 @@ Status HloInstruction::AcceptOrdered(
 }
 
 const Shape& HloInstruction::shape() const {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
   return shape_;
 }
 
