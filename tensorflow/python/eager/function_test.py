@@ -28,7 +28,6 @@ import numpy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -40,6 +39,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.layers import convolutional
@@ -1187,16 +1187,12 @@ class FunctionTest(test.TestCase):
 
     def multi_device_fn():
       with ops.device('/cpu:0'):
-        s0 = iterator_ops.Iterator.from_structure(
-            (dtypes.float32,)).string_handle()
+        s0 = test_ops.device_placement_op()
       with ops.device('/cpu:1'):
-        s1 = iterator_ops.Iterator.from_structure(
-            (dtypes.float32,)).string_handle()
+        s1 = test_ops.device_placement_op()
       with ops.device('/cpu:2'):
-        s2 = iterator_ops.Iterator.from_structure(
-            (dtypes.float32,)).string_handle()
-      s3 = iterator_ops.Iterator.from_structure(
-          (dtypes.float32,)).string_handle()
+        s2 = test_ops.device_placement_op()
+      s3 = test_ops.device_placement_op()
       return s0, s1, s2, s3
 
     defined = function.defun(multi_device_fn)
@@ -1208,24 +1204,24 @@ class FunctionTest(test.TestCase):
 
     with ops.device('/cpu:3'):
       outputs = self.evaluate(defined())
-    self.assertEqual(len(defined._function_cache), 2)
+    # All function definitions are agnostic to call site devices.
+    self.assertEqual(len(defined._function_cache), 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
     self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
 
-    # This should retrieve the call-site-device agnostic function
-    defined()
-    self.assertEqual(len(defined._function_cache), 2)
-
-    # And this should retrieve the function created for '/cpu:3'
-    with ops.device('/cpu:3'):
-      defined()
-    self.assertEqual(len(defined._function_cache), 2)
+    with ops.device('/cpu:0'):
+      outputs = self.evaluate(defined())
+    self.assertEqual(len(defined._function_cache), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 2}))
-  def testCallingGraphFunctionOnIncompatibleDeviceRaisesError(self):
+  def testCallingGraphFunctionOnDifferentDevice(self):
 
     def func():
       return constant_op.constant(0)
@@ -1238,33 +1234,18 @@ class FunctionTest(test.TestCase):
       self.assertEqual(
           self.evaluate(cpu_graph_function()), self.evaluate(func()))
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        'The current device stack does not match the device stack under '
-        'which the TensorFlow function \'.*func.*\' was created.\n'
-        'Current device stack: .*\n.*func.* device stack.*'):
-      with ops.device('cpu:1'):
-        cpu_graph_function()
+    with ops.device('cpu:1'):
+      self.assertEqual(0., self.evaluate(cpu_graph_function()))
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        'The current device stack does not match the device stack under '
-        'which the TensorFlow function \'.*func.*\' was created.\n'
-        'Current device stack: .*\n.*func.* device stack.*'):
-      with ops.device(None):
-        cpu_graph_function()
+    with ops.device(None):
+      self.assertEqual(0., self.evaluate(cpu_graph_function()))
 
     default_graph_function = defined.get_concrete_function()
     self.assertEqual(
         self.evaluate(default_graph_function()), self.evaluate(func()))
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        'The current device stack does not match the device stack under '
-        'which the TensorFlow function \'.*func.*\' was created.\n'
-        'Current device stack: .*\n.*func.* device stack.*'):
-      with ops.device('cpu:1'):
-        default_graph_function()
+    with ops.device('cpu:1'):
+      self.assertEqual(0., self.evaluate(default_graph_function()))
 
   @test_util.run_in_graph_and_eager_modes
   def testColocateWithRespected(self):
@@ -1280,8 +1261,7 @@ class FunctionTest(test.TestCase):
 
     @function.defun
     def foo():
-      return iterator_ops.Iterator.from_structure(
-          (dtypes.float32,)).string_handle()
+      return test_ops.device_placement_op()
 
     with ops.colocate_with(x):
       self.assertIn(compat.as_bytes('CPU:0'), self.evaluate(foo()))
