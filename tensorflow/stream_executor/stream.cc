@@ -5496,6 +5496,34 @@ Stream& Stream::ThenFusedConvolutionBiasActivation(
   return *this;
 }
 
+Stream& Stream::ThenFusedBatchNormActivationInference(
+    const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<float>& x_data,
+    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+    const DeviceMemory<float>& scale_data,
+    const DeviceMemory<float>& offset_data,
+    const DeviceMemory<float>& mean_data,
+    const DeviceMemory<float>& variance_data, double epsilon,
+    dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data) {
+  VLOG_CALL(PARAM(x_descriptor), PARAM(x_data),
+            PARAM(scale_offset_mean_variance_descriptor), PARAM(scale_data),
+            PARAM(offset_data), PARAM(mean_data), PARAM(variance_data),
+            PARAM(epsilon), PARAM(activation_mode), PARAM(y_data));
+
+  if (ok()) {
+    if (dnn::DnnSupport* dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoFusedBatchNormActivationInference(
+          this, x_descriptor, x_data, scale_offset_mean_variance_descriptor,
+          scale_data, offset_data, mean_data, variance_data, epsilon,
+          activation_mode, y_data,
+          /*output_profile_result=*/nullptr));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+
+  return *this;
+}
+
 port::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 

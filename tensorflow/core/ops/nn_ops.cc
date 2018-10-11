@@ -2389,7 +2389,7 @@ REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
     .Attr("padding: {'SAME', 'VALID'}")
     .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .Attr("activation_mode: {'Relu', 'None'} = 'Relu'")
+    .Attr("activation_mode: {'None','Sigmoid','Relu','Relu6','Tanh'} = 'None'")
 
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       using shape_inference::ShapeHandle;
@@ -2430,8 +2430,70 @@ REGISTER_OP("_ROCmFusedConvolutionBiasActivation")
       return Status::OK();
     })
     .Doc(R"doc(
-    Computes a fused kernel which implements: 2-D convolutions, then adds bias and
-    and then applies the activation function to the result. 
+    Computes a fused kernel which implements: 
+      Conv2D op, followed by
+      BiasAdd op, followed by
+      any activation op (None, Sigmoid, Relu, Relu6, Tanh)
+    Supports only tensors of type float.
+)doc");
+
+REGISTER_OP("_ROCmFusedBatchNormActivationInference")
+
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+    .Input("mean: T")
+    .Input("variance: T")
+
+    .Output("y: T")
+
+    .Attr("T: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
+    .Attr("activation_mode: {'None','Sigmoid','Relu','Relu6','Tanh'} = 'None'")
+
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      using shape_inference::DimensionHandle;
+
+      VLOG(-1) << "SetShapFn called for _ROCmFusedBatchNormActivation";
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+    Computes a fused kernel which implements: 
+      FusedBatchNorm / FusedBatchNormV2 (inference only), followed by
+      any activation op (None, Sigmoid, Relu, Relu6, Tanh)
+    Supports only tensors of type float.
+)doc");
+
+REGISTER_OP("_ROCmFusedBatchNormActivationTraining")
+
+    .Input("x: T")
+    .Input("scale: T")
+    .Input("offset: T")
+
+    .Output("y: T")
+    .Output("mean: T")
+    .Output("variance: T")
+
+    .Attr("T: {float}")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("data_format: {'NHWC', 'NCHW'} = 'NHWC'")
+    .Attr("activation_mode: {'None','Sigmoid','Relu','Relu6','Tanh'} = 'None'")
+
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      using shape_inference::DimensionHandle;
+
+      // VLOG(-1) << "SetShapFn called for _ROCmFusedBatchNormActivation";
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+    Computes a fused kernel which implements: 
+      FusedBatchNorm / FusedBatchNormV2 (training only), followed by
+      any activation op (None, Sigmoid, Relu, Relu6, Tanh)
     Supports only tensors of type float.
 )doc");
 

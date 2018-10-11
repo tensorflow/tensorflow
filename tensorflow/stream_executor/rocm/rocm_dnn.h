@@ -642,6 +642,17 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* output_data,
       dnn::ProfileResult* output_profile_result) override;
 
+  bool DoFusedBatchNormActivationInference(
+      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
+      const DeviceMemory<float>& x_data,
+      const dnn::BatchDescriptor& scale_mean_variance_descriptor,
+      const DeviceMemory<float>& scale_data,
+      const DeviceMemory<float>& offset_data,
+      const DeviceMemory<float>& mean_data,
+      const DeviceMemory<float>& variance_data, double epsilon,
+      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
+      dnn::ProfileResult* output_profile_result) override;
+
   ROCMExecutor* GetParentExecutor() { return parent_; }
 
  private:
@@ -803,6 +814,17 @@ class MIOpenSupport : public dnn::DnnSupport {
       const DeviceMemory<T>& bias_data, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<T>* output_data, dnn::ProfileResult* output_profile_result);
+
+  template <typename T>
+  bool DoFusedBatchNormActivationInferenceImpl(
+      Stream* stream,
+      int miopen_type,  // Actually miopenDataType_t.
+      const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
+      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
+      const DeviceMemory<T>& scale_data, const DeviceMemory<T>& offset_data,
+      const DeviceMemory<T>& mean_data, const DeviceMemory<T>& variance_data,
+      double epsilon, dnn::ActivationMode activation_mode,
+      DeviceMemory<T>* y_data, dnn::ProfileResult* output_profile_result);
 
   SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
 };
