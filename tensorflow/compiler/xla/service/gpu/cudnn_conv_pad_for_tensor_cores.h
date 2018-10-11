@@ -13,27 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_SPEED_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_SPEED_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_TENSOR_CORES_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_TENSOR_CORES_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
 
-// Ensures that f16 cudnn convolutions have input/output channel dimensions that
-// are multiples of 8, inserting pads/slices as necessary.
+// Adds padding to cudnn convolutions to make them run faster on GPUs with
+// tensor cores.
 //
-// This is useful primarily for Volta and newer GPUs, where tensor cores can
-// only be used if the channel dims are multiples of 8.  It's probably the
-// opposite of useful on other GPUs, so you should check what GPU you're
-// targeting before running this pass.
+//  - f16 convolutions are padded to have input/output channel dimensions that
+//    are multiples of 8, so that we can use tensor cores.
 //
-// TODO(jlebar): Rework this.  For one thing, it should not be Volta-only.
-// Padding input channels 3 to 4 is (we think) applicable to Pascal as well.
+//  - f16 convolutions with 3 input channels and 32 or 64 output channels are
+//    padded to 4 input channels.  There's a special-cased cudnn algorithm just
+//    for this.
+//
+// Don't run this pass on GPUs without tensor cores -- it will make them slower!
 //
 // TODO(jlebar): Also pad dots.
-class CudnnConvPadForSpeed : public HloModulePass {
+class CudnnConvPadForTensorCores : public HloModulePass {
  public:
   absl::string_view name() const override { return "cudnn-conv-pad-for-speed"; }
 
@@ -43,4 +44,4 @@ class CudnnConvPadForSpeed : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_SPEED_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_TENSOR_CORES_H_

@@ -600,9 +600,9 @@ cc_library(
 )
 
 cc_library(
-    name = "cudnn_conv_pad_for_speed",
-    srcs = ["cudnn_conv_pad_for_speed.cc"],
-    hdrs = ["cudnn_conv_pad_for_speed.h"],
+    name = "cudnn_conv_pad_for_tensor_cores",
+    srcs = ["cudnn_conv_pad_for_tensor_cores.cc"],
+    hdrs = ["cudnn_conv_pad_for_tensor_cores.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -614,10 +614,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cudnn_conv_pad_for_speed_test",
-    srcs = ["cudnn_conv_pad_for_speed_test.cc"],
+    name = "cudnn_conv_pad_for_tensor_cores_test",
+    srcs = ["cudnn_conv_pad_for_tensor_cores_test.cc"],
     deps = [
-        ":cudnn_conv_pad_for_speed",
+        ":cudnn_conv_pad_for_tensor_cores",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -661,7 +661,7 @@ cc_library(
     hdrs = ["nvptx_compiler.h"],
     deps = [
         ":cudnn_conv_algorithm_picker",
-        ":cudnn_conv_pad_for_speed",
+        ":cudnn_conv_pad_for_tensor_cores",
         ":cudnn_conv_padding_legalization",
         ":cudnn_conv_rewriter",
         ":cudnn_fused_conv_rewriter",
