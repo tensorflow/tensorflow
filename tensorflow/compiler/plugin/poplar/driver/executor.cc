@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_hash.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -917,8 +918,8 @@ Status PoplarExecutor::MoveDeviceToHost() {
   // perform device -> host read
   try {
     current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
-  } catch (std::logic_error& e) {
-    return tensorflow::errors::Internal("Poplar host read error: ", e.what());
+  } catch (const std::logic_error& e) {
+    return PoplarExceptionToTensorflowStatus("[Device to host] ", e);
   }
 
   if (current_config_.profiling().enable_io_trace()) {
@@ -983,8 +984,8 @@ Status PoplarExecutor::MoveHostToDevice() {
       TensorControl* tc = arg.second.tc;
       tc->converted_data.clear();
     }
-  } catch (std::logic_error e) {
-    return tensorflow::errors::Internal("Poplar host write error ", e.what());
+  } catch (const std::logic_error& e) {
+    return PoplarExceptionToTensorflowStatus("[Host to device] ", e);
   }
 
   return Status::OK();
@@ -1094,9 +1095,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
           current_engine_ = engine;
 
-        } catch (std::logic_error e) {
-          return tensorflow::errors::Internal("Poplar engine load error ",
-                                              e.what());
+        } catch (const std::logic_error& e) {
+          return PoplarExceptionToTensorflowStatus("[Load engine ]", e);
         }
       }
 
@@ -1126,9 +1126,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         // right format on the host
         PostProcessStreamedVariablesDeviceToHost();
 
-      } catch (std::logic_error e) {
-        return tensorflow::errors::Internal("Poplar execution error ",
-                                            e.what());
+      } catch (const std::logic_error& e) {
+        return PoplarExceptionToTensorflowStatus("[Execute engine] ", e);
       }
 
       try {
@@ -1156,8 +1155,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           AddExecuteEventRecord(executable.module().name(), report_stream.str(),
                                 trace_stream.str());
         }
-      } catch (std::logic_error e) {
-        VLOG(2) << "Error producing execution report: " << e.what();
+      } catch (const std::logic_error& e) {
+        return PoplarExceptionToTensorflowStatus("[Execute engine] ", e);
       }
     }
   }

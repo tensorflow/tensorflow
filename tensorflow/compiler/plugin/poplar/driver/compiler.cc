@@ -332,8 +332,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   } else {
     try {
       TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
-    } catch (std::logic_error e) {
-      return tensorflow::errors::Unknown(StrCat("[Poplar Compile] ", e.what()));
+    } catch (const std::logic_error& e) {
+      return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
 
     // =======================================================================
@@ -368,9 +368,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         };
 
         engine.reset(new poplar::Engine(graph, progs, opts, progress_logging));
-      } catch (std::logic_error e) {
-        return tensorflow::errors::Unknown(
-            StrCat("[Poplar Engine] ", e.what()));
+      } catch (const std::logic_error& e) {
+        return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
     }
   }
@@ -379,14 +378,18 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     std::stringstream stream;
 
     if (engine != nullptr) {
-      poplar::OptionFlags opts;
-      opts.set("includeVarStorageReport", "true");
+      try {
+        poplar::OptionFlags opts;
+        opts.set("includeVarStorageReport", "true");
 
-      auto rep = engine->getGraphReport(opts);
-      if (poplarExecutor->CompilerReportingTextFormat()) {
-        rep.printSummary(stream);
-      } else {
-        rep.serialize(stream, poplar::SerializationFormat::JSON);
+        auto rep = engine->getGraphReport(opts);
+        if (poplarExecutor->CompilerReportingTextFormat()) {
+          rep.printSummary(stream);
+        } else {
+          rep.serialize(stream, poplar::SerializationFormat::JSON);
+        }
+      } catch (const std::logic_error& e) {
+        return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);
       }
     }
 

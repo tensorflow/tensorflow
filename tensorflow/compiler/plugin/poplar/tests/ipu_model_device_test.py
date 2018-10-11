@@ -227,7 +227,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
               config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
         fd = {pa: np.zeros([480]), pb: np.zeros([480])}
         sess.run(output, fd)
-    except errors.UnknownError:
+
+        self.assertTrue(False)
+    except errors.InvalidArgumentError:
       pass
 
   def testNamedOperations(self):
@@ -347,6 +349,33 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(evts[1].compile_end.compilation_report.decode('utf-8')[0], '{')
       self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0], '{')
+
+  def testAttemptToProfileWithoutOptions(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [480], name="a")
+      pb = array_ops.placeholder(np.float32, [480], name="b")
+      output = pa + pb
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    opts = config_pb2.IPUOptions()
+    dev = opts.device_config.add()
+    dev.type = config_pb2.IPUOptions.DeviceConfig.CPU
+    dev.profiling.enable_compilation_trace = True
+    dev.profiling.enable_io_trace = False
+    dev.profiling.enable_execution_trace = True
+    dev.ipu_model_config.num_ipus = 1
+
+    try:
+      with session_lib.Session(
+            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+        fd = {pa: np.zeros([480]), pb: np.zeros([480])}
+        sess.run(output, fd)
+
+        self.assertTrue(False)
+    except errors.InvalidArgumentError:
+      pass
 
 if __name__ == "__main__":
   googletest.main()
