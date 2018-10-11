@@ -103,9 +103,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         FileSystem* fs;
 
         TF_RETURN_IF_ERROR(ctx->env()->GetFileSystemForFile(
-            dataset()->patterns_[(current_pattern_index_ > 0)
-                                     ? current_pattern_index_ - 1
-                                     : 0],
+            dataset()
+                ->patterns_[std::max(size_t(0), current_pattern_index_ - 1)],
             &fs));
 
         while (!filepath_queue_.empty() ||
