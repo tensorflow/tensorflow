@@ -516,12 +516,10 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         // `FileReaderIterator` and seek to the `cur_index`.
         switch (mode_) {
           case Mode::read:
-            iterator_.reset(new FileReaderIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}));
+            iterator_.reset(new FileReaderIterator({dataset(), prefix()}));
             break;
           case Mode::write:
-            iterator_.reset(new FileWriterIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}));
+            iterator_.reset(new FileWriterIterator({dataset(), prefix()}));
         }
       }
 
@@ -868,12 +866,12 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       void InitializeIterator() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         switch (mode_) {
           case Mode::read:
-            iterator_.reset(new MemoryReaderIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}, cache_));
+            iterator_.reset(
+                new MemoryReaderIterator({dataset(), prefix()}, cache_));
             break;
           case Mode::write:
-            iterator_.reset(new MemoryWriterIterator(
-                {dataset(), strings::StrCat(prefix(), "Impl")}, cache_));
+            iterator_.reset(
+                new MemoryWriterIterator({dataset(), prefix()}, cache_));
         }
       }
 

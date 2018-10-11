@@ -206,10 +206,6 @@ class MultiDeviceIterator(object):
           i, self._multi_device_iterator_resource, self._incarnation_id,
           self._source_device_tensor, device, self._dataset.output_shapes,
           self._dataset.output_types, self._dataset.output_classes)
-      # TODO(b/116140813) : Enable dynamic optimizations.
-      options = dataset_ops.Options()
-      options.experimental_autotune = False
-      ds = ds.with_options(options)
       if prefetch_buffer_size > 0:
         ds = ds.prefetch(prefetch_buffer_size)
       with ops.device(device):
