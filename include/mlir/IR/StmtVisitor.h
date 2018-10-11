@@ -74,7 +74,7 @@ namespace mlir {
 template <typename SubClass, typename RetTy = void> class StmtVisitor {
   //===--------------------------------------------------------------------===//
   // Interface code - This is the public interface of the StmtVisitor that you
-  // use to visit statements...
+  // use to visit statements.
 
 public:
   // Function to visit a statement.

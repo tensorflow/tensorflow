@@ -22,8 +22,8 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/StmtVisitor.h"
-
+#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Statements.h"
 #include "mlir/Transforms/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -52,23 +52,16 @@ FunctionPass *mlir::createSimplifyAffineExprPass() {
 }
 
 PassResult SimplifyAffineExpr::runOnMLFunction(MLFunction *f) {
-  struct MapSimplifier : public StmtWalker<MapSimplifier> {
-    MLIRContext *context;
-    MapSimplifier(MLIRContext *context) : context(context) {}
-
-    void visitOperationStmt(OperationStmt *opStmt) {
-      for (auto attr : opStmt->getAttrs()) {
-        if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr.second)) {
-          MutableAffineMap mMap(mapAttr->getValue());
-          mMap.simplify();
-          auto map = mMap.getAffineMap();
-          opStmt->setAttr(attr.first, AffineMapAttr::get(map));
-        }
+  f->walkPostOrder([&](OperationStmt *opStmt) {
+    for (auto attr : opStmt->getAttrs()) {
+      if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr.second)) {
+        MutableAffineMap mMap(mapAttr->getValue());
+        mMap.simplify();
+        auto map = mMap.getAffineMap();
+        opStmt->setAttr(attr.first, AffineMapAttr::get(map));
       }
     }
-  };
+  });
 
-  MapSimplifier v(f->getContext());
-  v.walkPostOrder(f);
   return success();
 }

@@ -86,6 +86,14 @@ public:
   const OperationStmt *getReturnStmt() const;
   OperationStmt *getReturnStmt();
 
+  /// Walk the statements in the function in preorder, calling the callback for
+  /// each Operation statement.
+  void walk(std::function<void(OperationStmt *)> callback);
+
+  /// Walk the statements in the function in postorder, calling the callback for
+  /// each Operation statement.
+  void walkPostOrder(std::function<void(OperationStmt *)> callback);
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {
     return func->getKind() == Function::Kind::MLFunc;

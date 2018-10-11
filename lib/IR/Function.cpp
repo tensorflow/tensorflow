@@ -232,3 +232,29 @@ const OperationStmt *MLFunction::getReturnStmt() const {
 OperationStmt *MLFunction::getReturnStmt() {
   return cast<OperationStmt>(&back());
 }
+
+void MLFunction::walk(std::function<void(OperationStmt *)> callback) {
+  struct Walker : public StmtWalker<Walker> {
+    std::function<void(OperationStmt *)> const &callback;
+    Walker(std::function<void(OperationStmt *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationStmt(OperationStmt *opStmt) { callback(opStmt); }
+  };
+
+  Walker v(callback);
+  v.walk(this);
+}
+
+void MLFunction::walkPostOrder(std::function<void(OperationStmt *)> callback) {
+  struct Walker : public StmtWalker<Walker> {
+    std::function<void(OperationStmt *)> const &callback;
+    Walker(std::function<void(OperationStmt *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationStmt(OperationStmt *opStmt) { callback(opStmt); }
+  };
+
+  Walker v(callback);
+  v.walkPostOrder(this);
+}
