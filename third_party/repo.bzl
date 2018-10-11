@@ -47,7 +47,7 @@ def _use_system_lib(ctx, name):
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
-    result = repo_ctx.execute(cmd_and_args, timeout = 10)
+    result = repo_ctx.execute(cmd_and_args, timeout = 60)
     if result.return_code != 0:
         fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n" +
               "Stderr: {3}").format(
