@@ -23,6 +23,7 @@ py_library(
         "control_flow.py",
         "data_structures.py",
         "exceptions.py",
+        "logical.py",
         "py_builtins.py",
         "slices.py",
     ],
@@ -66,6 +67,16 @@ py_test(
 py_test(
     name = "exceptions_test",
     srcs = ["exceptions_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":operators",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "logical_test",
+    srcs = ["logical_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":operators",
