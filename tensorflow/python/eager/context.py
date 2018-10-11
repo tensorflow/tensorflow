@@ -457,6 +457,10 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
+    devices = self._context_devices
+    if devices is None:
+      self._initialize_handle_and_devices()
+      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -477,8 +481,7 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(
-              "/job:localhost/replica:0/task:0/device:CPU:0")
+          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
