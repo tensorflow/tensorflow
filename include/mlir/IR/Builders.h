@@ -215,9 +215,9 @@ public:
     return result;
   }
 
-  /// Create operation of specific op type at the current insertion point.  If
-  /// the result is an invalid op (the verifier hook fails), emit a the
-  /// specified error message and return null.
+  /// Creates an operation of specific op type at the current insertion point.
+  /// If the result is an invalid op (the verifier hook fails), emit an error
+  /// and return null.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> createChecked(Location *location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
@@ -407,6 +407,61 @@ public:
 private:
   StmtBlock *block = nullptr;
   StmtBlock::iterator insertPoint;
+};
+
+// Wrapper around common CFGFuncBuilder and MLFuncBuilder functionality. Use
+// this wrapper for interfaces where operations need to be created in either a
+// CFG function or ML function.
+class FuncBuilder : public Builder {
+public:
+  FuncBuilder(CFGFuncBuilder &cfgFuncBuilder)
+      : Builder(cfgFuncBuilder.getContext()), cfgFuncBuilder(&cfgFuncBuilder),
+        mlFuncBuilder(nullptr) {}
+  FuncBuilder(MLFuncBuilder &mlFuncBuilder)
+      : Builder(mlFuncBuilder.getContext()), cfgFuncBuilder(nullptr),
+        mlFuncBuilder(&mlFuncBuilder) {}
+
+  /// Creates an operation given the fields represented as an OperationState.
+  Operation *createOperation(const OperationState &state) {
+    if (cfgFuncBuilder)
+      return cfgFuncBuilder->createOperation(state);
+    return mlFuncBuilder->createOperation(state);
+  }
+
+  /// Creates operation of specific op type at the current insertion point
+  /// without verifying to see if it is valid.
+  template <typename OpTy, typename... Args>
+  OpPointer<OpTy> create(Location *location, Args... args) {
+    if (cfgFuncBuilder)
+      return cfgFuncBuilder->create<OpTy, Args...>(location, args...);
+    return mlFuncBuilder->create<OpTy, Args...>(location, args...);
+  }
+
+  /// Creates an operation of specific op type at the current insertion point.
+  /// If the result is an invalid op (the verifier hook fails), emit an error
+  /// and return null.
+  template <typename OpTy, typename... Args>
+  OpPointer<OpTy> createChecked(Location *location, Args... args) {
+    if (cfgFuncBuilder)
+      return cfgFuncBuilder->createChecked<OpTy, Args...>(location, args...);
+    return mlFuncBuilder->createChecked<OpTy, Args...>(location, args...);
+  }
+
+  /// Set the insertion point to the specified operation. This requires that the
+  /// input operation is a OperationInst when building a CFG function and a
+  /// OperationStmt when building a ML function.
+  void setInsertionPoint(Operation *op) {
+    if (cfgFuncBuilder)
+      cfgFuncBuilder->setInsertionPoint(cast<OperationInst>(op));
+    else
+      mlFuncBuilder->setInsertionPoint(cast<OperationStmt>(op));
+  }
+
+private:
+  // Wrapped builders for CFG and ML functions. Exactly one of these should be
+  // non-null.
+  CFGFuncBuilder *const cfgFuncBuilder;
+  MLFuncBuilder *const mlFuncBuilder;
 };
 
 } // namespace mlir
