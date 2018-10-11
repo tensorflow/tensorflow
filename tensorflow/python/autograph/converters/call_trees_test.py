@@ -133,6 +133,31 @@ class CallTreesTest(converter_testing.TestCase):
         result_tensor = result.test_fn(constant_op.constant(1))
         self.assertEquals(sess.run(result_tensor), 3)
 
+  def test_decorated_callee(self):
+
+    # Using this trick to prevent the Python loader from automatically expanding
+    # the decorator. This simulates the situation found when converting a
+    # function from within an actual decorator.
+
+    def wrapper_fn():
+
+      def dec(f):
+        return f
+
+      @dec
+      def called_fn(a):
+        return a
+
+      @dec
+      def test_fn(a):
+        return called_fn(a)
+
+      return test_fn
+
+    node, ctx = self.prepare(wrapper_fn, {})
+    node = node.body[2]
+    node = call_trees.transform(node, ctx)
+
 
 if __name__ == '__main__':
   test.main()
