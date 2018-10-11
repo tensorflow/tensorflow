@@ -919,6 +919,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+      return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
+                                           broadcast_dimensions);
+
     case HloOpcode::kSubtract:
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
@@ -929,6 +932,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+      if (lhs.element_type() == PRED || rhs.element_type() == PRED) {
+        return InvalidArgument(
+            "Expected element type in shape to be arithmetic type for "
+            "operation %s; got PRED.",
+            HloOpcodeString(opcode));
+      }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
