@@ -630,5 +630,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   return new_item;
 }
 
+std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
+    const string& id, const string& meta_graph_file, const ItemConfig& cfg) {
+  MetaGraphDef meta_graph;
+  if (!ReadMetaGraphDefFromFile(meta_graph_file, &meta_graph).ok()) {
+    return nullptr;
+  }
+  return GrapplerItemFromMetaGraphDef(id, meta_graph, cfg);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow
