@@ -56,8 +56,7 @@ class DecoratorsTransformer(converter.Base):
       original_dec = anno.getanno(dec_func, anno.Basic.QN)
       dec_value = anno.getanno(dec_func, 'live_val')
 
-      if dec_value in self.ctx.program.autograph_decorators:
-        # AutoGraph decorators do not need to be preserved.
+      if dec_value in self.ctx.program.options.strip_decorators:
         continue
 
       # When using foo.bar.baz, we only really need to grab foo and import

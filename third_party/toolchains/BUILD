@@ -17,7 +17,7 @@ platform(
     remote_execution_properties = """
         properties: {
             name: "container-image"
-            value:"docker://gcr.io/asci-toolchain/nosla-ubuntu16_04-tf@sha256:495a025ed5e273cfa5d53357ef93ac20500c008994e0be106c509f51555fb93c"
+            value:"docker://gcr.io/asci-toolchain/nosla-ubuntu16_04-tf@sha256:63a0e981a4e7ce5da2a851cf063e430f72947fd999d9336b7e54e2eebe8e0bf5"
         }""",
 )
 

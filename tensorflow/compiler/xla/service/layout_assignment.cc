@@ -959,9 +959,8 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
       FindOrDie(computation_layouts_, module->entry_computation())
           .result_layout();
   if (result_layout.LayoutIsSet()) {
-    TF_RET_CHECK(ShapeUtil::Equal(
-        module->entry_computation()->root_instruction()->shape(),
-        result_layout.shape()));
+    TF_RET_CHECK(
+        ShapeUtil::Equal(module->result_shape(), result_layout.shape()));
   }
   return Status::OK();
 }
@@ -1908,6 +1907,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kShiftLeft:
@@ -1946,7 +1946,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduce:
     case HloOpcode::kReshape:
     case HloOpcode::kRng:
-    case HloOpcode::kScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kAfterAll:

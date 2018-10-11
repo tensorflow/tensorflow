@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/lower_if_op.h"
+#include "tensorflow/core/common_runtime/lower_if_while.h"
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -40,7 +40,7 @@ Status Rewrite(std::unique_ptr<Graph>* graph) {
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
   opt_options.flib_def = &flib_def;
-  LowerIfOpPass pass;
+  LowerIfWhilePass pass;
   return pass.Run(opt_options);
 }
 
@@ -51,7 +51,6 @@ TEST(LowerIfOpTest, Simple) {
   FunctionDefLibrary f_lib_proto;
   *(f_lib_proto.add_function()) = test::function::XTimesTwo();
   *(f_lib_proto.add_function()) = test::function::XTimesFour();
-  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
 
   // Construct simple conditional that switches on `pred` and operates only on
   // single input `A`.
@@ -65,12 +64,12 @@ TEST(LowerIfOpTest, Simple) {
   tb.mutable_func()->set_name("XTimesTwo");
   AttrValue eb;
   eb.mutable_func()->set_name("XTimesFour");
-  TF_ASSERT_OK(NodeBuilder("if", "If", &f_lib)
+  TF_ASSERT_OK(NodeBuilder("if", "If", &root.graph()->flib_def())
                    .Input(pred.node())
                    .Input(inputs)
                    .Attr("then_branch", tb)
                    .Attr("else_branch", eb)
-                   .Attr(LowerIfOpPass::kLowerUsingSwitchMergeAttr, true)
+                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
                    .Attr("Tout", {DT_INT32})
                    .Finalize(root.graph(), &written_if));
   TF_ASSERT_OK(root.DoShapeInference(written_if));

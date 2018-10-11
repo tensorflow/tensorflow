@@ -73,8 +73,6 @@ HloComputation* HloModule::AddComputationInternal(
       config_.SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
-    input_output_alias_config_ = HloInputOutputAliasConfig(
-        entry_computation_->root_instruction()->shape());
   }
 
   if (uniquify_identifiers) {
@@ -254,9 +252,6 @@ HloModuleProto HloModule::ToProto() const {
   if (has_schedule()) {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
-
-  *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
-
   return proto;
 }
 
@@ -332,10 +327,6 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                    /*uniquify_identifiers=*/false);
   }
   TF_RET_CHECK(module->entry_computation_ != nullptr);
-
-  TF_ASSIGN_OR_RETURN(module->input_output_alias_config_,
-                      HloInputOutputAliasConfig::CreateFromProto(
-                          module.get(), proto.input_output_alias()));
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
@@ -567,8 +558,13 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
+  return Clone(config(), suffix);
+}
+
+std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
+                                            const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config_);
+  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config);
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);

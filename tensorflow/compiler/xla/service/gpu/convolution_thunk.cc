@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -56,9 +56,9 @@ Status ConvolutionThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  TF_RETURN_IF_ERROR(RunCudnnConvolution(cudnn_call_,
-                                         absl::MakeSpan(operand_se_buffers),
-                                         result_buffer, scratch, stream));
+  TF_RETURN_IF_ERROR(RunCudnnConv(cudnn_call_,
+                                  absl::MakeSpan(operand_se_buffers),
+                                  result_buffer, scratch, stream));
 
   void* ptrs[] = {result_buffer.opaque(), scratch.opaque()};
   se::DeviceMemory<void*> tuple_addr(

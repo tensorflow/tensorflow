@@ -699,7 +699,7 @@ class XlaBuilder {
   // the same channel_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
   //
-  // TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+  // TODO(b/117564385): Rename this to AllReduce when it's ready to use.
   XlaOp CrossReplicaSum(
       const XlaOp& operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
@@ -1864,7 +1864,7 @@ XlaOp CrossReplicaSum(const XlaOp& operand,
 // same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
 // applied cross modules.
 //
-// TODO(b/79737069): Rename this to AllReduce when it's ready to use.
+// TODO(b/117564385): Rename this to AllReduce when it's ready to use.
 XlaOp CrossReplicaSum(
     const XlaOp& operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups = {},
@@ -2002,7 +2002,7 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must tensors with the same dimensions. The
+// * The keys and the values must be tensors with the same dimensions. The
 // element types of the tensors may be different.
 // * The result is a tuple that consists of a sorted tensor of keys (along the
 // provided dimension, as above) as the first element, and a tensor with their

@@ -600,11 +600,11 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
 
 HloSortInstruction::HloSortInstruction(const Shape& shape, int64 dimension,
                                        HloInstruction* keys,
-                                       HloInstruction* values)
+                                       absl::Span<HloInstruction* const> values)
     : HloInstruction(HloOpcode::kSort, shape), dimensions_({dimension}) {
   AppendOperand(keys);
-  if (values) {
-    AppendOperand(values);
+  for (auto* value : values) {
+    AppendOperand(value);
   }
 }
 
@@ -633,9 +633,8 @@ std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   HloInstruction* keys = new_operands[0];
-  HloInstruction* values = new_operands.size() == 2 ? new_operands[1] : nullptr;
   return absl::make_unique<HloSortInstruction>(shape, dimensions(0), keys,
-                                               values);
+                                               new_operands.subspan(1));
 }
 
 HloTransposeInstruction::HloTransposeInstruction(

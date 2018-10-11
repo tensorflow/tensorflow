@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import types as python_types
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -270,6 +272,17 @@ class AdagradOptimizerTest(test.TestCase):
       self.assertFalse(v.shape.is_fully_defined())
       # Creating optimizer should cause no exception.
       adagrad.Adagrad(3.0, initial_accumulator_value=0.1)
+
+  def testConfig(self):
+    opt = adagrad.Adagrad(
+        learning_rate=lambda: ops.convert_to_tensor(1.0),
+        initial_accumulator_value=2.0)
+    config = opt.get_config()
+    opt2 = adagrad.Adagrad.from_config(config)
+    self.assertIsInstance(opt2._hyper["learning_rate"][1],
+                          python_types.LambdaType)
+    self.assertEqual(opt._initial_accumulator_value,
+                     opt2._initial_accumulator_value)
 
 
 if __name__ == "__main__":

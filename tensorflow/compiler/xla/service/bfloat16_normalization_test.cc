@@ -284,7 +284,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
       HloInstruction::CreateParameter(1, s32_shape, "value"));
 
   HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}), 0, key, value));
+      ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}), 0, key, {value}));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 
@@ -296,6 +296,30 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
   EXPECT_EQ(gte->shape().element_type(), BF16);
   EXPECT_EQ(sort->operand(0)->shape().element_type(), F32);
   EXPECT_EQ(ShapeUtil::GetSubshape(sort->shape(), {0}).element_type(), F32);
+}
+
+TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {1024});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {1024});
+
+  HloInstruction* key = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "key"));
+  HloInstruction* value = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape, "value"));
+
+  HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), 0, key, {value}));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(Normalize(module));
+
+  EXPECT_EQ(sort->operand(0)->shape().element_type(), F32);
+  EXPECT_EQ(ShapeUtil::GetSubshape(sort->shape(), {0}).element_type(), F32);
+  EXPECT_NE(computation->root_instruction(), sort);
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kTuple);
 }
 
 // Tests that the normalization should not cause unsupported mixed precision due

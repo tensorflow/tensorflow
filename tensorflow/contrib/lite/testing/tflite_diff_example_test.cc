@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/lite/testing/init_tensorflow.h"
 #include "tensorflow/contrib/lite/testing/tflite_diff_flags.h"
 #include "tensorflow/contrib/lite/testing/tflite_diff_util.h"
 
 int main(int argc, char** argv) {
+  ::tflite::InitTensorFlow();  // For Flex support.
+
   ::tflite::testing::DiffOptions options =
       ::tflite::testing::ParseTfliteDiffFlags(&argc, argv);
   if (options.tensorflow_model.empty()) return 1;

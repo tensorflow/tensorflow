@@ -26,6 +26,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import template
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
@@ -267,6 +268,27 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       graph_def_after = str(g.as_graph_def())
       self.assertEqual(graph_def_before, graph_def_after)
 
+  def testIdentityNode(self):
+    self._RunTestOverAllRewrites(self._TestIdentityNode)
+
+  def _TestIdentityNode(self, rewrite_fn):
+    graph = ops.Graph()
+    with graph.as_default():
+      self._LayerWithIdentity()
+
+    rewrite_fn(graph)
+    op_names = [op.name for op in graph.get_operations()]
+    self.assertTrue(any('test/Conv/weights_quant' in name for name in op_names))
+    self.assertTrue(any('test/Conv/act_quant' in name for name in op_names))
+    bn_out_identity = graph.get_operation_by_name('test/bn_out')
+    self._AssertInputOpsAre(bn_out_identity, [
+        'test/Conv/add_fold',
+    ])
+
+    conv_out_identity = graph.get_operation_by_name('test/conv_out')
+    self._AssertOutputGoesToOps(conv_out_identity, graph,
+                                ['test/BatchNorm/FusedBatchNorm'])
+
   def testRewriteWithScope(self):
     self._RunTestOverExperimentalRewritesWithScope(
         self._TestRewriteWithScope, 'scope1')
@@ -306,6 +328,42 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     # No ops should be inserted or removed.
     self.assertEqual(op_names_before_rewrite, op_names_after_rewrite)
 
+  def testWithSharedWeights(self):
+
+    self._RunTestOverAllRewrites(self._TestWithSharedWeights)
+    self._RunTestOverTrainingRewrites(self._TestRewriteWithSharedWeights)
+
+  def _TestRewriteWithSharedWeights(self, rewrite_fn, quant_delay=1):
+    self._TestWithSharedWeights(rewrite_fn, quant_delay)
+
+  def _TestWithSharedWeights(self, rewrite_fn, quant_delay=None):
+    with ops.Graph().as_default() as g:
+      conv = template.make_template('shared_weights_conv', self._ConvLayer)
+      conv()
+      conv()
+      if quant_delay is None:
+        rewrite_fn()
+      else:
+        rewrite_fn(quant_delay=quant_delay)
+
+    conv_ops = [op for op in g.get_operations() if op.type == 'Conv2D']
+    weights_quants = [
+        op for op in g.get_operations()
+        if 'weights_quant' in op.name and op.type == 'FakeQuantWithMinMaxVars'
+    ]
+    # Check that the shared weights variable is not quantized multiple times
+    self.assertTrue(len(weights_quants) == 1)
+    weights_quant_tensor = weights_quants[0].outputs[0]
+    if quant_delay:
+      delayed_weights_quants = [
+          op for op in g.get_operations()
+          if 'weights_quant' in op.name and op.type == 'Merge'
+      ]
+      self.assertTrue(len(delayed_weights_quants) == 1)
+      weights_quant_tensor = delayed_weights_quants[0].outputs[0]
+    # Check that the Conv2D operations get the quantized weights
+    self.assertTrue(all(weights_quant_tensor in op.inputs for op in conv_ops))
+
   def _ConvLayer(
       self, input_tensor=None, scope='test', pre_activation_bypass=False,
       post_activation_bypass=False):
@@ -327,6 +385,57 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       if post_activation_bypass:
         output += input_tensor
     return output
+
+  def _LayerWithIdentity(self,
+                         input_tensor=None,
+                         scope='test',
+                         post_activation_bypass=False):
+    """Add a basic conv, identity, batch norm with skip to the default graph."""
+    batch_size, height, width, depth = 5, 128, 128, 3
+    if input_tensor is None:
+      input_tensor = array_ops.zeros((batch_size, height, width, depth))
+    weight_init = init_ops.truncated_normal_initializer
+    with ops.name_scope(scope):
+      output = layers.conv2d(
+          input_tensor,
+          depth, [5, 5],
+          padding='SAME',
+          weights_initializer=weight_init(0.09),
+          activation_fn=None,
+          normalizer_fn=None,
+          biases_initializer=None)
+      output = array_ops.identity(output, name='conv_out')
+
+      output = layers.batch_norm(
+          output, center=True, scale=True, decay=1.0 - 0.003, fused=True)
+
+      output = array_ops.identity(output, name='bn_out')
+      if post_activation_bypass:
+        output += input_tensor
+    return output
+
+  def _AssertInputOpsAre(self, op, in_op_names):
+    """Asserts that all inputs to op come from in_op_names (disregarding order).
+
+    Args:
+      op: Operation to check inputs for.
+      in_op_names: List of strings, operations where all op's inputs should come
+        from.
+    """
+    expected_inputs = [in_op_name + ':0' for in_op_name in in_op_names]
+    self.assertItemsEqual([t.name for t in op.inputs], expected_inputs)
+
+  def _AssertOutputGoesToOps(self, op, graph, out_op_names):
+    """Asserts that outputs from op go to out_op_names (and perhaps others).
+
+    Args:
+      op: Operation to check outputs for.
+      graph: Graph where output operations are located.
+      out_op_names: List of strings, operations where op's outputs should go.
+    """
+    for out_op_name in out_op_names:
+      out_op = graph.get_operation_by_name(out_op_name)
+      self.assertIn(op.outputs[0].name, [str(t.name) for t in out_op.inputs])
 
 
 if __name__ == '__main__':

@@ -117,3 +117,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
         grad,
         indices,
         use_locking=self._use_locking)
+
+  def get_config(self):
+    config = super(Adagrad, self).get_config()
+    config.update({
+        "learning_rate": self._serialize_hyperparameter("learning_rate"),
+        "initial_accumulator_value": self._initial_accumulator_value
+    })
+    return config

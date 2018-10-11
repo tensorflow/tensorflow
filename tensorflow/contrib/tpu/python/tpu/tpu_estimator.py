@@ -480,6 +480,12 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._outfeed_controller = _OpQueueContext(
         name='OutfeedController', target=self._run_outfeed, args=(session,))
 
+    # Enable the worker watchdog to terminate workers on coordinator exit.
+    watchdog_timeout = int(os.environ.get('TF_TPU_WATCHDOG_TIMEOUT', '0'))
+    if watchdog_timeout > 0:
+      session_support.start_worker_watchdog(session,
+                                            shutdown_timeout=watchdog_timeout)
+
   def before_run(self, run_context):
     self._feed_error = None
 
@@ -1794,19 +1800,18 @@ class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
         summary_writer=summary_writer)
 
   def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
-    global_steps_per_sec = elapsed_steps / elapsed_time
-    examples_per_sec = self._batch_size * global_steps_per_sec
+    global_step_per_sec = elapsed_steps / elapsed_time
+    examples_per_sec = self._batch_size * global_step_per_sec
     if self._summary_writer is not None:
       global_step_summary = Summary(value=[
-          Summary.Value(tag='global_steps/sec',
-                        simple_value=global_steps_per_sec)
+          Summary.Value(tag='global_step/sec', simple_value=global_step_per_sec)
       ])
       example_summary = Summary(value=[
           Summary.Value(tag='examples/sec', simple_value=examples_per_sec)
       ])
       self._summary_writer.add_summary(global_step_summary, global_step)
       self._summary_writer.add_summary(example_summary, global_step)
-    logging.info('global_steps/sec: %g', global_steps_per_sec)
+    logging.info('global_step/sec: %g', global_step_per_sec)
     logging.info('examples/sec: %g', examples_per_sec)
 
 

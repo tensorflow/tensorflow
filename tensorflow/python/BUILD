@@ -1154,6 +1154,7 @@ py_library(
         ":tensor_shape",
         ":util",
         ":variable_scope",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -2178,7 +2179,6 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
         "//third_party/py/numpy",

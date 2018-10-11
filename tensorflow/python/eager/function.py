@@ -51,7 +51,6 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -202,6 +201,7 @@ class FuncGraph(ops.Graph):
     # from the default graph even in eager mode. Maybe it should be part of the
     # eager context?
     self._distribution_strategy_stack = graph._distribution_strategy_stack
+    self._variable_creator_stack = graph._variable_creator_stack
     # Inherit the graph key, since this is used for matching variables in
     # optimizers.
     self._graph_key = graph._graph_key
@@ -501,7 +501,8 @@ class _EagerDefinedFunction(object):
           args=args,
           f=self,
           tout=self._output_types,
-          executing_eagerly=executing_eagerly)
+          executing_eagerly=executing_eagerly,
+          config=ctx.rewriter_config_string)  # pylint: disable=protected-access
 
     if executing_eagerly:
       return outputs
@@ -536,7 +537,7 @@ class Function(object):
   is differentiable under `tf.GradientTape` objects.
   """
 
-  def __init__(self, func_graph, attrs=None):
+  def __init__(self, func_graph, attrs=None, signature=None):
     """Initialize a Function.
 
     Args:
@@ -562,17 +563,7 @@ class Function(object):
         _inference_name(self._func_graph.name), self._func_graph,
         self._func_graph.inputs, self._func_graph.outputs, self._attrs)
     self._backward_graph_function = None
-
-    # Map holding distributed variables, keyed by resource handle tensors.
-    self._distributed_variables = {}
-    strategy = distribution_strategy_context.get_distribution_strategy()
-    for variable in self._func_graph.variables:
-      # If variable is not distributed, unwrap returns [variable].
-      component_variables = strategy.unwrap(variable)
-      # Only update the dictionary when the variable is actually distributed.
-      if (len(component_variables) > 1 or component_variables[0] != variable):
-        for component_variable in component_variables:
-          self._distributed_variables[component_variable.handle] = variable
+    self._signature = signature
 
   def __call__(self, *args):
     """Executes the wrapped function.
@@ -602,7 +593,6 @@ class Function(object):
       if v.trainable:
         tape.variable_accessed(v)
 
-    captures = self._resolve_captured_inputs()
     tensor_inputs = []
     for i, arg in enumerate(nest.flatten(args)):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
@@ -611,13 +601,18 @@ class Function(object):
         tensor_inputs.append(arg.handle)
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
+      elif (self._signature is not None and
+            isinstance(self._signature[i], tensor_spec.TensorSpec)):
+        tensor_inputs.append(
+            ops.convert_to_tensor(arg, self._signature[i].dtype))
       else:
         raise ValueError("All inputs to `Function`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
                          "Tensor." % (self._func_graph.name, i, str(arg)))
-    args = tensor_inputs + captures
+    args = tensor_inputs + self._captured_inputs
 
-    if tape.should_record(tensor_inputs) or tape.should_record(captures):
+    if (tape.should_record(tensor_inputs) or
+        tape.should_record(self._captured_inputs)):
       return self._backprop_call(args)
 
     # Only need to override the gradient in graph mode and when we have outputs.
@@ -804,32 +799,6 @@ class Function(object):
                           args, backward_function)
     return self._build_call_outputs(real_outputs)
 
-  def _resolve_captured_inputs(self):
-    """Resolve captured distributed variables to their current values.
-
-    Some inputs can be distributed variables. Such variables yield a different
-    component (i.e. actual tf.Variable) variables depending on the context of
-    execution.
-
-    Returns:
-      a list of resolved captured input tensors.
-    """
-    if self._distributed_variables:
-      # Loop over each captured input and check if it corresponds to something
-      # distributed. If so, get its _distributed_container and fetch the
-      # component appropriate for the current execution context.
-      resolved_captured_inputs = self._captured_inputs[:]
-      for i, captured_input in enumerate(self._captured_inputs):
-        distributed_var = self._distributed_variables.get(captured_input, None)
-        if distributed_var is not None:
-          # distributed variables override __getattr__ and substitute the
-          # right component variable. In here, `distributed_var.handle`
-          # actually does the equivalent of
-          # distributed_var.get_current_component_var().handle.
-          resolved_captured_inputs[i] = distributed_var.handle
-      return resolved_captured_inputs
-    return self._captured_inputs
-
   def _build_call_outputs(self, result):
     """Maps the fdef output list to actual output structure.
 
@@ -877,13 +846,30 @@ def _get_defun_inputs_from_args(args):
   return nest.pack_sequence_as(args, function_inputs)
 
 
+def check_mutation(n1, n2):
+  """Check if two list of arguments are exactly the same."""
+  errmsg = ("Function to be traced should not modify structure of input "
+            "arguments. Check if your function has list and dictionary "
+            "operations that alter input arguments, "
+            "such as `list.pop`, `list.append`")
+  try:
+    nest.assert_same_structure(n1, n2)
+  except ValueError:
+    raise ValueError(errmsg)
+
+  for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
+    if arg1 is not arg2:
+      raise ValueError(errmsg)
+
+
 def func_graph_from_py_func(name,
                             python_func,
                             args,
                             kwargs,
                             signature=None,
                             func_graph=None,
-                            experimental_autograph=False):
+                            experimental_autograph=False,
+                            add_control_dependencies=True):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -902,6 +888,9 @@ def func_graph_from_py_func(name,
       this graph else a new one is built and returned.
     experimental_autograph: whether to use autograph to compile `python_func`.
       See https://www.tensorflow.org/guide/autograph for more information.
+    add_control_dependencies: If True, automatically adds control dependencies
+      to ensure program order matches execution order and stateful ops always
+      execute.
 
   Returns:
     A FuncGraph.
@@ -913,7 +902,11 @@ def func_graph_from_py_func(name,
   if func_graph is None:
     func_graph = FuncGraph(name)
   assert isinstance(func_graph, FuncGraph)
-  with func_graph.as_default(), AutomaticControlDependencies() as a:
+  if add_control_dependencies:
+    control_manager = AutomaticControlDependencies
+  else:
+    control_manager = ops.NullContextmanager
+  with func_graph.as_default(), control_manager() as a:
     variable_scope.get_variable_scope().set_use_resource(True)
 
     if signature is not None:
@@ -942,7 +935,8 @@ def func_graph_from_py_func(name,
             "must return zero or more Tensors; in compilation of %s, found "
             "return value of type %s, which is not a Tensor." %
             (str(python_func), type(x)))
-      x = a.mark_as_return(x)
+      if add_control_dependencies:
+        x = a.mark_as_return(x)
       return x
 
     this_tape = tape.push_new_tape()
@@ -951,30 +945,12 @@ def func_graph_from_py_func(name,
         func_outputs = autograph.converted_call(
             python_func,
             autograph.ConversionOptions(
-                verbose=True,
-                recursive=True,
-                force_conversion=False,
-                strip_decorators=(defun,),
-                arg_types={}), *func_args, **func_kwargs)
+                verbose=True, recursive=True, strip_decorators=(defun,)),
+            *func_args, **func_kwargs)
       else:
         func_outputs = python_func(*func_args, **func_kwargs)
       # invariant: `func_outputs` contains only Tensors and `None`s.
       func_outputs = nest.map_structure(convert, func_outputs)
-
-      def check_mutation(n1, n2):
-        """Check if two list of arguments are exactly the same."""
-        errmsg = ("Function to be traced should not modify structure of input "
-                  "arguments. Check if your function has list and dictionary "
-                  "operations that alter input arguments, "
-                  "such as `list.pop`, `list.append`")
-        try:
-          nest.assert_same_structure(n1, n2)
-        except ValueError:
-          raise ValueError(errmsg)
-
-        for arg1, arg2 in zip(nest.flatten(n1), nest.flatten(n2)):
-          if arg1 is not arg2:
-            raise ValueError(errmsg)
 
       check_mutation(func_args_before, func_args)
       check_mutation(func_kwargs_before, func_kwargs)
@@ -1010,14 +986,6 @@ def func_graph_from_py_func(name,
         for x in _flatten(func_graph.structured_outputs)
         if x is not None)
 
-    # Some captured variables might be components of DistributedValues.
-    # Instead of storing non-distributed component variables, we
-    # store their distributed containers so we can retrieve the correct
-    # component variables at call-time.
-    strategy = distribution_strategy_context.get_distribution_strategy()
-    for i, variable in enumerate(variables):
-      # If variable is not distributed value_container returns itself.
-      variables[i] = strategy.value_container(variable)
     func_graph.variables = variables
 
   # Register any other functions defined in the graph.

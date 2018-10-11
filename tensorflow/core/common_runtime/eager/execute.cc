@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
@@ -580,6 +581,22 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 #endif
 }
 
+// These ops are not pinnable since they generate data. It can be slower to
+// generate and then copy the data instead of just generating the data on the
+// device directly.
+bool IsPinnableOp(const string& op_type) {
+  static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
+      "RandomUniform",
+      "RandomUniformInt",
+      "RandomNormal",
+      "StatelessRandomUniform",
+      "StatelessRandomUniformInt",
+      "StatelessRandomNormal",
+  });
+
+  return unpinnable_ops->find(op_type) == unpinnable_ops->end();
+}
+
 // The Op device may be updated if:
 // - A resource touching input is specified: all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been
@@ -591,7 +608,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 Status MaybeUpdateOpDevice(EagerOperation* op) {
   EagerContext* ctx = op->EagerContext();
   bool device_set_for_resource_variable = false;
-  bool all_inputs_eligible_for_cpu_pinning = ctx->PinSmallOpsToCPU();
+  bool all_inputs_eligible_for_cpu_pinning =
+      ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
 
   for (int i = 0; i < op->Inputs().size(); ++i) {
     Device* input_op_device = nullptr;

@@ -25,6 +25,7 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
@@ -84,7 +85,7 @@ class _EagerTensorCache(object):
 class _EagerContext(threading.local):
   """Thread local eager context."""
 
-  def __init__(self):
+  def __init__(self, config=None):
     super(_EagerContext, self).__init__()
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
@@ -97,6 +98,12 @@ class _EagerContext(threading.local):
     self.ones_rank_cache = _EagerTensorCache()
     self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
+    self.rewriter_config = None
+    if config is not None and config.HasField(
+        "graph_options") and config.graph_options.HasField("rewrite_options"):
+      self.rewriter_config = (
+          config.graph_options.rewrite_options.SerializeToString())
+
 
 
 ContextSwitch = collections.namedtuple(
@@ -191,7 +198,7 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
-    self._eager_context = _EagerContext()
+    self._eager_context = _EagerContext(config)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
@@ -360,6 +367,36 @@ class Context(object):
       ctx.mode = old_mode
       if mode == EAGER_MODE:
         self.context_switches.pop()
+
+  @tf_contextlib.contextmanager
+  def rewriter_config(self, rewriter_config_=None):
+    """A context manager to allow setting the grappler rewrite options.
+
+    Args:
+      rewriter_config_: A tensorflow.RewriterConfig proto object.
+
+    Yields:
+      Nothing.
+
+    Raises:
+      ValueError: if rewriter_config is not a tensorflow.RewriterConfig proto.
+    """
+    if rewriter_config_ is None or not isinstance(
+        rewriter_config_, rewriter_config_pb2.RewriterConfig):
+      raise ValueError("Must pass a rewriter_config proto")
+
+    ctx = self._eager_context
+    old_rewriter_config = ctx.rewriter_config
+    ctx.rewriter_config = rewriter_config_.SerializeToString()
+    try:
+      yield
+    finally:
+      ctx.rewriter_config = old_rewriter_config
+
+  @property
+  def rewriter_config_string(self):
+    """Returns the serialized rewriter_config for the current thread."""
+    return self._eager_context.rewriter_config
 
   def executing_eagerly(self):
     """Returns True if current thread has eager executing enabled."""
@@ -781,6 +818,11 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+def rewriter_config(rewriter_config_):
+  """Context manager for setting the grappler rewrite config."""
+  return context().rewriter_config(rewriter_config_)
 
 
 def set_server_def(server_def):

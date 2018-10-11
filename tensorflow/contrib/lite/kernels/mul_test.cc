@@ -107,7 +107,7 @@ TEST(FloatMulOpTest, ActivationRELU_N1_TO_1) {
 }
 
 TEST(FloatMulOpTest, VariousInputShapes) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
@@ -124,7 +124,7 @@ TEST(FloatMulOpTest, VariousInputShapes) {
 }
 
 TEST(FloatMulOpTest, WithBroadcast) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatMulOpModel m({TensorType_FLOAT32, test_shapes[i]},
@@ -161,7 +161,7 @@ TEST(IntegerMulOpTest, ActivationRELU_N1_TO_1) {
 }
 
 TEST(IntegerMulOpTest, VariousInputShapes) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
@@ -176,7 +176,7 @@ TEST(IntegerMulOpTest, VariousInputShapes) {
 }
 
 TEST(IntegerMulOpTest, WithBroadcast) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
@@ -245,7 +245,7 @@ float GetTolerance(int min, int max) {
 
 TEST(QuantizedMulOpTest, WithBroadcast) {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedMulOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},

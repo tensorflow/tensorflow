@@ -173,6 +173,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
       Interpreter* interpreter);
+  TfLiteStatus ApplyDelegates(Interpreter* interpreter);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

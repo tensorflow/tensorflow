@@ -695,7 +695,7 @@ class RNNCellTest(test.TestCase):
       return
 
     gpu_dev = test.gpu_device_name()
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 1, 3])

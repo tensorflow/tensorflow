@@ -317,16 +317,10 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
-  def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
-                          input_dimension, label_dimension, batch_size,
-                          fc_impl):
-    linear_feature_columns = [
-        fc_impl.numeric_column('x', shape=(input_dimension,))
-    ]
-    dnn_feature_columns = [
-        fc_impl.numeric_column('x', shape=(input_dimension,))
-    ]
-    feature_columns = linear_feature_columns + dnn_feature_columns
+  def _test_complete_flow_helper(
+      self, linear_feature_columns, dnn_feature_columns, feature_spec,
+      train_input_fn, eval_input_fn, predict_input_fn, input_dimension,
+      label_dimension, batch_size):
     est = dnn_linear_combined.DNNLinearCombinedRegressor(
         linear_feature_columns=linear_feature_columns,
         dnn_hidden_units=(2, 2),
@@ -351,14 +345,63 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
     self.assertAllEqual((batch_size, label_dimension), predictions.shape)
 
     # EXPORT
-    feature_spec = fc_impl.make_parse_example_spec(feature_columns)
     serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
         feature_spec)
     export_dir = est.export_savedmodel(tempfile.mkdtemp(),
                                        serving_input_receiver_fn)
     self.assertTrue(gfile.Exists(export_dir))
 
-  def test_numpy_input_fn(self, fc_impl):
+  def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
+                          input_dimension, label_dimension, batch_size,
+                          fc_impl):
+    linear_feature_columns = [
+        fc_impl.numeric_column('x', shape=(input_dimension,))
+    ]
+    dnn_feature_columns = [
+        fc_impl.numeric_column('x', shape=(input_dimension,))
+    ]
+    feature_columns = linear_feature_columns + dnn_feature_columns
+    feature_spec = fc_impl.make_parse_example_spec(feature_columns)
+    self._test_complete_flow_helper(linear_feature_columns, dnn_feature_columns,
+                                    feature_spec, train_input_fn, eval_input_fn,
+                                    predict_input_fn, input_dimension,
+                                    label_dimension, batch_size)
+
+  def _test_complete_flow_mix1(self, train_input_fn, eval_input_fn,
+                               predict_input_fn, input_dimension,
+                               label_dimension, batch_size, fc_impl):
+    del fc_impl
+    linear_feature_columns = [
+        feature_column.numeric_column('x', shape=(input_dimension,))
+    ]
+    dnn_feature_columns = [
+        feature_column_v2.numeric_column('x', shape=(input_dimension,))
+    ]
+    feature_columns = linear_feature_columns + dnn_feature_columns
+    feature_spec = feature_column.make_parse_example_spec(feature_columns)
+    self._test_complete_flow_helper(linear_feature_columns, dnn_feature_columns,
+                                    feature_spec, train_input_fn, eval_input_fn,
+                                    predict_input_fn, input_dimension,
+                                    label_dimension, batch_size)
+
+  def _test_complete_flow_mix2(self, train_input_fn, eval_input_fn,
+                               predict_input_fn, input_dimension,
+                               label_dimension, batch_size, fc_impl):
+    del fc_impl
+    linear_feature_columns = [
+        feature_column_v2.numeric_column('x', shape=(input_dimension,))
+    ]
+    dnn_feature_columns = [
+        feature_column.numeric_column('x', shape=(input_dimension,))
+    ]
+    feature_columns = linear_feature_columns + dnn_feature_columns
+    feature_spec = feature_column.make_parse_example_spec(feature_columns)
+    self._test_complete_flow_helper(linear_feature_columns, dnn_feature_columns,
+                                    feature_spec, train_input_fn, eval_input_fn,
+                                    predict_input_fn, input_dimension,
+                                    label_dimension, batch_size)
+
+  def _test_numpy_input_fn_helper(self, fc_impl, fn_to_run):
     """Tests complete flow with numpy_input_fn."""
     label_dimension = 2
     batch_size = 10
@@ -381,7 +424,7 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         batch_size=batch_size,
         shuffle=False)
 
-    self._test_complete_flow(
+    fn_to_run(
         train_input_fn=train_input_fn,
         eval_input_fn=eval_input_fn,
         predict_input_fn=predict_input_fn,
@@ -390,7 +433,16 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         batch_size=batch_size,
         fc_impl=fc_impl)
 
-  def test_pandas_input_fn(self, fc_impl):
+  def test_numpy_input_fn_basic(self, fc_impl):
+    self._test_numpy_input_fn_helper(fc_impl, self._test_complete_flow)
+
+  def test_numpy_input_fn_mix1(self, fc_impl):
+    self._test_numpy_input_fn_helper(fc_impl, self._test_complete_flow_mix1)
+
+  def test_numpy_input_fn_mix2(self, fc_impl):
+    self._test_numpy_input_fn_helper(fc_impl, self._test_complete_flow_mix2)
+
+  def _test_pandas_input_fn_helper(self, fc_impl, fn_to_run):
     """Tests complete flow with pandas_input_fn."""
     if not HAS_PANDAS:
       return
@@ -415,7 +467,7 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         batch_size=batch_size,
         shuffle=False)
 
-    self._test_complete_flow(
+    fn_to_run(
         train_input_fn=train_input_fn,
         eval_input_fn=eval_input_fn,
         predict_input_fn=predict_input_fn,
@@ -424,7 +476,16 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         batch_size=batch_size,
         fc_impl=fc_impl)
 
-  def test_input_fn_from_parse_example(self, fc_impl):
+  def test_pandas_input_fn_basic(self, fc_impl):
+    self._test_pandas_input_fn_helper(fc_impl, self._test_complete_flow)
+
+  def test_pandas_input_fn_mix1(self, fc_impl):
+    self._test_pandas_input_fn_helper(fc_impl, self._test_complete_flow_mix1)
+
+  def test_pandas_input_fn_mix2(self, fc_impl):
+    self._test_pandas_input_fn_helper(fc_impl, self._test_complete_flow_mix2)
+
+  def _test_input_fn_from_parse_example_helper(self, fc_impl, fn_to_run):
     """Tests complete flow with input_fn constructed from parse_example."""
     label_dimension = 2
     batch_size = 10
@@ -466,7 +527,7 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
       features.pop('y')
       return features, None
 
-    self._test_complete_flow(
+    fn_to_run(
         train_input_fn=_train_input_fn,
         eval_input_fn=_eval_input_fn,
         predict_input_fn=_predict_input_fn,
@@ -474,6 +535,18 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         label_dimension=label_dimension,
         batch_size=batch_size,
         fc_impl=fc_impl)
+
+  def test_input_fn_from_parse_example_basic(self, fc_impl):
+    self._test_input_fn_from_parse_example_helper(fc_impl,
+                                                  self._test_complete_flow)
+
+  def test_input_fn_from_parse_example_mix1(self, fc_impl):
+    self._test_input_fn_from_parse_example_helper(fc_impl,
+                                                  self._test_complete_flow_mix1)
+
+  def test_input_fn_from_parse_example_mix2(self, fc_impl):
+    self._test_input_fn_from_parse_example_helper(fc_impl,
+                                                  self._test_complete_flow_mix2)
 
 
 # A function to mimic dnn-classifier init reuse same tests.
