@@ -155,17 +155,21 @@ class EyeTest(parameterized.TestCase, test.TestCase):
             num_rows=2, num_columns=3, batch_shape=batch_shape).shape)
 
   @parameterized.named_parameters(
-      ("DynamicRow", array_ops.placeholder_with_default(2, shape=None), None),
+      ("DynamicRow",
+       lambda: array_ops.placeholder_with_default(2, shape=None),
+       lambda: None),
       ("DynamicRowStaticColumn",
-       array_ops.placeholder_with_default(2, shape=None),
-       3),
+       lambda: array_ops.placeholder_with_default(2, shape=None),
+       lambda: 3),
       ("StaticRowDynamicColumn",
-       2,
-       array_ops.placeholder_with_default(3, shape=None)),
+       lambda: 2,
+       lambda: array_ops.placeholder_with_default(3, shape=None)),
       ("DynamicRowDynamicColumn",
-       array_ops.placeholder_with_default(2, shape=None),
-       array_ops.placeholder_with_default(3, shape=None)))
-  def testShapeInferenceStaticBatchWith(self, num_rows, num_columns):
+       lambda: array_ops.placeholder_with_default(2, shape=None),
+       lambda: array_ops.placeholder_with_default(3, shape=None)))
+  def testShapeInferenceStaticBatchWith(self, num_rows_fn, num_columns_fn):
+    num_rows = num_rows_fn()
+    num_columns = num_columns_fn()
     batch_shape = (2, 3)
     identity_matrix = linalg_ops.eye(
         num_rows=num_rows,
