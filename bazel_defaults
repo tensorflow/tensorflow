@@ -66,23 +66,24 @@ build:gdr --define=with_gdr_support=true
 build:ngraph --define=with_ngraph_support=true
 build:verbs --define=with_verbs_support=true
 
-build --define=use_fast_cpp_protos=true
-build --define=allow_oversize_protos=true
-build --define=grpc_no_ares=true
+# Don't define defaults behind users back!
+#build --define=use_fast_cpp_protos=true
+#build --define=allow_oversize_protos=true
+#build --define=grpc_no_ares=true
 
-build --spawn_strategy=standalone
-build --genrule_strategy=standalone
-build -c opt
+#build --spawn_strategy=standalone
+#build --genrule_strategy=standalone
+#build -c opt
+# Default paths for TF_SYSTEM_LIBS
+#build --define=PREFIX=/usr
+#build --define=LIBDIR=$(PREFIX)/lib
+#build --define=INCLUDEDIR=$(PREFIX)/include
 
 # Other build flags.
-build --define=grpc_no_ares=true
+#build --define=grpc_no_ares=true
 
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 
-# Default paths for TF_SYSTEM_LIBS
-build --define=PREFIX=/usr
-build --define=LIBDIR=$(PREFIX)/lib
-build --define=INCLUDEDIR=$(PREFIX)/include
 
 # Do not commit the tf_configure.bazelrc line
