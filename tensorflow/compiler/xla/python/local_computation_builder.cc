@@ -572,13 +572,13 @@ StatusOr<bool> LocalComputationBuilder::IsConstant(const LocalOp& operand) {
 }
 
 LocalOp LocalComputationBuilder::Sort(const LocalOp& operand, int64 dimension) {
-  return xla::Sort(operand.op(), absl::nullopt, dimension);
+  return xla::Sort(operand.op(), {}, dimension);
 }
 
 LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
                                             const LocalOp& values,
                                             int64 dimension) {
-  return xla::Sort(keys.op(), values.op(), dimension);
+  return xla::Sort(keys.op(), {values.op()}, dimension);
 }
 
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(
