@@ -22,7 +22,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class CudnnFusedConvolutionRewriterTest : public HloTestBase {
+class CudnnFusedConvRewriterTest : public HloTestBase {
  protected:
   string GetOptimizedHlo(absl::string_view hlo_string) {
     return backend()
@@ -66,7 +66,7 @@ class CudnnFusedConvolutionRewriterTest : public HloTestBase {
   }
 };
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestConvOnly) {
+TEST_F(CudnnFusedConvRewriterTest, TestConvOnly) {
   // max(0, conv(x, w));
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -83,7 +83,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestConvOnly) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestBias) {
+TEST_F(CudnnFusedConvRewriterTest, TestBias) {
   // max(0, conv(x, w) + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -103,7 +103,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestBias) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestSideInputOnly) {
+TEST_F(CudnnFusedConvRewriterTest, TestSideInputOnly) {
   // max(0, conv(x, w) + side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -122,7 +122,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestSideInputOnly) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestBiasAndSideInput) {
+TEST_F(CudnnFusedConvRewriterTest, TestBiasAndSideInput) {
   // max(0, conv(x, w) + side_input + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -144,7 +144,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestBiasAndSideInput) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestScaledConv) {
+TEST_F(CudnnFusedConvRewriterTest, TestScaledConv) {
   // max(0, 0.999994934 * conv(x, w));
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -164,7 +164,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestScaledConv) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestScaledConvAndSideInput) {
+TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndSideInput) {
   // max(0, conv(x, w) + 0.899994934 * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -186,7 +186,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestScaledConvAndSideInput) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestScaledConvAndScaledSideInput) {
+TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInput) {
   // max(0, 0.999994934 * conv(x, w) + 0.899994934 * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -211,8 +211,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestScaledConvAndScaledSideInput) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest,
-       TestScaledConvAndScaledSideInputWithBias) {
+TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInputWithBias) {
   // max(0, 0.999994934 * conv(x, w) + 0.899994934 * side_input + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -240,7 +239,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest,
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestMatchMaxZeroOnly) {
+TEST_F(CudnnFusedConvRewriterTest, TestMatchMaxZeroOnly) {
   // max(0.1, conv(x, w)) shouldn't match.
   TestNotMatchWithAllTypes(R"(
     HloModule Test
@@ -257,7 +256,7 @@ TEST_F(CudnnFusedConvolutionRewriterTest, TestMatchMaxZeroOnly) {
     })");
 }
 
-TEST_F(CudnnFusedConvolutionRewriterTest, TestMatchBroadcastedBiasOnly) {
+TEST_F(CudnnFusedConvRewriterTest, TestMatchBroadcastedBiasOnly) {
   // max(0, conv(x, w) + side_input1 + side_input2) shouldn't match.
   TestNotMatchWithAllTypes(R"(
     HloModule Test

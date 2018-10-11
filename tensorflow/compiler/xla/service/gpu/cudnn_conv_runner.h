@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_RUNNER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_RUNNER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -42,20 +42,19 @@ namespace gpu {
 // allocator and take note of how much memory is used.  The next time you call
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
-Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
-                           absl::Span<se::DeviceMemoryBase> operand_buffers,
-                           se::DeviceMemoryBase result_buffer,
-                           se::DeviceMemoryBase scratch_buf, se::Stream* stream,
-                           se::dnn::ProfileResult* profile_result = nullptr);
+Status RunCudnnConv(const HloCustomCallInstruction* conv,
+                    absl::Span<se::DeviceMemoryBase> operand_buffers,
+                    se::DeviceMemoryBase result_buffer,
+                    se::DeviceMemoryBase scratch_buf, se::Stream* stream,
+                    se::dnn::ProfileResult* profile_result = nullptr);
 
-Status RunCudnnConvolution(const HloCustomCallInstruction* conv,
-                           absl::Span<se::DeviceMemoryBase> operand_buffers,
-                           se::DeviceMemoryBase result_buffer,
-                           se::ScratchAllocator* scratch_allocator,
-                           se::Stream* stream,
-                           se::dnn::ProfileResult* profile_result = nullptr);
+Status RunCudnnConv(const HloCustomCallInstruction* conv,
+                    absl::Span<se::DeviceMemoryBase> operand_buffers,
+                    se::DeviceMemoryBase result_buffer,
+                    se::ScratchAllocator* scratch_allocator, se::Stream* stream,
+                    se::dnn::ProfileResult* profile_result = nullptr);
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_RUNNER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_

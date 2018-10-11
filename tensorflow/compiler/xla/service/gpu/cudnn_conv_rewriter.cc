@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 
 #include <cstdlib>
 #include <numeric>
@@ -188,9 +188,9 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     // the amount of high padding the same as the amount of low padding as long
     // as it is between min_padding_high and max_padding_high. If it is not in
     // that range, we pick the one that's closest to dim->padding_low() and let
-    // PadInsertion canonicalize the resultant backward convolution later.
-    // Picking the closest one minimizes the cost of the kPad instruction to be
-    // inserted by PadInsertion.
+    // CudnnConvPaddingLegalization canonicalize the resultant backward
+    // convolution later. Picking the closest one minimizes the cost of the kPad
+    // instruction to be inserted by CudnnConvPaddingLegalization.
     if (dim->padding_low() >= min_padding_high &&
         dim->padding_low() <= max_padding_high) {
       dim->set_padding_high(dim->padding_low());
@@ -207,7 +207,8 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
              "negative padding ("
           << dim->padding_high()
           << ") on right/bottom of the weight gradients, which is not "
-             "supported by PadInsertion (b/32744257). Falling back to "
+             "supported by CudnnConvPaddingLegalization (b/32744257). "
+             "Falling back to "
              "unfused convolution for instruction: "
           << conv->ToString();
       return no_match_result;
@@ -342,7 +343,8 @@ MatchBackwardInput(HloInstruction* conv) {
       LOG(ERROR)
           << "The low padding of the backward convolution would be negative ("
           << backward_padding_low
-          << "), which isn't supported by PadInsertion for now (b/32744257).";
+          << "), which isn't supported by CudnnConvPaddingLegalization "
+             "for now (b/32744257).";
       return no_match_result;
     }
     dim->set_padding_low(backward_padding_low);
@@ -371,8 +373,8 @@ MatchBackwardInput(HloInstruction* conv) {
       dim->set_padding_high(backward_padding_low);
     } else {
       // Otherwise, we choose the amount that's closest to backward_padding_low,
-      // and PadInsertion will later insert kSlice instructions to enforce even
-      // padding.
+      // and CudnnConvPaddingLegalization will later insert kSlice
+      // instructions to enforce even padding.
       //
       // For example, consider the backward convolution pattern
       //
@@ -398,9 +400,9 @@ MatchBackwardInput(HloInstruction* conv) {
         dim->set_padding_high(max_padding_high);
       }
     }
-    // PadInsertion doesn't handle backward input convolution with negative
-    // padding for now. So fall back to unfused convolution in case of negative
-    // padding. For example,
+    // CudnnConvPaddingLegalization doesn't handle backward input
+    // convolution with negative padding for now. So fall back to unfused
+    // convolution in case of negative padding. For example,
     //   ABCD = Conv(abc, reverse(xy), padding_high=2)
     // could be fused to
     //   ABCD = BackwardInputConv(abc, xy, padding_low=1, padding_high=-1)
@@ -410,8 +412,8 @@ MatchBackwardInput(HloInstruction* conv) {
                     "negative padding ("
                  << dim->padding_high()
                  << ") on right/bottom of the activations, which is not "
-                    "supported by PadInsertion (b/32744257). Falling back to "
-                    "unfused convolution for instruction: "
+                    "supported by CudnnConvPaddingLegalization (b/32744257). "
+                    "Falling back to unfused convolution for instruction: "
                  << conv->ToString();
       return no_match_result;
     }
@@ -555,7 +557,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> CudnnConvolutionRewriter::Run(HloModule* module) {
+StatusOr<bool> CudnnConvRewriter::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
