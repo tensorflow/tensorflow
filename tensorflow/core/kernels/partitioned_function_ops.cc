@@ -85,12 +85,6 @@ class PartitionedCallOp : public AsyncOpKernel {
     {
       mutex_lock l(mu_);
       if (function_handles_.find(lib) == function_handles_.end()) {
-        if (local_device_name_.empty()) {
-          // The full local device name isn't known at kernel construction
-          // time, hence the need to set it here.
-          local_device_name_ = lib->device()->name();
-        }
-
         // TODO(b/37549631): Because this kernel may correspond to a stateful
         // op, it may be shared by multiple subgraphs, which in turn may have
         // different `FunctionLibraryRuntime` objects and therefore different
@@ -153,7 +147,14 @@ class PartitionedCallOp : public AsyncOpKernel {
             OptimizationPassRegistry::Global()->RunGrouping(
                 OptimizationPassRegistry::PRE_PLACEMENT, optimization_options),
             done);
-        Placer placer(graph.get(), &device_set);
+
+        // Make the FunctionLibraryRuntime's device the default device if
+        // nothing else is hard coded. This allows the same function definition
+        // to be specialized to different devices depending on the
+        // PartitionedCallOp's device.
+        Placer placer(graph.get(), &device_set,
+                      nullptr, /* No session options */
+                      lib->device() /* Default device */);
         OP_REQUIRES_OK_ASYNC(ctx, placer.Run(), done);
         OP_REQUIRES_OK_ASYNC(
             ctx,
@@ -392,6 +393,7 @@ class PartitionedCallOp : public AsyncOpKernel {
       return;
     }
 
+    const string& local_device_name = lib->device()->name();
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.step_container = ctx->step_container();
@@ -400,7 +402,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     // TODO(akshayka): Consider selecting a runner on a per-device basis, i.e.,
     // using device-specific threadpools when available.
     opts.runner = ctx->runner();
-    opts.source_device = local_device_name_;
+    opts.source_device = local_device_name;
     opts.allow_dead_tensors = true;
     // TODO(akshayka): Accommodate the multiple-worker scenario by adding the
     // constructed rendezvous to a rendezvous manager.
@@ -428,7 +430,7 @@ class PartitionedCallOp : public AsyncOpKernel {
       const std::vector<int>& ret_indices = indices.second;
       opts.args_alloc_attrs = alloc_attrs.first;
       opts.rets_alloc_attrs = alloc_attrs.second;
-      if (target == local_device_name_) {
+      if (target == local_device_name) {
         opts.remote_execution = false;
         std::vector<Tensor> args = GetArgsForIndices(arg_indices, op_args);
         std::vector<Tensor>* rets = new std::vector<Tensor>;
@@ -530,10 +532,12 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   NameAttrList func_;
   RewriterConfig rewriter_config_;
-  string local_device_name_;
   // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
-  // for a stateful op, different invocations of it may use different FLRs.)
+  // for a stateful op, different invocations of it may use different
+  // FLRs. Different device placements of PartitionedCallOp also use different
+  // FLRs, and we use this to set the "default" device for the function to
+  // PartitionedCallOp's device.)
   gtl::FlatMap<FunctionLibraryRuntime*,
                std::unique_ptr<gtl::FlatMap<string, FHandle>>>
       function_handles_ GUARDED_BY(mu_);

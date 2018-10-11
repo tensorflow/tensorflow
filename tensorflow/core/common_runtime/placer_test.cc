@@ -208,7 +208,7 @@ class PlacerTest : public ::testing::Test {
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, SessionOptions* options) {
-    Placer placer(graph, devices, options);
+    Placer placer(graph, devices, options, nullptr);
     return placer.Run();
   }
 

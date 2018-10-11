@@ -150,6 +150,7 @@ cuda_py_test(
         ":function",
         ":tape",
         ":test",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",

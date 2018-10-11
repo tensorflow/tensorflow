@@ -24,6 +24,8 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
@@ -878,22 +880,27 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
       with self.session(graph=g):
 
         def fn():
-          c = constant_op.constant(3.0)
-          self.assertEqual("/device:CPU:0", c.op.device)
-          return c
+          self.assertEqual("", constant_op.constant(3.0).op.device)
+          return test_ops.device_placement_op()
 
         with ops.device("/device:CPU:0"):
-          self.assertEquals(
-              cond_v2.cond_v2(constant_op.constant(True), fn, fn).eval(), 3)
+          self.assertIn(
+              compat.as_bytes("CPU:0"),
+              self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
+                                            fn, fn)))
 
         def fn2():
-          c = constant_op.constant(3.0)
-          self.assertEqual("/device:GPU:0", c.op.device)
-          return c
+          self.assertEqual("", constant_op.constant(3.0).op.device)
+          return test_ops.device_placement_op()
 
-        with ops.device("/device:GPU:0"):
-          self.assertEquals(
-              cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
+        if test_util.is_gpu_available():
+          with ops.device("/device:GPU:0"):
+            self.assertIn(
+                compat.as_bytes("GPU:0"),
+                self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
+                                              fn2, fn2)))
+        else:
+          self.skipTest("Test requrires a GPU to check GPU device placement.")
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
