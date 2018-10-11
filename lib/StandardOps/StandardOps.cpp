@@ -452,11 +452,6 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "tag memref rank not equal to indices count");
 
-  // These should be verified in verify(). TODO(b/116737205).
-  if (tagIndexInfos.size() != 1)
-    return parser->emitError(parser->getNameLoc(),
-                             "only 1-d tag memref supported");
-
   return false;
 }
 
