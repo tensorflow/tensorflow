@@ -719,6 +719,19 @@ py_test(
 )
 
 py_test(
+    name = "training_generator_test",
+    size = "enormous",
+    srcs = ["engine/training_generator_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "feature_columns_integration_test",
     size = "small",
     srcs = ["engine/feature_columns_integration_test.py"],
