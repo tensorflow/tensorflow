@@ -43,7 +43,9 @@ typedef std::complex<double> complex128;
 
 // see framework/bfloat16.h for description.
 struct bfloat16 {
-  B16_DEVICE_FUNC bfloat16() {}
+  // The default constructor must yield a zero value, not an uninitialized
+  // value; some TF kernels use T() as a zero value.
+  B16_DEVICE_FUNC bfloat16() : value(ZERO_VALUE) {}
 
   B16_DEVICE_FUNC static bfloat16 truncate_to_bfloat16(const float v) {
     bfloat16 output;
@@ -376,6 +378,9 @@ struct bfloat16 {
   static const uint16_t NAN_VALUE = 0x7FC0;
 
  private:
+  // A value that represents "zero".
+  static const uint16_t ZERO_VALUE = 0;
+
   B16_DEVICE_FUNC static bool float_isnan(const float& x) {
 #ifdef __CUDA_ARCH__
     return ::isnan(x);
