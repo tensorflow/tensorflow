@@ -709,5 +709,44 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
   }
 }
 
+TEST_F(InstructionFusionTest, FuseIntoScatter) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY FuseIntoScatter {
+      p0 = s32[3,3] parameter(0)
+      operand = s32[3,3] add(p0, p0)
+      p1 = s32[2] parameter(1)
+      indices = s32[2] add(p1, p1)
+      p2 = s32[2,3] parameter(2)
+      updates = s32[2,3] add(p2, p2)
+      scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      ROOT add = s32[3,3] add(scatter, scatter)
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add(op::Fusion(), op::Fusion()));
+  EXPECT_EQ(root->operand(0)->fusion_kind(),
+            HloInstruction::FusionKind::kInput);
+  EXPECT_THAT(root->operand(0)->fused_expression_root(),
+              op::Scatter(op::Add(), op::Add(), op::Add()));
+}
+
 }  // namespace gpu
 }  // namespace xla
