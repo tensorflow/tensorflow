@@ -209,7 +209,7 @@ int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
   // Can't infer the size if the rank is unknown. It has to be at least a
   // scalar though.
   if (shape.unknown_rank()) {
-    VLOG(1) << "CalculateTensorSize() -- unknown rank";
+    VLOG(2) << "CalculateTensorSize() -- unknown rank";
     return size;
   }
 
@@ -217,7 +217,7 @@ int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
   for (int i = 0; i < shape.dim_size(); ++i) {
     if (shape.dim(i).size() < 0) {
       shape.mutable_dim(i)->set_size(1);
-      VLOG(1) << "CalculateTensorSize() -- unknown dim: " << i;
+      VLOG(2) << "CalculateTensorSize() -- unknown dim: " << i;
     }
   }
 
