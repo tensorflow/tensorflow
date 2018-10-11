@@ -287,7 +287,7 @@ class ControlFlowTransformer(converter.Base):
     # TODO(mdan): Handle the case above.
     cond_scope = anno.getanno(node, annos.NodeAnno.COND_SCOPE)
     cond_closure = set()
-    for s in cond_scope.used:
+    for s in cond_scope.read:
       cond_closure.update(s.support_set)
     cond_closure -= loop_state
 
