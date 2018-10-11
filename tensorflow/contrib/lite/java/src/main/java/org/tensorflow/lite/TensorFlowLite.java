@@ -27,6 +27,12 @@ public final class TensorFlowLite {
   public static native String version();
 
   /**
+   * Initialize tensorflow's libraries. This will throw an exception if used when TensorFlow isn't
+   * linked in.
+   */
+  static native void initTensorFlow();
+
+  /**
    * Load the TensorFlowLite runtime C library.
    */
   static boolean init() {

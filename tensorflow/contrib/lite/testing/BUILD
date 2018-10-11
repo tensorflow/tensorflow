@@ -308,9 +308,14 @@ cc_library(
         "//tensorflow/contrib/lite/java/src/main/native:__subpackages__",
         "//tensorflow/contrib/lite/testing:__subpackages__",
     ],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = select({
+        "//conditions:default": [
+            "//tensorflow/core:lib",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+        ],
+    }),
 )
 
 cc_library(

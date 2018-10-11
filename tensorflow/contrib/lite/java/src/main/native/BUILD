@@ -73,6 +73,37 @@ genrule(
     cmd = "cp -f $< $@",
 )
 
+cc_library(
+    name = "init_tensorflow",
+    srcs = [
+        "init_tensorflow_jni.cc",
+    ] + select({
+        # The Android toolchain makes "jni.h" available in the include path.
+        # For non-Android toolchains, generate jni.h and jni_md.h.
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            ":jni.h",
+            ":jni_md.h",
+        ],
+    }),
+    hdrs = [
+        "init_tensorflow_jni.h",
+    ],
+    copts = tflite_copts(),
+    includes = select({
+        "//tensorflow:android": [],
+        "//conditions:default": ["."],
+    }),
+    linkopts = [
+        "-lm",
+        "-ldl",
+    ],
+    deps = [
+        "//tensorflow/contrib/lite/testing:init_tensorflow",
+    ],
+    alwayslink = 1,
+)
+
 # This includes all ops. If you want a smaller binary, you should copy and
 # modify builtin_ops_jni.cc.  You should then link your binary against both
 # ":native_framework_only" and your own version of ":native_builtin_ops".
