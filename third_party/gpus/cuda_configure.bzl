@@ -151,6 +151,13 @@ def _get_nvcc_tmp_dir_for_windows(repository_ctx):
   return escaped_tmp_dir + "\\\\nvcc_inter_files_tmp_dir"
 
 
+def _get_nvcc_tmp_dir_for_unix(repository_ctx):
+  """Return the tmp directory for nvcc to generate intermediate source files."""
+  escaped_tmp_dir = escape_string(
+      get_env_var(repository_ctx, "TMP", "/tmp"))
+  return escaped_tmp_dir + "/nvcc_inter_files_tmp_dir"
+
+
 def _get_msvc_compiler(repository_ctx):
   vc_path = find_vc_path(repository_ctx)
   return find_msvc_tool(repository_ctx, vc_path, "cl.exe").replace("\\", "/")
@@ -162,6 +169,10 @@ def _get_win_cuda_defines(repository_ctx):
   # If we are not on Windows, return empty vaules for Windows specific fields.
   # This ensures the CROSSTOOL file parser is happy.
   if not _is_windows(repository_ctx):
+    escaped_cxx_include_directories = [
+        "cxx_builtin_include_directory: \"%s\"" %
+        _get_nvcc_tmp_dir_for_unix(repository_ctx)
+    ]
     return {
         "%{msvc_env_tmp}": "",
         "%{msvc_env_path}": "",
@@ -171,7 +182,8 @@ def _get_win_cuda_defines(repository_ctx):
         "%{msvc_ml_path}": "",
         "%{msvc_link_path}": "",
         "%{msvc_lib_path}": "",
-        "%{cxx_builtin_include_directory}": "",
+        "%{cxx_builtin_include_directory}":
+          "\n".join(escaped_cxx_include_directories),
     }
 
   vc_path = find_vc_path(repository_ctx)
