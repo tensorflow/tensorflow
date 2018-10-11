@@ -220,6 +220,9 @@ class ActivityAnalyzer(transformer.Base):
         raise NotImplementedError(
             'Param "{}" outside a function arguments or lambda.'.format(qn))
     elif isinstance(node.ctx, gast.Del):
+      # The read matches the Python semantics - attempting to delete an
+      # undefined symbol is illegal.
+      self.scope.mark_read(qn)
       self.scope.mark_deleted(qn)
     else:
       raise ValueError('Unknown context {} for node "{}".'.format(
@@ -260,6 +263,9 @@ class ActivityAnalyzer(transformer.Base):
     node = self._process_statement(node)
     self._in_aug_assign = False
     return node
+
+  def visit_Delete(self, node):
+    return self._process_statement(node)
 
   def visit_Name(self, node):
     node = self.generic_visit(node)
