@@ -120,7 +120,7 @@ class AssociatedFunctionInfo {
 
 // Returns if the NodeDef has associated function.
 bool HasAssociatedFunction(const NodeDef& node_def,
-                           FunctionLibraryRuntime* flr);
+                           const FunctionLibraryDefinition* fld);
 
 // Gets functions associated with the node. Current cases:
 // 1. For function call node, its function name;
@@ -128,7 +128,7 @@ bool HasAssociatedFunction(const NodeDef& node_def,
 //    and returned attrs will be this node's attributes;
 // 3. For nodes like XlaWhile/XlaIf, all their function attributes.
 std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
-    const Node& node, FunctionLibraryRuntime* flr);
+    const Node& node, const FunctionLibraryDefinition* fld);
 
 // Changes associated functions for the node. Current cases:
 // 1. For function call node, creates a new node with the new function name and
@@ -143,6 +143,30 @@ Status RewriteAssociatedFunction(
 
 // Attribute to mark nodes to be executed on host.
 extern const char kXlaOutsideCompilationAttrName[];
+
+// Class to act as cache for FunctionLibraryRuntime::Handle objects.
+class CachedFunctionHandles {
+ public:
+  CachedFunctionHandles(FunctionLibraryRuntime* flr) : flr_(flr) {}
+
+  // Populates `handle` for requested function and attributes. If we have
+  // instantiated the function with the same attributes before, `handle` will be
+  // cached handle; otherwise instantiate the function and populate `handle`.
+  Status GetOrInstantiate(const string& func_name, AttrSlice attrs,
+                          FunctionLibraryRuntime::Handle* handle);
+
+  // Releases all handles in the cache. Returns first non-OK status if any;
+  // returns OK otherwise.
+  Status ReleaseAllHandles();
+
+  ~CachedFunctionHandles() { ReleaseAllHandles().IgnoreError(); }
+
+ private:
+  FunctionLibraryRuntime* flr_;
+  std::map<string, FunctionLibraryRuntime::Handle> handles_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CachedFunctionHandles);
+};
 
 }  // namespace tensorflow
 
