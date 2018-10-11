@@ -423,9 +423,14 @@ class HloSortInstruction : public HloInstruction {
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
   // Returns the sort dimension for this instruction
-  int64 sort_dimension() { return dimensions(0); }
+  int64 sort_dimension() const { return dimensions(0); }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
+  // Returns the key operand to this instruction.
+  const HloInstruction* keys() const { return operand(0); }
+  HloInstruction* mutable_keys() { return mutable_operand(0); }
+  // Returns the number of value operands.
+  int64 values_count() const { return operand_count() - 1; }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
