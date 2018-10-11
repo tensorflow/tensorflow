@@ -367,6 +367,83 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # Verify that the numpy value is copied to the variable.
       self.assertAllEqual(x, val)
 
+  def test_calculating_batch_params(self):
+    # This verifies that we calculate the number of steps when the batch size
+    # is specified.
+    with self.cached_session():
+      # 64 is the number of input samples.
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      # The number of towers is equal to 3.
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0',
+                                                     '/device:GPU:1'])
+
+      with self.assertRaisesRegexp(ValueError, 'Please specify a batch_size '
+                                               'that is smaller than'):
+        # The batch size(128) is larger than the number of input
+        # samples(64).
+        distributed_training_utils.get_input_batch_params(inputs,
+                                                          128,
+                                                          strategy)
+
+      with self.assertRaisesRegexp(ValueError, 'is smaller than the number '
+                                               'of towers'):
+        # The batch size(32) * num_towers(3) is 96 which is greater than the
+        # number of input samples(64).
+        distributed_training_utils.get_input_batch_params(inputs,
+                                                          32,
+                                                          strategy)
+
+      # The number of towers now is equal to 2.
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0'])
+      # 32 is the batch size per tower.
+      steps = distributed_training_utils.get_input_batch_params(inputs,
+                                                                32,
+                                                                strategy)
+      # The number of batches is the ratio of input samples(64) to
+      # batch size(32) which is 2. The number of steps(1) is the ratio of
+      # number of batches(2) to the number of towers(2).
+      self.assertEqual(steps, 1)
+
+      # 16 is the batch size per tower.
+      steps = distributed_training_utils.get_input_batch_params(inputs,
+                                                                16,
+                                                                strategy)
+      # The number of batches is the ratio of input samples(64) to
+      # batch size(16) which is 4. The number of steps(2) is the ratio of
+      # number of batches(4) to the number of towers(2).
+      self.assertEqual(steps, 2)
+
+  def test_calculating_batch_size(self):
+    with self.cached_session():
+      # 64 is the number of input samples.
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      targets = np.zeros((64, 4), dtype=np.float32)
+
+      model = get_model()
+      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+      loss = 'mse'
+      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
+                                                     '/device:CPU:0'])
+      strategy._require_static_shapes = True
+
+      model.compile(optimizer, loss, distribute=strategy)
+      iterator = model._distribution_standardize_user_data(inputs,
+                                                           targets,
+                                                           batch_size=None,
+                                                           check_steps=True,
+                                                           steps_name='steps',
+                                                           steps=3)
+
+      # The global batch size(21) across all towers is the ratio of the input
+      # samples(64) to the steps(3).
+      # The batch size(10) per device is the ratio of the global batch size(21)
+      # to the number of towers(2).
+      # The global batch size and batch size are rounded integer values.
+      self.assertEqual(10, distributed_training_utils.get_batch_dimension(
+          iterator._iterator))
+
   @combinations.generate(strategy_combinations())
   def test_calling_model_with_numpy_arrays(self, distribution):
     with self.cached_session():
