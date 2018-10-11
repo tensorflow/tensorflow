@@ -475,6 +475,11 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     self._aggregation = aggregation
     # Needed for GradientTape
     self._trainable = self._primary_var.trainable
+    # Typically like `DistributedVariable`, a `TPUMirroredVariable`'s
+    # initializer is composed of the initializers of the components variables.
+    # However, in some cases, such as when restoring from a checkpoint, we may
+    # set the _initializer_op property on the entire `TPUMirroredVariable`.
+    self._initializer_op = None
 
   def _get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
@@ -570,6 +575,10 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       six.raise_from(
           ValueError("Device %s not found in %s (current device %s)" %
                      (device, self._index.keys(), device_util.current())), e)
+
+  @property
+  def device(self):
+    return self._get().device
 
   # The arguments to update() are automatically unwrapped so the update()
   # function would normally see regular variables, not MirroredVariables.
@@ -700,8 +709,12 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
   @property
   def initializer(self):
-    return control_flow_ops.group(
-        [v.initializer for v in nest.flatten(self._index)])
+    if self._initializer_op:
+      init_op = self._initializer_op
+    else:
+      init_op = control_flow_ops.group(
+          [v.initializer for v in self._index.values()])
+    return init_op
 
   @property
   def graph(self):
