@@ -3071,9 +3071,9 @@ crop_and_resize_deprecation = deprecation.deprecated_args(
 tf_export(v1=['image.crop_and_resize'])(
     crop_and_resize_deprecation(gen_image_ops.crop_and_resize))
 
-@tf_export('image.extract_glimpse')
+@tf_export(v1=['image.extract_glimpse'])
 def extract_glimpse(
-    input,
+    input, # pylint: disable=redefined-builtin
     size,
     offsets,
     centered=True,
@@ -3092,3 +3092,6 @@ def extract_glimpse(
       name=name)
 
 extract_glimpse.__doc__ = gen_image_ops.extract_glimpse.__doc__
+
+extract_glimpse_v2=gen_image_ops.extract_glimpse
+tf_export(v2=['image.extract_glimpse'])(extract_glimpse_v2)
