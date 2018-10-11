@@ -39,8 +39,10 @@ class AddNTest(test.TestCase):
 
   def _supported_types(self):
     if test.is_gpu_available():
-      return [dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
-              dtypes.complex128]
+      return [
+          dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
+          dtypes.complex128, dtypes.int64
+      ]
     return [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
             dtypes.float16, dtypes.float32, dtypes.float64, dtypes.complex64,
             dtypes.complex128]
