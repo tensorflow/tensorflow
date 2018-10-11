@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 
+#include <vector>
+
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
@@ -43,7 +44,7 @@ namespace {
 void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
                      const IrArray::Index& compare_keys_index,
                      const IrArray& keys_array,
-                     const absl::optional<IrArray>& values_array,
+                     const std::vector<IrArray>& values_arrays,
                      llvm::IRBuilder<>* b) {
   // if (is_smaller_index &&
   //     compare_keys[dimension_to_sort] < dimension_to_sort_bound)
@@ -100,19 +101,18 @@ void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
   // Swap key1 with key2.
   keys_array.EmitWriteArrayElement(keys_index, key2, b);
   keys_array.EmitWriteArrayElement(compare_keys_index, key1, b);
-  if (values_array.has_value()) {
+  for (const auto& values_array : values_arrays) {
     // Also swap the values.
-    auto value1 = values_array.value().EmitReadArrayElement(keys_index, b);
-    auto value2 =
-        values_array.value().EmitReadArrayElement(compare_keys_index, b);
-    values_array.value().EmitWriteArrayElement(keys_index, value2, b);
-    values_array.value().EmitWriteArrayElement(compare_keys_index, value1, b);
+    auto value1 = values_array.EmitReadArrayElement(keys_index, b);
+    auto value2 = values_array.EmitReadArrayElement(compare_keys_index, b);
+    values_array.EmitWriteArrayElement(keys_index, value2, b);
+    values_array.EmitWriteArrayElement(compare_keys_index, value1, b);
   }
 }
 }  // namespace
 
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
-                       const absl::optional<IrArray>& values_array,
+                       const std::vector<IrArray>& values_arrays,
                        absl::string_view name, llvm::Value* xor_mask,
                        llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions* launch_dimensions) {
@@ -162,7 +162,7 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
     compare_keys_index[dimension_to_sort] =
         b->CreateXor(compare_index[0], xor_mask);
     EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index,
-                    keys_array, values_array, b);
+                    keys_array, values_arrays, b);
     return Status::OK();
   };
   if (launch_dimensions != nullptr) {

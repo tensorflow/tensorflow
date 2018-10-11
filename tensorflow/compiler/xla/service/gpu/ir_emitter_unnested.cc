@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
@@ -2192,34 +2193,34 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
-  auto keys = sort->operand(0);
-  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
-  ShapeIndex keys_shape_index({});
-  ShapeIndex values_shape_index({});
-  if (values != nullptr) {
-    keys_shape_index = ShapeIndex({0});
-    values_shape_index = ShapeIndex({1});
-  }
-  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
-  auto values_destination = GetAllocationSlice(*sort, values_shape_index);
+  Shape keys_shape = sort->operand(0)->shape();
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    ShapeIndex shape_index =
+        sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
+    // We assume that the layout of all involved operands and outputs is the
+    // same.
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(keys_shape,
+                                                  sort->operand(i)->shape()));
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index)));
 
-  if (keys_destination != GetAllocationSlice(*keys)) {
-    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*keys),
-        /*destination_buffer=*/keys_destination,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(keys->shape()), nullptr));
-  }
-  if (values != nullptr && values_destination != GetAllocationSlice(*values)) {
-    // TODO(b/26783907): Figure out why we never seem to share buffers for
-    // key/value sort.
-    thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-        /*source_address=*/GetAllocationSlice(*values),
-        /*destination_buffer=*/values_destination,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(values->shape()), nullptr));
+    // If possible, we share buffers. If that is not possible, we need to copy
+    // the values, because the emitter does the sorting in-place.
+    auto destination_buffer = GetAllocationSlice(*sort, shape_index);
+    auto source_address = GetAllocationSlice(*sort->operand(i));
+    if (destination_buffer != source_address) {
+      // TODO(b/26783907): Figure out why we never seem to share buffers for
+      // key/value sort.
+      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          /*source_address=*/source_address,
+          /*destination_buffer=*/destination_buffer,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(i)->shape()),
+          nullptr));
+    }
   }
 
   int64 dimension_to_sort = sort->dimensions(0);
-  int64 dimension_to_sort_bound = keys->shape().dimensions(dimension_to_sort);
+  int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   auto index_type = b_.getInt64Ty();
 
@@ -2243,7 +2244,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       thunks.push_back(
           BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
       LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-          keys->shape(), ir_emitter_context_->device_description());
+          keys_shape, ir_emitter_context_->device_description());
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
 
@@ -2254,12 +2255,21 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
         xor_mask = llvm::ConstantInt::get(index_type, 1LL << mask);
       }
 
+      IrArray keys_array;
+      std::vector<IrArray> values_arrays;
+      values_arrays.reserve(sort->operand_count() - 1);
+      for (int64 i = 0; i < sort->operand_count(); ++i) {
+        ShapeIndex shape_index =
+            sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
+        if (i == 0) {
+          keys_array = GetIrArray(*sort, *sort, shape_index);
+        } else {
+          values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
+        }
+      }
       TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
-          dimension_to_sort, GetIrArray(*sort, *sort, keys_shape_index),
-          values != nullptr ? absl::make_optional<IrArray>(
-                                  GetIrArray(*sort, *sort, values_shape_index))
-                            : absl::nullopt,
-          IrName(sort), xor_mask, &b_, &launch_dimensions));
+          dimension_to_sort, keys_array, values_arrays, IrName(sort), xor_mask,
+          &b_, &launch_dimensions));
     }
   }
 
