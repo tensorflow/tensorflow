@@ -162,7 +162,8 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
         llvm::cast<llvm::GlobalVariable>(ir_value), dest_type);
   } else {
-    typed_ir_value = b_->CreateBitCast(ir_value, pointee_type->getPointerTo());
+    typed_ir_value = b_->CreatePointerBitCastOrAddrSpaceCast(
+        ir_value, pointee_type->getPointerTo());
   }
   if (!HasMeaningfulName(ir_value)) {
     ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));

@@ -38,4 +38,9 @@ message CudnnConvBackendConfig {
   // The scaling factor multiplied with the side input. If no side input buffer
   // is provided, this field must be 0.
   double side_input_scale = 5;
+
+  // Below are the fields related to MIOpen.
+
+  // The amount of workspace memory required in bytes.
+  int64 scratch_size = 6;
 }

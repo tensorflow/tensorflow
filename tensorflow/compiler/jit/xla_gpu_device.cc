@@ -48,7 +48,7 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
   Status status =
       // XXX FIXME devise a way to cope with multiple platforms
       //XlaDevice::Create("CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
-      XlaDevice::Create("CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
+      XlaDevice::Create("ROCM", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
                         name_prefix, registration,
                         /*transfer_as_literal=*/false,
                         /*use_multiple_streams=*/false,

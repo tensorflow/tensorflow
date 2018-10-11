@@ -14,7 +14,8 @@ def if_rocm(if_true, if_false = []):
 
 def rocm_default_copts():
     """Default options for all ROCm compilations."""
-    return if_rocm(["-x", "rocm"] + %{rocm_extra_copts})
+    return if_rocm(["-x", "rocm", "-DTENSORFLOW_USE_ROCM=1"] + %{rocm_extra_copts})
+
 
 def rocm_copts(opts = []):
     """Gets the appropriate set of copts for (maybe) ROCm compilation.

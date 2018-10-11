@@ -238,6 +238,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
 
+#if 0
   optional<F16BufferComparator> comparator;
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm sufficies. It doesn't make
@@ -311,6 +312,30 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       VLOG(3) << "Run of algorithm " << AlgorithmToString(alg) << " failed.";
     }
   }
+#endif
+  ScratchAllocator scratch_allocator(device_ordinal, allocator);
+  se::dnn::ProfileResult profile_result;
+  VLOG(3) << "Auto-tuning for " << instr->ToString();
+
+  bool launch_ok = RunCudnnConvolution(instr, absl::MakeSpan(operand_buffers),
+                                       result_buffer, &scratch_allocator,
+                                       &stream, &profile_result)
+                       .ok();
+
+  if (launch_ok && profile_result.is_valid()) {
+    int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
+    VLOG(3) << "Auto-tuning succeeded, taking "
+            << profile_result.elapsed_time_in_ms() << "ms and using "
+            << NumBytesToString(scratch_bytes_used)
+            << " of scratch (Best result: " << best_result.elapsed_time_in_ms()
+            << "ms, " << NumBytesToString(best_result_bytes_used)
+            << " of scratch)";
+    best_result = profile_result;
+    best_result_bytes_used = scratch_bytes_used;
+  } else {
+    VLOG(3) << "Auto-tuning failed.";
+  }
+
   if (best_result.is_valid()) {
     VLOG(2) << "Best algorithm for " << instr->ToString() << ": "
             << AlgorithmToString(best_result.algorithm()) << ", takes "
@@ -356,6 +381,7 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
                       instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(best_algo.algorithm);
   backend_config.set_tensor_ops_enabled(best_algo.tensor_ops_enabled);
+  backend_config.set_scratch_size(best_algo.scratch_bytes);
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

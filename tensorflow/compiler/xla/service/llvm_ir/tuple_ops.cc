@@ -101,8 +101,8 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
   SetAlignmentMetadataForLoad(src_buffer, alignment);
 
   llvm::Type* element_type = ShapeToIrType(target_shape, module);
-  llvm::Value* ret_val =
-      b->CreateBitCast(src_buffer, element_type->getPointerTo());
+  llvm::Value* ret_val = b->CreatePointerBitCastOrAddrSpaceCast(
+      src_buffer, element_type->getPointerTo());
   return ret_val;
 }
 

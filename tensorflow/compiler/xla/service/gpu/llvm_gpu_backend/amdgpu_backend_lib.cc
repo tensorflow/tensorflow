@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace xla {
 namespace gpu {
@@ -207,7 +208,7 @@ void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine) {
+std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_machine, int amdgpu_version) {
   char tempdir_template[] = "/tmp/amdgpu_xla-XXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
 
@@ -218,7 +219,7 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   std::string ir_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".ll");
   std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
 
-  std::string isabin_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".s");
+  std::string isabin_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".o");
   std::string isabin_path = tensorflow::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename = tensorflow::strings::StrCat(module->getModuleIdentifier(), ".hsaco");
@@ -227,36 +228,85 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   std::error_code ec;
   SmallString<128> path;
 
+  // inject IR
+  bool inject_ir = false;
+  std::string inject_ir_path = tensorflow::io::JoinPath(".", ir_filename);
+  if (llvm::sys::fs::exists(inject_ir_path)) {
+    LOG(INFO) << "use inject_ir_path: " << inject_ir_path << "\n";
+    inject_ir = true;
+  }
+
+  // inject ISA
+  bool inject_isa = false;
+  std::string inject_isabin_path = tensorflow::io::JoinPath(".", isabin_filename);
+  if (llvm::sys::fs::exists(inject_isabin_path)) {
+    LOG(INFO) << "use inject_isa_path: " << inject_isabin_path << "\n";
+    inject_isa = true;
+  }
+
   // dump LLVM IR
   std::unique_ptr<llvm::raw_fd_ostream> ir_fs(new llvm::raw_fd_ostream(ir_path, ec, llvm::sys::fs::F_None));
   module->print(*ir_fs, nullptr);
   ir_fs->flush();
 
-  // emit GCN ISA binary
-  std::string gcnisa_binary;  // need a std::string instead of a ::string.
-  {
-    llvm::raw_string_ostream stream(gcnisa_binary);
-    llvm::buffer_ostream pstream(stream);
-    // The extension is stripped by IrDumpingPassManager, so we need to
-    // get creative to add a suffix.
-    string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
-    IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(
-                     absl::string_view(tensorflow::io::Basename(module_id)), 
-                                 "-amdgpu.dummy"),
-        "", false);
-    codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
-        llvm::Triple(module->getTargetTriple())));
+  //// emit GCN ISA binary
+  //std::string gcnisa_binary;  // need a std::string instead of a ::string.
+  //{
+  //  llvm::raw_string_ostream stream(gcnisa_binary);
+  //  llvm::buffer_ostream pstream(stream);
+  //  // The extension is stripped by IrDumpingPassManager, so we need to
+  //  // get creative to add a suffix.
+  //  string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
+  //  IrDumpingPassManager codegen_passes(
+  //      ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
+  //                               "-amdgpu.dummy"),
+  //      "", false);
+  //  codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+  //      llvm::Triple(module->getTargetTriple())));
 
-    target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::TargetMachine::CGFT_ObjectFile);
-    codegen_passes.run(*module);
+  //  target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
+  //                                      llvm::TargetMachine::CGFT_ObjectFile);
+  //  LOG(INFO) << "LLVM IR -> GCN ISA...\n";
+  //  codegen_passes.run(*module);
+  //}
+
+  // execute llc to convert LLVM IR into GCN ISA
+  auto llc_program = llvm::sys::findProgramByName("llc");
+  if (!llc_program) {
+    LOG(FATAL) << "unable to find llc in PATH: "
+               << llc_program.getError().message();
+  }
+  std::vector<llvm::StringRef> llc_args {
+    llvm_ir::AsStringRef("llc"),
+    llvm_ir::AsStringRef("-mtriple"),
+    llvm_ir::AsStringRef("amdgcn--amdhsa-amdgiz"),
+    llvm_ir::AsStringRef(absl::StrCat("-mcpu=gfx", amdgpu_version)),
+    llvm_ir::AsStringRef("-filetype=obj"),
+    llvm_ir::AsStringRef("ir_path"),
+    llvm_ir::AsStringRef("-o"),
+    llvm_ir::AsStringRef("isabin_path"),
+  };
+  if (inject_ir) {
+    llc_args[5] = llvm_ir::AsStringRef(inject_ir_path.c_str());
+  } else {
+    llc_args[5] = llvm_ir::AsStringRef(ir_path.c_str());
+  }
+  llc_args[7] = llvm_ir::AsStringRef(isabin_path.c_str());
+
+  std::string error_message;
+  int llc_result = llvm::sys::ExecuteAndWait(*llc_program,
+                                             llvm_ir::AsArrayRef(llc_args),
+                                             llvm::None, {}, 0, 0,
+                                             &error_message);
+
+  if (llc_result) {
+    LOG(FATAL) << "llc execute fail: " << error_message;
   }
 
-  // dump GCN ISA binary
-  std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_None));
-  *isabin_fs << gcnisa_binary;
-  isabin_fs->flush();
+  //// dump GCN ISA binary
+  //std::unique_ptr<llvm::raw_fd_ostream> isabin_fs(new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_None));
+  //*isabin_fs << gcnisa_binary;
+  //isabin_fs->flush();
 
   // execute ld.lld to convert GCN ISA binary into HSACO
   auto lld_program = llvm::sys::findProgramByName("ld.lld");
@@ -273,10 +323,14 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
     llvm_ir::AsStringRef("-o"),
     llvm_ir::AsStringRef("hsaco_path"),
   };
-  lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
+  if (inject_isa) {
+    lld_args[4] = llvm_ir::AsStringRef(inject_isabin_path.c_str());
+  } else {
+    lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
+  }
   lld_args[6] = llvm_ir::AsStringRef(hsaco_path.c_str());
 
-  std::string error_message;
+  //std::string error_message;
   int lld_result = llvm::sys::ExecuteAndWait(*lld_program,
                                              llvm_ir::AsArrayRef(lld_args),
                                              llvm::None, {}, 0, 0,
@@ -290,9 +344,9 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
   std::ifstream hsaco_file(hsaco_path, std::ios::binary|std::ios::ate);
   std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
 
-  std::vector<char> hsaco(hsaco_file_size);
+  std::vector<uint8> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
-  hsaco_file.read(&hsaco[0], hsaco_file_size);
+  hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
 
   return std::move(hsaco);
 }
@@ -360,7 +414,7 @@ tensorflow::Status LinkROCDLIfNecessary(
   return tensorflow::Status::OK();
 }
 
-StatusOr<std::vector<char>> CompileModuleToHsaco(llvm::Module* module,
+StatusOr<std::vector<uint8>> CompileModuleToHsaco(llvm::Module* module,
                                       int amdgpu_version,
                                       const HloModuleConfig& hlo_module_config,
                                       const string& rocdl_dir_path) {
@@ -387,11 +441,9 @@ StatusOr<std::vector<char>> CompileModuleToHsaco(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the AMDGPU backend
   // from the gpu_architecture flag.
-  std::unique_ptr<llvm::TargetMachine> target_machine;
-  // TODO(ROCM) figure out why GetTargtetMahine is not in scope
-   // = GetTargetMachine(
-    //  target_triple, absl::StrCat("gfx", amdgpu_version),
-     // hlo_module_config);
+  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
+      target_triple, absl::StrCat("gfx", amdgpu_version), hlo_module_config);
+
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
@@ -440,14 +492,16 @@ StatusOr<std::vector<char>> CompileModuleToHsaco(llvm::Module* module,
   module_passes.run(*module);
 
   // Finally, produce HSA Code Object.
-  return std::move(EmitModuleToHsaco(module, target_machine.get()));
+  return std::move(EmitModuleToHsaco(module, target_machine.get(), amdgpu_version));
 }
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void GPUBackendInit() {
+void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
+
+  llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
 
   // Initialize the AMDGPU target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.
@@ -463,18 +517,20 @@ void GPUBackendInit() {
 
 }  // namespace
 
-StatusOr<std::vector<char>> CompileToHsaco(llvm::Module* module,
+StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                 int amdgpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& rocdl_dir_path) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, GPUBackendInit);
+  std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
 
-  std::vector<char> hsaco;
+  std::vector<uint8> hsaco;
   {
-    ScopedLoggingTimer compilation_timer(
-        "Compile module " + llvm_ir::AsString(module->getName()),
-        /*vlog_level=*/2);
+    tensorflow::tracing::ScopedActivity activity(
+        "Compiling IR", llvm_ir::AsString(module->getName()),
+        /*is_expensive=*/true);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " +
+                             llvm_ir::AsString(module->getName()));
     TF_ASSIGN_OR_RETURN(
         hsaco, CompileModuleToHsaco(module, amdgpu_version, hlo_module_config,
                                   rocdl_dir_path));

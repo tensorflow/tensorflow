@@ -734,12 +734,21 @@ Status IrEmitterUnnested::EmitReductionToScalar(
     llvm::Type* element_ir_type =
         llvm_ir::PrimitiveTypeToIrType(input_shape.element_type(), module_);
     std::vector<llvm::Value*> partial_reduction_result_addresses;
+
+    llvm::BasicBlock& entry_bb = b_.GetInsertBlock()->getParent()->getEntryBlock();
+    auto entry_ip = entry_bb.begin();
+
     for (int i = 0; i != num_reduces; ++i) {
+      auto old_insert_ip = b_.GetInsertPoint();
+      auto old_insert_bb = b_.GetInsertBlock();
+      b_.SetInsertPoint(&entry_bb, entry_ip);
+
       llvm::Value* partial_reduction_result_address =
           Alloca(element_ir_type, /*ArraySize=*/nullptr,
                  "partial_reduction_result." + llvm::Twine(i));
       TF_ASSIGN_OR_RETURN(llvm::Value* const init_ir_value,
                           init_value_gens[i](IrArray::Index(index_ty)));
+      b_.SetInsertPoint(old_insert_bb, old_insert_ip);
       Store(init_ir_value, partial_reduction_result_address);
       partial_reduction_result_addresses.push_back(
           partial_reduction_result_address);
@@ -961,14 +970,23 @@ Status IrEmitterUnnested::EmitColumnReduction(
     llvm::Type* element_ir_type =
         llvm_ir::PrimitiveTypeToIrType(input_shape.element_type(), module_);
     std::vector<llvm::Value*> partial_reduction_result_addresses;
+
+    llvm::BasicBlock& entry_bb = b_.GetInsertBlock()->getParent()->getEntryBlock();
+    auto entry_ip = entry_bb.begin();
+
     for (int i = 0; i != num_reduces; ++i) {
       for (int x_offset = 0; x_offset < kTileWidth; ++x_offset) {
+        auto old_insert_ip = b_.GetInsertPoint();
+        auto old_insert_bb = b_.GetInsertBlock();
+        b_.SetInsertPoint(&entry_bb, entry_ip);
+
         llvm::Value* partial_reduction_result_address =
             Alloca(element_ir_type, /*ArraySize=*/nullptr,
                    "partial_reduction_result." +
                        llvm::Twine(i * kTileWidth + x_offset));
         TF_ASSIGN_OR_RETURN(llvm::Value* const init_ir_value,
                             init_value_gens[i](IrArray::Index(index_ty)));
+        b_.SetInsertPoint(old_insert_bb, old_insert_ip);
         Store(init_ir_value, partial_reduction_result_address);
         partial_reduction_result_addresses.push_back(
             partial_reduction_result_address);
@@ -1295,12 +1313,21 @@ Status IrEmitterUnnested::EmitRowReduction(
     llvm::Type* element_ir_type = llvm_ir::PrimitiveTypeToIrType(
         input_shape.element_type(), ir_emitter_context_->llvm_module());
     std::vector<llvm::Value*> partial_reduction_result_addresses;
+
+    llvm::BasicBlock& entry_bb = b_.GetInsertBlock()->getParent()->getEntryBlock();
+    auto entry_ip = entry_bb.begin();
+
     for (int i = 0; i != num_reduces; ++i) {
+      auto old_insert_ip = b_.GetInsertPoint();
+      auto old_insert_bb = b_.GetInsertBlock();
+      b_.SetInsertPoint(&entry_bb, entry_ip);
+
       llvm::Value* partial_reduction_result_address =
           Alloca(element_ir_type, /*ArraySize=*/nullptr,
                  "partial_reduction_result." + llvm::Twine(i));
       TF_ASSIGN_OR_RETURN(llvm::Value* const init_ir_value,
                           init_value_gens[i](IrArray::Index(index_ty)));
+      b_.SetInsertPoint(old_insert_bb, old_insert_ip);
       Store(init_ir_value, partial_reduction_result_address);
       partial_reduction_result_addresses.push_back(
           partial_reduction_result_address);
@@ -2980,13 +3007,13 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
                                  param->shape().element_type(), module_),
                              kTileSize + 1),
         kTileSize);
-    const int kNVPTXSharedMemoryAddrSpace = 3;
     auto* tile_base_ptr = new llvm::GlobalVariable(
         *b_.GetInsertBlock()->getParent()->getParent(), tile_type,
         /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
         llvm::UndefValue::get(tile_type),
         llvm_ir::AsStringRef(IrName(hlo, StrCat("tile", id))), nullptr,
-        llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+        llvm::GlobalValue::NotThreadLocal,
+        llvm_ir::kAMDGPUSharedMemoryAddrSpace);
     param_shmem_buffers[id] = tile_base_ptr;
     VLOG(3) << "Added shmem buffer for parameter " << id << ": "
             << llvm_ir::DumpToString(*tile_base_ptr);
@@ -3294,7 +3321,10 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
         llvm_ir::AsStringRef(
-            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)));
+            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)),
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/llvm_ir::kAMDGPUGlobalMemoryAddrSpace,
+        /*isExternallyInitialized=*/false);
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);

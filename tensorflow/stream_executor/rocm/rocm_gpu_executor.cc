@@ -108,6 +108,29 @@ ROCMExecutor::~ROCMExecutor() {
   for (auto &it : in_memory_modules_) {
     ROCMDriver::UnloadModule(device_ordinal_, it.second);
   }
+  CHECK(gpu_binary_to_module_.empty()) << "ROCMExecutor has loaded modules.";
+}
+bool ROCMExecutor::UnloadModule(ModuleHandle module_handle) {
+  const char* gpu_binary = reinterpret_cast<const char*>(module_handle.id());
+  mutex_lock lock{in_memory_modules_mu_};
+  return UnloadGpuBinary(gpu_binary);
+}
+
+bool ROCMExecutor::UnloadGpuBinary(const void* gpu_binary) {
+  auto module_it = gpu_binary_to_module_.find(gpu_binary);
+  if (gpu_binary_to_module_.end() == module_it) {
+    VLOG(3) << "No loaded  HSACO module for " << gpu_binary;
+    return false;
+  }
+  auto& module = module_it->second.first;
+  auto& refcount = module_it->second.second;
+  VLOG(3) << "Found HSACO module " << module << " with refcount " << refcount;
+  if (--refcount == 0) {
+    VLOG(3) << "Unloading  HSACO module " << module;
+    ROCMDriver::UnloadModule(device_ordinal_, module);
+    gpu_binary_to_module_.erase(module_it);
+  }
+  return true;
 }
 
 port::Status ROCMExecutor::Init(int device_ordinal,
@@ -181,18 +204,18 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   const string *kernelname;
 
   const OnDiskKernelLoaderSpec *on_disk_spec = nullptr;
-  bool has_ptx = spec.has_cuda_ptx_on_disk();
-  if (has_ptx) {
-    on_disk_spec = &spec.cuda_ptx_on_disk();
+  bool has_cubin = spec.has_cuda_cubin_on_disk();
+  if (has_cubin) {
+    on_disk_spec = &spec.cuda_cubin_on_disk();
   }
 
   if (on_disk_spec != nullptr) {
     LOG(WARNING) << "loading ROCM kernel from disk is not supported";
     return false;
-  } else if (spec.has_cuda_ptx_in_memory()) {
-    kernelname = &spec.cuda_ptx_in_memory().kernelname();
+  } else if (spec.has_cuda_cubin_in_memory()) {
+    kernelname = &spec.cuda_cubin_in_memory().kernelname();
 
-    const char *hsaco = spec.cuda_ptx_in_memory().original_default_text();
+    const char *hsaco = spec.cuda_cubin_in_memory().bytes();
     mutex_lock lock{in_memory_modules_mu_};
     module = in_memory_modules_[hsaco];
 
@@ -208,7 +231,7 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
     return false;
   }
 
-  VLOG(2) << "getting function " << kernelname << " from module " << module;
+  VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!ROCMDriver::GetModuleFunction(device_ordinal_, module, kernelname->c_str(),
                                      rocm_kernel->rocm_function_ptr())) {
     return false;
@@ -295,6 +318,48 @@ bool ROCMExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
     return false;
   }
 
+  return true;
+}
+bool ROCMExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
+                              ModuleHandle* module_handle) {
+  // In ROCMExecutor we store the pointer to the  HSACO binary  as
+  // ModuleHandle::id().
+  hipModule_t hip_module = nullptr;
+  // TODO: Need  generic term instead of cubin/cuda/ptx
+  if (spec.has_cuda_cubin_in_memory()) {
+    mutex_lock lock{in_memory_modules_mu_};
+    if (!LoadModuleFromHsaco(
+            reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()),
+            &hip_module)) {
+      return false;
+    }
+    *module_handle = ModuleHandle(const_cast<void*>(
+        static_cast<const void*>(spec.cuda_cubin_in_memory().data())));
+    return true;
+  } else {
+    LOG(ERROR) << "No HSACO binary found \n";
+    return false;
+  }
+}
+
+bool ROCMExecutor::LoadModuleFromHsaco(const char* hsaco, hipModule_t* module) {
+  uint64_t module_refcount;
+  std::tie(*module, module_refcount) = gpu_binary_to_module_[hsaco];
+
+  if (*module == nullptr) {
+    if (!ROCMDriver::LoadHsaco(device_ordinal_, hsaco, module)) {
+      LOG(ERROR) << "failed to load : HSACO \n";
+      return false;
+    }
+    module_refcount = 1;
+    VLOG(3) << "Loaded HSACO " << static_cast<const void*>(hsaco)
+            << " as module " << *module;
+  } else {
+    ++module_refcount;
+    VLOG(3) << "HSACO " << static_cast<const void*>(hsaco)
+            << " is already loaded as module " << *module;
+  }
+  gpu_binary_to_module_[hsaco] = {*module, module_refcount};
   return true;
 }
 
@@ -669,6 +734,27 @@ bool ROCMExecutor::GetSymbol(const string& symbol_name, ModuleHandle module_hand
       if (ROCMDriver::GetModuleSymbol(device_ordinal_, it.second, symbol_name.c_str(),
                                       reinterpret_cast<hipDeviceptr_t *>(mem),
                                       bytes)) {
+        return true;
+      }
+    }
+  }
+
+  {  // give limited scope to mutex_lock
+    mutex_lock lock{in_memory_modules_mu_};
+    if (static_cast<bool>(module_handle)) {
+      auto it = gpu_binary_to_module_.find(module_handle.id());
+      CHECK(it != gpu_binary_to_module_.end());
+      if (ROCMDriver::GetModuleSymbol(
+              device_ordinal_, it->second.first, symbol_name.c_str(),
+              reinterpret_cast<hipDeviceptr_t*>(mem), bytes)) {
+        return true;
+      }
+    }
+
+    for (auto& it : gpu_binary_to_module_) {
+      if (ROCMDriver::GetModuleSymbol(
+              device_ordinal_, it.second.first, symbol_name.c_str(),
+              reinterpret_cast<hipDeviceptr_t*>(mem), bytes)) {
         return true;
       }
     }

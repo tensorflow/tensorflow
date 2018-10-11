@@ -686,7 +686,11 @@ llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
         /*isConstant=*/false,
         /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
         /*Initializer=*/b->getInt64(0),
-        /*Name=*/kPhiloxRngStateVariableName);
+        /*Name=*/kPhiloxRngStateVariableName,
+        /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/llvm_ir::kAMDGPUGlobalMemoryAddrSpace,
+        /*isExternallyInitialized=*/false);
   }
   return state_ptr;
 }

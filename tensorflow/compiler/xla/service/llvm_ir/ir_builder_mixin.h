@@ -71,7 +71,7 @@ class IrBuilderMixin {
 
   template <class... Args>
   llvm::Value* BitCast(Args&&... args) {
-    return mixin_builder()->CreateBitCast(std::forward<Args>(args)...);
+    return mixin_builder()->CreatePointerBitCastOrAddrSpaceCast(std::forward<Args>(args)...);
   }
 
   template <class... Args>

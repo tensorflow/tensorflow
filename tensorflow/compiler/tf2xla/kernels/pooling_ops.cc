@@ -358,11 +358,15 @@ class MaxPool2DGradOp : public MaxPoolGradOp {
                 errors::InvalidArgument("Invalid data format"));
   }
 };
+// disable MaxPoolGrad and MaxPoolGradV2 on ROCm to avoid a limitation imposed
+// by LLVM AMDGPU compiler for LLVM ptrtoint and inttoptr IRs
+#if !TENSORFLOW_USE_ROCM
 REGISTER_XLA_OP(Name("MaxPoolGrad"), MaxPool2DGradOp);
 REGISTER_XLA_OP(Name("MaxPoolGradV2")
                     .CompileTimeConstInput("ksize")
                     .CompileTimeConstInput("strides"),
                 MaxPool2DGradOp);
+#endif
 
 class MaxPool3DGradOp : public MaxPoolGradOp {
  public:

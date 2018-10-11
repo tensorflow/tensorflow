@@ -37,7 +37,7 @@ namespace gpu {
 // The Compile.* interfaces each create their own llvm::LLVMContext objects for
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
-StatusOr<std::vector<char>> CompileToHsaco(llvm::Module* module,
+StatusOr<std::vector<uint8>> CompileToHsaco(llvm::Module* module,
                                            int amdgpu_version,
                                            const HloModuleConfig& hlo_module_config,
                                            const string& rocdl_dir_path);
