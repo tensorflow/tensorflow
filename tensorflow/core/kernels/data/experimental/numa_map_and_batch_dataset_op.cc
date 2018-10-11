@@ -235,10 +235,15 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           worker = workers_[cur_block_].get();
           cur_block_ = (cur_block_ + 1) % workers_.size();
         }
-        TF_RETURN_IF_ERROR(worker->manager.GetBatch(
-            ctx, dataset()->drop_remainder_, &global_end_of_input_, out_tensors,
-            end_of_sequence));
-        return Status::OK();
+        bool global_end_of_input_local = false;
+        Status s = worker->manager.GetBatch(ctx, dataset()->drop_remainder_,
+                                            &global_end_of_input_local,
+                                            out_tensors, end_of_sequence);
+        if (global_end_of_input_local) {
+          mutex_lock l(*mu_);
+          global_end_of_input_ = global_end_of_input_local;
+        }
+        return s;
       }
 
      protected:
