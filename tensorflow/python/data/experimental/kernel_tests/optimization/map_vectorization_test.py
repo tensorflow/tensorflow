@@ -26,6 +26,7 @@ from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -34,6 +35,36 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+
+def _generate_optimization_test_cases():
+
+  def base_dataset_factory():
+    return dataset_ops.Dataset.from_tensors(np.random.rand(10, 3)).repeat(5)
+
+  rand_val = np.random.rand(1, 1, 1, 1, 1, 1)
+
+  test_cases = [
+      ("Basic", lambda x: (x, x + 1), base_dataset_factory),
+      ("Const", lambda x: 2, base_dataset_factory),
+      # Math ops exercise broadcasting capabilities
+      ("Add", lambda x: x + rand_val, base_dataset_factory),
+      ("Cast", lambda x: math_ops.cast(x, dtypes.float64),
+       base_dataset_factory),
+      ("Reshape", lambda x: array_ops.gather(x, 0), base_dataset_factory),
+      ("Unpack", array_ops.unstack, base_dataset_factory),
+  ]
+
+  return [{
+      "testcase_name":
+          x[0] + "Parallel" if num_parallel_calls is not None else x[0],
+      "map_fn":
+          x[1],
+      "base_dataset_factory":
+          x[2],
+      "num_parallel_calls":
+          num_parallel_calls
+  } for x in test_cases for num_parallel_calls in (None, 12)]
 
 
 class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -76,16 +107,9 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     optimized = optimized.with_options(options)
     return unoptimized, optimized
 
-  @parameterized.named_parameters(
-      ("Basic", lambda x: (x, x + 1), None),
-      ("Const", lambda x: 2, 12),
-      ("Parallel", lambda x: (x, x + 1), 12),
-      ("Broadcast", lambda x: x + np.random.rand(5, 4, 3, 2), None),
-      ("Gather", lambda x: array_ops.gather(x, 0), 12),
-  )
-  def testOptimization(self, map_fn, num_parallel_calls):
-    base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
-                                                           [3, 4]]).repeat(5)
+  @parameterized.named_parameters(_generate_optimization_test_cases())
+  def testOptimization(self, map_fn, base_dataset_factory, num_parallel_calls):
+    base_dataset = base_dataset_factory()
     unoptimized, optimized = self._get_test_datasets(base_dataset, map_fn,
                                                      num_parallel_calls)
     self.assertDatasetsEqual(unoptimized, optimized)
@@ -178,8 +202,8 @@ class MapVectorizationBenchmark(test.Benchmark):
     return median_time
 
   def _compare(self, input_dataset, map_fn, batch_size, input_size, str_id):
-    num_elems = np.prod(input_size)
-    name_template = "{}__batch_size_{}_input_size_{}_{}"
+    num_elems = np.sum([np.prod(x) for x in input_size])
+    name_template = "{}__batch_size_{}_input_element_size_{}_{}"
     unoptimized = input_dataset.map(map_fn).batch(batch_size)
     unoptimized_op = unoptimized.make_one_shot_iterator().get_next()
 
@@ -197,7 +221,7 @@ class MapVectorizationBenchmark(test.Benchmark):
         name=name_template.format(str_id, batch_size, num_elems, "optimized"))
 
     print("Batch size: {}\n"
-          "Input size: {}\n"
+          "Input element size: {}\n"
           "Transformation: {}\n"
           "Speedup: {}\n".format(batch_size, input_size, str_id,
                                  (unoptimized_time / optimized_time)))
@@ -220,13 +244,26 @@ class MapVectorizationBenchmark(test.Benchmark):
     self._benchmark_helper(
         lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
 
-  def _benchmark_helper(self, map_fn, str_id):
+  def benchmarkReshape(self):
+    self._benchmark_helper(
+        lambda *args: [array_ops.reshape(x, (-1, 30)) for x in args], "reshape")
+
+  def _default_dataset_factory(self):
     input_sizes = [(10, 10, 3), (10, 100, 300)]
+    for sz in input_sizes:
+      yield dataset_ops.Dataset.from_tensor_slices(np.random.rand(*sz)).repeat()
+
+  def _benchmark_helper(self, map_fn, str_id, base_dataset_factory=None):
+    if base_dataset_factory is None:
+      base_dataset_factory = self._default_dataset_factory
+
     batch_size = 1000
-    for input_size in input_sizes:
-      input_dataset = dataset_ops.Dataset.from_tensor_slices(
-          (np.random.rand(*input_size), np.random.rand(*input_size))).repeat()
-      self._compare(input_dataset, map_fn, batch_size, input_size, str_id)
+    for base_dataset in base_dataset_factory():
+      input_size = [
+          tuple(shape.as_list())
+          for shape in nest.flatten(base_dataset.output_shapes)
+      ]
+      self._compare(base_dataset, map_fn, batch_size, input_size, str_id)
 
 
 if __name__ == "__main__":

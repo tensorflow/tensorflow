@@ -1007,14 +1007,98 @@ TEST(VectorizeMapDefunTest, VectorizeDefunAdd) {
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
 
-// TODO(rachelim): More test cases when we get around to implementing them:
-// [] A badly defined converter, e.g. doesn't produce nodes that have the
-//    same number of outputs/inputs as the nodes to be converted
-// [] Converter where the 'converted' form has multiple nodes.
-// [] Case with dependent nodes, e.g. ops with const inputs that are
-//    broadcasted.
-// [] Python-side tests to actually run the functions to make sure
-//    they work.
+// Before:
+//
+//
+//                 +------+
+// +---------------+ Arg0 +---------------------+
+// |               +---+--+                     |
+// |                   |                        |
+// |               +---v--+                     |
+// |   +-----------+ Arg0 +-----------------+   |
+// |   |           +---+--+                 |   |
+// |   |               |                    |   |
+// |   |               |                    |   |
+// |   |               |   (3,3,3)          |   |
+// |   |               |   +-----+          |   |
+// |   |               |   |Const|          |   |
+// |   |               |   +--+--+          |   |
+// |   |               |      |             |   |
+// |   |               | +----+             |   |
+// |   |           +---v-v-+                |   |
+// |   |           |Reshape|                |   |
+// |   |           +---+---+                |   |
+// |   |               |                    |   |
+// |   | MapDefun  +---v--+                 |   |
+// |   +-----------+ Ret0 +-----------------+   |
+// |               +---+--+                     |
+// |                   |                        |
+// |               +---v--+                     |
+// +---------------+ Ret0 +---------------------+
+//                 +------+
+//
+//
+//  After:
+//
+//           +------+
+// +---------+ Arg0 +------------------------+
+// |         +---+--+                        |
+// |             |                           |
+// |             |                           |
+// |             |     +-----+               |
+// |             |     |Const|               |
+// |             |     +--+--+               |
+// |             |        |                  |
+// |             |    +---v---+              |
+// |             |    |Concat*|              |
+// |             |    +---+---+              |
+// |             |        |                  |
+// |             | +------+                  |
+// |             | |                         |
+// |         +---v-v-+                       |
+// |         |Reshape|                       |
+// |         +---+---+                       |
+// |             |                           |
+// |         +---v--+                        |
+// +---------+ Ret0 +------------------------+
+//           +------+
+//
+// (Where Concat* appends the 0th dim of the input to the new shape)
+//
+TEST(VectorizeMapDefunTest, VectorizeReshape) {
+  FunctionDef inner = FunctionDefHelper::Create(
+      "inner_function", {"arg0: int32"}, {"ret0: int32"}, {/* attrs */},
+      {/* nodes */ FunctionDefHelper::Const("Const",
+                                            gtl::ArraySlice<int>({3, 3, 3})),
+       {{"Reshape"},
+        "Reshape",
+        {"arg0", "Const:output:0"},
+        {{"T", DT_INT32}, {"Tshape", DT_INT32}}}},
+      {{"ret0", "Reshape:output:0"}});
+
+  FunctionDef outer = FunctionDefHelper::Create(
+      "outer_function", {"outer_arg0: int32"}, {"mapdefun: int32"},
+      {/* attrs */}, {/* nodes */}, {{"mapdefun", "MapDefun:output:0"}});
+
+  NodeDef* map_defun =
+      AddMapDefunNode("MapDefun", {"outer_arg0"}, {DT_INT32}, {DT_INT32}, {{}},
+                      inner.signature().name(), &outer);
+  CHECK_NOTNULL(map_defun);
+
+  FunctionDefLibrary lib;
+  *lib.add_function() = outer;
+  *lib.add_function() = inner;
+  FunctionDef* vectorized;
+  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  EXPECT_TRUE(
+      !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
+  EXPECT_TRUE(
+      function_utils::ContainsFunctionNodeWithOp("Reshape", *vectorized));
+  auto reshape_node = vectorized->node_def(
+      function_utils::FindFunctionNodeWithOp("Reshape", *vectorized));
+  EXPECT_EQ(GetRetval(*vectorized, 0),
+            strings::StrCat(reshape_node.name(), ":output:0"));
+}
 
 }  // namespace
 }  // namespace vectorization_utils
