@@ -76,6 +76,13 @@ cc_library(
 )
 
 cc_library(
+    name = "reshape_vectorizer",
+    srcs = ["reshape_vectorizer.cc"],
+    deps = VECTORIZER_DEPS,
+    alwayslink = 1,
+)
+
+cc_library(
     name = "unpack_vectorizer",
     srcs = ["unpack_vectorizer.cc"],
     deps = VECTORIZER_DEPS,
@@ -89,6 +96,7 @@ cc_library(
     deps = [
         ":add_vectorizer",
         ":cast_vectorizer",
+        ":reshape_vectorizer",
         ":unpack_vectorizer",
         ":vectorizer",
         ":vectorizer_registry",
