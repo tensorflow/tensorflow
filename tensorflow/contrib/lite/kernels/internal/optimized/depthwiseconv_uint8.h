@@ -1546,33 +1546,6 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
     int16 filter_offset, int out_x_buffer_start, int out_x_buffer_end,
     int output_depth, int32* acc_buffer) {
   gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
-#ifdef TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
-#ifndef ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
-  LOG(FATAL)
-      << "\n\n"
-      << "*****************************************************************\n"
-      << "* This tfmini inference code was about to use the slow generic\n"
-      << "* fallback implementation for a DepthwiseConv op, and we want you\n"
-      << "* to be aware of that so that you will know why you get terrible\n"
-      << "* performance.\n"
-      << "*\n"
-      << "* If you would like to carry on with the slow code, compile\n"
-      << "* with this preprocessor token defined:\n"
-      << "* ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK.\n"
-      << "*\n"
-      << "* The right thing to do, if you care about performance, is to add\n"
-      << "* a new DepthwiseConv kernel to tfmini to cover your case.\n"
-      << "* The relevant parameters defining your case are:\n"
-      << "* stride = " << stride << "\n"
-      << "* input_depth = " << input_depth << "\n"
-      << "* depth_multiplier = " << depth_multiplier << "\n"
-      << "* dilation_factor = " << dilation_factor << "\n"
-      << "*\n"
-      << "* Please do not hesitate to contact benoitjacob@ with this\n"
-      << "* information.\n"
-      << "*****************************************************************\n";
-#endif  // ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
-#endif  // TFLITE_PREVENT_SLOW_GENERIC_DEPTHWISECONV_FALLBACK
   const uint8* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
