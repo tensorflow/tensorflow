@@ -42,9 +42,20 @@ class Scope(object):
   Note that scopes do not necessarily align with Python's scopes. For example,
   the body of an if statement may be considered a separate scope.
 
+  Caution - the AST references held by this object are weak.
+
   Attributes:
-    modified: identifiers modified in this scope
-    used: identifiers referenced in this scope
+    modified: Set[qual_names.QN], identifiers modified in this scope
+    read: Set[qual_names.QN], identifiers read in this scope
+    deleted: Set[qual_names.QN], identifiers deleted in this scope
+    params: WeakValueDictionary[qual_names.QN, ast.Node], function arguments
+      visible in this scope, mapped to the function node that defines them
+
+  Note - simple statements may never delete and modify a symbol at the same
+  time. However, compound ones like if statements can. In that latter case, it's
+  undefined whether the symbol is actually modified or deleted upon statement
+  exit. Certain analyses like reaching definitions need to be careful about
+  this.
   """
 
   def __init__(self, parent, isolated=True, add_unknown_symbols=False):
@@ -63,19 +74,22 @@ class Scope(object):
     self.parent = parent
     self.add_unknown_symbols = add_unknown_symbols
     self.modified = set()
-    self.used = set()
-    self.params = {}
-    self.returned = set()
+    self.read = set()
+    self.deleted = set()
+    self.params = weakref.WeakValueDictionary()
 
-  # TODO(mdan): Rename to `reserved`
+  @property
+  def affects_parent(self):
+    return not self.isolated and self.parent is not None
+
   @property
   def referenced(self):
-    if not self.isolated and self.parent is not None:
-      return self.used | self.parent.referenced
-    return self.used
+    if self.affects_parent:
+      return self.read | self.parent.referenced
+    return self.read
 
   def __repr__(self):
-    return 'Scope{r=%s, w=%s}' % (tuple(self.used), tuple(self.modified))
+    return 'Scope{r=%s, w=%s}' % (tuple(self.read), tuple(self.modified))
 
   def copy_from(self, other):
     """Recursively copies the contents of this scope from another scope."""
@@ -85,9 +99,8 @@ class Scope(object):
       self.parent.copy_from(other.parent)
     self.isolated = other.isolated
     self.modified = copy.copy(other.modified)
-    self.used = copy.copy(other.used)
+    self.read = copy.copy(other.read)
     self.params = copy.copy(other.params)
-    self.returned = copy.copy(other.returned)
 
   @classmethod
   def copy_of(cls, other):
@@ -105,32 +118,27 @@ class Scope(object):
     if other.parent is not None:
       self.parent.merge_from(other.parent)
     self.modified |= other.modified
-    self.used |= other.used
+    self.read |= other.read
     self.params.update(other.params)
-    self.returned |= other.returned
 
   def mark_read(self, name):
-    self.used.add(name)
+    self.read.add(name)
     if self.parent is not None and name not in self.params:
       self.parent.mark_read(name)
 
   def mark_modified(self, name):
-    """Marks the given symbol as modified in the current scope."""
     self.modified.add(name)
-    if not self.isolated:
-      if self.parent is not None:
-        self.parent.mark_modified(name)
+    if self.affects_parent:
+      self.parent.mark_modified(name)
+
+  def mark_deleted(self, name):
+    self.deleted.add(name)
 
   def mark_param(self, name, owner):
     # Assumption: all AST nodes have the same life span. This lets us use
     # a weak reference to mark the connection between a symbol node and the
     # function node whose argument that symbol is.
-    self.params[name] = weakref.ref(owner)
-
-  def mark_returned(self, name):
-    self.returned.add(name)
-    if not self.isolated and self.parent is not None:
-      self.parent.mark_returned(name)
+    self.params[name] = owner
 
 
 class _Lambda(object):
@@ -157,7 +165,6 @@ class ActivityAnalyzer(transformer.Base):
 
     # Note: all these flags crucially rely on the respective nodes are
     # leaves in the AST, that is, they cannot contain other statements.
-    self._in_return_statement = False
     self._in_aug_assign = False
     self._in_function_def_args = False
 
@@ -212,12 +219,11 @@ class ActivityAnalyzer(transformer.Base):
         # TODO(mdan): Is this case possible at all?
         raise NotImplementedError(
             'Param "{}" outside a function arguments or lambda.'.format(qn))
+    elif isinstance(node.ctx, gast.Del):
+      self.scope.mark_deleted(qn)
     else:
       raise ValueError('Unknown context {} for node "{}".'.format(
           type(node.ctx), qn))
-
-    if self._in_return_statement:
-      self.scope.mark_returned(qn)
 
   def _enter_scope(self, isolated):
     self.scope = Scope(self.scope, isolated=isolated)
@@ -242,10 +248,7 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_Return(self, node):
-    self._in_return_statement = True
-    node = self._process_statement(node)
-    self._in_return_statement = False
-    return node
+    return self._process_statement(node)
 
   def visit_Assign(self, node):
     return self._process_statement(node)
