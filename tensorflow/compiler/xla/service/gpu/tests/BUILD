@@ -211,8 +211,8 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "cudnn_fused_convolution_rewriter_test",
-    srcs = ["cudnn_fused_convolution_rewriter_test.cc"],
+    name = "cudnn_fused_conv_rewriter_test",
+    srcs = ["cudnn_fused_conv_rewriter_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",

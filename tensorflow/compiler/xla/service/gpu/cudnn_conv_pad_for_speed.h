@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PAD_FOR_TENSOR_CORES_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PAD_FOR_TENSOR_CORES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_SPEED_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_SPEED_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -29,10 +29,13 @@ namespace gpu {
 // opposite of useful on other GPUs, so you should check what GPU you're
 // targeting before running this pass.
 //
+// TODO(jlebar): Rework this.  For one thing, it should not be Volta-only.
+// Padding input channels 3 to 4 is (we think) applicable to Pascal as well.
+//
 // TODO(jlebar): Also pad dots.
-class PadForTensorCores : public HloModulePass {
+class CudnnConvPadForSpeed : public HloModulePass {
  public:
-  absl::string_view name() const override { return "pad for tensor cores"; }
+  absl::string_view name() const override { return "cudnn-conv-pad-for-speed"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
@@ -40,4 +43,4 @@ class PadForTensorCores : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_PAD_FOR_TENSOR_CORES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_PAD_FOR_SPEED_H_

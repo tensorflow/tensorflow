@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_
 
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -31,18 +31,17 @@ namespace gpu {
 
 // Modifies CustomCalls to cudnn convolutions, choosing the best algorithm for
 // each and adding explicit scratch space to the CustomCalls.
-class CudnnConvolutionAlgorithmPicker : public HloModulePass {
+class CudnnConvAlgorithmPicker : public HloModulePass {
  public:
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  CudnnConvolutionAlgorithmPicker(se::StreamExecutor* stream_exec,
-                                  DeviceMemoryAllocator* allocator,
-                                  Compiler* compiler)
+  CudnnConvAlgorithmPicker(se::StreamExecutor* stream_exec,
+                           DeviceMemoryAllocator* allocator, Compiler* compiler)
       : stream_exec_(stream_exec), allocator_(allocator), compiler_(compiler) {}
 
   absl::string_view name() const override {
-    return "cudnn-convolution-algorithm-picker";
+    return "cudnn-conv-algorithm-picker";
   }
 
   StatusOr<bool> Run(HloModule* module) override;
@@ -67,4 +66,4 @@ class CudnnConvolutionAlgorithmPicker : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONVOLUTION_ALGORITHM_PICKER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_ALGORITHM_PICKER_H_

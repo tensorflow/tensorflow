@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -132,7 +132,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
 }
 }  // namespace
 
-bool PadInsertion::CanonicalizeForwardConvolution(HloInstruction* conv) {
+bool CudnnConvPaddingLegalization::CanonicalizeForwardConvolution(
+    HloInstruction* conv) {
   if (IsForwardConvolutionCanonical(*conv)) {
     return false;
   }
@@ -187,7 +188,7 @@ void IncreasePaddingHighBy(int64 delta, WindowDimension* window_dim) {
 }
 }  // namespace
 
-bool PadInsertion::CanonicalizeBackwardFilterConvolution(
+bool CudnnConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
     HloInstruction* backward_conv) {
   CHECK_EQ(backward_conv->custom_call_target(),
            kCudnnConvBackwardFilterCallTarget);
@@ -260,7 +261,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   return true;
 }
 
-bool PadInsertion::CanonicalizeBackwardInputConvolution(
+bool CudnnConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
     HloInstruction* backward_conv) {
   if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
@@ -377,7 +378,8 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   return true;
 }
 
-StatusOr<bool> PadInsertion::RunOnComputation(HloComputation* computation) {
+StatusOr<bool> CudnnConvPaddingLegalization::RunOnComputation(
+    HloComputation* computation) {
   bool changed = false;
   std::vector<HloCustomCallInstruction*> convs;
   for (auto* instr : computation->instructions()) {
@@ -402,7 +404,7 @@ StatusOr<bool> PadInsertion::RunOnComputation(HloComputation* computation) {
   return changed;
 }
 
-StatusOr<bool> PadInsertion::Run(HloModule* module) {
+StatusOr<bool> CudnnConvPaddingLegalization::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

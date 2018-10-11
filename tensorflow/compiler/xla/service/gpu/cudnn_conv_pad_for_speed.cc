@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_speed.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -108,7 +108,7 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
 static StatusOr<bool> PadFeaturesDims(HloCustomCallInstruction* conv) {
   CHECK_EQ(0, conv->shape().tuple_shapes(1).dimensions(0))
       << "conv must use 0 scratch bytes, i.e. this pass must be run "
-         "before CudnnConvolutionAlgorithmPicker.";
+         "before CudnnConvAlgorithmPicker.";
 
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(conv));
   const auto& dnums = conv->convolution_dimension_numbers();
@@ -252,7 +252,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
   return convs;
 }
 
-StatusOr<bool> PadForTensorCores::Run(HloModule* module) {
+StatusOr<bool> CudnnConvPadForSpeed::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
