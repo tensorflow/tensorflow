@@ -666,10 +666,10 @@ def sparse_categorical_accuracy(y_true, y_pred):
     y_true = array_ops.squeeze(y_true, [-1])
   y_pred = math_ops.argmax(y_pred, axis=-1)
 
-  # If the expected labels are float, we need to cast the int returned by
-  # argmax to compare.
-  if K.dtype(y_true) == K.floatx():
-    y_pred = math_ops.cast(y_pred, K.floatx())
+  # If the predicted output and actual output types don't match, force cast them
+  # to match.
+  if K.dtype(y_pred) != K.dtype(y_true):
+    y_pred = math_ops.cast(y_pred, K.dtype(y_true))
 
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
