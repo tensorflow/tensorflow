@@ -49,7 +49,7 @@ def _ModelVariable(name,
                    collections=None,
                    trainable=None):
   collections = list(collections or [])
-  collections += [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
+  collections += [ops.GraphKeys.GLOBAL_VARIABLES]
   return variable_scope.get_variable(
       name,
       shape=shape,
@@ -62,7 +62,7 @@ def LastValueQuantize(inputs,
                       per_channel=False,
                       init_min=-6.0,
                       init_max=6.0,
-                      vars_collection=ops.GraphKeys.MOVING_AVERAGE_VARIABLES,
+                      vars_collection=None,
                       name_prefix='LastValueQuant',
                       reuse=None,
                       is_training=True,
@@ -104,17 +104,18 @@ def LastValueQuantize(inputs,
     else:
       min_max_shape = []
 
+    vars_collections = [vars_collection] if vars_collection else []
     min_var = _ModelVariable(
         'min',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_min),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
     max_var = _ModelVariable(
         'max',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_max),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
     if not is_training:
       return _FakeQuantWithMinMaxVars(
@@ -212,17 +213,18 @@ def MovingAvgQuantize(inputs,
     else:
       min_max_shape = []
 
+    vars_collections = [vars_collection] if vars_collection else []
     min_var = _ModelVariable(
         'min',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_min),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
     max_var = _ModelVariable(
         'max',
         shape=min_max_shape,
         initializer=init_ops.constant_initializer(init_max),
-        collections=[vars_collection],
+        collections=vars_collections,
         trainable=False)
     if not is_training:
       return _FakeQuantWithMinMaxVars(
