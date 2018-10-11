@@ -55,7 +55,9 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # Test binary for the microcontroller speech model.
 MICRO_SPEECH_TEST_SRCS := \
 tensorflow/contrib/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
-tensorflow/contrib/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc
+tensorflow/contrib/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc \
+tensorflow/contrib/lite/experimental/micro/examples/micro_speech/no_features_data.cc \
+tensorflow/contrib/lite/experimental/micro/examples/micro_speech/yes_features_data.cc
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/contrib/lite/experimental/micro/*test.cc) \
