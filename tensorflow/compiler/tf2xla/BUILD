@@ -662,5 +662,6 @@ cc_library(
     hdrs = ["side_effect_util.h"],
     deps = [
         "//tensorflow/core:core_cpu",
+        "@com_google_absl//absl/strings",
     ],
 )
