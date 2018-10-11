@@ -3093,5 +3093,5 @@ def extract_glimpse(
 
 extract_glimpse.__doc__ = gen_image_ops.extract_glimpse.__doc__
 
-extract_glimpse_v2=gen_image_ops.extract_glimpse
+extract_glimpse_v2 = gen_image_ops.extract_glimpse
 tf_export(v2=['image.extract_glimpse'])(extract_glimpse_v2)
