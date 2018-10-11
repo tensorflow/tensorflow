@@ -553,7 +553,6 @@ gen_api_init_files(
 
 py_library(
     name = "tensorflow_py",
-    srcs = ["//tensorflow/python/estimator/api:estimator_python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

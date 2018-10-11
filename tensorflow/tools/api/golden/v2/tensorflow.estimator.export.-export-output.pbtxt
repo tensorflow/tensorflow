@@ -1,6 +1,6 @@
 path: "tensorflow.estimator.export.ExportOutput"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.export.export_output.ExportOutput\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.export.export_output.ExportOutput\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
