@@ -815,7 +815,8 @@ class Model(Network):
     if isinstance(first_x_value, np.ndarray):
       x_shape = first_x_value.shape
       if batch_size is None:
-        batch_size = x_shape[0] // steps
+        batch_size = distributed_training_utils.get_batch_size(
+            self._distribution_strategy.num_towers, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes
@@ -833,10 +834,7 @@ class Model(Network):
         y = None
       else:
         # This case is for the predict call where the dataset only contains
-        # inputs and no targets i.e it does not return a tuple.
-        # TODO(anjalisridhar): Raise an error if we are not able to process
-        # all the predict samples. This can happen if the number of batches is
-        # not evenly divisible by the number of worker devices.
+        # inputs and no targets, i.e. it does not return a tuple
         var_x = distributed_training_utils.get_var_for_numpy(
             self._distribution_strategy, x)
         x = dataset_ops.Dataset.from_tensor_slices(var_x)
