@@ -74,7 +74,7 @@ build --define=grpc_no_ares=true
 
 #build --spawn_strategy=standalone
 #build --genrule_strategy=standalone
-#build -c opt
+build -c opt
 # Default paths for TF_SYSTEM_LIBS
 #build --define=PREFIX=/usr
 #build --define=LIBDIR=$(PREFIX)/lib
