@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_speed.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -209,14 +209,14 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddPass<CudnnFusedConvRewriter>();
     pipeline.AddPass<CudnnConvPaddingLegalization>();
     if (IsVoltaOrLater(*stream_exec)) {
-      pipeline.AddPass<CudnnConvPadForSpeed>();
-      // CudnnConvPadForSpeed leaves behind unnecessary tuple/get-tuple-element
-      // pairs that TupleSimplifier fixes.
+      pipeline.AddPass<CudnnConvPadForTensorCores>();
+      // CudnnConvPadForTensorCores leaves behind unnecessary
+      // tuple/get-tuple-element pairs that TupleSimplifier fixes.
       pipeline.AddPass<TupleSimplifier>();
     }
     // CudnnConvRewriter, CudnnConvPaddingLegalization and
-    // CudnnConvPadForSpeed may add instructions which can be simplified by
-    // constant folding.
+    // CudnnConvPadForTensorCores may add instructions which can be simplified
+    // by constant folding.
     pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
