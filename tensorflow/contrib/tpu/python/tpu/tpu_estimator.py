@@ -480,6 +480,12 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._outfeed_controller = _OpQueueContext(
         name='OutfeedController', target=self._run_outfeed, args=(session,))
 
+    # Enable the worker watchdog to terminate workers on coordinator exit.
+    watchdog_timeout = int(os.environ.get('TF_TPU_WATCHDOG_TIMEOUT', '0'))
+    if watchdog_timeout > 0:
+      session_support.start_worker_watchdog(session,
+                                            shutdown_timeout=watchdog_timeout)
+
   def before_run(self, run_context):
     self._feed_error = None
 
