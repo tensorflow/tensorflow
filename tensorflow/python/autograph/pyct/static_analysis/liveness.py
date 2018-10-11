@@ -55,11 +55,11 @@ class Analyzer(cfg.GraphVisitor):
     if anno.hasanno(node.ast_node, anno.Static.SCOPE):
       node_scope = anno.getanno(node.ast_node, anno.Static.SCOPE)
 
-      gen = node_scope.used | self.extra_gen.get(node.ast_node, frozenset())
+      gen = node_scope.read | self.extra_gen.get(node.ast_node, frozenset())
       # TODO(mdan): verify whether composites' parents need to be added.
-      # E.g. if x.y is live whether x needs to be added. Theoretically the
+      # E.g. whether x needs to be added if x.y is live. Theoretically the
       # activity analysis should have both so that wouldn't be needed.
-      kill = node_scope.modified
+      kill = node_scope.modified | node_scope.deleted
 
       live_out = set()
       for n in node.next:

@@ -28,6 +28,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
+
 import gast
 
 from tensorflow.python.autograph.pyct import anno
@@ -137,12 +139,12 @@ class Analyzer(cfg.GraphVisitor):
         for s in node_scope.modified:
           def_ = self._definition_factory()
           if s in node_scope.params:
-            def_.param_of = node_scope.params[s]
+            def_.param_of = weakref.ref(node_scope.params[s])
           node_symbols[s] = def_
         self.gen_map[node] = _NodeState(node_symbols)
 
       gen = self.gen_map[node]
-      kill = node_scope.modified
+      kill = node_scope.modified | node_scope.deleted
       defs_out = gen | (defs_in - kill)
 
     else:

@@ -33,19 +33,19 @@ from tensorflow.python.platform import test
 class ScopeTest(test.TestCase):
 
   def assertMissing(self, qn, scope):
-    self.assertNotIn(qn, scope.used)
+    self.assertNotIn(qn, scope.read)
     self.assertNotIn(qn, scope.modified)
 
   def assertReadOnly(self, qn, scope):
-    self.assertIn(qn, scope.used)
+    self.assertIn(qn, scope.read)
     self.assertNotIn(qn, scope.modified)
 
   def assertWriteOnly(self, qn, scope):
-    self.assertNotIn(qn, scope.used)
+    self.assertNotIn(qn, scope.read)
     self.assertIn(qn, scope.modified)
 
   def assertReadWrite(self, qn, scope):
-    self.assertIn(qn, scope.used)
+    self.assertIn(qn, scope.read)
     self.assertIn(qn, scope.modified)
 
   def test_basic(self):
@@ -137,7 +137,7 @@ class ActivityAnalyzerTest(test.TestCase):
 
   def assertScopeIs(self, scope, used, modified):
     """Assert the scope contains specific used, modified & created variables."""
-    self.assertSymbolSetsAre(used, scope.used, 'read')
+    self.assertSymbolSetsAre(used, scope.read, 'read')
     self.assertSymbolSetsAre(modified, scope.modified, 'modified')
 
   def test_print_statement(self):
