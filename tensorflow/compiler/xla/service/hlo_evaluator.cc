@@ -190,6 +190,11 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
       });
+  typed_visitors_[TOKEN] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluatorTypedVisitor: unhandled primitive type: TOKEN.");
+      });
 }
 
 template <typename LiteralPtr>
