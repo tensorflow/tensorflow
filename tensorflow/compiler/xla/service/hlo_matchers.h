@@ -217,6 +217,7 @@ HLO_MATCHER(Remainder);
 HLO_MATCHER(Reshape);
 HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
+HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
 HLO_MATCHER(Send);

@@ -185,6 +185,14 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
+  // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
+  // the process. `scatter` may be fused, scatter indices are taken from
+  // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
+  // expected to have the operand values in it already.
+  Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
+                     const llvm_ir::ElementGenerator& scatter_indices_gen,
+                     const llvm_ir::ElementGenerator& updates_gen);
+
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
   bool CheckAndEmitHloWithTile021(HloInstruction* hlo);
