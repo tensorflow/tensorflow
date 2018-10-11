@@ -1304,8 +1304,6 @@ class Name : public KernelDefBuilder {
             return new __VA_ARGS__(context);                             \
           });
 
-void* GlobalKernelRegistry();
-
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
