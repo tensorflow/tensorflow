@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -253,7 +253,6 @@ class ROCmFusionKernelConvolutionBiasActivation : public OpKernel {
                          fusion_output.template flat<T>().size());
 
       auto* stream = ctx->op_device_context()->stream();
-      int device_id = stream->parent()->device_ordinal();
 
       bool miopen_status =
           stream

@@ -13,20 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_GPU_FUSION_OPS_H_
-#define TENSORFLOW_KERNELS_GPU_FUSION_OPS_H_
+// A graph pass that rewrites graph to FUSE specific operations in ROCm mode.
+
+#ifndef TENSORFLOW_GRAPH_GPU_FUSION_PASS_H_
+#define TENSORFLOW_GRAPH_GPU_FUSION_PASS_H_
 
 #ifdef TENSORFLOW_USE_ROCM
 
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/util/activation_mode.h"
-
-namespace tensorflow {
-
-se::dnn::ActivationMode GetDnnActivationMode(ActivationMode activation_mode);
-
-}  // namespace tensorflow
+#include <sys/types.h>
+#include <memory>
+#include "tensorflow/core/graph/graph.h"
 
 #endif  // TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_KERNELS_GPU_FUSION_OPS_H_
+#endif  // TENSORFLOW_GRAPH_GPU_FUSION_PASS_H_
