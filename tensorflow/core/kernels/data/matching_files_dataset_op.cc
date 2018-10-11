@@ -258,6 +258,9 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           const string& current_dir = current_path.first;
           std::vector<string> children;
           Status s = fs->GetChildren(current_dir, &children);
+          std::cout << "Children Num: " << children.size()
+                    << "; Status: " << s.ToString()
+                    << "; Current dir: " << current_dir << std::endl;
           ret.Update(s);
 
           // If GetChildren() fails, continue the next search.
