@@ -78,7 +78,11 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   4. Only after all variables have been updated, increment the global step.
   5. Only after step 4, pushes `global_step` in the `token_queue`, once for
      each worker replica. The workers can now fetch the global step, use it to
-     update its local_step variable and start the next batch.
+     update its local_step variable and start the next batch. Please note that
+     some workers can consume multiple minibatches, while some may not consume
+     even one. This is because each worker fetches minibatches as long as
+     a token exists. If one worker is stuck for some reason and does not
+     consume a token, another worker can use it.
 
   For the replicas:
 

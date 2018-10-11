@@ -108,7 +108,7 @@ gpu_py_tests(
 
 gpu_py_tests(
     name = "core_rnn_cell_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",

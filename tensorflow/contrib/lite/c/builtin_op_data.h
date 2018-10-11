@@ -99,6 +99,12 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteSequenceRNNParams;
 
+typedef struct {
+  bool time_major;
+  TfLiteFusedActivation activation;
+  bool merge_outputs;
+} TfLiteBidirectionalSequenceRNNParams;
+
 typedef enum {
   kTfLiteFullyConnectedWeightsFormatDefault = 0,
   kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8 = 1,
@@ -179,6 +185,23 @@ typedef struct {
   // kTfLiteLSTMBasicKernel is only supported in version 2 or above.
   TfLiteLSTMKernelType kernel_type;
 } TfLiteLSTMParams;
+
+typedef struct {
+  // Parameters for the LSTM kernel.
+  TfLiteFusedActivation activation;
+  float cell_clip;
+  float proj_clip;
+} TfLiteUnidirectionalSequenceLSTMParams;
+
+typedef struct {
+  // Parameters for the LSTM kernel.
+  TfLiteFusedActivation activation;
+  float cell_clip;
+  float proj_clip;
+
+  // If true, store the outputs of both directions in the first output.
+  bool merge_outputs;
+} TfLiteBidirectionalSequenceLSTMParams;
 
 typedef struct {
   bool align_corners;

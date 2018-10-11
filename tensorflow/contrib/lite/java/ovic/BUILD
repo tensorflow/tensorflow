@@ -9,6 +9,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 
+# Build targets for OVIC classification.
 java_test(
     name = "OvicClassifierTest",
     size = "medium",
@@ -45,8 +46,9 @@ android_library(
     name = "ovicbenchmarkerlib",
     srcs = [
         "src/main/java/org/tensorflow/ovic/OvicBenchmarker.java",
+        "src/main/java/org/tensorflow/ovic/OvicClassificationResult.java",
         "src/main/java/org/tensorflow/ovic/OvicClassifier.java",
-        "src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
+        "src/main/java/org/tensorflow/ovic/OvicClassifierBenchmarker.java",
     ],
     manifest = "//tensorflow/contrib/lite/java:AndroidManifest.xml",
     tags = ["no_oss"],
@@ -60,11 +62,66 @@ android_library(
 java_library(
     name = "ovicbenchmarkerlib_java",
     srcs = [
+        "src/main/java/org/tensorflow/ovic/OvicClassificationResult.java",
         "src/main/java/org/tensorflow/ovic/OvicClassifier.java",
-        "src/main/java/org/tensorflow/ovic/OvicSingleImageResult.java",
     ],
     javacopts = JAVACOPTS,
     tags = ["no_oss"],
+    deps = [
+        "//tensorflow/contrib/lite/java:libtensorflowlite_jni.so",
+        "//tensorflow/contrib/lite/java:tensorflowlite_java",
+        "//tensorflow/contrib/lite/java/src/main/native",
+        "//tensorflow/contrib/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# Build targets for OVIC detection.
+java_test(
+    name = "OvicDetectorTest",
+    size = "medium",
+    srcs = ["src/test/java/org/tensorflow/ovic/OvicDetectorTest.java"],
+    data = [
+        "//tensorflow/contrib/lite/java/ovic/src/testdata:coco_labels.txt",
+        "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
+        "@tflite_mobilenet_ssd_quant//:detect.tflite",
+    ],
+    javacopts = JAVACOPTS,
+    tags = ["no_oss"],
+    test_class = "org.tensorflow.ovic.OvicDetectorTest",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/contrib/lite/java/ovic:ovicdetectionbenchmarkerlib_java",
+        "@com_google_truth",
+        "@junit",
+    ],
+)
+
+android_library(
+    name = "ovicdetectionbenchmarkerlib",
+    srcs = [
+        "src/main/java/org/tensorflow/ovic/BoundingBox.java",
+        "src/main/java/org/tensorflow/ovic/OvicBenchmarker.java",
+        "src/main/java/org/tensorflow/ovic/OvicDetectionResult.java",
+        "src/main/java/org/tensorflow/ovic/OvicDetector.java",
+        "src/main/java/org/tensorflow/ovic/OvicDetectorBenchmarker.java",
+    ],
+    manifest = "//tensorflow/contrib/lite/java:AndroidManifest.xml",
+    deps = [
+        "//tensorflow/contrib/lite/java:tensorflowlite",
+        "//tensorflow/contrib/lite/java/src/testhelper/java/org/tensorflow/lite:testhelper",
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
+    name = "ovicdetectionbenchmarkerlib_java",
+    srcs = [
+        "src/main/java/org/tensorflow/ovic/BoundingBox.java",
+        "src/main/java/org/tensorflow/ovic/OvicDetectionResult.java",
+        "src/main/java/org/tensorflow/ovic/OvicDetector.java",
+    ],
+    javacopts = JAVACOPTS,
     deps = [
         "//tensorflow/contrib/lite/java:libtensorflowlite_jni.so",
         "//tensorflow/contrib/lite/java:tensorflowlite_java",

@@ -186,6 +186,96 @@ class RNNTest(test.TestCase):
       y_np_2 = model.predict(x_np)
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
+  def test_rnn_with_time_major(self):
+    batch = 10
+    time_step = 5
+    embedding_dim = 4
+    units = 3
+
+    with self.cached_session():
+      # Test basic case.
+      x = keras.Input((time_step, embedding_dim))
+      time_major_x = keras.layers.Lambda(
+          lambda t: array_ops.transpose(t, [1, 0, 2]))(x)
+      layer = keras.layers.SimpleRNN(
+          units, time_major=True, return_sequences=True)
+      self.assertEqual(
+          layer.compute_output_shape((time_step, None,
+                                      embedding_dim)).as_list(),
+          [time_step, None, units])
+      y = layer(time_major_x)
+      self.assertEqual(layer.output_shape, (time_step, None, units))
+
+      y = keras.layers.Lambda(lambda t: array_ops.transpose(t, [1, 0, 2]))(y)
+
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, embedding_dim)),
+          np.zeros((batch, time_step, units)))
+
+    with self.cached_session():
+      # Test stacking.
+      x = keras.Input((time_step, embedding_dim))
+      time_major_x = keras.layers.Lambda(
+          lambda t: array_ops.transpose(t, [1, 0, 2]))(x)
+      cell_units = [10, 8, 6]
+      cells = [keras.layers.SimpleRNNCell(cell_units[i]) for i in range(3)]
+      layer = keras.layers.RNN(cells, time_major=True, return_sequences=True)
+      y = layer(time_major_x)
+      self.assertEqual(layer.output_shape, (time_step, None, cell_units[-1]))
+
+      y = keras.layers.Lambda(lambda t: array_ops.transpose(t, [1, 0, 2]))(y)
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, embedding_dim)),
+          np.zeros((batch, time_step, cell_units[-1])))
+
+    with self.cached_session():
+      # Test masking.
+      x = keras.Input((time_step, embedding_dim))
+      time_major = keras.layers.Lambda(
+          lambda t: array_ops.transpose(t, [1, 0, 2]))(x)
+      mask = keras.layers.Masking()(time_major)
+      rnn = keras.layers.SimpleRNN(
+          units, time_major=True, return_sequences=True)(mask)
+      y = keras.layers.Lambda(lambda t: array_ops.transpose(t, [1, 0, 2]))(rnn)
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, embedding_dim)),
+          np.zeros((batch, time_step, units)))
+
+    with self.cached_session():
+      # Test layer output
+      x = keras.Input((time_step, embedding_dim))
+      rnn_1 = keras.layers.SimpleRNN(units, return_sequences=True)
+      y = rnn_1(x)
+
+      model = keras.models.Model(x, y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          np.zeros((batch, time_step, embedding_dim)),
+          np.zeros((batch, time_step, units)))
+
+      x_np = np.random.random((batch, time_step, embedding_dim))
+      y_np_1 = model.predict(x_np)
+
+      time_major = keras.layers.Lambda(
+          lambda t: array_ops.transpose(t, [1, 0, 2]))(x)
+      rnn_2 = keras.layers.SimpleRNN(
+          units, time_major=True, return_sequences=True)
+      y_2 = rnn_2(time_major)
+      y_2 = keras.layers.Lambda(
+          lambda t: array_ops.transpose(t, [1, 0, 2]))(y_2)
+
+      model_2 = keras.models.Model(x, y_2)
+      rnn_2.set_weights(rnn_1.get_weights())
+
+      y_np_2 = model_2.predict(x_np)
+      self.assertAllClose(y_np_1, y_np_2, atol=1e-4)
+
   def test_rnn_cell_with_constants_layer(self):
 
     class RNNCellWithConstants(keras.layers.Layer):

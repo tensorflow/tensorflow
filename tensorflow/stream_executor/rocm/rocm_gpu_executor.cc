@@ -732,31 +732,6 @@ static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
   return 1;
 }
 
-// Set of device-specific parameters that cannot be
-// queried from the driver API.  These values instead are baked into a
-// lookup table indexed by AMDGPU ISA version.
-struct UnqueryableDeviceParams {
-  int version;
-  uint64 blocks_per_core_limit;
-  uint64 registers_per_core_limit;
-  uint64 registers_per_thread_limit;
-  uint64 warp_alloc_granularity;
-  uint64 register_alloc_granularity;
-  uint64 shared_memory_alloc_granularity;
-};
-
-static const UnqueryableDeviceParams kAllUnqueryableDeviceParams[] = {
-  {
-    803,        // AMDGPU ISA version (803)
-    16,         // blocks_per_core_limit
-    64 * 1024,  // registers_per_core_limit
-    255,        // registers_per_thread_limit
-    4,          // warp_alloc_granularity
-    256,        // register_alloc_granularity
-    256         // shared_memory_alloc_granularity
-  }
-};
-
 DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
   internal::DeviceDescriptionBuilder builder;
 
@@ -819,19 +794,6 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
     builder.set_name(device_name);
   }
 
-  for (size_t i = 0; i < TF_ARRAYSIZE(kAllUnqueryableDeviceParams); i++) {
-    const auto &params = kAllUnqueryableDeviceParams[i];
-    if (params.version == version_) {
-      builder.set_blocks_per_core_limit(params.blocks_per_core_limit);
-      builder.set_registers_per_core_limit(params.registers_per_core_limit);
-      builder.set_registers_per_thread_limit(params.registers_per_thread_limit);
-      builder.set_warp_alloc_granularity(params.warp_alloc_granularity);
-      builder.set_register_alloc_granularity(params.register_alloc_granularity);
-      builder.set_shared_memory_alloc_granularity(
-          params.shared_memory_alloc_granularity);
-    }
-  }
-
   builder.set_platform_version(
       port::StrCat("AMDGPU ISA version: gfx", version_));
 
@@ -853,6 +815,7 @@ DeviceDescription *ROCMExecutor::PopulateDeviceDescription() const {
       ROCMDriver::GetMaxRegistersPerBlock(device_).ValueOrDie());
   builder.set_threads_per_warp(
       ROCMDriver::GetThreadsPerWarp(device_).ValueOrDie());
+  builder.set_registers_per_core_limit(64 * 1024);
 
   auto built = builder.Build();
   return built.release();

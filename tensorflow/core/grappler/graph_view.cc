@@ -20,23 +20,25 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
-  for (int output_arg_id = 0; output_arg_id < op.output_arg_size();
-       ++output_arg_id) {
+namespace {
+int OpPortIdToArgId(const NodeDef& node,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+                    int port_id) {
+  for (int arg_id = 0; arg_id < args.size(); ++arg_id) {
     if (port_id < 0) {
       return -1;
     } else if (port_id == 0) {
-      return output_arg_id;
+      return arg_id;
     }
 
-    // Default is 1 port per output arg.
+    // Default is 1 port per arg.
     int n = 1;
 
-    const auto& output_arg = op.output_arg(output_arg_id);
-    if (!output_arg.number_attr().empty()) {
-      n = node.attr().at(output_arg.number_attr()).i();
-    } else if (!output_arg.type_list_attr().empty()) {
-      n = node.attr().at(output_arg.type_list_attr()).list().type_size();
+    const auto& arg = args.Get(arg_id);
+    if (!arg.number_attr().empty()) {
+      n = node.attr().at(arg.number_attr()).i();
+    } else if (!arg.type_list_attr().empty()) {
+      n = node.attr().at(arg.type_list_attr()).list().type_size();
     }
 
     if (n < 0) {
@@ -44,12 +46,21 @@ int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
       DCHECK_GE(n, 0);
       return -1;
     } else if (port_id < n) {
-      return output_arg_id;
+      return arg_id;
     }
     port_id -= n;
   }
 
   return -1;
+}
+}  // end namespace
+
+int OpOutputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  return OpPortIdToArgId(node, op.output_arg(), port_id);
+}
+
+int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
+  return OpPortIdToArgId(node, op.input_arg(), port_id);
 }
 
 GraphView::GraphView(GraphDef* graph) : graph_(graph) {

@@ -39,7 +39,12 @@ class TransposeTest(test.TestCase):
     return ret
 
   def _compareCpu(self, x, p, conjugate=False):
-    np_ans = self._np_transpose(x, p)
+    if p is None:
+      rank = x.ndim
+      perm = (rank - 1) - np.arange(rank)
+    else:
+      perm = p
+    np_ans = self._np_transpose(x, perm)
     if conjugate:
       np_ans = np.conj(np_ans)
     with self.test_session(use_gpu=False):
@@ -65,7 +70,12 @@ class TransposeTest(test.TestCase):
       return tf_ans, jacob_t
 
   def _compareGpu(self, x, p, conjugate=False):
-    np_ans = self._np_transpose(x, p)
+    if p is None:
+      rank = x.ndim
+      perm = (rank - 1) - np.arange(rank)
+    else:
+      perm = p
+    np_ans = self._np_transpose(x, perm)
     if conjugate:
       np_ans = np.conj(np_ans)
     with self.test_session(use_gpu=True):
@@ -102,6 +112,11 @@ class TransposeTest(test.TestCase):
         self._compareCpu(x, p, conjugate=c)
         if use_gpu:
           self._compareGpu(x, p, conjugate=c)
+    # Test with an empty permutation
+    for c in cs:
+      self._compareCpu(x, None, conjugate=c)
+      if use_gpu:
+        self._compareGpu(x, None, conjugate=c)
 
   def _compare_cpu_gpu(self, x):
     n = np.ndim(x)
@@ -449,12 +464,22 @@ class TransposeTest(test.TestCase):
     self.assertEqual(
         tensor_shape.TensorShape(None),
         array_ops.transpose(array_ops.placeholder(dtypes.int32)).get_shape())
+    self.assertEqual(
+        tensor_shape.TensorShape(None),
+        array_ops.transpose(array_ops.placeholder(dtypes.int32),
+                            [0]).get_shape())
 
   def testNullTensor(self):
     with self.cached_session():
       x = constant_op.constant([], dtype=dtypes.float32, shape=[1, 4, 0])
       xt = array_ops.transpose(x, [0, 2, 1]).eval()
       self.assertAllEqual(xt.shape, (1, 0, 4))
+
+  def testScalar(self):
+    with self.cached_session():
+      x = constant_op.constant(42, dtype=dtypes.float32, shape=[])
+      xt = array_ops.transpose(x).eval()
+      self.assertAllEqual(xt, x)
 
   def _testError(self, x, p, err):
     with self.cached_session():

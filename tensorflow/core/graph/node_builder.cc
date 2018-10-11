@@ -99,6 +99,11 @@ NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
   return *this;
 }
 
+NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
+  assigned_device_ = string(device);
+  return *this;
+}
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;
@@ -114,6 +119,8 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   Status status;
   Node* node = graph->AddNode(node_def, &status);
   if (!status.ok()) return status;
+
+  node->set_assigned_device_name(assigned_device_);
 
   for (size_t i = 0; i < inputs_.size(); ++i) {
     if (inputs_[i].node != nullptr) {  // Skip back edges.

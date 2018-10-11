@@ -23,8 +23,8 @@ import numpy as np
 import six
 
 from tensorflow.contrib import lookup
-from tensorflow.contrib.data.python.ops import counter
 from tensorflow.python.client import session
+from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

@@ -56,7 +56,8 @@ _restore_sparse = sparse_ops._take_many_sparse_from_tensors_map
 # pylint: enable=protected-access
 
 
-@tf_export("train.match_filenames_once")
+@tf_export("io.match_filenames_once", "train.match_filenames_once")
+@deprecation.deprecated_endpoints("train.match_filenames_once")
 def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
 

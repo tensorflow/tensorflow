@@ -79,6 +79,10 @@ tf_class {
     argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "options"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "padded_batch"
     argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
@@ -117,6 +121,10 @@ tf_class {
   member_method {
     name: "window"
     argspec: "args=[\'self\', \'size\', \'shift\', \'stride\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'False\'], "
+  }
+  member_method {
+    name: "with_options"
+    argspec: "args=[\'self\', \'options\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "zip"

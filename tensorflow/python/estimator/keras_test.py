@@ -581,12 +581,6 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'compiled'):
         keras_lib.model_to_estimator(keras_model=keras_model)
 
-    with self.cached_session():
-      keras_model = simple_sequential_model()
-      with self.assertRaisesRegexp(ValueError, 'not a local path'):
-        keras_lib.model_to_estimator(
-            keras_model_path='gs://bucket/object')
-
   def test_invalid_ionames_error(self):
     (x_train, y_train), (_, _) = testing_utils.get_test_data(
         train_samples=_TRAIN_SIZE,

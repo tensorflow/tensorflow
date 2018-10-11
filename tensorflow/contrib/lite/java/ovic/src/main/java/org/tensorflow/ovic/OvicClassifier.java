@@ -31,7 +31,7 @@ import java.util.PriorityQueue;
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.TestHelper;
 
-/** Benchmark ImageNet Classifier with Tensorflow Lite. */
+/** Class for running ImageNet classification with a TfLite model. */
 public class OvicClassifier {
 
   /** Tag for the {@link Log}. */
@@ -106,7 +106,7 @@ public class OvicClassifier {
 
   /** Classifies a {@link ByteBuffer} image. */
   // @throws RuntimeException if model is uninitialized.
-  public OvicSingleImageResult classifyByteBuffer(ByteBuffer imgData) {
+  public OvicClassificationResult classifyByteBuffer(ByteBuffer imgData) {
     if (tflite == null) {
       throw new RuntimeException(TAG + ": ImageNet classifier has not been initialized; Failed.");
     }
@@ -122,7 +122,7 @@ public class OvicClassifier {
         labelProbArray[0][i] = (inferenceOutputArray[0][i] & 0xff) / 255.0f;
       }
     }
-    OvicSingleImageResult iterResult = computeTopKLabels();
+    OvicClassificationResult iterResult = computeTopKLabels();
     iterResult.latency = getLastNativeInferenceLatencyMilliseconds();
     return iterResult;
   }
@@ -174,7 +174,7 @@ public class OvicClassifier {
   }
 
   /** Computes top-K labels. */
-  private OvicSingleImageResult computeTopKLabels() {
+  private OvicClassificationResult computeTopKLabels() {
     if (labelList == null) {
       throw new RuntimeException("Label file has not been loaded.");
     }
@@ -184,7 +184,7 @@ public class OvicClassifier {
         sortedLabels.poll();
       }
     }
-    OvicSingleImageResult singleImageResult = new OvicSingleImageResult();
+    OvicClassificationResult singleImageResult = new OvicClassificationResult();
     if (sortedLabels.size() != RESULTS_TO_SHOW) {
       throw new RuntimeException(
           "Number of returned labels does not match requirement: "

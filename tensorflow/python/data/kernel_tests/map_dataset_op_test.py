@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the experimental input pipeline ops."""
+"""Tests for `tf.data.Dataset.map()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -266,6 +266,35 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(get_next)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testCaptureIterator(self):
+
+    def _build_ds(iterator):
+
+      def _map_fn(x):
+        get_next = iterator.get_next()
+        return x * get_next
+
+      return dataset_ops.Dataset.range(10).map(_map_fn)
+
+    def _build_graph():
+      captured_iterator = dataset_ops.Dataset.range(
+          10).make_initializable_iterator()
+      ds = _build_ds(captured_iterator)
+      iterator = ds.make_initializable_iterator()
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      return captured_iterator.initializer, init_op, get_next
+
+    with ops.Graph().as_default() as g:
+      captured_init_op, init_op, get_next = _build_graph()
+      with self.session(graph=g) as sess:
+        sess.run(captured_init_op)
+        sess.run(init_op)
+        for i in range(10):
+          self.assertEqual(i * i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
   def testCaptureHashTable(self):
     # NOTE(mrry): We must use the V2 variants of `HashTable`

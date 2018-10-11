@@ -33,6 +33,19 @@ namespace tensorflow {
 namespace data {
 namespace model {
 
+// Represents thread-safe state that can be shared between an input pipeline and
+// the performance model.
+struct SharedState {
+ public:
+  explicit SharedState(int64 value, std::shared_ptr<mutex> mu,
+                       std::shared_ptr<condition_variable> cond_var)
+      : value(value), mu(std::move(mu)), cond_var(std::move(cond_var)) {}
+
+  std::shared_ptr<mutex> mu;
+  std::shared_ptr<condition_variable> cond_var;
+  int64 value;
+};
+
 // Abstract representation of a TensorFlow input pipeline that can be used
 // for collecting runtime information and optimizing performance. It collects
 // runtime information about execution of the input pipeline that is used to
@@ -62,8 +75,8 @@ class Model {
   // Adds a tunable parameter for the given node.
   void AddTunableParameter(const string& node_name,
                            const string& parameter_name,
-                           std::atomic<int64>* value, int64 min, int64 max,
-                           condition_variable* cond_var) LOCKS_EXCLUDED(mu_);
+                           std::shared_ptr<SharedState> value, int64 min,
+                           int64 max) LOCKS_EXCLUDED(mu_);
 
   // Runs optimization.
   void Optimize(int64 cpu_budget) LOCKS_EXCLUDED(mu_);
@@ -109,13 +122,8 @@ class Model {
    public:
     // Represents a tunable parameter.
     struct Tunable {
-      Tunable(std::atomic<int64>* value, int64 min, int64 max,
-              condition_variable* cond_var)
-          : value(*value),
-            min(min),
-            max(max),
-            value_ptr(value),
-            cond_var(cond_var) {}
+      Tunable(std::shared_ptr<SharedState> state, int64 min, int64 max)
+          : value(state->value), min(min), max(max), state(std::move(state)) {}
 
       // Identifies the model value of the parameter. This can be different from
       // the actual value (e.g. during optimization search).
@@ -127,12 +135,8 @@ class Model {
       // Identifies the maximum value of the parameter.
       int64 max;
 
-      // Points to the actual value of the parameter. Not owned.
-      std::atomic<int64>* value_ptr;
-
-      // If non-null, this condition variable is notified when the model updates
-      // the actual value of the parameter (via `value_ptr`). Not owned.
-      condition_variable* cond_var;
+      // Shared state of the parameter.
+      std::shared_ptr<SharedState> state;
     };
 
     Node(int64 id, const string& name, std::shared_ptr<Node> output)
@@ -158,12 +162,12 @@ class Model {
     }
 
     // Adds a tunable parameter.
-    void add_tunable_param(const string& name, std::atomic<int64>* value,
-                           int64 min, int64 max, condition_variable* cond_var)
-        LOCKS_EXCLUDED(mu_) {
+    void add_tunable_param(const string& name,
+                           std::shared_ptr<SharedState> state, int64 min,
+                           int64 max) LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       tunable_params_[name] =
-          std::make_shared<Tunable>(value, min, max, cond_var);
+          std::make_shared<Tunable>(std::move(state), min, max);
     }
 
     // Returns the unique node ID.

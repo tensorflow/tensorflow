@@ -133,6 +133,14 @@ Status TransposeShapeFn(InferenceContext* c) {
   } else {
     rank = perm->NumElements();
   }
+  if (!c->RankKnown(input) && rank < 2) {
+    // A permutation array containing a single element is ambiguous. It could
+    // indicate either a scalar or a 1-dimensional array, both of which the
+    // transpose op returns unchanged.
+    c->set_output(0, input);
+    return Status::OK();
+  }
+
   std::vector<DimensionHandle> dims;
   dims.resize(rank);
   TF_RETURN_IF_ERROR(c->WithRank(input, rank, &input));

@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unordered_set>
-
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -102,6 +101,18 @@ bool IsConjugateTranspose(const NodeDef& node) {
   return node.op() == "ConjugateTranspose";
 }
 
+bool IsControlFlow(const NodeDef& node) {
+  // clang-format off
+  return node.op() == "ControlTrigger" ||
+         node.op() == "Enter" ||
+         node.op() == "Exit" ||
+         node.op() == "LoopCond" ||
+         node.op() == "Merge" ||
+         node.op() == "NextIteration" ||
+         node.op() == "Switch";
+  // clang-format on
+}
+
 bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
 
 bool IsConv2DBackpropFilter(const NodeDef& node) {
@@ -140,26 +151,26 @@ bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 // e.g. sqrt, exp. *is_non_decreasing is false, the function is non-increasing,
 // e.g. inv.
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
-  static const std::unordered_set<string>* monotonic_non_decreasing_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
           "Asinh", "Atanh",   "Ceil",  "Elu",  "Erf",  "Exp",   "Expm1",
           "Floor", "Log",     "Log1p", "Relu", "Relu", "Relu6", "Rint",
           "Selu",  "Sigmoid", "Sign",  "Sinh", "Sqrt", "Tanh",
       }));
-  static const std::unordered_set<string>* monotonic_non_increasing_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
           "Inv",
           "Reciprocal",
           "Erfc",
           "Rsqrt",
           "Neg",
       }));
-  if (monotonic_non_decreasing_ops->count(node.op()) > 0) {
+  if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;
     }
     return true;
-  } else if (monotonic_non_increasing_ops->count(node.op()) > 0) {
+  } else if (kMonotonicNonIncreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = false;
     }
@@ -431,6 +442,38 @@ bool IsSymbolicGradient(const NodeDef& node) {
 
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 
+bool IsTensorArray(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kTensorArrayOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "TensorArray",
+          "TensorArrayV2",
+          "TensorArrayV3",
+          "TensorArrayGrad",
+          "TensorArrayGradV2",
+          "TensorArrayGradV3",
+          "TensorArrayGradWithShape",
+          "TensorArrayWrite",
+          "TensorArrayWriteV2",
+          "TensorArrayWriteV3",
+          "TensorArrayRead",
+          "TensorArrayReadV2",
+          "TensorArrayReadV3",
+          "TensorArrayConcat",
+          "TensorArrayConcatV2",
+          "TensorArrayConcatV3",
+          "TensorArraySplit",
+          "TensorArraySplitV2",
+          "TensorArraySplitV3",
+          "TensorArraySize",
+          "TensorArraySizeV2",
+          "TensorArraySizeV3",
+          "TensorArrayClose",
+          "TensorArrayCloseV2",
+          "TensorArrayCloseV3",
+      }));
+  return kTensorArrayOps->count(node.op()) > 0;
+}
+
 bool IsTile(const NodeDef& node) { return node.op() == "Tile"; }
 
 bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
@@ -542,30 +585,29 @@ OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
 OPDEF_PROPERTY_HELPER(Commutative, commutative)
 
 bool IsInvolution(const NodeDef& node) {
-  static const std::unordered_set<string>* involution_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
-          "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"}));
-  return involution_ops->count(node.op()) > 0;
+  static const gtl::FlatSet<string>* const kInvolutionOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Conj", "Reciprocal", "Invert",
+                                              "Neg", "LogicalNot"}));
+  return kInvolutionOps->count(node.op()) > 0;
 }
 
 bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  static const std::unordered_set<string>*
-      value_and_order_and_shape_preserving_ops =
-          CHECK_NOTNULL((new const std::unordered_set<string>{
-              "CheckNumerics",
-              "DebugGradientIdentity",
-              "DeepCopy"
-              "Enter",
-              "Exit",
-              "PreventGradient",
-              "Print",
-              "Snapshot",
-              "StopGradient",
-          }));
-  return value_and_order_and_shape_preserving_ops->count(node.op()) > 0 ||
+  static const gtl::FlatSet<string>* const kValueAndOrderAndShapePreservingOps =
+      CHECK_NOTNULL((new const gtl::FlatSet<string>{
+          "CheckNumerics",
+          "DebugGradientIdentity",
+          "DeepCopy"
+          "Enter",
+          "Exit",
+          "PreventGradient",
+          "Print",
+          "Snapshot",
+          "StopGradient",
+      }));
+  return kValueAndOrderAndShapePreservingOps->count(node.op()) > 0 ||
          IsIdentity(node);
 }
 
@@ -573,31 +615,31 @@ bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  static const std::unordered_set<string>* value_and_order_preserving_ops =
-      CHECK_NOTNULL((new const std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kValueAndOrderPreservingOps =
+      CHECK_NOTNULL((new const gtl::FlatSet<string>{
           "ExpandDims",
           "Reshape",
           "Squeeze",
       }));
-  return value_and_order_preserving_ops->count(node.op()) > 0 ||
+  return kValueAndOrderPreservingOps->count(node.op()) > 0 ||
          IsValueAndOrderAndShapePreserving(node);
 }
 
 bool IsValuePreserving(const NodeDef& node) {
-  static const std::unordered_set<string>* value_preserving_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kValuePreservingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
           "InvertPermutation",
           "Reverse",
           "Roll",
           "Transpose",
       }));
   return IsValueAndOrderPreserving(node) ||
-         value_preserving_ops->count(node.op()) > 0;
+         kValuePreservingOps->count(node.op()) > 0;
 }
 
 bool IsUnaryElementWise(const NodeDef& node) {
-  static const std::unordered_set<string>* element_wise_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kElementWiseOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
           "Abs",
           "Acos",
           "Acosh",
@@ -646,7 +688,7 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Tan"
           "Tanh",
       }));
-  return element_wise_ops->count(node.op()) > 0 ||
+  return kElementWiseOps->count(node.op()) > 0 ||
          IsValueAndOrderAndShapePreserving(node);
 }
 

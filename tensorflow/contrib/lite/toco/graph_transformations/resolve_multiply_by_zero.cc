@@ -60,6 +60,10 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
   const auto& output_array_name = mul_op->outputs[0];
   auto& output_array = model->GetArray(output_array_name);
 
+  if (!IsDiscardableArray(*model, output_array_name)) {
+    return false;
+  }
+
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
     return false;
@@ -139,14 +143,8 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
   }
 
   // Erase input arrays to the multiply if no longer used
-  if (IsDiscardableArray(*model, mul_op->inputs[0]) &&
-      CountOpsWithInput(*model, mul_op->inputs[0]) == 1) {
-    model->EraseArray(mul_op->inputs[0]);
-  }
-  if (IsDiscardableArray(*model, mul_op->inputs[1]) &&
-      CountOpsWithInput(*model, mul_op->inputs[1]) == 1) {
-    model->EraseArray(mul_op->inputs[1]);
-  }
+  DeleteArrayIfUsedOnce(mul_op->inputs[0], model);
+  DeleteArrayIfUsedOnce(mul_op->inputs[1], model);
 
   // Erase the multiply operator.
   model->operators.erase(mul_it);

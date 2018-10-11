@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstring>
 
-#include "absl/base/macros.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
@@ -269,8 +268,9 @@ class RuntimeShape {
   // This creates a shape padded to the desired size with the specified value.
   RuntimeShape(int new_shape_size, const RuntimeShape& shape, int pad_value)
       : size_(0) {
+    // If the following check fails, it is likely because a 4D-only kernel is
+    // being used with an array of larger dimension count.
     TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
-    TFLITE_CHECK_LE(new_shape_size, kMaxSmallSize);
     Resize(new_shape_size);
     const int size_increase = new_shape_size - shape.DimensionsCount();
     for (int i = 0; i < size_increase; ++i) {
@@ -441,7 +441,7 @@ inline int FlatSize(const Dims<N>& dims) {
   return flat_size;
 }
 
-ABSL_DEPRECATED("Prefer FlatSize.")
+TFLITE_DEPRECATED("Prefer FlatSize.")
 inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
 }

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -31,8 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -432,7 +432,7 @@ class CopyRemover {
       // Construct a list for each HLO buffer in the alias analysis. Maintain a
       // map from HloValue to the respective list element representing that
       // value. The map is used to construct the copy info map below.
-      tensorflow::gtl::FlatMap<const HloValue*, ValueNode*> value_to_node;
+      absl::flat_hash_map<const HloValue*, ValueNode*> value_to_node;
       for (const HloBuffer& buffer : alias_analysis.buffers()) {
         // Verify values contained in the buffer are strictly ordered. This
         // should always be the case after adding copies to eliminate
@@ -480,7 +480,7 @@ class CopyRemover {
     // respective ValueNode representing that value.
     void AddValueList(
         absl::Span<const HloValue* const> values,
-        tensorflow::gtl::FlatMap<const HloValue*, ValueNode*>* value_to_node) {
+        absl::flat_hash_map<const HloValue*, ValueNode*>* value_to_node) {
       ValueNode* tail = nullptr;
       ValueNode* head = nullptr;
       for (const HloValue* value : values) {
@@ -516,8 +516,7 @@ class CopyRemover {
     // respective ValueNode.
     void CreateCopyMap(
         const HloModule& module,
-        const tensorflow::gtl::FlatMap<const HloValue*, ValueNode*>&
-            value_to_node) {
+        const absl::flat_hash_map<const HloValue*, ValueNode*>& value_to_node) {
       for (HloComputation* computation : module.computations()) {
         for (HloInstruction* instruction : computation->instructions()) {
           // Add copies with unambiguous source values to the map. Copies with
@@ -905,7 +904,7 @@ class CopyRemover {
     // The heads of all the value lists. Each value list represents the HLO
     // values contained in a particular HLO buffer. The values in the list are
     // in dependency order.
-    tensorflow::gtl::FlatSet<const ValueNode*> value_lists_;
+    absl::flat_hash_set<const ValueNode*> value_lists_;
 
     // Copy removal requires fast access to the value list elements
     // corresponding to the source and destination values of the kCopy
@@ -916,7 +915,7 @@ class CopyRemover {
       ValueNode* src = nullptr;
       ValueNode* dest = nullptr;
     };
-    tensorflow::gtl::FlatMap<const HloInstruction*, CopyNodes> copy_map_;
+    absl::flat_hash_map<const HloInstruction*, CopyNodes> copy_map_;
   };
 
   HloModule* module_;
@@ -1010,7 +1009,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
     HloInstruction* root = computation->root_instruction();
 
     // Mark nondistinct/ambiguous indices.
-    tensorflow::gtl::FlatSet<const HloBuffer*> seen;
+    absl::flat_hash_set<const HloBuffer*> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
           std::vector<const HloBuffer*> buffers_at_index =

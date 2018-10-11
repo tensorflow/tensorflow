@@ -615,6 +615,14 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[:, 0]
       _ = checker[:, :, 0]
 
+  def testBothNewAxisAndShrink(self):
+    with self.test_session(use_gpu=True):
+      ones = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int16)
+      self.assertAllEqual(
+          ones[array_ops.newaxis, :, 0].eval(
+              feed_dict={ones: [[1, 1], [1, 1]]}),
+          [[1, 1]])
+
   def testTensorIndexing(self):
     with self.test_session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],

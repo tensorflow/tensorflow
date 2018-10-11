@@ -30,6 +30,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -76,8 +77,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
 
   return t_max
   # TODO(scottzhu): switch to use new implmentation in 2 weeks.
-    # return gen_math_ops.clip_by_value(
-    #     t, clip_value_min, clip_value_max, name=name)
+  # return gen_math_ops.clip_by_value(
+  #     t, clip_value_min, clip_value_max, name=name)
 
 
 # TODO(scottzhu): switch to use new implmentation in 2 weeks.
@@ -159,7 +160,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   return tclip
 
 
-@tf_export("global_norm")
+@tf_export("linalg.global_norm", "global_norm")
+@deprecation.deprecated_endpoints("global_norm")
 def global_norm(t_list, name=None):
   """Computes the global norm of multiple tensors.
 

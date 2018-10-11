@@ -75,7 +75,8 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             ShapeLayout(result_shape_with_layout);
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, backend().default_stream_executor());
+            &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+            backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
@@ -163,7 +164,8 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
       }
 
       GpuLayoutAssignment layout_assignment(
-          &computation_layout, backend().default_stream_executor());
+          &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+          backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -233,7 +235,8 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
       }
 
       GpuLayoutAssignment layout_assignment(
-          &computation_layout, backend().default_stream_executor());
+          &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+          backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -314,7 +317,8 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
         }
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, backend().default_stream_executor());
+            &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+            backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         // The first and fourth operands to the batchnorm call should have the
@@ -348,8 +352,9 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
 
   ComputationLayout computation_layout(
       module->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      backend().default_stream_executor());
   EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
   Shape expected_shape =

@@ -59,7 +59,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
-@tf_export("tables_initializer")
+@tf_export("initializers.tables_initializer", "tables_initializer")
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 

@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 54
+// Next ID: 56
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -180,6 +180,10 @@ message HloInstructionProto {
 
   // Collective permute field.
   repeated SourceTarget source_target_pairs = 52;
+
+  // Sharding for kDomain instructions.
+  xla.OpSharding domain_entry_sharding = 54;
+  xla.OpSharding domain_exit_sharding = 55;
 }
 
 // Serialization of HloComputation.

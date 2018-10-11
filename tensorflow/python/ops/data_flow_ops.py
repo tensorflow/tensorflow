@@ -39,6 +39,7 @@ from tensorflow.python.ops import resource_variable_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: enable=wildcard-import
@@ -112,7 +113,8 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("QueueBase")
+@tf_export("io.QueueBase", "QueueBase")
+@deprecation.deprecated_endpoints("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -604,7 +606,8 @@ def _shared_name(shared_name):
   return shared_name
 
 
-@tf_export("RandomShuffleQueue")
+@tf_export("io.RandomShuffleQueue", "RandomShuffleQueue")
+@deprecation.deprecated_endpoints("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -746,7 +749,8 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PaddingFIFOQueue")
+@tf_export("io.PaddingFIFOQueue", "PaddingFIFOQueue")
+@deprecation.deprecated_endpoints("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -820,7 +824,8 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("PriorityQueue")
+@tf_export("io.PriorityQueue", "PriorityQueue")
+@deprecation.deprecated_endpoints("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
@@ -1300,7 +1305,9 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
-@tf_export("SparseConditionalAccumulator")
+@tf_export("sparse.SparseConditionalAccumulator",
+           "SparseConditionalAccumulator")
+@deprecation.deprecated_endpoints("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 

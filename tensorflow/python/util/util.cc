@@ -29,14 +29,51 @@ limitations under the License.
 namespace tensorflow {
 namespace swig {
 
+std::unordered_map<string, PyObject*>* PythonTypesMap() {
+  static auto* m = new std::unordered_map<string, PyObject*>();
+  return m;
+}
+
+PyObject* GetRegisteredType(const string& key) {
+  auto* m = PythonTypesMap();
+  auto it = m->find(key);
+  if (it == m->end()) return nullptr;
+  return it->second;
+}
+
+PyObject* RegisterType(PyObject* type_name, PyObject* type) {
+  if (!PyType_Check(type)) {
+    PyErr_SetString(PyExc_TypeError,
+                    tensorflow::strings::StrCat("Expecting a type, got ",
+                                                Py_TYPE(type)->tp_name)
+                        .c_str());
+    return nullptr;
+  }
+
+  string key;
+  if (PyBytes_Check(type_name)) {
+    key = PyBytes_AsString(type_name);
+  }
+#if PY_MAJOR_VERSION >= 3
+  if (PyUnicode_Check(type_name)) {
+    key = PyUnicode_AsUTF8(type_name);
+  }
+#endif
+
+  if (PythonTypesMap()->find(key) != PythonTypesMap()->end()) {
+    PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
+                                         "Type already registered for ", key)
+                                         .c_str());
+    return nullptr;
+  }
+
+  Py_INCREF(type);
+  PythonTypesMap()->emplace(key, type);
+
+  Py_RETURN_NONE;
+}
+
 namespace {
-
-// Type object for collections.Sequence. This is set by RegisterSequenceClass.
-PyObject* CollectionsSequenceType = nullptr;
-// Type object for collections.Mapping, set by RegisterMappingClass.
-PyObject* CollectionsMappingType = nullptr;
-PyTypeObject* SparseTensorValueType = nullptr;
-
 const int kMaxItemsInCache = 1024;
 
 bool WarnedThatSetIsNotSequence = false;
@@ -177,46 +214,82 @@ class CachedTypeCheck {
 // Returns -1 if an error occurred.
 int IsMappingHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    return PyObject_IsInstance(to_check, CollectionsMappingType);
+    PyObject* collections_mapping_type = GetRegisteredType("Mapping");
+    if (TF_PREDICT_FALSE(collections_mapping_type == nullptr)) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      tensorflow::strings::StrCat(
+                          "collections.Mapping type has not been set. "
+                          "Please register the type with the identifier "
+                          "\"Mapping\" using RegisterType.")
+                          .c_str());
+      return -1;
+    }
+    return PyObject_IsInstance(to_check, collections_mapping_type);
   });
   if (PyDict_Check(o)) return true;
-  if (TF_PREDICT_FALSE(CollectionsMappingType == nullptr)) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        tensorflow::strings::StrCat(
-            "collections.Mapping type has not been set. "
-            "Please call RegisterMappingClass before using this module")
-            .c_str());
-    return -1;
-  }
   return check_cache->CachedLookup(o);
 }
 
 // Returns 1 if `o` is an instance of attrs-decorated class.
 // Returns 0 otherwise.
 int IsAttrsHelper(PyObject* o) {
-  Safe_PyObjectPtr cls(PyObject_GetAttrString(o, "__class__"));
-  if (cls) {
-    return PyObject_HasAttrString(cls.get(), "__attrs_attrs__");
-  } else {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    Safe_PyObjectPtr cls(PyObject_GetAttrString(to_check, "__class__"));
+    if (cls) {
+      return PyObject_HasAttrString(cls.get(), "__attrs_attrs__");
+    }
+
     // PyObject_GetAttrString returns null on error
     PyErr_Clear();
     return 0;
-  }
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is an object of type IndexedSlices.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsIndexedSlicesHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    PyObject* indexed_slices_type = GetRegisteredType("IndexedSlices");
+    if (TF_PREDICT_FALSE(indexed_slices_type == nullptr)) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      tensorflow::strings::StrCat(
+                          "IndexedSlices type has not been set. "
+                          "Please register the type with the identifier "
+                          "\"IndexedSlices\" using RegisterType.")
+                          .c_str());
+      return -1;
+    }
+    return PyObject_IsInstance(to_check, indexed_slices_type);
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is a Tensor.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsTensorHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    PyObject* tensor_type = GetRegisteredType("Tensor");
+    if (TF_PREDICT_FALSE(tensor_type == nullptr)) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      tensorflow::strings::StrCat(
+                          "Tensor type has not been set. "
+                          "Please register the type with the identifier "
+                          "\"Tensor\" using RegisterType.")
+                          .c_str());
+      return -1;
+    }
+    return PyObject_IsInstance(to_check, tensor_type);
+  });
+  return check_cache->CachedLookup(o);
 }
 
 // Returns 1 if `o` is considered a sequence for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
 int IsSequenceHelper(PyObject* o) {
-  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    int is_instance = PyObject_IsInstance(to_check, CollectionsSequenceType);
-
-    // Don't cache a failed is_instance check.
-    if (is_instance == -1) return -1;
-
-    return static_cast<int>(is_instance != 0 && !IsString(to_check));
-  });
   // We treat dicts and other mappings as special cases of sequences.
   if (IsMappingHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
@@ -226,15 +299,24 @@ int IsSequenceHelper(PyObject* o) {
                     "so consider avoiding using them.";
     WarnedThatSetIsNotSequence = true;
   }
-  if (TF_PREDICT_FALSE(CollectionsSequenceType == nullptr)) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        tensorflow::strings::StrCat(
-            "collections.Sequence type has not been set. "
-            "Please call RegisterSequenceClass before using this module")
-            .c_str());
-    return -1;
-  }
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    PyObject* collections_sequence_type = GetRegisteredType("Sequence");
+    if (TF_PREDICT_FALSE(collections_sequence_type == nullptr)) {
+      PyErr_SetString(PyExc_RuntimeError,
+                      tensorflow::strings::StrCat(
+                          "collections.Sequence type has not been set. "
+                          "Please register the type with the identifier "
+                          "\"Sequence\" using RegisterType.")
+                          .c_str());
+      return -1;
+    }
+    int is_instance = PyObject_IsInstance(to_check, collections_sequence_type);
+
+    // Don't cache a failed is_instance check.
+    if (is_instance == -1) return -1;
+
+    return static_cast<int>(is_instance != 0 && !IsString(to_check));
+  });
   return check_cache->CachedLookup(o);
 }
 
@@ -401,11 +483,13 @@ class AttrsValueIterator : public ValueIterator {
 };
 
 bool IsSparseTensorValueType(PyObject* o) {
-  if (TF_PREDICT_FALSE(SparseTensorValueType == nullptr)) {
+  PyObject* sparse_tensor_value_type = GetRegisteredType("SparseTensorValue");
+  if (TF_PREDICT_FALSE(sparse_tensor_value_type == nullptr)) {
     return false;
   }
 
-  return PyObject_TypeCheck(o, SparseTensorValueType) == 1;
+  return PyObject_TypeCheck(
+             o, reinterpret_cast<PyTypeObject*>(sparse_tensor_value_type)) == 1;
 }
 
 int IsSequenceForDataHelper(PyObject* o) {
@@ -647,49 +731,11 @@ bool AssertSameStructureHelper(
 
 }  // namespace
 
-void RegisterSequenceClass(PyObject* sequence_class) {
-  if (!PyType_Check(sequence_class)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Expecting a class definition for `collections.Sequence`. Got ",
-            Py_TYPE(sequence_class)->tp_name)
-            .c_str());
-    return;
-  }
-  CollectionsSequenceType = sequence_class;
-}
-
-void RegisterMappingClass(PyObject* mapping_class) {
-  if (!PyType_Check(mapping_class)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Expecting a class definition for `collections.Mapping`. Got ",
-            Py_TYPE(mapping_class)->tp_name)
-            .c_str());
-    return;
-  }
-  CollectionsMappingType = mapping_class;
-}
-
-void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class) {
-  if (!PyType_Check(sparse_tensor_value_class)) {
-    PyErr_SetString(
-        PyExc_TypeError,
-        tensorflow::strings::StrCat(
-            "Expecting a class definition for `SparseTensorValue`. Got ",
-            Py_TYPE(sparse_tensor_value_class)->tp_name)
-            .c_str());
-    return;
-  }
-  SparseTensorValueType =
-      reinterpret_cast<PyTypeObject*>(sparse_tensor_value_class);
-}
-
 bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
+bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
+bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 
 PyObject* Flatten(PyObject* nested) {
   PyObject* list = PyList_New(0);
@@ -737,13 +783,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
     }
   }
 
-  if (TF_PREDICT_FALSE(CollectionsSequenceType == nullptr)) {
-    PyErr_SetString(
-        PyExc_RuntimeError,
-        tensorflow::strings::StrCat(
-            "collections.Sequence type has not been set. "
-            "Please call RegisterSequenceClass before using this module")
-            .c_str());
+  PyObject* collections_sequence_type = GetRegisteredType("Sequence");
+
+  if (TF_PREDICT_FALSE(collections_sequence_type == nullptr)) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    tensorflow::strings::StrCat(
+                        "collections.Sequence type has not been set. "
+                        "Please register the type with the identifier "
+                        "\"Sequence\" using RegisterType.")
+                        .c_str());
     return nullptr;
   }
 
@@ -755,7 +803,8 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
   }
 
   Safe_PyObjectPtr fields = make_safe(PyObject_GetAttrString(o, "_fields"));
-  int is_instance = PyObject_IsInstance(fields.get(), CollectionsSequenceType);
+  int is_instance =
+      PyObject_IsInstance(fields.get(), collections_sequence_type);
   if (is_instance == 0) {
     Py_RETURN_FALSE;
   } else if (is_instance == -1) {

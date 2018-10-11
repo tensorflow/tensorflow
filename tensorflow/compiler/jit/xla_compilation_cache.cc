@@ -228,37 +228,38 @@ Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions& compile_options) {
+    const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
   return CompileImpl(options, function, constant_args, variable_args, ctx,
-                     compilation_result, executable, compile_options, false);
+                     compile_options, /*compile_single_op=*/false,
+                     out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions& compile_options) {
+    const XlaCompiler::CompileOptions& compile_options,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
-  return CompileImpl(options, name, constant_args, variable_args, ctx,
-                     compilation_result, executable, compile_options, true);
+  return CompileImpl(
+      options, name, constant_args, variable_args, ctx, compile_options,
+      /*compile_single_op=*/true, out_compilation_result, out_executable);
 }
 
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::Options& options, const NameAttrList& function,
     const std::map<int, Tensor>& constant_args,
     const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable,
-    const XlaCompiler::CompileOptions& compile_options,
-    bool compile_single_op) {
-  CHECK_NE(executable, nullptr);
+    const XlaCompiler::CompileOptions& compile_options, bool compile_single_op,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    xla::LocalExecutable** out_executable) {
+  DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
@@ -357,8 +358,8 @@ Status XlaCompilationCache::CompileImpl(
     }
   }
   TF_RETURN_IF_ERROR(entry->compilation_status);
-  *compilation_result = &entry->compilation_result;
-  *executable = entry->executable.get();
+  *out_compilation_result = &entry->compilation_result;
+  *out_executable = entry->executable.get();
   return Status::OK();
 }
 

@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
@@ -137,6 +138,32 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
         state = model.predict(inputs)
         np.testing.assert_allclose(
             keras.backend.eval(layer.states[0]), state, atol=1e-4)
+
+  @parameterized.named_parameters(
+      ('cudnngru', keras.layers.CuDNNGRU),
+      ('cudnnlstm', keras.layers.CuDNNLSTM),
+  )
+  def test_time_major_input(self, layer_class):
+    if test.is_gpu_available(cuda_only=True):
+      with self.test_session(use_gpu=True):
+        input_size = 10
+        timesteps = 6
+        units = 2
+        num_samples = 32
+
+        model = keras.models.Sequential()
+        model.add(
+            keras.layers.Lambda(lambda t: array_ops.transpose(t, [1, 0, 2])))
+        layer = layer_class(units, time_major=True, return_sequences=True)
+        model.add(layer)
+        model.add(
+            keras.layers.Lambda(lambda t: array_ops.transpose(t, [1, 0, 2])))
+        model.compile(loss='categorical_crossentropy', optimizer='adam')
+        model.fit(
+            np.ones((num_samples, timesteps, input_size)),
+            np.ones((num_samples, timesteps, units)))
+        out = model.predict(np.ones((num_samples, timesteps, input_size)))
+        self.assertEqual(out.shape, (num_samples, timesteps, units))
 
   @parameterized.named_parameters(
       ('cudnngru', keras.layers.CuDNNGRU),

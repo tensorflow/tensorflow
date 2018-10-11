@@ -36,9 +36,7 @@ namespace tensorflow {
 namespace {
 
 Status Rewrite(std::unique_ptr<Graph>* graph) {
-  FunctionDefLibrary flib;
-  FunctionLibraryDefinition flib_def((*graph)->op_registry(), flib);
-
+  FunctionLibraryDefinition flib_def((*graph)->flib_def());
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
   opt_options.flib_def = &flib_def;

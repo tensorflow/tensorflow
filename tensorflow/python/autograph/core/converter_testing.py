@@ -29,6 +29,7 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import function_wrapping
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
@@ -112,6 +113,7 @@ class TestCase(test.TestCase):
       fake_ag.__dict__['utils'] = utils
       fake_ag.__dict__['rewrite_graph_construction_error'] = (
           errors.rewrite_graph_construction_error)
+      fake_ag.__dict__['function_scope'] = function_wrapping.function_scope
       result.__dict__['ag__'] = fake_ag
       for k, v in namespace.items():
         result.__dict__[k] = v

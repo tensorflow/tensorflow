@@ -1740,6 +1740,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "stateless_random_ops_gen",
+    visibility = [
+        "//tensorflow/contrib/stateless:__pkg__",
+        "//tensorflow/python/data/experimental/ops:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "list_ops_gen",
 )
 
@@ -2144,6 +2152,7 @@ py_library(
         ":array_grad",
         ":array_ops",
         ":bitwise_ops",
+        ":check_ops",
         ":cond_v2_impl",
         ":control_flow_grad",
         ":control_flow_ops",
@@ -2164,8 +2173,11 @@ py_library(
         ":random_grad",
         ":resource_variable_ops",
         ":spectral_grad",
+        ":tensor_array_ops",
+        ":tensor_util",
         ":util",
         ":variable_scope",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
@@ -3302,9 +3314,11 @@ py_library(
             "training/checkpointable/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
+            "training/basic_session_run_hooks.py",
             "training/checkpoint_management.py",
             "training/saveable_object.py",
             "training/saver.py",
+            "training/session_run_hook.py",
             "training/training_util.py",
         ],
     ),
@@ -3312,6 +3326,7 @@ py_library(
     deps = [
         ":array_ops",
         ":array_ops_gen",
+        ":basic_session_run_hooks",
         ":checkpoint_management",
         ":checkpoint_ops_gen",
         ":client",
@@ -3336,6 +3351,7 @@ py_library(
         ":saver",
         ":sdca_ops",
         ":session",
+        ":session_run_hook",
         ":sparse_ops",
         ":sparse_tensor",
         ":state_ops",
@@ -3376,6 +3392,28 @@ py_library(
         ":protos_all_py",
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "session_run_hook",
+    srcs = ["training/session_run_hook.py"],
+    srcs_version = "PY2AND3",
+    deps = [":util"],
+)
+
+py_library(
+    name = "basic_session_run_hooks",
+    srcs = ["training/basic_session_run_hooks.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client",
+        ":framework",
+        ":platform",
+        ":protos_all_py",
+        ":session_run_hook",
+        ":training_util",
+        ":util",
     ],
 )
 

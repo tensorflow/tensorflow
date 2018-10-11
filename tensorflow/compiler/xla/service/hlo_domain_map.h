@@ -19,14 +19,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
@@ -77,8 +77,7 @@ class HloDomainMap {
  private:
   // Map used for representing instruction ordering, i.e.
   // order_map[a] < order_map[b] means a must be ordered before b.
-  using InstructionOrderMap =
-      tensorflow::gtl::FlatMap<const HloInstruction*, int64>;
+  using InstructionOrderMap = absl::flat_hash_map<const HloInstruction*, int64>;
 
   HloDomainMap(string domain_kind) : domain_kind_(std::move(domain_kind)) {}
 
@@ -111,7 +110,7 @@ class HloDomainMap {
   // Out of an instruction set, returns a vector of all the ones which are not
   // a kDomain kind.
   static std::vector<HloInstruction*> MakeNonDomainInstructions(
-      const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+      const absl::flat_hash_set<HloInstruction*>& instruction_set,
       const InstructionOrderMap& instructions_order);
 
   // Populates domain_metadata_id_ that maps each HloInstruction to the unique
@@ -120,8 +119,8 @@ class HloDomainMap {
 
   string domain_kind_;
   std::vector<std::unique_ptr<DomainMetadata::Domain>> instruction_domains_;
-  tensorflow::gtl::FlatMap<HloInstruction*, int64> instruction_to_domain_;
-  tensorflow::gtl::FlatMap<HloInstruction*, int64> domain_metadata_id_;
+  absl::flat_hash_map<HloInstruction*, int64> instruction_to_domain_;
+  absl::flat_hash_map<HloInstruction*, int64> domain_metadata_id_;
 };
 
 }  // namespace xla

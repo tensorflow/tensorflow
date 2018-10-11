@@ -1,1 +1,1 @@
-licenses(["notice"])
+# Needed to make this a package.

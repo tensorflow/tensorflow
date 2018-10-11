@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -119,7 +121,7 @@ class BufferValueMap {
   }
 
   // Return a set of all the values in the given buffer.
-  const tensorflow::gtl::FlatSet<const HloValue*>& GetValuesInBuffer(
+  const absl::flat_hash_set<const HloValue*>& GetValuesInBuffer(
       BufferNumber buffer_number) const {
     return buffers_.at(buffer_number);
   }
@@ -142,7 +144,7 @@ class BufferValueMap {
   // Move the given value into the given buffer.
   void MoveValueToBuffer(const HloValue& value, BufferNumber buffer_number) {
     BufferNumber old_buffer_number = value_to_buffer_number_.at(&value);
-    tensorflow::gtl::FlatSet<const HloValue*>& old_value_set =
+    absl::flat_hash_set<const HloValue*>& old_value_set =
         buffers_.at(old_buffer_number);
     old_value_set.erase(&value);
     if (old_value_set.empty()) {
@@ -290,13 +292,11 @@ class BufferValueMap {
   const HloDataflowAnalysis& dataflow_;
 
   // A map containing the set of values contained in each buffer.
-  tensorflow::gtl::FlatMap<BufferNumber,
-                           tensorflow::gtl::FlatSet<const HloValue*>>
+  absl::flat_hash_map<BufferNumber, absl::flat_hash_set<const HloValue*>>
       buffers_;
 
   // A map indicating which buffer each value is contained in.
-  tensorflow::gtl::FlatMap<const HloValue*, BufferNumber>
-      value_to_buffer_number_;
+  absl::flat_hash_map<const HloValue*, BufferNumber> value_to_buffer_number_;
 
   // The buffer number of the next buffer to be created.
   BufferNumber next_buffer_number_ = 0;
@@ -352,7 +352,7 @@ bool HloAliasAnalysis::InstructionBuffersAreAmbiguous(
 
 bool HloAliasAnalysis::InstructionBuffersAreDistinct(
     const HloInstruction* instruction) const {
-  tensorflow::gtl::FlatSet<const HloBuffer*> buffers_seen;
+  absl::flat_hash_set<const HloBuffer*> buffers_seen;
   for (const auto& pair :
        dataflow_analysis_->GetInstructionValueSet(instruction)) {
     const HloValueSet& value_set = pair.second;

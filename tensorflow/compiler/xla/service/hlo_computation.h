@@ -25,6 +25,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -40,8 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -188,7 +188,7 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
 
   // Gets the instructions in this computation.
   //
@@ -414,14 +414,14 @@ class HloComputation {
   // cross-replica-sum the union of the dependencies for all participating
   // instructions.
   using ChannelDependencyMap =
-      tensorflow::gtl::FlatMap<int64, absl::InlinedVector<HloInstruction*, 1>>;
+      absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;
   ChannelDependencyMap ComputeChannelDependencies() const;
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
       const HloComputation::ChannelDependencyMap& channel_dependency_map,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
-      tensorflow::gtl::FlatMap<HloInstruction*, VisitState>* visited) const;
+      absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
 
   string name_;
   int64 unique_id_;
@@ -439,7 +439,7 @@ class HloComputation {
   // instruction pointer to location in the list for fast lookup.
   using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
   InstructionList instructions_;
-  tensorflow::gtl::FlatMap<const HloInstruction*, InstructionList::iterator>
+  absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;

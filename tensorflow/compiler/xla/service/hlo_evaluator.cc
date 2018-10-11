@@ -1378,7 +1378,7 @@ Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
             "unsupported");
       }
     }
-    return reduce->Visit(typed_visitors_.at(first_element_type).get());
+    return reduce->Visit(typed_visitors_[first_element_type].get());
   }
 }
 

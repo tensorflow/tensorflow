@@ -2620,10 +2620,50 @@ class PartitionedVariable(object):
   def _get_partitions(self):
     return self._partitions
 
-  def assign(self, value, use_locking=False):
-    _ = value, use_locking
-    raise NotImplementedError(
-        "assign() has not been implemented for PartitionedVariable.")
+  def _apply_assign_fn(self, assign_fn, value):
+    partition_axes = self._partition_axes()
+    if len(partition_axes) > 1:
+      raise NotImplementedError(
+          "Cannot do assign action along more than one dimension: %s.  "
+          "Multi-axis partition assign action is not supported " %
+          str(partition_axes))
+    partition_ix = partition_axes[0]
+    size_splits_list = [
+        var.shape[partition_ix].value for var in self._variable_list
+    ]
+    value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
+    op_list = [
+        assign_fn(var, value_list[idx], idx)
+        for idx, var in enumerate(self._variable_list)
+    ]
+    return op_list
+
+  def assign(self, value, use_locking=False, name=None, read_value=True):
+    assign_fn = lambda var, r_value, idx: var.assign(
+        r_value, use_locking=use_locking,
+        name="%s_%d" % (name, idx), read_value=read_value)
+    assign_list = self._apply_assign_fn(assign_fn, value)
+    if read_value:
+      return assign_list
+    return [assign.op for assign in assign_list]
+
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    assign_fn = lambda var, r_value, idx: var.assign_add(
+        r_value, use_locking=use_locking,
+        name="%s_%d" % (name, idx), read_value=read_value)
+    assign_list = self._apply_assign_fn(assign_fn, value)
+    if read_value:
+      return assign_list
+    return [assign.op for assign in assign_list]
+
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    assign_fn = lambda var, r_value, idx: var.assign_sub(
+        r_value, use_locking=use_locking,
+        name="%s_%d" % (name, idx), read_value=read_value)
+    assign_list = self._apply_assign_fn(assign_fn, value)
+    if read_value:
+      return assign_list
+    return [assign.op for assign in assign_list]
 
 
 @tf_export(v1=["global_variables"])

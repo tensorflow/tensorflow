@@ -29,8 +29,9 @@ class LowerIfOpPass : public GraphOptimizationPass {
   Status Run(const GraphOptimizationPassOptions& options) override;
 
  private:
-  // Rewrite the given If node `n` in graph `g` to use the switch-merge form.
-  Status RewriteNode(Node* n, Graph* g);
+  // Rewrite the given If node `n` in graph `g` to use the switch-merge
+  // form. `flib` should contain the branch functions referenced by `n`.
+  Status RewriteNode(Node* n, const FunctionLibraryDefinition& flib, Graph* g);
 };
 
 }  // namespace tensorflow

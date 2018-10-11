@@ -108,6 +108,14 @@ bool CompareLiteralToLiteralProto(const xla::Literal& a,
   return equal;
 }
 
+xla::XlaComputation OnePlusTwo() {
+  xla::XlaBuilder builder("OnePlusTwo");
+  auto c0 = xla::ConstantR0(&builder, 1.0f);
+  auto c1 = xla::ConstantR0(&builder, 2.0f);
+  xla::Add(c0, c1);
+  return builder.Build().ValueOrDie();
+}
+
 xla::XlaComputation AddAndScale() {
   xla::XlaBuilder builder("AddAndScale");
   auto p0 = xla::Parameter(&builder, 0,
@@ -343,6 +351,39 @@ TEST(RawApiTest, CompileAndExecute) {
   EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
 
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
+  EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
+}
+
+TEST(RawApiTest, CompileAndExecuteZeroArg) {
+  xrt::XLAComputation c;
+  auto config = c.mutable_config();
+  auto shapes = config->mutable_program_shape();
+  *shapes->mutable_result() = xla::ShapeUtil::MakeShape(xla::F32, {});
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(true);
+  e.set_release_compilation_handle(true);
+  StoreComputationSnapshot(OnePlusTwo(), c.mutable_hlo_snapshot());
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto computation =
+      ops::Const(root.WithDevice("/device:CPU:0"), c.SerializeAsString());
+  auto c_handle = ops::XRTCompile(root, computation);
+  auto result = ops::XRTExecute(root, c_handle, e_config,
+                                std::initializer_list<Input>({}));
+  auto read_back = ops::XRTReadLiteralAndRelease(root, result);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({read_back}, &outputs));
+
+  xla::LiteralProto response;
+  EXPECT_TRUE(response.ParseFromString(outputs[0].scalar<string>()()));
+
+  auto expected = xla::LiteralUtil::CreateR0<float>(3.0f);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 }
 

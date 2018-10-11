@@ -96,6 +96,8 @@ def _clone_functional_model(model, input_tensors=None):
   else:
     # Make sure that all input tensors come from a Keras layer.
     # If tensor comes from an input layer: cache the input layer.
+    if isinstance(input_tensors, tuple):
+      input_tensors = list(input_tensors)
     input_tensors = generic_utils.to_list(input_tensors)
     input_tensors_ = []
     for i, x in enumerate(input_tensors):
@@ -212,6 +214,9 @@ def _clone_sequential_model(model, input_tensors=None):
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '
                        'as part of `input_tensors`.')
+
+    if isinstance(input_tensors, tuple):
+      input_tensors = list(input_tensors)
     x = generic_utils.to_list(input_tensors)[0]
     if K.is_keras_tensor(x):
       origin_layer = x._keras_history[0]

@@ -30,6 +30,7 @@ py_library(
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",
+        "//tensorflow/contrib/compiler:xla",
         "//tensorflow/contrib/autograph",
         "//tensorflow/contrib/constrained_optimization",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
@@ -125,6 +126,11 @@ py_library(
             "//tensorflow/contrib/tensorrt:init_py",
             "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         ],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -191,5 +197,10 @@ cc_library(
             "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
             "//tensorflow/contrib/tensorrt:trt_engine_op_op_lib",
         ],
+    }) + select({
+        "//tensorflow:with_ignite_support": [
+            "//tensorflow/contrib/ignite:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
     }),
 )

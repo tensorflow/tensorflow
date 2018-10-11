@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -106,8 +108,8 @@ Status HloDomainMap::PopulateDomainMetadataMap() {
   auto equal = [](const DomainMetadata* a, const DomainMetadata* b) {
     return a->Matches(*b);
   };
-  tensorflow::gtl::FlatMap<const DomainMetadata*, int64, decltype(hash),
-                           decltype(equal)>
+  absl::flat_hash_map<const DomainMetadata*, int64, decltype(hash),
+                      decltype(equal)>
       domain_metadata(1024, hash, equal);
 
   for (auto& domain : instruction_domains_) {
@@ -216,7 +218,7 @@ bool HloDomainMap::IsDomainInstruction(HloInstruction* instruction) const {
 
 /* static */ std::vector<HloInstruction*>
 HloDomainMap::MakeNonDomainInstructions(
-    const tensorflow::gtl::FlatSet<HloInstruction*>& instruction_set,
+    const absl::flat_hash_set<HloInstruction*>& instruction_set,
     const InstructionOrderMap& instructions_order) {
   std::vector<HloInstruction*> instructions;
   instructions.reserve(instruction_set.size());

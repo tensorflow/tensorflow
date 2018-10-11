@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-//#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_convolution_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
@@ -53,9 +53,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/amdgpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
+#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -72,8 +75,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -131,9 +136,12 @@ string GetROCDLDir(const HloModuleConfig& config) {
 }
 
 // Runs optimization passes on the given HLO module.
-tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
-                                     se::StreamExecutor* stream_exec,
-                                     DeviceMemoryAllocator* device_allocator) {
+//
+// It takes a compiler pointer, as passes may compile and execute HLOs on the
+// fly for cuDNN verification or other purposes.
+Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
+                         DeviceMemoryAllocator* device_allocator,
+                         Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
@@ -171,10 +179,13 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
+      pipeline.AddPass<ScatterExpander>();
+
       pass.AddPass<AlgebraicSimplifier>(
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
@@ -201,58 +212,34 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<CudnnConvolutionRewriter>();
+    pipeline.AddPass<CudnnFusedConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
-
-    // ROCM TODO: check if CudnnConvolutionAlgorithmPicker can be applied
-    // directly or should we come up with MIOpenConvolutionAlgorithmPicker
-    //// Choose the fastest algorithm for each conv.
-    ////
-    //// In theory doing this here is way too early: It needs to happen after
-    //// layout assignment, because the layout of the inputs/outputs affects the
-    //// speed of the conv.  But currently we only allow only one input/output
-    //// layout when calling cudnn, so there's no ambiguity.
-    ////
-    //// We pick the algorithm at this early stage so we can generate better HLO.
-    //// After CudnnConvolutionRewriter, our convolutions are CustomCalls which
-    //// return a tuple (conv_result, scratch_memory), and the each conv uses 0
-    //// bytes of scratch:
-    ////
-    ////   customcall = (f32[...], f32[0])
-    ////   return gte(customcall, 0)
-    ////
-    //// The algorithm picker then chooses the best algorithm, and potentially
-    //// increases the scratch space.  It replaces customcall with new_tuple,
-    //// giving us the following:
-    ////
-    ////   new_customcall = (f32[...], f32[N])
-    ////   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
-    ////   return gte(new_tuple, 0)
-    ////
-    //// The new tuple and gte instructions then be simplified away, because
-    //// nobody is expected to use the scratch value.
-    ////
-    //// However, if we were to run CudnnConvolutionAlgorithmPicker after layout
-    //// assignment, fusion would already have run, and the gte(customcall, 0)
-    //// would probably already be into a fusion node.  We can't simplify across
-    //// HloComputation boundaries, so in this case we wouldn't be able to
-    //// simplify away the new_tuple bits.
-    ////
-    //// We'll need to revisit this if we ever allow multiple layouts for the
-    //// inputs/outputs of a cudnn convolution.
-    //pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
-    //                                                  device_allocator);
- 
-    // Clean up new_tuple described above.
-    pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<HloDCE>();
-
+    // CudnnConvolutionRewriter, PadInsertion and PadForTensorCores may add
+    // instructions which can be simplified by constant folding.
+    pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {
-    HloPassPipeline pipeline("layout_assignment");
+    // Run layout assignment in a separate pipeline from
+    // "post-layout-assignment" because we want everything after layout
+    // assignment to have a layout-sensitive invariant-checker, but
+    // HloPassPipeline also runs its invariant checker before any passes are
+    // run, meaning, the pipeline that contains layout assignment cannot contain
+    // a layout-sensitive verifier!
+    HloPassPipeline pipeline("layout assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(),
+        LayoutAssignment::InstructionCanChangeLayout, stream_exec);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("post-layout_assignment");
+    pipeline.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -261,22 +248,63 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
         /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
           return true;
         });
+
+    // ROCM TODO: check if CudnnConvolutionAlgorithmPicker can be applied
+    // directly or should we come up with MIOpenConvolutionAlgorithmPicker
+    //
+    // Choose the fastest algorithm for each conv.
+    //
+    // We pick the algorithm before fusion so we can generate better HLO. After
+    // CudnnConvolutionRewriter, our convolutions are CustomCalls which return a
+    // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
+    // scratch:
+    //
+    //   customcall = (f32[...], f32[0])
+    //   return gte(customcall, 0)
+    //
+    // The algorithm picker then chooses the best algorithm, and potentially
+    // increases the scratch space.  It replaces customcall with new_tuple,
+    // giving us the following:
+    //
+    //   new_customcall = (f32[...], f32[N])
+    //   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
+    //   return gte(new_tuple, 0)
+    //
+    // The new tuple and gte instructions then be simplified away, because
+    // nobody is expected to use the scratch value.
+    //
+    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // the gte(customcall, 0) would probably already be into a fusion node.  We
+    // can't simplify across HloComputation boundaries, so in this case we
+    // wouldn't be able to simplify away the new_tuple bits.
+    //pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(
+    //    stream_exec, device_allocator, compiler);
+    // Clean up new_tuple described above.
+    pipeline.AddPass<TupleSimplifier>();
+
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
-    fusion.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+    fusion.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
+    fusion.AddPass<GpuMultiOutputFusion>();
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
+    fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
-    reduce_pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                                     /*allow_mixed_precision=*/false);
+    reduce_pipeline.AddInvariantChecker<HloVerifier>(
+        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
@@ -289,20 +317,23 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
   }
-  return tensorflow::Status::OK();
+
+  return Status::OK();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+  pipeline.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false,
+      LayoutAssignment::InstructionCanChangeLayout);
 
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -319,16 +350,21 @@ tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 }  // namespace
 
 AMDGPUCompiler::AMDGPUCompiler()
-    : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
+    : pointer_size_(llvm::DataLayout(kDataLayout)
+                        .getPointerSize(0 /* default address space */)) {}
 
 StatusOr<std::unique_ptr<HloModule>> AMDGPUCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
+  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
+  VLOG(2) << "*** HLO Before Optimization";
+  XLA_VLOG_LINES(2, module->ToString());
+
   XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunHloPasses");
   tracing::ScopedActivity activity("HLO Transforms", module->name(),
-                              /*is_expensive=*/true);
+                                   /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
   return std::move(module);
 }
 
@@ -369,15 +405,18 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(),
-                          /*color_alignment=*/[](LogicalBuffer::Color) {
-                            return kXlaAllocatedBufferAlignBytes;
-                          }));
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
+  VLOG(2) << "*** HLO After Optimization";
   XLA_VLOG_LINES(2, module->ToString());
   const string xla_dump_optimized_hlo_proto_to =
       module->config().debug_options().xla_dump_optimized_hlo_proto_to();
@@ -394,6 +433,9 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
@@ -422,7 +464,8 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   }
 
   {
-    XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunBackend - Running LLVM verifier");
+    XLA_SCOPED_LOGGING_TIMER(
+        "AMDGPUCompiler::RunBackend - Running LLVM verifier");
 
     std::string err;
     llvm::raw_string_ostream err_stream(err);
@@ -505,9 +548,11 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-AMDGPUCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
-                                const AotCompilationOptions& options) {
-  return Unimplemented("not yet implemented: AMDGPUCompiler::CompileAheadOfTime");
+AMDGPUCompiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> module,
+    const AotCompilationOptions& options) {
+  return Unimplemented(
+      "not yet implemented: AMDGPUCompiler::CompileAheadOfTime");
 }
 
 se::Platform::Id AMDGPUCompiler::PlatformId() const {

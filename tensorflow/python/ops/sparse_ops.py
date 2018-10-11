@@ -185,7 +185,8 @@ def sparse_eye(num_rows,
 
 
 # pylint: disable=protected-access
-@tf_export("sparse_concat")
+@tf_export("sparse.concat", "sparse_concat")
+@deprecation.deprecated_endpoints("sparse_concat")
 @deprecation.deprecated_args(
     None, "concat_dim is deprecated, use axis instead", "concat_dim")
 def sparse_concat(axis,
@@ -317,7 +318,8 @@ def sparse_concat(axis,
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
-@tf_export("sparse_add")
+@tf_export("sparse.add", "sparse_add")
+@deprecation.deprecated_endpoints("sparse_add")
 def sparse_add(a, b, thresh=0):
   """Adds two tensors, at least one of each is a `SparseTensor`.
 
@@ -557,7 +559,8 @@ def sparse_dense_cwise_add(sp_t, dense_t):
   return sparse_tensor.SparseTensor(sp_t.indices, result, sp_t.dense_shape)
 
 
-@tf_export("sparse_reorder")
+@tf_export("sparse.reorder", "sparse_reorder")
+@deprecation.deprecated_endpoints("sparse_reorder")
 def sparse_reorder(sp_input, name=None):
   """Reorders a `SparseTensor` into the canonical, row-major ordering.
 
@@ -607,7 +610,8 @@ def sparse_reorder(sp_input, name=None):
   return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
 
 
-@tf_export("sparse_reshape")
+@tf_export("sparse.reshape", "sparse_reshape")
+@deprecation.deprecated_endpoints("sparse_reshape")
 def sparse_reshape(sp_input, shape, name=None):
   """Reshapes a `SparseTensor` to represent values in a new dense shape.
 
@@ -700,7 +704,8 @@ class KeywordRequired(object):
     return "KeywordRequired()"
 
 
-@tf_export("sparse_split")
+@tf_export("sparse.split", "sparse_split")
+@deprecation.deprecated_endpoints("sparse_split")
 @deprecation.deprecated_args(
     None, "split_dim is deprecated, use axis instead", "split_dim")
 def sparse_split(keyword_required=KeywordRequired(),
@@ -773,7 +778,8 @@ def sparse_split(keyword_required=KeywordRequired(),
   return sparse_tensors
 
 
-@tf_export("sparse_slice")
+@tf_export("sparse.slice", "sparse_slice")
+@deprecation.deprecated_endpoints("sparse_slice")
 def sparse_slice(sp_input, start, size, name=None):
   """Slice a `SparseTensor` based on the `start` and `size.
 
@@ -785,11 +791,11 @@ def sparse_slice(sp_input, start, size, name=None):
 
   Graphically the output tensors are:
 
-      sparse_slice([0, 0], [2, 4]) = shape = [2, 4]
+      sparse.slice([0, 0], [2, 4]) = shape = [2, 4]
       [    a  ]
       [b c    ]
 
-      sparse_slice([0, 4], [2, 3]) = shape = [2, 3]
+      sparse.slice([0, 4], [2, 3]) = shape = [2, 3]
       [ d e  ]
       [      ]
 
@@ -823,6 +829,9 @@ def sparse_slice(sp_input, start, size, name=None):
 
 
 @tf_export("sparse_to_dense")
+@deprecation.deprecated(
+    None,
+    "Create a `tf.sparse.SparseTensor` and use `tf.sparse.to_dense` instead.")
 def sparse_to_dense(sparse_indices,
                     output_shape,
                     sparse_values,
@@ -878,7 +887,8 @@ def sparse_to_dense(sparse_indices,
       name=name)
 
 
-@tf_export("sparse_reduce_max")
+@tf_export("sparse.reduce_max", "sparse_reduce_max")
+@deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def sparse_reduce_max(sp_input, axis=None, keepdims=None,
@@ -912,16 +922,16 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
   # 'x' represents [[1, ?, 2]
   #                 [?, 3, ?]]
   # where ? is implicitly-zero.
-  tf.sparse_reduce_max(x) ==> 3
-  tf.sparse_reduce_max(x, 0) ==> [1, 3, 2]
-  tf.sparse_reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
-  tf.sparse_reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
-  tf.sparse_reduce_max(x, [0, 1]) ==> 3
+  tf.sparse.reduce_max(x) ==> 3
+  tf.sparse.reduce_max(x, 0) ==> [1, 3, 2]
+  tf.sparse.reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
+  tf.sparse.reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
+  tf.sparse.reduce_max(x, [0, 1]) ==> 3
 
   # 'y' represents [[-7, ?]
   #                 [ 4, 3]
   #                 [ ?, ?]
-  tf.sparse_reduce_max(x, 1) ==> [-7, 4, 0]
+  tf.sparse.reduce_max(x, 1) ==> [-7, 4, 0]
   ```
 
   Args:
@@ -945,7 +955,8 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse_reduce_max_sparse")
+@tf_export("sparse.reduce_max_sparse", "sparse_reduce_max_sparse")
+@deprecation.deprecated_endpoints("sparse_reduce_max_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def sparse_reduce_max_sparse(sp_input,
@@ -995,7 +1006,8 @@ def sparse_reduce_max_sparse(sp_input,
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
-@tf_export("sparse_reduce_sum")
+@tf_export("sparse.reduce_sum", "sparse_reduce_sum")
+@deprecation.deprecated_endpoints("sparse_reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
@@ -1021,11 +1033,11 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
   # 'x' represents [[1, ?, 1]
   #                 [?, 1, ?]]
   # where ? is implicitly-zero.
-  tf.sparse_reduce_sum(x) ==> 3
-  tf.sparse_reduce_sum(x, 0) ==> [1, 1, 1]
-  tf.sparse_reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
-  tf.sparse_reduce_sum(x, 1, keepdims=True) ==> [[2], [1]]
-  tf.sparse_reduce_sum(x, [0, 1]) ==> 3
+  tf.sparse.reduce_sum(x) ==> 3
+  tf.sparse.reduce_sum(x, 0) ==> [1, 1, 1]
+  tf.sparse.reduce_sum(x, 1) ==> [2, 1]  # Can also use -1 as the axis.
+  tf.sparse.reduce_sum(x, 1, keepdims=True) ==> [[2], [1]]
+  tf.sparse.reduce_sum(x, [0, 1]) ==> 3
   ```
 
   Args:
@@ -1049,7 +1061,8 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse_reduce_sum_sparse")
+@tf_export("sparse.reduce_sum_sparse", "sparse_reduce_sum_sparse")
+@deprecation.deprecated_endpoints("sparse_reduce_sum_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def sparse_reduce_sum_sparse(sp_input,
@@ -1099,7 +1112,8 @@ def sparse_reduce_sum_sparse(sp_input,
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
-@tf_export("sparse_tensor_to_dense")
+@tf_export("sparse.to_dense", "sparse_tensor_to_dense")
+@deprecation.deprecated_endpoints("sparse_tensor_to_dense")
 def sparse_tensor_to_dense(sp_input,
                            default_value=0,
                            validate_indices=True,
@@ -1151,7 +1165,8 @@ def sparse_tensor_to_dense(sp_input,
       name=name)
 
 
-@tf_export("sparse_to_indicator")
+@tf_export("sparse.to_indicator", "sparse_to_indicator")
+@deprecation.deprecated_endpoints("sparse_to_indicator")
 def sparse_to_indicator(sp_input, vocab_size, name=None):
   """Converts a `SparseTensor` of ids into a dense bool indicator tensor.
 
@@ -1214,7 +1229,8 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
         sp_new, default_value=False, validate_indices=False, name=name)
 
 
-@tf_export("sparse_merge")
+@tf_export("sparse.merge", "sparse_merge")
+@deprecation.deprecated_endpoints("sparse_merge")
 def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
                  already_sorted=False):
   """Combines a batch of feature ids and values into a single `SparseTensor`.
@@ -1358,7 +1374,8 @@ def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
         sorted_result.indices, sorted_result.values, new_shape)
 
 
-@tf_export("sparse_retain")
+@tf_export("sparse.retain", "sparse_retain")
+@deprecation.deprecated_endpoints("sparse_retain")
 def sparse_retain(sp_input, to_retain):
   """Retains specified non-empty values within a `SparseTensor`.
 
@@ -1402,7 +1419,8 @@ def sparse_retain(sp_input, to_retain):
                                     array_ops.identity(sp_input.dense_shape))
 
 
-@tf_export("sparse_reset_shape")
+@tf_export("sparse.reset_shape", "sparse_reset_shape")
+@deprecation.deprecated_endpoints("sparse_reset_shape")
 def sparse_reset_shape(sp_input, new_shape=None):
   """Resets the shape of a `SparseTensor` with indices and values unchanged.
 
@@ -1503,7 +1521,8 @@ def sparse_reset_shape(sp_input, new_shape=None):
   return sparse_tensor.SparseTensor(in_indices, in_values, output_shape_tensor)
 
 
-@tf_export("sparse_fill_empty_rows")
+@tf_export("sparse.fill_empty_rows", "sparse_fill_empty_rows")
+@deprecation.deprecated_endpoints("sparse_fill_empty_rows")
 def sparse_fill_empty_rows(sp_input, default_value, name=None):
   """Fills empty rows in the input 2-D `SparseTensor` with a default value.
 
@@ -1567,7 +1586,8 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
         dense_shape=sp_input.dense_shape), empty_row_indicator)
 
 
-@tf_export("serialize_sparse")
+@tf_export("io.serialize_sparse", "serialize_sparse")
+@deprecation.deprecated_endpoints("serialize_sparse")
 def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
   """Serialize a `SparseTensor` into a 3-vector (1-D `Tensor`) object.
 
@@ -1593,7 +1613,8 @@ def serialize_sparse(sp_input, name=None, out_type=dtypes.string):
       out_type=out_type)
 
 
-@tf_export("serialize_many_sparse")
+@tf_export("io.serialize_many_sparse", "serialize_many_sparse")
+@deprecation.deprecated_endpoints("serialize_many_sparse")
 def serialize_many_sparse(sp_input, name=None, out_type=dtypes.string):
   """Serialize `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor`.
 
@@ -1694,7 +1715,8 @@ def deserialize_sparse(serialized_sparse, dtype, rank=None, name=None):
   return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
 
 
-@tf_export("deserialize_many_sparse")
+@tf_export("io.deserialize_many_sparse", "deserialize_many_sparse")
+@deprecation.deprecated_endpoints("deserialize_many_sparse")
 def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   """Deserialize and concatenate `SparseTensors` from a serialized minibatch.
 
@@ -1712,7 +1734,7 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
 
   The input `SparseTensor` objects' indices are assumed ordered in
   standard lexicographic order.  If this is not the case, after this
-  step run `sparse_reorder` to restore index ordering.
+  step run `sparse.reorder` to restore index ordering.
 
   For example, if the serialized input is a `[2, 3]` matrix representing two
   original `SparseTensor` objects:
@@ -1764,7 +1786,8 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
   return sparse_tensor.SparseTensor(output_indices, output_values, output_shape)
 
 
-@tf_export("sparse_tensor_dense_matmul")
+@tf_export("sparse.matmul", "sparse_tensor_dense_matmul")
+@deprecation.deprecated_endpoints("sparse_tensor_dense_matmul")
 def sparse_tensor_dense_matmul(sp_a,
                                b,
                                adjoint_a=False,
@@ -1777,7 +1800,7 @@ def sparse_tensor_dense_matmul(sp_a,
   following input format is recommended for optimal behavior:
 
   * If `adjoint_a == false`: `A` should be sorted in lexicographically
-    increasing order.  Use `sparse_reorder` if you're not sure.
+    increasing order.  Use `sparse.reorder` if you're not sure.
   * If `adjoint_a == true`: `A` should be sorted in order of increasing
     dimension 1 (i.e., "column major" order instead of "row major" order).
 
@@ -1981,7 +2004,8 @@ def sparse_tensor_dense_matmul(sp_a,
         adjoint_b=adjoint_b)
 
 
-@tf_export("sparse_softmax")
+@tf_export("sparse.softmax", "sparse_softmax")
+@deprecation.deprecated_endpoints("sparse_softmax")
 def sparse_softmax(sp_input, name=None):
   """Applies softmax to a batched N-D `SparseTensor`.
 
@@ -2036,7 +2060,8 @@ def sparse_softmax(sp_input, name=None):
                                       sp_input.dense_shape)
 
 
-@tf_export("sparse_maximum")
+@tf_export("sparse.maximum", "sparse_maximum")
+@deprecation.deprecated_endpoints("sparse_maximum")
 def sparse_maximum(sp_a, sp_b, name=None):
   """Returns the element-wise max of two SparseTensors.
 
@@ -2073,7 +2098,8 @@ def sparse_maximum(sp_a, sp_b, name=None):
   return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.dense_shape)
 
 
-@tf_export("sparse_minimum")
+@tf_export("sparse.minimum", "sparse_minimum")
+@deprecation.deprecated_endpoints("sparse_minimum")
 def sparse_minimum(sp_a, sp_b, name=None):
   """Returns the element-wise min of two SparseTensors.
 
@@ -2110,7 +2136,8 @@ def sparse_minimum(sp_a, sp_b, name=None):
   return sparse_tensor.SparseTensor(out_indices, out_values, sp_a.dense_shape)
 
 
-@tf_export("sparse_transpose")
+@tf_export("sparse.transpose", "sparse_transpose")
+@deprecation.deprecated_endpoints("sparse_transpose")
 def sparse_transpose(sp_input, perm=None, name=None):
   """Transposes a `SparseTensor`
 
@@ -2259,7 +2286,7 @@ def _take_many_sparse_from_tensors_map(sparse_map_op,
 
   The input `SparseTensor` objects' indices are assumed ordered in
   standard lexicographic order.  If this is not the case, after this
-  step run `sparse_reorder` to restore index ordering.
+  step run `sparse.reorder` to restore index ordering.
 
   For example, if the serialized input is a `[2, 3]` matrix representing two
   original `SparseTensor` objects:

@@ -52,8 +52,8 @@ RUN ${PIP} --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
-        keras_applications==1.0.5 \
-        keras_preprocessing==1.0.3 \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         mock \
         numpy \

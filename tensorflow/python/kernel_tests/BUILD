@@ -76,6 +76,7 @@ tf_py_test(
     name = "batch_gather_op_test",
     srcs = ["batch_gather_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -2367,7 +2368,7 @@ gpu_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    shard_count = 4,
+    shard_count = 10,
     tags = [
         "no_gpu",
         "no_oss",
@@ -2999,6 +3000,10 @@ gpu_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = [
+        "no_oss",  # b/117185141.
+        "nomsan",  # TODO(b/117236102): Re-enable in msan build.
+    ],
 )
 
 gpu_py_test(
@@ -3013,7 +3018,11 @@ gpu_py_test(
         "//tensorflow/python:linalg_ops",
     ],
     shard_count = 20,
-    tags = ["no_windows_gpu"],
+    # TODO(b/117236102): Re-enable in msan build.
+    tags = [
+        "no_windows_gpu",
+        "nomsan",
+    ],
 )
 
 gpu_py_test(
@@ -3246,7 +3255,7 @@ tf_py_test(
     tags = ["no_pip"],
 )
 
-tf_py_test(
+gpu_py_test(
     name = "cond_v2_test",
     size = "medium",
     srcs = ["cond_v2_test.py"],
@@ -3263,7 +3272,6 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     grpc_enabled = True,
-    tags = ["no_gpu"],  # TODO(b/111656070)
 )
 
 gpu_py_test(

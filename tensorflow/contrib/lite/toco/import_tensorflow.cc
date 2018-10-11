@@ -477,6 +477,30 @@ string CreateConstArray(Model* model, string const& name,
   return array_name;
 }
 
+// Retain TensorFlow NodeDef in Toco Operator.
+//
+// If an op is supported by Toco but not supported by TFLite, TFLite exporter
+// will use the retained NodeDef to populate a Flex op when Flex mode is
+// enabled.
+//
+// This can't be easily applied to all operations, because a TensorFlow node
+// may become multiple Toco operators. Thus we need to call this function in
+// operator conversion functions one by one whenever feasible.
+//
+// This may cause problems if a graph transformation rule changes parameters
+// of the node. When calling this function, please check if any existing
+// graph transformation rule will change an existing operator with the same
+// type.
+//
+// This provides a route to handle Toco-supported & TFLite-unsupported ops
+// in Flex mode. However it's not a solid solution. Eventually we should
+// get rid of this.
+// TODO(b/117327937): Implement all Toco-supported ops in TFLite, and remove
+// this function.
+void RetainTensorFlowNodeDef(const NodeDef& node, Operator* op) {
+  node.SerializeToString(&op->tensorflow_node_def);
+}
+
 tensorflow::Status ConvertConstOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -990,6 +1014,10 @@ tensorflow::Status ConvertBatchMatMulOperator(
   auto* batch_matmul = new BatchMatMulOperator;
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, batch_matmul);
+
   model->operators.emplace_back(batch_matmul);
   return tensorflow::Status::OK();
 }
@@ -1081,7 +1109,10 @@ tensorflow::Status ConvertUnsupportedOperator(
 
   auto* op = new TensorFlowUnsupportedOperator;
   op->tensorflow_op = node.op();
-  node.SerializeToString(&op->tensorflow_node_def);
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
   model->operators.emplace_back(op);
 
   // Parse inputs.
@@ -1605,6 +1636,10 @@ tensorflow::Status ConvertRangeOperator(
   op->inputs.push_back(node.input(1));
   op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }

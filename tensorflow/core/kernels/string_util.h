@@ -30,6 +30,9 @@ enum class UnicodeEncoding { UTF8 };
 // TODO(edloper): Add support for: UTF32_CHAR, etc.
 enum class CharUnit { BYTE, UTF8_CHAR };
 
+// Whether or not the given byte is the trailing byte of a UTF-8/16/32 char.
+inline bool IsTrailByte(char x) { return static_cast<signed char>(x) < -0x40; }
+
 // Sets `encoding` based on `str`.
 Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding);
 
@@ -39,6 +42,47 @@ Status ParseCharUnit(const string& str, CharUnit* unit);
 // Returns the number of Unicode characters in a UTF-8 string.
 // Result may be incorrect if the input string is not valid UTF-8.
 int32 UTF8StrLen(const string& string);
+
+// Get the next UTF8 character position starting at the given position and
+// skipping the given number of characters. Position is a byte offset, and
+// should never be `null`. The function return true if successful. However, if
+// the end of the string is reached before the requested characters, then the
+// position will point to the end of string and this function will return false.
+template <typename T>
+bool ForwardNUTF8CharPositions(const StringPiece in,
+                               const T num_utf8_chars_to_shift, T* pos) {
+  const size_t size = in.size();
+  T utf8_chars_counted = 0;
+  while (utf8_chars_counted < num_utf8_chars_to_shift && *pos < size) {
+    // move forward one utf-8 character
+    do {
+      ++*pos;
+    } while (IsTrailByte(in[*pos]) && *pos < size);
+    ++utf8_chars_counted;
+  }
+  return utf8_chars_counted == num_utf8_chars_to_shift;
+}
+
+// Get the previous UTF8 character position starting at the given position and
+// skipping the given number of characters. Position is a byte offset with a
+// positive value, relative to the beginning of the string, and should never be
+// `null`. The function return true if successful. However, if the beginning of
+// the string is reached before the requested character, then the position will
+// point to the beginning of the string and this function will return false.
+template <typename T>
+bool BackNUTF8CharPositions(const StringPiece in,
+                            const T num_utf8_chars_to_shift, T* pos) {
+  const size_t start = 0;
+  T utf8_chars_counted = 0;
+  while (utf8_chars_counted < num_utf8_chars_to_shift && (*pos > start)) {
+    // move back one utf-8 character
+    do {
+      --*pos;
+    } while (IsTrailByte(in[*pos]) && *pos > start);
+    ++utf8_chars_counted;
+  }
+  return utf8_chars_counted == num_utf8_chars_to_shift;
+}
 
 }  // namespace tensorflow
 

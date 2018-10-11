@@ -32,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.util import nest
 
 
 # TODO(priyag, sourabhbajaj): Refactor this file to address code duplication.
@@ -296,15 +297,16 @@ def _experimental_fit_loop(
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
   if steps_per_epoch is None:
-    raise ValueError('steps_per_epoch should be specified in the fit call.')
-  steps_per_run_var = K.variable(
+    raise ValueError('`steps_per_epoch` should be specified when calling '
+                     '`fit` on the model.')
+  steps_per_run = K.variable(
       value=min(steps_per_epoch, current_strategy.steps_per_run),
       dtype='int32',
-      name='steps_per_run_var')
+      name='steps_per_run')
 
   with current_strategy.scope():
     ctx = current_strategy.run_steps_on_dataset(
-        step_fn, iterator, iterations=steps_per_run_var,
+        step_fn, iterator, iterations=steps_per_run,
         initial_loop_values=initial_loop_values)
 
   train_op = ctx.run_op
@@ -344,7 +346,7 @@ def _experimental_fit_loop(
       batch_logs = {'batch': step_index, 'size': 1, 'num_steps': step_count}
       callbacks.on_batch_begin(step_index, batch_logs)
       if prev_step_count is None or step_count != prev_step_count:
-        steps_per_run_var.load(step_count, K.get_session())
+        steps_per_run.load(step_count, K.get_session())
         prev_step_count = step_count
       try:
         _, outputs = K.get_session().run([train_op, output_tensors])
@@ -720,12 +722,8 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
             model.predict_function.updates_op,
             model.predict_function.session_kwargs)
 
-  def step_fn(ctx, inputs, targets):
+  def step_fn(ctx, *inputs):
     """Clones the model and calls make_predict_function."""
-
-    # TODO(anjalisridhar): Support predict input correctly as it will not
-    # contain targets, only inputs.
-    del targets
 
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
@@ -824,9 +822,10 @@ def _clone_and_build_model(model, inputs=None, targets=None):
 
   # TODO(priyag): Is there a cleaner way to do this? The API doc suggests a
   # single tensor should be OK but it throws an error in that case.
-  if (targets is not None and not isinstance(targets, list) and
-      not isinstance(targets, dict)):
+  if targets is not None and not isinstance(targets, (list, dict, tuple)):
     targets = [targets]
+  if isinstance(targets, tuple):
+    targets = nest.flatten(targets)
   cloned_model.compile(
       optimizer,
       model.loss,
@@ -891,11 +890,12 @@ def _get_input_from_iterator(iterator, model):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = iterator.get_next()
 
-  if isinstance(next_element, tuple):
-    x, y = next_element
-  else:
+  if len(nest.flatten(next_element)) == len(model.inputs):
     x = next_element
     y = None
+  else:
+    x, y = next_element
+
   # Validate that all the elements in x and y are of the same type and shape.
   # We can then pass the first element of x and y to `_standardize_weights`
   # below and be confident of the output.

@@ -2,7 +2,7 @@
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(default_visibility = [
-    "//visibility:public",
+    "//visibility:private",
 ])
 
 licenses(["notice"])  # Apache 2.0
@@ -20,7 +20,7 @@ cc_library(
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -50,6 +50,7 @@ cc_library(
     hdrs = [
         "delegate.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":buffer_map",
         ":delegate_data",
@@ -60,12 +61,13 @@ cc_library(
         "//tensorflow/contrib/lite:util",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
+            "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -178,7 +180,7 @@ cc_library(
         "//tensorflow/contrib/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite_no_runtime",
+            "//tensorflow/core:android_tensorflow_lib",
         ],
         "//conditions:default": [
             "//tensorflow/core:lib",
