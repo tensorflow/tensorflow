@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_speed.h"
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -29,9 +29,9 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 
-class PadForTensorCoresTest : public HloVerifiedTestBase {};
+class CudnnConvPadForSpeedTest : public HloVerifiedTestBase {};
 
-TEST_F(PadForTensorCoresTest, PadF16ForwardConvInputChannels) {
+TEST_F(CudnnConvPadForSpeedTest, PadF16ForwardConvInputChannels) {
   ParseAndVerifyModule(R"(
   HloModule TestModule
 
@@ -42,7 +42,7 @@ TEST_F(PadForTensorCoresTest, PadF16ForwardConvInputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })");
-  EXPECT_TRUE(PadForTensorCores().Run(&module()).ValueOrDie());
+  EXPECT_TRUE(CudnnConvPadForSpeed().Run(&module()).ValueOrDie());
   auto* root = module().entry_computation()->root_instruction();
 
   SCOPED_TRACE(module().ToString());
@@ -55,7 +55,7 @@ TEST_F(PadForTensorCoresTest, PadF16ForwardConvInputChannels) {
                                ShapeUtil::MakeShape(F16, {2, 2, 48, 40})));
 }
 
-TEST_F(PadForTensorCoresTest, PadF16BackwardInputConvOutputChannels) {
+TEST_F(CudnnConvPadForSpeedTest, PadF16BackwardInputConvOutputChannels) {
   ParseAndVerifyModule(R"(
   HloModule TestModule
 
@@ -66,7 +66,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardInputConvOutputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convBackwardInput"
   })");
-  EXPECT_TRUE(PadForTensorCores().Run(&module()).ValueOrDie());
+  EXPECT_TRUE(CudnnConvPadForSpeed().Run(&module()).ValueOrDie());
   auto* root = module().entry_computation()->root_instruction();
   EXPECT_THAT(root, op::CustomCall(kCudnnConvBackwardInputCallTarget,
                                    op::Pad(op::Parameter(0), _),
@@ -77,7 +77,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardInputConvOutputChannels) {
                                ShapeUtil::MakeShape(F16, {2, 2, 40, 48})));
 }
 
-TEST_F(PadForTensorCoresTest, PadF16ForwardConvOutputChannels) {
+TEST_F(CudnnConvPadForSpeedTest, PadF16ForwardConvOutputChannels) {
   ParseAndVerifyModule(R"(
   HloModule TestModule
 
@@ -88,7 +88,7 @@ TEST_F(PadForTensorCoresTest, PadF16ForwardConvOutputChannels) {
                   window={size=2x2}, dim_labels=b01f_01io->b01f,
                   custom_call_target="__cudnn$convForward"
   })");
-  EXPECT_TRUE(PadForTensorCores().Run(&module()).ValueOrDie());
+  EXPECT_TRUE(CudnnConvPadForSpeed().Run(&module()).ValueOrDie());
   auto* root = module().entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::Slice(op::GetTupleElement(op::CustomCall(
                                   kCudnnConvForwardCallTarget, op::Parameter(0),
@@ -96,7 +96,7 @@ TEST_F(PadForTensorCoresTest, PadF16ForwardConvOutputChannels) {
                               _));
 }
 
-TEST_F(PadForTensorCoresTest, PadF16BackwardInputConvInputChannels) {
+TEST_F(CudnnConvPadForSpeedTest, PadF16BackwardInputConvInputChannels) {
   ParseAndVerifyModule(R"(
   HloModule TestModule
 
@@ -108,7 +108,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardInputConvInputChannels) {
               custom_call_target="__cudnn$convBackwardInput"
     ROOT gte = f16[10,20,30,41] get-tuple-element(result), index=0
   })");
-  EXPECT_TRUE(PadForTensorCores().Run(&module()).ValueOrDie());
+  EXPECT_TRUE(CudnnConvPadForSpeed().Run(&module()).ValueOrDie());
   auto* root = module().entry_computation()->root_instruction();
   EXPECT_THAT(root, op::GetTupleElement(op::Tuple(
                         op::Slice(op::GetTupleElement(op::CustomCall(
@@ -117,7 +117,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardInputConvInputChannels) {
                         _)));
 }
 
-TEST_F(PadForTensorCoresTest, PadF16BackwardFilterConvInputChannels) {
+TEST_F(CudnnConvPadForSpeedTest, PadF16BackwardFilterConvInputChannels) {
   ParseAndVerifyModule(R"(
   HloModule TestModule
 
@@ -129,7 +129,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardFilterConvInputChannels) {
               custom_call_target="__cudnn$convBackwardFilter"
     ROOT gte = f16[2,2,41,40] get-tuple-element(result), index=0
   })");
-  EXPECT_TRUE(PadForTensorCores().Run(&module()).ValueOrDie());
+  EXPECT_TRUE(CudnnConvPadForSpeed().Run(&module()).ValueOrDie());
   auto* root = module().entry_computation()->root_instruction();
   EXPECT_THAT(root, op::GetTupleElement(op::Tuple(
                         op::Slice(op::GetTupleElement(op::CustomCall(
@@ -138,7 +138,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardFilterConvInputChannels) {
                         _)));
 }
 
-TEST_F(PadForTensorCoresTest, PadF16BackwardFilterConvOutputChannels) {
+TEST_F(CudnnConvPadForSpeedTest, PadF16BackwardFilterConvOutputChannels) {
   ParseAndVerifyModule(R"(
   HloModule TestModule
 
@@ -150,7 +150,7 @@ TEST_F(PadForTensorCoresTest, PadF16BackwardFilterConvOutputChannels) {
               custom_call_target="__cudnn$convBackwardFilter"
     ROOT gte = f16[2,2,40,41] get-tuple-element(result), index=0
   })");
-  EXPECT_TRUE(PadForTensorCores().Run(&module()).ValueOrDie());
+  EXPECT_TRUE(CudnnConvPadForSpeed().Run(&module()).ValueOrDie());
   auto* root = module().entry_computation()->root_instruction();
   EXPECT_THAT(root, op::GetTupleElement(op::Tuple(
                         op::Slice(op::GetTupleElement(op::CustomCall(

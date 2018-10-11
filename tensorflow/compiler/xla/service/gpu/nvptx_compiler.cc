@@ -38,9 +38,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_convolution_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_speed.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
@@ -54,8 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/pad_for_tensor_cores.h"
-#include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
@@ -201,21 +201,22 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
   {
     // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-    // (PadInsertion).
+    // (CudnnConvPaddingLegalization).
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
-    pipeline.AddPass<CudnnConvolutionRewriter>();
-    pipeline.AddPass<CudnnFusedConvolutionRewriter>();
-    pipeline.AddPass<PadInsertion>();
+    pipeline.AddPass<CudnnConvRewriter>();
+    pipeline.AddPass<CudnnFusedConvRewriter>();
+    pipeline.AddPass<CudnnConvPaddingLegalization>();
     if (IsVoltaOrLater(*stream_exec)) {
-      pipeline.AddPass<PadForTensorCores>();
-      // PadForTensorCores leaves behind unnecessary tuple/get-tuple-element
+      pipeline.AddPass<CudnnConvPadForSpeed>();
+      // CudnnConvPadForSpeed leaves behind unnecessary tuple/get-tuple-element
       // pairs that TupleSimplifier fixes.
       pipeline.AddPass<TupleSimplifier>();
     }
-    // CudnnConvolutionRewriter, PadInsertion and PadForTensorCores may add
-    // instructions which can be simplified by constant folding.
+    // CudnnConvRewriter, CudnnConvPaddingLegalization and
+    // CudnnConvPadForSpeed may add instructions which can be simplified by
+    // constant folding.
     pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -252,7 +253,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // Choose the fastest algorithm for each conv.
     //
     // We pick the algorithm before fusion so we can generate better HLO. After
-    // CudnnConvolutionRewriter, our convolutions are CustomCalls which return a
+    // CudnnConvRewriter, our convolutions are CustomCalls which return a
     // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
     // scratch:
     //
@@ -270,12 +271,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // The new tuple and gte instructions then be simplified away, because
     // nobody is expected to use the scratch value.
     //
-    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // However, if we were to run CudnnConvAlgorithmPicker after fusion
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(
-        stream_exec, device_allocator, compiler);
+    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator,
+                                               compiler);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
 

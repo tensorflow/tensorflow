@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
@@ -145,9 +145,8 @@ tensorflow::mutex_lock LockGpu(const se::StreamExecutor* stream_exec) {
 // cache misses and doing extra work.  Overall, caching doesn't seem worth the
 // trouble, but we may want to revisit this if we ever find a model where
 // caching would speed up compilation a lot.
-StatusOr<CudnnConvolutionAlgorithmPicker::AutotuneResult>
-CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
-    HloCustomCallInstruction* instr) {
+StatusOr<CudnnConvAlgorithmPicker::AutotuneResult>
+CudnnConvAlgorithmPicker::PickBestAlgorithm(HloCustomCallInstruction* instr) {
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
   // with some work on the HLO routines.
   const bool cross_check_enabled =
@@ -253,10 +252,10 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     backend_config.set_algorithm(alg.algo_id());
     backend_config.set_tensor_ops_enabled(alg.tensor_ops_enabled());
     TF_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
-    bool launch_ok = RunCudnnConvolution(instr, absl::MakeSpan(operand_buffers),
-                                         result_buffer, &scratch_allocator,
-                                         &stream, &profile_result)
-                         .ok();
+    bool launch_ok =
+        RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+                     &scratch_allocator, &stream, &profile_result)
+            .ok();
 
     if (launch_ok && profile_result.is_valid()) {
       const bool crash_on_checking_failure =
@@ -328,7 +327,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       instr->ToString());
 }
 
-StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
+StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
     HloInstruction* instr) {
   CHECK(IsCustomCallToDnnConvolution(*instr));
 
@@ -378,7 +377,7 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   return true;
 }
 
-StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnComputation(
+StatusOr<bool> CudnnConvAlgorithmPicker::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloInstruction*> convs;
   for (auto* instr : computation->instructions()) {
@@ -395,7 +394,7 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> CudnnConvolutionAlgorithmPicker::Run(HloModule* module) {
+StatusOr<bool> CudnnConvAlgorithmPicker::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));

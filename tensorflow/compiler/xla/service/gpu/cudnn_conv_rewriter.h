@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_FUSED_CONVOLUTION_REWRITER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_FUSED_CONVOLUTION_REWRITER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_REWRITER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_REWRITER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 namespace gpu {
 
-class CudnnFusedConvolutionRewriter : public HloModulePass {
+// Rewrites plain convolutions, backwards-filter convolutions, and
+// backwards-input convolutions into CustomCall HLOs that call into cuDNN.
+class CudnnConvRewriter : public HloModulePass {
  public:
-  absl::string_view name() const override {
-    return "cudnn-fused-convolution-rewriter";
-  }
+  absl::string_view name() const override { return "cudnn-conv-rewriter"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
@@ -34,4 +34,4 @@ class CudnnFusedConvolutionRewriter : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_FUSED_CONVOLUTION_REWRITER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_REWRITER_H_
