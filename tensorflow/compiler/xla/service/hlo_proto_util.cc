@@ -42,7 +42,7 @@ StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       HloModule::CreateFromProto(proto, module_config));
   TF_RETURN_IF_ERROR(
-      HloVerifier(/*layout_sensitive=*/true, /*allow_mixed_precision=*/false)
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
           .Run(module.get())
           .status());
   return std::move(module);

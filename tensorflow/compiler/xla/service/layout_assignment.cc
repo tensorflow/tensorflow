@@ -1523,6 +1523,10 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
     // Execute extra verification step once the layout has been finalized.
     TF_RETURN_IF_ERROR(Verify(instruction));
 
+    // Shape must be valid.
+    TF_RETURN_IF_ERROR(
+        ShapeUtil::ValidateShapeWithOptionalLayout(instruction->shape()));
+
     // Verify all layouts in the shape have been set.
     TF_RET_CHECK(LayoutUtil::HasLayout(instruction->shape()));
   }
