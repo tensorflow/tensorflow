@@ -37,22 +37,15 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-
 #include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
 using mkldnn::stream;
-
 using mkldnn::convolution_direct;
 using mkldnn::convolution_forward;
-#endif
 
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
 
 class MklDnnConvUtil {
  protected:
@@ -543,7 +536,6 @@ class MklConvBackpropCommonOp : public OpKernel {
   TensorFormat data_format_;  // NCHW or NHWC
 };
 
-#endif  // INTEL_MKL_ML_ONLY
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate
