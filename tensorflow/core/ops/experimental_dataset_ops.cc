@@ -75,6 +75,20 @@ REGISTER_OP("ExperimentalIgnoreErrorsDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalSleepDataset")
+    .Input("input_dataset: variant")
+    .Input("sleep_microseconds: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // Both inputs are scalar.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("ExperimentalUniqueDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")

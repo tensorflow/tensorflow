@@ -190,6 +190,11 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
         return Unimplemented(
             "HloEvaluatorTypedVisitor: unhandled primitive type: OPAQUE.");
       });
+  typed_visitors_[TOKEN] =
+      absl::make_unique<FunctionVisitor>([](HloInstruction*) {
+        return Unimplemented(
+            "HloEvaluatorTypedVisitor: unhandled primitive type: TOKEN.");
+      });
 }
 
 template <typename LiteralPtr>
@@ -1229,7 +1234,7 @@ StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
   TF_RET_CHECK(
       ShapeUtil::SameDimensions(keys_literal.shape(), values_literal.shape()))
       << "Sort keys and values must have the same dimensions";
-  TF_RET_CHECK(sort->operand_count() == 2) << "Expected key-value sort";
+  TF_RET_CHECK(sort->operand_count() >= 2) << "Expected key-value sort";
   // We need to sort an array of keys and an array of values, where the
   // sorted order of the values is determined by the keys. The simplest(?)
   // way to do this is to go to an array-of-pairs representation, sort the
@@ -1318,7 +1323,7 @@ template <typename KeyType>
 StatusOr<Literal> EvaluateSortCurried(HloInstruction* sort,
                                       const Literal& keys_literal,
                                       const Literal& values_literal) {
-  switch (sort->operand(1)->shape().element_type()) {
+  switch (values_literal.shape().element_type()) {
     case PRED:
       return EvaluateSortInternal<KeyType, bool>(sort, keys_literal,
                                                  values_literal);
@@ -1361,14 +1366,24 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
   if (!ShapeUtil::IsTuple(sort->shape())) {
     return DefaultAction(sort);
   } else {
-    auto result = EvaluateSort(sort, GetEvaluatedLiteralFor(sort->operand(0)),
-                               GetEvaluatedLiteralFor(sort->operand(1)));
-    if (result.ok()) {
-      evaluated_[sort] = std::move(result.ValueOrDie());
-      return Status::OK();
-    } else {
-      return result.status();
+    // This is a really stupid work-around for the fact it's hard to support a
+    // multi-value sort directly, due to the fact we need to template the
+    // evaluation function on all of the value types.
+    std::vector<Literal> sort_results_backing;
+    for (int64 i = 0; i < sort->operand_count(); ++i) {
+      auto result = EvaluateSort(sort, GetEvaluatedLiteralFor(sort->operand(0)),
+                                 GetEvaluatedLiteralFor(sort->operand(i)));
+      if (!result.ok()) {
+        return result.status();
+      }
+      sort_results_backing.push_back(
+          std::move(result.ValueOrDie().DecomposeTuple()[1]));
     }
+    std::vector<const Literal*> sort_results;
+    absl::c_transform(sort_results_backing, std::back_inserter(sort_results),
+                      [](const Literal& literal) { return &literal; });
+    evaluated_[sort] = LiteralUtil::MakeTuple(sort_results);
+    return Status::OK();
   }
 }
 

@@ -32,6 +32,8 @@ class ShapeVerifier : public DfsHloVisitor {
       : layout_sensitive_(layout_sensitive),
         allow_mixed_precision_(allow_mixed_precision) {}
 
+  Status Preprocess(HloInstruction* hlo) override;
+
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleClamp(HloInstruction* clamp) override;

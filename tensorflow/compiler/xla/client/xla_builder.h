@@ -834,12 +834,12 @@ class XlaBuilder {
   // the last dimension is chosen by default.
   //
   // If both keys and values are provided:
-  // * The keys and the values must tensors with the same dimensions. The
+  // * The keys and all values must be tensors with the same dimensions. The
   // element types of the tensors may be different.
   // * The result is a tuple that consists of a sorted tensor of keys (along the
-  // provided dimension, as above) as the first element, and a tensor with their
-  // corresponding values as the second element.
-  XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
+  // provided dimension, as above) as the first element, and tensors with their
+  // corresponding values as the other elements.
+  XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
              int64 dimension = -1);
 
   // Enqueues a clamp instruction onto the computation.
@@ -1311,7 +1311,8 @@ class XlaBuilder {
   friend XlaOp Transpose(const XlaOp& operand,
                          absl::Span<const int64> permutation);
   friend XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
-  friend XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values, int64 dimension);
+  friend XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
+                    int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -2002,12 +2003,12 @@ XlaOp Rev(const XlaOp& operand, absl::Span<const int64> dimensions);
 // the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must be tensors with the same dimensions. The
+// * The keys and all values must be tensors with the same dimensions. The
 // element types of the tensors may be different.
 // * The result is a tuple that consists of a sorted tensor of keys (along the
-// provided dimension, as above) as the first element, and a tensor with their
-// corresponding values as the second element.
-XlaOp Sort(XlaOp keys, absl::optional<XlaOp> values = absl::nullopt,
+// provided dimension, as above) as the first element, and tensors with their
+// corresponding values as the other elements.
+XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
            int64 dimension = -1);
 
 // Enqueues a clamp instruction onto the computation.

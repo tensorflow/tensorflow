@@ -42,6 +42,12 @@ std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g);
 // Returns whether a graph contains side-effecting nodes.
 bool HasSideEffectingNodes(const Graph& g);
 
+// Parse the mapping from outside_compilation_subgraph name to core number,
+// which is specified in an attr as a list of strings
+// <subgraph_name>:<core_index>.
+Status ParseHostComputeCoreList(absl::Span<const string> list_from_attr,
+                                std::map<string, int>* host_compute_core);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SIDE_EFFECT_UTIL_H_

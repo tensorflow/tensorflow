@@ -641,7 +641,7 @@ cuda_py_test(
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
-    tags = ["notap"],
+    tags = ["optonly"],
 )
 
 cuda_py_test(
@@ -3262,6 +3262,7 @@ cuda_py_test(
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:test_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",

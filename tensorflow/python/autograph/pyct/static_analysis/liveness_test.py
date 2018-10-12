@@ -153,6 +153,20 @@ class LivenessTest(test.TestCase):
 
     self.assertHasLiveOut(fn_body[0], 'max')
 
+  def test_live_out_deletion(self):
+
+    def test_fn(x, y, a):
+      for _ in a:
+        if x:
+          del y
+        else:
+          y = 0
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    self.assertHasLiveOut(fn_body[0], ())
+
   def test_live_in_stacked_if(self):
 
     def test_fn(x, a, b, c):
@@ -213,6 +227,20 @@ class LivenessTest(test.TestCase):
     fn_body = node.body[0].body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'y', 'z'))
+
+  def test_live_in_deletion(self):
+
+    def test_fn(x, y, a):
+      for _ in a:
+        if x:
+          del y
+        else:
+          y = 0
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'x', 'y'))
 
 
 if __name__ == '__main__':

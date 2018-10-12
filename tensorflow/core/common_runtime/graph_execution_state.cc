@@ -531,7 +531,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  Placer placer(new_graph.get(), device_set_, session_options_);
+  Placer placer(new_graph.get(), device_set_, session_options_,
+                /* default_device= */ nullptr);
   // TODO(mrry): Consider making the Placer cancelable.
   TF_RETURN_IF_ERROR(placer.Run());
 

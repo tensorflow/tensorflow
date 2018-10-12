@@ -345,8 +345,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   for (int64 i = 0; i < module_protos.size(); ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
-    TF_ASSIGN_OR_RETURN(auto module,
-                        HloModule::CreateFromProto(*proto, config));
+    TF_ASSIGN_OR_RETURN(auto module, CreateModuleFromProto(*proto, config));
     modules.push_back(std::move(module));
   }
 
@@ -810,7 +809,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProto(module_proto, *module_config));
+                      CreateModuleFromProto(module_proto, *module_config));
 
   TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*module));
 
@@ -1081,7 +1080,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   HloModuleConfig config(program_shape);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProto(arg->computation(), config));
+                      CreateModuleFromProto(arg->computation(), config));
 
   HloEvaluator evaluator;
   TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<Literal>(
@@ -1118,7 +1117,7 @@ Status Service::GetComputationGraphStats(
   HloModuleConfig config(arg->computation().program_shape());
   config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProto(arg->computation(), config));
+                      CreateModuleFromProto(arg->computation(), config));
 
   hlo_graph_dumper::MaybeDumpHloModule(*module,
                                        "computation statistics subject");
