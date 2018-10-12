@@ -179,7 +179,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
@@ -191,7 +191,7 @@ tf_class {
   }
   member_method {
     name: "compute_output_shape"
-    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"
