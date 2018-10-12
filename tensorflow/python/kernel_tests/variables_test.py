@@ -739,7 +739,7 @@ class PartitionedVariableTest(test.TestCase):
       c_0 = constant_op.constant([2.0])
       c_1 = constant_op.constant([3.0])
       assign_list = pv_1.assign([c_0, c_1])
-      assign_part_value = pv_1.assign_add(plus_delta)
+      assign_part_value = pv_1.assign_add(assign_ones)
       assign_part_var = pv_1.assign_sub(pv_0)
       variables.global_variables_initializer().run()
 
@@ -765,13 +765,13 @@ class PartitionedVariableTest(test.TestCase):
 
       self.assertEqual([3.0], assign_part_value[0].eval())
       self.assertEqual([3.0], v2.eval())
-      self.assertEqual([6.0], assign_part_value[1].eval())
-      self.assertEqual([6.0], v3.eval())
+      self.assertEqual([4.0], assign_part_value[1].eval())
+      self.assertEqual([4.0], v3.eval())
 
       self.assertEqual([2.0], assign_part_var[0].eval())
       self.assertEqual([2.0], v2.eval())
-      self.assertEqual([5.0], assign_part_var[1].eval())
-      self.assertEqual([5.0], v3.eval())
+      self.assertEqual([3.0], assign_part_var[1].eval())
+      self.assertEqual([3.0], v3.eval())
 
 class VariableContainerTest(test.TestCase):
 
