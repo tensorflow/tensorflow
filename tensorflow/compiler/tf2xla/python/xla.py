@@ -212,9 +212,9 @@ bitcast_convert_type = array_ops.bitcast
 
 def broadcast(x, dims, name=None):
   x = ops.convert_to_tensor(x)
-  shape = array_ops.concat(
-      [constant_op.constant(dims),
-       array_ops.shape(x)], axis=0)
+  shape = array_ops.concat([constant_op.constant(dims),
+                            array_ops.shape(x)],
+                           axis=0)
   return array_ops.broadcast_to(x, shape, name=name)
 
 
@@ -332,12 +332,13 @@ def reduce_window(operand,
     init: a scalar tensor representing the initial value for the reduction
     reducer: a reduction function that combines a pair of scalars.
     window_dimensions: shape of the window, as a list of integers
-    window_strides: inter-window strides, as a list of integers. Optional;
-      if omitted, defaults to strides of 1.
+    window_strides: inter-window strides, as a list of integers. Optional; if
+      omitted, defaults to strides of 1.
     padding: padding to apply to 'operand'. List of (low, high) pairs of
       integers that specify the padding to apply before and after each
       dimension. Optional; if omitted, defaults to no padding.
     name: the operator name, or None.
+
   Returns:
     A tensor that represents the output of the reduce_window operator.
   """
@@ -377,4 +378,5 @@ def slice(x, start_dims, limit_dims, strides):
 
 
 sort = gen_xla_ops.xla_sort
+key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while
