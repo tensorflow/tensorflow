@@ -2620,22 +2620,30 @@ class PartitionedVariable(object):
   def _get_partitions(self):
     return self._partitions
 
-  def _apply_assign_fn(self, assign_fn, value):
+  def _apply_assign_fn(self,
+                       assign_fn,
+                       value):
     partition_axes = self._partition_axes()
     if len(partition_axes) > 1:
       raise NotImplementedError(
           "Cannot do assign action along more than one dimension: %s.  "
-          "Multi-axis partition assign action is not supported " %
-          str(partition_axes))
-    partition_ix = partition_axes[0]
-    size_splits_list = [
-        var.shape[partition_ix].value for var in self._variable_list
-    ]
-    value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
+          "Multi-axis partition assign action is not supported "
+          % str(partition_axes))
+    if isinstance(value, list):
+      assert len(value) == len(self._variable_list)
+      value_list = value
+    elif isinstance(value, PartitionedVariable):
+      value_list = [var_part for var_part in value]
+    else:
+      partition_ix = partition_axes[0]
+      size_splits_list = [
+          var.shape[partition_ix].value for var in self._variable_list]
+      value_list = array_ops.split(
+          value, size_splits_list, axis=partition_ix)
+
     op_list = [
         assign_fn(var, value_list[idx], idx)
-        for idx, var in enumerate(self._variable_list)
-    ]
+        for idx, var in enumerate(self._variable_list)]
     return op_list
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
@@ -2664,7 +2672,6 @@ class PartitionedVariable(object):
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
-
 
 @tf_export(v1=["global_variables"])
 def global_variables(scope=None):
