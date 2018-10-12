@@ -1498,14 +1498,6 @@ def set_windows_build_flags(environ_cp):
   # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
   # Short object file path will be enabled by default.
   write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
-  # When building zip file for some py_binary and py_test targets, don't
-  # include its dependencies. This is for:
-  #   1. Running python tests against the system installed TF pip package.
-  #   2. Avoiding redundant files in
-  #      //tensorflow/tools/pip_package:simple_console_windows,
-  #      which is a py_binary used during creating TF pip package.
-  #      See https://github.com/tensorflow/tensorflow/issues/22390
-  write_to_bazelrc('build --define=no_tensorflow_py_deps=true')
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
