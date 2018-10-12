@@ -100,7 +100,7 @@ class TPUEstimatorStoppingSignalsTest(test.TestCase):
     with ops.Graph().as_default():
       dataset = input_fn(params)
       inputs = tpu_estimator._InputsWithStoppingSignals(dataset, batch_size)
-      hook = inputs.dataset_initializer_hook()
+      dataset_initializer = inputs.dataset_initializer()
       features, _ = inputs.features_and_labels()
       signals = inputs.signals()
 
@@ -108,8 +108,7 @@ class TPUEstimatorStoppingSignalsTest(test.TestCase):
       self.assertIsNone(features['a'].shape.as_list()[0])
 
       with session.Session() as sess:
-        hook.begin()
-        hook.after_create_session(sess, coord=None)
+        sess.run(dataset_initializer)
 
         result, evaluated_signals = sess.run([features, signals])
         self.assertAllEqual(a[:batch_size], result['a'])
@@ -143,7 +142,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
       dataset = input_fn(params)
       inputs = tpu_estimator._InputsWithStoppingSignals(dataset, batch_size,
                                                         add_padding=True)
-      hook = inputs.dataset_initializer_hook()
+      dataset_initializer = inputs.dataset_initializer()
       features, _ = inputs.features_and_labels()
       signals = inputs.signals()
 
@@ -151,8 +150,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
       self.assertEqual(batch_size, features['a'].shape.as_list()[0])
 
       with session.Session() as sess:
-        hook.begin()
-        hook.after_create_session(sess, coord=None)
+        sess.run(dataset_initializer)
 
         result, evaluated_signals = sess.run([features, signals])
         self.assertAllEqual(a[:batch_size], result['a'])
@@ -187,7 +185,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
       dataset = input_fn(params)
       inputs = tpu_estimator._InputsWithStoppingSignals(dataset, batch_size,
                                                         add_padding=True)
-      hook = inputs.dataset_initializer_hook()
+      dataset_initializer = inputs.dataset_initializer()
       features, labels = inputs.features_and_labels()
       signals = inputs.signals()
 
@@ -195,8 +193,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
       self.assertEqual(batch_size, features['a'].shape.as_list()[0])
 
       with session.Session() as sess:
-        hook.begin()
-        hook.after_create_session(sess, coord=None)
+        sess.run(dataset_initializer)
 
         evaluated_features, evaluated_labels, evaluated_signals = (
             sess.run([features, labels, signals]))
@@ -255,7 +252,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
       dataset = input_fn(params)
       inputs = tpu_estimator._InputsWithStoppingSignals(dataset, batch_size,
                                                         add_padding=True)
-      hook = inputs.dataset_initializer_hook()
+      dataset_initializer = inputs.dataset_initializer()
       features, _ = inputs.features_and_labels()
       signals = inputs.signals()
 
@@ -264,8 +261,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
               features, signals))
 
       with session.Session() as sess:
-        hook.begin()
-        hook.after_create_session(sess, coord=None)
+        sess.run(dataset_initializer)
 
         result, evaluated_signals = sess.run([sliced_features, signals])
         self.assertAllEqual(a[:batch_size], result['a'])
@@ -297,7 +293,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
       dataset = input_fn(params)
       inputs = tpu_estimator._InputsWithStoppingSignals(
           dataset, batch_size, add_padding=True, num_invocations_per_step=2)
-      hook = inputs.dataset_initializer_hook()
+      dataset_initializer = inputs.dataset_initializer()
       features, _ = inputs.features_and_labels()
       signals = inputs.signals()
 
@@ -305,8 +301,7 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
           tpu_estimator._PaddingSignals.slice_tensor_or_dict(features, signals))
 
       with session.Session() as sess:
-        hook.begin()
-        hook.after_create_session(sess, coord=None)
+        sess.run(dataset_initializer)
 
         result, evaluated_signals = sess.run([sliced_features, signals])
         self.assertAllEqual(a[:batch_size], result['a'])
