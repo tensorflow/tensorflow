@@ -166,10 +166,10 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
           input->data.f + s * input_size * batch_size;
       float* output_ptr_batch = output->data.f + s * num_units * batch_size;
 
-      kernel_utils::RnnBatchStep(input_ptr_batch, input_weights_ptr,
-                                 recurrent_weights_ptr, bias_ptr, input_size,
-                                 num_units, batch_size, params->activation,
-                                 hidden_state_ptr_batch, output_ptr_batch);
+      kernel_utils::RnnBatchStep(
+          input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
+          input_size, num_units, batch_size, num_units, params->activation,
+          hidden_state_ptr_batch, output_ptr_batch);
     }
   } else {
     // For each batch
@@ -185,8 +185,8 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
 
         kernel_utils::RnnBatchStep(
             input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
-            input_size, num_units, /*batch_size=*/1, params->activation,
-            hidden_state_ptr_batch, output_ptr_batch);
+            input_size, num_units, /*batch_size=*/1, num_units,
+            params->activation, hidden_state_ptr_batch, output_ptr_batch);
       }
     }
   }
@@ -237,8 +237,8 @@ TfLiteStatus EvalHybrid(
       kernel_utils::RnnBatchStep(
           input_ptr_batch, input_weights_ptr, input_weights_scale,
           recurrent_weights_ptr, recurrent_weights_scale, bias_ptr, input_size,
-          num_units, batch_size, params->activation, quantized_input_ptr,
-          quantized_hidden_state_ptr, scaling_factors_ptr,
+          num_units, batch_size, num_units, params->activation,
+          quantized_input_ptr, quantized_hidden_state_ptr, scaling_factors_ptr,
           hidden_state_ptr_batch, output_ptr_batch);
     }
   } else {
@@ -256,8 +256,8 @@ TfLiteStatus EvalHybrid(
         kernel_utils::RnnBatchStep(
             input_ptr_batch, input_weights_ptr, input_weights_scale,
             recurrent_weights_ptr, recurrent_weights_scale, bias_ptr,
-            input_size, num_units, /*batch_size=*/1, params->activation,
-            quantized_input_ptr, quantized_hidden_state_ptr,
+            input_size, num_units, /*batch_size=*/1, num_units,
+            params->activation, quantized_input_ptr, quantized_hidden_state_ptr,
             scaling_factors_ptr, hidden_state_ptr_batch, output_ptr_batch);
       }
     }
