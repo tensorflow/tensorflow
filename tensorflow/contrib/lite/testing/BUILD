@@ -307,6 +307,7 @@ cc_library(
     visibility = [
         "//tensorflow/contrib/lite/java/src/main/native:__subpackages__",
         "//tensorflow/contrib/lite/testing:__subpackages__",
+        "//tensorflow/contrib/lite/tools/benchmark:__subpackages__",
     ],
     deps = select({
         "//conditions:default": [

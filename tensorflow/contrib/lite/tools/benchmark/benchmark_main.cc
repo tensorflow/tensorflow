@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/lite/testing/init_tensorflow.h"
 #include "tensorflow/contrib/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/contrib/lite/tools/benchmark/logging.h"
 
@@ -20,6 +21,7 @@ namespace tflite {
 namespace benchmark {
 
 int Main(int argc, char** argv) {
+  ::tflite::InitTensorFlow();
 #ifdef TFLITE_CUSTOM_OPS_HEADER
   TFLITE_LOG(INFO) << "STARTING with custom ops!";
 #else
