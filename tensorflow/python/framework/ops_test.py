@@ -254,7 +254,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
 
-  def testDevicePresent(self):
+  def testDeviceFromNodeDef(self):
     op = ops.Operation(
         ops._NodeDef("None", "myop", device='/job:goo/device:GPU:0'),
         ops.Graph(), [], [])
