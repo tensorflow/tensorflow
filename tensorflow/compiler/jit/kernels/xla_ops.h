@@ -151,6 +151,8 @@ class XlaCompileOp : public OpKernel {
   NameAttrList function_;
 
   XlaPlatformInfo platform_info_;
+
+  bool must_compile_;
 };
 
 class XlaRunOp : public OpKernel {

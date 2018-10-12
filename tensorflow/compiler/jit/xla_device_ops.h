@@ -65,11 +65,13 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .HostMemory("resources"),   \
                           KERNEL);
 
-#define REGISTER_XLA_COMPILE_KERNEL(DEVICE, KERNEL, TYPES) \
-  REGISTER_KERNEL_BUILDER(Name("_XlaCompile")              \
-                              .Device(DEVICE)              \
-                              .HostMemory("constants")     \
-                              .HostMemory("resources"),    \
+#define REGISTER_XLA_COMPILE_KERNEL(DEVICE, KERNEL, TYPES)          \
+  REGISTER_KERNEL_BUILDER(Name("_XlaCompile")                       \
+                              .Device(DEVICE)                       \
+                              .HostMemory("constants")              \
+                              .HostMemory("key")                    \
+                              .HostMemory("compilation_successful") \
+                              .HostMemory("resources"),             \
                           KERNEL);
 
 #define REGISTER_XLA_RUN_KERNEL(DEVICE, KERNEL, TYPES) \

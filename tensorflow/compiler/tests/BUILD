@@ -1089,6 +1089,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["jit_test.py"],
     additional_deps = [
+        ":test_utils",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1107,6 +1108,7 @@ cuda_py_test(
     size = "small",
     srcs = ["dense_layer_test.py"],
     additional_deps = [
+        ":test_utils",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
