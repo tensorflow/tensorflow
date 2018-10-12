@@ -86,22 +86,17 @@ class EvaluateFrozenGraph(test.TestCase):
 
   def testQuantized(self):
     filename = self._getQuantizedModel()
-    model_coverage.test_frozen_graph_quant(filename, ['inputA', 'inputB'],
-                                           ['output'])
+    model_coverage.test_frozen_graph_quant(filename, ['inputA'], ['output'])
 
   def testQuantizedInputShapes(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
-        filename, ['inputA', 'inputB'], ['output'],
-        input_shapes={
-            'inputA': [33, 33],
-            'inputB': [33, 33],
-        })
+        filename, ['inputA'], ['output'], input_shapes={'inputA': [33, 33]})
 
   def testQuantizedFlexAll(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
-        filename, ['inputA', 'inputB'], ['output'],
+        filename, ['inputA'], ['output'],
         converter_mode=lite.ConverterMode.TOCO_FLEX_ALL)
 
 

@@ -421,14 +421,14 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
-def gen_full_model_test(conversion_modes, models, data, test_suite_tag):
+def gen_full_model_test(conversion_modes, models, data, tags):
     """Generates Python test targets for testing TFLite models.
 
     Args:
       conversion_modes: List of conversion modes to test the models on.
       models: List of models to test.
       data: List of BUILD targets linking the data.
-      test_suite_tag: Tag identifying the model test suite.
+      tags: Any additional tags including the test_suite tag.
     """
     options = [
         (conversion_mode, model)
@@ -451,10 +451,11 @@ def gen_full_model_test(conversion_modes, models, data, test_suite_tag):
                 "no_oss",
                 "no_windows",
                 "notap",
+                # TODO(nupurgarg): Remove manual tag when this test is running without the BUILD flag.
                 "manual",
-            ] + [test_suite_tag],
+            ] + tags,
             deps = [
-                "//tensorflow/contrib/lite/testing:model_coverage_lib",
+                "//tensorflow/contrib/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/contrib/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ],
