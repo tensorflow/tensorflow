@@ -346,6 +346,7 @@ class LSTMBlockCell(LayerRNNCell):
                forget_bias=1.0,
                cell_clip=None,
                use_peephole=False,
+               dtype=None,
                reuse=None,
                name="lstm_cell"):
     """Initialize the basic LSTM cell.
@@ -355,6 +356,7 @@ class LSTMBlockCell(LayerRNNCell):
       forget_bias: float, The bias added to forget gates (see above).
       cell_clip: An optional `float`. Defaults to `-1` (no clipping).
       use_peephole: Whether to use peephole connections or not.
+      dtype: the variable dtype of this layer. Default to tf.float32.
       reuse: (optional) boolean describing whether to reuse variables in an
         existing scope.  If not `True`, and the existing scope already has the
         given variables, an error is raised.
@@ -366,7 +368,7 @@ class LSTMBlockCell(LayerRNNCell):
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMBlockCell instead.
     """
-    super(LSTMBlockCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMBlockCell, self).__init__(_reuse=reuse, dtype=dtype, name=name)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
@@ -417,7 +419,7 @@ class LSTMBlockCell(LayerRNNCell):
       wcf = self._w_f_diag
       wco = self._w_o_diag
     else:
-      wci = wcf = wco = array_ops.zeros([self._num_units])
+      wci = wcf = wco = array_ops.zeros([self._num_units], dtype=self.dtype)
 
     (cs_prev, h_prev) = state
     (_, cs, _, _, _, _, h) = _lstm_block_cell(
@@ -603,7 +605,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
-      cell_clip: clip the cell to this value. Default is no cell clipping.
+      cell_clip: clip the cell to this value. Defaults is no cell clipping.
       use_peephole: Whether to use peephole connections or not.
       reuse: (optional) boolean describing whether to reuse variables in an
         existing scope.  If not `True`, and the existing scope already has the
