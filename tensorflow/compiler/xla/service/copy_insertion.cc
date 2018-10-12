@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -904,7 +904,7 @@ class CopyRemover {
     // The heads of all the value lists. Each value list represents the HLO
     // values contained in a particular HLO buffer. The values in the list are
     // in dependency order.
-    tensorflow::gtl::FlatSet<const ValueNode*> value_lists_;
+    absl::flat_hash_set<const ValueNode*> value_lists_;
 
     // Copy removal requires fast access to the value list elements
     // corresponding to the source and destination values of the kCopy
@@ -1009,7 +1009,7 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
     HloInstruction* root = computation->root_instruction();
 
     // Mark nondistinct/ambiguous indices.
-    tensorflow::gtl::FlatSet<const HloBuffer*> seen;
+    absl::flat_hash_set<const HloBuffer*> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
           std::vector<const HloBuffer*> buffers_at_index =

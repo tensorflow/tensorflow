@@ -75,7 +75,8 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             ShapeLayout(result_shape_with_layout);
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, backend().default_stream_executor());
+            &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+            backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
@@ -163,7 +164,8 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
       }
 
       GpuLayoutAssignment layout_assignment(
-          &computation_layout, backend().default_stream_executor());
+          &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+          backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -233,7 +235,8 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
       }
 
       GpuLayoutAssignment layout_assignment(
-          &computation_layout, backend().default_stream_executor());
+          &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+          backend().default_stream_executor());
       EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
       // The first operand to batchnorm should have the same layout as the
@@ -314,7 +317,8 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
         }
 
         GpuLayoutAssignment layout_assignment(
-            &computation_layout, backend().default_stream_executor());
+            &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+            backend().default_stream_executor());
         EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         // The first and fourth operands to the batchnorm call should have the
@@ -347,9 +351,11 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
                           ParseHloString(hlo_text));
 
   ComputationLayout computation_layout(
-      module->entry_computation()->ComputeProgramShape());
-  GpuLayoutAssignment layout_assignment(&computation_layout,
-                                        backend().default_stream_executor());
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      backend().default_stream_executor());
   EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
   Shape expected_shape =
@@ -357,6 +363,34 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Dot(op::ShapeWithLayout(expected_shape),
                       op::ShapeWithLayout(expected_shape)));
+}
+
+TEST_F(LayoutAssignmentTest, SortLayout) {
+  const char* hlo_text = R"(
+  HloModule SortLayout
+  ENTRY sort {
+    keys = f32[3,2]{0,1} constant(f32[3,2]{0,1}{{0,1},{0,1},{0,1}})
+    values = f32[2,3]{1,0} parameter(0)
+    transpose = f32[3,2]{1,0} transpose(values), dimensions={1,0}
+    ROOT sort = (f32[3,2]{1,0}, f32[3,2]{1,0}) sort(keys, transpose),
+      dimensions={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, LayoutAssignment::InstructionCanChangeLayout,
+      backend().default_stream_executor());
+  EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
+
+  Shape expected_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 2}, {1, 0});
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sort(op::ShapeWithLayout(expected_shape),
+                       op::ShapeWithLayout(expected_shape)));
 }
 
 }  // namespace
