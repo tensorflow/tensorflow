@@ -29,9 +29,17 @@ namespace kernel_utils {
 // The pointers with the suffix "_batch" point to data aligned in batch_major
 // order, and each step processes batch_size many inputs from input_ptr_batch,
 // and updates batch_size many outputs and hidden states.
+//
+// The output_batch_dim is output.shape[-1], i.e. the outermost dimension of the
+// output tensor, and in most cases will be equal to num_units. It is usually
+// not when we want to store the RNN output into a slice of the output tensor,
+// e.g. for bidirectional RNNs with merge_outputs. In this case, the batched
+// operations cannot be used since they assume that the batched outputs are
+// contiguous, and we manually loop over the batched outputs.
 void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   const float* recurrent_weights_ptr, const float* bias_ptr,
                   int input_size, int num_units, int batch_size,
+                  int output_batch_leading_dim,
                   TfLiteFusedActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch);
 
@@ -41,7 +49,8 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   const float* aux_input_weights_ptr,
                   const float* recurrent_weights_ptr, const float* bias_ptr,
                   int input_size, int aux_input_size, int num_units,
-                  int batch_size, TfLiteFusedActivation activation,
+                  int batch_size, int output_batch_leading_dim,
+                  TfLiteFusedActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch);
 
 // Performs a quantized RNN batch inference step. Same as above, but for
@@ -54,16 +63,14 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
 // batch_size) is used to store the scaling factors of the quantization (used
 // for recovery).
 // {input,recurrent}_weights_scale params are used for dequantization/recovery.
-void RnnBatchStep(const float* input_ptr_batch, const int8_t* input_weights_ptr,
-                  float input_weights_scale,
-                  const int8_t* recurrent_weights_ptr,
-                  float recurrent_weights_scale, const float* bias_ptr,
-                  int input_size, int num_units, int batch_size,
-                  TfLiteFusedActivation activation,
-                  int8_t* quantized_input_ptr_batch,
-                  int8_t* quantized_hidden_state_ptr_batch,
-                  float* scaling_factors, float* hidden_state_ptr_batch,
-                  float* output_ptr_batch);
+void RnnBatchStep(
+    const float* input_ptr_batch, const int8_t* input_weights_ptr,
+    float input_weights_scale, const int8_t* recurrent_weights_ptr,
+    float recurrent_weights_scale, const float* bias_ptr, int input_size,
+    int num_units, int batch_size, int output_batch_leading_dim,
+    TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
+    int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
+    float* hidden_state_ptr_batch, float* output_ptr_batch);
 
 void RnnBatchStep(
     const float* input_ptr_batch, const int8_t* input_weights_ptr,
@@ -71,8 +78,9 @@ void RnnBatchStep(
     const int8_t* aux_input_weights_ptr, float aux_input_weights_scale,
     const int8_t* recurrent_weights_ptr, float recurrent_weights_scale,
     const float* bias_ptr, int input_size, int aux_input_size, int num_units,
-    int batch_size, TfLiteFusedActivation activation,
-    int8_t* quantized_input_ptr_batch, int8_t* aux_quantized_input_ptr_batch,
+    int batch_size, int output_batch_leading_dim,
+    TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
+    int8_t* aux_quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
     float* hidden_state_ptr_batch, float* output_ptr_batch);
 

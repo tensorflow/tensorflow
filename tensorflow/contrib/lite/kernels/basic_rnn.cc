@@ -133,6 +133,8 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
+  const int output_batch_leading_dim =
+      output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
   float* hidden_state_ptr_batch = hidden_state->data.f;
@@ -144,10 +146,10 @@ TfLiteStatus EvalFloat(const TfLiteTensor* input,
   const float* recurrent_weights_ptr = recurrent_weights->data.f;
   const float* bias_ptr = bias->data.f;
 
-  kernel_utils::RnnBatchStep(input_ptr_batch, input_weights_ptr,
-                             recurrent_weights_ptr, bias_ptr, input_size,
-                             num_units, batch_size, params->activation,
-                             hidden_state_ptr_batch, output_ptr_batch);
+  kernel_utils::RnnBatchStep(
+      input_ptr_batch, input_weights_ptr, recurrent_weights_ptr, bias_ptr,
+      input_size, num_units, batch_size, output_batch_leading_dim,
+      params->activation, hidden_state_ptr_batch, output_ptr_batch);
   return kTfLiteOk;
 }
 
@@ -162,6 +164,8 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
+  const int output_batch_leading_dim =
+      output->dims->data[output->dims->size - 1];
 
   // Initialize the pointer to hidden state.
   float* hidden_state_ptr_batch = hidden_state->data.f;
@@ -187,9 +191,9 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, input_weights_scale,
       recurrent_weights_ptr, recurrent_weights_scale, bias_ptr, input_size,
-      num_units, batch_size, params->activation, quantized_input_ptr,
-      quantized_hidden_state_ptr, scaling_factors_ptr, hidden_state_ptr_batch,
-      output_ptr_batch);
+      num_units, batch_size, output_batch_leading_dim, params->activation,
+      quantized_input_ptr, quantized_hidden_state_ptr, scaling_factors_ptr,
+      hidden_state_ptr_batch, output_ptr_batch);
   return kTfLiteOk;
 }
 
