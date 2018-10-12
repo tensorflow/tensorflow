@@ -23,6 +23,7 @@ from __future__ import print_function
 import collections
 import math
 import time
+import unittest
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
