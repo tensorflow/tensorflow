@@ -35,15 +35,26 @@ class UnpackVectorizer : public Vectorizer {
     auto new_unpack_node = outer_scope->AddNode(node.def(), &s);
     TF_RETURN_IF_ERROR(s);
 
-    // Increment "axis" attr by 1:
-    int new_axis = node.def().attr().at("axis").i() + 1;
-    new_unpack_node->AddAttr("axis", new_axis);
+    int axis = 0;
+    if (HasNodeAttr(node.def(), "axis")) {
+      TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "axis", &axis));
+    }
+
+    if (axis >= 0) {
+      // Since the vectorized input has an extra leading dimension, we need
+      // to increment `axis` attr by 1 for non-negative axis values.
+      // Note: negative axis values wrap around.
+      axis += 1;
+    }
+    new_unpack_node->AddAttr("axis", axis);
 
     outer_scope->AddEdge(inputs[0].node, inputs[0].output_index,
                          new_unpack_node, 0);
 
+    int num;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), "num", &num));
+
     // Add the output mappings
-    int num = node.def().attr().at("num").i();
     for (int i = 0; i < num; ++i) {
       outputs->push_back({new_unpack_node, i, true});
     }

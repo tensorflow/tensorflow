@@ -51,8 +51,11 @@ def _generate_optimization_test_cases():
       ("Add", lambda x: x + rand_val, base_dataset_factory),
       ("Cast", lambda x: math_ops.cast(x, dtypes.float64),
        base_dataset_factory),
-      ("Reshape", lambda x: array_ops.gather(x, 0), base_dataset_factory),
+      ("Reshape", lambda x: array_ops.reshape(x, (-1, 30)),
+       base_dataset_factory),
       ("Unpack", array_ops.unstack, base_dataset_factory),
+      ("UnpackNegativeAxis", lambda x: array_ops.unstack(x, axis=-1),
+       base_dataset_factory),
   ]
 
   return [{
