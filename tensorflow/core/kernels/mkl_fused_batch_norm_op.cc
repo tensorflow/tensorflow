@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "tensorflow/core/util/tensor_format.h"
 #include "mkldnn.hpp"
 
 using mkldnn::batch_normalization_backward;
