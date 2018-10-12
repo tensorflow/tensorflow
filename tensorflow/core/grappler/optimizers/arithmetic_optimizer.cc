@@ -3363,7 +3363,8 @@ void ArithmeticOptimizer::DedupComputations() {
       }
       VLOG(3) << "Remove duplicated node: node=" << node->name()
               << " representative=" << rep->name();
-      const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
+      const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
+      std::vector<NodeDef*> fanouts(tmp.begin(), tmp.end());
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
           string* fanout_input = fanout->mutable_input(i);
