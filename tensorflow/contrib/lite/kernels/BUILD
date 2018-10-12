@@ -586,6 +586,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
