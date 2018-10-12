@@ -30,7 +30,7 @@ header: |
 # ========
 #
 # Represent and document pieces of a Dockerfile. Spec:
-# 
+#
 # name: the name of the partial, is referenced from the images section
 #   desc: A description, inserted later into the Dockerfile
 #   file: Alternative file prefix, e.g. file.partial.Dockerfile. The default is
@@ -75,7 +75,7 @@ partials:
             USE_PYTHON_3_NOT_2:
                 default: true
                 desc: Install python 3 over Python 2
-                
+
     tensorflow:
         desc: Install the TensorFlow Python package.
         args:
@@ -92,12 +92,49 @@ partials:
     jupyter:
         desc: Launch Jupyter on execution instead of a bash prompt.
 
+    ## Community Partials
+
+    ubuntu-ppc64le:
+        desc: Start from ppc64le/Ubuntu (no GPU support)
+        args:
+            UBUNTU_VERSION: 16.04
+
+    ubuntu-devel-ppc64le:
+        desc: Start from ppc64le/Ubuntu, with TF development packages (no GPU support)
+        args:
+            UBUNTU_VERSION: 16.04
+
+    bazelbuild:
+        desc: Build and install the latest version of Bazel and Python development tools.
+
+    nvidia-ppc64le:
+        desc: NVIDIA ppc64le base image with CUDA and CuDNN, no dev stuff
+        args:
+            UBUNTU_VERSION: 16.04
+
+    nvidia-devel-ppc64le:
+        desc: >
+            Start from Nvidia's Ubuntu base image for ppc64le with CUDA and CuDNN, with TF
+            development packages.
+        args:
+            UBUNTU_VERSION: 16.04
+
+    tensorflow-ppc64le:
+        desc: Install the TensorFlow Python package.
+        args:
+            TF_PACKAGE:
+                default: tensorflow-gpu
+                options:
+                    - tensorflow-gpu
+                    - tf-nightly-gpu
+                desc: The specific TensorFlow Python package to install
+
 # ======
 # IMAGES
 # ======
-# 
+#
 # Represent Dockerfiles. Spec:
-# 
+#
 # name: the name of the image, possibly referenced by other images
 #   desc: A description, inserted later into the Dockerfile
 #   create-dockerfile: Create a dockerfile based on this. Useful for creating
@@ -142,7 +179,7 @@ images:
 
     nvidia:
       desc: Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow.
-      arg-defaults: 
+      arg-defaults:
         - TF_PACKAGE: tensorflow-gpu
       partials:
         - nvidia
@@ -152,7 +189,7 @@ images:
       desc: >
           Ubuntu-based, Nvidia-GPU-enabled environment for developing changes
           for TensorFlow.
-      arg-defaults: 
+      arg-defaults:
         - TF_PACKAGE: tensorflow-gpu
       partials:
         - nvidia-devel
@@ -178,7 +215,7 @@ images:
       desc: >
         Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with
         Jupyter included.
-      arg-defaults: 
+      arg-defaults:
         - nvidia
       partials:
         - image: nvidia
@@ -188,8 +225,76 @@ images:
       desc: >
         Ubuntu-based, Nvidia-GPU-enabled environment for developing changes for
         TensorFlow, with Jupyter included.
-      arg-defaults: 
+      arg-defaults:
         - nvidia-devel
       partials:
         - image: nvidia-devel
+        - jupyter
+
+    nodev-ppc64le:
+        create-dockerfile: false
+        partials:
+            - python
+            - tensorflow-ppc64le
+            - shell
+
+    dev-ppc64le:
+        create-dockerfile: false
+        partials:
+            - python
+            - bazelbuild
+            - shell
+
+    cpu-devel-ppc64le:
+      desc: Ubuntu-based, CPU-only environment for developing changes for TensorFlow, ppc64le architecture.
+      partials:
+        - ubuntu-devel-ppc64le
+        - image: dev-ppc64le
+
+    nvidia-ppc64le:
+      desc: >
+          Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow,
+          ppc64le architecture.
+      arg-defaults:
+        - TF_PACKAGE: tensorflow-gpu
+      partials:
+        - nvidia-ppc64le
+        - image: nodev-ppc64le
+
+    nvidia-devel-ppc64le:
+      desc: >
+          Ubuntu-based, Nvidia-GPU-enabled environment for developing changes
+          for TensorFlow, ppc64le architecture.
+      arg-defaults:
+        - TF_PACKAGE: tensorflow-gpu
+      partials:
+        - nvidia-devel-ppc64le
+        - image: dev-ppc64le
+
+    cpu-devel-jupyter-ppc64le:
+      desc: >
+         Ubuntu-based, CPU-only environment for developing changes for
+         TensorFlow, with Jupyter included, ppc64le architecture.
+      partials:
+        - image: cpu-devel-ppc64le
+        - jupyter
+
+    nvidia-jupyter-ppc64le:
+      desc: >
+        Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with
+        Jupyter included, ppc64le architecture.
+      arg-defaults:
+        - nvidia-ppc64le
+      partials:
+        - image: nvidia-ppc64le
+        - jupyter
+
+    nvidia-devel-jupyter-ppc64le:
+      desc: >
+        Ubuntu-based, Nvidia-GPU-enabled environment for developing changes for
+        TensorFlow, with Jupyter included, ppc64le architecture.
+      arg-defaults:
+        - nvidia-devel-ppc64le
+      partials:
+        - image: nvidia-devel-ppc64le
         - jupyter

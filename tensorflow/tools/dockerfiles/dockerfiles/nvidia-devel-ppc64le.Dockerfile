@@ -19,9 +19,10 @@
 # below. Please refer to the the TensorFlow dockerfiles documentation for
 # more information. Build args are documented as their default value.
 #
-# Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with Jupyter included.
+# Ubuntu-based, Nvidia-GPU-enabled environment for developing changes for TensorFlow, ppc64le architecture.
 #
-# NVIDIA with CUDA and CuDNN, no dev stuff
+# Start from Nvidia's Ubuntu base image for ppc64le with CUDA and CuDNN, with TF
+# development packages.
 # --build-arg UBUNTU_VERSION=16.04
 #    ( no description )
 #
@@ -29,43 +30,42 @@
 # --build-arg USE_PYTHON_3_NOT_2=True
 #    Install python 3 over Python 2
 #
-# Install the TensorFlow Python package.
-# --build-arg TF_PACKAGE=tensorflow-gpu (tensorflow|tensorflow-gpu|tf-nightly|tf-nightly-gpu)
-#    The specific TensorFlow Python package to install
+# Build and install the latest version of Bazel and Python development tools.
 #
 # Configure TensorFlow's shell prompt and login tools.
-#
-# Launch Jupyter on execution instead of a bash prompt.
 
 ARG UBUNTU_VERSION=16.04
-FROM nvidia/cuda:9.0-base-ubuntu${UBUNTU_VERSION}
+FROM nvidia/cuda-ppc64le:9.2-base-ubuntu${UBUNTU_VERSION}
 
-# Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-9-0 \
-        cuda-cublas-9-0 \
-        cuda-cufft-9-0 \
-        cuda-curand-9-0 \
-        cuda-cusolver-9-0 \
-        cuda-cusparse-9-0 \
-        libcudnn7=7.2.1.38-1+cuda9.0 \
-        libnccl2=2.2.13-1+cuda9.0 \
+        cuda-command-line-tools-9-2 \
+        cuda-cublas-dev-9-2 \
+        cuda-cudart-dev-9-2 \
+        cuda-cufft-dev-9-2 \
+        cuda-curand-dev-9-2 \
+        cuda-cusolver-dev-9-2 \
+        cuda-cusparse-dev-9-2 \
+        curl \
+        git \
+        libcudnn7=7.2.1.38-1+cuda9.2 \
+        libcudnn7-dev=7.2.1.38-1+cuda9.2 \
+        libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng12-dev \
         libzmq3-dev \
         pkg-config \
+        rsync \
         software-properties-common \
         unzip \
+        zip \
+        zlib1g-dev \
+        wget \
         && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
-        apt-get update && \
-        apt-get install libnvinfer4=4.1.2-1+cuda9.0
+    rm -rf /var/lib/apt/lists/* && \
+    find /usr/local/cuda-9.2/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
+    rm /usr/lib/powerpc64le-linux-gnu/libcudnn_static_v7.a
 
 ARG USE_PYTHON_3_NOT_2=True
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
@@ -80,17 +80,25 @@ RUN ${PIP} install --upgrade \
     pip \
     setuptools
 
-ARG TF_PACKAGE=tensorflow-gpu
-RUN ${PIP} install ${TF_PACKAGE}
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    openjdk-8-jdk \
+    ${PYTHON}-dev \
+    python \
+    swig
+ # Build and install bazel
+ENV BAZEL_VERSION 0.15.0
+WORKDIR /
+RUN mkdir /bazel && \
+    cd /bazel && \
+    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-dist.zip && \
+    unzip bazel-$BAZEL_VERSION-dist.zip && \
+    bash ./compile.sh && \
+    cp output/bazel /usr/local/bin/ && \
+    rm -rf /bazel && \
+    cd -
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
-
-RUN ${PIP} install jupyter
-
-RUN mkdir /notebooks && chmod a+rwx /notebooks
-RUN mkdir /.local && chmod a+rwx /.local
-WORKDIR /notebooks
-EXPOSE 8888
-
-CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/notebooks --ip 0.0.0.0 --no-browser --allow-root"]

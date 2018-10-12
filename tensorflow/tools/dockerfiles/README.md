@@ -58,9 +58,18 @@ that has all of the Python dependencies you'll need:
 
 ```bash
 $ docker build -t tf-assembler -f assembler.Dockerfile .
+```
+The assembler.Dockerfile has also been enabled for community ppc64le environments.
+To build an editing environment on ppc64le you'll need:
+```bash
+$ docker build --build-arg ARCH=ppc64le/ -t tf-assembler -f assembler.Dockerfile .
+```
 
+To start the editing environment, start the tf-assembler image
+
+```bash
 # Set --user to set correct permissions on generated files
-$ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-assembler bash 
+$ docker run --user $(id -u):$(id -g) -it -v $(pwd):/tf tf-assembler bash
 
 # In the container...
 /tf $ python3 ./assembler.py -o dockerfiles -s spec.yml

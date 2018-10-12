@@ -1,4 +1,5 @@
-FROM nvidia/cuda:9.0-base-ubuntu16.04
+ARG UBUNTU_VERSION=16.04
+FROM nvidia/cuda:9.0-base-ubuntu${UBUNTU_VERSION}
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

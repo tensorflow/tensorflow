@@ -19,9 +19,9 @@
 # below. Please refer to the the TensorFlow dockerfiles documentation for
 # more information. Build args are documented as their default value.
 #
-# Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with Jupyter included.
+# Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with Jupyter included, ppc64le architecture.
 #
-# NVIDIA with CUDA and CuDNN, no dev stuff
+# NVIDIA ppc64le base image with CUDA and CuDNN, no dev stuff
 # --build-arg UBUNTU_VERSION=16.04
 #    ( no description )
 #
@@ -30,7 +30,7 @@
 #    Install python 3 over Python 2
 #
 # Install the TensorFlow Python package.
-# --build-arg TF_PACKAGE=tensorflow-gpu (tensorflow|tensorflow-gpu|tf-nightly|tf-nightly-gpu)
+# --build-arg TF_PACKAGE=tensorflow-gpu (tensorflow-gpu|tf-nightly-gpu)
 #    The specific TensorFlow Python package to install
 #
 # Configure TensorFlow's shell prompt and login tools.
@@ -38,19 +38,18 @@
 # Launch Jupyter on execution instead of a bash prompt.
 
 ARG UBUNTU_VERSION=16.04
-FROM nvidia/cuda:9.0-base-ubuntu${UBUNTU_VERSION}
+FROM nvidia/cuda-ppc64le:9.2-base-ubuntu${UBUNTU_VERSION}
 
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
-        cuda-command-line-tools-9-0 \
-        cuda-cublas-9-0 \
-        cuda-cufft-9-0 \
-        cuda-curand-9-0 \
-        cuda-cusolver-9-0 \
-        cuda-cusparse-9-0 \
-        libcudnn7=7.2.1.38-1+cuda9.0 \
-        libnccl2=2.2.13-1+cuda9.0 \
+        cuda-command-line-tools-9-2 \
+        cuda-cublas-9-2 \
+        cuda-cufft-9-2 \
+        cuda-curand-9-2 \
+        cuda-cusolver-9-2 \
+        cuda-cusparse-9-2 \
+        libcudnn7=7.2.1.38-1+cuda9.2 \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng12-dev \
@@ -61,11 +60,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
-        apt-get update && \
-        apt-get install libnvinfer4=4.1.2-1+cuda9.0
 
 ARG USE_PYTHON_3_NOT_2=True
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
@@ -81,7 +75,16 @@ RUN ${PIP} install --upgrade \
     setuptools
 
 ARG TF_PACKAGE=tensorflow-gpu
-RUN ${PIP} install ${TF_PACKAGE}
+RUN apt-get update && apt-get install -y wget
+RUN if [ ${TF_PACKAGE} = tensorflow-gpu ]; then \
+        BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Release_Build/lastSuccessfulBuild/; \
+    elif [ ${TF_PACKAGE} = tf-nightly-gpu ]; then \
+        BASE=https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Nightly_Artifact/lastSuccessfulBuild/; \
+    fi; \
+    MINOR=`${PYTHON} -c 'import sys; print(sys.version_info[1])'`; \
+    PACKAGE=$(wget -qO- ${BASE}"api/xml?xpath=//fileName&wrapper=artifacts" | grep -o "[^<>]*cp${_PY_SUFFIX}${MINOR}[^<>]*.whl"); \
+    wget ${BASE}"artifact/tensorflow_pkg/"${PACKAGE}; \
+    ${PIP} install ${PACKAGE}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
