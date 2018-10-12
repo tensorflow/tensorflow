@@ -461,6 +461,67 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
   EXPECT_FALSE(allowed_optimizations_my_mul_2->non_differentiable_rewrites);
 }
 
+class SleepingOptimizer : public CustomGraphOptimizer {
+ public:
+  SleepingOptimizer() {}
+  string name() const override { return "test_optimizer"; }
+
+  Status Init(
+      const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    return Status::OK();
+  }
+
+  Status Optimize(Cluster* cluster, const GrapplerItem& item,
+                  GraphDef* optimized_graph) override {
+    *optimized_graph = item.graph;
+    optimized_graph->add_node();
+    sleep(1);
+    return Status::OK();
+  }
+
+  void Feedback(Cluster* cluster, const GrapplerItem& item,
+                const GraphDef& optimized_graph, double result) override {}
+};
+
+REGISTER_GRAPH_OPTIMIZER(SleepingOptimizer);
+
+TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers("SleepingOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_timeout_ms(1500);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
+
+  GraphDef output;
+  const Status status =
+      RunMetaOptimizer(item, rewriter_config, nullptr, nullptr, &output);
+  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  // Make sure the graph was reverted to the original regardless of when the
+  // optimizer timed out.
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  RewriterConfig rewriter_config;
+  rewriter_config.add_optimizers("SleepingOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_timeout_ms(1500);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  GraphDef output;
+  const Status status =
+      RunMetaOptimizer(item, rewriter_config, nullptr, nullptr, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
