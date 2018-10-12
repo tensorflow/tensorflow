@@ -88,6 +88,7 @@ py_library(
         ":client",
         ":client_testlib",
         ":collective_ops",
+        ":cond_v2",
         ":confusion_matrix",
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
@@ -132,6 +133,7 @@ py_library(
         ":training",
         ":util",
         ":weights_broadcast_ops",
+        ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
@@ -742,7 +744,6 @@ py_library(
     srcs = ["framework/graph_to_function_def.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":cond_v2_impl",
         ":op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
@@ -1984,7 +1985,6 @@ py_library(
         "tensor_shape",
         ":array_ops",
         ":array_ops_gen",
-        ":cond_v2_impl",
         ":constant_op",
         ":control_flow_ops_gen",
         ":control_flow_util",
@@ -2020,10 +2020,19 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":cond_v2_impl",
+        ":array_ops",
+        ":c_api_util",
+        ":framework_ops",
         ":function",
         ":function_def_to_graph",
+        ":functional_ops_gen",
         ":gradients",
+        ":gradients_impl",
+        ":graph_to_function_def",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -2035,7 +2044,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
-        ":cond_v2_impl",
+        ":cond_v2",
         ":constant_op",
         ":control_flow_ops",
         ":control_flow_util",
@@ -2048,23 +2057,6 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:function",
-    ],
-)
-
-py_library(
-    name = "cond_v2_impl",
-    srcs = [
-        "ops/cond_v2_impl.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":c_api_util",
-        ":framework_ops",
-        ":functional_ops_gen",
-        ":pywrap_tensorflow",
-        ":util",
-        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -2165,7 +2157,6 @@ py_library(
         ":array_ops",
         ":bitwise_ops",
         ":check_ops",
-        ":cond_v2_impl",
         ":control_flow_grad",
         ":control_flow_ops",
         ":control_flow_util",

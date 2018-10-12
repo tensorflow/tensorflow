@@ -24,7 +24,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import sys
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import function
@@ -34,7 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl as cond_v2
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import custom_gradient
@@ -44,8 +43,6 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.util import nest
 
 # pylint: disable=protected-access
-
-control_flow_ops._while_v2 = sys.modules[__name__]
 
 # TODO(b/79881896): Handle external control dependencies. tf.while_loop allows
 # control dependencies on external nodes with at least 1 output.

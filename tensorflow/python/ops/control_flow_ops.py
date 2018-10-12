@@ -40,7 +40,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -58,18 +57,21 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-# The while_v2 module.
-_while_v2 = None
+# This is to avoid a circular dependency:
+# cond_v2 -> gradients_impl -> control_flow_ops
+cond_v2 = LazyLoader(
+    "cond_v2", globals(), "tensorflow.python.ops.cond_v2")
+
+# This is to avoid circular dependencies:
+# while_v2 -> control_flow_ops
+# while_v2 -> gradients_impl -> control_flow_ops
+while_v2 = LazyLoader(
+    "while_v2", globals(), "tensorflow.python.ops.while_v2")
 
 ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
-# Note: Setting this to True is not sufficient to switch to the v2 while_loop.
-# Users must also import the while_v2 module to set the _while_v2 module
-# variable above. We do this to avoid a circular dependency:
-# control_flow_ops -> while_v2 -> gradients_impl -> control_flow_ops
-# A ValueError is raised in tf.while_loop if this is set to True and the
-# `_while_v2` module is not set.
 ENABLE_WHILE_V2 = os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
 
 
@@ -2040,7 +2042,7 @@ def cond(pred,
 
   """
   if ENABLE_COND_V2 and not context.executing_eagerly():
-    return cond_v2_impl.cond_v2(pred, true_fn, false_fn, name)
+    return cond_v2.cond_v2(pred, true_fn, false_fn, name)
 
   # We needed to make true_fn/false_fn keyword arguments for
   # backwards-compatibility. This check exists so that we can convert back to
@@ -3224,11 +3226,7 @@ def while_loop(cond,
 
   """
   if ENABLE_WHILE_V2 and not context.executing_eagerly():
-    if not _while_v2:
-      raise ValueError("The while_v2 module is not set. Did you forget to "
-                       "import tensorflow.python.ops."
-                       "while_v2?")
-    return _while_v2.while_loop(
+    return while_v2.while_loop(
         cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
 
   with ops.name_scope(name, "while", loop_vars):
