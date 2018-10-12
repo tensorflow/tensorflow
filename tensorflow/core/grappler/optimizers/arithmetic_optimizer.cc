@@ -3480,6 +3480,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
           << str_util::Join(pipeline.StageNames(), ", ");
 
   while (!nodes_to_simplify.Empty()) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     NodeDef* node = nodes_to_simplify.PopBack();
 
     string simplified_tensor = "";
@@ -3549,6 +3550,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   if (options_.dedup_computations) {
     DedupComputations();
   }
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   // Perform topological sort on the graph in order to help AddOpsRewrite to
   // optimize larger subgraphs starting from the roots with more inputs.

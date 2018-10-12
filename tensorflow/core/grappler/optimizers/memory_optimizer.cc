@@ -1299,6 +1299,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // that simply won't fit in memory.
   bool updated_graph = true;
   for (int i = 0; i < 25 && updated_graph; ++i) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     updated_graph = false;
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
@@ -1307,6 +1308,7 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       updated_graph |= SchedulingPass(cluster, &optimized_item);
     }
 
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
          optimization_level_ == RewriterConfig::SWAPPING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS ||

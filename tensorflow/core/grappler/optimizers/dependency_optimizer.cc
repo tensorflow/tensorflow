@@ -652,6 +652,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   const int num_iterations = 2;
   for (int iteration = 0; iteration < num_iterations; ++iteration) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     Status topo_sort_status;
     // Perform topological sort to prepare the graph for transitive reduction.
     topo_sort_status = TopologicalSort(optimized_graph_);
