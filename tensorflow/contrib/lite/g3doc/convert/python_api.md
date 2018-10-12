@@ -1,4 +1,4 @@
-# TensorFlow Lite Converter & Interpreter Python API reference
+# Converter Python API guide
 
 This page provides examples on how to use the TensorFlow Lite Converter and the
 TensorFlow Lite interpreter using the Python API.

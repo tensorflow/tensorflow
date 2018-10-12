@@ -1,4 +1,4 @@
-# TensorFlow Lite Converter command-line examples
+# Converter command-line examples
 
 This page shows how to use the TensorFlow Lite Converter in the command line.
 
@@ -306,12 +306,12 @@ Sample output files can be seen here below. Note that it is the same
 <table><tr>
   <td>
     <a target="_blank" href="https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AT_IMPORT.dot.pdf">
-      <img src="https://www.tensorflow.org/images/tflite_convert/tflite_convert_before.png"/>
+      <img src="../images/convert/sample_before.png"/>
     </a>
   </td>
   <td>
     <a target="_blank" href="https://storage.googleapis.com/download.tensorflow.org/example_images/toco_AFTER_TRANSFORMATIONS.dot.pdf">
-      <img src="https://www.tensorflow.org/images/tflite_convert/tflite_convert_after.png"/>
+      <img src="../images/convert/sample_after.png"/>
     </a>
   </td>
 </tr>
