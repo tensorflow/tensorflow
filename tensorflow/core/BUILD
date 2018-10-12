@@ -1158,12 +1158,14 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_array_ops_op_lib",
+        ":ragged_math_ops_op_lib",
     ],
 )
 
 tf_gen_op_libs(
     op_lib_names = [
         "ragged_array_ops",
+        "ragged_math_ops",
     ],
 )
 

@@ -962,6 +962,7 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_gather_op",
+        ":ragged_range_op",
     ],
 )
 
@@ -974,6 +975,15 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "ragged_range_op",
+    srcs = ["ragged_range_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_math_ops_op_lib",
+    ],
+)
+
 tf_cc_test(
     name = "ragged_gather_op_test",
     size = "small",
@@ -982,6 +992,20 @@ tf_cc_test(
         ":ragged_gather_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:ragged_array_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+    ],
+)
+
+tf_cc_test(
+    name = "ragged_range_op_test",
+    srcs = ["ragged_range_op_test.cc"],
+    deps = [
+        ":ragged_range_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:ragged_math_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
