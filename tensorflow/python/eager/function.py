@@ -44,7 +44,6 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import custom_gradient
@@ -56,10 +55,6 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
-# This is to avoid a circular dependency with cond_v2_impl
-# (function -> gradients_impl -> control_flow_ops -> cond_v2_impl).
-cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 # This is to avoid a circular dependency with gradients_impl
 gradients_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
