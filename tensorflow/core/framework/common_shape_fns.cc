@@ -1457,7 +1457,11 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
   if (c->input_handle_shapes_and_types(0) != nullptr) {
-    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+    // This is called for tf.scatter_nd_update; input is a Variable handle.
+    const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
+    if (shape_and_type.size() == 1) {
+      input_shape = shape_and_type[0].shape;
+    }
   }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
@@ -1514,7 +1518,8 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  if (c->input_handle_shapes_and_types(0) == nullptr) {
+  if (c->input_handle_shapes_and_types(0) == nullptr && c->num_outputs() > 0) {
+    // This is called for tf.scatter_nd; output is a tensor with this shape.
     c->set_output(0, input_shape);
   }
   return Status::OK();
