@@ -728,14 +728,14 @@ class PartitionedVariableTest(test.TestCase):
           dtype=v0.dtype,
           variable_list=[v2, v3],
           partitions=partitions)
-      
+
       deltas_a = constant_op.constant([1.0, 2.0])
       deltas_b = constant_op.constant([3.0, 4.0])
       ones = array_ops.ones([2])
       plus_delta = pv_0.assign_add(deltas_a)
       minus_delta = pv_0.assign_sub(deltas_b)
       assign_ones = pv_0.assign(ones)
-      
+
       c_0 = constant_op.constant([2.0])
       c_1 = constant_op.constant([3.0])
       assign_list = pv_1.assign([c_0, c_1])
@@ -747,12 +747,12 @@ class PartitionedVariableTest(test.TestCase):
       self.assertEqual([1.0], v0.eval())
       self.assertEqual([3.0], plus_delta[1].eval())
       self.assertEqual([3.0], v1.eval())
-      
+
       self.assertEqual([-2.0], minus_delta[0].eval())
       self.assertEqual([-2.0], v0.eval())
       self.assertEqual([-1.0], minus_delta[1].eval())
       self.assertEqual([-1.0], v1.eval())
- 
+
       self.assertEqual([1.0], assign_ones[0].eval())
       self.assertEqual([1.0], v0.eval())
       self.assertEqual([1.0], assign_ones[1].eval())
