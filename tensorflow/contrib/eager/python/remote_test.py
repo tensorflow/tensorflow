@@ -220,6 +220,19 @@ class RemoteExecutionTest(test.TestCase):
     self.assertEqual(y.device,
                      "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
 
+  @run_sync_and_async
+  def testGPUToRemoteCopy(self):
+    """Tests that the remote copy happens satisfactorily."""
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs.")
+
+    x1 = array_ops.ones([2, 2]).gpu()
+
+    with ops.device("/job:remote_device/replica:0/task:1/device:CPU:0"):
+      x2 = x1._copy()  # pylint: disable=protected-access
+
+    np.testing.assert_array_equal(x1.numpy(), x2.numpy())
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

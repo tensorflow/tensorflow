@@ -425,8 +425,24 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   request.set_op_id(ctx->NextId());
   request.set_device_name(recv_device->name());
 
+  Device* tensor_handle_device;
+  TF_RETURN_IF_ERROR(h->Device(&tensor_handle_device));
+
+  // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence copy
+  // it to the CPU before copying it out.
+  // TODO(nareshmodi): this is currently slow, but can be fixed by making tensor
+  // handles aware of more than one device.
+  TensorHandle* actual_handle;
+  if (tensor_handle_device != nullptr &&
+      tensor_handle_device->device_type() != "CPU") {
+    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &actual_handle));
+  } else {
+    actual_handle = h;
+    actual_handle->Ref();
+  }
+
   const Tensor* tensor;
-  TF_RETURN_IF_ERROR(h->Tensor(&tensor));
+  TF_RETURN_IF_ERROR(actual_handle->Tensor(&tensor));
   tensor->AsProtoTensorContent(request.add_tensors());
 
   const tensorflow::uint64 id = request.op_id();
@@ -449,6 +465,8 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              tensor->dtype(), std::move(destructor),
                              recv_device, recv_device, ctx);
   (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
+
+  actual_handle->Unref();
 
   return Status::OK();
 #endif
