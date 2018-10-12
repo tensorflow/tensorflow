@@ -990,6 +990,7 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(r, 25.0)
     self.assertAllEqual(g, 2 * 5.0)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNestedDifferentiableFunction(self):
     @function.defun
     def inner_fn(a, b):
@@ -1006,6 +1007,373 @@ class FunctionTest(test.TestCase):
     grad = tp.gradient(result, x)
 
     self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunction(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def outer_fn(x):
+      return middle_fn(x, 1.0)
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = outer_fn(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionWithMultipleGradCalls(self):
+    @function.defun
+    def inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return math_ops.mul(a, inner_fn(a, b))
+
+    @function.defun
+    def outer_fn(x):
+      return middle_fn(x, 3.0)
+
+    x = constant_op.constant(5.0)
+    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
+
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = outer_fn(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
+    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
+    self.assertAllEqual(middle_fn(3.0, x), 3.0 * (3.0 + 5.0))
+
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = outer_fn(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
+
+    y = constant_op.constant(4.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(y)
+      result = outer_fn(y)
+    grad = tp.gradient(result, y)
+
+    self.assertAllEqual(grad, 2 * 4.0 + 3.0)
+
+    with backprop.GradientTape() as tp:
+      tp.watch(y)
+      result = inner_fn(y, y)
+    grad = tp.gradient(result, y)
+
+    self.assertAllEqual(grad, 2.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionGradientTapeInDefun(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def outer_fn(x):
+      with backprop.GradientTape() as tp:
+        tp.watch(x)
+        result = middle_fn(x, 1.0)
+      grad = tp.gradient(result, x)
+      return grad
+
+    x = constant_op.constant(5.0)
+    grad = outer_fn(x)
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionGradientTapeInNestedDefun(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def almost_outer_fn(x):
+      with backprop.GradientTape() as tp:
+        tp.watch(x)
+        result = middle_fn(x, 1.0)
+      grad = tp.gradient(result, x)
+      return grad
+
+    @function.defun
+    def outer_fn(x):
+      return almost_outer_fn(x)
+
+    x = constant_op.constant(5.0)
+    grad = outer_fn(x)
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionGradientTapeInMultNestedDefun(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def almost_outer_fn(x):
+      with backprop.GradientTape() as tp:
+        tp.watch(x)
+        result = middle_fn(x, 1.0)
+      grad = tp.gradient(result, x)
+      return grad
+
+    @function.defun
+    def outer_fn(x):
+      return almost_outer_fn(x)
+
+    @function.defun
+    def outer_outer_fn(x):
+      return outer_fn(x)
+
+    x = constant_op.constant(5.0)
+    grad = outer_outer_fn(x)
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionTFGradientInDefun(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def outer_fn(x):
+      result = middle_fn(x, 1.0)
+      return gradients_impl.gradients(result, [x])[0]
+
+    x = constant_op.constant(5.0)
+    grad = outer_fn(x)
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionTFGradientInNestedDefun(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def almost_outer_fn(x):
+      result = middle_fn(x, 1.0)
+      return gradients_impl.gradients(result, [x])[0]
+
+    @function.defun
+    def outer_fn(x):
+      return almost_outer_fn(x)
+
+    x = constant_op.constant(5.0)
+    grad = outer_fn(x)
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeeplyNestedDifferentiableFunctionTFGradientInMultNestedDefun(self):
+    @function.defun
+    def inner_inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def inner_fn(a, b):
+      return inner_inner_fn(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def almost_outer_fn(x):
+      result = middle_fn(x, 1.0)
+      return gradients_impl.gradients(result, [x])[0]
+
+    @function.defun
+    def outer_fn(x):
+      return almost_outer_fn(x)
+
+    @function.defun
+    def outer_outer_fn(x):
+      return outer_fn(x)
+
+    x = constant_op.constant(5.0)
+    grad = outer_outer_fn(x)
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  def testDeeplyNestedDifferentiableFunctionWithVariable(self):
+    var = variables.Variable(constant_op.constant(1.0))
+
+    @function.defun
+    def inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return a * inner_fn(a, b)
+
+    @function.defun
+    def outer_fn(x):
+      return middle_fn(x, var)
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = outer_fn(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  def testDeeplyNestedDifferentiableFunctionWithVariableMultipleGradCalls(self):
+    v = variables.Variable(constant_op.constant(3.0))
+
+    @function.defun
+    def inner_fn(a, b):
+      return math_ops.add(a, b)
+
+    @function.defun
+    def middle_fn(a, b):
+      return math_ops.mul(a, inner_fn(a, b))
+
+    @function.defun
+    def outer_fn(x):
+      return middle_fn(x, v)
+
+    x = constant_op.constant(5.0)
+    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
+
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = outer_fn(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
+    self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
+    self.assertAllEqual(middle_fn(v, x), 3.0 * (3.0 + 5.0))
+
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = outer_fn(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 3.0)
+
+    y = constant_op.constant(4.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(y)
+      result = outer_fn(y)
+    grad = tp.gradient(result, y)
+
+    self.assertAllEqual(grad, 2 * 4.0 + 3.0)
+
+    v.assign(constant_op.constant(1.5))
+    with backprop.GradientTape() as tp:
+      tp.watch(y)
+      result = outer_fn(y)
+    grad = tp.gradient(result, y)
+
+    self.assertAllEqual(grad, 2 * 4.0 + 1.5)
+
+    with backprop.GradientTape() as tp:
+      tp.watch(y)
+      result = inner_fn(y, v)
+    grad = tp.gradient(result, y)
+
+    self.assertAllEqual(grad, 1.0)
+
+  def testDeeplyNestedDifferentiableFunctionWithVariableMultipleTFGrads(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(3.0)
+      v.initializer.run()
+
+      @function.defun
+      def inner_fn(a, b):
+        return math_ops.add(a, b)
+
+      @function.defun
+      def middle_fn(a, b):
+        return math_ops.mul(a, inner_fn(a, b))
+
+      @function.defun
+      def outer_fn(x):
+        return middle_fn(x, v)
+
+      x = constant_op.constant(5.0)
+      self.assertAllEqual(outer_fn(x).eval(), 5.0 * (5.0 + 3.0))
+
+      grad, = gradients_impl.gradients(outer_fn(x), x)
+
+      self.assertAllEqual(grad, 2 * 5.0 + 3.0)
+      self.assertAllEqual(outer_fn(x), 5.0 * (5.0 + 3.0))
+      self.assertAllEqual(middle_fn(v, x), 3.0 * (3.0 + 5.0))
+
+      grad, = gradients_impl.gradients(outer_fn(x), x)
+
+      self.assertAllEqual(grad, 2 * 5.0 + 3.0)
+
+      y = constant_op.constant(4.0)
+      grad, = gradients_impl.gradients(outer_fn(y), y)
+      self.assertAllEqual(grad, 2 * 4.0 + 3.0)
+
+      self.evaluate(v.assign(constant_op.constant(1.5)))
+      grad, = gradients_impl.gradients(outer_fn(y), y)
+
+      self.assertAllEqual(grad, 2 * 4.0 + 1.5)
+
+      grad, = gradients_impl.gradients(inner_fn(y, v), y)
+      self.assertAllEqual(grad, 1.0)
 
   def testNestedDifferentiableFunctionNoneOutputs(self):
     @function.defun

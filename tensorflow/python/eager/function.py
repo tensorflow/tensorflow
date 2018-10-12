@@ -423,8 +423,9 @@ class _EagerDefinedFunction(object):
       proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
     function_def = function_pb2.FunctionDef()
     function_def.ParseFromString(compat.as_bytes(proto_data))
-    if context.executing_eagerly():
-      _register(fn)
+    with ops.init_scope():
+      if context.executing_eagerly():
+        _register(fn)
     self.definition = function_def
     self.name = compat.as_bytes(function_def.signature.name)
     self.signature = function_def.signature
@@ -569,6 +570,7 @@ class Function(object):
         self._func_graph.inputs, self._func_graph.outputs, self._attrs)
     self._backward_graph_function = None
     self._signature = signature
+    self._gradient_name = None
 
   def __call__(self, *args):
     """Executes the wrapped function.
@@ -614,45 +616,56 @@ class Function(object):
     if context.executing_eagerly() or not self.outputs:
       outputs = self._inference_function.call(ctx, args)
     else:
-      name = "PartitionedCall-%s" % ops.uid()
+      if not self._gradient_name:
+        self._gradient_name = "PartitionedCall-%s" % ops.uid()
+        self._register_gradient(self._gradient_name)
+      with ops.get_default_graph().gradient_override_map(
+          {"PartitionedCall": self._gradient_name,
+           "StatefulPartitionedCall": self._gradient_name}):
+        outputs = self._inference_function.call(ctx, args)
+    return self._build_call_outputs(outputs)
 
-      @ops.RegisterGradient(name)
-      def grad_fn(op, *doutputs):  # pylint: disable=unused-variable
-        """Gradients of this function."""
-        if op.graph is not ops.get_default_graph():
-          # TODO(apassos) this will still emit SymbolicGradient ops when
-          # nested defuns are being differentiated. We need to somehow figure
-          # out a way to update the FunctionDef corresponding to the calling
-          # function when mutating a call to the forward pass.
-          return gradients_impl._SymGrad(op, list(doutputs))  # pylint: disable=protected-access
-        if self._backward_graph_function is None:
-          self._construct_backprop_function()
-        self._forward_function.add_to_graph(op.graph)
+  def _register_gradient(self, name):
+    """Registers the gradient for the current Function under the given name.
+
+    The gradient rewrites an inference call op to a forward call op, but does
+    not modify a pre-existing forward call op. It then computes the gradient
+    from the output's gradients and the side outputs of the forward op.
+
+    Args:
+      name: The name to register the gradient as.
+    """
+    @ops.RegisterGradient(name)
+    def grad_fn(op, *doutputs):  # pylint: disable=unused-variable
+      """Gradients of this function."""
+      if self._backward_graph_function is None:
+        self._construct_backprop_function()
+
+      # pylint: disable=protected-access
+      self._forward_function.add_to_graph(op.graph)
+      num_inference_outputs = self._inference_function._num_outputs
+
+      # Rewrite an inference call op to be a forward call op
+      if op.get_attr("f").name.encode() == self._inference_function.name:
         func = attr_value_pb2.AttrValue(
             func=attr_value_pb2.NameAttrList(
                 name=self._forward_function.name))
-        # pylint: disable=protected-access
         op._set_attr("f", func)
         types = attr_value_pb2.AttrValue.ListValue(
             type=self._forward_function._output_types)
         op._set_attr("Tout", attr_value_pb2.AttrValue(list=types))
         for i in range(
-            len(outputs), len(self._forward_function._output_types)):
+            num_inference_outputs, len(self._forward_function._output_types)):
           t = ops.Tensor(op, i, self._forward_function._output_types[i])
           t.set_shape(self._forward_function._output_shapes[i])
           func_graph_output = self._forward_function._func_graph_outputs[i]
           custom_gradient.copy_handle_data(func_graph_output, t)
           op._outputs.append(t)
-        # pylint: enable=protected-access
-        side_outputs = op.outputs[len(outputs):]
-        return self._backward_graph_function(
-            *(list(doutputs) + list(side_outputs)))
-
-      with ops.get_default_graph().gradient_override_map(
-          {"PartitionedCall": name}):
-        outputs = self._inference_function.call(ctx, args)
-
-    return self._build_call_outputs(outputs)
+      # pylint: enable=protected-access
+      # Compute the gradients using the side outputs
+      side_outputs = op.outputs[num_inference_outputs:]
+      return self._backward_graph_function(
+          *(list(doutputs[:num_inference_outputs]) + list(side_outputs)))
 
   @property
   def name(self):
@@ -732,7 +745,8 @@ class Function(object):
           self._func_graph.outputs,
           self._func_graph.inputs,
           grad_ys=gradients_wrt_outputs,
-          src_graph=self._func_graph)
+          src_graph=self._func_graph,
+          unconnected_gradients=gradients_impl.UnconnectedGradients.ZERO)
 
     backwards_graph_captures = list(backwards_graph.captures.keys())
 
@@ -777,7 +791,15 @@ class Function(object):
       self._construct_backprop_function()
 
     ctx = context.context()
-    outputs = self._forward_function.call(ctx, args)
+
+    if not self._gradient_name:
+      self._gradient_name = "PartitionedCall-%s" % ops.uid()
+      self._register_gradient(self._gradient_name)
+    with ops.get_default_graph().gradient_override_map(
+        {"PartitionedCall": self._gradient_name,
+         "StatefulPartitionedCall": self._gradient_name}):
+      outputs = self._forward_function.call(ctx, args)
+
     if isinstance(outputs, ops.Operation) or outputs is None:
       return outputs
 

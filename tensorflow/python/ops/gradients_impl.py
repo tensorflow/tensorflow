@@ -973,7 +973,8 @@ def _GetGrad(grads, t, unconnected_gradients):
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      return array_ops.zeros_like(t)
+      t_dtype = t.dtype if t.dtype != dtypes.resource else dtypes.float32
+      return array_ops.zeros_like(t, dtype=t_dtype)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
     else:
