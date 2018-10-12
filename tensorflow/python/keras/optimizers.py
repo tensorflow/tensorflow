@@ -814,6 +814,7 @@ def get(identifier):
 
   Raises:
       ValueError: If `identifier` cannot be interpreted.
+      TypeError: If `identifier` is an instance of unsupported class.
   """
   # Wrap TF optimizer instances
   if isinstance(identifier, tf_optimizer_module.Optimizer):
@@ -826,6 +827,9 @@ def get(identifier):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
   if isinstance(identifier, Optimizer):
+    if isinstance(identifier, TFOptimizer):
+      raise TypeError('Use native tensorflow optimizer {} '
+                      'directly.'.format(identifier.optimizer))
     return identifier
   else:
     raise ValueError('Could not interpret optimizer identifier:', identifier)
