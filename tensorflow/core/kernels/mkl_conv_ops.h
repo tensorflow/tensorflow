@@ -35,9 +35,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/util/mkl_util.h"
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
