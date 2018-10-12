@@ -34,7 +34,7 @@ tf_export('foo', 'bar.foo')(foo)
 Exporting a constant
 ```python
 foo = 1
-tf_export("consts.foo").export_constant(__name__, 'foo')
+tf_export('consts.foo').export_constant(__name__, 'foo')
 ```
 """
 from __future__ import absolute_import
