@@ -255,7 +255,9 @@ class OperationTest(test_util.TensorFlowTestCase):
     """, op3.node_def)
 
   def testDevicePresent(self):
-    op = ops.Operation(ops._NodeDef("None", "myop", device='/job:goo/device:GPU:0'), ops.Graph(), [], [])
+    op = ops.Operation(
+      ops._NodeDef("None", "myop", device='/job:goo/device:GPU:0'), ops.Graph(),
+      [], [])
     self.assertEqual('/job:goo/device:GPU:0', op.device)
 
   def testDeviceObject(self):
