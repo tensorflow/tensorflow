@@ -650,8 +650,11 @@ using OpConverter =
 class Converter {
  public:
   explicit Converter(nvinfer1::INetworkDefinition* trt_network,
-                     TRTWeightStore* ws, bool fp16)
-      : trt_network_(trt_network), weight_store_(ws), fp16_(fp16) {
+                     TRTWeightStore* ws, bool fp16, int max_batch_size)
+      : trt_network_(trt_network),
+        weight_store_(ws),
+        fp16_(fp16),
+        max_batch_size_(max_batch_size) {
     this->register_op_converters();
   }
 
@@ -668,6 +671,8 @@ class Converter {
 
   // TODO(aaroey): fix all the namings.
   bool isFP16() { return fp16_; }
+
+  int GetMaxBatchSize() { return max_batch_size_; }
 
   TRT_ShapedWeights get_temp_weights_like(const TRT_ShapedWeights& weights) {
     return this->get_temp_weights(weights.type_, weights.shape_);
@@ -726,18 +731,23 @@ class Converter {
     return trt_tensors_.insert({name, TRT_TensorOrWeights(tensor)}).second;
   }
 
-  nvinfer1::ITensor* TransposeTensor(nvinfer1::ITensor* input_tensor,
-                                     const std::vector<int>& order) {
+  tensorflow::Status TransposeTensor(nvinfer1::ITensor* input_tensor,
+                                     const std::vector<int>& order,
+                                     const nvinfer1::ITensor** output_tensor) {
     const auto dims = input_tensor->getDimensions();
 
-    // TODO(jie): change the return to status and properly exit
-    if (order.size() - 1 != size_t(dims.nbDims))
-      LOG(ERROR) << "Dimension does not match, fail gracefully";
+    if (order.size() - 1 != size_t(dims.nbDims)) {
+      return tensorflow::errors::InvalidArgument(
+        "Rank of perm for transpose does not match with that of the input.");
+    }
+    if (order[0] != 0) {
+      return tensorflow::errors::Unimplemented(
+        "Transpose at batch dimension is not supported.");
+    }
 
     nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(*input_tensor);
-    if (layer == nullptr) {
-      return nullptr;
-    }
+    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Transpose");
+
     nvinfer1::Permutation permutation;
     for (int32_t i = 0; i < dims.nbDims; ++i) {
       permutation.order[i] = order[i + 1] - 1;
@@ -751,7 +761,52 @@ class Converter {
       reshape_dims.type[i] = dims.type[i];
     }
     layer->setReshapeDimensions(reshape_dims);
-    return layer->getOutput(0);
+
+    *output_tensor = layer->getOutput(0);
+    return tensorflow::Status::OK();
+  }
+
+  // Helper function converts input into tensor with shape specified by dims.
+  tensorflow::Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
+                                           const nvinfer1::Dims& dims,
+                                           const nvinfer1::ITensor** tensor) {
+    // If -1 is not used for one of the dims, we can check if the shapes are
+    // compatible.
+    bool can_check_shapes = true;
+    for (int i = 0; i < dims.nbDims; i++) {
+      if (dims.d[i] == -1) {
+        can_check_shapes = false;
+        break;
+      }
+    }
+    if (can_check_shapes &&
+        GetShapeSize(input.shape()) != GetShapeSize(dims)) {
+      return tensorflow::errors::InvalidArgument(
+          "Reshape shapes are not compatible.");
+    }
+
+    if (input.is_tensor()) {
+      if (DimsEqual(input.shape(), dims)) {
+        *tensor = input.tensor();
+      } else {
+        nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(
+            *const_cast<nvinfer1::ITensor*>(input.tensor()));
+        TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
+        layer->setReshapeDimensions(dims);
+        *tensor = layer->getOutput(0);
+      }
+    } else {
+#if NV_TENSORRT_MAJOR > 3
+      nvinfer1::IConstantLayer* layer =
+          this->network()->addConstant(dims, input.weights());
+      TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
+      *tensor = layer->getOutput(0);
+#else
+      return tensorflow::errors::Unimplemented(
+        "Can't reshape constant. Please upgrade to TRT 4 or above.");
+#endif
+    }
+    return tensorflow::Status::OK();
   }
 
  private:
@@ -766,6 +821,8 @@ class Converter {
   TRTWeightStore* weight_store_;
 
   bool fp16_;
+
+  int max_batch_size_;
 
   void register_op_converters();
 
@@ -1140,9 +1197,10 @@ tensorflow::Status BinaryTensorOpWeight(
       }
       permutation[1] = dims_t.nbDims;
       permutation[dims_t.nbDims] = 1;
-      tensor = ctx.TransposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                   permutation);
-      TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, node_def.name());
+      TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+          const_cast<nvinfer1::ITensor*>(tensor),
+          permutation,
+          &tensor));
     } else {
       return tensorflow::errors::InvalidArgument(
           "Transpose cannot be applied, " + node_def.name());
@@ -1203,15 +1261,18 @@ tensorflow::Status BinaryTensorOpWeight(
       scale_weights, power_weights);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   // transpose back dimension
   if (permutation_flag) {
-    output_tensor = ctx.TransposeTensor(output_tensor, permutation);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(output_tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(output_tensor),
+        permutation,
+        &output_tensor));
   }
 
   // Pass the output
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 
@@ -1229,9 +1290,10 @@ tensorflow::Status ConvertConv2DHelper(
   int w_index = 3;
   auto data_format = attrs.get<string>("data_format");
   if (data_format == "NHWC") {
-    tensor = ctx.TransposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                 {0, 3, 1, 2});
-    TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(tensor),
+        {0, 3, 1, 2},
+        &tensor));
     h_index = 1;
     w_index = 2;
     // TODO(jie): transpose it
@@ -1309,15 +1371,18 @@ tensorflow::Status ConvertConv2DHelper(
   layer->setPadding({padding[0].first, padding[1].first});
   layer->setName(node_def.name().c_str());
   layer->setNbGroups(num_groups);
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   VLOG(2) << "TENSOR out: " << DebugString(output_tensor->getDimensions());
   VLOG(2) << "data_format: " << data_format;
   if (data_format == "NHWC") {
     // TODO(jie): transpose it back!
-    output_tensor = ctx.TransposeTensor(output_tensor, {0, 2, 3, 1});
-    TFTRT_RETURN_ERROR_IF_NULLPTR(output_tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(output_tensor),
+        {0, 2, 3, 1},
+        &output_tensor));
   }
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 
@@ -1333,39 +1398,6 @@ tensorflow::Status ConvertConv2DHelper(
   }
   return tensorflow::errors::Unimplemented("unsupported convolution type at, " +
                                            node_def.name());
-}
-
-// Helper function converts input into tensor with shape specified by dims.
-bool PrepareTensorForShape(Converter& ctx, const TRT_TensorOrWeights& input,
-                           const nvinfer1::Dims& dims,
-                           const nvinfer1::ITensor** tensor) {
-  if (input.is_tensor()) {
-    if (DimsEqual(input.shape(), dims)) {
-      *tensor = input.tensor();
-    } else {
-      nvinfer1::IShuffleLayer* layer = ctx.network()->addShuffle(
-          *const_cast<nvinfer1::ITensor*>(input.tensor()));
-      if (layer != nullptr) {
-        layer->setReshapeDimensions(dims);
-        *tensor = layer->getOutput(0);
-      } else {
-        return false;
-      }
-    }
-  } else {
-#if NV_TENSORRT_MAJOR > 3
-    nvinfer1::IConstantLayer* layer =
-        ctx.network()->addConstant(dims, input.weights());
-    if (layer != nullptr) {
-      *tensor = layer->getOutput(0);
-    } else {
-      return false;
-    }
-#else
-    return false;
-#endif
-  }
-  return true;
 }
 
 tensorflow::Status BinaryTensorOpTensor(
@@ -1396,10 +1428,8 @@ tensorflow::Status BinaryTensorOpTensor(
         node_def.op() + ", at: " + node_def.name());
   }
 
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, operand_l, dim_l, &tensor_l), node_def.name());
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, operand_r, dim_r, &tensor_r), node_def.name());
+  TF_RETURN_IF_ERROR(ctx.PrepareTensorForShape(operand_l, dim_l, &tensor_l));
+  TF_RETURN_IF_ERROR(ctx.PrepareTensorForShape(operand_r, dim_r, &tensor_r));
 
   // get trt type & shape
   TFAttrs attrs(node_def);
@@ -1487,8 +1517,15 @@ tensorflow::Status ConvertTranspose(
     perm[i] = weights_ptr[i];
   }
 
-  nvinfer1::ITensor* output_tensor = ctx.TransposeTensor(input_tensor, perm);
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  if (perm[0] != 0) {
+    return tensorflow::errors::Unimplemented(
+        "Transpose at batch dimension is not supported, at", node_def.name());
+  }
+
+  const nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(ctx.TransposeTensor(input_tensor, perm, &output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 
@@ -1502,6 +1539,12 @@ tensorflow::Status ConvertReshape(
   }
 
   TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (weights.count() == 0) {
+    return tensorflow::errors::Unimplemented(
+        "Reshape to shape=[] is not supported, at", node_def.name());
+  }
+
+  // Get new_shape
   const int* weights_ptr = static_cast<int*>(const_cast<void*>(
       weights.GetValues()));
   nvinfer1::Dims new_shape;
@@ -1511,10 +1554,22 @@ tensorflow::Status ConvertReshape(
     new_shape.d[i-1] = weights_ptr[i];
   }
 
-  const nvinfer1::ITensor* output_tensor;
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(0), new_shape, &output_tensor),
-      node_def.name());
+  // Check that batch dimension doesn't change
+  const nvinfer1::Dims input_shape = inputs.at(0).shape();
+  if (weights_ptr[0] == -1) {
+    // Product of input shape should equal product of new_shape
+    if (GetShapeSize(input_shape) != GetShapeSize(new_shape)) {
+      return tensorflow::errors::Unimplemented(
+        "Reshape on the batch dimension is not supported.");
+    }
+  } else if (weights_ptr[0] != ctx.GetMaxBatchSize()) {
+    return tensorflow::errors::Unimplemented(
+        "Reshape on the batch dimension is not supported.");
+  }
+
+  const nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(
+      ctx.PrepareTensorForShape(inputs.at(0), new_shape, &output_tensor));
   outputs->push_back(TRT_TensorOrWeights(
       const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
@@ -1549,9 +1604,10 @@ tensorflow::Status ConvertPool(Converter& ctx,
   if (data_format == "NHWC") {
     h_index = 1;
     w_index = 2;
-    tensor = ctx.TransposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                 {0, 3, 1, 2});
-    TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(tensor),
+        {0, 3, 1, 2},
+        &tensor));
   }
 
   nvinfer1::PoolingType type;
@@ -1607,13 +1663,16 @@ tensorflow::Status ConvertPool(Converter& ctx,
   layer->setStride(stride);
   layer->setPadding({padding[0].first, padding[1].first});
   layer->setName(node_def.name().c_str());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   if (data_format == "NHWC") {
-    output_tensor = ctx.TransposeTensor(output_tensor, {0, 2, 3, 1});
-    TFTRT_RETURN_ERROR_IF_NULLPTR(output_tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(output_tensor),
+        {0, 2, 3, 1},
+        &output_tensor));
   }
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 
@@ -1937,10 +1996,9 @@ tensorflow::Status ConvertUnary(Converter& ctx,
 #endif
 
   // TODO(jie): check type
-  const nvinfer1::ITensor* tensor;
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(0), inputs.at(0).shape(), &tensor),
-      node_def.name());
+  const nvinfer1::ITensor* tensor = nullptr;
+  TF_RETURN_IF_ERROR(
+      ctx.PrepareTensorForShape(inputs.at(0), inputs.at(0).shape(), &tensor));
 
   nvinfer1::IUnaryLayer* layer;
   if (node_def.op() == "Rsqrt") {
@@ -1960,7 +2018,8 @@ tensorflow::Status ConvertUnary(Converter& ctx,
 
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 
@@ -2030,16 +2089,17 @@ tensorflow::Status ConvertReducePool(
     permutation_order[1] = permuted_index;
 
     // Apply permutation before extracting dimension for pool_kernel
-    tensor = ctx.TransposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                 permutation_order);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(tensor),
+        permutation_order,
+        &tensor));
   }
 
   // Apply permutation before extracting dimension for pool_kernel
   pool_kernel.d[0] = (idx_set.count(2) || permuted_index == 2) ? dims.d[1] : 1;
   pool_kernel.d[1] = (idx_set.count(3) || permuted_index == 3) ? dims.d[2] : 1;
 
-  nvinfer1::ITensor* output_tensor;
+  const nvinfer1::ITensor* output_tensor = nullptr;
 
   if (node_def.op() == "Mean") {
     nvinfer1::IPoolingLayer* layer =
@@ -2053,11 +2113,13 @@ tensorflow::Status ConvertReducePool(
   }
   if (permuted_index != -1) {
     // Apply permutation before extracting dimension for pool_kernel
-    output_tensor = ctx.TransposeTensor(
-        const_cast<nvinfer1::ITensor*>(output_tensor), permutation_order);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(output_tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(output_tensor),
+        permutation_order,
+        &output_tensor));
   }
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 #elif NV_TENSORRT_MAJOR > 3
@@ -2205,9 +2267,10 @@ tensorflow::Status ConvertPad(Converter& ctx,
   std::vector<int32_t> permuted_pad_index(pad_index);
   if (pad_index[0] == 1) {
     legit_pad = false;
-    tensor = ctx.TransposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                 {0, 3, 2, 1});
-    TFTRT_RETURN_ERROR_IF_NULLPTR(tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(tensor),
+        {0, 3, 2, 1},
+        &tensor));
     permuted_pad_index[0] = 3;
   }
 
@@ -2225,15 +2288,17 @@ tensorflow::Status ConvertPad(Converter& ctx,
   nvinfer1::IPaddingLayer* layer = ctx.network()->addPadding(
       *const_cast<nvinfer1::ITensor*>(tensor), pre_padding, post_padding);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   if (!legit_pad) {
-    output_tensor = ctx.TransposeTensor(
-        const_cast<nvinfer1::ITensor*>(output_tensor), {0, 3, 2, 1});
-    TFTRT_RETURN_ERROR_IF_NULLPTR(output_tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        const_cast<nvinfer1::ITensor*>(output_tensor),
+        {0, 3, 2, 1},
+        &output_tensor));
   }
 
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  outputs->push_back(TRT_TensorOrWeights(
+      const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
 }
 
@@ -2314,9 +2379,10 @@ tensorflow::Status ConvertConcat(Converter& ctx,
 #if NV_TENSORRT_MAJOR == 3
     // TRT3 does concatenation only on channel!
     if (index != 1) {
-      tensor_i = ctx.TransposeTensor(const_cast<nvinfer1::ITensor*>(tensor_i),
-                                     permutation_order);
-      TFTRT_RETURN_ERROR_IF_NULLPTR(tensor_i, node_def.name());
+      TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+          const_cast<nvinfer1::ITensor*>(tensor_i),
+          permutation_order,
+          &tensor_i));
     }
 #endif
     inputs_vec.push_back(tensor_i);
@@ -2334,8 +2400,10 @@ tensorflow::Status ConvertConcat(Converter& ctx,
 
 #if NV_TENSORRT_MAJOR == 3
   if (index != 1) {
-    output_tensor = ctx.TransposeTensor(output_tensor, permutation_order);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(output_tensor, node_def.name());
+    TF_RETURN_IF_ERROR(ctx.TransposeTensor(
+        output_tensor,
+        permutation_order,
+        &output_tensor));
   }
 #endif
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -2489,21 +2557,20 @@ tensorflow::Status ConvertMatMulHelper(
   while (input_dim.nbDims != 3) {
     input_dim.d[input_dim.nbDims++] = 1;
   }
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, tensor_input, input_dim, &tensor), node_name);
+  TF_RETURN_IF_ERROR(
+      ctx.PrepareTensorForShape(tensor_input, input_dim, &tensor));
 
   nvinfer1::IFullyConnectedLayer* layer = ctx.network()->addFullyConnected(
       *const_cast<nvinfer1::ITensor*>(tensor), noutput, weights, biases);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_name);
   output_tensor = layer->getOutput(0);
 
-  const nvinfer1::ITensor* temp_tensor;
+  const nvinfer1::ITensor* temp_tensor = nullptr;
   auto output_dim = output_tensor->getDimensions();
   output_dim.nbDims = 1;
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, TRT_TensorOrWeights(output_tensor), output_dim,
-                            &temp_tensor),
-      node_name);
+  TF_RETURN_IF_ERROR(
+      ctx.PrepareTensorForShape(TRT_TensorOrWeights(output_tensor), output_dim,
+                                &temp_tensor));
   output_tensor = const_cast<nvinfer1::ITensor*>(temp_tensor);
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
@@ -2604,13 +2671,10 @@ tensorflow::Status ConvertBatchMatMul(
       dims_r.nbDims--;
     }
   }
-
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(0), dims_l, &tensor_l),
-      node_def.name());
-  TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(1), dims_r, &tensor_r),
-      node_def.name());
+  TF_RETURN_IF_ERROR(
+      ctx.PrepareTensorForShape(inputs.at(0), dims_l, &tensor_l));
+  TF_RETURN_IF_ERROR(
+      ctx.PrepareTensorForShape(inputs.at(1), dims_r, &tensor_r));
 
   nvinfer1::IMatrixMultiplyLayer* layer = ctx.network()->addMatrixMultiply(
       *const_cast<nvinfer1::ITensor*>(tensor_l), transpose_a,
@@ -2782,7 +2846,8 @@ tensorflow::Status ConvertGraphDefToEngine(
 
   // Build the network
   VLOG(1) << "Starting engine conversion ";
-  Converter converter(trt_network.get(), ws.get(), precision_mode == FP16MODE);
+  Converter converter(trt_network.get(), ws.get(), precision_mode == FP16MODE,
+                      max_batch_size);
   std::vector<std::pair<string, string>> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {

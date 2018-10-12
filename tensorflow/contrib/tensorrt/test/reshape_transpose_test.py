@@ -46,8 +46,9 @@ class SimpleReshapeTest(trt_test.TfTrtIntegrationTestBase):
           dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
       with g.device("/GPU:0"):
         reshape = array_ops.reshape(inp, [-1, 24*24*2])
-        print('RESHAPE SHAPE', reshape.get_shape().as_list())
+        # Add identities to ensure we have at least min_segment_size=3 nodes
         identity = array_ops.identity(reshape, "identity")
+        identity = array_ops.identity(identity, "identity2")
       array_ops.identity(identity, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
@@ -59,6 +60,150 @@ class SimpleReshapeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["my_trt_op_0"]
+
+class ReshapeToScalarTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [1]
+    output_name = "output"
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=input_dims, name=input_name)
+      with g.device("/GPU:0"):
+        reshape = array_ops.reshape(inp, [])
+        # Add identities to ensure we have at least min_segment_size=3 nodes
+        identity = array_ops.identity(reshape, "identity")
+        identity = array_ops.identity(identity, "identity2")
+      array_ops.identity(identity, name=output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        output_names=[output_name],
+        expected_output_dims=[()])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return []
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # No engine should be created so exclude INT8 to avoid "ERROR:tensorflow:Not
+    # a calib graph. Doesn't seem to contain any calibration nodes.""
+    return (not trt_test.IsQuantizationMode(run_params.precision_mode) and 
+            not run_params.dynamic_engine)
+
+class ReshapeBatchDimensionTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [100, 24, 24, 2]
+    output_name = "output"
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      with g.device("/GPU:0"):
+        reshape = array_ops.reshape(inp, [2, 50, 24, 24, 2])
+        # Add identities to ensure we have at least min_segment_size=3 nodes
+        identity = array_ops.identity(reshape, "identity")
+        identity = array_ops.identity(identity, "identity2")
+      array_ops.identity(identity, name=output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        output_names=[output_name],
+        expected_output_dims=[(2, 50, 24, 24, 2)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return []
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # No engine should be created so exclude INT8 to avoid "ERROR:tensorflow:Not
+    # a calib graph. Doesn't seem to contain any calibration nodes.""
+    return (not trt_test.IsQuantizationMode(run_params.precision_mode) and 
+            not run_params.dynamic_engine)
+
+class ReshapeBatchDimensionTest2(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [100, 24, 24, 2]
+    output_name = "output"
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      with g.device("/GPU:0"):
+        reshape = array_ops.reshape(inp, [-1, 50, 24, 24, 2])
+        # Add identities to ensure we have at least min_segment_size=3 nodes
+        identity = array_ops.identity(reshape, "identity")
+        identity = array_ops.identity(identity, "identity2")
+      array_ops.identity(identity, name=output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        output_names=[output_name],
+        expected_output_dims=[(2, 50, 24, 24, 2)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return []
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # No engine should be created so exclude INT8 to avoid "ERROR:tensorflow:Not
+    # a calib graph. Doesn't seem to contain any calibration nodes.""
+    return (not trt_test.IsQuantizationMode(run_params.precision_mode) and 
+            not run_params.dynamic_engine)
+
+class ReshapeBatchDimensionTest3(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [100, 24, 24, 2]
+    output_name = "output"
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      with g.device("/GPU:0"):
+        reshape = array_ops.reshape(inp, [2, 50, -1, 24, 2])
+        # Add identities to ensure we have at least min_segment_size=3 nodes
+        identity = array_ops.identity(reshape, "identity")
+        identity = array_ops.identity(identity, "identity2")
+      array_ops.identity(identity, name=output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        output_names=[output_name],
+        expected_output_dims=[(2, 50, 24, 24, 2)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return []
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # No engine should be created so exclude INT8 to avoid "ERROR:tensorflow:Not
+    # a calib graph. Doesn't seem to contain any calibration nodes.""
+    return (not trt_test.IsQuantizationMode(run_params.precision_mode) and 
+            not run_params.dynamic_engine)
 
 class ReshapeInverseTest(trt_test.TfTrtIntegrationTestBase):
 
@@ -148,6 +293,41 @@ class SimpleTransposeTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["my_trt_op_0"]
+
+class TransposeBatchDimensionTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [100, 24, 24, 2]
+    output_name = "output"
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      with g.device("/GPU:0"):
+        # to NCHW
+        transpose = array_ops.transpose(inp, [2, 1, 0, 3])
+        identity = array_ops.identity(transpose, "identity")
+      array_ops.identity(identity, name=output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        output_names=[output_name],
+        expected_output_dims=[(24, 24, 100, 2)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return []
+
+  def ShouldRunTest(self, run_params):
+    """Whether to run the test."""
+    # No engine should be created so exclude INT8 to avoid "ERROR:tensorflow:Not
+    # a calib graph. Doesn't seem to contain any calibration nodes.""
+    return (not trt_test.IsQuantizationMode(run_params.precision_mode) and 
+            not run_params.dynamic_engine)
 
 class TransposeInverseTest(trt_test.TfTrtIntegrationTestBase):
 
