@@ -132,7 +132,7 @@ landing_page:
         TensorFlow Lite Converter.
       buttons:
       - label: Read the converter guide
-        path: /lite/tflite_convert/python_api
+        path: /lite/convert/
         classname: button button-primary tfo-button-primary
     - heading: Deploy
       icon:
