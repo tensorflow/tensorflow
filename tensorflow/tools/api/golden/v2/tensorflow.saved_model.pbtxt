@@ -5,19 +5,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "builder"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "constants"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "loader"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "main_op"
     mtype: "<type \'module\'>"
   }
   member {
@@ -25,15 +13,7 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "signature_def_utils"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "tag_constants"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "utils"
     mtype: "<type \'module\'>"
   }
   member_method {
@@ -59,6 +39,10 @@ tf_module {
   member_method {
     name: "load"
     argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "main_op"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "main_op_with_restore"

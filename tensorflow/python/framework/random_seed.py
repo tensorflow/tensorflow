@@ -34,7 +34,7 @@ def _truncate_seed(seed):
   return seed % _MAXINT32  # Truncate to fit into 32-bit integer
 
 
-@tf_export('random.get_seed', 'get_seed')
+@tf_export('random.get_seed', v1=['random.get_seed', 'get_seed'])
 @deprecation.deprecated_endpoints('get_seed')
 def get_seed(op_seed):
   """Returns the local seeds an operation should use given an op-specific seed.

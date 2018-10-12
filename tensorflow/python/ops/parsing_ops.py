@@ -1566,7 +1566,7 @@ def _parse_single_sequence_example_raw(serialized,
 
 
 # Swap `name` and `na_value` for backward compatibility.
-@tf_export("io.decode_csv", "decode_csv")
+@tf_export("io.decode_csv", v1=["io.decode_csv", "decode_csv"])
 @deprecation.deprecated_endpoints("decode_csv")
 def decode_csv(records,
                record_defaults,

@@ -30,7 +30,7 @@ from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("errors.OpError", "OpError")
+@tf_export("errors.OpError", v1=["errors.OpError", "OpError"])
 @deprecation.deprecated_endpoints("OpError")
 class OpError(Exception):
   """A generic error that is raised when TensorFlow execution fails.

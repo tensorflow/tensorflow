@@ -357,7 +357,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
 ops.NotDifferentiable("Multinomial")
 
 
-@tf_export("random.gamma", "random_gamma")
+@tf_export("random.gamma", v1=["random.gamma", "random_gamma"])
 @deprecation.deprecated_endpoints("random_gamma")
 def random_gamma(shape,
                  alpha,
@@ -441,7 +441,7 @@ def random_gamma(shape,
             shape, alpha_broadcast, seed=seed1, seed2=seed2) / beta)
 
 
-@tf_export("random.poisson", "random_poisson")
+@tf_export("random.poisson", v1=["random.poisson", "random_poisson"])
 @deprecation.deprecated_endpoints("random_poisson")
 def random_poisson(lam, shape, dtype=dtypes.float32, seed=None, name=None):
   """Draws `shape` samples from each of the given Poisson distribution(s).

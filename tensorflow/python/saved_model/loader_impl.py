@@ -145,8 +145,12 @@ def _get_main_op_tensor(
   return main_op_tensor
 
 
-@tf_export("saved_model.maybe_saved_model_directory",
-           "saved_model.loader.maybe_saved_model_directory")
+@tf_export(
+    "saved_model.maybe_saved_model_directory",
+    v1=[
+        "saved_model.maybe_saved_model_directory",
+        "saved_model.loader.maybe_saved_model_directory"
+    ])
 @deprecation.deprecated_endpoints(
     "saved_model.loader.maybe_saved_model_directory")
 def maybe_saved_model_directory(export_dir):
@@ -169,7 +173,9 @@ def maybe_saved_model_directory(export_dir):
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
-@tf_export("saved_model.load", "saved_model.loader.load")
+@tf_export("saved_model.load",
+           v1=["saved_model.load", "saved_model.loader.load"])
+@deprecation.deprecated_endpoints("saved_model.loader.load")
 def load(sess, tags, export_dir, import_scope=None, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 

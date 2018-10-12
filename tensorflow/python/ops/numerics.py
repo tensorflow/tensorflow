@@ -28,7 +28,9 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("debugging.assert_all_finite", "verify_tensor_all_finite")
+@tf_export(
+    "debugging.assert_all_finite",
+    v1=["debugging.assert_all_finite", "verify_tensor_all_finite"])
 @deprecation.deprecated_endpoints("verify_tensor_all_finite")
 def verify_tensor_all_finite(t, msg, name=None):
   """Assert that the tensor does not contain any NaN's or Inf's.
