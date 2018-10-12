@@ -374,9 +374,10 @@ class FeatureLayer(Layer):
     super(FeatureLayer, self).__init__(name=name, trainable=trainable, **kwargs)
 
     self._feature_columns = _normalize_feature_columns(feature_columns)
+    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
     self._state_manager = _StateManagerImpl(self, self.trainable)
     self._shared_state_manager = shared_state_manager
-    for column in sorted(self._feature_columns, key=lambda x: x.name):
+    for column in self._feature_columns:
       if not isinstance(column, DenseColumn):
         raise ValueError(
             'Items of feature_columns must be a DenseColumn. '
@@ -388,7 +389,7 @@ class FeatureLayer(Layer):
     return True
 
   def build(self, _):
-    for column in sorted(self._feature_columns, key=lambda x: x.name):
+    for column in self._feature_columns:
       if isinstance(column, SharedEmbeddingColumn):
         column.create_state(self._shared_state_manager)
       else:
@@ -422,7 +423,7 @@ class FeatureLayer(Layer):
     transformation_cache = FeatureTransformationCache(features)
     output_tensors = []
     ordered_columns = []
-    for column in sorted(self._feature_columns, key=lambda x: x.name):
+    for column in self._feature_columns:
       with ops.name_scope(column.name):
         ordered_columns.append(column)
         if isinstance(column, SharedEmbeddingColumn):
@@ -443,7 +444,7 @@ class FeatureLayer(Layer):
 
   def compute_output_shape(self, input_shape):
     total_elements = 0
-    for column in sorted(self._feature_columns, key=lambda x: x.name):
+    for column in self._feature_columns:
       total_elements += column.variable_shape.num_elements()
     return (input_shape[0], total_elements)
 
