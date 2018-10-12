@@ -103,8 +103,10 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options,
-                                       metadata);
+  return compiler_->CompileAheadOfTime(
+      absl::make_unique<HloModuleGroup>(hlo_modules[0]->name(),
+                                        absl::MakeSpan(hlo_modules)),
+      options, metadata);
 }
 
 }  // namespace xla

@@ -57,6 +57,12 @@ StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
   return std::move(hlo_module);
 }
 
+Status InterpreterCompiler::RunHloPasses(
+    HloModuleGroup* module_group, se::StreamExecutor* executor,
+    DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented("Module group compilation not supported on Interpreter");
+}
+
 StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* /*device_allocator*/) {
@@ -76,17 +82,26 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
   return std::move(executable);
 }
 
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+InterpreterCompiler::RunBackend(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented(
+      "Module group compilation is not supported on Interpreter.");
+}
+
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> /*hlo_modules*/,
+    std::unique_ptr<HloModuleGroup> /*module_group*/,
     std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/,
     DeviceMemoryAllocator* /*device_allocator*/) {
-  return tensorflow::errors::Unimplemented(
-      "Compilation of multiple HLO modules is not supported on Interpreter.");
+  return Unimplemented(
+      "Module group compilation is not supported on Interpreter.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 InterpreterCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
+    std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& aot_options) {
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Interpreter");
