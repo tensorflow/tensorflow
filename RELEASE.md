@@ -1,3 +1,46 @@
+# Release 1.12.0
+
+## Major Features and Improvements
+* Keras models can now be directly exported to the SavedModel format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow Serving.
+* Keras models now support evaluating with a `tf.data.Dataset`.
+* TensorFlow binaries are built with XLA support linked in by default.
+
+## Bug Fixes and Other Changes
+
+* tf.data:
+  * tf.data users can now represent, get, and set options of TensorFlow input pipelines using `tf.data.Options()`, `tf.data.Dataset.options()`, and `tf.data.Dataset.with_options()` respectively.
+  * New `tf.data.Dataset.reduce()` API allows users to reduce a finite dataset to a single element using a user-provided reduce function.
+  * New `tf.data.Dataset.window()` API allows users to create finite windows of input dataset; when combined with the `tf.data.Dataset.reduce()` API, this allows users to implement customized batching.
+  * All C++ code moves to the `tensorflow::data` namespace.
+  * Add support for `num_parallel_calls` to `tf.data.Dataset.interleave`.
+* `tf.contrib`:
+  * Remove `tf.contrib.linalg`. `tf.linalg` should be used instead.
+  * Replace any calls to `tf.contrib.get_signature_def_by_key(metagraph_def, signature_def_key)` with `meta_graph_def.signature_def[signature_def_key]`. Catching a ValueError exception thrown by `tf.contrib.get_signature_def_by_key` should be replaced by catching a KeyError exception.
+* `tf.contrib.data`
+  * Deprecate, and replace by tf.data.experimental.
+* Other:
+  * Instead of jemalloc, revert back to using system malloc since it simplifies build and has comparable performance.
+  * Remove integer types from `tf.nn.softplus` and `tf.nn.softsign` OpDefs. This is a bugfix; these ops were never meant to support integers.
+  * Allow subslicing Tensors with a single dimension.
+  * Add option to calculate string length in Unicode characters
+  * Add functionality to SubSlice a tensor.
+  * Add searchsorted (ie lower/upper_bound) op.
+  * Add model explainability to Boosted Trees.
+  * Support negative positions for tf.substr
+  * There was previously a bug in the bijector_impl where the _reduce_jacobian_det_over_event does not handle scalar ILDJ implementations properly.
+  * In tf eager execution, allow re-entering a GradientTape context
+  * Add tf_api_version flag. If --define=tf_api_version=2 flag is passed in, then bazel will build TensorFlow API version 2.0. Note that TensorFlow 2.0 is under active development and has no guarantees at this point.
+  * Add additional compression options to TfRecordWriter
+  * Performance improvements for regex full match operations.
+  * Replace tf.GraphKeys.VARIABLES with `tf.GraphKeys.GLOBAL_VARIABLES`
+  * Remove unused dynamic learning rate support.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+(David) Siu-Kei Muk, Ag Ramesh, Anton Dmitriev, Artem Sobolev, Avijit-Nervana, Bairen Yi, Bruno Goncalves, By Shen, candy.dc, Cheng Chen, Clayne Robison, coder3101, Dao Zhang, Elms, Fei Hu, feiquan, Geoffrey Irving, Guozhong Zhuang, hellcom, Hoeseong Kim, imsheridan, Jason Furmanek, Jason Zaman, Jenny Sahng, jiefangxuanyan, Johannes Bannhofer, Jonathan Homer, Koan-Sin Tan, kouml, Loo Rong Jie, Lukas Geiger, manipopopo, Ming Li, Moritz KröGer, Naurril, Niranjan Hasabnis, Pan Daoxin, Peng Yu, pengwa, rasmi, Roger Xin, Roland Fernandez, Sami Kama, Samuel Matzek, Sangjung Woo, Sergei Lebedev, Sergii Khomenko, shaohua, Shaohua Zhang, Shujian2015, Sunitha Kambhampati, tomguluson92, ViníCius Camargo, wangsiyu, weidankong, Wen-Heng (Jack) Chung, William D. Irons, Xin Jin, Yan Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
+
 # Release 1.11.0
 
 ## Major Features and Improvements
@@ -27,7 +70,7 @@
   * `tf.data.Dataset.list_files()` raises an exception at initialization time if the argument matches no files.
   * Renamed BigTable class to BigtableTable for clarity
   * Document use of the Cloud Bigtable API
-  * Adding `tf.contrib.data.reduce_dataset` which can be used to reduce a dataset to a single element.
+  * Add `tf.contrib.data.reduce_dataset` which can be used to reduce a dataset to a single element.
   * Generalization of `tf.contrib.data.sliding_window_batch`.
 * INC:
   * Runtime improvements to triangular solve.

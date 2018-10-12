@@ -884,6 +884,7 @@ Status VerifyEntryAndExitShapes(const HloModule& module) {
   return Status::OK();
 }
 
+<<<<<<< HEAD
 // Verifies that entry computation layout matches characteristics of
 // entry computation.
 Status CheckEntryComputationLayout(const HloModule& module) {
@@ -934,6 +935,8 @@ Status CheckEntryComputationLayout(const HloModule& module) {
   return Status::OK();
 }
 
+=======
+>>>>>>> upstream/r1.12
 // Checks if the given two instructions share the same channel id.
 Status CheckSameChannel(const HloInstruction* instr1,
                         const HloInstruction* instr2) {
@@ -1181,10 +1184,14 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
 // not check result shape as that is checked in the ShapeVerifier.
 class InstructionVerifier : public DfsHloVisitorWithDefault {
  public:
+<<<<<<< HEAD
   explicit InstructionVerifier(std::function<bool(const HloInstruction*)>
                                    instruction_can_change_layout_func)
       : instruction_can_change_layout_func_(
             instruction_can_change_layout_func) {}
+=======
+  InstructionVerifier() {}
+>>>>>>> upstream/r1.12
 
   Status DefaultAction(HloInstruction*) override { return Status::OK(); }
 
@@ -1233,6 +1240,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           "True computation %s of %s must have 1 parameter insted of %d",
           conditional->true_computation()->name(), conditional->ToString(),
           conditional->true_computation()->num_parameters());
+<<<<<<< HEAD
     }
     if (conditional->false_computation()->num_parameters() != 1) {
       return FailedPrecondition(
@@ -1240,6 +1248,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           conditional->false_computation()->name(), conditional->ToString(),
           conditional->false_computation()->num_parameters());
     }
+=======
+    }
+    if (conditional->false_computation()->num_parameters() != 1) {
+      return FailedPrecondition(
+          "False computation %s of %s must have 1 parameter insted of %d",
+          conditional->false_computation()->name(), conditional->ToString(),
+          conditional->false_computation()->num_parameters());
+    }
+>>>>>>> upstream/r1.12
     return Status::OK();
   }
 
@@ -1283,6 +1300,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << " in computation: " << previous->second->parent()->name();
     instructions_by_name_[instruction->name()] = instruction;
     return Status::OK();
+<<<<<<< HEAD
   }
 
   Status Postprocess(HloInstruction* instruction) override {
@@ -1306,13 +1324,18 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     }
 
     return Status::OK();
+=======
+>>>>>>> upstream/r1.12
   }
 
  private:
   absl::flat_hash_map<string, const HloInstruction*> instructions_by_name_;
+<<<<<<< HEAD
   // Determines whether an instruction can change layouts.
   std::function<bool(const HloInstruction*)>
       instruction_can_change_layout_func_;
+=======
+>>>>>>> upstream/r1.12
 };
 
 }  // namespace
@@ -1326,8 +1349,12 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
     std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
     TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
 
+<<<<<<< HEAD
     InstructionVerifier instruction_verifier(
         instruction_can_change_layout_func_);
+=======
+    InstructionVerifier instruction_verifier;
+>>>>>>> upstream/r1.12
     TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
   }
 
