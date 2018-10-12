@@ -52,6 +52,14 @@ class AssertOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("Assert").Device(DEVICE_CPU), AssertOp);
 
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("Assert")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("condition")
+                            .HostMemory("data"),
+                        AssertOp);
+#endif  // GOOGLE_CUDA
+
 class PrintOp : public OpKernel {
  public:
   explicit PrintOp(OpKernelConstruction* ctx)
