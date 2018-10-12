@@ -135,6 +135,20 @@ class _DatasetInitializerHook(training.SessionRunHook):
     session.run(self._initializer)
 
 
+class MultiHostDatasetInitializerHook(training.SessionRunHook):
+  """Creates a SessionRunHook that initializes all passed iterators."""
+
+  def __init__(self, dataset_initializers):
+    self._initializers = dataset_initializers
+
+  def after_create_session(self, session, coord):
+    del coord
+    start = time.time()
+    session.run(self._initializers)
+    logging.info('Initialized dataset iterators in %d seconds',
+                 time.time() - start)
+
+
 class StrategyInitFinalizeHook(training.SessionRunHook):
   """Creates a SessionRunHook that initializes and shutsdown devices."""
 

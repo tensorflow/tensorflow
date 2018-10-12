@@ -86,6 +86,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:util",
         "@six_archive//:six",
     ],
 )
