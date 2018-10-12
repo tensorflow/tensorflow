@@ -140,13 +140,12 @@ class KerasOptimizersTest(test.TestCase):
                                            clipvalue=0.5))
 
   def test_tfoptimizer(self):
-    optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+    tf_optimizer = AdamOptimizer(0.01)
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
     # This is possible
-    model.compile(loss='mean_squared_error', optimizer=optimizer)
-    keras.backend.track_tf_optimizer(optimizer)
+    model.compile(loss='mean_squared_error', optimizer=tf_optimizer)
     model.fit(np.random.random((5, 3)),
               np.random.random((5, 2)),
               epochs=1,
@@ -154,34 +153,20 @@ class KerasOptimizersTest(test.TestCase):
               verbose=0)
     # not supported
     with self.assertRaises(NotImplementedError):
-      _ = optimizer.weights
+      _ = model.optimizer.weights
     with self.assertRaises(NotImplementedError):
-      optimizer.get_config()
+      model.optimizer.get_config()
     with self.assertRaises(NotImplementedError):
-      optimizer.from_config(None)
-
-  def test_optimizer_garbage_collection(self):
-    graph = ops.Graph()
-    with graph.as_default():
-      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
-      keras.backend.track_tf_optimizer(optimizer)
-      optimizer_weak = weakref.ref(optimizer)
-    graph_weak = weakref.ref(graph)
-    del graph, optimizer
-    gc.collect()
-    # Check that the weak references are dead now.
-    self.assertIs(graph_weak(), None)
-    self.assertIs(optimizer_weak(), None)
+      model.optimizer.from_config(None)
 
   @test_util.run_in_graph_and_eager_modes
   def test_tfoptimizer_iterations(self):
     with self.cached_session():
-      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      tf_optimizer = AdamOptimizer(0.01)
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(
           2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
-      model.compile(loss='mean_squared_error', optimizer=optimizer)
-      keras.backend.track_tf_optimizer(optimizer)
+      model.compile(loss='mean_squared_error', optimizer=tf_optimizer)
       self.assertEqual(keras.backend.get_value(model.optimizer.iterations), 0)
 
       model.fit(np.random.random((55, 3)),
@@ -200,6 +185,27 @@ class KerasOptimizersTest(test.TestCase):
                   verbose=0)
         self.assertEqual(
             keras.backend.get_value(model.optimizer.iterations), 19)
+
+  def test_unsupport_TFOptimizer_directly(self):
+    optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(
+        2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
+    with self.assertRaisesRegexp(TypeError, 'Use native tensorflow optimizer'):
+      model.compile(loss='mean_squared_error', optimizer=optimizer)
+
+  def test_optimizer_garbage_collection(self):
+    graph = ops.Graph()
+    with graph.as_default():
+      optimizer = keras.optimizers.TFOptimizer(AdamOptimizer(0.01))
+      keras.backend.track_tf_optimizer(optimizer)
+      optimizer_weak = weakref.ref(optimizer)
+    graph_weak = weakref.ref(graph)
+    del graph, optimizer
+    gc.collect()
+    # Check that the weak references are dead now.
+    self.assertIs(graph_weak(), None)
+    self.assertIs(optimizer_weak(), None)
 
   def test_negative_clipvalue_or_clipnorm(self):
     with self.assertRaises(ValueError):
