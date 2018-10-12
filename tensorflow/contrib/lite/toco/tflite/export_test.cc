@@ -383,6 +383,21 @@ TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
   EXPECT_TRUE(key.is_unsupported_flex_op);
 }
 
+TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
+  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  op->tensorflow_op = "HashTableV2";
+
+  const auto ops_by_type = BuildOperatorByTypeMap();
+  const auto key = details::GetOperatorKey(*op, ops_by_type, true);
+
+  EXPECT_EQ(key.type, ::tflite::BuiltinOperator_CUSTOM);
+  EXPECT_EQ(key.custom_code, "FlexHashTableV2");
+  EXPECT_EQ(key.version, 1);
+  EXPECT_TRUE(key.is_flex_op);
+  // The control flow ops should be marked as unsupported.
+  EXPECT_TRUE(key.is_unsupported_flex_op);
+}
+
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   // Test Toco-supported/TFLite-unsupported operators.
   // TODO(ycling): The test will be broken if Range is implemented in TFLite.
