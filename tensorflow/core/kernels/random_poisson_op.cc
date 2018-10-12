@@ -103,7 +103,7 @@ struct PoissonFunctor<CPUDevice, T, U> {
     typedef random::UniformDistribution<random::PhiloxRandom, CT> Uniform;
 
     auto DoWork = [num_samples, num_rate, &rng, samples_flat, rate_flat](
-        int start_output, int limit_output) {
+                      int start_output, int limit_output) {
       // Capturing "rng" by value would only make a copy for the _shared_
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "rng" by reference and explicitly do a copy assignment.

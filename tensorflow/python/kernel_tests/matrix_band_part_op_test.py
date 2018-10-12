@@ -21,11 +21,13 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test as test_lib
 
 
@@ -54,9 +56,13 @@ def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
           band_np = np.tril(band_np, upper)
         if batch_shape_ is not ():
           band_np = np.tile(band_np, batch_shape_ + (1, 1))
-        with self.test_session(use_gpu=False):
-          band = array_ops.matrix_band_part(batch_mat, lower, upper)
-          self.assertAllEqual(band_np, band.eval())
+        for index_dtype in [dtypes_lib.int32, dtypes_lib.int64]:
+          with self.test_session(use_gpu=False):
+            band = array_ops.matrix_band_part(
+                batch_mat,
+                constant_op.constant(lower, index_dtype),
+                constant_op.constant(upper, index_dtype))
+            self.assertAllEqual(band_np, band.eval())
 
   return Test
 
@@ -104,7 +110,7 @@ class MatrixBandPartBenchmark(test_lib.Benchmark):
     for shape_ in self.shapes:
       for limits in (-1, -1), (-1, 0), (0, -1), (2, 2):
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/cpu:0"):
           matrix = variables.Variable(array_ops.ones(shape_))
           band = array_ops.matrix_band_part(matrix, limits[0], limits[1])
@@ -118,7 +124,7 @@ class MatrixBandPartBenchmark(test_lib.Benchmark):
 
         if test_lib.is_gpu_available(True):
           with ops.Graph().as_default(), \
-              session.Session() as sess, \
+              session.Session(config=benchmark.benchmark_config()) as sess, \
               ops.device("/gpu:0"):
             matrix = variables.Variable(array_ops.ones(shape_))
             band = array_ops.matrix_band_part(matrix, limits[0], limits[1])

@@ -18,14 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/platform/notification.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::Notification;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_NOTIFICATION_H_

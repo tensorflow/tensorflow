@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class FlattenCallGraphTest : public HloTestBase {
+class FlattenCallGraphTest : public HloVerifiedTestBase {
  protected:
   // Build and return a trivial computation taking and returning a scalar.
   std::unique_ptr<HloComputation> MakeScalarComputation() {
@@ -80,7 +80,7 @@ class FlattenCallGraphTest : public HloTestBase {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
     return builder.Build();
@@ -139,9 +139,9 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
     EXPECT_TRUE(result);
-    std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module.get());
+    std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module);
     const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
     EXPECT_EQ(1, c_node.caller_callsites().size());
   }
@@ -157,7 +157,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
         builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(PRED, {}), "param0"));
     HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     builder.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
                                      HloOpcode::kEq, param0, false_constant));
@@ -168,7 +168,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   {
     HloComputation::Builder builder(TestName() + ".entry");
     HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     builder.AddInstruction(HloInstruction::CreateWhile(
         ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
         false_constant));
@@ -176,15 +176,15 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   {
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
     EXPECT_EQ(2, cond_node.caller_callsites().size());
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
     EXPECT_TRUE(result);
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
     EXPECT_EQ(1, cond_node.caller_callsites().size());
   }
@@ -211,9 +211,9 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
   module->AddEntryComputation(
       MakeCallingComputation(b_computation, /*callsites=*/2, ".Entry"));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
   EXPECT_TRUE(result);
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   EXPECT_EQ(7, module->computation_count());
 
   const CallGraphNode& c_node = call_graph->GetNode(c_computation);
@@ -221,6 +221,36 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 
   const CallGraphNode& b_node = call_graph->GetNode(b_computation);
   EXPECT_EQ(1, b_node.caller_callsites().size());
+}
+
+TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
+  auto module = CreateNewModule();
+  HloComputation* sub_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation());
+
+  // Create entry computation, which is a conditional that has the same
+  // computation in the true and false branch.
+  HloComputation::Builder builder(TestName());
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
+  builder.AddInstruction(HloInstruction::CreateConditional(
+      kScalarShape, pred, constant1, sub_computation, constant2,
+      sub_computation));
+  module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(2, module->computation_count());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
+  EXPECT_TRUE(result);
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  // The true and false computations must now be different.
+  EXPECT_EQ(3, module->computation_count());
+
+  const CallGraphNode& sub_node = call_graph->GetNode(sub_computation);
+  EXPECT_EQ(1, sub_node.caller_callsites().size());
 }
 
 }  // namespace

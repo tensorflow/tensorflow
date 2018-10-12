@@ -45,6 +45,12 @@ func (op *Operation) NumOutputs() int {
 	return int(C.TF_OperationNumOutputs(op.c))
 }
 
+// Device returns a specification of the device on which this operation
+// will be executed, or the empty string if there is no such specification.
+func (op *Operation) Device() string {
+	return C.GoString(C.TF_OperationDevice(op.c))
+}
+
 // OutputListSize returns the size of the list of Outputs that is produced by a
 // named output of op.
 //
@@ -63,6 +69,11 @@ func (op *Operation) OutputListSize(output string) (int, error) {
 // Output returns the i-th output of op.
 func (op *Operation) Output(i int) Output {
 	return Output{op, i}
+}
+
+// NumInputs returns the number of inputs of op.
+func (op *Operation) NumInputs() int {
+	return int(C.TF_OperationNumInputs(op.c))
 }
 
 // Output represents one of the outputs of an operation in the graph. Has a
@@ -122,6 +133,67 @@ func (p Output) c() C.TF_Output {
 }
 
 func (p Output) canBeAnInput() {}
+
+// Consumers returns the inputs that consume this output.
+func (p Output) Consumers() []Consumer {
+	max := int(C.TF_OperationOutputNumConsumers(p.c()))
+	if max == 0 {
+		return nil
+	}
+	inputs := make([]C.TF_Input, max)
+	n := C.TF_OperationOutputConsumers(p.c(), (*C.TF_Input)(unsafe.Pointer(&inputs[0])), C.int(max))
+	inputs = inputs[:int(n)]
+
+	var consumers []Consumer
+	for _, consumer := range inputs {
+		consumers = append(consumers, Consumer{
+			Index: int(consumer.index),
+			Op: &Operation{
+				c: consumer.oper,
+				g: p.Op.g,
+			},
+		})
+	}
+
+	return consumers
+}
+
+// Consumer identifies a specific input of an operation that consumes the output
+// of another operation.
+type Consumer struct {
+	// Op is the Operation that is consuming the output of another operation.
+	Op *Operation
+
+	// Index is the index of the input within Op that the output of another
+	// operation is connected to.
+	Index int
+}
+
+func (p Consumer) c() C.TF_Input {
+	if p.Op == nil {
+		// Attempt to provide a more useful panic message than "nil
+		// pointer dereference".
+		panic("nil-Operation. Consumer objects should only be created by a call to Output.Consumers")
+	}
+	return C.TF_Input{oper: p.Op.c, index: C.int(p.Index)}
+}
+
+// DataType returns the type of the input.
+func (p Consumer) DataType() DataType {
+	return DataType(C.TF_OperationInputType(p.c()))
+}
+
+// Producer returns the Output that is connected to this Consumer.
+func (p Consumer) Producer() Output {
+	output := C.TF_OperationInput(p.c())
+	return Output{
+		Op: &Operation{
+			c: output.oper,
+			g: p.Op.g,
+		},
+		Index: int(output.index),
+	}
+}
 
 // Input is the interface for specifying inputs to an operation being added to
 // a Graph.

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
@@ -24,7 +24,7 @@ namespace hlo_query {
 
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsScalarF32(instruction->shape())) {
+      ShapeUtil::IsScalarWithElementType(instruction->shape(), F32)) {
     *out = instruction->literal().Get<float>({});
     return true;
   }
@@ -61,7 +61,7 @@ bool AllOperandsAreConstants(const HloInstruction& instruction) {
 }
 
 HloInstruction* GetMatchingOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction) {
   for (HloInstruction* op : instruction->operands()) {
     if (matcher(op)) {
@@ -72,7 +72,7 @@ HloInstruction* GetMatchingOperand(
 }
 
 bool MatchBinaryInstructionOperand(
-    std::function<bool(const HloInstruction*)> matcher,
+    const std::function<bool(const HloInstruction*)>& matcher,
     HloInstruction* instruction, HloInstruction** matching_operand,
     HloInstruction** other_operand) {
   CHECK_EQ(instruction->operand_count(), 2);

@@ -51,11 +51,11 @@ def get_non_parenthesis_words(items):
   """Get the non-parenthesis items from a SNLI parsed sentence.
 
   Args:
-    items: Data items from a parsed SNLI setence, with parentheses. E.g.,
+    items: Data items from a parsed SNLI sentence, with parentheses. E.g.,
       ["(", "Man", "(", "(", "(", "(", "(", "wearing", "pass", ")", ...
 
   Returns:
-    A list of non-parenthis word items, all converted to lower case. E.g.,
+    A list of non-parentheses word items, all converted to lower case. E.g.,
       ["man", "wearing", "pass", ...
   """
   return [x.lower() for x in items if x not in PARENTHESES and x]
@@ -201,7 +201,7 @@ def load_word_vectors(data_root, vocab):
 
 
 def calculate_bins(length2count, min_bin_size):
-  """Cacluate bin boundaries given a histogram of lengths and mininum bin size.
+  """Calculate bin boundaries given a histogram of lengths and minimum bin size.
 
   Args:
     length2count: A `dict` mapping length to sentence count.
@@ -225,6 +225,29 @@ def calculate_bins(length2count, min_bin_size):
   if bounds[-1] != lengths[-1]:
     bounds.append(lengths[-1])
   return bounds
+
+
+def encode_sentence(sentence, word2index):
+  """Encode a single sentence as word indices and shift-reduce code.
+
+  Args:
+    sentence: The sentence with added binary parse information, represented as
+      a string, with all the word items and parentheses separated by spaces.
+      E.g., '( ( The dog ) ( ( is ( playing toys ) ) . ) )'.
+    word2index: A `dict` mapping words to their word indices.
+
+  Returns:
+     1. Word indices as a numpy array, with shape `(sequence_len, 1)`.
+     2. Shift-reduce sequence as a numpy array, with shape
+       `(sequence_len * 2 - 3, 1)`.
+  """
+  items = [w for w in sentence.split(" ") if w]
+  words = get_non_parenthesis_words(items)
+  shift_reduce = get_shift_reduce(items)
+  word_indices = pad_and_reverse_word_ids(
+      [[word2index.get(word, UNK_CODE) for word in words]]).T
+  return (word_indices,
+          np.expand_dims(np.array(shift_reduce, dtype=np.int64), -1))
 
 
 class SnliData(object):
@@ -335,9 +358,9 @@ class SnliData(object):
         # The sorting above and the batching here makes sure that sentences of
         # similar max lengths are batched together, minimizing the inefficiency
         # due to uneven max lengths. The sentences are batched differently in
-        # each call to get_generator() due to the shuffling before sotring
+        # each call to get_generator() due to the shuffling before sorting
         # above. The pad_and_reverse_word_ids() and pad_transitions() functions
-        # take care of any remaning unevenness of the max sentence lengths.
+        # take care of any remaining unevenness of the max sentence lengths.
         end = min(begin + batch_size, len(labels))
         # Transpose, because the SPINN model requires time-major, instead of
         # batch-major.

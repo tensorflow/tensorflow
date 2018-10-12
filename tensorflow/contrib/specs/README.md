@@ -59,17 +59,6 @@ Reshaping:
  - `Squeeze` = tf.squeeze
  - `Expand` = tf.expand_dims
 
-Multidimensional LSTM:
-
-These are intended as alternatives to 2D convolutions.  For sequence models,
-there will be other modeling primitives.
-
- - `Lstm2` = Fun(lstm2d.separable_lstm)  # 2D-to-2D
- - `Lstm2to1` = Fun(lstm2d.reduce_to_sequence)  # 2D-to-1D
- - `Lstm2to0` = Fun(lstm2d.reduce_to_final)  # 2D-to-vector
- - `Clstm2(n, m)` is a `Cl(n, [3,3])` followed by `Lstm2(m)`
- - `Dws(n)` is a depthwise convolution `Cs(n, [1, 1])`
-
 Other:
 
  - `Id` = identity

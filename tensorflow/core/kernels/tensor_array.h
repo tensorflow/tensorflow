@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TENSOR_ARRAY_H_
-#define TENSORFLOW_KERNELS_TENSOR_ARRAY_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_
+#define TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_
 
 #include <limits.h>
 #include <vector>
@@ -81,7 +81,8 @@ Status TensorSetZero(OpKernelContext* ctx, Tensor* value) {
   Status TensorSetZero<Device, T>(OpKernelContext * ctx, Tensor * value);
 
 #define TENSOR_ARRAY_SET_ZERO_CPU(T) TENSOR_ARRAY_SET_ZERO(CPUDevice, T)
-TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU)
+TF_CALL_NUMBER_TYPES(TENSOR_ARRAY_SET_ZERO_CPU);
+TF_CALL_bool(TENSOR_ARRAY_SET_ZERO_CPU);
 #undef TENSOR_ARRAY_SET_ZERO_CPU
 
 #if GOOGLE_CUDA
@@ -325,13 +326,15 @@ class TensorArray : public ResourceBase {
   bool HasIdenticalElementShapes() const { return identical_element_shapes_; }
 
   // Copy the TensorShapes from another TensorArray into this one.
+  // If `shapes_to_prepend` is set, expands the rank of the copied shape by
+  // prepending the passed in shape prefix to the shape values in `rhs`.
   // The sizes of the two TensorArrays must match and this one
   // may not have any entries filled in.  This performs a "soft copy",
   // essentially filling the current TensorArray with virtual
   // zero-tensors, which will be replaced by future aggregate writes,
   // or instantiated by future reads.  Requires a non-const pointer
   // to the rhs to access its mutex.
-  Status CopyShapesFrom(TensorArray* rhs);
+  Status CopyShapesFrom(TensorArray* rhs, const TensorShape* shape_to_prepend);
 
   // Clear the TensorArray, including any Tensor references, and mark as closed.
   void ClearAndMarkClosed() {
@@ -627,4 +630,4 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TENSOR_ARRAY_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TENSOR_ARRAY_H_

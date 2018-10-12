@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import vector_exponential_linear_operator as vector_exponential_linop
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -89,7 +90,8 @@ class VectorExponentialDiag(
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 2-variate VectorExponential, supported on
   # {(x, y) in R^2 : x > 0, y > 0}.
@@ -116,6 +118,14 @@ class VectorExponentialDiag(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_diag=None,
@@ -175,8 +185,8 @@ class VectorExponentialDiag(
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
-    parameters = locals()
-    with ops.name_scope(name):
+    parameters = dict(locals())
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):
         # No need to validate_args while making diag_scale.  The returned

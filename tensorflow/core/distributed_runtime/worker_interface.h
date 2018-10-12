@@ -45,7 +45,7 @@ class WorkerInterface {
       CreateWorkerSessionResponse* response, StatusCallback done) = 0;
 
   virtual void DeleteWorkerSessionAsync(
-      const DeleteWorkerSessionRequest* request,
+      CallOptions* opts, const DeleteWorkerSessionRequest* request,
       DeleteWorkerSessionResponse* response, StatusCallback done) = 0;
 
   virtual void RegisterGraphAsync(const RegisterGraphRequest* request,
@@ -112,6 +112,23 @@ class WorkerInterface {
   virtual void TracingAsync(const TracingRequest* request,
                             TracingResponse* response, StatusCallback done) = 0;
 
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response, StatusCallback done) = 0;
+
+  virtual void CompleteGroupAsync(CallOptions* opts,
+                                  const CompleteGroupRequest* request,
+                                  CompleteGroupResponse* response,
+                                  StatusCallback done) = 0;
+
+  virtual void CompleteInstanceAsync(CallOptions* ops,
+                                     const CompleteInstanceRequest* request,
+                                     CompleteInstanceResponse* response,
+                                     StatusCallback done) = 0;
+
+  virtual void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                                    GetStepSequenceResponse* response,
+                                    StatusCallback done) = 0;
+
   Status GetStatus(const GetStatusRequest* request,
                    GetStatusResponse* response) {
     return CallAndWait(&ME::GetStatusAsync, request, response);
@@ -124,7 +141,8 @@ class WorkerInterface {
 
   Status DeleteWorkerSession(const DeleteWorkerSessionRequest* request,
                              DeleteWorkerSessionResponse* response) {
-    return CallAndWait(&ME::DeleteWorkerSessionAsync, request, response);
+    return CallAndWaitWithOptions(&ME::DeleteWorkerSessionAsync, request,
+                                  response);
   }
 
   Status RegisterGraph(const RegisterGraphRequest* request,
@@ -155,6 +173,11 @@ class WorkerInterface {
     return CallAndWait(&ME::TracingAsync, request, response);
   }
 
+  Status GetStepSequence(const GetStepSequenceRequest* request,
+                         GetStepSequenceResponse* response) {
+    return CallAndWait(&ME::GetStepSequenceAsync, request, response);
+  }
+
  protected:
   // Instances of WorkerInterface must be deleted by a call to
   // WorkerCacheInterface::ReleaseWorker().
@@ -177,6 +200,19 @@ class WorkerInterface {
     Status ret;
     Notification n;
     (this->*func)(req, resp, [&ret, &n](const Status& s) {
+      ret = s;
+      n.Notify();
+    });
+    n.WaitForNotification();
+    return ret;
+  }
+
+  template <typename Method, typename Req, typename Resp>
+  Status CallAndWaitWithOptions(Method func, const Req* req, Resp* resp) {
+    CallOptions call_opts;
+    Status ret;
+    Notification n;
+    (this->*func)(&call_opts, req, resp, [&ret, &n](const Status& s) {
       ret = s;
       n.Notify();
     });

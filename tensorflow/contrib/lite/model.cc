@@ -16,66 +16,119 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "tensorflow/contrib/lite/allocation.h"
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/c/builtin_op_data.h"
+#include "tensorflow/contrib/lite/core/api/error_reporter.h"
+#include "tensorflow/contrib/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/contrib/lite/model.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 #include "tensorflow/contrib/lite/version.h"
 
 namespace tflite {
 
 namespace {
-inline const tflite::Model* VerifyAndGetModel(const void* buf, size_t len) {
-  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  if (VerifyModelBuffer(verifier)) {
-    return ::tflite::GetModel(buf);
-  } else {
-    return nullptr;
-  }
+// Ensure that ErrorReporter is non-null.
+ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
+  return e ? e : DefaultErrorReporter();
 }
 }  // namespace
 
 const char* kEmptyTensorName = "";
 
+// Normally we'd use ABSL_HAVE_ATTRIBUTE_WEAK and ABSL_ATTRIBUTE_WEAK, but
+// we avoid the absl dependency for binary size reasons.
+#ifdef __has_attribute
+#define TFLITE_HAS_ATTRIBUTE(x) __has_attribute(x)
+#else
+#define TFLITE_HAS_ATTRIBUTE(x) 0
+#endif
+
+#if TFLITE_HAS_ATTRIBUTE(weak) || (defined(__GNUC__) && !defined(__clang__))
+// Using weak symbols for the flex delegate allows automatic injection of the
+// delegate simply by adding it as a dependency. See also the strong override in
+// lite/delegates/flex/delegate.cc.
+__attribute__((weak)) Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+#else
+Interpreter::TfLiteDelegatePtr (*AcquireFlexDelegate)() = nullptr;
+#endif
+
+#ifndef TFLITE_MCU
+// Loads a model from `filename`. If `mmap_file` is true then use mmap,
+// otherwise make a copy of the model in a buffer.
+std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
+                                                  bool mmap_file,
+                                                  ErrorReporter* error_reporter,
+                                                  bool use_nnapi) {
+  std::unique_ptr<Allocation> allocation;
+  if (mmap_file && MMAPAllocation::IsSupported()) {
+    if (use_nnapi && NNAPIDelegate::IsSupported())
+      allocation.reset(new NNAPIAllocation(filename, error_reporter));
+    else
+      allocation.reset(new MMAPAllocation(filename, error_reporter));
+  } else {
+    allocation.reset(new FileCopyAllocation(filename, error_reporter));
+  }
+  return allocation;
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
     const char* filename, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(filename, /*mmap_file=*/true, error_reporter,
-                                  /*use_nnapi=*/true));
+  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
+                                          error_reporter, /*use_nnapi=*/true);
+  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
+
+std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
+    const char* filename, TfLiteVerifier* verifier,
+    ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
+  std::unique_ptr<FlatBufferModel> model;
+  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
+                                          error_reporter, /*use_nnapi=*/true);
+  if (verifier &&
+      !verifier->Verify(static_cast<const char*>(allocation->base()),
+                        allocation->bytes(), error_reporter)) {
+    return model;
+  }
+  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  if (!model->initialized()) model.reset();
+  return model;
+}
+#endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
     const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(buffer, buffer_size, error_reporter));
+  Allocation* allocation =
+      new MemoryAllocation(buffer, buffer_size, error_reporter);
+  model.reset(new FlatBufferModel(allocation, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
 
-FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
-                                 ErrorReporter* error_reporter, bool use_nnapi)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
-  if (mmap_file) {
-    if (use_nnapi && NNAPIExists())
-      allocation_ = new NNAPIAllocation(filename, error_reporter);
-    else
-      allocation_ = new MMAPAllocation(filename, error_reporter);
-  } else {
-    allocation_ = new FileCopyAllocation(filename, error_reporter);
-  }
-  if (!allocation_->valid()) return;
-  if (!CheckModelIdentifier()) return;
+std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
+    const tflite::Model* model_spec, ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  std::unique_ptr<FlatBufferModel> model;
+  model.reset(new FlatBufferModel(model_spec, error_reporter));
+  if (!model->initialized()) model.reset();
+  return model;
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
@@ -89,14 +142,19 @@ bool FlatBufferModel::CheckModelIdentifier() const {
   return true;
 }
 
-FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
+FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
-  allocation_ = new MemoryAllocation(ptr, num_bytes, error_reporter);
-  if (!allocation_->valid()) return;
+    : error_reporter_(ValidateErrorReporter(error_reporter)) {
+  model_ = model;
+}
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+FlatBufferModel::FlatBufferModel(Allocation* allocation,
+                                 ErrorReporter* error_reporter)
+    : error_reporter_(ValidateErrorReporter(error_reporter)) {
+  allocation_ = allocation;
+  if (!allocation_->valid() || !CheckModelIdentifier()) return;
+
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 FlatBufferModel::~FlatBufferModel() { delete allocation_; }
@@ -105,7 +163,7 @@ InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
     : model_(model.GetModel()),
       op_resolver_(op_resolver),
-      error_reporter_(model.error_reporter()),
+      error_reporter_(ValidateErrorReporter(model.error_reporter())),
       allocation_(model.allocation()) {}
 
 InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
@@ -113,37 +171,19 @@ InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
                                        ErrorReporter* error_reporter)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {}
+      error_reporter_(ValidateErrorReporter(error_reporter)) {}
+
+InterpreterBuilder::~InterpreterBuilder() {}
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
-    TfLiteRegistration* registration = nullptr;
-
-    if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
-      auto x = opcode->builtin_code();
-      flatbuffer_op_index_to_registration_types_.push_back(x);
-      registration = op_resolver_.FindOp(x);
-      if (registration == nullptr) {
-        error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
-                                EnumNameBuiltinOperator(x));
-        status = kTfLiteError;
-      }
-    } else if (!opcode->custom_code()) {
-      error_reporter_->Report(
-          "Operator with builtin_code==0 has no custom_code.\n");
-      status = kTfLiteError;
-    } else {
-      const char* name = opcode->custom_code()->c_str();
-      registration = op_resolver_.FindOp(name);
-      flatbuffer_op_index_to_registration_types_.push_back(
-          BuiltinOperator_CUSTOM);
-      if (registration == nullptr) {
-        error_reporter_->Report("Didn't find custom op for name '%s'\n", name);
-        status = kTfLiteError;
-      }
+    const TfLiteRegistration* registration = nullptr;
+    status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
+                                       &registration);
+    if (status != kTfLiteOk) {
+      return status;
     }
     flatbuffer_op_index_to_registration_.push_back(registration);
   }
@@ -153,6 +193,11 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
 namespace {
 template <class T>
 std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
+  // Initialize shape of tensors with null shape. Empty vectors are converted
+  // to nullptr for models that are constructed via flatbuffers::Pack.
+  if (flat_array == nullptr) {
+    return {};
+  }
   std::vector<int> ret(flat_array->Length());
   for (int i = 0; i < flat_array->Length(); i++) {
     ret[i] = flat_array->Get(i);
@@ -160,305 +205,12 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   return ret;
 }
 
-// Allocate a structure using C malloc, but make sure the structure is a
-// POD structure that doesn't require constructors to run. The reason we do
-// this, is that Interpreter's C extension part will take ownership and wants
-// to use malloc() and free().
-template <class T>
-T* MallocPOD() {
-  static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
-  return static_cast<T*>(malloc(sizeof(T)));
-}
-
-// Parse the appropriate data out of the op.
-//
-// This handles builtin data explicitly as there are flatbuffer schemas.
-//
-// Returns memory that must be feed.
-void* ParseOpData(const Operator* op, BuiltinOperator op_type,
-                  ErrorReporter* error_reporter) {
-  auto parse_padding = [](Padding padding) {
-    switch (padding) {
-      case Padding_SAME:
-        return kTfLitePaddingSame;
-      case Padding_VALID:
-        return kTfLitePaddingValid;
-    }
-    return kTfLitePaddingUnknown;
-  };
-  auto parse_activation = [](ActivationFunctionType activation) {
-    switch (activation) {
-      case ActivationFunctionType_NONE:
-        return kTfLiteActNone;
-      case ActivationFunctionType_RELU:
-        return kTfLiteActRelu;
-      case ActivationFunctionType_RELU1:
-        return kTfLiteActRelu1;
-      case ActivationFunctionType_RELU6:
-        return kTfLiteActRelu6;
-      case ActivationFunctionType_TANH:
-        return kTfLiteActTanh;
-      case ActivationFunctionType_SIGN_BIT:
-        return kTfLiteActSignBit;
-    }
-    return kTfLiteActNone;
-  };
-  auto parseLSHProjectionType = [](LSHProjectionType type) {
-    switch (type) {
-      case LSHProjectionType_SPARSE:
-        return kTfLiteLshProjectionSparse;
-      case LSHProjectionType_DENSE:
-        return kTfLiteLshProjectionDense;
-      default:
-        return kTfLiteLshProjectionUnknown;
-    }
-  };
-  auto parseCombinerType = [](CombinerType type) {
-    switch (type) {
-      case CombinerType_MEAN:
-        return kTfLiteCombinerTypeMean;
-      case CombinerType_SQRTN:
-        return kTfLiteCombinerTypeSqrtn;
-      case CombinerType_SUM:
-      default:
-        return kTfLiteCombinerTypeSum;
-    }
-  };
-
-  void* builtin_data = nullptr;
-  switch (op_type) {
-    case BuiltinOperator_CALL:
-      // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
-      // ok for now, since there is no call implementation either.
-      break;
-    case BuiltinOperator_CUSTOM:
-      break;
-    case BuiltinOperator_CONV_2D: {
-      TfLiteConvParams* params = MallocPOD<TfLiteConvParams>();
-      if (auto* conv_params = op->builtin_options_as_Conv2DOptions()) {
-        params->padding = parse_padding(conv_params->padding());
-        params->stride_width = conv_params->stride_w();
-        params->stride_height = conv_params->stride_h();
-        params->activation =
-            parse_activation(conv_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_TANH:
-    case BuiltinOperator_LOGISTIC:
-    case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU1:
-    case BuiltinOperator_RELU6:
-    case BuiltinOperator_CONCAT_EMBEDDINGS:
-      break;
-    case BuiltinOperator_LSH_PROJECTION: {
-      TfLiteLSHProjectionParams* params =
-          MallocPOD<TfLiteLSHProjectionParams>();
-      if (auto* lshParams = op->builtin_options_as_LSHProjectionOptions()) {
-        params->type = parseLSHProjectionType(lshParams->type());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_AVERAGE_POOL_2D:
-    case BuiltinOperator_MAX_POOL_2D:
-    case BuiltinOperator_L2_POOL_2D: {
-      TfLitePoolParams* params = MallocPOD<TfLitePoolParams>();
-      if (auto* pool_params = op->builtin_options_as_Pool2DOptions()) {
-        params->padding = parse_padding(pool_params->padding());
-        params->stride_width = pool_params->stride_w();
-        params->stride_height = pool_params->stride_h();
-        params->filter_width = pool_params->filter_width();
-        params->filter_height = pool_params->filter_height();
-        params->activation =
-            parse_activation(pool_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_DEPTHWISE_CONV_2D: {
-      TfLiteDepthwiseConvParams* params =
-          MallocPOD<TfLiteDepthwiseConvParams>();
-      if (auto* conv_params = op->builtin_options_as_DepthwiseConv2DOptions()) {
-        params->padding = parse_padding(conv_params->padding());
-        params->stride_width = conv_params->stride_w();
-        params->stride_height = conv_params->stride_h();
-        params->depth_multiplier = conv_params->depth_multiplier();
-        params->activation =
-            parse_activation(conv_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_SVDF: {
-      TfLiteSVDFParams* params = MallocPOD<TfLiteSVDFParams>();
-      if (auto* svdf_params = op->builtin_options_as_SVDFOptions()) {
-        params->rank = svdf_params->rank();
-        params->activation =
-            parse_activation(svdf_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_RNN: {
-      TfLiteRNNParams* params = MallocPOD<TfLiteRNNParams>();
-      if (auto* rnn_params = op->builtin_options_as_RNNOptions()) {
-        params->activation =
-            parse_activation(rnn_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_EMBEDDING_LOOKUP:
-      // no-op.
-      break;
-    case BuiltinOperator_EMBEDDING_LOOKUP_SPARSE: {
-      TfLiteEmbeddingLookupSparseParams* params =
-          MallocPOD<TfLiteEmbeddingLookupSparseParams>();
-      if (auto* embedding_params =
-              op->builtin_options_as_EmbeddingLookupSparseOptions()) {
-        params->combiner = parseCombinerType(embedding_params->combiner());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_FULLY_CONNECTED: {
-      TfLiteFullyConnectedParams* params =
-          MallocPOD<TfLiteFullyConnectedParams>();
-      if (auto* fully_connected_params =
-              op->builtin_options_as_FullyConnectedOptions()) {
-        params->activation = parse_activation(
-            fully_connected_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_HASHTABLE_LOOKUP:
-      // no-op.
-      break;
-    case BuiltinOperator_SOFTMAX: {
-      TfLiteSoftmaxParams* params = MallocPOD<TfLiteSoftmaxParams>();
-      if (auto* softmax_params = op->builtin_options_as_SoftmaxOptions()) {
-        params->beta = softmax_params->beta();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_CONCATENATION: {
-      TfLiteConcatenationParams* params =
-          MallocPOD<TfLiteConcatenationParams>();
-      if (auto* concatenation_params =
-              op->builtin_options_as_ConcatenationOptions()) {
-        params->activation =
-            parse_activation(concatenation_params->fused_activation_function());
-        params->axis = concatenation_params->axis();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_MUL: {
-      auto* params = MallocPOD<TfLiteMulParams>();
-      if (auto* schema_params = op->builtin_options_as_MulOptions()) {
-        params->activation =
-            parse_activation(schema_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_ADD: {
-      auto* params = MallocPOD<TfLiteAddParams>();
-      if (auto* schema_params = op->builtin_options_as_AddOptions()) {
-        params->activation =
-            parse_activation(schema_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_L2_NORMALIZATION: {
-      auto* params = MallocPOD<TfLiteL2NormParams>();
-      if (auto* schema_params = op->builtin_options_as_L2NormOptions()) {
-        params->activation =
-            parse_activation(schema_params->fused_activation_function());
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
-      auto* params = MallocPOD<TfLiteLocalResponseNormParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_LocalResponseNormalizationOptions()) {
-        params->radius = schema_params->radius();
-        params->bias = schema_params->bias();
-        params->alpha = schema_params->alpha();
-        params->beta = schema_params->beta();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_LSTM: {
-      TfLiteLSTMParams* params = MallocPOD<TfLiteLSTMParams>();
-      if (auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
-        params->activation =
-            parse_activation(lstm_params->fused_activation_function());
-        params->cell_clip = lstm_params->cell_clip();
-        params->proj_clip = lstm_params->proj_clip();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_RESIZE_BILINEAR: {
-      auto* params = MallocPOD<TfLiteResizeBilinearParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_ResizeBilinearOptions()) {
-        params->new_height = schema_params->new_height();
-        params->new_width = schema_params->new_width();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_RESHAPE: {
-      auto* params = MallocPOD<TfLiteReshapeParams>();
-      if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
-        auto* new_shape = schema_params->new_shape();
-        if (!new_shape) {
-          error_reporter->Report("No new_shape provided for Reshape\n");
-        } else {
-          params->num_dimensions = new_shape->Length();
-          if (params->num_dimensions > sizeof(params->shape) / sizeof(int)) {
-            error_reporter->Report(
-                "Found too many dimensions in Reshape's new_shape\n");
-          } else {
-            for (int i = 0; i < params->num_dimensions; ++i) {
-              params->shape[i] = new_shape->Get(i);
-            }
-          }
-        }
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_SKIP_GRAM: {
-      TfLiteSkipGramParams* params = MallocPOD<TfLiteSkipGramParams>();
-      if (auto* skip_gram_params = op->builtin_options_as_SkipGramOptions()) {
-        params->ngram_size = skip_gram_params->ngram_size();
-        params->max_skip_size = skip_gram_params->max_skip_size();
-        params->include_all_ngrams = skip_gram_params->include_all_ngrams();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-    case BuiltinOperator_SPACE_TO_DEPTH: {
-      auto* params = MallocPOD<TfLiteSpaceToDepthParams>();
-      if (auto* schema_params = op->builtin_options_as_SpaceToDepthOptions()) {
-        params->block_size = schema_params->block_size();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
-      break;
-    }
-  }
-  return builtin_data;
-}
+// Used to determine how the op data parsing function creates its working space.
+class MallocDataAllocator : public BuiltinDataAllocator {
+ public:
+  void* Allocate(size_t size) override { return malloc(size); }
+  void Deallocate(void* data) override { free(data); }
+};
 
 }  // namespace
 
@@ -466,6 +218,10 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
     Interpreter* interpreter) {
   TfLiteStatus status = kTfLiteOk;
+
+  // Reduce the number of redundant allocations
+  interpreter->ReserveNodes(operators->Length());
+
   for (int i = 0; i < operators->Length(); ++i) {
     const auto* op = operators->Get(i);
     int index = op->opcode_index();
@@ -475,32 +231,39 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       status = kTfLiteError;
       continue;
     }
-    const TfLiteRegistration* reg =
-        flatbuffer_op_index_to_registration_[op->opcode_index()];
-    if (reg == nullptr) {
+
+    const TfLiteRegistration* registration =
+        flatbuffer_op_index_to_registration_[index];
+    if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);
       status = kTfLiteError;
       continue;
     }
 
-    auto op_type =
-        flatbuffer_op_index_to_registration_types_[op->opcode_index()];
+    BuiltinOperator op_type =
+        static_cast<BuiltinOperator>(registration->builtin_code);
+
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
       error_reporter_->Report(
           "Found builtin operator %s with custom options.\n",
           EnumNameBuiltinOperator(op_type));
     }
+
     if (op->custom_options()) {
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()),
           reinterpret_cast<const char*>(op->custom_options()->data()),
-          op->custom_options()->size(), nullptr, reg);
+          op->custom_options()->size(), nullptr, registration);
     } else {
+      void* builtin_data = nullptr;
+      MallocDataAllocator malloc_allocator;
+      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
+                                        &malloc_allocator, &builtin_data));
       interpreter->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()), nullptr, 0,
-          ParseOpData(op, op_type, error_reporter_), reg);
+          FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
+          registration);
     }
   }
 
@@ -534,35 +297,34 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       // but we really only support one value for the whole tensor.
       // TODO(aselle): This breaks as well if these are nullptr's.
       // TODO(aselle): This assumes non per-channel quantization.
-      if (q_params->scale()) quantization.scale = q_params->scale()->Get(0);
-      if (q_params->zero_point())
+
+      if (q_params->scale()) {
+        if (q_params->scale()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d scale values (only 1 is supported).",
+              q_params->scale()->size());
+          return kTfLiteError;
+        }
+        quantization.scale = q_params->scale()->Get(0);
+      }
+
+      if (q_params->zero_point()) {
+        if (q_params->zero_point()->size() != 1) {
+          error_reporter_->Report(
+              "QuantizationParam has %d zero_point values"
+              " (only 1 is supported).",
+              q_params->zero_point()->size());
+          return kTfLiteError;
+        }
         quantization.zero_point = q_params->zero_point()->Get(0);
+      }
     }
 
     TfLiteType type;
-    switch (tensor->type()) {
-      case TensorType_FLOAT32:
-        type = kTfLiteFloat32;
-        break;
-      case TensorType_INT32:
-        type = kTfLiteInt32;
-        break;
-      case TensorType_UINT8:
-        type = kTfLiteUInt8;
-        break;
-      case TensorType_INT64:
-        type = kTfLiteInt64;
-        break;
-      case TensorType_STRING:
-        type = kTfLiteString;
-        break;
-      default:
-        // tensorType = ArrayType::NONE;
-        error_reporter_->Report("Unimplemented data type %s (%d) in tensor\n",
-                                EnumNameTensorType(tensor->type()),
-                                tensor->type());
-        status = kTfLiteError;
-        continue;
+    if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
+        kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
     }
     auto get_readonly_data = [&](const char** buffer_data,
                                  size_t* buffer_size) {
@@ -591,7 +353,16 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const char* buffer_ptr;
     TF_LITE_ENSURE_STATUS(get_readonly_data(&buffer_ptr, &buffer_size));
 
+    bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
+      if (is_variable) {
+        error_reporter_->Report(
+            "Tensor %d is a variable tensor with buffer. "
+            "It's not supported now.\n",
+            i);
+        status = kTfLiteError;
+      }
+
       if (interpreter->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_) != kTfLiteOk) {
@@ -600,8 +371,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (interpreter->SetTensorParametersReadWrite(
-              i, type, get_name(tensor), dims, quantization) != kTfLiteOk) {
+      if (interpreter->SetTensorParametersReadWrite(i, type, get_name(tensor),
+                                                    dims, quantization,
+                                                    is_variable) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -612,8 +384,40 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
+  // TODO(b/117561550): Move flex delegate application to the OpResolver.
+  if (AcquireFlexDelegate == nullptr) {
+    return kTfLiteOk;
+  }
+
+  bool has_flex_op = false;
+  for (const auto* registration : flatbuffer_op_index_to_registration_) {
+    if ((registration->builtin_code == BuiltinOperator_CUSTOM) &&
+        IsFlexOp(registration->custom_name)) {
+      has_flex_op = true;
+      break;
+    }
+  }
+
+  if (!has_flex_op) {
+    return kTfLiteOk;
+  }
+
+  if (auto flex_delegate = AcquireFlexDelegate()) {
+    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate),
+                                                /*allow_dynamic_tensors=*/true);
+  }
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter) {
+  return operator()(interpreter, /*num_threads=*/-1);
+}
+
+TfLiteStatus InterpreterBuilder::operator()(
+    std::unique_ptr<Interpreter>* interpreter, int num_threads) {
   if (!interpreter) {
     error_reporter_->Report(
         "Null output pointer passed to InterpreterBuilder.");
@@ -668,7 +472,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   if ((**interpreter).AddTensors(tensors->Length()) != kTfLiteOk) {
     return cleanup_and_error();
   }
-
+  // Set num threads
+  (**interpreter).SetNumThreads(num_threads);
   // Parse inputs/outputs
   (**interpreter).SetInputs(FlatBufferIntArrayToVector(subgraph->inputs()));
   (**interpreter).SetOutputs(FlatBufferIntArrayToVector(subgraph->outputs()));
@@ -677,6 +482,18 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (ParseNodes(operators, interpreter->get()) != kTfLiteOk)
     return cleanup_and_error();
   if (ParseTensors(buffers, tensors, interpreter->get()) != kTfLiteOk)
+    return cleanup_and_error();
+
+  std::vector<int> variables;
+  for (int i = 0; i < (*interpreter)->tensors_size(); ++i) {
+    auto* tensor = (*interpreter)->tensor(i);
+    if (tensor->is_variable) {
+      variables.push_back(i);
+    }
+  }
+  (**interpreter).SetVariables(std::move(variables));
+
+  if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
     return cleanup_and_error();
 
   return kTfLiteOk;

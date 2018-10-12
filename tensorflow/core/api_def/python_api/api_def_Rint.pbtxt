@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Rint"
+  endpoint {
+    name: "math.rint"
+  }
+  endpoint {
+    name: "rint"
+    deprecated: true
+  }
+}

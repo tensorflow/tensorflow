@@ -43,13 +43,13 @@ def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
   outer_dimensions = signal_shape[:axis]
   inner_dimensions = signal_shape[axis:][1:]
   if signal_shape and frame_axis is not None:
-    if frame_step and frame_length is not None:
-      if pad_end:
-        # Double negative is so that we round up.
-        num_frames = -(-frame_axis // frame_step)
-      else:
-        num_frames = (frame_axis - frame_length + frame_step) // frame_step
-      num_frames = max(0, num_frames)
+    if frame_step is not None and pad_end:
+      # Double negative is so that we round up.
+      num_frames = max(0, -(-frame_axis // frame_step))
+    elif frame_step is not None and frame_length is not None:
+      assert not pad_end
+      num_frames = max(
+          0, (frame_axis - frame_length + frame_step) // frame_step)
   return outer_dimensions + [num_frames, frame_length] + inner_dimensions
 
 

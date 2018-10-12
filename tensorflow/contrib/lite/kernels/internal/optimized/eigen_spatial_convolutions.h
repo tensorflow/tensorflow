@@ -16,8 +16,8 @@ limitations under the License.
 // Copied from tensorflow/core/kernels/eigen_spatial_convolutions.h.
 // TODO(petewarden) - move this to a common location in Eigen itself.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_
 
 #define EIGEN_USE_CUSTOM_THREAD_POOL
 #define EIGEN_USE_THREADS
@@ -38,7 +38,6 @@ limitations under the License.
 #else
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #endif
-
 
 namespace Eigen {
 
@@ -215,17 +214,16 @@ EIGEN_DEVICE_FUNC
   }
   // TODO(yangke): choose() is defined in TensorContraction.h -- consider
   // moving it to somewhere more "common".
-  return
-      input
-          .extract_image_patches(kernelRows, kernelCols, row_stride, col_stride,
-                                 row_in_stride, col_in_stride, padding_type)
-          .reshape(pre_contract_dims)
-          .contract(kernel.reshape(kernel_dims), contract_dims)
-          .reshape(post_contract_dims);
+  return input
+      .extract_image_patches(kernelRows, kernelCols, row_stride, col_stride,
+                             row_in_stride, col_in_stride, padding_type)
+      .reshape(pre_contract_dims)
+      .contract(kernel.reshape(kernel_dims), contract_dims)
+      .reshape(post_contract_dims);
 }
 
 }  // end namespace Eigen
 
 // clang-format on
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_EIGEN_SPATIAL_CONVOLUTIONS_H_

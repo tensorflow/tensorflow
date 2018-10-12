@@ -234,5 +234,7 @@ class UnionClusterResolverTest(test.TestCase):
     self._verifyClusterSpecEquality(cluster_spec, expected_proto)
 
 
+# TODO(saeta): Include tests for master resolution
+
 if __name__ == "__main__":
   test.main()

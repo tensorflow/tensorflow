@@ -188,6 +188,9 @@ REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     DepthToSpaceOp<GPUDevice, float>);
 REGISTER_KERNEL_BUILDER(
+    Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    DepthToSpaceOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
     Name("DepthToSpace").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     DepthToSpaceOp<GPUDevice, qint8>);
 #endif  // GOOGLE_CUDA

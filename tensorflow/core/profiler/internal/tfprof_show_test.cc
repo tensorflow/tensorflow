@@ -23,14 +23,21 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
+
+string CheckAndRemoveDoc(const string& doc) {
+  auto pos = doc.find("Profile:");
+  CHECK(pos != doc.npos);
+  return doc.substr(pos + 9);
+}
+
 class TFProfShowTest : public ::testing::Test {
  protected:
   TFProfShowTest() {
@@ -112,7 +119,7 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
       "1.28KB/1.28KB, 1.28KB/1.28KB, 1.28KB/1.28KB, 11us/11us, 0us/0us, "
       "11us/11us)\n  ScalarW (1, 1/1 params, 0/0 flops, 0B/0B, 0B/0B, 0B/0B, "
       "0B/0B, 0us/0us, 0us/0us, 0us/0us)\n",
-      dump_str);
+      CheckAndRemoveDoc(dump_str));
 
   EXPECT_EQ(dump_str, TestToFromProto("scope", opts));
 }
@@ -159,7 +166,7 @@ TEST_F(TFProfShowTest, DumpAcceleratorAndCPUMicros) {
       "0us/0us)\n        ScalarW/Initializer/random_normal/stddev (0us/0us, "
       "0us/0us)\n    ScalarW/read (0us/0us, 0us/0us)\n  init (0us/0us, "
       "0us/0us)\n",
-      dump_str);
+      CheckAndRemoveDoc(dump_str));
 
   EXPECT_EQ(dump_str, TestToFromProto("scope", opts));
 }
@@ -203,7 +210,7 @@ TEST_F(TFProfShowTest, DumpOpMode) {
       "type:0:1\t(run*0|defined*1)\texec_time:0us\ninput_type:0:2x2x6x12\t(run*"
       "0|defined*1)\texec_time:0us\ninput_type:0:3x3x3x6\t(run*0|defined*1)"
       "\texec_time:0us\n\n",
-      StringReplace(dump_str, " ", ""));
+      StringReplace(CheckAndRemoveDoc(dump_str), " ", ""));
 
   EXPECT_EQ(dump_str, TestToFromProto("op", opts, true));
 }

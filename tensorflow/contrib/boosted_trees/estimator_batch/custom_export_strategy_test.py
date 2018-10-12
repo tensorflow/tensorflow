@@ -150,8 +150,8 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
         dtec, feature_columns, 1, 2, 1)
     # Features a and a_m are sparse float features, a_m is multidimensional.
     expected_tree = """
-    features { key: "feature_a" }
-    features { key: "feature_a_m" }
+    features { key: "feature_a_0" }
+    features { key: "feature_a_m_3" }
     features { key: "feature_b" }
     features { key: "feature_d" }
     model {

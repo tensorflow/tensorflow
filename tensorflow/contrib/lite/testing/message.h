@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_MESSAGE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_MESSAGE_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_MESSAGE_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_MESSAGE_H_
 
 #include <memory>
 #include <string>
@@ -79,4 +79,4 @@ class Message {
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_MESSAGE_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_MESSAGE_H_

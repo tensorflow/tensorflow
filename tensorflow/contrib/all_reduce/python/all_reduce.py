@@ -18,10 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import math
-import re
 
 from tensorflow.contrib import nccl
+from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -31,24 +32,23 @@ def _flatten_tensors(tensors):
   """Check tensors for isomorphism and flatten.
 
   Args:
-    tensors: list of T @{tf.Tensor} which must all have the same shape.
+    tensors: list of T `tf.Tensor` which must all have the same shape.
 
   Returns:
-    tensors: a list of T @{tf.Tensor} which are flattened (1D) views of tensors
+    tensors: a list of T `tf.Tensor` which are flattened (1D) views of tensors
     shape: the original shape of each element of input tensors
 
   Raises:
-    ValueError: tensors are empty or non-isomorphic.
+    ValueError: tensors are empty or non-isomorphic or have unknown shape.
   """
   if not tensors:
     raise ValueError("tensors cannot be empty")
   shape = tensors[0].shape
   for tensor in tensors:
     shape = shape.merge_with(tensor.shape)
-  if shape.ndims is None:
-    raise ValueError("At least one of the tensors in 'tensors' must have "
-                     "statically known rank.")
-  if len(shape) > 1:
+  if not shape.is_fully_defined():
+    raise ValueError("Tensors must have statically known shape.")
+  if len(shape) != 1:
     reshaped = []
     for t in tensors:
       with ops.colocate_with(t):
@@ -61,12 +61,12 @@ def _reshape_tensors(tensors, shape):
   """Reshape tensors flattened by _flatten_tensors.
 
   Args:
-    tensors: list of T @{tf.Tensor} of identical length 1D tensors.
+    tensors: list of T `tf.Tensor` of identical length 1D tensors.
     shape: list of integers describing the desired shape.  Product of
       the elements must equal the length of each tensor.
 
   Returns:
-    list of T @{tf.Tensor} which are the reshaped inputs.
+    list of T `tf.Tensor` which are the reshaped inputs.
   """
   reshaped = []
   for t in tensors:
@@ -79,12 +79,12 @@ def _padded_split(tensor, pieces):
   """Like split for 1D tensors but pads-out case where len % pieces != 0.
 
   Args:
-    tensor: T @{tf.Tensor} that must be 1D.
+    tensor: T `tf.Tensor` that must be 1D.
     pieces: a positive integer specifying the number of pieces into which
       tensor should be split.
 
   Returns:
-    list of T @{tf.Tensor} of length pieces, which hold the values of
+    list of T `tf.Tensor` of length pieces, which hold the values of
       thin input tensor, in order.  The final tensor may
       be zero-padded on the end to make its size equal to those of all
       of the other tensors.
@@ -132,11 +132,11 @@ def _strip_padding(tensors, pad_len):
   """Strip the suffix padding added by _padded_split.
 
   Args:
-    tensors: list of T @{tf.Tensor} of identical length 1D tensors.
+    tensors: list of T `tf.Tensor` of identical length 1D tensors.
     pad_len: number of elements to be stripped from the end of each tensor.
 
   Returns:
-    list of T @{tf.Tensor} which are the stripped inputs.
+    list of T `tf.Tensor` which are the stripped inputs.
 
   Raises:
     ValueError: tensors must be a non-empty list of 1D tensors, and
@@ -161,12 +161,12 @@ def _ragged_split(tensor, pieces):
   """Like split for 1D tensors but allows case where len % pieces != 0.
 
   Args:
-    tensor: T @{tf.Tensor} that must be 1D.
+    tensor: T `tf.Tensor` that must be 1D.
     pieces: a positive integer specifying the number of pieces into which
       tensor should be split.
 
   Returns:
-    list of T @{tf.Tensor} of length pieces, which hold the values of
+    list of T `tf.Tensor` of length pieces, which hold the values of
       the input tensor, in order.  The final tensor may be shorter
       than the others, which will all be of equal length.
 
@@ -256,7 +256,7 @@ def build_ring_all_reduce(input_tensors, num_workers, num_subchunks,
   """Construct a subgraph performing a ring-style all-reduce of input_tensors.
 
   Args:
-    input_tensors: a list of T @{tf.Tensor} objects, which must all
+    input_tensors: a list of T `tf.Tensor` objects, which must all
       have the same shape and type.
     num_workers: number of worker tasks spanned by input_tensors.
     num_subchunks: number of subchunks each device should process in one tick.
@@ -272,7 +272,7 @@ def build_ring_all_reduce(input_tensors, num_workers, num_subchunks,
     size.
 
   Returns:
-    a list of T @{tf.Tensor} identical sum-reductions of input_tensors.
+    a list of T `tf.Tensor` identical sum-reductions of input_tensors.
   """
   if len(input_tensors) < 2:
     raise ValueError("input_tensors must be length 2 or longer")
@@ -289,7 +289,7 @@ def build_ring_all_reduce(input_tensors, num_workers, num_subchunks,
                                        chunks_by_dev)
   if pad_len > 0:
     output_tensors = _strip_padding(output_tensors, pad_len)
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
@@ -299,7 +299,7 @@ def _build_ring_gather(input_tensors, devices, num_subchunks,
   """Construct a subgraph for the first (reduction) pass of ring all-reduce.
 
   Args:
-    input_tensors: a list of T @{tf.Tensor} 1D input tensors of same
+    input_tensors: a list of T `tf.Tensor` 1D input tensors of same
       shape and type.
     devices: array of device name strings
     num_subchunks: number of subchunks each device should process in one tick.
@@ -311,7 +311,7 @@ def _build_ring_gather(input_tensors, devices, num_subchunks,
     ValueError: tensors must all be one dimensional.
 
   Returns:
-    list of list of T @{tf.Tensor} of (partially) reduced values where
+    list of list of T `tf.Tensor` of (partially) reduced values where
     exactly num_subchunks chunks at each device are fully reduced.
   """
   num_devices = len(input_tensors)
@@ -360,11 +360,11 @@ def _apply_unary_to_chunks(f, chunks_by_dev):
   """Apply a unary op to each tensor in chunks_by_dev, on same device.
 
   Args:
-    f: a unary function over T @{tf.Tensor}.
-    chunks_by_dev: list of lists of T @{tf.Tensor}.
+    f: a unary function over T `tf.Tensor`.
+    chunks_by_dev: list of lists of T `tf.Tensor`.
 
   Returns:
-    new list of lists of T @{tf.Tensor} with the same structure as
+    new list of lists of T `tf.Tensor` with the same structure as
     chunks_by_dev containing the derived tensors.
   """
   output = []
@@ -381,14 +381,14 @@ def _build_ring_scatter(pred_by_s_d, rank_by_s_d,
   Args:
     pred_by_s_d: as produced by _ring_permutations
     rank_by_s_d: as produced by _ring_permutations
-    chunks_by_dev: list of list of T @{tf.Tensor} indexed by ints
+    chunks_by_dev: list of list of T `tf.Tensor` indexed by ints
       (device, chunk)
 
   Raises:
     ValueError: chunks_by_dev is not well-formed
 
   Returns:
-    list of T @{tf.Tensor} which are the fully reduced tensors, one
+    list of T `tf.Tensor` which are the fully reduced tensors, one
     at each device corresponding to the outer dimension of chunks_by_dev.
   """
   num_devices = len(chunks_by_dev)
@@ -448,12 +448,12 @@ def build_recursive_hd_all_reduce(input_tensors, red_op, un_op=None):
     the future with edge-case specific logic.
 
   Args:
-    input_tensors: list of T @{tf.Tensor} to be elementwise reduced.
+    input_tensors: list of T `tf.Tensor` to be elementwise reduced.
     red_op: a binary elementwise reduction Op.
     un_op: an optional unary elementwise Op to apply to reduced values.
 
   Returns:
-    list of T @{tf.Tensor} which are the fully reduced tensors, one
+    list of T `tf.Tensor` which are the fully reduced tensors, one
     at each device of input_tensors.
 
   Raises:
@@ -466,7 +466,7 @@ def build_recursive_hd_all_reduce(input_tensors, red_op, un_op=None):
   if un_op:
     reduced_shards = [un_op(t) for t in reduced_shards]
   output_tensors = _build_recursive_hd_scatter(reduced_shards, devices)
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
@@ -475,13 +475,13 @@ def _build_recursive_hd_gather(input_tensors, devices, red_op):
   """Construct the gather phase of recursive halving-doubling all-reduce.
 
   Args:
-    input_tensors: list of T @{tf.Tensor} to be elementwise reduced.
+    input_tensors: list of T `tf.Tensor` to be elementwise reduced.
     devices: a list of strings naming the devices hosting input_tensors,
       which will also be used to host the (partial) reduction values.
     red_op: a binary elementwise reduction Op.
 
   Returns:
-    list of T @{tf.Tensor} which are the fully reduced tensor shards.
+    list of T `tf.Tensor` which are the fully reduced tensor shards.
 
   Raises:
     ValueError: num_devices not a power of 2, or tensor len not divisible
@@ -516,12 +516,12 @@ def _build_recursive_hd_scatter(input_tensors, devices):
   """Construct the scatter phase of recursive halving-doublng all-reduce.
 
   Args:
-    input_tensors: list of T @{tf.Tensor} that are fully-reduced shards.
+    input_tensors: list of T `tf.Tensor` that are fully-reduced shards.
     devices: a list of strings naming the devices on which the reconstituted
       full tensors should be placed.
 
   Returns:
-    list of T @{tf.Tensor} which are the fully reduced tensors.
+    list of T `tf.Tensor` which are the fully reduced tensors.
   """
   num_devices = len(devices)
   num_hops = int(math.log(num_devices, 2))
@@ -571,14 +571,14 @@ def build_shuffle_all_reduce(input_tensors, gather_devices, red_op, un_op=None):
     un_op: optional elementwise unary Op to be applied to fully-reduced values.
 
   Returns:
-    list of T @{tf.Tensor} which are the fully reduced tensors.
+    list of T `tf.Tensor` which are the fully reduced tensors.
   """
   input_tensors, shape = _flatten_tensors(input_tensors)
   dst_devices = [t.device for t in input_tensors]
   reduced_shards = _build_shuffle_gather(input_tensors, gather_devices,
                                          red_op, un_op)
   output_tensors = _build_shuffle_scatter(reduced_shards, dst_devices)
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
@@ -594,7 +594,7 @@ def _build_shuffle_gather(input_tensors, gather_devices, red_op, un_op=None):
     un_op: optional elementwise unary Op to be applied to fully-reduced values.
 
   Returns:
-    list of T @{tf.Tensor} which are the fully reduced shards.
+    list of T `tf.Tensor` which are the fully reduced shards.
 
   Raises:
     ValueError: inputs not well-formed.
@@ -629,7 +629,7 @@ def _build_shuffle_scatter(reduced_shards, dst_devices):
       should be reconstituted.
 
   Returns:
-    list of T @{tf.Tensor} scattered tensors.
+    list of T `tf.Tensor` scattered tensors.
   """
   num_devices = len(dst_devices)
   out_tensors = []
@@ -644,7 +644,7 @@ def _split_by_task(devices, values):
 
   Args:
     devices: list of device name strings
-    values: list of T @{tf.tensor} of same length as devices.
+    values: list of T `tf.tensor` of same length as devices.
 
   Returns:
     (per_task_devices, per_task_values) where both values are
@@ -660,35 +660,34 @@ def _split_by_task(devices, values):
   num_devices = len(devices)
   if num_devices != len(values):
     raise ValueError("len(devices) must equal len(values)")
-  pattern = re.compile(r"/task:(\d+)/")
-  per_task_devices = []
-  per_task_values = []
+  per_task_devices = collections.OrderedDict()
+  per_task_values = collections.OrderedDict()
   for d in range(num_devices):
-    m = pattern.search(devices[d])
-    if m:
-      index = int(m.group(1))
-      while index >= len(per_task_devices):
-        per_task_devices.append([])
-        per_task_values.append([])
-      per_task_devices[index].append(devices[d])
-      per_task_values[index].append(values[d])
-    else:
+    d_spec = device_lib.DeviceSpec.from_string(devices[d])
+    if not hasattr(d_spec, "task") or d_spec.task is None:
       assert False, "failed to parse device %s" % devices[d]
-  return (per_task_devices, per_task_values)
+    index = (d_spec.job or "localhost", d_spec.replica or 0, d_spec.task)
+    if index not in per_task_devices:
+      per_task_devices[index] = []
+      per_task_values[index] = []
+    per_task_devices[index].append(devices[d])
+    per_task_values[index].append(values[d])
+
+  return (list(per_task_devices.values()), list(per_task_values.values()))
 
 
 def build_nccl_all_reduce(input_tensors, red_op, un_op=None):
   """Build a subgraph that does one full all-reduce, using NCCL.
 
   Args:
-    input_tensors: list of T @{tf.Tensor} of same-shape and type values to
+    input_tensors: list of T `tf.Tensor` of same-shape and type values to
       be reduced.
     red_op: binary elementwise reduction operator.  Must be one of
       {tf.add}
     un_op: optional unary elementwise Op to apply to fully-reduce values.
 
   Returns:
-    list of T @{tf.Tensor} of reduced values.
+    list of T `tf.Tensor` of reduced values.
 
   Raises:
     ValueError: red_op not supported.
@@ -710,14 +709,14 @@ def _build_nccl_hybrid(input_tensors, red_op, upper_level_f):
   """Construct a subgraph for NCCL hybrid all-reduce.
 
   Args:
-    input_tensors: list of T @{tf.Tensor} of same-shape and type values to
+    input_tensors: list of T `tf.Tensor` of same-shape and type values to
       be reduced.
     red_op: binary elementwise reduction operator.
     upper_level_f: function for reducing one value per worker, across
       workers.
 
   Returns:
-    list of T @{tf.Tensor} of reduced values.
+    list of T `tf.Tensor` of reduced values.
 
   Raises:
     ValueError: inputs not well-formed.
@@ -744,21 +743,21 @@ def _build_nccl_hybrid(input_tensors, red_op, upper_level_f):
   level_2_output = upper_level_f(up_values)
   # Third stage: propagate within each worker using NCCL Broadcast
   for w in range(0, num_workers):
-    dst_devices = per_worker_devices[w][1:]
-    send_op, dst_tensors = nccl.broadcast(level_2_output[w], dst_devices)
-    # NOTE: need control dependency to ensure send_op executes
-    with ops.control_dependencies([send_op]):
-      with ops.device(per_worker_devices[w][0]):
-        dst_tensors.insert(0, array_ops.identity(level_2_output[w]))
-        down_values[w] = dst_tensors
+    dst_tensors = []
+    with ops.device(per_worker_devices[w][0]):
+      broadcast_src = nccl.broadcast(array_ops.identity(level_2_output[w]))
+    for d in per_worker_devices[w]:
+      with ops.device(d):
+        dst_tensors.append(array_ops.identity(broadcast_src))
+    down_values[w] = dst_tensors
   output_tensors = [v for sublist in down_values for v in sublist]
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 
 
 def _reduce_non_singleton(input_tensors, red_f, un_op):
-  """If input_tenors has more than one element apply red_f, else apply un_op."""
+  """If input_tensors has more than one element apply red_f, else apply un_op."""
   if len(input_tensors) > 1:
     return red_f(input_tensors)
   else:
@@ -798,7 +797,7 @@ def _build_shuffle_hybrid(input_tensors, gather_devices, red_op, upper_level_f):
   """Construct a subgraph for Shuffle hybrid all-reduce.
 
   Args:
-    input_tensors: list of T @{tf.Tensor} of same-shape and type values to
+    input_tensors: list of T `tf.Tensor` of same-shape and type values to
       be reduced.
     gather_devices: list of device names on which to host gather shards.
     red_op: binary elementwise reduction operator.
@@ -806,7 +805,7 @@ def _build_shuffle_hybrid(input_tensors, gather_devices, red_op, upper_level_f):
       workers.
 
   Returns:
-    list of T @{tf.Tensor} of reduced values.
+    list of T `tf.Tensor` of reduced values.
 
   Raises:
     ValueError: inputs not well-formed.
@@ -831,7 +830,7 @@ def _build_shuffle_hybrid(input_tensors, gather_devices, red_op, upper_level_f):
   for w in range(0, num_workers):
     output_tensors += _build_shuffle_scatter(
         [level_2_output[w]], per_worker_devices[w])
-  if len(shape) > 1:
+  if len(shape) != 1:
     output_tensors = _reshape_tensors(output_tensors, shape)
   return output_tensors
 

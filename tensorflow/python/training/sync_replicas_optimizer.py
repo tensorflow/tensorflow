@@ -31,6 +31,7 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import session_manager
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Please note that the gradients from replicas are averaged instead of summed
@@ -38,6 +39,7 @@ from tensorflow.python.training import session_run_hook
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
+@tf_export("train.SyncReplicasOptimizer")
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
@@ -51,7 +53,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   which replicas can fetch the new variables and continue.
 
   The following accumulators/queue are created:
-  <empty line>
+
   * N `gradient accumulators`, one per variable to train. Gradients are pushed
     to them and the chief worker will wait until enough gradients are collected
     and then average them before applying to variables. The accumulator will
@@ -66,7 +68,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   The optimizer adds nodes to the graph to collect gradients and pause the
   trainers until variables are updated.
   For the Parameter Server job:
-  <empty line>
+
   1. An accumulator is created for each variable, and each replica pushes the
      gradients into the accumulators instead of directly applying them to the
      variables.
@@ -76,10 +78,14 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   4. Only after all variables have been updated, increment the global step.
   5. Only after step 4, pushes `global_step` in the `token_queue`, once for
      each worker replica. The workers can now fetch the global step, use it to
-     update its local_step variable and start the next batch.
+     update its local_step variable and start the next batch. Please note that
+     some workers can consume multiple minibatches, while some may not consume
+     even one. This is because each worker fetches minibatches as long as
+     a token exists. If one worker is stuck for some reason and does not
+     consume a token, another worker can use it.
 
   For the replicas:
-  <empty line>
+
   1. Start a step: fetch variables and compute gradients.
   2. Once the gradients have been computed, push them into gradient
      accumulators. Each accumulator will check the staleness and drop the stale.

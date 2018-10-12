@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -31,7 +32,7 @@ namespace cpu {
 
 using ::testing::ElementsAre;
 
-class ConvCanonicalizationTest : public HloTestBase {
+class ConvCanonicalizationTest : public HloVerifiedTestBase {
  public:
   ConvCanonicalizationTest() {
     for (int i = 0; i < 2; ++i) {
@@ -59,11 +60,11 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in CNHW order.
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kInputFeatureCount, kBatchSize, kInputSize, kInputSize))));
   // The kernel dimensions are in OIHW order.
   auto kernel = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kOutputFeatureCount, kInputFeatureCount, kWindowSize, kWindowSize))));
 
   ConvolutionDimensionNumbers dnums;
@@ -83,14 +84,19 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, conv_window_, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
-  ConvCanonicalization conv_canonicalization;
-  EXPECT_TRUE(conv_canonicalization.Run(module.get()).ValueOrDie());
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
+      [](int64 shape_size) {
+        return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+      });
+  ConvCanonicalization conv_canonicalization(&target_machine_features);
+  EXPECT_TRUE(conv_canonicalization.Run(module).ValueOrDie());
 
   const HloInstruction* output_reshape = entry_computation->root_instruction();
   EXPECT_EQ(HloOpcode::kTranspose, output_reshape->opcode());
@@ -117,11 +123,11 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   auto builder = HloComputation::Builder(TestName());
   // The input dimensions are in NHWC order.
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kBatchSize, kInputSize, kInputSize, kInputFeatureCount))));
   // The kernel dimensions are in HWIO order.
   auto kernel = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(
           kWindowSize, kWindowSize, kInputFeatureCount, kOutputFeatureCount))));
 
   ConvolutionDimensionNumbers dnums;
@@ -141,13 +147,18 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, conv_window_, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  ConvCanonicalization conv_canonicalization;
-  EXPECT_FALSE(conv_canonicalization.Run(module.get()).ValueOrDie());
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
+      [](int64 shape_size) {
+        return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+      });
+  ConvCanonicalization conv_canonicalization(&target_machine_features);
+  EXPECT_FALSE(conv_canonicalization.Run(module).ValueOrDie());
 }
 
 }  // namespace cpu

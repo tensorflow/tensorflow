@@ -12,15 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// LINT.IfChange
 
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -69,6 +74,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   //   P(l=abc? @ t=3) = P(a @ 0)*P(b @ 1)*P(c @ 2)*P(? @ 3)
   // but we calculate it recursively for speed purposes.
   typedef ctc_beam_search::BeamEntry<CTCBeamState> BeamEntry;
+  typedef ctc_beam_search::BeamRoot<CTCBeamState> BeamRoot;
   typedef ctc_beam_search::BeamProbability BeamProbability;
 
  public:
@@ -142,7 +148,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   float label_selection_margin_ = -1;  // -1 means unlimited.
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> leaves_;
-  std::unique_ptr<BeamEntry> beam_root_;
+  std::unique_ptr<BeamRoot> beam_root_;
   BaseBeamScorer<CTCBeamState>* beam_scorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoder);
@@ -254,6 +260,16 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
   } else {
     max_coeff = raw_input.maxCoeff();
   }
+
+  // Get normalization term of softmax: log(sum(exp(logit[j]-max_coeff))).
+  float logsumexp = 0.0;
+  for (int j = 0; j < raw_input.size(); ++j) {
+    logsumexp += Eigen::numext::exp(raw_input(j) - max_coeff);
+  }
+  logsumexp = Eigen::numext::log(logsumexp);
+  // Final normalization offset to get correct log probabilities.
+  float norm_offset = max_coeff + logsumexp;
+
   const float label_selection_input_min =
       (label_selection_margin_ >= 0) ? (max_coeff - label_selection_margin_)
                                      : -std::numeric_limits<float>::infinity();
@@ -285,10 +301,10 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
                       beam_scorer_->GetStateExpansionScore(b->state, previous));
       }
       // Plabel(l=abc @ t=6) *= P(c @ 6)
-      b->newp.label += raw_input(b->label) - max_coeff;
+      b->newp.label += raw_input(b->label) - norm_offset;
     }
     // Pblank(l=abc @ t=6) = P(l=abc @ t=5) * P(- @ 6)
-    b->newp.blank = b->oldp.total + raw_input(blank_index_) - max_coeff;
+    b->newp.blank = b->oldp.total + raw_input(blank_index_) - norm_offset;
     // P(l=abc @ t=6) = Plabel(l=abc @ t=6) + Pblank(l=abc @ t=6)
     b->newp.total = LogSumExp(b->newp.blank, b->newp.label);
 
@@ -323,6 +339,8 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
       const float logit = top_k ? top_k_logits[ind] : raw_input(ind);
       // Perform label selection: if input for this label looks very
       // unpromising, never evaluate it with a scorer.
+      // We may compare logits instead of log probabilities, 
+      // since the difference is the same in both cases.
       if (logit < label_selection_input_min) {
         continue;
       }
@@ -336,7 +354,7 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
         //   Plabel(l=abcd @ t=6) = P(l=abc @ t=5) * P(d @ 6)
         beam_scorer_->ExpandState(b->state, b->label, &c.state, c.label);
         float previous = (c.label == b->label) ? b->oldp.blank : b->oldp.total;
-        c.newp.label = logit - max_coeff +
+        c.newp.label = logit - norm_offset +
                        beam_scorer_->GetStateExpansionScore(c.state, previous);
         // P(l=abcd @ t=6) = Plabel(l=abcd @ t=6)
         c.newp.total = c.newp.label;
@@ -367,15 +385,15 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Reset() {
 
   // This beam root, and all of its children, will be in memory until
   // the next reset.
-  beam_root_.reset(new BeamEntry(nullptr, -1));
-  beam_root_->newp.total = 0.0;  // ln(1)
-  beam_root_->newp.blank = 0.0;  // ln(1)
+  beam_root_.reset(new BeamRoot(nullptr, -1));
+  beam_root_->RootEntry()->newp.total = 0.0;  // ln(1)
+  beam_root_->RootEntry()->newp.blank = 0.0;  // ln(1)
 
   // Add the root as the initial leaf.
-  leaves_.push(beam_root_.get());
+  leaves_.push(beam_root_->RootEntry());
 
   // Call initialize state on the root object.
-  beam_scorer_->InitializeState(&beam_root_->state);
+  beam_scorer_->InitializeState(&beam_root_->RootEntry()->state);
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>
@@ -413,3 +431,4 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_search.h)

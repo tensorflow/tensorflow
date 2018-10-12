@@ -30,7 +30,7 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
       dt(SafeGetOutput(node, i, &error)) {}
 
 NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
-    : node(nullptr), error(false), name(n.ToString()), index(i), dt(t) {}
+    : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
 NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
@@ -88,7 +88,7 @@ NodeBuilder& NodeBuilder::ControlInput(Node* src_node) {
 NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
   control_inputs_.insert(control_inputs_.end(), src_nodes.begin(),
                          src_nodes.end());
-  for (Node* src_node : src_nodes) {
+  for (const Node* src_node : src_nodes) {
     def_builder_.ControlInput(src_node->name());
   }
   return *this;
@@ -96,6 +96,11 @@ NodeBuilder& NodeBuilder::ControlInputs(gtl::ArraySlice<Node*> src_nodes) {
 
 NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
   def_builder_.Device(device_spec);
+  return *this;
+}
+
+NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
+  assigned_device_ = string(device);
   return *this;
 }
 
@@ -115,6 +120,8 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   Node* node = graph->AddNode(node_def, &status);
   if (!status.ok()) return status;
 
+  node->set_assigned_device_name(assigned_device_);
+
   for (size_t i = 0; i < inputs_.size(); ++i) {
     if (inputs_[i].node != nullptr) {  // Skip back edges.
       graph->AddEdge(inputs_[i].node, inputs_[i].index, node, i);
@@ -127,20 +134,20 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   return Status::OK();
 }
 
-void NodeBuilder::AddIndexError(Node* node, int i) {
+void NodeBuilder::AddIndexError(const Node* node, int i) {
   if (node == nullptr) {
     errors_.emplace_back(
         strings::StrCat("Attempt to add nullptr Node to node with type ",
                         def_builder_.op_def().name()));
   } else {
-    errors_.emplace_back(
-        strings::StrCat("Attempt to add output ", i, " of ", node->name(),
-                        " not in range [0, ", node->num_outputs(),
-                        ") to node with type ", def_builder_.op_def().name()));
+    errors_.emplace_back(strings::StrCat(
+        "Attempt to add output ", i, " of ", node->name(), " not in range [0, ",
+        node->num_outputs(), ") to node with type ",
+        def_builder_.op_def().name(), ". Node: ", node->DebugString()));
   }
 }
 
-bool NodeBuilder::GetOutputType(Node* node, int i, DataType* dt) {
+bool NodeBuilder::GetOutputType(const Node* node, int i, DataType* dt) {
   bool error;
   *dt = SafeGetOutput(node, i, &error);
   if (error) AddIndexError(node, i);

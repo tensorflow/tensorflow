@@ -49,13 +49,13 @@ def build_graph(device, n, m, k, transpose_a, transpose_b, dtype):
   """
   with ops.device('%s' % device):
     if not transpose_a:
-      x = variables.Variable(random_ops.random_uniform([n, m], dtype=dtype))
+      x = variables.VariableV1(random_ops.random_uniform([n, m], dtype=dtype))
     else:
-      x = variables.Variable(random_ops.random_uniform([m, n], dtype=dtype))
+      x = variables.VariableV1(random_ops.random_uniform([m, n], dtype=dtype))
     if not transpose_b:
-      y = variables.Variable(random_ops.random_uniform([m, k], dtype=dtype))
+      y = variables.VariableV1(random_ops.random_uniform([m, k], dtype=dtype))
     else:
-      y = variables.Variable(random_ops.random_uniform([k, m], dtype=dtype))
+      y = variables.VariableV1(random_ops.random_uniform([k, m], dtype=dtype))
 
     z = math_ops.matmul(x, y, transpose_a=transpose_a, transpose_b=transpose_b)
     return control_flow_ops.group(z)
@@ -95,8 +95,8 @@ class MatmulBenchmark(test.Benchmark):
         num_items = n * m * k * 2
         throughput = num_items * num_iters / duration / 1e9
         print('%s %s input_info:%s %d %.4fsec, %.4fGitems/s.' %
-              (device, str(dtype), str(n) + 'x' + str(m) + 'x' + str(k) + ',ta:'
-               + str(transpose_a) + '.tb:' + str(transpose_b), num_iters,
+              (device, str(dtype), str(n) + 'x' + str(m) + 'x' + str(k) +
+               ',ta:' + str(transpose_a) + '.tb:' + str(transpose_b), num_iters,
                duration, throughput))
 
     name_template = ('matmul_{device}_{dtype}_input_info_{inputinfo}')
@@ -112,7 +112,8 @@ class MatmulBenchmark(test.Benchmark):
     return duration
 
   def run_test_gpu(self, n, m, k, transpose_a, transpose_b, dtype, num_iters):
-    self.run_graph(test.gpu_device_name(), n, m, k, transpose_a, transpose_b, num_iters, dtype)
+    self.run_graph(test.gpu_device_name(), n, m, k, transpose_a, transpose_b,
+                   num_iters, dtype)
 
   def test_round(self, num_iters):
     dtypes = [np.float32, np.float64]
@@ -124,8 +125,8 @@ class MatmulBenchmark(test.Benchmark):
         self.run_test_gpu(n, m, k, transpose_a, transpose_b, dtype, num_iters)
 
       for n, m, k, (transpose_a, transpose_b) in itertools.product(
-          [200], [1, 8, 20], [10000], [(False, False), (True, False), (False,
-                                                                       True)]):
+          [200], [1, 8, 20], [10000], [(False, False), (True, False),
+                                       (False, True)]):
         self.run_test_gpu(n, m, k, transpose_a, transpose_b, dtype, num_iters)
 
       for (n, m, k), (transpose_a, transpose_b) in itertools.product(

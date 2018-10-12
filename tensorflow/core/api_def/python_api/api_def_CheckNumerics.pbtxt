@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "CheckNumerics"
+  endpoint {
+    name: "debugging.check_numerics"
+  }
+  endpoint {
+    name: "check_numerics"
+    deprecated: true
+  }
+}

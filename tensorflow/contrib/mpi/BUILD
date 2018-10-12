@@ -71,6 +71,8 @@ cc_library(
         "//tensorflow/core:protos_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:recent_request_ids",
+        "//tensorflow/core/distributed_runtime:request_id",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_env",

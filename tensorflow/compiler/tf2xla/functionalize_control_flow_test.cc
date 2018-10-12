@@ -18,9 +18,10 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2xla/cc/ops/functional_ops.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -36,12 +38,13 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Returns the names of the "then" and "else" functions for the XlaIf node in a
+// Returns the names of the "then" and "else" functions for the If node in a
 // graph.
-Status FindIfThenAndElse(const GraphDef& graph, NameAttrList* then_fn,
-                         NameAttrList* else_fn) {
+Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
+                         NameAttrList* then_fn, NameAttrList* else_fn) {
   for (const NodeDef& node : graph.node()) {
-    if (node.op() == "XlaIf") {
+    if (node.op() == "If") {
+      *op_name = node.name();
       const NameAttrList* result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "then_branch", &result));
       *then_fn = *result;
@@ -50,7 +53,7 @@ Status FindIfThenAndElse(const GraphDef& graph, NameAttrList* then_fn,
       return Status::OK();
     }
   }
-  return errors::NotFound("No XlaIf node found in graph");
+  return errors::NotFound("No If node found in graph");
 }
 
 // Graph:
@@ -96,9 +99,10 @@ TEST(FunctionalizeControlFlow, Conditional) {
 
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
+  string op_name;
   NameAttrList then_fn;
   NameAttrList else_fn;
-  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &then_fn, &else_fn));
+  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &op_name, &then_fn, &else_fn));
   InstantiationResultForTest else_result;
   TF_EXPECT_OK(
       InstantiateFunctionForTest(else_fn.name(), library, &else_result));
@@ -109,9 +113,10 @@ TEST(FunctionalizeControlFlow, Conditional) {
     auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
     auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-    auto if_op = ops::XlaIf(scope.WithOpName("cond/Merge_If"), less,
-                            std::initializer_list<Input>{less, y, x}, then_fn,
-                            else_fn, {DT_INT32});
+    auto if_op = ops::If(scope.WithOpName(op_name), less,
+                         std::initializer_list<Input>{less, y, x}, {DT_INT32},
+                         then_fn, else_fn);
+    auto id = ops::Identity(scope.WithOpName("cond/Merge"), if_op.output[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
@@ -169,7 +174,7 @@ TEST(FunctionalizeControlFlow, Conditional) {
 Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
                             NameAttrList* body) {
   for (const NodeDef& node : graph.node()) {
-    if (node.op() == "XlaWhile") {
+    if (node.op() == "While") {
       const NameAttrList* result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "cond", &result));
       *cond = *result;
@@ -178,7 +183,7 @@ Status FindWhileCondAndBody(const GraphDef& graph, NameAttrList* cond,
       return Status::OK();
     }
   }
-  return errors::NotFound("No XlaWhile node found in graph");
+  return errors::NotFound("No While node found in graph");
 }
 
 // Graph:
@@ -247,8 +252,8 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{source}, cond_fn, body_fn);
     auto sink = ops::Identity(scope.WithOpName("sink"), while_op[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -293,6 +298,131 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
 
     EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
     EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
+
+// @function.Defun(noinline=True)
+// def increment_fn(x):
+//   return [x + 1]
+// Define the above function, and add it to the given graph. It's used as the
+// while loop body in NoinlineLoopBody test.
+Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
+  FunctionDef fdef = FunctionDefHelper::Create(
+      "increment_fn", {"x:int32"}, {"add:int32"}, {},
+      {
+          {{"add/y"}, "Const", {}, {{"dtype", DT_INT32}}},
+          {{"add_0"}, "Add", {"x", "add/y:output:0"}, {{"T", DT_INT32}}},
+      },
+      {{"add", "add_0:z:0"}});
+  (*fdef.mutable_attr())["_noinline"].set_b(true);
+  FunctionDefLibrary fdef_lib;
+  *(fdef_lib.add_function()) = fdef;
+  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdef_lib));
+  NodeDef increment_fn;
+  increment_fn.set_name(node_name);
+  increment_fn.set_op("increment_fn");
+  *increment_fn.add_input() = "while/Identity";
+  *increment_fn.add_input() = "^while/Identity";
+  Status status;
+  graph->AddNode(increment_fn, &status);
+  return status;
+}
+
+// Graph:
+// x = array_ops.placeholder(dtypes.int32)
+// y = control_flow_ops.while_loop(lambda i: i < 10, increment_fn, [x])
+TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
+  const string& noinline_node_name = "while/increment_fn";
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto dummy = ops::Placeholder(scope.WithOpName("Dummy"), DT_INT32);
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto enter = ops::internal::Enter(scope.WithOpName("while/Enter"), source,
+                                      "while/while_context");
+    auto merge = ops::Merge(scope.WithOpName("while/Merge"),
+                            std::initializer_list<Input>{enter, dummy});
+    auto ten = ops::Const<int32>(
+        scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
+        10);
+    auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
+    auto loop_cond = ops::LoopCond(scope.WithOpName("while/LoopCond"), less);
+    auto switch_ =
+        ops::Switch(scope.WithOpName("while/Switch"), merge.output, loop_cond);
+    auto exit = ops::internal::Exit(scope.WithOpName("while/Exit"),
+                                    switch_.output_false);
+    auto identity =
+        ops::Identity(scope.WithOpName("while/Identity"), switch_.output_true);
+
+    TF_ASSERT_OK(AddNoinlineFunctionToGraph(noinline_node_name, scope.graph()));
+
+    NodeDef next_iter;
+    next_iter.set_name("while/NextIteration");
+    next_iter.set_op("NextIteration");
+    *next_iter.add_input() = noinline_node_name;
+    (*next_iter.mutable_attr())["T"].set_type(DT_INT32);
+
+    Status status;
+    Node* n = scope.graph()->AddNode(next_iter, &status);
+    TF_ASSERT_OK(status);
+
+    // Remove the dummy node and add the loop backedge.
+    scope.graph()->RemoveNode(dummy.node());
+    scope.graph()->AddEdge(n, 0, merge.output.node(), 1);
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+  }
+
+  FunctionLibraryDefinition lookup_lib(graph.flib_def());
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  // Function increment_fn will be copied from lookup_lib to library.
+  TF_ASSERT_OK(FunctionalizeControlFlow(&lookup_lib, &graph, &library));
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+
+  NameAttrList cond_fn, body_fn;
+  TF_ASSERT_OK(FindWhileCondAndBody(graph_def, &cond_fn, &body_fn));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto while_op =
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{source}, cond_fn, body_fn);
+    GraphDef expected;
+    TF_ASSERT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // Body graph.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    TF_ASSERT_OK(AddNoinlineFunctionToGraph(noinline_node_name, scope.graph()));
+    auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
+    NodeDef retval;
+    retval.set_name("_retval0_RetVal");
+    retval.set_op(FunctionLibraryDefinition::kRetOp);
+    *retval.add_input() = noinline_node_name;
+    (*retval.mutable_attr())["T"].set_type(DT_INT32);
+    (*retval.mutable_attr())["index"].set_i(0);
+    Status status;
+    scope.graph()->AddNode(retval, &status);
+    TF_ASSERT_OK(status);
+
+    GraphDef expected;
+    TF_ASSERT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    // Verify that increment_fn has been copied to library.
+    TF_EXPECT_OK(InstantiateFunctionForTest(body_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    // Ignore the function library when comparing the graphs.
+    expected.clear_library();
     TF_EXPECT_GRAPH_EQ(expected, result.gdef);
   }
 }
@@ -350,8 +480,8 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{source}, cond_fn, body_fn);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
@@ -492,8 +622,8 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
     auto x = ops::Placeholder(scope.WithOpName("Placeholder/x"), DT_INT32);
     auto y = ops::Placeholder(scope.WithOpName("Placeholder/y"), DT_INT32);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
-                      std::initializer_list<Input>{x, y}, cond_fn, body_fn);
+        ops::While(scope.WithOpName("while/LoopCond"),
+                   std::initializer_list<Input>{x, y}, cond_fn, body_fn);
     auto sink_x = ops::Identity(scope.WithOpName("sink_x"), while_op[0]);
     auto sink_y = ops::Identity(scope.WithOpName("sink_y"), while_op[1]);
     GraphDef expected;
@@ -672,11 +802,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), enter_var, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 
@@ -690,7 +820,7 @@ TEST(FunctionalizeControlFlow, Complex) {
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          exit_j.output.op(), exit_k.output.op()}),
                  identity_i, one_outer);
     auto next_iteration_i =
@@ -731,9 +861,9 @@ TEST(FunctionalizeControlFlow, Complex) {
 
     auto zero = ops::Const<int32>(scope.WithOpName("outer/Const"), 0);
 
-    auto while_op = ops::XlaWhile(scope.WithOpName("outer/LoopCond"),
-                                  std::initializer_list<Input>{zero, y, x, var},
-                                  outer_cond_fn, outer_body_fn);
+    auto while_op = ops::While(scope.WithOpName("outer/LoopCond"),
+                               std::initializer_list<Input>{zero, y, x, var},
+                               outer_cond_fn, outer_body_fn);
     auto sink = ops::Identity(scope.WithOpName("sink"), while_op[0]);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -788,15 +918,15 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto one_j = ops::Const<int32>(
         scope.WithOpName("outer/j").WithControlDependencies(identity_i), 1);
     auto while_op =
-        ops::XlaWhile(scope.WithOpName("outer/LoopCond_1"),
-                      std::initializer_list<Input>{one_j, arg1, arg2, arg3},
-                      inner_cond_fn, inner_body_fn);
+        ops::While(scope.WithOpName("outer/LoopCond_1"),
+                   std::initializer_list<Input>{one_j, arg1, arg2, arg3},
+                   inner_cond_fn, inner_body_fn);
 
     auto one_outer = ops::Const<int32>(
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
-                     .WithControlDependencies(gtl::ArraySlice<Operation>{
+                     .WithControlDependencies(absl::Span<const Operation>{
                          while_op[0].op(), while_op[1].op()}),
                  identity_i, one_outer);
 
@@ -858,11 +988,11 @@ TEST(FunctionalizeControlFlow, Complex) {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), arg3, add_jkx);
 
-    auto one =
-        ops::Const<int32>(scope.WithOpName("outer/inner/One")
-                              .WithControlDependencies(
-                                  gtl::ArraySlice<Operation>{assign.operation}),
-                          1);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("outer/inner/One")
+            .WithControlDependencies(
+                absl::Span<const Operation>{assign.operation}),
+        1);
     auto add_j =
         ops::Add(scope.WithOpName("outer/inner/add_j"), identity_j, one);
 

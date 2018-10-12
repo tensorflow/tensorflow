@@ -40,6 +40,8 @@ static void AllocateFlags() {
   flags->tf_xla_max_cluster_size = std::numeric_limits<int32>::max();
   flags->tf_xla_clustering_debug = false;
   flags->tf_xla_cpu_global_jit = false;
+  flags->tf_xla_clustering_fuel = std::numeric_limits<int64>::max();
+  flags->tf_xla_fusion_only = false;
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_auto_jit", &flags->tf_xla_auto_jit,
             "Control compilation of operators into XLA computations on CPU and "
@@ -55,7 +57,13 @@ static void AllocateFlags() {
        Flag("tf_xla_clustering_debug", &flags->tf_xla_clustering_debug,
             "Dump graphs during XLA compilation."),
        Flag("tf_xla_cpu_global_jit", &flags->tf_xla_cpu_global_jit,
-            "Enables global JIT compilation for CPU via SessionOptions.")});
+            "Enables global JIT compilation for CPU via SessionOptions."),
+       Flag("tf_xla_clustering_fuel", &flags->tf_xla_clustering_fuel,
+            "Places an artificial limit on the number of ops marked as "
+            "eligible for clustering."),
+       Flag("tf_xla_fusion_only", &flags->tf_xla_fusion_only,
+            "enable fusion of element-wise operations only using XLA when "
+            "global_jit_level is ON*.")});
   xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
 }
 

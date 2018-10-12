@@ -22,6 +22,7 @@ import types
 import six
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -40,8 +41,10 @@ def _get_wrapper(fn, opt):
 
   def wrapper(self, grad, *args, **kwargs):  # pylint: disable=unused-argument
     all_zeros = _is_all_zeros(grad)
-    return control_flow_ops.cond(all_zeros, control_flow_ops.no_op,
-                                 lambda: fn(grad, *args, **kwargs))
+    def call_fn():
+      with ops.control_dependencies([fn(grad, *args, **kwargs)]):
+        return control_flow_ops.no_op()
+    return control_flow_ops.cond(all_zeros, control_flow_ops.no_op, call_fn)
 
   wrapper = types.MethodType(wrapper, opt)
   return wrapper

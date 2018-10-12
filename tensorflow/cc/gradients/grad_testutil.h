@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
+#ifndef TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
+#define TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -32,4 +32,4 @@ Status CallGradFunction(const Scope& scope, const Operation& op,
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_
+#endif  // TENSORFLOW_CC_GRADIENTS_GRAD_TESTUTIL_H_

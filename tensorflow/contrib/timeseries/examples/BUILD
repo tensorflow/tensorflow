@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -8,14 +9,23 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+config_setting(
+    name = "empty_condition",
+    values = {"define": "UNUSED=unused"},
+)
+
 py_binary(
     name = "predict",
     srcs = ["predict.py"],
+    data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -25,7 +35,10 @@ py_test(
     srcs = ["predict_test.py"],
     data = ["data/period_trend.csv"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],  # b/67513579
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "notsan",  # b/67513579
+    ],
     deps = [
         ":predict",
         "//tensorflow/python:client_testlib",
@@ -38,9 +51,12 @@ py_binary(
     data = ["data/changepoints.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -61,9 +77,12 @@ py_binary(
     data = ["data/multivariate_level.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
-        "//tensorflow:tensorflow_py",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
         "//third_party/py/numpy",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -86,11 +105,14 @@ py_binary(
     data = ["data/multivariate_periods.csv"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
-    deps = [
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }) + [
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/timeseries/python/timeseries:estimators",
         "//tensorflow/contrib/timeseries/python/timeseries:model",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -105,16 +127,4 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/estimator:estimator_py",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

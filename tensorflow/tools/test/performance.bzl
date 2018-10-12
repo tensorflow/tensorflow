@@ -31,7 +31,7 @@ def tf_cc_logged_benchmark(
       size = "large",
       srcs = ["//tensorflow/tools/test:run_and_gather_logs"],
       args = [
-          "--name=//%s:%s" % (PACKAGE_NAME, name),
+          "--name=//%s:%s" % (native.package_name(), name),
           "--test_name=" + target,
           "--test_args=--benchmarks=%s" % benchmarks,
           "--benchmark_type=%s" % benchmark_type,

@@ -14,6 +14,7 @@ load(
     "tf_copts",
     "tf_custom_op_library",
     "tf_java_test",
+    "tf_cc_test",
 )
 
 java_library(
@@ -55,13 +56,15 @@ java_library(
     srcs = glob(["src/gen/java/org/tensorflow/processor/**/*.java"]),
     javacopts = JAVACOPTS,
     resources = glob(["src/gen/resources/META-INF/services/javax.annotation.processing.Processor"]),
+    deps = [
+        "@com_google_guava",
+        "@com_squareup_javapoet",
+    ],
 )
 
 filegroup(
     name = "java_op_sources",
-    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [
-        ":java_op_gen_sources",
-    ],
+    srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [":java_op_gen_sources"],
     visibility = [
         "//tensorflow/java:__pkg__",
     ],
@@ -69,44 +72,56 @@ filegroup(
 
 tf_java_op_gen_srcjar(
     name = "java_op_gen_sources",
-    gen_base_package = "org.tensorflow.op",
-    gen_tool = "java_op_gen_tool",
-    ops_libs = [
-        "array_ops",
-        "candidate_sampling_ops",
-        "control_flow_ops",
-        "data_flow_ops",
-        "image_ops",
-        "io_ops",
-        "linalg_ops",
-        "logging_ops",
-        "math_ops",
-        "nn_ops",
-        "no_op",
-        "parsing_ops",
-        "random_ops",
-        "sparse_ops",
-        "state_ops",
-        "string_ops",
-        "training_ops",
-        "user_ops",
+    api_def_srcs = [
+        "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:java_api_def",
+    ],
+    base_package = "org.tensorflow.op",
+    gen_tool = ":java_op_gen_tool",
+)
+
+tf_cc_binary(
+    name = "java_op_gen_tool",
+    srcs = [
+        "src/gen/cc/op_gen_main.cc",
+    ],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
+    linkstatic = 1,
+    deps = [
+        ":java_op_gen_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
     ],
 )
 
-# Build the gen tool as a library, as it will be linked to a core/ops binary
-# file before making it an executable. See tf_java_op_gen_srcjar().
 cc_library(
-    name = "java_op_gen_tool",
-    srcs = glob([
-        "src/gen/cc/*.h",
-        "src/gen/cc/*.cc",
-    ]),
+    name = "java_op_gen_lib",
+    srcs = [
+        "src/gen/cc/op_generator.cc",
+        "src/gen/cc/op_specs.cc",
+        "src/gen/cc/source_writer.cc",
+    ],
+    hdrs = [
+        "src/gen/cc/java_defs.h",
+        "src/gen/cc/op_generator.h",
+        "src/gen/cc/op_specs.h",
+        "src/gen/cc/source_writer.h",
+    ],
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_googlesource_code_re2//:re2",
     ],
 )
 
@@ -280,20 +295,31 @@ tf_java_test(
     ],
 )
 
-#java_test(
-#    name = "OperatorProcessorTest",
-#    size = "small",
-#    srcs = ["src/test/java/org/tensorflow/processor/OperatorProcessorTest.java"],
-#    javacopts = JAVACOPTS,
-#    resources = [":processor_test_resources"],
-#    test_class = "org.tensorflow.processor.OperatorProcessorTest",
-#    deps = [
-#        ":processor_library",
-#        "//third_party/java/junit",
-#        "@com_google_testing_compile",
-#        "@com_google_truth",
-#    ],
-#)
+tf_java_test(
+    name = "GradientsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/GradientsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.GradientsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
+    name = "ZerosTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/ZerosTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.ZerosTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
 
 filegroup(
     name = "processor_test_resources",
@@ -301,6 +327,23 @@ filegroup(
         "src/test/resources/org/tensorflow/**/*.java",
         "src/main/java/org/tensorflow/op/annotation/Operator.java",
     ]),
+)
+
+tf_cc_test(
+    name = "source_writer_test",
+    size = "small",
+    srcs = [
+        "src/gen/cc/source_writer_test.cc",
+    ],
+    data = [
+        "src/gen/resources/test.java.snippet",
+    ],
+    deps = [
+        ":java_op_gen_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 filegroup(
@@ -325,15 +368,14 @@ tf_cc_binary(
         "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
             "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
-            LINKER_EXPORTED_SYMBOLS,
+            "$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-s",
             "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-            LINKER_VERSION_SCRIPT,
+            "$(location {})".format(LINKER_VERSION_SCRIPT),
         ],
     }),
     linkshared = 1,
@@ -368,16 +410,4 @@ genrule(
     outs = ["libtensorflow_jni.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -53,7 +53,7 @@ std::vector<std::unique_ptr<Operator>>::iterator FindFirstOpWithInput(
 }
 
 void ClearArrayQuantizationParams(const string& array_name, Model* model) {
-  auto* array = model->arrays.at(array_name).get();
+  auto* array = &model->GetArray(array_name);
   CHECK(array->quantization_params);
   for (auto& input_array : *model->flags.mutable_input_arrays()) {
     if (input_array.name() == array_name) {
@@ -77,7 +77,7 @@ void ClearArrayQuantizationParams(const string& array_name, Model* model) {
 
 bool DequantizeArray(const string& array_name,
                      GraphTransformation* transformation, Model* model) {
-  auto* array = model->arrays.at(array_name).get();
+  auto* array = &model->GetArray(array_name);
   if (!array->quantization_params) {
     return false;
   }
@@ -111,7 +111,7 @@ bool DequantizeArray(const string& array_name,
 
   auto* op_outputting_array = GetOpWithOutput(*model, array_name);
   if (op_outputting_array) {
-    if (op_outputting_array->type == OperatorType::kTensorFlowReshape) {
+    if (op_outputting_array->type == OperatorType::kReshape) {
       return true;
     }
   }
@@ -159,6 +159,7 @@ bool DequantizeArray(const string& array_name,
   new_array.GetOrCreateMinMax() = array->GetMinMax();
   fakequant_op->minmax.reset(new MinMax);
   *fakequant_op->minmax = array->GetMinMax();
+  fakequant_op->narrow_range = array->narrow_range;
   if (must_insert_fakequant_before) {
     for (const auto& op : model->operators) {
       for (string& output : op->outputs) {
@@ -185,24 +186,27 @@ bool DequantizeArray(const string& array_name,
 
 }  // namespace
 
-bool Dequantize::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status Dequantize::Run(Model* model, std::size_t op_index,
+                                     bool* modified) {
+  *modified = false;
   const auto op_it = model->operators.begin() + op_index;
   auto* op = op_it->get();
 
   if (op->type == OperatorType::kDequantize) {
     auto& input_array = model->GetArray(op->inputs[0]);
     if (input_array.data_type == ArrayDataType::kFloat) {
-      return false;
+      return ::tensorflow::Status::OK();
     }
     if (input_array.final_data_type != ArrayDataType::kFloat) {
-      return false;
+      return ::tensorflow::Status::OK();
     }
     input_array.data_type = ArrayDataType::kFloat;
     input_array.quantization_params = nullptr;
     auto& output_array = model->GetArray(op->outputs[0]);
     output_array.data_type = ArrayDataType::kFloat;
     output_array.quantization_params = nullptr;
-    return RemoveTrivialPassthroughOp(this, model, op_index);
+    *modified = RemoveTrivialPassthroughOp(this, model, op_index);
+    return ::tensorflow::Status::OK();
   }
 
   std::vector<string> arrays;
@@ -214,10 +218,13 @@ bool Dequantize::Run(Model* model, std::size_t op_index) {
   }
   bool changed = false;
   for (const string& array : arrays) {
-    changed |= DequantizeArray(array, this, model);
+    if (!model->IsOptionalArray(array)) {
+      changed |= DequantizeArray(array, this, model);
+    }
   }
 
-  return changed;
+  *modified = changed;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

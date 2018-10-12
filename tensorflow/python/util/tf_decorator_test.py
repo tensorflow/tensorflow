@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
@@ -194,6 +196,23 @@ class TfMakeDecoratorTest(test.TestCase):
     decorated = test_decorator_name(test_wrapper)
     decorator = getattr(decorated, '_tf_decorator')
     self.assertEqual('test_decorator_name', decorator.decorator_name)
+
+  def testCompatibleWithNamelessCallables(self):
+
+    class Callable(object):
+
+      def __call__(self):
+        pass
+
+    callable_object = Callable()
+    # Smoke test: This should not raise an exception, even though
+    # `callable_object` does not have a `__name__` attribute.
+    _ = tf_decorator.make_decorator(callable_object, test_wrapper)
+
+    partial = functools.partial(test_function, x=1)
+    # Smoke test: This should not raise an exception, even though `partial` does
+    # not have `__name__`, `__module__`, and `__doc__` attributes.
+    _ = tf_decorator.make_decorator(partial, test_wrapper)
 
 
 class TfDecoratorUnwrapTest(test.TestCase):

@@ -50,8 +50,8 @@ class Item(object):
     self._tf_item = None
     self._BuildTFItem()
 
-  def IdentifyImportantOps(self):
-    return tf_item.TF_IdentifyImportantOps(self.tf_item)
+  def IdentifyImportantOps(self, sort_topologically=False):
+    return tf_item.TF_IdentifyImportantOps(self.tf_item, sort_topologically)
 
   def GetOpProperties(self):
     ret_from_swig = tf_item.TF_GetOpProperties(self.tf_item)
@@ -63,6 +63,17 @@ class Item(object):
             op_performance_data_pb2.OpInfo.TensorProperties.FromString(value))
       properties[key] = prop
     return properties
+
+  def GetColocationGroups(self):
+    """Return a list of hard colocation constraints.
+
+    All the nodes in a colocation tuple must be placed on the same device for
+    the model to work.
+
+    Returns:
+      A list of colocation tuples.
+    """
+    return tf_item.TF_GetColocationGroups(self.tf_item)
 
   @property
   def metagraph(self):

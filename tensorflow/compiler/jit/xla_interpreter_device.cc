@@ -15,7 +15,7 @@ limitations under the License.
 
 // Registers the XLA_INTERPRETER device which exposes the XLA Interpreter.
 
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -25,8 +25,8 @@ namespace tensorflow {
 const char* const DEVICE_XLA_INTERPRETER = "XLA_INTERPRETER";
 const char* const DEVICE_INTERPRETER_XLA_JIT = "XLA_INTERPRETER_JIT";
 
-constexpr std::array<DataType, 5> kExecAllTypes = {
-    {DT_INT32, DT_FLOAT, DT_BOOL, DT_DOUBLE, DT_INT64}};
+constexpr std::array<DataType, 6> kExecAllTypes = {
+    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL}};
 
 class XlaInterpreterDeviceFactory : public DeviceFactory {
  public:
@@ -41,10 +41,20 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
       DEVICE_XLA_INTERPRETER, DEVICE_INTERPRETER_XLA_JIT);
   (void)registrations;
 
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
+  registration.requires_compilation = true;
+  registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
+
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create(
-      "Interpreter", DEVICE_XLA_INTERPRETER, 0, DEVICE_INTERPRETER_XLA_JIT,
-      options, name_prefix, /*register_device_for_compilation=*/true, &device));
+  TF_RETURN_IF_ERROR(XlaDevice::Create("Interpreter", DEVICE_XLA_INTERPRETER, 0,
+                                       DEVICE_INTERPRETER_XLA_JIT, options,
+                                       name_prefix, registration,
+                                       /*transfer_as_literal=*/false,
+                                       /*use_multiple_streams=*/false,
+                                       /*shape_representation_fn=*/{},
+                                       /*padded_shape_fn=*/{}, &device));
   devices->push_back(device.release());
   return Status::OK();
 }
@@ -62,6 +72,10 @@ static bool OpFilter(KernelDef* kdef) { return true; }
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_INTERPRETER, XlaLocalLaunchOp,
                            kExecAllTypes);
+REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_INTERPRETER, XlaCompileOp,
+                            kExecAllTypes);
+REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_INTERPRETER, XlaRunOp, kExecAllTypes);
+
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_INTERPRETER, kExecAllTypes);
 REGISTER_XLA_BACKEND(DEVICE_INTERPRETER_XLA_JIT, kExecAllTypes, OpFilter);
 

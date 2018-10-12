@@ -23,10 +23,10 @@
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 
+using tensorflow::Status;
 using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
 using tensorflow::random::PhiloxRandom;
 using tensorflow::random::SimplePhilox;
-using tensorflow::Status;
 
 namespace tensorflow {
 namespace boosted_trees {
@@ -54,7 +54,7 @@ Status DropoutUtils::DropOutTrees(
   if (probability_of_skipping_dropout < 0 ||
       probability_of_skipping_dropout > 1) {
     return errors::InvalidArgument(
-        "Probability of skiping dropout must be in [0,1] range");
+        "Probability of skipping dropout must be in [0,1] range");
   }
   const auto num_trees = weights.size();
 

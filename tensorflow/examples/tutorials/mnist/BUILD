@@ -51,6 +51,7 @@ py_binary(
         "fully_connected_feed.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["optonly"],
     deps = [
         ":input_data",
         ":mnist",
@@ -82,6 +83,20 @@ py_binary(
     ],
 )
 
+# Note: we need to add --define=with_xla_support=true to the build command in
+# order to run the mnist_softmax_xla example with xla.
+py_binary(
+    name = "mnist_softmax_xla",
+    srcs = [
+        "mnist_softmax_xla.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 py_binary(
     name = "mnist_deep",
     srcs = [
@@ -96,7 +111,7 @@ py_binary(
 
 py_test(
     name = "fully_connected_feed_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "fully_connected_feed.py",
     ],
@@ -131,16 +146,4 @@ py_test(
         ":input_data",
         "//tensorflow:tensorflow_py",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

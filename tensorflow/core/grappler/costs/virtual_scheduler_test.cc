@@ -15,28 +15,34 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace grappler {
+
 // Class for testing virtual scheduler.
 class TestVirtualScheduler : public VirtualScheduler {
  public:
   TestVirtualScheduler(const GrapplerItem* grappler_item,
                        const bool use_static_shapes, Cluster* cluster)
-      : VirtualScheduler(grappler_item, use_static_shapes, cluster) {}
+      : VirtualScheduler(grappler_item, use_static_shapes, cluster,
+                         &ready_node_manager_) {}
 
-  FRIEND_TEST(VirtualSchedulerTest, CalculateOutputSize);
   FRIEND_TEST(VirtualSchedulerTest, MemoryUsage);
   FRIEND_TEST(VirtualSchedulerTest, ControlDependency);
   FRIEND_TEST(VirtualSchedulerTest, ComplexDependency);
   FRIEND_TEST(VirtualSchedulerTest, Variable);
   FRIEND_TEST(VirtualSchedulerTest, InterDeviceTransfer);
+
+ protected:
+  FirstReadyManager ready_node_manager_;
 };
 
 class VirtualSchedulerTest : public ::testing::Test {
@@ -44,8 +50,15 @@ class VirtualSchedulerTest : public ::testing::Test {
   NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
   std::unordered_map<const NodeDef*, NodeState> node_states_;
 
+  // Device names:
   const string kCPU0 = "/job:localhost/replica:0/task:0/cpu:0";
   const string kCPU1 = "/job:localhost/replica:0/task:0/cpu:1";
+  const string kChannelFrom0To1 = "Channel from CPU0 to CPU1";
+  const string kChannelFrom1To0 = "Channel from CPU1 to CPU0";
+  // Op names:
+  const string kSend = "_Send";
+  const string kRecv = "_Recv";
+  const string kConv2D = "Conv2D";
 
   DeviceProperties GetDummyCPUDevice() {
     // Create CPU with 2 cores, 4 Ghz freq, 2 GB/s mem bandwidth.
@@ -59,29 +72,26 @@ class VirtualSchedulerTest : public ::testing::Test {
     return cpu_device;
   }
 
+  void NodeSetUp(const string& name, const string& op_name,
+                 const string& device_name, const uint64 time_ready,
+                 NodeDef* node) {
+    node->set_name(name);
+    node->set_op(op_name);
+    node->set_device(device_name);
+
+    node_states_[node] = NodeState();
+    node_states_[node].time_ready = time_ready;
+    node_states_[node].device_name = device_name;
+  }
+
   void SetUp() override {
-    // Initializes nodes for manager
-    node1_.set_name("Node1");
-    node2_.set_name("Node2");
-    node3_.set_name("Node3");
-    node4_.set_name("Node4");
-    node5_.set_name("Node5");
-    node6_.set_name("Node6");
-
-    // Initialize node_states, with time_ready in reverse order.
-    node_states_[&node1_] = NodeState();
-    node_states_[&node2_] = NodeState();
-    node_states_[&node3_] = NodeState();
-    node_states_[&node4_] = NodeState();
-    node_states_[&node5_] = NodeState();
-    node_states_[&node6_] = NodeState();
-
-    node_states_[&node6_].time_ready = 1000;
-    node_states_[&node5_].time_ready = 2000;
-    node_states_[&node4_].time_ready = 3000;
-    node_states_[&node3_].time_ready = 4000;
-    node_states_[&node2_].time_ready = 5000;
-    node_states_[&node1_].time_ready = 6000;
+    // node1_ to node6_ on kCPU0, with time_ready in reverse_order.
+    NodeSetUp("Node1", kConv2D, kCPU0, 6000, &node1_);
+    NodeSetUp("Node2", kConv2D, kCPU0, 5000, &node2_);
+    NodeSetUp("Node3", kConv2D, kCPU0, 4000, &node3_);
+    NodeSetUp("Node4", kConv2D, kCPU0, 3000, &node4_);
+    NodeSetUp("Node5", kConv2D, kCPU0, 2000, &node5_);
+    NodeSetUp("Node6", kConv2D, kCPU0, 1000, &node6_);
 
     // Initializes cluster_ and placer_.
     std::unordered_map<string, DeviceProperties> devices;
@@ -195,6 +205,25 @@ class VirtualSchedulerTest : public ::testing::Test {
     grappler_item_->fetch = {"out"};
 
     dependency_["out"] = {"x", "y", "z", "w"};
+  }
+
+  // Graph with some placeholder feed nodes that are not in the fetch fan-in.
+  void CreateGrapplerItemWithUnnecessaryPlaceholderNodes() {
+    Scope s = Scope::NewRootScope().WithDevice(kCPU0);
+    auto unnecessary = ops::Placeholder(s.WithOpName("unnecessary"), DT_FLOAT);
+    auto x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT);
+
+    GraphDef def;
+    TF_CHECK_OK(s.ToGraphDef(&def));
+
+    grappler_item_.reset(new GrapplerItem);
+    grappler_item_->id = "test_extra_placeholders";
+    grappler_item_->graph = def;
+    grappler_item_->fetch = {"x"};
+
+    // Grappler Item Builder puts all placeholder nodes into the feed
+    // list by default.
+    grappler_item_->feed = {{"x", Tensor()}, {"unnecessary", Tensor()}};
   }
 
   // NoOp that takes 7 NoOps as control dependency.
@@ -331,6 +360,63 @@ node {
     }
   }
 }
+node {
+  name: "Recv"
+  op: "_Recv"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "client_terminated"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "test"
+    }
+  }
+  attr {
+    key: "tensor_type"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 24
+}
+    )EOF";
+
+    grappler_item_.reset(new GrapplerItem);
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
+                                                &grappler_item_->graph));
+    grappler_item_->id = "test_graph";
+    grappler_item_->fetch = {"Recv"};
+  }
+
+  void CreateGrapplerItemWithRecvWithoutSend() {
+    const string gdef_ascii = R"EOF(
 node {
   name: "Recv"
   op: "_Recv"
@@ -858,7 +944,6 @@ versions {
   // target_node.
   std::unordered_map<string, OpContext> RunScheduler(
       const string& target_node) {
-    Costs zero_costs = Costs::ZeroCosts();
     std::unordered_map<string, OpContext> ops_executed;
     bool more_nodes = true;
     do {
@@ -948,17 +1033,6 @@ versions {
       EXPECT_GE(curr_node_time, prev_node_time);
       prev_node_time = curr_node_time;
     }
-  }
-
-  // Helper method for converting shape vector to TensorProperty.
-  OpInfo::TensorProperties ShapeToTensorProperty(
-      const std::vector<int> shape, const DataType& data_type) const {
-    OpInfo::TensorProperties tensor_property;
-    tensor_property.set_dtype(data_type);
-    for (const auto& x : shape) {
-      tensor_property.mutable_shape()->add_dim()->set_size(x);
-    }
-    return tensor_property;
   }
 
   // SetUp() inits cluster_ and placer_.
@@ -1144,23 +1218,24 @@ TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
 
   manager.AddNode(&node1_);
   EXPECT_EQ("Node1", manager.GetCurrNode()->name());
 }
 
 TEST_F(VirtualSchedulerTest, RemoveSingleNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   manager.AddNode(&node1_);
   manager.RemoveCurrNode();
   EXPECT_TRUE(manager.Empty());
 }
 
 TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -1187,8 +1262,8 @@ TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFirstReadyManager) {
 }
 
 TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
-  FirstReadyManager manager = FirstReadyManager(&node_states_);
-
+  FirstReadyManager manager;
+  manager.Init(&node_states_);
   // Insert nodes in some random order.
   manager.AddNode(&node2_);
   manager.AddNode(&node1_);
@@ -1207,15 +1282,9 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
   NodeDef node7;
   NodeDef node8;
   NodeDef node9;
-  node7.set_name("Node7");
-  node8.set_name("Node8");
-  node9.set_name("Node9");
-  node_states_[&node7] = NodeState();
-  node_states_[&node8] = NodeState();
-  node_states_[&node9] = NodeState();
-  node_states_[&node7].time_ready = 5;
-  node_states_[&node8].time_ready = 4;
-  node_states_[&node9].time_ready = 3;
+  NodeSetUp("Node7", kConv2D, kCPU0, 5, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU0, 4, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU0, 3, &node9);
 
   manager.AddNode(&node7);
   EXPECT_EQ("Node6", manager.GetCurrNode()->name());
@@ -1249,6 +1318,296 @@ TEST_F(VirtualSchedulerTest, GetCurrNodeFirstReadyManager) {
   EXPECT_TRUE(manager.Empty());
 }
 
+TEST_F(VirtualSchedulerTest, DeterminismInFirstReadyManager) {
+  FirstReadyManager manager1;
+  manager1.Init(&node_states_);
+  FirstReadyManager manager2;
+  manager2.Init(&node_states_);
+
+  // 6 nodes with same time_ready.
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeDef node10;
+  NodeDef node11;
+  NodeDef node12;
+  NodeSetUp("Node7", kConv2D, kCPU0, 1000, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU0, 1000, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU0, 1000, &node9);
+  NodeSetUp("Node10", kConv2D, kCPU0, 1000, &node10);
+  NodeSetUp("Node11", kConv2D, kCPU0, 1000, &node11);
+  NodeSetUp("Node12", kConv2D, kCPU0, 1000, &node12);
+
+  // Add the above 6 nodes to manager1.
+  manager1.AddNode(&node7);
+  manager1.AddNode(&node8);
+  manager1.AddNode(&node9);
+  manager1.AddNode(&node10);
+  manager1.AddNode(&node11);
+  manager1.AddNode(&node12);
+
+  // Add the above 6 nodes to manager2, but in a different order.
+  manager2.AddNode(&node8);
+  manager2.AddNode(&node11);
+  manager2.AddNode(&node9);
+  manager2.AddNode(&node10);
+  manager2.AddNode(&node7);
+  manager2.AddNode(&node12);
+
+  // Expect both managers return the same nodes for deterministic node
+  // scheduling.
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_EQ(manager1.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager1.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+
+  EXPECT_TRUE(manager1.Empty());
+  EXPECT_TRUE(manager2.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeCompositeNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+  manager.AddNode(&node1_);
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeComopsiteNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+
+  manager.AddNode(&node1_);
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleComopsiteNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+
+  // Add the nodes to LIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node as nodes are removed and added.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.AddNode(&node5_);
+  // GetCurrNode()  should return the same node even if some nodes are added,
+  // until RemoveCurrNode() is called.
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.AddNode(&node6_);
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, MultiDeviceSendRecvComopsiteNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+  // Additional nodes on kCPU1
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeSetUp("Node7", kConv2D, kCPU1, 1001, &node7);
+  NodeSetUp("Node8", kConv2D, kCPU1, 2001, &node8);
+  NodeSetUp("Node9", kConv2D, kCPU1, 3001, &node9);
+
+  // Send and Recv nodes.
+  NodeDef send1;
+  NodeDef send2;
+  NodeDef recv1;
+  NodeDef recv2;
+  NodeSetUp("Send1", kSend, kChannelFrom0To1, 2002, &send1);
+  NodeSetUp("Send2", kSend, kChannelFrom1To0, 2005, &send2);
+  NodeSetUp("Recv1", kRecv, kCPU0, 2003, &recv1);
+  NodeSetUp("Recv2", kRecv, kCPU1, 2004, &recv2);
+
+  // Insert nodes.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+  manager.AddNode(&node5_);
+  manager.AddNode(&node6_);
+  manager.AddNode(&node7);
+  manager.AddNode(&node8);
+  manager.AddNode(&node9);
+  manager.AddNode(&send1);
+  manager.AddNode(&send2);
+  manager.AddNode(&recv1);
+  manager.AddNode(&recv2);
+
+  // on kCPU0; last one is node6_, on kCPU1: last one is node9;
+  // so choose one that has earliest time_ready among node6_, node9,
+  // Send1, Send2, Recv1, and Recv2.
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Then, the next one on kCPU0 is node5_; choose the earliest time_ready node
+  // among node5_, node9, Send1, Send2, Recv1, and Recv2.
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, Send1, Send2, Recv1, and Recv2.
+  EXPECT_EQ("Send1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, Sen2, Recv1, and Recv2.
+  EXPECT_EQ("Recv1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, Send2, and Recv2.
+  EXPECT_EQ("Recv2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose among node4_, node9, and Send2.
+  EXPECT_EQ("Send2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node4_, node9.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node3_, node9.
+  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node3_, node8.
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Next, choose between node3_, node7.
+  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  // Then, just the nodes on kCPU1 -- LIFO.
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+TEST_F(VirtualSchedulerTest, DeterminismInCompositeNodeManager) {
+  CompositeNodeManager manager;
+  manager.Init(&node_states_);
+  CompositeNodeManager manager2;
+  manager2.Init(&node_states_);
+
+  // 6 nodes with same time_ready.
+  NodeDef node7;
+  NodeDef node8;
+  NodeDef node9;
+  NodeDef node10;
+  NodeDef node11;
+  NodeDef node12;
+  NodeSetUp("Node7", kConv2D, kCPU0, 1000, &node7);
+  NodeSetUp("Node8", kSend, kCPU0, 1000, &node8);
+  NodeSetUp("Node9", kRecv, kCPU0, 1000, &node9);
+  NodeSetUp("Node10", kConv2D, kCPU0, 999, &node10);
+  NodeSetUp("Node11", kRecv, kCPU0, 999, &node11);
+  NodeSetUp("Node12", kConv2D, kCPU1, 1000, &node12);
+
+  // Add Nodes 7 to 9 to manager.
+  manager.AddNode(&node7);
+  manager.AddNode(&node8);
+  manager.AddNode(&node9);
+
+  // It should return _Send, Recv, and the other op order, when the candidate
+  // nodes have same time_ready.
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
+  EXPECT_EQ(kRecv, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
+  EXPECT_EQ(kConv2D, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Add Nodes 7 to 9 to manager, but in a different order.
+  manager.AddNode(&node9);
+  manager.AddNode(&node8);
+  manager.AddNode(&node7);
+
+  // Expect same order (_Send, _Recv, and the other op), regardless of Add
+  // order.
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node9", manager.GetCurrNode()->name());
+  EXPECT_EQ(kRecv, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node7", manager.GetCurrNode()->name());
+  EXPECT_EQ(kConv2D, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Conv2D's time_ready < Send's time_ready; Expect Conv2D first.
+  manager.AddNode(&node8);
+  manager.AddNode(&node10);
+  EXPECT_EQ("Node10", manager.GetCurrNode()->name());
+  EXPECT_EQ(kConv2D, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Recv's time_ready < Send' time_ready; Expect Recv first.
+  manager.AddNode(&node11);
+  manager.AddNode(&node8);
+  EXPECT_EQ("Node11", manager.GetCurrNode()->name());
+  EXPECT_EQ(kRecv, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node8", manager.GetCurrNode()->name());
+  EXPECT_EQ(kSend, manager.GetCurrNode()->op());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+
+  // Node7 and 12 are normal ops with the same time_ready, placed on different
+  // devices. These two nodes are added to manager and manager2, but in
+  // different orders; Expect GetCurrNode() returns the nodes in the same order.
+  manager.AddNode(&node7);
+  manager.AddNode(&node12);
+
+  manager2.AddNode(&node12);
+  manager2.AddNode(&node7);
+
+  EXPECT_EQ(manager.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+  EXPECT_EQ(manager.GetCurrNode()->name(), manager2.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  manager2.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
 // Create small graph, run predict costs on it, make sure the costs from the
 // summary match the hand-calculated costs.
 TEST_F(VirtualSchedulerTest, SummaryCostTest) {
@@ -1263,6 +1622,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostTest) {
   // Misc - 5 * 1us
   // Total: 13000005
   EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(grappler_item_->graph.node_size(), c.num_ops_total);
+  EXPECT_FALSE(c.inaccurate);
+  EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
 }
 
 // Like the above SummaryCostTest, but makes sure the stepstats timeline is
@@ -1276,6 +1638,9 @@ TEST_F(VirtualSchedulerTest, SummaryCostStepStatsTest) {
   Costs c = scheduler_->Summary(&metadata);
   StepStats stepstats = metadata.step_stats();
   EXPECT_EQ(13000005, c.execution_time.asMicroSeconds().count());
+  EXPECT_EQ(grappler_item_->graph.node_size(), c.num_ops_total);
+  EXPECT_FALSE(c.inaccurate);
+  EXPECT_EQ(0, c.num_ops_with_unknown_shapes);
 
   // Should only be 1 device!
   EXPECT_EQ(1, stepstats.dev_stats().size());
@@ -1354,38 +1719,6 @@ TEST_F(VirtualSchedulerTest, InitAndBasicScheduling) {
   EXPECT_EQ(2, ops_executed["c1"].op_info.inputs_size());
 }
 
-TEST_F(VirtualSchedulerTest, CalculateOutputSize) {
-  // Init.
-  CreateGrapplerItemWithAddN();
-  InitScheduler();
-
-  // Create a set of tensor properties.
-  std::vector<OpInfo::TensorProperties> output;
-  output.push_back(ShapeToTensorProperty({4, 4}, DT_FLOAT));           // 0
-  output.push_back(ShapeToTensorProperty({1}, DT_FLOAT));              // 1
-  output.push_back(ShapeToTensorProperty({10, 10, 10}, DT_HALF));      // 2
-  output.push_back(ShapeToTensorProperty({100, 7, 8, 99}, DT_FLOAT));  // 3
-  output.push_back(ShapeToTensorProperty({-1, 7, 8, 99}, DT_FLOAT));   // 4
-  output.push_back(ShapeToTensorProperty({-1, 7, -1, 99}, DT_FLOAT));  // 4
-
-  // port_num -1 is for control dependency: hard coded 4B.
-  EXPECT_EQ(4, scheduler_->CalculateOutputSize(output, -1));
-
-  // Test valid outputs.
-  EXPECT_EQ(4 * 4 * 4, scheduler_->CalculateOutputSize(output, 0));
-  EXPECT_EQ(4 * 1, scheduler_->CalculateOutputSize(output, 1));
-  EXPECT_EQ(2 * 10 * 10 * 10, scheduler_->CalculateOutputSize(output, 2));
-  EXPECT_EQ(4 * 100 * 7 * 8 * 99, scheduler_->CalculateOutputSize(output, 3));
-
-  // Any unknown shape (-1) shall yield zero output size.
-  EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 4));
-  EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 5));
-
-  // Invalid port_num (though it may be an error) shall yield zero
-  // output size.
-  EXPECT_EQ(0, scheduler_->CalculateOutputSize(output, 6));
-}
-
 TEST_F(VirtualSchedulerTest, MemoryUsage) {
   // Init.
   CreateGrapplerItemWithAddN();
@@ -1405,6 +1738,16 @@ TEST_F(VirtualSchedulerTest, MemoryUsage) {
             cpu_state.max_memory_usage);
   ValidateMemoryUsageSnapshot(expected_names, 0 /* port_num_expected */,
                               cpu_state.mem_usage_snapshot_at_peak);
+}
+
+TEST_F(VirtualSchedulerTest, UnnecessaryFeedNodes) {
+  CreateGrapplerItemWithUnnecessaryPlaceholderNodes();
+  InitScheduler();
+
+  // Test that scheduler can run graphs with extra unnecessary feed nodes.
+  auto ops_executed = RunScheduler("");
+  ASSERT_EQ(1, ops_executed.size());
+  ASSERT_EQ(ops_executed.count("x"), 1);
 }
 
 TEST_F(VirtualSchedulerTest, ControlDependency) {
@@ -1580,7 +1923,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   EXPECT_NE(exit_start_micro, exit_1_start_micro);
 
   // Check dependency among the nodes; no matter what scheduling mechanism we
-  // use, the scheduled ops should follow these depedency chains.
+  // use, the scheduled ops should follow these dependency chains.
   // Note that currently, VirtualScheduler executes while/Merge twice; hence,
   // we're not testing dependency chains related to while/Merge.
   // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
@@ -1614,13 +1957,13 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
 
   // Helper lambda to extract port num from _Send and _Recv op name.
   auto get_port_num = [](const string& name) -> int {
-    if (name.find("bn_0") != std::string::npos) {
+    if (name.find("bn_0") != string::npos) {
       return 0;
-    } else if (name.find("bn_1") != std::string::npos) {
+    } else if (name.find("bn_1") != string::npos) {
       return 1;
-    } else if (name.find("bn_2") != std::string::npos) {
+    } else if (name.find("bn_2") != string::npos) {
       return 2;
-    } else if (name.find("bn_minus1") != std::string::npos) {
+    } else if (name.find("bn_minus1") != string::npos) {
       return -1;
     }
     return -999;
@@ -1634,20 +1977,20 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
     const auto& name = x.first;
     const auto& node_info = x.second;
     const auto& op = node_info.op_info.op();
-    if (op == "_Recv") {
+    if (op == kRecv) {
       recv_op_names[get_port_num(name)] = name;
-    } else if (op == "_Send") {
+    } else if (op == kSend) {
       send_op_names[get_port_num(name)] = name;
     }
     op_count[op]++;
   }
 
   // Same number of _Send and _Recv.
-  EXPECT_EQ(op_count.at("_Send"), op_count.at("_Recv"));
+  EXPECT_EQ(op_count.at(kSend), op_count.at(kRecv));
 
   // Expect 4 Send and Recvs each: port 0, 1, and, 2, and control dependency.
-  EXPECT_EQ(op_count.at("_Recv"), 4);
-  EXPECT_EQ(op_count.at("_Send"), 4);
+  EXPECT_EQ(op_count.at(kRecv), 4);
+  EXPECT_EQ(op_count.at(kSend), 4);
 
   // Helper lambda for extracting output Tensor size.
   auto get_output_size = [this, ops_executed](const string& name) -> int64 {
@@ -1656,7 +1999,7 @@ TEST_F(VirtualSchedulerTest, InterDeviceTransfer) {
     for (const auto& output_property : output_properties_) {
       output_properties.push_back(output_property);
     }
-    return scheduler_->CalculateOutputSize(output_properties, 0);
+    return CalculateOutputSize(output_properties, 0);
   };
 
   // Validate transfer size.
@@ -1720,6 +2063,18 @@ TEST_F(VirtualSchedulerTest, GraphWithSendRecvDifferentDevice) {
   EXPECT_GT(ops_executed.count(
                 "Recv_Send_0_on_/job_localhost/replica_0/task_0/cpu_1"),
             0);
+  EXPECT_GT(ops_executed.count("Recv"), 0);
+}
+
+TEST_F(VirtualSchedulerTest, GraphWihtOnlyRecv) {
+  // Init.
+  CreateGrapplerItemWithRecvWithoutSend();
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  // Recv without Send will be treated as initially ready node.
   EXPECT_GT(ops_executed.count("Recv"), 0);
 }
 }  // end namespace grappler

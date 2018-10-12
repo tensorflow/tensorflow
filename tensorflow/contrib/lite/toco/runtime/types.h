@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_TYPES_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_TYPES_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_TYPES_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_TYPES_H_
 
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
 #include "tensorflow/contrib/lite/kernels/internal/compatibility.h"
@@ -24,9 +24,10 @@ namespace toco {
 // TODO(ahentz): These are just stopgaps for now, untils we move all
 // the code over to tflite.
 using tflite::Dims;
+using tflite::FullyConnectedWeightsFormat;
 using tflite::FusedActivationFunctionType;
 using tflite::RequiredBufferSizeForDims;
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_TYPES_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_RUNTIME_TYPES_H_

@@ -1224,7 +1224,7 @@ class DNNRegressorTest(test.TestCase):
       self, predictions, expected_shape):
     predictions_nparray = np.array(predictions)
     self.assertAllEqual(expected_shape, predictions_nparray.shape)
-    self.assertTrue(np.issubdtype(predictions_nparray.dtype, np.float))
+    self.assertTrue(np.issubdtype(predictions_nparray.dtype, np.floating))
 
   def testPredict_AsIterableFalse(self):
     """Tests predict method with as_iterable=False."""

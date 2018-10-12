@@ -5,7 +5,16 @@ libtensorflow/src
 libtensorflow/target
 libtensorflow_jni/src
 libtensorflow_jni/target
+libtensorflow_jni_gpu/src
+libtensorflow_jni_gpu/target
 tensorflow/src
 tensorflow/target
 proto/src
 proto/target
+hadoop/src
+hadoop/target
+spark-connector/src
+spark-connector/target
+spark-connector/dependency-reduced-pom.xml
+spark-connector/spark-warehouse
+pom.xml.versionsBackup

@@ -26,13 +26,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -79,6 +77,19 @@ class Array4D : public Array<T> {
   // Construct an Array4D with the given nested initializer list.
   Array4D(std::initializer_list<std::initializer_list<
               std::initializer_list<std::initializer_list<T>>>>
+              values)
+      : Array<T>(values) {}
+
+  // Creates an array of a floating-point type (half, bfloat16, float,
+  // or double) from the given nested initializer list of float values.
+  template <typename T2, typename = typename std::enable_if<
+                             (std::is_same<T, Eigen::half>::value ||
+                              std::is_same<T, bfloat16>::value ||
+                              std::is_same<T, float>::value ||
+                              std::is_same<T, double>::value) &&
+                             std::is_same<T2, float>::value>::type>
+  Array4D(std::initializer_list<std::initializer_list<
+              std::initializer_list<std::initializer_list<T2>>>>
               values)
       : Array<T>(values) {}
 

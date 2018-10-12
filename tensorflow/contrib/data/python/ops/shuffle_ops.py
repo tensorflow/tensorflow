@@ -17,11 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import batching
-from tensorflow.contrib.data.python.ops import random_ops
-from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.experimental.ops import shuffle_ops
+from tensorflow.python.util import deprecation
 
 
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.shuffle_and_repeat(...)`.")
 def shuffle_and_repeat(buffer_size, count=None, seed=None):
   """Shuffles and repeats a Dataset returning a new permutation for each epoch.
 
@@ -44,26 +45,10 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
       indefinitely.
     seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
       random seed that will be used to create the distribution. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
-  def _apply_fn(dataset):  # pylint: disable=missing-docstring
-    random_ds = random_ops.RandomDataset(seed).apply(
-        batching.batch_and_drop_remainder(2))
-    if count is not None and count is not -1:
-      random_ds = random_ds.take(count)
-
-    def map_fn(seeds):
-      return dataset_ops.ShuffleDataset(
-          input_dataset=dataset,
-          buffer_size=buffer_size,
-          seed=seeds[0],
-          reshuffle_each_iteration=False,
-          seed2=seeds[1])
-
-    return random_ds.flat_map(map_fn)
-
-  return _apply_fn
+  return shuffle_ops.shuffle_and_repeat(buffer_size, count, seed)

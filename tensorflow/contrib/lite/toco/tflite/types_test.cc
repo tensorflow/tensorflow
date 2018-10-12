@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 
+#include <complex>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -28,8 +30,7 @@ using flatbuffers::Vector;
 
 // These are types that exist in TF Mini but don't have a correspondence
 // in TF Lite.
-static const ArrayDataType kUnsupportedTocoTypes[] = {
-    ArrayDataType::kNone, ArrayDataType::kBool, ArrayDataType::kInt64};
+static const ArrayDataType kUnsupportedTocoTypes[] = {ArrayDataType::kNone};
 
 // These are TF Lite types for which there is no correspondence in TF Mini.
 static const ::tflite::TensorType kUnsupportedTfLiteTypes[] = {
@@ -44,7 +45,7 @@ template <ArrayDataType T>
 Array ToFlatBufferAndBack(std::initializer_list<::toco::DataType<T>> items) {
   // NOTE: This test does not construct the full buffers list. Since
   // Deserialize normally takes a buffer, we need to synthesize one and provide
-  // an index that is non-zero so the buffer is not assumed to be emtpy.
+  // an index that is non-zero so the buffer is not assumed to be empty.
   Array src;
   src.data_type = T;
   src.GetMutableBuffer<T>().data = items;
@@ -70,7 +71,10 @@ TEST(DataType, SupportedTypes) {
   std::vector<std::pair<ArrayDataType, ::tflite::TensorType>> testdata = {
       {ArrayDataType::kUint8, ::tflite::TensorType_UINT8},
       {ArrayDataType::kInt32, ::tflite::TensorType_INT32},
-      {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32}};
+      {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
+      {ArrayDataType::kFloat, ::tflite::TensorType_FLOAT32},
+      {ArrayDataType::kBool, ::tflite::TensorType_BOOL},
+      {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64}};
   for (auto x : testdata) {
     EXPECT_EQ(x.second, DataType::Serialize(x.first));
     EXPECT_EQ(x.first, DataType::Deserialize(x.second));
@@ -150,6 +154,34 @@ TEST(DataBuffer, Int32) {
               ::testing::ElementsAre(1, 1 << 30));
 }
 
+TEST(DataBuffer, Int16) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kInt16>({1, 1 << 14});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kInt16>().data,
+              ::testing::ElementsAre(1, 1 << 14));
+}
+
+TEST(DataBuffer, String) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kString>(
+      {"AA", "BBB", "Best. String. Ever."});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kString>().data,
+              ::testing::ElementsAre("AA", "BBB", "Best. String. Ever."));
+}
+
+TEST(DataBuffer, Bool) {
+  Array recovered =
+      ToFlatBufferAndBack<ArrayDataType::kBool>({true, false, true});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kBool>().data,
+              ::testing::ElementsAre(true, false, true));
+}
+
+TEST(DataBuffer, Complex64) {
+  Array recovered = ToFlatBufferAndBack<ArrayDataType::kComplex64>(
+      {std::complex<float>(1.0f, 2.0f), std::complex<float>(3.0f, 4.0f)});
+  EXPECT_THAT(recovered.GetBuffer<ArrayDataType::kComplex64>().data,
+              ::testing::ElementsAre(std::complex<float>(1.0f, 2.0f),
+                                     std::complex<float>(3.0f, 4.0f)));
+}
+
 TEST(Padding, All) {
   EXPECT_EQ(::tflite::Padding_SAME, Padding::Serialize(PaddingType::kSame));
   EXPECT_EQ(PaddingType::kSame, Padding::Deserialize(::tflite::Padding_SAME));
@@ -172,7 +204,7 @@ TEST(ActivationFunction, All) {
                   {FusedActivationFunctionType::kRelu6,
                    ::tflite::ActivationFunctionType_RELU6},
                   {FusedActivationFunctionType::kRelu1,
-                   ::tflite::ActivationFunctionType_RELU1}};
+                   ::tflite::ActivationFunctionType_RELU_N1_TO_1}};
   for (auto x : testdata) {
     EXPECT_EQ(x.second, ActivationFunction::Serialize(x.first));
     EXPECT_EQ(x.first, ActivationFunction::Deserialize(x.second));

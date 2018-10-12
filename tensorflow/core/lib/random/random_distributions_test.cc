@@ -18,9 +18,11 @@ limitations under the License.
 #include <math.h>
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/philox_random_test_utils.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -35,6 +37,10 @@ namespace {
 // unit normal distribution, it should almost definitely never exceed 6.
 static constexpr float kZLimit = 6.0;
 
+// As bfloat16 has much less precision, the largest z-value will should be
+// larger than float32.
+static constexpr float kZLimitBfloat16 = 20.0;
+
 // A utility function to fill the given array with samples from the given
 // distribution, using the single adapter of the underlying generator
 template <class Distribution>
@@ -43,8 +49,8 @@ void FillRandomsWithSingles(PhiloxRandom gen,
                             int64 size) {
   int granularity = Distribution::kResultElementCount;
 
-  CHECK(size % granularity == 0) << " size: " << size
-                                 << " granularity: " << granularity;
+  CHECK(size % granularity == 0)
+      << " size: " << size << " granularity: " << granularity;
 
   SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
@@ -91,7 +97,7 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
       // mode, given the large number of samples.
       moments_data[i] += moment;
       ++moments_sample_count_data[i];
-      moment *= samples_data[index];
+      moment *= static_cast<double>(samples_data[index]);
     }
   }
 
@@ -104,12 +110,12 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
 
   for (int i = 1; i <= max_moments; ++i) {
     // Calculate the theoretical mean and variance
-    const double moments_i_mean = (stride == 0)
-                                      ? theoretical_moments(i)
-                                      : std::pow(theoretical_moments(1), i);
-    const double moments_i_squared = (stride == 0)
-                                         ? theoretical_moments(2 * i)
-                                         : std::pow(theoretical_moments(2), i);
+    const double moments_i_mean =
+        (stride == 0) ? theoretical_moments(i)
+                      : MathUtil::IPow(theoretical_moments(1), i);
+    const double moments_i_squared =
+        (stride == 0) ? theoretical_moments(2 * i)
+                      : MathUtil::IPow(theoretical_moments(2), i);
     const double moments_i_var =
         moments_i_squared - moments_i_mean * moments_i_mean;
 
@@ -123,7 +129,7 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
     const double z_test =
         fabs((moments[i] - moments_i_mean) / sqrt(total_variance));
 
-    if (z_test > z_limit) {
+    if (z_test > static_cast<double>(z_limit)) {
       LOG(ERROR) << "failing z_test:"
                  << " moment: " << i << " stride: " << stride
                  << " z_test: " << z_test << " z_limit: " << z_limit
@@ -150,8 +156,8 @@ void UniformMomentsTest(int count, int max_moments,
   PhiloxRandom gen(seed);
   FillRandoms<UniformDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, uniform_moments, max_moments,
-                                         stride, z_limit);
+    bool status =
+        CheckSamplesMoments(v1, uniform_moments, max_moments, stride, z_limit);
     ASSERT_TRUE(status) << " UniformMomentsTest failing. seed: " << seed;
   }
 }
@@ -182,8 +188,8 @@ void NormalMomentsTest(int count, int max_moments,
   FillRandoms<NormalDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
 
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, normal_moments, max_moments,
-                                         stride, z_limit);
+    bool status =
+        CheckSamplesMoments(v1, normal_moments, max_moments, stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
 }
@@ -213,7 +219,7 @@ class TruncatedNormalMoments {
     }
 
     // The real computation of the moment.
-    double bias = 2.0 * std::pow(kV, n - 1) * kFV / (2.0 * kPhiV - 1.0);
+    double bias = 2.0 * MathUtil::IPow(kV, n - 1) * kFV / (2.0 * kPhiV - 1.0);
     double moment_n_minus_2 = (*this)(n - 2);
     double moment_n = (n - 1) * moment_n_minus_2 - bias;
 
@@ -244,10 +250,26 @@ void RandomParametersMomentsTest(int count, int max_moments,
       gen, &v1[0], v1.size());
 
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, TruncatedNormalMoments(),
-                                         max_moments, stride, z_limit);
+    bool status = CheckSamplesMoments(v1, TruncatedNormalMoments(), max_moments,
+                                      stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
+}
+
+TEST(PhiloxRandomTest, UniformBfloat16MomentsTest) {
+  const std::vector<int> strides = {0, 1, 4, 17};
+  UniformMomentsTest<bfloat16>(1 << 20, 40, strides, bfloat16(kZLimitBfloat16));
+}
+
+TEST(PhiloxRandomTest, NormalBfloat16MomentsTest) {
+  const std::vector<int> strides = {0, 1, 4, 17};
+  NormalMomentsTest<bfloat16>(8 << 20, 25, strides, bfloat16(kZLimitBfloat16));
+}
+
+TEST(PhiloxRandomTest, RandomParametersBfloat16MomentsTest) {
+  const std::vector<int> strides = {0, 1, 4, 17};
+  RandomParametersMomentsTest<bfloat16>(1 << 20, 40, strides,
+                                        bfloat16(kZLimitBfloat16));
 }
 
 TEST(PhiloxRandomTest, UniformFloatMomentsTest) {

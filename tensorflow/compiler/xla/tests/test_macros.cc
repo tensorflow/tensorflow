@@ -20,7 +20,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
@@ -43,7 +46,7 @@ ManifestT ReadManifest() {
   string contents((std::istreambuf_iterator<char>(file_stream)),
                   std::istreambuf_iterator<char>());
 
-  std::vector<string> lines = tensorflow::str_util::Split(contents, '\n');
+  std::vector<string> lines = absl::StrSplit(contents, '\n');
   for (string& line : lines) {
     auto comment = line.find("//");
     if (comment != string::npos) {
@@ -52,8 +55,8 @@ ManifestT ReadManifest() {
     if (line.empty()) {
       continue;
     }
-    tensorflow::str_util::StripTrailingWhitespace(&line);
-    std::vector<string> pieces = tensorflow::str_util::Split(line, ' ');
+    absl::StripTrailingAsciiWhitespace(&line);
+    std::vector<string> pieces = absl::StrSplit(line, ' ');
     CHECK_GE(pieces.size(), 1);
     auto& platforms = manifest[pieces[0]];
     for (int64 i = 1; i < pieces.size(); ++i) {
@@ -72,8 +75,7 @@ string PrependDisabledIfIndicated(const string& test_case_name,
   // First try full match: test_case_name.test_name
   // If that fails, try to find just the test_case_name; this would disable all
   // tests in the test case.
-  auto it = manifest.find(
-      tensorflow::strings::StrCat(test_case_name, ".", test_name));
+  auto it = manifest.find(absl::StrCat(test_case_name, ".", test_name));
   if (it == manifest.end()) {
     it = manifest.find(test_case_name);
     if (it == manifest.end()) {

@@ -64,7 +64,7 @@ class SparseXentTest(test.TestCase):
   def _testXent(self, np_features, np_labels):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
     with self.test_session(use_gpu=True) as sess:
-      loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+      loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
       tf_loss, tf_backprop = sess.run([loss, backprop])
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
@@ -73,7 +73,7 @@ class SparseXentTest(test.TestCase):
   def testSingleClass(self):
     for label_dtype in np.int32, np.int64:
       with self.test_session(use_gpu=True) as sess:
-        loss, backprop = gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
+        loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(np.float32),
             np.array([0, 0, 0]).astype(label_dtype))
         tf_loss, tf_backprop = sess.run([loss, backprop])
@@ -87,8 +87,9 @@ class SparseXentTest(test.TestCase):
 
     if test.is_built_with_cuda() and test.is_gpu_available():
       with self.test_session(use_gpu=True) as sess:
-        loss, backprop = (gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
-            features, labels))
+        loss, backprop = (
+            gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
+                features, labels))
         tf_loss, tf_backprop = sess.run([loss, backprop])
         self.assertAllClose(
             [[np.nan] * 4, [0.25, 0.25, 0.25, -0.75],
@@ -100,8 +101,8 @@ class SparseXentTest(test.TestCase):
             [np.nan, 1.3862, 3.4420, np.nan], tf_loss, rtol=1e-3, atol=1e-3)
 
     with self.test_session(use_gpu=False) as sess:
-      loss, backprop = (gen_nn_ops._sparse_softmax_cross_entropy_with_logits(
-          features, labels))
+      loss, backprop = (
+          gen_nn_ops.sparse_softmax_cross_entropy_with_logits(features, labels))
       with self.assertRaisesOpError("Received a label value of"):
         sess.run([loss, backprop])
 

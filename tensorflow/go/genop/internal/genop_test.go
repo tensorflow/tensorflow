@@ -22,8 +22,27 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework_go_proto"
 )
+
+// Creates an ApiDef based on opdef and applies overrides
+// from apidefText (ApiDef text proto).
+func GetAPIDef(t *testing.T, opdef *pb.OpDef, apidefText string) *pb.ApiDef {
+	opdefList := &pb.OpList{Op: []*pb.OpDef{opdef}}
+	apimap, err := newAPIDefMap(opdefList)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = apimap.Put(apidefText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	apidef, err := apimap.Get(opdef.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return apidef
+}
 
 func TestGenerateOp(t *testing.T) {
 	// TestGenerateOp validates the generated source code for an op.
@@ -31,13 +50,19 @@ func TestGenerateOp(t *testing.T) {
 	testdata := []struct {
 		tag    string
 		opdef  string
+		apidef string
 		wanted string
 	}{
 		{
 			tag: "NoOp",
 			opdef: `
 name: "NoOp"
+`,
+			apidef: `
+op: <
+graph_op_name: "NoOp"
 summary: "No. Op."
+>
 `,
 			wanted: `
 // No. Op.
@@ -80,8 +105,13 @@ attr: <
     >
   >
 >
+`,
+			apidef: `
+op: <
+graph_op_name: "Add"
 summary: "Returns x + y element-wise."
 description: "Blah blah",
+>
 `,
 			wanted: `
 // Returns x + y element-wise.
@@ -122,7 +152,12 @@ attr: <
   name: "DstT"
   type: "type"
 >
+`,
+			apidef: `
+op: <
+graph_op_name: "Cast"
 summary: "Cast x of type SrcT to y of DstT."
+>
 `,
 			wanted: `
 // Cast x of type SrcT to y of DstT.
@@ -149,12 +184,10 @@ func Cast(scope *Scope, x tf.Output, DstT tf.DataType) (y tf.Output) {
 name: "DecodeJpeg"
 input_arg: <
   name: "contents"
-  description: "0-D.  The JPEG-encoded image."
   type: DT_STRING
 >
 output_arg: <
   name: "image"
-  description: "3-D with shape [height, width, channels]"
   type: DT_UINT8
 >
 attr: <
@@ -163,7 +196,6 @@ attr: <
   default_value: <
     i: 0
   >
-  description: "Number of color channels for the decoded image."
 >
 attr: <
   name: "fancy_upscaling"
@@ -171,7 +203,6 @@ attr: <
   default_value: <
     b: true
   >
-  description: "If true use a slower but nicer upscaling of the\nchroma planes (yuv420/422 only)."
 >
 attr: <
   name: "acceptable_fraction"
@@ -179,10 +210,34 @@ attr: <
   default_value: <
     f: 1
   >
+>
+`,
+			apidef: `
+op: <
+graph_op_name: "DecodeJpeg"
+in_arg: <
+  name: "contents"
+  description: "0-D.  The JPEG-encoded image."
+>
+out_arg: <
+  name: "image"
+  description: "3-D with shape [height, width, channels]"
+>
+attr: <
+  name: "channels"
+  description: "Number of color channels for the decoded image."
+>
+attr: <
+  name: "fancy_upscaling"
+  description: "If true use a slower but nicer upscaling of the\nchroma planes (yuv420/422 only)."
+>
+attr: <
+  name: "acceptable_fraction"
   description: "The minimum required fraction of lines before a truncated\ninput is accepted."
 >
 summary: "Decode a JPEG-encoded image to a uint8 tensor."
 description: "Norna dorna fjord\nkajorna\nhahaha"
+>
 `,
 			wanted: `
 // DecodeJpegAttr is an optional argument to DecodeJpeg.
@@ -270,7 +325,12 @@ attr: <
   name: "T"
   type: "type"
 >
+`,
+			apidef: `
+op: <
+graph_op_name: "TwoOutputs"
 summary: "Op that produces multiple outputs"
+>
 `,
 			wanted: `
 // Op that produces multiple outputs
@@ -326,8 +386,13 @@ attr: <
     >
   >
 >
+`,
+			apidef: `
+op: <
+graph_op_name: "ShapeN"
 summary: "Returns shape of tensors."
 description: "Some description here."
+>
 `,
 			wanted: `
 // ShapeNAttr is an optional argument to ShapeN.
@@ -373,16 +438,114 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 }
 `,
 		},
+		{
+			tag: "ApiDefOverrides",
+			opdef: `
+name: "TestOp"
+input_arg: <
+  name: "a"
+  type: DT_STRING
+>
+input_arg: <
+  name: "b"
+  type: DT_STRING
+>
+output_arg: <
+  name: "c"
+  type: DT_UINT8
+>
+attr: <
+  name: "d"
+  type: "int"
+  default_value: <
+    i: 0
+  >
+>
+`,
+			apidef: `
+op: <
+graph_op_name: "TestOp"
+in_arg: <
+  name: "a"
+  rename_to: "aa"
+  description: "Description for aa."
+>
+in_arg: <
+  name: "b"
+  rename_to: "bb"
+  description: "Description for bb."
+>
+arg_order: "b"
+arg_order: "a"
+out_arg: <
+  name: "c"
+  rename_to: "cc"
+  description: "Description for cc."
+>
+attr: <
+  name: "d"
+  rename_to: "dd"
+  description: "Description for dd."
+>
+summary: "Summary for TestOp."
+description: "Description for TestOp."
+>
+`,
+			wanted: `
+// TestOpAttr is an optional argument to TestOp.
+type TestOpAttr func(optionalAttr)
+
+// TestOpDd sets the optional dd attribute to value.
+//
+// value: Description for dd.
+// If not specified, defaults to 0
+func TestOpDd(value int64) TestOpAttr {
+	return func(m optionalAttr) {
+		m["d"] = value
+	}
+}
+
+// Summary for TestOp.
+//
+// Description for TestOp.
+//
+// Arguments:
+//	bb: Description for bb.
+//	aa: Description for aa.
+//
+// Returns Description for cc.
+func TestOp(scope *Scope, bb tf.Output, aa tf.Output, optional ...TestOpAttr) (cc tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TestOp",
+		Input: []tf.Input{
+			aa, bb,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+`,
+		},
 	}
 
 	for _, test := range testdata {
 		t.Run(test.tag, func(t *testing.T) {
 			var opdef pb.OpDef
+			var apidef *pb.ApiDef
 			var buf bytes.Buffer
 			if err := proto.UnmarshalText(test.opdef, &opdef); err != nil {
 				t.Fatal(err)
 			}
-			if err := generateFunctionForOp(&buf, &opdef); err != nil {
+			apidef = GetAPIDef(t, &opdef, test.apidef)
+			if err := generateFunctionForOp(&buf, &opdef, apidef); err != nil {
 				t.Fatal(err)
 			}
 			got, err := format.Source(buf.Bytes())

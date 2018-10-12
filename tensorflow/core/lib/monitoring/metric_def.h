@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
 
 #include <array>
 #include <vector>
 
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace monitoring {
@@ -98,8 +99,8 @@ class AbstractMetricDef {
                     const std::vector<string>& label_descriptions)
       : kind_(kind),
         value_type_(value_type),
-        name_(name.ToString()),
-        description_(description.ToString()),
+        name_(name),
+        description_(description),
         label_descriptions_(std::vector<string>(label_descriptions.begin(),
                                                 label_descriptions.end())) {}
 
@@ -139,4 +140,4 @@ class MetricDef : public AbstractMetricDef {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_

@@ -46,6 +46,7 @@ cc_library(
     includes = [
         ".",
         "cuda/include",
+        "cuda/include/crt",
     ],
     visibility = ["//visibility:public"],
 )
@@ -123,6 +124,15 @@ cc_library(
         "cuda/include",
     ],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cudnn_header",
+    includes = [
+        ".",
+        "cuda/include",
+    ],
     visibility = ["//visibility:public"],
 )
 

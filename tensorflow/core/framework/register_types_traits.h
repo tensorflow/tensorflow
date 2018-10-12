@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
-#define TENSORFLOW_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
+#define TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
 // This file is used by cuda code and must remain compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -23,7 +23,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
@@ -79,7 +79,7 @@ template <>
 struct proxy_type_pod<SYCLDevice, 4> {
   typedef float type;
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 /// If POD we use proxy_type_pod, otherwise this maps to identiy.
 template <typename Device, typename T>
@@ -99,7 +99,7 @@ struct proxy_type {
 #ifdef TENSORFLOW_USE_SYCL
 #define TF_CALL_SYCL_PROXY_TYPES(m) \
   TF_CALL_double(m) TF_CALL_float(m) TF_CALL_int32(m)
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_

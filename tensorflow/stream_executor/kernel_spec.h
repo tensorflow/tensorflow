@@ -56,8 +56,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Describes how to load a kernel on a target platform.
 //
@@ -374,7 +373,6 @@ class MultiKernelLoaderSpec {
   size_t arity_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_KERNEL_SPEC_H_

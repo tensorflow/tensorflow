@@ -201,6 +201,27 @@ struct Transpose<GPUDevice, T, conjugate> {
                                                          out);
         }
         break;
+      case 6:
+        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
+                                                             out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 6>(d, in, perm, conjugate,
+                                                         out);
+        }
+        break;
+      case 7:
+        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
+                                                             out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 7>(d, in, perm, conjugate,
+                                                         out);
+        }
+        break;
+      case 8:
+        if (!internal::TransposeUsingTile<T, conjugate>::run(d, in, perm,
+                                                             out)) {
+          internal::TransposeUsingEigen<GPUDevice, T, 8>(d, in, perm, conjugate,
+                                                         out);
+        }
+        break;
       default:
         internal::TransposeSimple<T, conjugate>(d, in, perm, out);
         break;

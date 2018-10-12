@@ -39,12 +39,16 @@ if [[ -z $pip35_version ]]; then
 fi
 
 set -e
+pip3.5 install --upgrade pip
+
+pip3.5 install --upgrade virtualenv
+
 # Install six.
 pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.3.0
+pip3.5 install --upgrade protobuf==3.6.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -54,11 +58,11 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
-pip3.5 install --no-binary=:all: --upgrade numpy==1.12.0
+pip3.5 install --no-binary=:all: --upgrade numpy==1.14.5
 
 pip3.5 install scipy==0.18.1
 
-pip3.5 install scikit-learn==0.18.1
+pip3.5 install scikit-learn==0.19.1
 
 # pandas required by `inflow`
 pip3 install pandas==0.19.2
@@ -71,5 +75,21 @@ pip3.5 install portpicker
 pip3.5 install werkzeug
 
 pip3.5 install grpcio
+
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip3.5 install --upgrade astor
+pip3.5 install --upgrade gast
+pip3.5 install --upgrade termcolor
+
+# Install last working version of setuptools.
+pip3.5 install --upgrade setuptools==39.1.0
+
+# Keras
+pip3.5 install keras_applications==1.0.6
+pip3.5 install keras_preprocessing==1.0.5
+pip3.5 install --upgrade h5py==2.8.0
+
+# Install last working version of setuptools.
+pip3.5 install --upgrade setuptools==39.1.0
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

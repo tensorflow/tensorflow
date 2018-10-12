@@ -47,7 +47,7 @@ using random::PhiloxRandom;
 
 template <typename T>
 struct TruncatedNormalFunctor<CPUDevice, T> {
-  static const int kMaxIterations = 100;
+  static const int kMaxIterations = 1000;
 
   void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
@@ -95,9 +95,10 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         int64 sample = b * samples_per_batch;
 
         // On GPU, this check will just fill samples with NAN if it fails.
-        OP_REQUIRES(ctx, stddev > T(0) && minval < maxval &&
-                             (Eigen::numext::isfinite(minval) ||
-                              Eigen::numext::isfinite(maxval)),
+        OP_REQUIRES(ctx,
+                    stddev > T(0) && minval < maxval &&
+                        (Eigen::numext::isfinite(minval) ||
+                         Eigen::numext::isfinite(maxval)),
                     errors::InvalidArgument("Invalid parameters"));
 
         int numIterations = 0;
@@ -118,10 +119,12 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
         // Determine the method to use.
         const T sqrtFactor = Eigen::numext::sqrt((normMin * normMin) + T(4));
         const T cutoff =
-            T(2) * Eigen::numext::exp(
-                       T(0.5) + (normMin * (normMin - sqrtFactor)) / T(4)) /
+            T(2) *
+            Eigen::numext::exp(T(0.5) +
+                               (normMin * (normMin - sqrtFactor)) / T(4)) /
             (normMin + sqrtFactor);
         const T diff = normMax - normMin;
+
         if (diff < cutoff) {
           // Sample from a uniform distribution on [normMin, normMax].
 
@@ -141,15 +144,20 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
 
             const auto u = dist(&gen_copy);
             for (int i = 0; i < size; i++) {
-              if (u[i] <= Eigen::numext::exp(g[i]) ||
-                  numIterations + 1 >= kMaxIterations) {
+              auto accept = u[i] <= Eigen::numext::exp(g[i]);
+              if (accept || numIterations + 1 >= kMaxIterations) {
                 // Accept the sample z.
                 // If we run out of iterations, just use the current uniform
-                // sample. Emperically, the probability of accepting each sample
-                // is at least 50% for typical inputs, so we will always accept
-                // by 100 iterations.
-                // This introduces a slight inaccuracy when at least one bound
-                // is large, minval is negative and maxval is positive.
+                // sample, but emit a warning.
+                // TODO(jjhunt) For small entropies (relative to the bounds),
+                // this sampler is poor and may take many iterations since
+                // the proposal distribution is the uniform distribution
+                // U(lower_bound, upper_bound).
+                if (!accept) {
+                  LOG(WARNING) << "TruncatedNormal uniform rejection sampler "
+                               << "exceeded max iterations. Sample may contain "
+                               << "outliers.";
+                }
                 output(sample) = z[i] * stddev + mean;
                 sample++;
                 if (sample >= limit_sample) {
@@ -179,8 +187,13 @@ struct TruncatedNormalFunctor<CPUDevice, T> {
               const T g = Eigen::numext::exp(-x * x / T(2.0));
               const T u = rand[i];
               i++;
-              if ((u <= g && z < normMax) ||
-                  numIterations + 1 >= kMaxIterations) {
+              auto accept = (u <= g && z < normMax);
+              if (accept || numIterations + 1 >= kMaxIterations) {
+                if (!accept) {
+                  LOG(WARNING) << "TruncatedNormal exponential distribution "
+                               << "rejection sampler exceeds max iterations. "
+                               << "Sample may contain outliers.";
+                }
                 output(sample) = z * stddev + mean;
                 sample++;
                 if (sample >= limit_sample) {
@@ -309,30 +322,34 @@ class ParameterizedTruncatedNormalOp : public OpKernel {
     } else {
       // Parameters must be broadcastable to the shape [num_batches].
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(means_tensor.shape()) ||
-                   means_tensor.dim_size(0) == 1 ||
-                   means_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(means_tensor.shape()) ||
+              means_tensor.dim_size(0) == 1 ||
+              means_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input means should have length 1 or shape[0], got shape: ",
               means_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
-                   stddevs_tensor.dim_size(0) == 1 ||
-                   stddevs_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(stddevs_tensor.shape()) ||
+              stddevs_tensor.dim_size(0) == 1 ||
+              stddevs_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input stddevs should have length 1 or shape[0], got shape: ",
               stddevs_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
-                   minvals_tensor.dim_size(0) == 1 ||
-                   minvals_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(minvals_tensor.shape()) ||
+              minvals_tensor.dim_size(0) == 1 ||
+              minvals_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input minvals should have length 1 or shape[0], got shape: ",
               minvals_tensor.shape().DebugString()));
       OP_REQUIRES(
-          ctx, TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
-                   maxvals_tensor.dim_size(0) == 1 ||
-                   maxvals_tensor.dim_size(0) == num_batches,
+          ctx,
+          TensorShapeUtils::IsScalar(maxvals_tensor.shape()) ||
+              maxvals_tensor.dim_size(0) == 1 ||
+              maxvals_tensor.dim_size(0) == num_batches,
           errors::InvalidArgument(
               "Input maxvals should have length 1 or shape[0], got shape: ",
               maxvals_tensor.shape().DebugString()));

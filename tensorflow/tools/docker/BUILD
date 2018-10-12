@@ -13,15 +13,3 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

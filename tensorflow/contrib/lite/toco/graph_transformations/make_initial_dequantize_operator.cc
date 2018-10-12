@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
+#include "tensorflow/contrib/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -78,15 +79,14 @@ bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
   image_input_op->outputs = {dequantized_input_name};
   model->operators.emplace(model->operators.begin(), image_input_op);
 
-  CHECK(input_array.final_data_type == ArrayDataType::kUint8);
-  input_array.data_type = ArrayDataType::kUint8;
   dequantized_input_array.data_type = ArrayDataType::kFloat;
   const auto& input_minmax = input_array.GetMinMax();
   auto& dequantized_input_minmax = dequantized_input_array.GetOrCreateMinMax();
   dequantized_input_minmax = input_minmax;
   auto& input_qparams = input_array.GetOrCreateQuantizationParams();
-  GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-      model->flags, input_minmax, &input_qparams);
+  input_array.data_type = input_array.final_data_type;
+  ChooseQuantizationParamsForArrayAndQuantizedDataType(
+      input_array, input_array.data_type, &input_qparams);
 
   transformation->AddMessageF(
       "Created %s"
@@ -97,7 +97,10 @@ bool AddDequantizeOperatorToInput(const string& input_name, const Operator* op,
   return true;
 }
 
-bool MakeInitialDequantizeOperator::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status MakeInitialDequantizeOperator::Run(Model* model,
+                                                        std::size_t op_index,
+                                                        bool* modified) {
+  *modified = false;
   // This is effectively a transformation applied to edges.  We iterate over the
   // specified node (op) and proceed for input edges.
   const auto it = model->operators.begin() + op_index;
@@ -114,7 +117,8 @@ bool MakeInitialDequantizeOperator::Run(Model* model, std::size_t op_index) {
       }
     }
   }
-  return change_made;
+  *modified = change_made;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// This file is used to provide equivalents of internal util::format::FormatF
-// and util::format::AppendF. Unfortunately, type safety is not as good as a
+// This file is used to provide equivalents of internal absl::FormatF
+// and absl::StrAppendFormat. Unfortunately, type safety is not as good as a
 // a full C++ example.
 // TODO(aselle): When absl adds support for StrFormat, use that instead.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_FORMAT_PORT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_FORMAT_PORT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_FORMAT_PORT_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_FORMAT_PORT_H_
 
 #include "tensorflow/contrib/lite/toco/toco_types.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -74,4 +74,4 @@ inline string StringF(const char* fmt, Args&&... args) {
 }  // namespace port
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_FORMAT_PORT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_FORMAT_PORT_H_

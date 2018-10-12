@@ -157,6 +157,47 @@ Status LocalMaster::Reset(CallOptions* call_options,
   return ret;
 }
 
+Status LocalMaster::MakeCallable(CallOptions* call_options,
+                                 const MakeCallableRequest* request,
+                                 MakeCallableResponse* response) {
+  Notification n;
+  Status ret;
+  master_impl_->MakeCallable(request, response, [&n, &ret](const Status& s) {
+    ret.Update(s);
+    n.Notify();
+  });
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
+  return ret;
+}
+Status LocalMaster::RunCallable(CallOptions* call_options,
+                                const RunCallableRequest* request,
+                                RunCallableResponse* response) {
+  Notification n;
+  Status ret;
+  master_impl_->RunCallable(call_options, request, response,
+                            [&n, &ret](const Status& s) {
+                              ret.Update(s);
+                              n.Notify();
+                            });
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
+  return ret;
+}
+Status LocalMaster::ReleaseCallable(CallOptions* call_options,
+                                    const ReleaseCallableRequest* request,
+                                    ReleaseCallableResponse* response) {
+  Notification n;
+  Status ret;
+  master_impl_->ReleaseCallable(request, response, [&n, &ret](const Status& s) {
+    ret.Update(s);
+    n.Notify();
+  });
+  TF_RETURN_IF_ERROR(
+      WaitForNotification(call_options, default_timeout_in_ms_, &n));
+  return ret;
+}
+
 namespace {
 mutex* get_local_master_registry_lock() {
   static mutex local_master_registry_lock(LINKER_INITIALIZED);

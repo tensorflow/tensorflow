@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 
@@ -39,10 +40,8 @@ namespace {
 const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
 const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
 
-// Returns a list of devices sorted by preferred type and then name
-// from 'devices' whose type is in 'supported_device_types'.  This
-// function searches the device types in 'supported_device_types' and
-// returns the subset of devices that match.
+// Returns a list of devices having type in supported_device_types.  The
+// returned list is sorted by preferred type (higher numeric type is preferred).
 std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
@@ -79,12 +78,12 @@ std::vector<Device*> FilterSupportedDevices(
 //   DeviceSet device_set = ...;
 //   ColocationGraph colocation_graph(graph, device_set);
 //
-//   // Add all the nodes of graph to colocation_graph.
+//   // Add all the nodes of the `graph` to the `colocation_graph`.
 //   for (Node* node : graph.nodes()) {
 //     TF_RETURN_IF_ERROR(colocation_graph.AddNode(*node));
 //   }
 //
-//   // Add one or more colocation constraint.
+//   // Add one or more colocation constraints.
 //   Node node_1 = *graph.FindNodeId(...);
 //   Node node_2 = *graph.FindNodeId(...);
 //   TF_RETURN_IF_ERROR(colocation_graph.ColocateNodes(node_1, node_2));
@@ -94,9 +93,9 @@ std::vector<Device*> FilterSupportedDevices(
 //     TF_RETURN_IF_ERROR(colocation_graph.AssignDevice(node));
 //   }
 //
-// The implementation uses the union-find algorithm to maintain the
-// connected components efficiently and incrementally as edges
-// (implied by ColocationGraph::ColocateNodes() invocations) are added.
+// This implementation uses the Union-Find algorithm to efficiently maintain the
+// connected components and incrementally adds edges via
+// ColocationGraph::ColocateNodes() invocations.
 class ColocationGraph {
  public:
   ColocationGraph(Graph* graph, const DeviceSet* device_set,
@@ -132,13 +131,9 @@ class ColocationGraph {
     std::unordered_map<StringPiece, const Node*, StringPieceHasher>
         colocation_group_root;
 
-    for (Node* node : graph_->nodes()) {
-      if (!node->IsOp()) {
-        continue;
-      }
-
-      // When adding the node, identify whether it is part of a
-      // colocation group.
+    for (Node* node : graph_->op_nodes()) {
+      // When adding the node, identify whether it is part of a colocation
+      // group.
 
       // This code is effectively the equivalent of GetNodeAttr() for a string
       // array, but it avoids all internal allocations (the allocation of the
@@ -151,7 +146,8 @@ class ColocationGraph {
       if (attr_value != nullptr && attr_value->has_list()) {
         for (const string& class_spec : attr_value->list().s()) {
           StringPiece spec(class_spec);
-          if (spec.Consume(kColocationGroupPrefixStringPiece)) {
+          if (str_util::ConsumePrefix(&spec,
+                                      kColocationGroupPrefixStringPiece)) {
             found_spec = true;
             TF_RETURN_IF_ERROR(
                 ColocateNodeToGroup(&colocation_group_root, node, spec));
@@ -216,11 +212,10 @@ class ColocationGraph {
     Member& x_root_member = members_[x_root];
     Member& y_root_member = members_[y_root];
 
-    // Merge the sets by swinging the parent pointer of the smaller
-    // tree to point to the root of the larger tree. Together with
-    // path compression in ColocationGraph::FindRoot, this ensures
-    // that we do not experience pathological performance on graphs
-    // such as chains.
+    // Merge the sets by setting the parent pointer of the smaller tree's root
+    // node to point to the root of the larger tree. Together with path
+    // compression in ColocationGraph::FindRoot, this ensures that we do not
+    // experience pathological performance on graphs such as chains.
     int new_root, old_root;
     if (x_root_member.rank < y_root_member.rank) {
       // The tree rooted at x_root is shallower, so connect it to
@@ -259,9 +254,11 @@ class ColocationGraph {
                                               old_root_member.device_name,
                                               allow_soft_placement_);
     if (!s.ok()) {
-      return errors::InvalidArgument("Cannot colocate nodes '", x.name(),
-                                     "' and '", y.name(), ": ",
-                                     s.error_message());
+      return errors::InvalidArgument(
+          "Cannot colocate nodes ",
+          errors::FormatColocationNodeForError(x.name()), " and ",
+          errors::FormatColocationNodeForError(y.name()), ": ",
+          s.error_message());
     }
 
     // Ensure that the common root has at least one supported device
@@ -272,8 +269,10 @@ class ColocationGraph {
                           old_root_member.supported_device_types);
     if (new_root_member.supported_device_types.empty()) {
       return errors::InvalidArgument(
-          "Cannot colocate nodes '", x.name(), "' and '", y.name(),
-          "' because no device type supports both of those nodes and the "
+          "Cannot colocate nodes ",
+          errors::FormatColocationNodeForError(x.name()), " and ",
+          errors::FormatColocationNodeForError(y.name()),
+          " because no device type supports both of those nodes and the "
           "other nodes colocated with them.",
           DebugInfo(x_root), DebugInfo(y_root));
     }
@@ -369,7 +368,8 @@ class ColocationGraph {
                 "Could not satisfy explicit device specification '",
                 node->requested_device(), "' because no supported kernel for ",
                 specified_device_name.type, " devices is available.",
-                debug_info);
+                debug_info, "\nRegistered kernels:\n",
+                KernelsRegisteredForOp(node->type_string()));
           } else {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
@@ -380,8 +380,9 @@ class ColocationGraph {
           // merged set device is different, so print both.
           return errors::InvalidArgument(
               "Could not satisfy explicit device specification '",
-              node->requested_device(),
-              "' because the node was colocated with a group of nodes that "
+              node->requested_device(), "' because the node ",
+              errors::FormatColocationNodeForError(node->name()),
+              " was colocated with a group of nodes that ",
               "required incompatible device '",
               DeviceNameUtils::ParsedNameToString(
                   members_[node_root].device_name),
@@ -463,6 +464,7 @@ class ColocationGraph {
     // the user can see why an unsatisfiable placement occurred.
 
     std::unordered_map<string, string> type_to_devices;
+    std::vector<const Node*> colocation_nodes;
     int num_nodes_found = 0;
 
     for (const Node* node : graph_->nodes()) {
@@ -474,6 +476,7 @@ class ColocationGraph {
         continue;
       }
       ++num_nodes_found;
+      colocation_nodes.push_back(node);
       const string& op_type = node->type_string();
       string devices_registered;
       for (const auto& device_type : members_[id].supported_device_types) {
@@ -487,6 +490,13 @@ class ColocationGraph {
     for (const auto& td : type_to_devices) {
       strings::StrAppend(&text, "\n", td.first, ": ", td.second);
     }
+    strings::StrAppend(&text,
+                       "\n\nColocation members and user-requested devices:");
+    for (const Node* node : colocation_nodes) {
+      strings::StrAppend(&text, "\n  ", node->name(), " (", node->type_string(),
+                         ") ", node->requested_device());
+    }
+    strings::StrAppend(&text, "\n");
 
     if (num_nodes_found <= 1) {
       text.clear();
@@ -598,22 +608,50 @@ class ColocationGraph {
   // given id is connected.
   int FindRoot(int node_id) {
     Member& member = members_[node_id];
+    DCHECK_GE(member.parent, 0);
+    if (member.parent == node_id) {
+      // member.parent is the root of this disjoint tree.  Do nothing.
+    } else {
+      member.parent = FindRoot(member.parent);
+    }
+    // Now it is guaranteed that member.parent is the root of this disjoint
+    // tree.
+    DCHECK_GE(member.parent, 0);
+    return member.parent;
+  }
 
-    int parent = member.parent;
-    DCHECK_GE(parent, 0);
-
-    if (parent != node_id) {
-      // NOTE: Compress paths from node_id to its root, so that future
-      // calls to FindRoot and ColocateNodes are more efficient.
-      int root = FindRoot(parent);
-      if (parent != root) {
-        parent = root;
-        member.parent = root;
+  // Ensures that the devices of 'dst's resource and reference match the device
+  // specified for 'src', which is an input of 'dst' with a partially or fully
+  // specified device.
+  Status VerifyResourceAndRefInputsCanBeColocated(
+      const Node* dst, const Node* src,
+      const DeviceNameUtils::ParsedName& src_parsed_name) {
+    std::vector<const Edge*> edges;
+    TF_RETURN_IF_ERROR(dst->input_edges(&edges));
+    for (const Edge* edge : edges) {
+      DataType input_type = dst->input_type(edge->dst_input());
+      if (input_type == DT_RESOURCE || IsRefType(input_type)) {
+        const Node* input_node = edge->src();
+        if (input_node == src) {
+          continue;
+        }
+        const auto& input_root = members_[FindRoot(input_node->id())];
+        const auto& input_parsed_name = input_root.device_name;
+        if (DeviceNameUtils::HasSomeDetails(input_parsed_name) &&
+            !DeviceNameUtils::AreCompatibleDevNames(input_parsed_name,
+                                                    src_parsed_name)) {
+          return AttachDef(
+              errors::InvalidArgument(
+                  "Could not colocate node with its "
+                  "resource and reference inputs; devices ",
+                  DeviceNameUtils::ParsedNameToString(input_parsed_name),
+                  " and ", DeviceNameUtils::ParsedNameToString(src_parsed_name),
+                  " are not compatible."),
+              *dst);
+        }
       }
     }
-
-    DCHECK_GE(parent, 0);
-    return parent;
+    return Status::OK();
   }
 
   Graph* const graph_;  // Not owned.
@@ -632,6 +670,15 @@ class ColocationGraph {
 bool IsGeneratorNode(const Node* node) {
   return node->num_inputs() == 0 && node->num_outputs() == 1 &&
          !IsRefType(node->output_type(0));
+}
+
+bool IsExemptFromResourceInputColocation(const Node* node) {
+  // Note: Partitioned function calls, which place and partition their
+  // function bodies, are exempt from this check: they forward resource and
+  // ref inputs to operations that are appropriately placed, instead of
+  // dereferencing them.
+  const string& op_type = node->op_def().name();
+  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall";
 }
 
 }  // namespace
@@ -668,8 +715,8 @@ Status Placer::Run() {
   // 2. Enumerate the constraint edges, and use them to update the disjoint
   // node set.
 
-  // If `node` has an input edge with reference type, add an
-  // edge from the source of that edge to `node`.
+  // If `node` has an input edge with reference type, add an edge from the
+  // source of that edge to `node`.
   for (const Edge* edge : graph_->edges()) {
     if (edge->IsControlEdge()) {
       continue;
@@ -677,7 +724,10 @@ Status Placer::Run() {
     Node* src = edge->src();
     Node* dst = edge->dst();
     DataType input_type = dst->input_type(edge->dst_input());
-    if (input_type == DT_RESOURCE || IsRefType(input_type)) {
+    if ((input_type == DT_RESOURCE || IsRefType(input_type)) &&
+        !IsExemptFromResourceInputColocation(dst)) {
+      // Colocate `src` and `dst` to maintain the invariant that nodes connected
+      // by reference edges are colocated.
       int src_root_id = colocation_graph.FindRoot(src->id());
       int dst_root_id = colocation_graph.FindRoot(dst->id());
       auto& src_root = colocation_graph.members_[src_root_id];
@@ -694,6 +744,9 @@ Status Placer::Run() {
         // incompatible.
         if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
                                                     dest_parsed_name)) {
+          TF_RETURN_IF_ERROR(
+              colocation_graph.VerifyResourceAndRefInputsCanBeColocated(
+                  dst, src, source_parsed_name));
           if (log_device_placement_) {
             LOG(INFO) << "Ignoring device specification "
                       << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
@@ -762,8 +815,8 @@ Status Placer::Run() {
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
-          errors::InvalidArgument("Cannot assign a device for operation '",
-                                  node->name(), "': ", status.error_message()),
+          errors::InvalidArgument("Cannot assign a device for operation ",
+                                  node->name(), ": ", status.error_message()),
           *node);
     }
 
@@ -809,8 +862,8 @@ Status Placer::Run() {
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
       return AttachDef(
-          errors::InvalidArgument("Cannot assign a device for operation '",
-                                  node->name(), "': ", status.error_message()),
+          errors::InvalidArgument("Cannot assign a device for operation ",
+                                  node->name(), ": ", status.error_message()),
           *node);
     }
 

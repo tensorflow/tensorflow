@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/util/event.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class Event;
+class GraphDef;
 
 // Main interface for the summary writer resource.
 class SummaryWriterInterface : public ResourceBase {
@@ -52,16 +55,6 @@ class SummaryWriterInterface : public ResourceBase {
 
   virtual Status WriteEvent(std::unique_ptr<Event> e) = 0;
 };
-
-// Creates a SummaryWriterInterface instance which writes to a file. It will
-// enqueue up to max_queue summaries, and flush at least every flush_millis
-// milliseconds. The summaries will be written to the directory specified by
-// logdir and with the filename suffixed by filename_suffix. The caller owns a
-// reference to result if the returned status is ok. The Env object must not
-// be destroyed until after the returned writer.
-Status CreateSummaryWriter(int max_queue, int flush_millis,
-                           const string& logdir, const string& filename_suffix,
-                           Env* env, SummaryWriterInterface** result);
 
 }  // namespace tensorflow
 

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.grappler.costs import op_performance_data_pb2
 from tensorflow.core.protobuf import device_properties_pb2
@@ -56,9 +58,13 @@ class Cluster(object):
         self._tf_cluster = tf_cluster.TF_NewVirtualCluster(
             devices_serialized, status)
 
-  def __del__(self):
+  def Shutdown(self):
     if self._tf_cluster is not None:
       tf_cluster.TF_ShutdownCluster(self._tf_cluster)
+      self._tf_cluster = None
+
+  def __del__(self):
+    self.Shutdown()
 
   @property
   def tf_cluster(self):
@@ -73,6 +79,18 @@ class Cluster(object):
       for raw_dev in ret_from_swig:
         devices.append(device_properties_pb2.NamedDevice.FromString(raw_dev))
     return devices
+
+  def ListAvailableOps(self):
+    """Returns a list of all the available operations (sorted alphatically)."""
+    return tf_cluster.TF_ListAvailableOps()
+
+  def GetSupportedDevices(self, item):
+    return tf_cluster.TF_GetSupportedDevices(self._tf_cluster, item.tf_item)
+
+  def EstimatePerformance(self, device):
+    """Estimate the performance of the specified device."""
+    serialized = device.SerializeToString()
+    return tf_cluster.TF_EstimatePerformance(serialized)
 
   def MeasureCosts(self, item):
     """Returns the cost of running the specified item.
@@ -108,3 +126,14 @@ class Cluster(object):
           item.tf_item, self._tf_cluster, status)
 
     return ret_from_swig
+
+
+@contextlib.contextmanager
+def Provision(allow_soft_placement=True,
+              disable_detailed_stats=True,
+              disable_timeline=True,
+              devices=None):
+  cluster = Cluster(allow_soft_placement, disable_detailed_stats,
+                    disable_timeline, devices)
+  yield cluster
+  cluster.Shutdown()

@@ -21,17 +21,16 @@ limitations under the License.
 
 #include "google/protobuf/map.h"
 #include "google/protobuf/text_format.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-//#include "absl/strings/string_view_utils.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
 #include "tensorflow/contrib/lite/toco/tensorflow_util.h"
-#include "tensorflow/contrib/lite/toco/toco_port.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -44,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -53,16 +54,27 @@ using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_QUINT8;
+using tensorflow::DT_STRING;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
+using tensorflow::OpRegistry;
 using tensorflow::TensorProto;
 using tensorflow::TensorShapeProto;
 
 namespace toco {
+
 namespace {
 bool HasAttr(const NodeDef& node, const string& attr_name) {
   return node.attr().count(attr_name) > 0;
+}
+
+bool HasWildcardDimension(const TensorShapeProto& shape) {
+  for (const auto& dim : shape.dim()) {
+    if (dim.size() == -1) return true;
+  }
+  return false;
 }
 
 const string& GetStringAttr(const NodeDef& node, const string& attr_name) {
@@ -72,7 +84,7 @@ const string& GetStringAttr(const NodeDef& node, const string& attr_name) {
   return attr.s();
 }
 
-int GetIntAttr(const NodeDef& node, const string& attr_name) {
+int64 GetIntAttr(const NodeDef& node, const string& attr_name) {
   CHECK(HasAttr(node, attr_name)) << attr_name << " not found in:\n"
                                   << node.DebugString();
   const auto& attr = node.attr().at(attr_name);
@@ -111,7 +123,7 @@ const TensorShapeProto& GetShapeAttr(const NodeDef& node,
 }
 
 const TensorProto& GetTensorAttr(const NodeDef& node, const string& attr_name) {
-  CHECK(HasAttr(node, attr_name));
+  CHECK(HasAttr(node, attr_name)) << "No attr named '" << attr_name << "'";
   const auto& attr = node.attr().at(attr_name);
   CHECK_EQ(attr.value_case(), AttrValue::kTensor);
   return attr.tensor();
@@ -125,6 +137,42 @@ const AttrValue::ListValue& GetListAttr(const NodeDef& node,
   return attr.list();
 }
 
+tensorflow::Status CheckOptionalAttr(const NodeDef& node,
+                                     const string& attr_name,
+                                     const string& expected_value) {
+  if (HasAttr(node, attr_name)) {
+    const string& value = GetStringAttr(node, attr_name);
+    if (value != expected_value) {
+      return tensorflow::errors::InvalidArgument(
+          "Unexpected value for attribute '" + attr_name + "'. Expected '" +
+          expected_value + "'");
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status CheckOptionalAttr(
+    const NodeDef& node, const string& attr_name,
+    const tensorflow::DataType& expected_value) {
+  if (HasAttr(node, attr_name)) {
+    const tensorflow::DataType& value = GetDataTypeAttr(node, attr_name);
+    if (value != expected_value) {
+      return tensorflow::errors::InvalidArgument(
+          "Unexpected value for attribute '" + attr_name + "'. Expected '" +
+          tensorflow::DataType_Name(expected_value) + "'");
+    }
+  }
+  return tensorflow::Status::OK();
+}
+
+template <typename T1, typename T2>
+tensorflow::Status ExpectValue(const T1& v1, const T2& v2,
+                               const string& description) {
+  if (v1 == v2) return tensorflow::Status::OK();
+  return tensorflow::errors::InvalidArgument(absl::StrCat(
+      "Unexpected ", description, ": got ", v1, ", expected ", v2));
+}
+
 ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
   if (dtype == DT_UINT8)
     return ArrayDataType::kUint8;
@@ -136,14 +184,17 @@ ArrayDataType ConvertDataType(tensorflow::DataType dtype) {
     return ArrayDataType::kInt32;
   else if (dtype == DT_INT64)
     return ArrayDataType::kInt64;
+  else if (dtype == DT_STRING)
+    return ArrayDataType::kString;
   else
-    LOG(INFO) << "Unsupported data type in placehoder op: " << dtype;
+    LOG(INFO) << "Unsupported data type in placeholder op: " << dtype;
   return ArrayDataType::kNone;
 }
 
-void ImportShape(const TFLITE_PROTO_NS::RepeatedPtrField<
-                     tensorflow::TensorShapeProto_Dim>& input_dims,
-                 Shape* shape) {
+tensorflow::Status ImportShape(
+    const TFLITE_PROTO_NS::RepeatedPtrField<tensorflow::TensorShapeProto_Dim>&
+        input_dims,
+    int* input_flat_size, Shape* shape) {
   std::vector<int> input_dims_only_sizes;
   for (auto& d : input_dims) {
     if (d.size() == 0) {
@@ -151,27 +202,44 @@ void ImportShape(const TFLITE_PROTO_NS::RepeatedPtrField<
       // them of flat size 0 even though they have other nonzero dims.
       // This breaks our invariant, that array dims can't be 0.
       // For now, tweaking this to record a 0-D shape instead.
-      input_dims_only_sizes.clear();
-      break;
+      shape->mutable_dims()->clear();
+      if (input_flat_size != nullptr) *input_flat_size = 0;
+      return tensorflow::Status::OK();
     }
+    // TensorFlow's shapes use int64s, while TOCO uses ints.
+    if (d.size() > std::numeric_limits<int>::max()) {
+      return tensorflow::errors::InvalidArgument("Shape element overflows");
+    }
+
     input_dims_only_sizes.push_back(d.size());
   }
   *shape->mutable_dims() = input_dims_only_sizes;
+
+  if (input_flat_size == nullptr) return tensorflow::Status::OK();
+
+  return NumElements(input_dims_only_sizes, input_flat_size);
 }
 
-void ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
+                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_FLOAT);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
-  ImportShape(input_shape.dim(), output_array->mutable_shape());
-  int input_flat_size = 1;
-  for (int k = 0; k < input_shape.dim_size(); k++) {
-    input_flat_size *= input_shape.dim(k).size();
-  }
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
   auto& output_float_data =
       output_array->GetMutableBuffer<ArrayDataType::kFloat>().data;
-  output_float_data.resize(input_flat_size);
-  if (input_tensor.float_val_size()) {
+  output_float_data.resize(RequiredBufferSizeForShape(output_array->shape()),
+                           0.f);
+  CHECK_GE(output_float_data.size(), input_flat_size);
+  if (input_tensor.float_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_float_data[i] = input_tensor.float_val(0);
+    }
+  } else if (input_tensor.float_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.float_val_size(); i++) {
       output_float_data[i] = input_tensor.float_val(i);
     }
@@ -180,24 +248,72 @@ void ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_float_data.data()));
   } else {
-    LOG(FATAL) << "Neither input_content nor float_val have the right "
-                  "dimensions for this float tensor.";
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(float),
+                     ") nor float_val (", input_tensor.float_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this float tensor"));
   }
+  return tensorflow::Status::OK();
 }
 
-void ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
+                                     Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
+  auto& output_int_data =
+      output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
+  if (input_tensor.int_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
+    for (int i = 0; i < input_tensor.int_val_size(); i++) {
+      output_int_data[i] = input_tensor.int_val(i);
+    }
+  } else if (input_tensor.tensor_content().size() ==
+             input_flat_size * sizeof(uint8_t)) {
+    toco::port::CopyToBuffer(input_tensor.tensor_content(),
+                             reinterpret_cast<char*>(output_int_data.data()));
+  } else {
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(uint8_t),
+                     ") nor int_val (", input_tensor.int_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this uint8 tensor"));
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
+                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT32);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
-  ImportShape(input_shape.dim(), output_array->mutable_shape());
-  int input_flat_size = 1;
-  for (int k = 0; k < input_shape.dim_size(); k++) {
-    input_flat_size *= input_shape.dim(k).size();
-  }
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
-  output_int_data.resize(input_flat_size);
-  if (input_tensor.int_val_size()) {
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
+  if (input_tensor.int_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
     }
@@ -206,25 +322,35 @@ void ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    LOG(FATAL) << "Neither input_content nor int_val have the right "
-                  "dimensions for this int32 tensor.";
+    return tensorflow::errors::InvalidArgument(absl::StrCat(
+        "Neither input_content (",
+        input_tensor.tensor_content().size() / sizeof(int32), ") nor int_val (",
+        input_tensor.int_val_size(), ") have the right dimensions (",
+        input_flat_size, ") for this int32 tensor"));
   }
+  return tensorflow::Status::OK();
 }
 
-void ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
+tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
+                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT64);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
-  ImportShape(input_shape.dim(), output_array->mutable_shape());
-  int input_flat_size = 1;
-  for (int k = 0; k < input_shape.dim_size(); k++) {
-    input_flat_size *= input_shape.dim(k).size();
-  }
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
-  output_int_data.resize(input_flat_size);
-  if (input_tensor.int64_val_size()) {
-    for (int i = 0; i < input_tensor.int64_val_size(); i++) {
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  CHECK_GE(output_int_data.size(), input_flat_size);
+  if (input_tensor.int64_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int64_val(0);
+    }
+  } else if (input_tensor.int64_val_size() == input_flat_size) {
+    for (int i = 0; i < input_tensor.float_val_size(); i++) {
       output_int_data[i] = input_tensor.int64_val(i);
     }
   } else if (input_tensor.tensor_content().size() ==
@@ -232,9 +358,86 @@ void ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
     toco::port::CopyToBuffer(input_tensor.tensor_content(),
                              reinterpret_cast<char*>(output_int_data.data()));
   } else {
-    LOG(FATAL) << "Neither input_content nor int64_val have the right "
-                  "dimensions for this int64 tensor.";
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(int64),
+                     ") nor int64_val (", input_tensor.int64_val_size(),
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this int64 tensor"));
   }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
+                                   Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_BOOL);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
+  auto& output_bool_data =
+      output_array->GetMutableBuffer<ArrayDataType::kBool>().data;
+  output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
+                          false);
+  CHECK_GE(output_bool_data.size(), input_flat_size);
+  if (input_tensor.bool_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_bool_data[i] = input_tensor.bool_val(0);
+    }
+  } else if (input_tensor.bool_val_size() == input_flat_size) {
+    for (int i = 0; i < input_tensor.bool_val_size(); i++) {
+      output_bool_data[i] = input_tensor.bool_val(i);
+    }
+  } else if (input_tensor.tensor_content().size() == input_flat_size) {
+    std::vector<char> buf(input_tensor.tensor_content().size());
+    toco::port::CopyToBuffer(input_tensor.tensor_content(), buf.data());
+    for (int i = 0; i < input_tensor.tensor_content().size(); i++) {
+      output_bool_data[i] = static_cast<bool>(buf[i]);
+    }
+  } else {
+    // Some graphs have bool const nodes without actual value...
+    // assuming that 'false' is implied.
+    // So far only encountered that in an array with 1 entry, let's
+    // require that until we encounter a graph where that's not the case.
+    if (output_bool_data.size() != 1) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Neither input_content (", input_tensor.tensor_content().size(),
+          ") nor bool_val (", input_tensor.bool_val_size(),
+          ") have the right dimensions (", input_flat_size,
+          ") for this bool tensor"));
+    }
+    output_bool_data[0] = false;
+  }
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ImportStringArray(const TensorProto& input_tensor,
+                                     Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_STRING);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 6);
+  int input_flat_size;
+  auto status = ImportShape(input_shape.dim(), &input_flat_size,
+                            output_array->mutable_shape());
+  if (!status.ok()) return status;
+
+  if (input_flat_size != input_tensor.string_val_size()) {
+    return tensorflow::errors::InvalidArgument(
+        "Input_content string_val doesn't have the right dimensions "
+        "for this string tensor");
+  }
+
+  auto& output_string_data =
+      output_array->GetMutableBuffer<ArrayDataType::kString>().data;
+  output_string_data.resize(RequiredBufferSizeForShape(output_array->shape()));
+  CHECK_GE(output_string_data.size(), input_flat_size);
+  for (int i = 0; i < input_flat_size; ++i) {
+    output_string_data[i] = input_tensor.string_val(i);
+  }
+  return tensorflow::Status::OK();
 }
 
 // Count the number of inputs of a given node. If
@@ -248,52 +451,115 @@ int GetInputsCount(const NodeDef& node,
         return i;
       }
     }
-    return node.input_size();
-  } else {
-    return node.input_size();
   }
+  return node.input_size();
 }
 
-void ConvertConstOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
+tensorflow::Status CheckInputsCount(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    int expected_input_count) {
+  if (GetInputsCount(node, tf_import_flags) != expected_input_count) {
+    return tensorflow::errors::FailedPrecondition(
+        node.op(), " node expects ", expected_input_count,
+        " input(s) other than control dependencies: ", node.DebugString());
+  }
+  return tensorflow::Status::OK();
+}
+
+template <ArrayDataType T>
+string CreateConstArray(Model* model, string const& name,
+                        std::vector<typename toco::DataType<T> > const& data) {
+  // Utility function to create a const 1D array, useful for input parameters.
+  string array_name = toco::AvailableArrayName(*model, name);
+  auto& array = model->GetOrCreateArray(array_name);
+  array.data_type = T;
+  array.mutable_shape()->mutable_dims()->emplace_back(data.size());
+  array.GetMutableBuffer<T>().data = data;
+  return array_name;
+}
+
+// Retain TensorFlow NodeDef in Toco Operator.
+//
+// If an op is supported by Toco but not supported by TFLite, TFLite exporter
+// will use the retained NodeDef to populate a Flex op when Flex mode is
+// enabled.
+//
+// This can't be easily applied to all operations, because a TensorFlow node
+// may become multiple Toco operators. Thus we need to call this function in
+// operator conversion functions one by one whenever feasible.
+//
+// This may cause problems if a graph transformation rule changes parameters
+// of the node. When calling this function, please check if any existing
+// graph transformation rule will change an existing operator with the same
+// type.
+//
+// This provides a route to handle Toco-supported & TFLite-unsupported ops
+// in Flex mode. However it's not a solid solution. Eventually we should
+// get rid of this.
+// TODO(b/117327937): Implement all Toco-supported ops in TFLite, and remove
+// this function.
+void RetainTensorFlowNodeDef(const NodeDef& node, Operator* op) {
+  node.SerializeToString(&op->tensorflow_node_def);
+}
+
+tensorflow::Status ConvertConstOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Const");
   const auto& tensor = GetTensorAttr(node, "value");
   const auto dtype = GetDataTypeAttr(node, "dtype");
 
+  tensorflow::Status status = tensorflow::Status::OK();
+
   auto& array = model->GetOrCreateArray(node.name());
-  array.data_type = dtype == DT_FLOAT
-                        ? ArrayDataType::kFloat
-                        : dtype == DT_INT32
-                              ? ArrayDataType::kInt32
-                              : dtype == DT_INT64 ? ArrayDataType::kInt64
-                                                  : ArrayDataType::kNone;
-  if (dtype == DT_FLOAT) {
-    ImportFloatArray(tensor, &array);
-  } else if (dtype == DT_INT32) {
-    ImportInt32Array(tensor, &array);
-  } else if (dtype == DT_INT64) {
-    ImportInt64Array(tensor, &array);
-  } else {
-    // do nothing, silently ignore the Const data. For example, there are consts
-    // of string type. We just make a dummy buffer to indicate that this array
-    // does not rely on external input.
-    array.GetMutableBuffer<ArrayDataType::kNone>();
+  switch (dtype) {
+    case DT_FLOAT:
+      array.data_type = ArrayDataType::kFloat;
+      status = ImportFloatArray(tensor, &array);
+      break;
+    case DT_INT32:
+      array.data_type = ArrayDataType::kInt32;
+      status = ImportInt32Array(tensor, &array);
+      break;
+    case DT_QUINT8:
+      array.data_type = ArrayDataType::kUint8;
+      status = ImportQuint8Array(tensor, &array);
+      break;
+    case DT_INT64:
+      array.data_type = ArrayDataType::kInt64;
+      status = ImportInt64Array(tensor, &array);
+      break;
+    case DT_STRING:
+      array.data_type = ArrayDataType::kString;
+      status = ImportStringArray(tensor, &array);
+      break;
+    case DT_BOOL:
+      array.data_type = ArrayDataType::kBool;
+      status = ImportBoolArray(tensor, &array);
+      break;
+    default:
+      array.data_type = ArrayDataType::kNone;
+      // do nothing, silently ignore the Const data.
+      // We just make a dummy buffer to indicate that
+      // this array does not rely on external input.
+      array.GetMutableBuffer<ArrayDataType::kNone>();
+      break;
   }
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      status, " (while processing node '" + node.name() + "')");
+  return tensorflow::Status::OK();
 }
 
-void ConvertConvOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
+tensorflow::Status ConvertConvOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Conv2D");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  TF_RETURN_IF_ERROR(CheckInputsCount(node, tf_import_flags, 2));
 
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
-  if (node.attr().count("data_format")) {
-    CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
-  }
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  TF_RETURN_IF_ERROR(CheckOptionalAttr(node, "data_format", "NHWC"));
+  TF_RETURN_IF_ERROR(CheckOptionalAttr(node, "T", DT_FLOAT));
 
   const auto& input_name = node.input(0);
   const auto& weights_name = node.input(1);
@@ -318,32 +584,55 @@ void ConvertConvOperator(const NodeDef& node,
   auto* conv = new ConvOperator;
   conv->inputs = {input_name, reordered_weights_name};
   conv->outputs = {node.name()};
+  if (!HasAttr(node, "strides")) {
+    return tensorflow::errors::InvalidArgument("Missing attribute 'strides'");
+  }
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
-  CHECK_EQ(strides.i(3), 1);
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i_size(), 4, "number of strides"));
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i(0), 1, "strides(0)"));
+  TF_RETURN_IF_ERROR(ExpectValue(strides.i(3), 1, "strides(3)"));
   conv->stride_height = strides.i(1);
   conv->stride_width = strides.i(2);
+  if (HasAttr(node, "dilations")) {
+    const auto& dilations = GetListAttr(node, "dilations");
+    TF_RETURN_IF_ERROR(
+        ExpectValue(dilations.i_size(), 4, "number of dilations"));
+    if (dilations.i(0) != 1 || dilations.i(3) != 1) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Can only import Conv ops with dilation along the height "
+          "(1st) or width (2nd) axis. TensorFlow op \"",
+          node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
+          dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3), "]."));
+    }
+    conv->dilation_height_factor = dilations.i(1);
+    conv->dilation_width_factor = dilations.i(2);
+  } else {
+    conv->dilation_height_factor = 1;
+    conv->dilation_width_factor = 1;
+  }
   const auto& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     conv->padding.type = PaddingType::kSame;
   } else if (padding == "VALID") {
     conv->padding.type = PaddingType::kValid;
   } else {
-    LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
+    return tensorflow::errors::InvalidArgument(
+        "Bad padding (only SAME and VALID are supported)");
   }
   model->operators.emplace_back(conv);
+
+  return tensorflow::Status::OK();
 }
 
-void ConvertDepthwiseConvOperator(const NodeDef& node,
-                                  const TensorFlowImportFlags& tf_import_flags,
-                                  Model* model) {
+tensorflow::Status ConvertDepthwiseConvOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "DepthwiseConv2dNative");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
-  if (node.attr().count("data_format")) {
+  if (HasAttr(node, "data_format")) {
     CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
   }
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
@@ -377,6 +666,23 @@ void ConvertDepthwiseConvOperator(const NodeDef& node,
   CHECK_EQ(strides.i(3), 1);
   conv->stride_height = strides.i(1);
   conv->stride_width = strides.i(2);
+  if (HasAttr(node, "dilations")) {
+    const auto& dilations = GetListAttr(node, "dilations");
+    TF_RETURN_IF_ERROR(
+        ExpectValue(dilations.i_size(), 4, "number of dilations"));
+    if (dilations.i(0) != 1 || dilations.i(3) != 1) {
+      return tensorflow::errors::InvalidArgument(absl::StrCat(
+          "Can only import Conv ops with dilation along the height "
+          "(1st) or width (2nd) axis. TensorFlow op \"",
+          node.name(), "\" had dilations:[ ", dilations.i(0), ", ",
+          dilations.i(1), ", ", dilations.i(2), ", ", dilations.i(3), "]."));
+    }
+    conv->dilation_height_factor = dilations.i(1);
+    conv->dilation_width_factor = dilations.i(2);
+  } else {
+    conv->dilation_height_factor = 1;
+    conv->dilation_width_factor = 1;
+  }
   const auto& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     conv->padding.type = PaddingType::kSame;
@@ -386,13 +692,15 @@ void ConvertDepthwiseConvOperator(const NodeDef& node,
     LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
   }
   model->operators.emplace_back(conv);
+  return tensorflow::Status::OK();
 }
 
-void ConvertDepthToSpaceOperator(const NodeDef& node,
-                                 const TensorFlowImportFlags& tf_import_flags,
-                                 Model* model) {
+tensorflow::Status ConvertDepthToSpaceOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "DepthToSpace");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
   auto* op = new DepthToSpaceOperator;
   op->inputs.push_back(node.input(0));
@@ -400,27 +708,38 @@ void ConvertDepthToSpaceOperator(const NodeDef& node,
   op->block_size = GetIntAttr(node, "block_size");
   QCHECK_GE(op->block_size, 2);
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertSpaceToDepthOperator(const NodeDef& node,
-                                 const TensorFlowImportFlags& tf_import_flags,
-                                 Model* model) {
+tensorflow::Status ConvertSpaceToDepthOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "SpaceToDepth");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+
+  tensorflow::DataType dtype = GetDataTypeAttr(node, "T");
+  if (dtype != DT_FLOAT && dtype != DT_UINT8 && dtype != DT_INT32 &&
+      dtype != DT_INT64) {
+    const auto* enum_descriptor = tensorflow::DataType_descriptor();
+    LOG(FATAL) << "TFLite does not support SpaceToDepth with type T:"
+               << enum_descriptor->FindValueByNumber(dtype)->name() << ". "
+               << "T must be one of {DT_FLOAT, DT_INT8, DT_INT32, DT_INT64}.";
+  }
   auto* op = new SpaceToDepthOperator;
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   op->block_size = GetIntAttr(node, "block_size");
   QCHECK_GE(op->block_size, 2);
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertBiasAddOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+tensorflow::Status ConvertBiasAddOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "BiasAdd");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+
   const auto& input_name = node.input(0);
   const auto& bias_name = node.input(1);
   CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
@@ -429,91 +748,54 @@ void ConvertBiasAddOperator(const NodeDef& node,
   biasadd->inputs.push_back(bias_name);
   biasadd->outputs.push_back(node.name());
   model->operators.emplace_back(biasadd);
+  return tensorflow::Status::OK();
 }
 
-void ConvertReluOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
-  CHECK_EQ(node.op(), "Relu");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  const auto& input_name = node.input(0);
-  auto* relu = new ReluOperator;
-  relu->inputs.push_back(input_name);
-  relu->outputs.push_back(node.name());
-  model->operators.emplace_back(relu);
-}
+tensorflow::Status ConvertRandomUniform(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "RandomUniform");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
 
-void ConvertRelu6Operator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
-  CHECK_EQ(node.op(), "Relu6");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  const auto& input_name = node.input(0);
-  auto* op = new Relu6Operator;
-  op->inputs.push_back(input_name);
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertLogisticOperator(const NodeDef& node,
-                             const TensorFlowImportFlags& tf_import_flags,
-                             Model* model) {
-  CHECK_EQ(node.op(), "Sigmoid");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  const auto& input_name = node.input(0);
-  auto* op = new LogisticOperator;
-  op->inputs.push_back(input_name);
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertTanhOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
-  CHECK_EQ(node.op(), "Tanh");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  const auto& input_name = node.input(0);
-  auto* op = new TanhOperator;
-  op->inputs.push_back(input_name);
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertDivOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK(node.op() == "Div" || node.op() == "RealDiv");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new DivOperator;
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_INT32);
+  auto op = absl::make_unique<RandomUniformOperator>();
   op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
+  op->dtype = ConvertDataType(GetDataTypeAttr(node, "dtype"));
+  op->seed = GetIntAttr(node, "seed");
+  op->seed2 = GetIntAttr(node, "seed2");
+  CHECK(model != nullptr);
+  model->operators.emplace_back(std::move(op));
+  return tensorflow::Status::OK();
 }
 
-void ConvertIdentityOperator(const NodeDef& node,
-                             const TensorFlowImportFlags& tf_import_flags,
-                             Model* model) {
+tensorflow::Status ConvertIdentityOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
-        node.op() == "PlaceholderWithDefault");
+        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
   // to be gratuitous (in the case of rajeev_lstm.pb, these are
   // enumerating the LSTM state arrays). We will just ignore extra
   // inputs beyond the first input.
-  CHECK_GE(node.input_size(), 1);
+  QCHECK_GE(node.input_size(), 1)
+      << node.op()
+      << " node expects at least 1 input other than control dependencies: "
+      << node.DebugString();
   const auto& input_name = node.input(0);
   op->inputs.push_back(input_name);
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertFakeQuantWithMinMaxArgs(
+tensorflow::Status ConvertFakeQuantWithMinMaxArgs(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
   CHECK_EQ(node.op(), "FakeQuantWithMinMaxArgs");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   auto* op = new FakeQuantOperator;
   op->inputs.push_back(node.input(0));
   op->minmax.reset(new MinMax);
@@ -521,177 +803,63 @@ void ConvertFakeQuantWithMinMaxArgs(
   minmax.min = GetFloatAttr(node, "min");
   minmax.max = GetFloatAttr(node, "max");
   op->outputs.push_back(node.name());
+  // tf.fake_quant_with_min_max_args num_bits defaults to 8.
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
+  if (HasAttr(node, "narrow_range")) {
+    op->narrow_range = GetBoolAttr(node, "narrow_range");
+  }
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertFakeQuantWithMinMaxVars(
+tensorflow::Status ConvertFakeQuantWithMinMaxVars(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
   CHECK_EQ(node.op(), "FakeQuantWithMinMaxVars");
   const int num_inputs = GetInputsCount(node, tf_import_flags);
-  CHECK(num_inputs == 3 || num_inputs == 4);
+  QCHECK(num_inputs == 3 || num_inputs == 4)
+      << "FakeQuantWithMinMaxVars node expects 3 or 4 inputs other than "
+         "control dependencies: "
+      << node.DebugString();
   auto* op = new FakeQuantOperator;
   for (int i = 0; i < 3; i++) {
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+  op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
+  if (HasAttr(node, "narrow_range")) {
+    op->narrow_range = GetBoolAttr(node, "narrow_range");
+  }
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertRsqrtOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
-  CHECK_EQ(node.op(), "Rsqrt");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  auto* op = new TensorFlowRsqrtOperator;
-  op->inputs.push_back(node.input(0));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSqrtOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
-  CHECK_EQ(node.op(), "Sqrt");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  auto* op = new TensorFlowSqrtOperator;
-  op->inputs.push_back(node.input(0));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSqueezeOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+tensorflow::Status ConvertSqueezeOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Squeeze");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   auto* op = new SqueezeOperator;
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
 
-  const auto& squeeze_dims = GetListAttr(node, "squeeze_dims");
-  for (int i = 0; i < squeeze_dims.i_size(); ++i) {
-    op->squeeze_dims.push_back(squeeze_dims.i(i));
+  // When omitted we are to squeeze all dimensions == 1.
+  if (HasAttr(node, "squeeze_dims")) {
+    const auto& squeeze_dims = GetListAttr(node, "squeeze_dims");
+    for (int i = 0; i < squeeze_dims.i_size(); ++i) {
+      op->squeeze_dims.push_back(squeeze_dims.i(i));
+    }
   }
 
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertSquareOperator(const NodeDef& node,
-                           const TensorFlowImportFlags& tf_import_flags,
-                           Model* model) {
-  CHECK_EQ(node.op(), "Square");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  auto* op = new TensorFlowSquareOperator;
-  op->inputs.push_back(node.input(0));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertAddOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Add");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new AddOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertMulOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Mul");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new MulOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSubOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Sub");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new SubOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSumOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Sum");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowSumOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
-    op->keep_dims = GetBoolAttr(node, "keep_dims");
-  }
-}
-
-void ConvertTileOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
-  CHECK_EQ(node.op(), "Tile");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowTileOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSliceOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
-  CHECK_EQ(node.op(), "Slice");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
-  auto* op = new SliceOperator;
-  for (int i = 0; i < 3; ++i) {
-    op->inputs.push_back(node.input(i));
-  }
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertPadOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Pad");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new PadOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertShapeOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
-  CHECK_EQ(node.op(), "Shape");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
-  auto* op = new TensorFlowShapeOperator;
-  op->inputs.push_back(node.input(0));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSplitOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
+tensorflow::Status ConvertSplitOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Split");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
   auto* op = new TensorFlowSplitOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
@@ -702,25 +870,14 @@ void ConvertSplitOperator(const NodeDef& node,
   }
   op->num_split = num_split;
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertMergeOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
-  CHECK_EQ(node.op(), "Merge");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowMergeOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertSwitchOperator(const NodeDef& node,
-                           const TensorFlowImportFlags& tf_import_flags,
-                           Model* model) {
+tensorflow::Status ConvertSwitchOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Switch");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
   auto* op = new TensorFlowSwitchOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
@@ -728,12 +885,14 @@ void ConvertSwitchOperator(const NodeDef& node,
   // Switch operators have two outputs: "name" and "name:1".
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
-void ConvertSoftmaxOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+
+tensorflow::Status ConvertSoftmaxOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Softmax");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto& input_name = node.input(0);
   auto* softmax = new SoftmaxOperator;
   softmax->inputs.push_back(input_name);
@@ -742,13 +901,14 @@ void ConvertSoftmaxOperator(const NodeDef& node,
   CHECK(!node.attr().count("beta"));  // Stab in the dark, just in case.
   softmax->beta = 1.f;
   model->operators.emplace_back(softmax);
+  return tensorflow::Status::OK();
 }
 
-void ConvertLRNOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
+tensorflow::Status ConvertLRNOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "LRN");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto& input_name = node.input(0);
   auto* lrn = new LocalResponseNormalizationOperator;
   lrn->inputs.push_back(input_name);
@@ -758,13 +918,14 @@ void ConvertLRNOperator(const NodeDef& node,
   lrn->alpha = GetFloatAttr(node, "alpha");
   lrn->beta = GetFloatAttr(node, "beta");
   model->operators.emplace_back(lrn);
+  return tensorflow::Status::OK();
 }
 
-void ConvertMaxPoolOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+tensorflow::Status ConvertMaxPoolOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "MaxPool");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto& input_name = node.input(0);
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
@@ -800,13 +961,14 @@ void ConvertMaxPoolOperator(const NodeDef& node,
     LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
   }
   model->operators.emplace_back(maxpool);
+  return tensorflow::Status::OK();
 }
 
-void ConvertAvgPoolOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
+tensorflow::Status ConvertAvgPoolOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "AvgPool");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto& input_name = node.input(0);
   // We only support NHWC, which is the default data_format.
   // So if data_format is not defined, we're all good.
@@ -838,58 +1000,56 @@ void ConvertAvgPoolOperator(const NodeDef& node,
     LOG(FATAL) << "Bad padding (only SAME and VALID are supported)";
   }
   model->operators.emplace_back(avgpool);
+  return tensorflow::Status::OK();
 }
 
-void ConvertReshapeOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
-  CHECK_EQ(node.op(), "Reshape");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowReshapeOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
+tensorflow::Status ConvertBatchMatMulOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
+  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
+
+  auto* batch_matmul = new BatchMatMulOperator;
+  batch_matmul->inputs = {node.input(0), node.input(1)};
+  batch_matmul->outputs = {node.name()};
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, batch_matmul);
+
+  model->operators.emplace_back(batch_matmul);
+  return tensorflow::Status::OK();
 }
 
-void ConvertMatMulOperator(const NodeDef& node,
-                           const TensorFlowImportFlags& tf_import_flags,
-                           Model* model) {
-  CHECK_EQ(node.op(), "MatMul");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  // Transpose flags should be easy to support, but we don't have a
-  // GraphDef with them to test on at the moment.
-  CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
-  CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
-  const auto& input_name = node.input(0);
-  const auto& weights_name = node.input(1);
-  const auto& reordered_weights_name = weights_name + "_reordered";
-  // Check if a ReorderAxesOperator was already created for these weights
-  // (that happens when multiple layers share the same weights).
-  const Operator* existing_reorder =
-      GetOpWithOutput(*model, reordered_weights_name);
-  if (existing_reorder) {
-    // Check that it is safe to rely on the _reordered naming of the output
-    // array!
-    CHECK(existing_reorder->type == OperatorType::kReorderAxes);
-  } else {
-    // Create a new ReorderAxesOperator
-    auto* reorder = new ReorderAxesOperator;
-    reorder->inputs = {weights_name};
-    reorder->outputs = {reordered_weights_name};
-    reorder->input_axes_order = AxesOrder::kRC;
-    reorder->output_axes_order = AxesOrder::kCR;
-    model->operators.emplace_back(reorder);
-  }
+tensorflow::Status ConvertMatMulOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+
+  CHECK(!HasAttr(node, "adjoint_a") ||
+        (GetBoolAttr(node, "adjoint_a") == false));
+  CHECK(!HasAttr(node, "adjoint_b") ||
+        (GetBoolAttr(node, "adjoint_b") == false));
+
   auto* matmul = new TensorFlowMatMulOperator;
-  matmul->inputs = {input_name, reordered_weights_name};
+  if (HasAttr(node, "transpose_a")) {
+    matmul->transpose_a = GetBoolAttr(node, "transpose_a");
+  }
+  if (HasAttr(node, "transpose_b")) {
+    matmul->transpose_b = GetBoolAttr(node, "transpose_b");
+  }
+
+  matmul->inputs = {node.input(0), node.input(1)};
   matmul->outputs = {node.name()};
   model->operators.emplace_back(matmul);
+  return tensorflow::Status::OK();
 }
 
-void ConvertConcatOperator(const NodeDef& node,
-                           const TensorFlowImportFlags& tf_import_flags,
-                           Model* model) {
+tensorflow::Status ConvertConcatOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   Operator* op = nullptr;
   if (node.op() == "Concat") {
     op = new TensorFlowConcatOperator;
@@ -899,191 +1059,162 @@ void ConvertConcatOperator(const NodeDef& node,
     LOG(FATAL) << "Expected Concat or ConcatV2";
   }
   const int num_inputs = GetInputsCount(node, tf_import_flags);
-  CHECK_GE(num_inputs, 2);
+  QCHECK_GE(num_inputs, 2)
+      << node.op()
+      << " node expects at least 2 inputs other than control dependencies: "
+      << node.DebugString();
   CHECK_EQ(num_inputs, 1 + GetIntAttr(node, "N"));
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertAllOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "All");
-  auto* op = new TensorFlowAllOperator;
+// This method supports simple operators without additional attributes.
+template <typename Op>
+tensorflow::Status ConvertSimpleOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  auto* op = new Op;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertAssertOperator(const NodeDef& node,
-                           const TensorFlowImportFlags& tf_import_flags,
-                           Model* model) {
-  CHECK_EQ(node.op(), "Assert");
-  auto* op = new TensorFlowAssertOperator;
-  const int num_inputs = GetInputsCount(node, tf_import_flags);
-  for (int i = 0; i < num_inputs; ++i) {
-    op->inputs.push_back(node.input(i));
-  }
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
+// This method supports simple operators without additional attributes.
+template <typename Op, unsigned int NumInputs>
+tensorflow::Status ConvertSimpleOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
+  return ConvertSimpleOperator<Op>(node, tf_import_flags, model);
 }
 
-void ConvertLessOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
-  CHECK_EQ(node.op(), "Less");
-  auto* op = new TensorFlowLessOperator;
-  const int num_inputs = GetInputsCount(node, tf_import_flags);
-  for (int i = 0; i < num_inputs; ++i) {
-    op->inputs.push_back(node.input(i));
-  }
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
+tensorflow::Status ConvertUnsupportedOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  // Names of special attributes in TF graph that are used by Toco.
+  static constexpr char kAttrOutputQuantized[] = "_output_quantized";
+  static constexpr char kAttrOutputTypes[] = "_output_types";
+  static constexpr char kAttrOutputShapes[] = "_output_shapes";
+  static constexpr char kAttrSupportOutputTypeFloatInQuantizedOp[] =
+      "_support_output_type_float_in_quantized_op";
 
-void ConvertLessEqualOperator(const NodeDef& node,
-                              const TensorFlowImportFlags& tf_import_flags,
-                              Model* model) {
-  CHECK_EQ(node.op(), "LessEqual");
-  auto* op = new TensorFlowLessEqualOperator;
-  const int num_inputs = GetInputsCount(node, tf_import_flags);
-  for (int i = 0; i < num_inputs; ++i) {
-    op->inputs.push_back(node.input(i));
-  }
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertGreaterOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
-  CHECK_EQ(node.op(), "Greater");
-  auto* op = new TensorFlowGreaterOperator;
-  const int num_inputs = GetInputsCount(node, tf_import_flags);
-  for (int i = 0; i < num_inputs; ++i) {
-    op->inputs.push_back(node.input(i));
-  }
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertGreaterEqualOperator(const NodeDef& node,
-                                 const TensorFlowImportFlags& tf_import_flags,
-                                 Model* model) {
-  CHECK_EQ(node.op(), "GreaterEqual");
-  auto* op = new TensorFlowGreaterEqualOperator;
-  const int num_inputs = GetInputsCount(node, tf_import_flags);
-  for (int i = 0; i < num_inputs; ++i) {
-    op->inputs.push_back(node.input(i));
-  }
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertMaxOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Max");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowMaxOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
-    op->keep_dims = GetBoolAttr(node, "keep_dims");
-  }
-}
-
-void ConvertMinOperator(const NodeDef& node,
-                        const TensorFlowImportFlags& tf_import_flags,
-                        Model* model) {
-  CHECK_EQ(node.op(), "Min");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowMinOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
-    op->keep_dims = GetBoolAttr(node, "keep_dims");
-  }
-}
-
-void ConvertMaximumOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
-  CHECK_EQ(node.op(), "Maximum");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowMaximumOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertMinimumOperator(const NodeDef& node,
-                            const TensorFlowImportFlags& tf_import_flags,
-                            Model* model) {
-  CHECK_EQ(node.op(), "Minimum");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new TensorFlowMinimumOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-}
-
-void ConvertUnsupportedOperator(const NodeDef& node,
-                                const TensorFlowImportFlags& tf_import_flags,
-                                Model* model) {
   LOG(INFO) << "Converting unsupported operation: " << node.op();
+
   auto* op = new TensorFlowUnsupportedOperator;
+  op->tensorflow_op = node.op();
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
+  model->operators.emplace_back(op);
+
+  // Parse inputs.
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
-  op->outputs.push_back(node.name());
-  op->tensorflow_op = node.op();
-  node.SerializeToString(&op->tensorflow_node_def);
-  model->operators.emplace_back(op);
-  if (HasAttr(node, "_output_quantized")) {
-    op->quantized = GetBoolAttr(node, "_output_quantized");
+
+  // Parse outputs. Name them after the node's name, plus an ordinal suffix.
+  // Note that some outputs are to be multipled by a named attribute.
+  const tensorflow::OpDef* op_def = nullptr;
+  if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
+    int next_output = 0;
+    for (int i = 0; i < op_def->output_arg_size(); ++i) {
+      string multiples = op_def->output_arg(i).number_attr();
+      int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
+      for (int j = 0; j < num_outputs; ++j) {
+        if (next_output == 0) {
+          op->outputs.push_back(node.name());  // Implicit :0.
+        } else {
+          op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
+        }
+        ++next_output;
+      }
+    }
+  } else {
+    op->outputs.push_back(node.name());  // Implicit :0.
   }
-  if (HasAttr(node, "_output_types")) {
-    const auto& output_types = GetListAttr(node, "_output_types");
+
+  // Parse if the op supports quantization
+  if (HasAttr(node, kAttrOutputQuantized)) {
+    op->quantized = GetBoolAttr(node, kAttrOutputQuantized);
+  }
+  // Parse if the quantized op allows output arrays of type float
+  if (HasAttr(node, kAttrSupportOutputTypeFloatInQuantizedOp)) {
+    op->support_output_type_float_in_quantized_op =
+        GetBoolAttr(node, kAttrSupportOutputTypeFloatInQuantizedOp);
+  }
+
+  // Parse output type(s).
+  if (HasAttr(node, kAttrOutputTypes)) {
+    const auto& output_types = GetListAttr(node, kAttrOutputTypes);
     for (int i = 0; i < output_types.type_size(); ++i) {
       op->output_data_types.push_back(ConvertDataType(output_types.type(i)));
     }
+  } else if (HasAttr(node, "Tout")) {
+    const auto& output_type = GetDataTypeAttr(node, "Tout");
+    op->output_data_types.push_back(ConvertDataType(output_type));
+  } else if (op_def != nullptr) {
+    for (const auto& output_arg : op_def->output_arg()) {
+      if (output_arg.type() != tensorflow::DT_INVALID) {
+        op->output_data_types.push_back(ConvertDataType(output_arg.type()));
+      } else if (HasAttr(node, output_arg.type_attr())) {
+        op->output_data_types.push_back(
+            ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
+      } else {
+        LOG(WARNING) << "Op node missing output type attribute: "
+                     << node.name();
+        op->output_data_types.clear();
+        break;
+      }
+    }
+  } else {
+    // TODO(b/113613439): Figure out how to propagate types for custom ops
+    // that have no OpDef.
+    LOG(INFO) << "Unable to determine output type for op: " << node.op();
   }
+
+  // Parse output shape(s).
+  if (HasAttr(node, kAttrOutputShapes)) {
+    const auto& output_shapes = GetListAttr(node, kAttrOutputShapes);
+    Shape output_shape;
+    for (int i = 0; i < output_shapes.shape_size(); ++i) {
+      const auto& shape = output_shapes.shape(i);
+      // TOCO doesn't yet properly handle shapes with wildcard dimensions.
+      // TODO(b/113613439): Handle shape inference for unsupported ops that have
+      // shapes with wildcard dimensions.
+      if (HasWildcardDimension(shape)) {
+        LOG(INFO) << "Skipping wildcard output shape(s) for node: "
+                  << node.name();
+        op->output_shapes.clear();
+        break;
+      }
+      const auto status =
+          ImportShape(shape.dim(), /*input_flat_size=*/nullptr, &output_shape);
+      if (!status.ok()) {
+        return status;
+      }
+      op->output_shapes.push_back(output_shape);
+    }
+  }
+  return tensorflow::Status::OK();
 }
 
-void ConvertStridedSliceOperator(const NodeDef& node,
-                                 const TensorFlowImportFlags& tf_import_flags,
-                                 Model* model) {
+tensorflow::Status ConvertStridedSliceOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "StridedSlice");
-  CHECK_EQ(node.input_size(), 4);
-
-  // Only a subset of the full TF op functionality is supported now.
-  if (  // No 64-bit indices.
-      GetDataTypeAttr(node, "Index") != DT_INT32 ||
-      // No dimensionality changes.
-      GetIntAttr(node, "new_axis_mask") != 0 ||
-      GetIntAttr(node, "shrink_axis_mask") != 0 ||
-      // No sparse indices.
-      GetIntAttr(node, "ellipsis_mask") != 0 ||
-      // Only 4D tensors are supported.
-      GetIntAttr(node, "begin_mask") > 15 ||
-      GetIntAttr(node, "end_mask") > 15) {
-    ConvertUnsupportedOperator(node, tf_import_flags, model);
-    return;
-  }
+  // TODO(soroosh): The 4th input (strides) should be e optional, to be
+  // consistent with TF.
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 4));
 
   auto* op = new StridedSliceOperator;
   for (const auto& input : node.input()) {
@@ -1091,20 +1222,27 @@ void ConvertStridedSliceOperator(const NodeDef& node,
   }
   op->outputs.push_back(node.name());
 
-  op->begin_mask = GetIntAttr(node, "begin_mask");
-  op->ellipsis_mask = GetIntAttr(node, "ellipsis_mask");
-  op->end_mask = GetIntAttr(node, "end_mask");
-  op->new_axis_mask = GetIntAttr(node, "new_axis_mask");
-  op->shrink_axis_mask = GetIntAttr(node, "shrink_axis_mask");
+  op->begin_mask =
+      HasAttr(node, "begin_mask") ? GetIntAttr(node, "begin_mask") : 0;
+  op->ellipsis_mask =
+      HasAttr(node, "ellipsis_mask") ? GetIntAttr(node, "ellipsis_mask") : 0;
+  op->end_mask = HasAttr(node, "end_mask") ? GetIntAttr(node, "end_mask") : 0;
+  op->new_axis_mask =
+      HasAttr(node, "new_axis_mask") ? GetIntAttr(node, "new_axis_mask") : 0;
+  op->shrink_axis_mask = HasAttr(node, "shrink_axis_mask")
+                             ? GetIntAttr(node, "shrink_axis_mask")
+                             : 0;
+
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertPlaceholderOperator(const NodeDef& node,
-                                const TensorFlowImportFlags& tf_import_flags,
-                                Model* model) {
+tensorflow::Status ConvertPlaceholderOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK(node.op() == "Placeholder" || node.op() == "LegacyFedInput");
   if (node.op() == "Placeholder") {
-    CHECK_EQ(GetInputsCount(node, tf_import_flags), 0);
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 0));
   }
   auto& array = model->GetOrCreateArray(node.name());
   if (node.attr().count("dtype")) {
@@ -1113,15 +1251,9 @@ void ConvertPlaceholderOperator(const NodeDef& node,
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    bool has_wildcard = false;
-    for (std::size_t i = 0; i < num_dims; i++) {
-      if (shape.dim(i).size() == -1) {
-        has_wildcard = true;
-      }
-    }
     // TODO(b/62716978): This logic needs to be revisted.  During dims
     // refactoring it is an interim fix.
-    if (num_dims > 0 && !has_wildcard) {
+    if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
       dst_array_dims.resize(num_dims);
       for (std::size_t i = 0; i < num_dims; i++) {
@@ -1129,89 +1261,133 @@ void ConvertPlaceholderOperator(const NodeDef& node,
       }
     }
   }
+  return tensorflow::Status::OK();
 }
 
-void ConvertNoOpOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {}
-
-ArrayDataType GetArrayDataType(tensorflow::DataType tf_data_type) {
-  if (tf_data_type == DT_UINT8) {
-    return ArrayDataType::kUint8;
-  } else if (tf_data_type == DT_INT32) {
-    return ArrayDataType::kInt32;
-  } else if (tf_data_type == DT_FLOAT) {
-    return ArrayDataType::kFloat;
-  } else {
-    return ArrayDataType::kNone;
-  }
+tensorflow::Status ConvertNoOpOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  return tensorflow::Status::OK();
 }
 
-void ConvertCastOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
+tensorflow::Status ConvertCastOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Cast");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto tf_src_dtype = GetDataTypeAttr(node, "SrcT");
   const auto tf_dst_dtype = GetDataTypeAttr(node, "DstT");
-  CHECK(tf_src_dtype == DT_UINT8 || tf_src_dtype == DT_INT32 ||
-        tf_src_dtype == DT_FLOAT);
-  CHECK(tf_dst_dtype == DT_UINT8 || tf_dst_dtype == DT_INT32 ||
-        tf_dst_dtype == DT_FLOAT);
-  CHECK_NE(tf_src_dtype, tf_dst_dtype)
-      << "Same input and output data type. No need to cast.";
   auto* op = new CastOperator;
-  op->src_data_type = GetArrayDataType(tf_src_dtype);
-  op->dst_data_type = GetArrayDataType(tf_dst_dtype);
+  op->src_data_type = ConvertDataType(tf_src_dtype);
+  op->dst_data_type = ConvertDataType(tf_dst_dtype);
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertFloorOperator(const NodeDef& node,
-                          const TensorFlowImportFlags& tf_import_flags,
-                          Model* model) {
+tensorflow::Status ConvertFloorOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Floor");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 1);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto data_type = GetDataTypeAttr(node, "T");
   CHECK(data_type == DT_FLOAT);
   auto* op = new FloorOperator;
   op->inputs.push_back(node.input(0));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertGatherOperator(const NodeDef& node,
-                           const TensorFlowImportFlags& tf_import_flags,
-                           Model* model) {
-  CHECK_EQ(node.op(), "Gather");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
+tensorflow::Status ConvertGatherOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK(node.op() == "Gather" || node.op() == "GatherV2");
+  if (node.op() == "Gather")
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  if (node.op() == "GatherV2")
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
   const auto indices_data_type = GetDataTypeAttr(node, "Tindices");
-  CHECK(indices_data_type == DT_INT32);
+  CHECK(indices_data_type == DT_INT32 || indices_data_type == DT_INT64);
   auto* op = new GatherOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
+  if (node.input_size() >= 3) {
+    // GatherV2 form where we are provided an axis. It may be either a constant
+    // or runtime defined value, so we just wire up the array and let
+    // ResolveGatherAttributes take care of it later on.
+    const auto axis_data_type = GetDataTypeAttr(node, "Taxis");
+    CHECK(axis_data_type == DT_INT32 || axis_data_type == DT_INT64);
+    op->inputs.push_back(node.input(2));
+  } else {
+    // Gather form that assumes axis=0.
+    op->axis = {0};
+  }
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertResizeBilinearOperator(const NodeDef& node,
-                                   const TensorFlowImportFlags& tf_import_flags,
-                                   Model* model) {
-  CHECK_EQ(node.op(), "ResizeBilinear");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 2);
-  auto* op = new ResizeBilinearOperator;
+template <typename Op>
+tensorflow::Status ConvertArgMinMaxOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  const auto axis_data_type =
+      HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
+  const auto output_type = HasAttr(node, "output_type")
+                               ? GetDataTypeAttr(node, "output_type")
+                               : DT_INT64;
+  CHECK(axis_data_type == DT_INT64 || axis_data_type == DT_INT32);
+  CHECK(output_type == DT_INT64 || output_type == DT_INT32);
+  auto* op = new Op;
+  op->output_data_type = ConvertDataType(output_type);
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertBatchNormWithGlobalNormalizationOperator(
+tensorflow::Status ConvertArgMaxOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ArgMax");
+  return ConvertArgMinMaxOperator<ArgMaxOperator>(node, tf_import_flags, model);
+}
+
+tensorflow::Status ConvertArgMinOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ArgMin");
+  return ConvertArgMinMaxOperator<ArgMinOperator>(node, tf_import_flags, model);
+}
+
+tensorflow::Status ConvertResizeBilinearOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ResizeBilinear");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto* op = new ResizeBilinearOperator;
+
+  op->align_corners = false;
+  if (HasAttr(node, "align_corners")) {
+    op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertBatchNormWithGlobalNormalizationOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
   CHECK_EQ(node.op(), "BatchNormWithGlobalNormalization");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 5);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 5));
 
   // TODO(ahentz): to really match tensorflow we need to add variance_epsilon
   // to the input, before feeding it into TensorFlowRsqrtOperator.
@@ -1254,13 +1430,14 @@ void ConvertBatchNormWithGlobalNormalizationOperator(
   op->outputs.push_back(node.name());
 
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertFusedBatchNormOperator(const NodeDef& node,
-                                   const TensorFlowImportFlags& tf_import_flags,
-                                   Model* model) {
+tensorflow::Status ConvertFusedBatchNormOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "FusedBatchNorm");
-  CHECK_EQ(node.input_size(), 5);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 5));
 
   // Declare shortcuts for the inputs.
   const string& gamma_input = node.input(1);
@@ -1269,12 +1446,8 @@ void ConvertFusedBatchNormOperator(const NodeDef& node,
   const string& moving_variance_input = node.input(4);
 
   // Create an array holding the epsilon value (typically, 0.001).
-  const string epsilon_array_name = node.name() + "_epsilon_array";
-  auto& epsilon_array = model->GetOrCreateArray(epsilon_array_name);
-  epsilon_array.data_type = ArrayDataType::kFloat;
-  *epsilon_array.mutable_shape()->mutable_dims() = {1};
-  epsilon_array.GetMutableBuffer<ArrayDataType::kFloat>().data.push_back(
-      GetFloatAttr(node, "epsilon"));
+  const string epsilon_array_name = CreateConstArray<ArrayDataType::kFloat>(
+      model, node.name() + "_epsilon_array", {GetFloatAttr(node, "epsilon")});
 
   // Add epsilon to the moving variance.
   const string epsilon_add_op_name = node.name() + "_epsilon";
@@ -1310,13 +1483,14 @@ void ConvertFusedBatchNormOperator(const NodeDef& node,
   op->outputs.push_back(node.name());
 
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertSpaceToBatchNDOperator(const NodeDef& node,
-                                   const TensorFlowImportFlags& tf_import_flags,
-                                   Model* model) {
+tensorflow::Status ConvertSpaceToBatchNDOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "SpaceToBatchND");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
   CHECK_EQ(GetDataTypeAttr(node, "Tblock_shape"), DT_INT32);
   CHECK_EQ(GetDataTypeAttr(node, "Tpaddings"), DT_INT32);
   auto* op = new SpaceToBatchNDOperator;
@@ -1325,13 +1499,14 @@ void ConvertSpaceToBatchNDOperator(const NodeDef& node,
   op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertBatchToSpaceNDOperator(const NodeDef& node,
-                                   const TensorFlowImportFlags& tf_import_flags,
-                                   Model* model) {
+tensorflow::Status ConvertBatchToSpaceNDOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "BatchToSpaceND");
-  CHECK_EQ(GetInputsCount(node, tf_import_flags), 3);
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
   CHECK_EQ(GetDataTypeAttr(node, "Tblock_shape"), DT_INT32);
   CHECK_EQ(GetDataTypeAttr(node, "Tcrops"), DT_INT32);
   auto* op = new BatchToSpaceNDOperator;
@@ -1340,28 +1515,36 @@ void ConvertBatchToSpaceNDOperator(const NodeDef& node,
   op->inputs.push_back(node.input(2));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
 }
 
-void ConvertMeanOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
-  CHECK_EQ(node.op(), "Mean");
-  CHECK_EQ(node.input_size(), 2);
-  auto* op = new MeanOperator;
+template <typename T>
+tensorflow::Status ConvertReduceOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto* op = new T;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
+  if (HasAttr(node, "keepdims")) {
+    op->keep_dims = GetBoolAttr(node, "keepdims");
+  } else if (HasAttr(node, "keep_dims")) {
     op->keep_dims = GetBoolAttr(node, "keep_dims");
   }
+  return tensorflow::Status::OK();
 }
 
-void ConvertSvdfOperator(const NodeDef& node,
-                         const TensorFlowImportFlags& tf_import_flags,
-                         Model* model) {
+tensorflow::Status ConvertSvdfOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
   CHECK_EQ(node.op(), "Svdf");
-  bool has_bias = (node.input_size() == 4);
+  const int input_size = GetInputsCount(node, tf_import_flags);
+  QCHECK(input_size == 3 || input_size == 4)
+      << "Svdf node expects 3 or 4 inputs other than control dependencies: "
+      << node.DebugString();
+  bool has_bias = (input_size == 4);
   auto* op = new SvdfOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
@@ -1378,6 +1561,191 @@ void ConvertSvdfOperator(const NodeDef& node,
   }
   op->rank = node.attr().at("Rank").i();
   model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+// This is just bare bones support to get the shapes to propagate.
+tensorflow::Status ConvertTransposeConvOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Conv2DBackpropInput");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
+  auto* op = new TransposeConvOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  op->outputs.push_back(node.name());
+  const auto& strides = GetListAttr(node, "strides");
+  op->stride_height = strides.i(1);
+  op->stride_width = strides.i(2);
+  CHECK_EQ(strides.i_size(), 4)
+      << "Can only import TransposeConv ops with 4D strides. TensorFlow op \""
+      << node.name() << "\" has " << strides.i_size() << "D strides.";
+  CHECK((strides.i(0) == 1) && (strides.i(3) == 1))
+      << "Can only import TransposeConv ops with striding along the height "
+         "(1st) or width (2nd) axis. TensorFlow op \""
+      << node.name() << "\" had strides:[ " << strides.i(0) << ", "
+      << strides.i(1) << ", " << strides.i(2) << ", " << strides.i(3) << "].";
+  op->stride_height = strides.i(1);
+  op->stride_width = strides.i(2);
+  if (HasAttr(node, "dilations")) {
+    const auto& dilations = GetListAttr(node, "dilations");
+    CHECK_EQ(dilations.i_size(), 4)
+        << "Dilation unsupported in TransposeConv. TensorFlow op \""
+        << node.name() << "\" had dilations";
+    CHECK((dilations.i(0) == 1) && (dilations.i(1) == 1) &&
+          (dilations.i(1) == 1) && (dilations.i(3) == 1))
+        << "Dilation unsupported in TransposeConv. TensorFlow op \""
+        << node.name() << "\" had dilations:[ " << dilations.i(0) << ", "
+        << dilations.i(1) << ", " << dilations.i(2) << ", " << dilations.i(3)
+        << "].";
+  }
+
+  const string& weights_name = node.input(TransposeConvOperator::WEIGHTS);
+  const string& transposed_weights_name = weights_name + "_transposed";
+  // Check if a TransposeOperator was already created for these weights
+  // (can happen when multiple layers share the same weights).
+  const Operator* existing_transpose =
+      GetOpWithOutput(*model, transposed_weights_name);
+  if (existing_transpose) {
+    CHECK(existing_transpose->type == OperatorType::kTranspose);
+  } else {
+    // Transpose weights from HWOI order to OHWI order, which is more efficient
+    // for computation. (Note that TensorFlow considers the order as HWIO
+    // because they consider this a backward conv, inverting the sense of
+    // input/output.)
+    TransposeOperator* transpose = new TransposeOperator;
+    string perm_array = CreateConstArray<ArrayDataType::kInt32>(
+        model, node.name() + "_transpose_perm", {2, 0, 1, 3});
+    transpose->inputs = {weights_name, perm_array};
+    transpose->outputs = {transposed_weights_name};
+    model->operators.emplace_back(transpose);
+  }
+  op->inputs[1] = transposed_weights_name;
+
+  auto const& padding = GetStringAttr(node, "padding");
+  if (padding == "SAME") {
+    op->padding.type = PaddingType::kSame;
+  } else if (padding == "VALID") {
+    op->padding.type = PaddingType::kValid;
+  } else {
+    LOG(FATAL) << "Only SAME and VALID padding supported on "
+                  "Conv2DBackpropInput nodes.";
+  }
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertRangeOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Range");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 3));
+  auto* op = new RangeOperator;
+  if (HasAttr(node, "Tidx")) {
+    const auto dtype = toco::GetDataTypeAttr(node, "Tidx");
+    CHECK(dtype == DT_UINT8 || dtype == DT_INT32 || dtype == DT_INT64 ||
+          dtype == DT_FLOAT);
+    op->dtype = ConvertDataType(dtype);
+  }
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  op->inputs.push_back(node.input(2));
+  op->outputs.push_back(node.name());
+
+  // For Flex mode. Please read the comments of the function.
+  RetainTensorFlowNodeDef(node, op);
+
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+// Note that it's easy to confuse/conflate "Stack" and "Pack" operators, but
+// they aren't the same thing.  tf.stack results in a "Pack" operator.  "Stack"
+// operators also exist, but involve manipulating the TF runtime stack, and are
+// not directly related to tf.stack() usage.
+tensorflow::Status ConvertPackOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Pack");
+  auto op = absl::make_unique<PackOperator>();
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  QCHECK_GE(num_inputs, 1)
+      << node.op()
+      << " node expects at least 1 input other than control dependencies: "
+      << node.DebugString();
+  CHECK_EQ(num_inputs, GetIntAttr(node, "N"));
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->values_count = HasAttr(node, "N") ? GetIntAttr(node, "N") : num_inputs;
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
+  op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertUnpackOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Unpack");
+  auto op = absl::make_unique<UnpackOperator>();
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  QCHECK_EQ(num_inputs, 1);
+  op->inputs.push_back(node.input(0));
+  op->num = GetIntAttr(node, "num");
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
+  op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
+
+  op->outputs.push_back(node.name());  // Implicit :0.
+  for (int i = 1; i < op->num; ++i) {
+    op->outputs.push_back(node.name() + ":" + std::to_string(i));
+  }
+  model->operators.emplace_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
+// Some TensorFlow ops only occur in graph cycles, representing
+// control flow. We do not currently support control flow, so we wouldn't
+// be able to fully support such graphs, including performing inference,
+// anyway. However, rather than erroring out early on graphs being cyclic,
+// it helps to at least support these just enough to allow getting a
+// graph visualization. This is not trivial, as we require graphs to be
+// acyclic aside from RNN back-edges. The solution is to special-case
+// such ops as RNN back-edges, which is technically incorrect (does not
+// allow representing the op's semantics) but good enough to get a
+// graph visualization.
+tensorflow::Status ConvertOperatorSpecialCasedAsRNNBackEdge(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  // At the moment, the only type of operator special-cased in this way is
+  // NextIteration, occurring only in control-flow cycles.
+  CHECK_EQ(node.op(), "NextIteration");
+  CHECK_EQ(node.input_size(), 1);
+  auto* rnn_state = model->flags.add_rnn_states();
+  // This RNN state is not explicitly created by the user, so it's
+  // OK for some later graph transformation to discard it.
+  rnn_state->set_discardable(true);
+  rnn_state->set_state_array(node.name());
+  rnn_state->set_back_edge_source_array(node.input(0));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertShapeOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "Shape");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  const auto out_type =
+      HasAttr(node, "out_type") ? GetDataTypeAttr(node, "out_type") : DT_INT32;
+  CHECK(out_type == DT_INT64 || out_type == DT_INT32);
+  auto op = absl::make_unique<TensorFlowShapeOperator>();
+  op->output_data_type = ConvertDataType(out_type);
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.push_back(std::move(op));
+  return tensorflow::Status::OK();
 }
 
 void StripCaretFromArrayNames(Model* model) {
@@ -1389,7 +1757,7 @@ void StripCaretFromArrayNames(Model* model) {
       output = string(absl::StripPrefix(output, "^"));
     }
   }
-  for (auto& array : model->arrays) {
+  for (auto& array : model->GetArrayMap()) {
     if (absl::StartsWith(array.first, "^")) {
       LOG(FATAL) << "What?";
     }
@@ -1402,26 +1770,61 @@ void StripZeroOutputIndexFromInputs(NodeDef* node) {
   }
 }
 
-void AddExtraOutputsFedIntoOtherOps(Model* model) {
+// In TensorFlow GraphDef, when a node has multiple outputs, they are named
+// name:0, name:1, ...
+// where 'name' is the node's name(). Just 'name' is an equivalent shorthand
+// form for name:0.
+// A TensorFlow GraphDef does not explicitly list all the outputs of each node
+// (unlike inputs), it being implied by the node's name and operator type
+// (the latter implies the number of outputs).
+// This makes it non-trivial for us to reconstruct the list of all arrays
+// present in the graph and, for each operator, the list of its outputs.
+// We do that by taking advantage of the fact that
+// at least each node lists explicitly its inputs, so after we've loaded
+// all nodes, we can use that information.
+void AddExtraOutputs(Model* model) {
+  // Construct the list of all arrays consumed by anything in the graph.
+  std::vector<string> consumed_arrays;
+  // Add arrays consumed by an op.
   for (const auto& consumer_op : model->operators) {
     for (const string& input : consumer_op->inputs) {
-      const std::vector<string>& split = absl::StrSplit(input, ':');
-      if (split.size() != 2) {
-        continue;
-      }
-      int output_index = 0;
-      if (!absl::SimpleAtoi(split[1], &output_index)) {
-        continue;
-      }
-      auto* producer_op = GetOpWithOutput(*model, split[0]);
-      if (!producer_op) {
-        continue;
-      }
-      while (producer_op->outputs.size() <= output_index) {
-        using toco::port::StringF;
-        producer_op->outputs.push_back(
-            StringF("%s:%d", split[0], producer_op->outputs.size()));
-      }
+      consumed_arrays.push_back(input);
+    }
+  }
+  // Add global outputs of the model.
+  for (const string& output_array : model->flags.output_arrays()) {
+    consumed_arrays.push_back(output_array);
+  }
+  // Add arrays consumed by a RNN back-edge.
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    consumed_arrays.push_back(rnn_state.back_edge_source_array());
+  }
+  // Now add operator outputs so that all arrays that are consumed,
+  // are produced.
+  for (const string& consumed_array : consumed_arrays) {
+    // Split the consumed array name into the form name:output_index.
+    const std::vector<string>& split = absl::StrSplit(consumed_array, ':');
+    // If not of the form name:output_index, then this is not an additional
+    // output of a node with multiple outputs, so nothing to do here.
+    if (split.size() != 2) {
+      continue;
+    }
+    int output_index = 0;
+    if (!absl::SimpleAtoi(split[1], &output_index)) {
+      continue;
+    }
+    // Each op is initially recorded as producing at least the array that
+    // has its name. We use that to identify the producer node.
+    auto* producer_op = GetOpWithOutput(*model, split[0]);
+    if (!producer_op) {
+      continue;
+    }
+    // Add extra outputs to that producer node, all the way to the
+    // output_index.
+    while (producer_op->outputs.size() <= output_index) {
+      using toco::port::StringF;
+      producer_op->outputs.push_back(
+          StringF("%s:%d", split[0], producer_op->outputs.size()));
     }
   }
 }
@@ -1461,11 +1864,12 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   flr = pflr.GetFLR("/job:localhost/replica:0/task:0/cpu:0");
 
   tensorflow::Graph graph(fld);
-  tensorflow::GraphConstructorOptions gc_opts;
-  const auto& tf_convert_status =
-      tensorflow::ConvertGraphDefToGraph(gc_opts, graphdef_copy, &graph);
+  tensorflow::ImportGraphDefOptions gc_opts;
+  gc_opts.validate_shape = false;
+  const auto& tf_convert_status = tensorflow::ImportGraphDef(
+      gc_opts, graphdef_copy, &graph, nullptr, nullptr);
   if (!tf_convert_status.ok()) {
-    LOG(ERROR) << "tensorflow::ConvertGraphDefToGraph failed with status: "
+    LOG(ERROR) << "tensorflow::ImportGraphDef failed with status: "
                << tf_convert_status.ToString();
     return false;
   }
@@ -1483,7 +1887,311 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   }
   return graph_modified;
 }
+
+tensorflow::Status ConvertTopKV2Operator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK((node.op() == "TopK") || (node.op() == "TopKV2"));
+  auto op = absl::make_unique<TopKV2Operator>();
+  op->inputs.push_back(node.input(0));
+  // K can be encoded as attr (TopK) convert it to a const.
+  if (HasAttr(node, "k")) {
+    string k_array = CreateConstArray<ArrayDataType::kInt32>(
+        model, node.name() + "k", {static_cast<int32>(GetIntAttr(node, "k"))});
+    op->inputs.push_back(k_array);
+  } else {
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+    op->inputs.push_back(node.input(1));
+  }
+  // The op has two outputs.
+  op->outputs.push_back(node.name());
+  op->outputs.push_back(node.name() + ":1");
+  model->operators.emplace_back(op.release());
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertDynamicPartitionOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  auto op = absl::make_unique<DynamicPartitionOperator>();
+  CHECK(HasAttr(node, "num_partitions"));
+  op->num_partitions = GetIntAttr(node, "num_partitions");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
+  CHECK_GT(op->num_partitions, 1);
+  op->outputs.push_back(node.name());  // Implicit :0.
+  for (int i = 1; i < op->num_partitions; ++i) {
+    op->outputs.push_back(node.name() + ":" + std::to_string(i));
+  }
+  model->operators.emplace_back(op.release());
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertDynamicStitchOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  // The parallel and non-parallel variants are the same besides whether they
+  // have a parallel loop; there are no behavioral differences.
+  CHECK(node.op() == "DynamicStitch" || node.op() == "ParallelDynamicStitch");
+  auto op = absl::make_unique<DynamicStitchOperator>();
+  CHECK(HasAttr(node, "N"));
+  op->num_partitions = GetIntAttr(node, "N");
+  // Expect all ID partitions + all value partitions.
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, op->num_partitions * 2));
+  for (int i = 0; i < op->num_partitions * 2; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op.release());
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertSparseToDenseOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "SparseToDense");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 4));
+
+  auto* op = new SparseToDenseOperator;
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+
+  op->validate_indices = HasAttr(node, "validate_indices")
+                             ? GetBoolAttr(node, "validate_indices")
+                             : true;
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertOneHotOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "OneHot");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 4));
+
+  const auto dtype = GetDataTypeAttr(node, "T");
+  // TODO(b/111744875): Support DT_UINT8 and quantization.
+  CHECK(dtype == DT_INT32 || dtype == DT_INT64 || dtype == DT_FLOAT ||
+        dtype == DT_BOOL);
+
+  auto op = absl::make_unique<OneHotOperator>();
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : -1;
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op.release());
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertCTCBeamSearchDecoderOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "CTCBeamSearchDecoder");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+
+  auto* op = new CTCBeamSearchDecoderOperator;
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+
+  op->beam_width =
+      HasAttr(node, "beam_width") ? GetIntAttr(node, "beam_width") : 1;
+  op->top_paths =
+      HasAttr(node, "top_paths") ? GetIntAttr(node, "top_paths") : 1;
+  op->merge_repeated = HasAttr(node, "merge_repeated")
+                           ? GetBoolAttr(node, "merge_repeated")
+                           : true;
+
+  // There are top_paths + 1 outputs.
+  op->outputs.push_back(node.name());  // Implicit :0.
+  for (int i = 0; i < op->top_paths; ++i) {
+    op->outputs.push_back(node.name() + ":" + std::to_string(i + 1));
+  }
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+// This isn't a TensorFlow builtin op. Currently this node can only be generated
+// with TfLite OpHint API.
+tensorflow::Status ConvertUnidirectionalSequenceLstm(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  DCHECK_EQ(node.op(), "UnidirectionalSequenceLstm");
+
+  auto* op = new UnidirectionalSequenceLstmOperator();
+  const auto& indices = GetListAttr(node, "_tflite_input_indices");
+  if (indices.i_size() != node.input().size()) {
+    return tensorflow::errors::InvalidArgument("Input size does not match.");
+  }
+
+  // The input size needs to be the same as the TfLite UniDirectionalSequence
+  // Lstm implementation.
+  const int kInputsSize = 20;
+
+  op->inputs.resize(kInputsSize);
+  std::vector<bool> done(kInputsSize);
+  int idx = 0;
+  for (const string& input : node.input()) {
+    int real_index = indices.i(idx);
+    op->inputs[real_index] = (input);
+    done[real_index] = true;
+    idx++;
+  }
+
+  for (int idx = 0; idx < done.size(); idx++) {
+    if (!done[idx]) {
+      string optional_name = node.name() + "_" + std::to_string(idx);
+      model->CreateOptionalArray(optional_name);
+      op->inputs[idx] = optional_name;
+    }
+  }
+
+  // There're three outputs, only the last one is required.
+  op->outputs.push_back(node.name() + ":2");
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
+
+namespace internal {
+
+using ConverterType = tensorflow::Status (*)(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model);
+using ConverterMapType = std::unordered_map<std::string, ConverterType>;
+
+ConverterMapType GetTensorFlowNodeConverterMap() {
+  return std::unordered_map<std::string, ConverterType>({
+      {"Add", ConvertSimpleOperator<AddOperator, 2>},
+      {"AddN", ConvertSimpleOperator<AddNOperator>},
+      {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
+      {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
+      {"ArgMax", ConvertArgMaxOperator},
+      {"ArgMin", ConvertArgMinOperator},
+      {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},
+      {"AvgPool", ConvertAvgPoolOperator},
+      {"BatchMatMul", ConvertBatchMatMulOperator},
+      {"BatchNormWithGlobalNormalization",
+       ConvertBatchNormWithGlobalNormalizationOperator},
+      {"BatchToSpaceND", ConvertBatchToSpaceNDOperator},
+      {"BiasAdd", ConvertBiasAddOperator},
+      {"Cast", ConvertCastOperator},
+      {"CheckNumerics", ConvertIdentityOperator},
+      {"Concat", ConvertConcatOperator},
+      {"ConcatV2", ConvertConcatOperator},
+      {"Const", ConvertConstOperator},
+      {"Conv2D", ConvertConvOperator},
+      {"Conv2DBackpropInput", ConvertTransposeConvOperator},
+      {"CTCBeamSearchDecoder", ConvertCTCBeamSearchDecoderOperator},
+      {"DepthToSpace", ConvertDepthToSpaceOperator},
+      {"DepthwiseConv2dNative", ConvertDepthwiseConvOperator},
+      {"Div", ConvertSimpleOperator<DivOperator, 2>},
+      {"DynamicPartition", ConvertDynamicPartitionOperator},
+      {"DynamicStitch", ConvertDynamicStitchOperator},
+      {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2>},
+      {"Exp", ConvertSimpleOperator<ExpOperator, 1>},
+      {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2>},
+      {"FakeQuantWithMinMaxArgs", ConvertFakeQuantWithMinMaxArgs},
+      {"FakeQuantWithMinMaxVars", ConvertFakeQuantWithMinMaxVars},
+      {"Fill", ConvertSimpleOperator<FillOperator, 2>},
+      {"Floor", ConvertFloorOperator},
+      {"FloorDiv", ConvertSimpleOperator<FloorDivOperator, 2>},
+      {"FloorMod", ConvertSimpleOperator<FloorModOperator, 2>},
+      {"FusedBatchNorm", ConvertFusedBatchNormOperator},
+      {"Gather", ConvertGatherOperator},
+      {"GatherV2", ConvertGatherOperator},
+      {"Greater", ConvertSimpleOperator<TensorFlowGreaterOperator, 2>},
+      {"GreaterEqual",
+       ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2>},
+      {"Identity", ConvertIdentityOperator},
+      {"LRN", ConvertLRNOperator},
+      {"LegacyFedInput", ConvertPlaceholderOperator},
+      {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
+      {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
+      {"Log", ConvertSimpleOperator<LogOperator, 1>},
+      {"LogicalAnd", ConvertSimpleOperator<LogicalAndOperator, 2>},
+      {"LogicalOr", ConvertSimpleOperator<LogicalOrOperator, 2>},
+      {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1>},
+      {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
+      {"MatMul", ConvertMatMulOperator},
+      {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
+      {"MaxPool", ConvertMaxPoolOperator},
+      {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2>},
+      {"Mean", ConvertReduceOperator<MeanOperator>},
+      {"Merge", ConvertSimpleOperator<TensorFlowMergeOperator, 2>},
+      {"Min", ConvertReduceOperator<TensorFlowMinOperator>},
+      {"Minimum", ConvertSimpleOperator<TensorFlowMinimumOperator, 2>},
+      {"Mul", ConvertSimpleOperator<MulOperator, 2>},
+      {"Neg", ConvertSimpleOperator<NegOperator, 1>},
+      {"NextIteration", ConvertOperatorSpecialCasedAsRNNBackEdge},
+      {"NoOp", ConvertNoOpOperator},
+      {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>},
+      {"OneHot", ConvertOneHotOperator},
+      {"Pack", ConvertPackOperator},
+      {"Pad", ConvertSimpleOperator<PadOperator, 2>},
+      {"PadV2", ConvertSimpleOperator<PadV2Operator, 3>},
+      {"ParallelDynamicStitch", ConvertDynamicStitchOperator},
+      {"Placeholder", ConvertPlaceholderOperator},
+      {"PlaceholderWithDefault", ConvertIdentityOperator},
+      {"Pow", ConvertSimpleOperator<PowOperator, 2>},
+      {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
+      {"RandomUniform", ConvertRandomUniform},
+      {"Range", ConvertRangeOperator},
+      {"Rank", ConvertSimpleOperator<RankOperator, 1>},
+      {"RealDiv", ConvertSimpleOperator<DivOperator, 2>},
+      {"Relu", ConvertSimpleOperator<ReluOperator, 1>},
+      {"Relu6", ConvertSimpleOperator<Relu6Operator, 1>},
+      {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2>},
+      {"ResizeBilinear", ConvertResizeBilinearOperator},
+      {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1>},
+      {"Select", ConvertSimpleOperator<SelectOperator, 3>},
+      {"Shape", ConvertShapeOperator},
+      {"Sigmoid", ConvertSimpleOperator<LogisticOperator, 1>},
+      {"Sin", ConvertSimpleOperator<SinOperator, 1>},
+      {"Slice", ConvertSimpleOperator<SliceOperator, 3>},
+      {"Softmax", ConvertSoftmaxOperator},
+      {"SpaceToBatchND", ConvertSpaceToBatchNDOperator},
+      {"SpaceToDepth", ConvertSpaceToDepthOperator},
+      {"SparseToDense", ConvertSparseToDenseOperator},
+      {"Split", ConvertSplitOperator},
+      {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
+      {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
+      {"Squeeze", ConvertSqueezeOperator},
+      {"StopGradient", ConvertIdentityOperator},
+      {"StridedSlice", ConvertStridedSliceOperator},
+      {"Sub", ConvertSimpleOperator<SubOperator, 2>},
+      {"Sum", ConvertReduceOperator<TensorFlowSumOperator>},
+      {"Svdf", ConvertSvdfOperator},
+      {"Switch", ConvertSwitchOperator},
+      {"Tanh", ConvertSimpleOperator<TanhOperator, 1>},
+      {"Tile", ConvertSimpleOperator<TensorFlowTileOperator, 2>},
+      {"TopK", ConvertTopKV2Operator},
+      {"TopKV2", ConvertTopKV2Operator},
+      {"Transpose", ConvertSimpleOperator<TransposeOperator, 2>},
+      {"Unpack", ConvertUnpackOperator},
+      {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
+      {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
+  });
+}
+
+tensorflow::Status ImportTensorFlowNode(
+    const tensorflow::NodeDef& node,
+    const TensorFlowImportFlags& tf_import_flags, Model* model,
+    const ConverterMapType& converter_map) {
+  auto converter = converter_map.find(node.op());
+  if (converter == converter_map.end()) {
+    return ConvertUnsupportedOperator(node, tf_import_flags, model);
+  } else {
+    return converter->second(node, tf_import_flags, model);
+  }
+}
+}  // namespace internal
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
@@ -1507,141 +2215,26 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
   }
 
   Model* model = new Model;
+  internal::ConverterMapType converter_map;
+
+  // This is used for the TFLite "Full Flex Mode" conversion. All the ops are
+  // imported as `TensorFlowUnsupportedOperator`, and later all these ops are
+  // converted to TFLite Flex ops.
+  if (!tf_import_flags.import_all_ops_as_unsupported) {
+    converter_map = internal::GetTensorFlowNodeConverterMap();
+  }
 
   for (auto node : inlined_graph.node()) {
     StripZeroOutputIndexFromInputs(&node);
-    if (node.op() == "Const") {
-      ConvertConstOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Conv2D") {
-      ConvertConvOperator(node, tf_import_flags, model);
-    } else if (node.op() == "DepthwiseConv2dNative") {
-      ConvertDepthwiseConvOperator(node, tf_import_flags, model);
-    } else if (node.op() == "DepthToSpace") {
-      ConvertDepthToSpaceOperator(node, tf_import_flags, model);
-    } else if (node.op() == "SpaceToDepth") {
-      ConvertSpaceToDepthOperator(node, tf_import_flags, model);
-    } else if (node.op() == "BiasAdd") {
-      ConvertBiasAddOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Relu") {
-      ConvertReluOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Relu6") {
-      ConvertRelu6Operator(node, tf_import_flags, model);
-    } else if (node.op() == "Sigmoid") {
-      ConvertLogisticOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Tanh") {
-      ConvertTanhOperator(node, tf_import_flags, model);
-    } else if (node.op() == "MaxPool") {
-      ConvertMaxPoolOperator(node, tf_import_flags, model);
-    } else if (node.op() == "AvgPool") {
-      ConvertAvgPoolOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Reshape") {
-      ConvertReshapeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "MatMul") {
-      ConvertMatMulOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Div" || node.op() == "RealDiv") {
-      ConvertDivOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Identity" || node.op() == "CheckNumerics") {
-      ConvertIdentityOperator(node, tf_import_flags, model);
-    } else if (node.op() == "FakeQuantWithMinMaxVars") {
-      ConvertFakeQuantWithMinMaxVars(node, tf_import_flags, model);
-    } else if (node.op() == "FakeQuantWithMinMaxArgs") {
-      ConvertFakeQuantWithMinMaxArgs(node, tf_import_flags, model);
-    } else if (node.op() == "Rsqrt") {
-      ConvertRsqrtOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Squeeze") {
-      ConvertSqueezeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Sqrt") {
-      ConvertSqrtOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Square") {
-      ConvertSquareOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Add") {
-      ConvertAddOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Mul") {
-      ConvertMulOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Sub") {
-      ConvertSubOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Sum") {
-      ConvertSumOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Tile") {
-      ConvertTileOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Concat" || node.op() == "ConcatV2") {
-      ConvertConcatOperator(node, tf_import_flags, model);
-    } else if (node.op() == "LRN") {
-      ConvertLRNOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Softmax") {
-      ConvertSoftmaxOperator(node, tf_import_flags, model);
-    } else if (node.op() == "All") {
-      ConvertAllOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Assert") {
-      ConvertAssertOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Less") {
-      ConvertLessOperator(node, tf_import_flags, model);
-    } else if (node.op() == "LessEqual") {
-      ConvertLessEqualOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Greater") {
-      ConvertGreaterOperator(node, tf_import_flags, model);
-    } else if (node.op() == "GreaterEqual") {
-      ConvertGreaterEqualOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Max") {
-      ConvertMaxOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Min") {
-      ConvertMinOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Maximum") {
-      ConvertMaximumOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Minimum") {
-      ConvertMinimumOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Merge") {
-      ConvertMergeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Pad") {
-      ConvertPadOperator(node, tf_import_flags, model);
-    } else if (node.op() == "StridedSlice") {
-      ConvertStridedSliceOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Shape") {
-      ConvertShapeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Slice") {
-      ConvertSliceOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Split") {
-      ConvertSplitOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Switch") {
-      ConvertSwitchOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Placeholder") {
-      ConvertPlaceholderOperator(node, tf_import_flags, model);
-    } else if (node.op() == "PlaceholderWithDefault") {
-      ConvertIdentityOperator(node, tf_import_flags, model);
-    } else if (node.op() == "LegacyFedInput") {
-      ConvertPlaceholderOperator(node, tf_import_flags, model);
-    } else if (node.op() == "NoOp") {
-      ConvertNoOpOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Cast") {
-      ConvertCastOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Floor") {
-      ConvertFloorOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Gather") {
-      ConvertGatherOperator(node, tf_import_flags, model);
-    } else if (node.op() == "ResizeBilinear") {
-      ConvertResizeBilinearOperator(node, tf_import_flags, model);
-    } else if (node.op() == "BatchNormWithGlobalNormalization") {
-      ConvertBatchNormWithGlobalNormalizationOperator(node, tf_import_flags,
-                                                      model);
-    } else if (node.op() == "FusedBatchNorm") {
-      ConvertFusedBatchNormOperator(node, tf_import_flags, model);
-    } else if (node.op() == "SpaceToBatchND") {
-      ConvertSpaceToBatchNDOperator(node, tf_import_flags, model);
-    } else if (node.op() == "BatchToSpaceND") {
-      ConvertBatchToSpaceNDOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Mean") {
-      ConvertMeanOperator(node, tf_import_flags, model);
-    } else if (node.op() == "Svdf") {
-      ConvertSvdfOperator(node, tf_import_flags, model);
-    } else {
-      ConvertUnsupportedOperator(node, tf_import_flags, model);
-    }
+    auto status = internal::ImportTensorFlowNode(node, tf_import_flags, model,
+                                                 converter_map);
+    CHECK(status.ok()) << status.error_message();
   }
 
   ResolveModelFlags(model_flags, model);
 
   StripCaretFromArrayNames(model);
-  AddExtraOutputsFedIntoOtherOps(model);
+  AddExtraOutputs(model);
   FixNoMissingArray(model);
   FixNoOrphanedArray(model);
   FixOperatorOrdering(model);

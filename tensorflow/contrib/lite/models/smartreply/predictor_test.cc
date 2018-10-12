@@ -22,8 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/contrib/lite/models/test_utils.h"
+//#include "tensorflow/contrib/lite/models/test_utils.h"
 #include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tflite {
 namespace custom {
@@ -32,6 +33,11 @@ namespace {
 
 const char kModelName[] = "smartreply_ondevice_model.bin";
 const char kSamples[] = "smartreply_samples.tsv";
+
+string TestDataPath() {
+  return string(absl::StrCat(tensorflow::testing::TensorFlowSrcRoot(), "/",
+                             "contrib/lite/models/testdata/"));
+}
 
 MATCHER_P(IncludeAnyResponesIn, expected_response, "contains the response") {
   bool has_expected_response = false;
@@ -49,7 +55,7 @@ class PredictorTest : public ::testing::Test {
  protected:
   PredictorTest() {
     model_ = tflite::FlatBufferModel::BuildFromFile(
-        StrCat(TestDataPath(), "/", kModelName).c_str());
+        absl::StrCat(TestDataPath(), "/", kModelName).c_str());
     CHECK(model_);
   }
   ~PredictorTest() override {}
@@ -115,7 +121,7 @@ TEST_F(PredictorTest, BatchTest) {
   int total_triggers = 0;
 
   string line;
-  std::ifstream fin(StrCat(TestDataPath(), "/", kSamples));
+  std::ifstream fin(absl::StrCat(TestDataPath(), "/", kSamples));
   while (std::getline(fin, line)) {
     const std::vector<string> fields = absl::StrSplit(line, '\t');
     if (fields.empty()) {

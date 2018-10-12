@@ -61,8 +61,10 @@ def conv_model(features, labels, mode):
 
   # Densely connected layer with 1024 neurons.
   h_fc1 = tf.layers.dense(h_pool2_flat, 1024, activation=tf.nn.relu)
-  if mode == tf.estimator.ModeKeys.TRAIN:
-    h_fc1 = tf.layers.dropout(h_fc1, rate=0.5)
+  h_fc1 = tf.layers.dropout(
+      h_fc1, 
+      rate=0.5, 
+      training=(mode == tf.estimator.ModeKeys.TRAIN))
 
   # Compute logits (1 per class) and compute loss.
   logits = tf.layers.dense(h_fc1, N_DIGITS, activation=None)

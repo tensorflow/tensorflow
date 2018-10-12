@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODELS_SMARTREPLY_PREDICTOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODELS_SMARTREPLY_PREDICTOR_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_MODELS_SMARTREPLY_PREDICTOR_H_
+#define TENSORFLOW_CONTRIB_LITE_MODELS_SMARTREPLY_PREDICTOR_H_
 
 #include <string>
 #include <vector>
@@ -65,9 +65,9 @@ struct SmartReplyConfig {
   float backoff_confidence;
   // Backoff responses are used when predicted responses cannot fulfill the
   // list.
-  const std::vector<std::string>& backoff_responses;
+  std::vector<std::string> backoff_responses;
 
-  SmartReplyConfig(std::vector<std::string> backoff_responses)
+  SmartReplyConfig(const std::vector<std::string>& backoff_responses)
       : num_response(kDefaultNumResponse),
         backoff_confidence(kDefaultBackoffConfidence),
         backoff_responses(backoff_responses) {}
@@ -77,4 +77,4 @@ struct SmartReplyConfig {
 }  // namespace custom
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODELS_SMARTREPLY_PREDICTOR_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_MODELS_SMARTREPLY_PREDICTOR_H_

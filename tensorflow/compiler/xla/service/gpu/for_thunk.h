@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
 
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,10 +37,11 @@ class ForThunk : public Thunk {
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
   const int64 loop_limit_;
@@ -49,4 +51,4 @@ class ForThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FOR_THUNK_H_

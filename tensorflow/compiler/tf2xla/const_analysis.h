@@ -23,10 +23,22 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Backwards dataflow analysis that finds arguments (_Arg nodes) to a graph that
-// must be compile-time constants.
-Status BackwardsConstAnalysis(const Graph& graph,
-                              std::vector<bool>* compile_time_const_args);
+// Backwards dataflow analysis that finds nodes in a graph that must be
+// compile-time constants for us to be able to lower the graph to XLA.
+//
+// The indices of the arguments to `graph` that must be constant are returned in
+// `compile_time_const_arg_indices`, if `compile_time_const_arg_indices` is not
+// null.
+//
+// The ids of the nodes in `graph` that must be constant are returned in
+// `compile_time_const_nodes`, if `compile_time_const_nodes` is not null.
+//
+// Only propagate const-ness along edges for which `edge_filter` returns true.
+Status BackwardsConstAnalysis(const Graph& g,
+                              std::vector<bool>* compile_time_const_arg_indices,
+                              std::vector<bool>* compile_time_const_nodes,
+                              std::function<bool(const Edge&)> edge_filter =
+                                  [](const Edge& e) { return true; });
 
 }  // namespace tensorflow
 

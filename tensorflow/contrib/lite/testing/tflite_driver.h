@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DRIVER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DRIVER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DRIVER_H_
+#define TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DRIVER_H_
 
 #include <map>
 
+#include "tensorflow/contrib/lite/delegates/flex/delegate.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
@@ -28,7 +29,7 @@ namespace testing {
 // A test runner that feeds inputs into TF Lite and verifies its outputs.
 class TfLiteDriver : public TestRunner {
  public:
-  explicit TfLiteDriver(bool use_nnapi);
+  explicit TfLiteDriver(bool use_nnapi, const string& delegate = "");
   ~TfLiteDriver() override;
 
   void LoadModel(const string& bin_file_path) override;
@@ -45,10 +46,14 @@ class TfLiteDriver : public TestRunner {
   void SetExpectation(int id, const string& csv_values) override;
   void Invoke() override;
   bool CheckResults() override;
+  string ReadOutput(int id) override { return "no-op"; }
 
  private:
+  void ResetLSTMStateTensors();
+
   class Expectation;
 
+  std::unique_ptr<FlexDelegate> delegate_;
   bool use_nnapi_ = false;
   std::unique_ptr<FlatBufferModel> model_;
   std::unique_ptr<Interpreter> interpreter_;
@@ -59,4 +64,4 @@ class TfLiteDriver : public TestRunner {
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DRIVER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DRIVER_H_

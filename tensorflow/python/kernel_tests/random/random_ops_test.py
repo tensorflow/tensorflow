@@ -21,15 +21,45 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class RandomNormalTest(test.TestCase):
+class RandomOpTestCommon(test.TestCase):
+
+  # Checks that executing the same rng_func multiple times rarely produces the
+  # same result.
+  def _testSingleSessionNotConstant(self,
+                                    rng_func,
+                                    num,
+                                    dtype,
+                                    min_or_mean,
+                                    max_or_stddev,
+                                    use_gpu,
+                                    op_seed=None,
+                                    graph_seed=None):
+    with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      if graph_seed is not None:
+        random_seed.set_random_seed(graph_seed)
+      x = rng_func([num], min_or_mean, max_or_stddev, dtype=dtype, seed=op_seed)
+
+      y = sess.run(x)
+      z = sess.run(x)
+      w = sess.run(x)
+
+      # We use exact equality here. If the random-number generator is producing
+      # the same output, all three outputs will be bitwise identical.
+      self.assertTrue((not np.array_equal(y, z)) or
+                      (not np.array_equal(z, w)) or (not np.array_equal(y, w)))
+
+
+class RandomNormalTest(RandomOpTestCommon):
 
   def _Sampler(self, num, mu, sigma, dtype, use_gpu, seed=None):
 
@@ -88,6 +118,36 @@ class RandomNormalTest(test.TestCase):
         rnd2 = random_ops.random_normal(shape, 0.0, 1.0, dtypes.float32)
         diff = rnd2 - rnd1
         self.assertTrue(np.linalg.norm(diff.eval()) > 0.1)
+
+  def testSingleSessionNotConstant(self):
+    for use_gpu in [False, True]:
+      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+        self._testSingleSessionNotConstant(
+            random_ops.random_normal, 100, dt, 0.0, 1.0, use_gpu=use_gpu)
+
+  def testSingleSessionOpSeedNotConstant(self):
+    for use_gpu in [False, True]:
+      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+        self._testSingleSessionNotConstant(
+            random_ops.random_normal,
+            100,
+            dt,
+            0.0,
+            1.0,
+            use_gpu=use_gpu,
+            op_seed=1345)
+
+  def testSingleSessionGraphSeedNotConstant(self):
+    for use_gpu in [False, True]:
+      for dt in dtypes.float16, dtypes.float32, dtypes.float64:
+        self._testSingleSessionNotConstant(
+            random_ops.random_normal,
+            100,
+            dt,
+            0.0,
+            1.0,
+            use_gpu=use_gpu,
+            graph_seed=965)
 
 
 class TruncatedNormalTest(test.TestCase):
@@ -174,8 +234,19 @@ class TruncatedNormalTest(test.TestCase):
       diff = rnd2 - rnd1
       self.assertTrue(np.linalg.norm(diff.eval()) > 0.1)
 
+  def testEagerSeed(self):
+    with context.eager_mode():
+      # Ensure a context has been created
+      random_ops.random_normal([])
+      # Set the same seed twice and check that the values match
+      context.set_global_seed(42)
+      rnd1 = random_ops.random_normal([])
+      context.set_global_seed(42)
+      rnd2 = random_ops.random_normal([])
+      self.assertAllEqual(rnd1, rnd2)
 
-class RandomUniformTest(test.TestCase):
+
+class RandomUniformTest(RandomOpTestCommon):
 
   def _Sampler(self, num, minv, maxv, dtype, use_gpu, seed=None):
 
@@ -191,7 +262,8 @@ class RandomUniformTest(test.TestCase):
     return func
 
   def testRange(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       sampler = self._Sampler(1000, minv=-2, maxv=8, dtype=dt, use_gpu=True)
       x = sampler()
       self.assertTrue(-2 <= np.min(x))
@@ -201,7 +273,8 @@ class RandomUniformTest(test.TestCase):
   # to see the same sequence of values. Will catch buggy
   # implementations which uses the same random number seed.
   def testDistinct(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       maxv = 1.0 if dt.is_floating else 1 << 30
       sampler = self._Sampler(1000, minv=0, maxv=maxv, dtype=dt, use_gpu=True)
       x = sampler()
@@ -213,6 +286,17 @@ class RandomUniformTest(test.TestCase):
         print("y = ", y)
         print("count = ", count)
       self.assertTrue(count < count_limit)
+
+  def testUniformIntsWithInvalidShape(self):
+    for dtype in dtypes.int32, dtypes.int64:
+      with self.assertRaisesRegexp(
+          ValueError, "Shape must be rank 0 but is rank 1"):
+        random_ops.random_uniform(
+            [1000], minval=[1, 2], maxval=3, dtype=dtype)
+      with self.assertRaisesRegexp(
+          ValueError, "Shape must be rank 0 but is rank 1"):
+        random_ops.random_uniform(
+            [1000], minval=1, maxval=[2, 3], dtype=dtype)
 
   # Check that uniform ints actually follow a uniform distribution.
   def testUniformInts(self):
@@ -236,10 +320,20 @@ class RandomUniformTest(test.TestCase):
       error = np.abs(counts - mean)
       self.assertLess(error.max(), 5 * std)
 
+  # Check that minval = maxval is fine iff we're producing no numbers
+  def testUniformIntsDegenerate(self):
+    for dt in dtypes.int32, dtypes.int64:
+      def sample(n):
+        return self._Sampler(n, minv=0, maxv=0, dtype=dt, use_gpu=True)()
+      self.assertEqual(sample(0).shape, (10, 0))
+      with self.assertRaisesOpError('Need minval < maxval, got 0 >= 0'):
+        sample(1)
+
   # Checks that the CPU and GPU implementation returns the same results,
   # given the same random seed
   def testCPUGPUMatch(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       maxv = 1.0 if dt.is_floating else 17
       results = {}
       for use_gpu in False, True:
@@ -249,7 +343,8 @@ class RandomUniformTest(test.TestCase):
       self.assertAllEqual(results[False], results[True])
 
   def testSeed(self):
-    for dt in dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64:
+    for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+               dtypes.int64):
       for seed in [345, 2**100, -2**100]:
         sx = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
         sy = self._Sampler(1000, 0, 17, dtype=dt, use_gpu=True, seed=seed)
@@ -264,6 +359,39 @@ class RandomUniformTest(test.TestCase):
         diff = (rnd2 - rnd1).eval()
         self.assertTrue(np.linalg.norm(diff) > 0.1)
 
+  def testSingleSessionNotConstant(self):
+    for use_gpu in [False, True]:
+      for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+                 dtypes.int64):
+        self._testSingleSessionNotConstant(
+            random_ops.random_uniform, 100, dt, 0, 17, use_gpu=use_gpu)
+
+  def testSingleSessionOpSeedNotConstant(self):
+    for use_gpu in [False, True]:
+      for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+                 dtypes.int64):
+        self._testSingleSessionNotConstant(
+            random_ops.random_uniform,
+            100,
+            dt,
+            10,
+            20,
+            use_gpu=use_gpu,
+            op_seed=1345)
+
+  def testSingleSessionGraphSeedNotConstant(self):
+    for use_gpu in [False, True]:
+      for dt in (dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32,
+                 dtypes.int64):
+        self._testSingleSessionNotConstant(
+            random_ops.random_uniform,
+            100,
+            dt,
+            20,
+            200,
+            use_gpu=use_gpu,
+            graph_seed=965)
+
 
 class RandomShapeTest(test.TestCase):
 
@@ -273,8 +401,7 @@ class RandomShapeTest(test.TestCase):
     self.assertEqual([1, 2, 3], rnd1.get_shape())
     # Partially known shape.
     rnd2 = random_ops.truncated_normal(
-        array_ops.placeholder(
-            dtypes.int32, shape=(3,)))
+        array_ops.placeholder(dtypes.int32, shape=(3,)))
     self.assertEqual([None, None, None], rnd2.get_shape().as_list())
     # Unknown shape.
     rnd3 = random_ops.truncated_normal(array_ops.placeholder(dtypes.int32))
@@ -286,8 +413,7 @@ class RandomShapeTest(test.TestCase):
     self.assertEqual([1, 2, 3], rnd1.get_shape())
     # Partially known shape.
     rnd2 = random_ops.random_normal(
-        array_ops.placeholder(
-            dtypes.int32, shape=(3,)))
+        array_ops.placeholder(dtypes.int32, shape=(3,)))
     self.assertEqual([None, None, None], rnd2.get_shape().as_list())
     # Unknown shape.
     rnd3 = random_ops.random_normal(array_ops.placeholder(dtypes.int32))
@@ -299,8 +425,7 @@ class RandomShapeTest(test.TestCase):
     self.assertEqual([1, 2, 3], rnd1.get_shape())
     # Partially known shape.
     rnd2 = random_ops.random_uniform(
-        array_ops.placeholder(
-            dtypes.int32, shape=(3,)))
+        array_ops.placeholder(dtypes.int32, shape=(3,)))
     self.assertEqual([None, None, None], rnd2.get_shape().as_list())
     # Unknown shape.
     rnd3 = random_ops.random_uniform(array_ops.placeholder(dtypes.int32))

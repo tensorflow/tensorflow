@@ -247,8 +247,9 @@ Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name, ", Feature: ",
-                                       key, ".  Data types don't match. ",
+        return errors::InvalidArgument("Name: ", example_name,
+                                       ", Feature: ", key,
+                                       ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }
@@ -278,8 +279,9 @@ Status SingleExampleProtoToTensors(
       bool types_match;
       TF_RETURN_IF_ERROR(CheckTypesMatch(f, dtype, &types_match));
       if (!types_match) {
-        return errors::InvalidArgument("Name: ", example_name, ", Feature: ",
-                                       key, ".  Data types don't match. ",
+        return errors::InvalidArgument("Name: ", example_name,
+                                       ", Feature: ", key,
+                                       ".  Data types don't match. ",
                                        "Expected type: ", DataTypeString(dtype),
                                        "  Feature is: ", ProtoDebugString(f));
       }
@@ -400,7 +402,7 @@ Status BatchExampleProtoToTensors(
   return Status::OK();
 }
 
-Status ParseSingleExampleAttrs::FinishInit() {
+Status ParseExampleAttrs::FinishInit() {
   if (static_cast<size_t>(num_sparse) != sparse_types.size()) {
     return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
   }
@@ -419,6 +421,78 @@ Status ParseSingleExampleAttrs::FinishInit() {
   for (const DataType& type : sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
   }
+  return Status::OK();
+}
+
+Status ParseSingleExampleAttrs::FinishInit() {
+  if (sparse_keys.size() != sparse_types.size()) {
+    return errors::InvalidArgument("len(sparse_keys) != len(sparse_types)");
+  }
+  if (dense_keys.size() != dense_types.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_types)");
+  }
+  if (dense_keys.size() != dense_shapes.size()) {
+    return errors::InvalidArgument("len(dense_keys) != len(dense_shapes)");
+  }
+  for (const DataType& type : dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  return Status::OK();
+}
+
+Status ParseSequenceExampleAttrs::FinishInit() {
+  if (num_context_sparse != context_sparse_keys.size() ||
+      num_context_sparse != context_sparse_types.size()) {
+    return errors::InvalidArgument(
+        "num_context_sparse (", num_context_sparse,
+        ") must match the size of context_sparse_keys (",
+        context_sparse_keys.size(), ") and context_sparse_types (",
+        context_sparse_types.size(), ")");
+  }
+  if (num_context_dense != context_dense_keys.size() ||
+      num_context_dense != context_dense_types.size() ||
+      num_context_dense != context_dense_shapes.size()) {
+    return errors::InvalidArgument(
+        "num_context_dense (", num_context_dense,
+        ") must match the size of context_dense_keys (",
+        context_dense_keys.size(), "), context_dense_types (",
+        context_dense_types.size(), ") and context_dense_shapes (",
+        context_dense_shapes.size(), ")");
+  }
+  if (num_feature_list_sparse != feature_list_sparse_keys.size() ||
+      num_feature_list_sparse != feature_list_sparse_types.size()) {
+    return errors::InvalidArgument(
+        "num_feature_list_sparse (", num_feature_list_sparse,
+        ") must match the size of feature_list_sparse_keys (",
+        feature_list_sparse_keys.size(), ") and feature_list_sparse_types (",
+        feature_list_sparse_types.size(), ")");
+  }
+  if (num_feature_list_dense != feature_list_dense_keys.size() ||
+      num_feature_list_dense != feature_list_dense_types.size() ||
+      num_feature_list_dense != feature_list_dense_shapes.size()) {
+    return errors::InvalidArgument(
+        "num_feature_list_dense (", num_feature_list_dense,
+        ") must match the size of feature_list_dense_keys (",
+        feature_list_dense_keys.size(), "), feature_list_dense_types (",
+        feature_list_dense_types.size(), ") and feature_list_dense_shapes (",
+        feature_list_dense_shapes.size(), ")");
+  }
+  for (const DataType& type : context_dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : context_sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : feature_list_dense_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+  for (const DataType& type : feature_list_sparse_types) {
+    TF_RETURN_IF_ERROR(CheckValidType(type));
+  }
+
   return Status::OK();
 }
 

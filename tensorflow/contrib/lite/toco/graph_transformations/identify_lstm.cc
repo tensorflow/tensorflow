@@ -16,7 +16,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -36,19 +35,24 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOperator(
   return it;
 }
 
-bool GetStateArrayForBackEdge(const Model& model,
-                              const string& back_edge_source_array,
-                              string* state_array = nullptr) {
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (back_edge_source_array == rnn_state.back_edge_source_array()) {
-      // Found LSTM cell output
-      if (state_array) {
-        *state_array = rnn_state.state_array();
-      }
-      return true;
+bool ValidateSourceOp(const Model& model, const string& array_name,
+                      OperatorType op_type, Operator** source_op) {
+  if (op_type == OperatorType::kNone) {
+    CHECK(!source_op);
+  } else {
+    CHECK(source_op);
+    *source_op = GetOpWithOutput(model, array_name);
+    if (*source_op == nullptr) {
+      return false;
+    }
+
+    // Check that first operator, if connected, is of correct type
+    if ((*source_op)->type != op_type) {
+      return false;
     }
   }
-  return false;
+
+  return true;
 }
 
 // Returns true if the given operator has exactly 1 input, and is connected to
@@ -63,22 +67,8 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
   }
 
   // Check if first input is disconnected/connected to an operator
-  Operator* x = GetOpWithOutput(model, op.inputs[0]);
-  if ((op_type == OperatorType::kNone) && (x != nullptr)) {
+  if (!ValidateSourceOp(model, op.inputs[0], op_type, connected_op)) {
     return false;
-  }
-  if ((op_type != OperatorType::kNone) && (x == nullptr)) {
-    return false;
-  }
-
-  // Check that first operator, if connected, is of correct type
-  if ((x != nullptr) && (x->type != op_type)) {
-    return false;
-  }
-
-  // Successfully matched. Optionally return matching input operators.
-  if (connected_op) {
-    *connected_op = x;
   }
 
   return true;
@@ -97,40 +87,15 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
   }
 
   // Check if first input is disconnected/connected to an operator
-  Operator* x = GetOpWithOutput(model, op.inputs[0]);
-  if ((a_op_type == OperatorType::kNone) && (x != nullptr)) {
-    return false;
-  }
-  if ((a_op_type != OperatorType::kNone) && (x == nullptr)) {
-    return false;
-  }
-
-  // Check that first operator, if connected, is of correct type
-  if ((x != nullptr) && (x->type != a_op_type)) {
+  if (!ValidateSourceOp(model, op.inputs[0], a_op_type, a_op)) {
     return false;
   }
 
   // Check if second input is disconnected/connected to an operator
-  Operator* y = GetOpWithOutput(model, op.inputs[1]);
-  if ((b_op_type == OperatorType::kNone) && (y != nullptr)) {
-    return false;
-  }
-  if ((b_op_type != OperatorType::kNone) && (y == nullptr)) {
+  if (!ValidateSourceOp(model, op.inputs[1], b_op_type, b_op)) {
     return false;
   }
 
-  // Check that second operator, if connected, is of correct type
-  if ((y != nullptr) && (y->type != b_op_type)) {
-    return false;
-  }
-
-  // Successfully matched. Optionally return matching input operators.
-  if (a_op != nullptr) {
-    *a_op = x;
-  }
-  if (b_op != nullptr) {
-    *b_op = y;
-  }
   return true;
 }
 
@@ -148,80 +113,28 @@ bool MatchOperatorInputs(const Operator& op, const Model& model,
   }
 
   // Check if first input is disconnected/connected to an operator
-  Operator* x = GetOpWithOutput(model, op.inputs[0]);
-  if ((a_op_type == OperatorType::kNone) && (x != nullptr)) {
-    return false;
-  }
-  if ((a_op_type != OperatorType::kNone) && (x == nullptr)) {
-    return false;
-  }
-
-  // Check that first operator, if connected, is of correct type
-  if ((x != nullptr) && (x->type != a_op_type)) {
+  if (!ValidateSourceOp(model, op.inputs[0], a_op_type, a_op)) {
     return false;
   }
 
   // Check if second input is disconnected/connected to an operator
-  Operator* y = GetOpWithOutput(model, op.inputs[1]);
-  if ((b_op_type == OperatorType::kNone) && (y != nullptr)) {
-    return false;
-  }
-  if ((b_op_type != OperatorType::kNone) && (y == nullptr)) {
-    return false;
-  }
-
-  // Check that second operator, if connected, is of correct type
-  if ((y != nullptr) && (y->type != b_op_type)) {
+  if (!ValidateSourceOp(model, op.inputs[1], b_op_type, b_op)) {
     return false;
   }
 
   // Check if third input is disconnected/connected to an operator
-  Operator* z = GetOpWithOutput(model, op.inputs[2]);
-  if ((c_op_type == OperatorType::kNone) && (z != nullptr)) {
-    return false;
-  }
-  if ((c_op_type != OperatorType::kNone) && (z == nullptr)) {
+  if (!ValidateSourceOp(model, op.inputs[2], c_op_type, c_op)) {
     return false;
   }
 
-  // Check that third operator, if connected, is of correct type
-  if ((z != nullptr) && (z->type != c_op_type)) {
-    return false;
-  }
-
-  // Successfully matched. Optionally return matching input operators.
-  if (a_op != nullptr) {
-    *a_op = x;
-  }
-  if (b_op != nullptr) {
-    *b_op = y;
-  }
-  if (c_op != nullptr) {
-    *c_op = z;
-  }
   return true;
-}
-
-absl::string_view FindLongestCommonPrefix(absl::string_view a,
-                                          absl::string_view b) {
-  if (a.empty() || b.empty()) return absl::string_view();
-
-  const char* pa = a.data();
-  const char* pb = b.data();
-  size_t count = 0;
-  const ssize_t limit = std::min(a.size(), b.size());
-  while (count < limit && *pa == *pb) {
-    ++pa;
-    ++pb;
-    ++count;
-  }
-
-  return absl::string_view(a.data(), count);
 }
 
 }  // namespace
 
-bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
+::tensorflow::Status IdentifyLstmCell::Run(Model* model, std::size_t op_index,
+                                           bool* modified) {
+  *modified = false;
   // This LSTM cell identification method is not invariant to commutation of
   // commutative operator inputs. For example, if input[0] and input[1] of the
   // final output multiplication were swapped, this method would not identify it
@@ -232,13 +145,13 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
   auto op_it = model->operators.begin() + op_index;
   Operator* final_output_mul = op_it->get();
   if (final_output_mul->type != OperatorType::kMul) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   Operator *state_output_tanh, *fc_output_sig;
   if (!MatchOperatorInputs(*final_output_mul, *model, OperatorType::kTanh,
                            &state_output_tanh, OperatorType::kLogistic,
                            &fc_output_sig)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // State output TanH
@@ -247,12 +160,7 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
   Operator* state_combine_add;
   if (!MatchOperatorInputs(*state_output_tanh, *model, OperatorType::kAdd,
                            &state_combine_add)) {
-    return false;
-  }
-  string prev_state;
-  if (!GetStateArrayForBackEdge(*model, state_output_tanh->inputs[0],
-                                &prev_state)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // State forget & remember addition
@@ -260,18 +168,16 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
   if (!MatchOperatorInputs(*state_combine_add, *model, OperatorType::kMul,
                            &state_forget_mul, OperatorType::kMul,
                            &state_remember_mul)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
-  if (state_forget_mul->inputs[0] != prev_state) {
-    return false;
-  }
+  const string prev_state = state_forget_mul->inputs[0];
 
   // State forget gate
   Operator* state_forget_sig;
   if (!MatchOperatorInputs(*state_forget_mul, *model, OperatorType::kNone,
                            nullptr, OperatorType::kLogistic,
                            &state_forget_sig)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // State remember gate
@@ -279,40 +185,40 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
   if (!MatchOperatorInputs(*state_remember_mul, *model, OperatorType::kLogistic,
                            &state_remember_sig, OperatorType::kTanh,
                            &state_info_tanh)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // State remember "information" activation function
   Operator* fc_output_split;
-  if (!MatchOperatorInputs(*state_info_tanh, *model,
-                           OperatorType::kTensorFlowSplit, &fc_output_split)) {
-    return false;
+  if (!MatchOperatorInputs(*state_info_tanh, *model, OperatorType::kSplit,
+                           &fc_output_split)) {
+    return ::tensorflow::Status::OK();
   }
   // State remember gate activation function
   Operator* tmp;
-  if (!MatchOperatorInputs(*state_remember_sig, *model,
-                           OperatorType::kTensorFlowSplit, &tmp) ||
+  if (!MatchOperatorInputs(*state_remember_sig, *model, OperatorType::kSplit,
+                           &tmp) ||
       (tmp != fc_output_split)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   // State forget gate activation function
-  if (!MatchOperatorInputs(*state_forget_sig, *model,
-                           OperatorType::kTensorFlowSplit, &tmp) ||
+  if (!MatchOperatorInputs(*state_forget_sig, *model, OperatorType::kSplit,
+                           &tmp) ||
       (tmp != fc_output_split)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   // Fully connected output activation function
-  if (!MatchOperatorInputs(*fc_output_sig, *model,
-                           OperatorType::kTensorFlowSplit, &tmp) ||
+  if (!MatchOperatorInputs(*fc_output_sig, *model, OperatorType::kSplit,
+                           &tmp) ||
       (tmp != fc_output_split)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
   // Fully connected output split
   Operator* fully_connected;
   if (!MatchOperatorInputs(*fc_output_split, *model, OperatorType::kNone,
                            nullptr, OperatorType::kFullyConnected,
                            &fully_connected)) {
-    return false;
+    return ::tensorflow::Status::OK();
   }
 
   // Fully connected op
@@ -321,7 +227,13 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
                            OperatorType::kConcatenation, &concat_inputs,
                            OperatorType::kNone, nullptr, OperatorType::kNone,
                            nullptr)) {
-    return false;
+    return ::tensorflow::Status::OK();
+  }
+
+  if (static_cast<FullyConnectedOperator*>(fully_connected)->weights_format !=
+      FullyConnectedWeightsFormat::kDefault) {
+    // Not yet implemented: experimental shuffled weights in fused LSTM cell.
+    return ::tensorflow::Status::OK();
   }
 
   // Emplace a new LSTM cell operator
@@ -390,7 +302,8 @@ bool IdentifyLstmCell::Run(Model* model, std::size_t op_index) {
   model->operators.erase(FindOperator(model, *fully_connected));
   DeleteArrayIfUnused(concat_inputs->outputs[0], model);
   model->operators.erase(FindOperator(model, *concat_inputs));
-  return true;
+  *modified = true;
+  return ::tensorflow::Status::OK();
 }
 
 }  // namespace toco

@@ -47,7 +47,7 @@ struct EndpointEq {
 static Status ProcessMemoryTypes(
     const DeviceType& device_type, const Graph* g,
     const std::function<Status(const Edge*, MemoryType, MemoryType)>& fn) {
-  if (device_type != DEVICE_GPU && device_type != DEVICE_SYCL ) {
+  if (device_type != DEVICE_GPU && device_type != DEVICE_SYCL) {
     // On non-GPU and non-SYCL devices, HOST_MEMORY and DEVICE_MEMORY are always
     // compatible.
     return Status::OK();
@@ -92,7 +92,7 @@ static Status ProcessMemoryTypes(
 
 Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
   return ProcessMemoryTypes(
-      device_type, g, [g](const Edge* e, MemoryType sm, MemoryType dm) {
+      device_type, g, [](const Edge* e, MemoryType sm, MemoryType dm) {
         if (sm == dm) {
           return Status::OK();
         }
@@ -155,7 +155,7 @@ Status EnsureMemoryTypes(const DeviceType& device_type,
   };
   std::vector<Item> edges;
   TF_RETURN_IF_ERROR(ProcessMemoryTypes(
-      device_type, g, [g, &edges](const Edge* e, MemoryType sm, MemoryType dm) {
+      device_type, g, [&edges](const Edge* e, MemoryType sm, MemoryType dm) {
         if (sm == dm) {
           return Status::OK();
         }

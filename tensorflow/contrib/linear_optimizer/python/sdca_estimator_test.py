@@ -25,10 +25,18 @@ from tensorflow.contrib.linear_optimizer.python import sdca_estimator
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.platform import test
 
 
 class SDCALogisticClassifierTest(test.TestCase):
+
+  def _single_threaded_test_session(self):
+    # TODO(andreasst): figure out why SDCALinearRegressor needs a single
+    # threaded session to pass in tsan mode but SDCALogisticClassifier does not.
+    config = config_pb2.ConfigProto(
+        inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
+    return self.test_session(config=config)
 
   def testRealValuedFeatures(self):
     """Tests SDCALogisticClassifier works with real valued features."""
@@ -41,7 +49,7 @@ class SDCALogisticClassifierTest(test.TestCase):
           'weights': constant_op.constant([[1.0], [1.0]])
       }, constant_op.constant([[0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       maintenance_cost = feature_column_lib.real_valued_column(
           'maintenance_cost')
       sq_footage = feature_column_lib.real_valued_column('sq_footage')
@@ -66,7 +74,7 @@ class SDCALogisticClassifierTest(test.TestCase):
               constant_op.constant([[500.0, 800.0], [200.0, 600.0]])
       }, constant_op.constant([[0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       dense_feature = feature_column_lib.real_valued_column(
           'dense_feature', dimension=2)
       classifier = sdca_estimator.SDCALogisticClassifier(
@@ -86,7 +94,7 @@ class SDCALogisticClassifierTest(test.TestCase):
           'weights': constant_op.constant([[1.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       price_bucket = feature_column_lib.bucketized_column(
           feature_column_lib.real_valued_column('price'),
           boundaries=[500.0, 700.0])
@@ -120,7 +128,7 @@ class SDCALogisticClassifierTest(test.TestCase):
               constant_op.constant([[1.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       price = feature_column_lib.real_valued_column('price')
       country = feature_column_lib.sparse_column_with_hash_bucket(
           'country', hash_bucket_size=5)
@@ -151,7 +159,7 @@ class SDCALogisticClassifierTest(test.TestCase):
                   dense_shape=[3, 5])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       country = feature_column_lib.sparse_column_with_hash_bucket(
           'country', hash_bucket_size=5)
       country_weighted_by_price = feature_column_lib.weighted_sparse_column(
@@ -162,6 +170,38 @@ class SDCALogisticClassifierTest(test.TestCase):
       classifier.fit(input_fn=input_fn, steps=50)
       metrics = classifier.evaluate(input_fn=input_fn, steps=1)
       self.assertGreater(metrics['accuracy'], 0.9)
+
+  def testSparseFeaturesWithDuplicates(self):
+    """Tests SDCALogisticClassifier with duplicated sparse features."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2']),
+          'age':
+              sparse_tensor.SparseTensor(
+                  values=['20-29'] * 5 + ['31-40'] * 5,
+                  indices=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0],
+                           [1, 0], [1, 0], [1, 0], [1, 0]],
+                  dense_shape=[2, 1]),
+          'gender':
+              sparse_tensor.SparseTensor(
+                  values=['m'] * 5 + ['f'] * 5,
+                  indices=[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [1, 0],
+                           [1, 0], [1, 0], [1, 0], [1, 0]],
+                  dense_shape=[2, 1]),
+      }, constant_op.constant([[1], [0]])
+
+    with self._single_threaded_test_session():
+      age = feature_column_lib.sparse_column_with_hash_bucket(
+          'age', hash_bucket_size=10)
+      gender = feature_column_lib.sparse_column_with_hash_bucket(
+          'gender', hash_bucket_size=10)
+      classifier = sdca_estimator.SDCALogisticClassifier(
+          example_id_column='example_id', feature_columns=[age, gender])
+      classifier.fit(input_fn=input_fn, steps=50)
+      metrics = classifier.evaluate(input_fn=input_fn, steps=1)
+      self.assertLess(metrics['loss'], 0.060)
 
   def testCrossedFeatures(self):
     """Tests SDCALogisticClassifier with crossed features."""
@@ -182,7 +222,7 @@ class SDCALogisticClassifierTest(test.TestCase):
                   dense_shape=[3, 1])
       }, constant_op.constant([[0], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       language = feature_column_lib.sparse_column_with_hash_bucket(
           'language', hash_bucket_size=5)
       country = feature_column_lib.sparse_column_with_hash_bucket(
@@ -215,7 +255,7 @@ class SDCALogisticClassifierTest(test.TestCase):
               constant_op.constant([[3.0], [1.0], [1.0]])
       }, constant_op.constant([[1], [0], [1]])
 
-    with self.test_session():
+    with self._single_threaded_test_session():
       price = feature_column_lib.real_valued_column('price')
       sq_footage_bucket = feature_column_lib.bucketized_column(
           feature_column_lib.real_valued_column('sq_footage'),
@@ -230,6 +270,47 @@ class SDCALogisticClassifierTest(test.TestCase):
               price, sq_footage_bucket, country, sq_footage_country
           ],
           weight_column_name='weights')
+      classifier.fit(input_fn=input_fn, steps=50)
+      metrics = classifier.evaluate(input_fn=input_fn, steps=1)
+      self.assertGreater(metrics['accuracy'], 0.9)
+
+  def testPartitionedMixedFeatures(self):
+    """Tests SDCALogisticClassifier with a mix of features (partitioned)."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              constant_op.constant([[0.6], [0.8], [0.3]]),
+          'sq_footage':
+              constant_op.constant([900.0, 700.0, 600.0]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 3], [2, 1]],
+                  dense_shape=[3, 5]),
+          'weights':
+              constant_op.constant([[3.0], [1.0], [1.0]])
+      }, constant_op.constant([[1], [0], [1]])
+
+    with self._single_threaded_test_session():
+      price = feature_column_lib.real_valued_column('price')
+      sq_footage_bucket = feature_column_lib.bucketized_column(
+          feature_column_lib.real_valued_column('sq_footage'),
+          boundaries=[650.0, 800.0])
+      country = feature_column_lib.sparse_column_with_hash_bucket(
+          'country', hash_bucket_size=5)
+      sq_footage_country = feature_column_lib.crossed_column(
+          [sq_footage_bucket, country], hash_bucket_size=10)
+      classifier = sdca_estimator.SDCALogisticClassifier(
+          example_id_column='example_id',
+          feature_columns=[
+              price, sq_footage_bucket, country, sq_footage_country
+          ],
+          weight_column_name='weights',
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_shards=2, axis=0))
       classifier.fit(input_fn=input_fn, steps=50)
       metrics = classifier.evaluate(input_fn=input_fn, steps=1)
       self.assertGreater(metrics['accuracy'], 0.9)
@@ -307,6 +388,48 @@ class SDCALinearRegressorTest(test.TestCase):
           ],
           l2_regularization=1.0,
           weight_column_name='weights')
+      regressor.fit(input_fn=input_fn, steps=20)
+      loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+      self.assertLess(loss, 0.05)
+
+  def testMixedFeaturesArbitraryWeightsPartitioned(self):
+    """Tests SDCALinearRegressor works with a mix of features (partitioned)."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              constant_op.constant([[0.6], [0.8], [0.3]]),
+          'sq_footage':
+              constant_op.constant([[900.0], [700.0], [600.0]]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 3], [2, 1]],
+                  dense_shape=[3, 5]),
+          'weights':
+              constant_op.constant([[3.0], [5.0], [7.0]])
+      }, constant_op.constant([[1.55], [-1.25], [-3.0]])
+
+    with self._single_threaded_test_session():
+      price = feature_column_lib.real_valued_column('price')
+      sq_footage_bucket = feature_column_lib.bucketized_column(
+          feature_column_lib.real_valued_column('sq_footage'),
+          boundaries=[650.0, 800.0])
+      country = feature_column_lib.sparse_column_with_hash_bucket(
+          'country', hash_bucket_size=5)
+      sq_footage_country = feature_column_lib.crossed_column(
+          [sq_footage_bucket, country], hash_bucket_size=10)
+      regressor = sdca_estimator.SDCALinearRegressor(
+          example_id_column='example_id',
+          feature_columns=[
+              price, sq_footage_bucket, country, sq_footage_country
+          ],
+          l2_regularization=1.0,
+          weight_column_name='weights',
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_shards=2, axis=0))
       regressor.fit(input_fn=input_fn, steps=20)
       loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
       self.assertLess(loss, 0.05)

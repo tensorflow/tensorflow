@@ -1,0 +1,74 @@
+path: "tensorflow.summary.Event"
+tf_proto {
+  descriptor {
+    name: "Event"
+    field {
+      name: "wall_time"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "step"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "file_version"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+      oneof_index: 0
+    }
+    field {
+      name: "graph_def"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_BYTES
+      oneof_index: 0
+    }
+    field {
+      name: "summary"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Summary"
+      oneof_index: 0
+    }
+    field {
+      name: "log_message"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.LogMessage"
+      oneof_index: 0
+    }
+    field {
+      name: "session_log"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SessionLog"
+      oneof_index: 0
+    }
+    field {
+      name: "tagged_run_metadata"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TaggedRunMetadata"
+      oneof_index: 0
+    }
+    field {
+      name: "meta_graph_def"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_BYTES
+      oneof_index: 0
+    }
+    oneof_decl {
+      name: "what"
+    }
+  }
+}

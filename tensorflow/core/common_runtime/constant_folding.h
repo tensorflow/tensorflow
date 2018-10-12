@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
-#define TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -22,7 +22,14 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/env.h"
 
+// TODO(skyewm): can this be combined with EvaluateConstantTensor?
+
 namespace tensorflow {
+
+// This generator type is used to generate a name for the newly folded node
+// based on the node's old name.
+using ConstantFoldNameGenerator =
+    std::function<string(Graph* graph, string old_name)>;
 
 // Options specific to constant folding optimizations.
 struct ConstantFoldingOptions {
@@ -37,6 +44,11 @@ struct ConstantFoldingOptions {
   // The maximum size of each constant created during constant folding
   // optimization.
   int64 max_constant_size_in_bytes = 10 * 1024 * 1024;
+
+  // A generator for the name suffix of constant folded nodes. A
+  // default id generator that monotonically increases is used if nullptr is
+  // passed.
+  ConstantFoldNameGenerator generate_new_name = nullptr;
 };
 
 // Perform constant folding optimization on "graph".
@@ -54,4 +66,4 @@ Status ConstantFold(const ConstantFoldingOptions& opts,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_CONSTANT_FOLDING_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_CONSTANT_FOLDING_H_

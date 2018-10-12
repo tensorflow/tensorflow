@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_LSTM_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_LSTM_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_RNN_KERNELS_LSTM_OPS_H_
+#define TENSORFLOW_CONTRIB_RNN_KERNELS_LSTM_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/contrib/rnn/kernels/blas_gemm.h"
@@ -77,8 +77,7 @@ template <typename Device, typename T>
 struct TensorZeroPadding {
   void operator()(const Device& d, const int64 time_idx,
                   typename TTypes<int64>::ConstVec seq_len,
-                  typename TTypes<float>::Vec mask,
-                  typename TTypes<float>::Matrix m) {
+                  typename TTypes<T>::Vec mask, typename TTypes<T>::Matrix m) {
     // mask is shape [batch_size].
     mask.device(d) = seq_len.constant(time_idx) < seq_len;
 
@@ -91,7 +90,6 @@ struct TensorZeroPadding {
     m.device(d) = m * mask.reshape(m_shape).broadcast(broadcast_shape);
   }
 };
-
 
 struct LSTMBlockCell {
   LSTMBlockCell(const int batch_size, const int input_size, const int cell_size)
@@ -155,18 +153,21 @@ struct LSTMBlockCellFprop : public LSTMBlockCell {
                      const int cell_size)
       : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
-  void operator()(
-      OpKernelContext* ctx, const Device& d, const T forget_bias,
-      const T cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x,
-      typename TTypes<T>::ConstMatrix cs_prev,
-      typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
-      typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
-      typename TTypes<T>::ConstVec wco, typename TTypes<T>::ConstVec b,
-      typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix i,
-      typename TTypes<T>::Matrix cs, typename TTypes<T>::Matrix f,
-      typename TTypes<T>::Matrix o, typename TTypes<T>::Matrix ci,
-      typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
-      typename TTypes<T>::Matrix h);
+  void operator()(OpKernelContext* ctx, const Device& d,
+                  const float forget_bias, const float cell_clip,
+                  bool use_peephole, typename TTypes<T>::ConstMatrix x,
+                  typename TTypes<T>::ConstMatrix cs_prev,
+                  typename TTypes<T>::ConstMatrix h_prev,
+                  typename TTypes<T>::ConstMatrix w,
+                  typename TTypes<T>::ConstVec wci,
+                  typename TTypes<T>::ConstVec wcf,
+                  typename TTypes<T>::ConstVec wco,
+                  typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,
+                  typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,
+                  typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,
+                  typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,
+                  typename TTypes<T>::Matrix icfo,
+                  typename TTypes<T>::Matrix h);
 };
 
 // See lstm_ops.cc for CPUDevice implementation and lstm_ops_gpu.cu.cc for
@@ -262,7 +263,7 @@ struct BlockLSTMBprop : public LSTMBlockCell {
     typename TTypes<T>::ConstMatrix const_dicfo(dicfo.data(),
                                                 dicfo.dimensions());
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, d, false, true, T(1), const_dicfo, w, T(0), xh_grad);
+        ctx, d, false, true, 1.f, const_dicfo, w, 0.f, xh_grad);
 
     // xh.
     xh.slice(xh_x_offsets(), xh_x_extents()).device(d) = x;
@@ -275,7 +276,7 @@ struct BlockLSTMBprop : public LSTMBlockCell {
 
     // w_grad.
     TensorBlasGemm<Device, T, USE_CUBLAS>::compute(
-        ctx, d, true, false, T(1), const_xh, const_dicfo, T(1), w_grad);
+        ctx, d, true, false, 1.f, const_xh, const_dicfo, 1.f, w_grad);
 
     // b_grad.
     b_grad.device(d) += dicfo.sum(Eigen::array<int, 1>({0}));
@@ -291,4 +292,4 @@ struct BlockLSTMBprop : public LSTMBlockCell {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_RNN_KERNELS_LSTM_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_RNN_KERNELS_LSTM_OPS_H_

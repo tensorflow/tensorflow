@@ -18,6 +18,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
@@ -32,9 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -55,7 +56,7 @@ const char kUsageHeader[] =
     "\n";
 
 Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
-  if (StringPiece(fname).ends_with(".pbtxt")) {
+  if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
   } else {
     return ReadBinaryProto(Env::Default(), fname, proto);
@@ -75,7 +76,7 @@ Status Main(const MainFlags& flags) {
     for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
-    std::cout << str_util::Join(nodes, ",");
+    std::cout << absl::StrJoin(nodes, ",");
     return Status::OK();
   }
 
@@ -91,19 +92,29 @@ Status Main(const MainFlags& flags) {
   // Write output files.
   Env* env = Env::Default();
   const std::vector<char>& obj = compile_result.aot->object_file_data();
-  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_object,
-                                       StringPiece(obj.data(), obj.size())));
-  HeaderOpts header_opts;
-  header_opts.gen_name_to_index = flags.gen_name_to_index;
-  header_opts.gen_program_shape = flags.gen_program_shape;
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_function_object,
+                        absl::string_view(obj.data(), obj.size())));
+  CodegenOpts codegen_opts;
+  codegen_opts.gen_name_to_index = flags.gen_name_to_index;
+  codegen_opts.gen_program_shape = flags.gen_program_shape;
+  codegen_opts.target_triple = flags.target_triple;
   if (flags.cpp_class.empty()) {
     return errors::InvalidArgument("Must specify --cpp_class");
   }
-  TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &header_opts.class_name,
-                                   &header_opts.namespaces));
-  string header;
+  codegen_opts.gen_hlo_profile_printer_data =
+      xla::legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
+  TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
+                                   &codegen_opts.namespaces));
+
+  MetadataResult metadata_result;
   TF_RETURN_IF_ERROR(
-      GenerateHeader(header_opts, config, compile_result, &header));
+      GenerateMetadata(codegen_opts, compile_result, &metadata_result));
+  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
+                                       metadata_result.object_file_data));
+  string header;
+  TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
+                                    metadata_result, &header));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
   return Status::OK();
 }
@@ -114,7 +125,8 @@ Status Main(const MainFlags& flags) {
 int main(int argc, char** argv) {
   tensorflow::tfcompile::MainFlags flags;
   flags.target_triple = "x86_64-pc-linux";
-  flags.out_object = "out.o";
+  flags.out_function_object = "out_model.o";
+  flags.out_metadata_object = "out_helper.o";
   flags.out_header = "out.h";
   flags.entry_point = "entry";
 

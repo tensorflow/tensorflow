@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from scipy import special
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import poisson as poisson_lib
 from tensorflow.python.framework import constant_op
@@ -34,7 +35,7 @@ class PoissonTest(test.TestCase):
     return poisson_lib.Poisson(rate=rate, validate_args=validate_args)
 
   def testPoissonShape(self):
-    with self.test_session():
+    with self.cached_session():
       lam = constant_op.constant([3.0] * 5)
       poisson = self._make_poisson(rate=lam)
 
@@ -46,13 +47,13 @@ class PoissonTest(test.TestCase):
   def testInvalidLam(self):
     invalid_lams = [-.01, 0., -2.]
     for lam in invalid_lams:
-      with self.test_session():
+      with self.cached_session():
         with self.assertRaisesOpError("Condition x > 0"):
           poisson = self._make_poisson(rate=lam, validate_args=True)
           poisson.rate.eval()
 
   def testPoissonLogPmf(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       lam = constant_op.constant([3.0] * batch_size)
       lam_v = 3.0
@@ -67,7 +68,7 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(pmf.eval(), stats.poisson.pmf(x, lam_v))
 
   def testPoissonLogPmfValidateArgs(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       lam = constant_op.constant([3.0] * batch_size)
       x = array_ops.placeholder(dtypes.float32, shape=[6])
@@ -90,7 +91,7 @@ class PoissonTest(test.TestCase):
       self.assertEqual(pmf.get_shape(), (6,))
 
   def testPoissonLogPmfMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       lam = constant_op.constant([[2.0, 4.0, 5.0]] * batch_size)
       lam_v = [2.0, 4.0, 5.0]
@@ -106,11 +107,11 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(pmf.eval(), stats.poisson.pmf(x, lam_v))
 
   def testPoissonCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       lam = constant_op.constant([3.0] * batch_size)
       lam_v = 3.0
-      x = [2.2, 3.1, 4., 5.5, 6., 7.]
+      x = [2., 3., 4., 5., 6., 7.]
 
       poisson = self._make_poisson(rate=lam)
       log_cdf = poisson.log_cdf(x)
@@ -121,12 +122,31 @@ class PoissonTest(test.TestCase):
       self.assertEqual(cdf.get_shape(), (6,))
       self.assertAllClose(cdf.eval(), stats.poisson.cdf(x, lam_v))
 
+  def testPoissonCDFNonIntegerValues(self):
+    with self.cached_session():
+      batch_size = 6
+      lam = constant_op.constant([3.0] * batch_size)
+      lam_v = 3.0
+      x = np.array([2.2, 3.1, 4., 5.5, 6., 7.], dtype=np.float32)
+
+      poisson = self._make_poisson(rate=lam)
+      cdf = poisson.cdf(x)
+      self.assertEqual(cdf.get_shape(), (6,))
+
+      # The Poisson CDF should be valid on these non-integer values, and
+      # equal to igammac(1 + x, rate).
+      self.assertAllClose(cdf.eval(), special.gammaincc(1. + x, lam_v))
+
+      with self.assertRaisesOpError("cannot contain fractional components"):
+        poisson_validate = self._make_poisson(rate=lam, validate_args=True)
+        poisson_validate.cdf(x).eval()
+
   def testPoissonCdfMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       lam = constant_op.constant([[2.0, 4.0, 5.0]] * batch_size)
       lam_v = [2.0, 4.0, 5.0]
-      x = np.array([[2.2, 3.1, 4., 5.5, 6., 7.]], dtype=np.float32).T
+      x = np.array([[2., 3., 4., 5., 6., 7.]], dtype=np.float32).T
 
       poisson = self._make_poisson(rate=lam)
       log_cdf = poisson.log_cdf(x)
@@ -138,7 +158,7 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(cdf.eval(), stats.poisson.cdf(x, lam_v))
 
   def testPoissonMean(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = [1.0, 3.0, 2.5]
       poisson = self._make_poisson(rate=lam_v)
       self.assertEqual(poisson.mean().get_shape(), (3,))
@@ -146,7 +166,7 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(poisson.mean().eval(), lam_v)
 
   def testPoissonVariance(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = [1.0, 3.0, 2.5]
       poisson = self._make_poisson(rate=lam_v)
       self.assertEqual(poisson.variance().get_shape(), (3,))
@@ -154,7 +174,7 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(poisson.variance().eval(), lam_v)
 
   def testPoissonStd(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = [1.0, 3.0, 2.5]
       poisson = self._make_poisson(rate=lam_v)
       self.assertEqual(poisson.stddev().get_shape(), (3,))
@@ -162,14 +182,14 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(poisson.stddev().eval(), np.sqrt(lam_v))
 
   def testPoissonMode(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = [1.0, 3.0, 2.5, 3.2, 1.1, 0.05]
       poisson = self._make_poisson(rate=lam_v)
       self.assertEqual(poisson.mode().get_shape(), (6,))
       self.assertAllClose(poisson.mode().eval(), np.floor(lam_v))
 
   def testPoissonMultipleMode(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = [1.0, 3.0, 2.0, 4.0, 5.0, 10.0]
       poisson = self._make_poisson(rate=lam_v)
       # For the case where lam is an integer, the modes are: lam and lam - 1.
@@ -178,7 +198,7 @@ class PoissonTest(test.TestCase):
       self.assertAllClose(lam_v, poisson.mode().eval())
 
   def testPoissonSample(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = 4.0
       lam = constant_op.constant(lam_v)
       # Choosing `n >= (k/rtol)**2, roughly ensures our sample mean should be
@@ -195,7 +215,7 @@ class PoissonTest(test.TestCase):
           sample_values.var(), stats.poisson.var(lam_v), rtol=.01)
 
   def testPoissonSampleMultidimensionalMean(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = np.array([np.arange(1, 51, dtype=np.float32)])  # 1 x 50
       poisson = self._make_poisson(rate=lam_v)
       # Choosing `n >= (k/rtol)**2, roughly ensures our sample mean should be
@@ -212,7 +232,7 @@ class PoissonTest(test.TestCase):
           atol=0)
 
   def testPoissonSampleMultidimensionalVariance(self):
-    with self.test_session():
+    with self.cached_session():
       lam_v = np.array([np.arange(5, 15, dtype=np.float32)])  # 1 x 10
       poisson = self._make_poisson(rate=lam_v)
       # Choosing `n >= 2 * lam * (k/rtol)**2, roughly ensures our sample

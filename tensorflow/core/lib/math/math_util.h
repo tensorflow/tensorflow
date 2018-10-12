@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_MATH_MATH_UTIL_H_
-#define TENSORFLOW_LIB_MATH_MATH_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
+#define TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_
 
 #include <type_traits>
 
@@ -64,6 +64,26 @@ class MathUtil {
 
   template <typename IntegralType>
   static IntegralType GCD(IntegralType x, IntegralType y);
+
+  // ----------------------------------------------------------------------
+  // IPow<T>
+  //   Computes the result of raising a number to a non-negative integral power.
+  //
+  //  * T: An integral type, floating-point type, or user-defined type for which
+  //    operator*= is defined.
+  //  * base: the base "v" of the operation
+  //  * exp: the exponent "i" of the operation; must be non-negative.
+  //
+  // Computes v^i, in a way that is faster than std::pow (which supports
+  // arbitrary real exponents).
+  //
+  // When T is a floating point type, this has the same semantics as std::pow,
+  // but it is much faster. When T is an integral type, computations are
+  // performed in the value domain of T, and overflow semantics are those of T.
+  //
+  // Input validity is DCHECKed.
+  template <typename T>
+  static T IPow(T base, int exp);
 };
 
 // ---- CeilOrFloorOfRatio ----
@@ -124,6 +144,20 @@ IntegralType MathUtil::GCD(IntegralType a, IntegralType b) {
   return a;
 }
 
+// ---- IPow ----
+// Implemented with the squared exponentiation method (a.k.a. double-and-add).
+//
+// Note that "exp >>= 1" is faster than "exp /= 2" on at least one platform.
+template <typename T>
+T MathUtil::IPow(T base, int exp) {
+  DCHECK_GE(exp, 0);
+  for (T result(1);; base *= base) {
+    if ((exp & 1) != 0) result *= base;
+    exp >>= 1;
+    if (exp == 0) return result;
+  }
+}
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_MATH_MATH_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_MATH_MATH_UTIL_H_

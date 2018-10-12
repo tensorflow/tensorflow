@@ -36,23 +36,6 @@ REGISTER_OP("RemoteFusedGraphExecute")
     .Attr("Tinputs: list(type) >= 0")
     .Attr("Toutputs: list(type) >= 0")
     .Attr("serialized_remote_fused_graph_execute_info: string")
-    .SetShapeFn(RemoteFusedGraphExecuteShapeFn)
-    .Doc(R"doc(
-Execute a sub graph on a remote processor.
-
-The graph specifications(such as graph itself, input tensors and output names)
-are stored as a serialized protocol buffer of RemoteFusedGraphExecuteInfo
-as serialized_remote_fused_graph_execute_info.
-The specifications will be passed to a dedicated registered
-remote fused graph executor.  The executor will send the graph specifications
-to a remote processor and execute that graph.  The execution results
-will be passed to consumer nodes as outputs of this node.
-
-inputs: Arbitrary number of tensors with arbitrary data types
-outputs: Arbitrary number of tensors with arbitrary data types
-serialized_remote_fused_graph_execute_info: Serialized protocol buffer
-of RemoteFusedGraphExecuteInfo which contains graph specifications.
-
-)doc");
+    .SetShapeFn(RemoteFusedGraphExecuteShapeFn);
 
 }  // namespace tensorflow

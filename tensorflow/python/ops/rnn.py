@@ -13,16 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""RNN helpers for TensorFlow models.
-
-
-@@bidirectional_dynamic_rnn
-@@dynamic_rnn
-@@raw_rnn
-@@static_rnn
-@@static_state_saving_rnn
-@@static_bidirectional_rnn
-"""
+"""RNN helpers for TensorFlow models."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -33,40 +24,39 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat
-_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
 
 def _transpose_batch_time(x):
-  """Transpose the batch and time dimensions of a Tensor.
+  """Transposes the batch and time dimensions of a Tensor.
 
-  Retains as much of the static shape information as possible.
+  If the input tensor has rank < 2 it returns the original tensor. Retains as
+  much of the static shape information as possible.
 
   Args:
-    x: A tensor of rank 2 or higher.
+    x: A Tensor.
 
   Returns:
     x transposed along the first two dimensions.
-
-  Raises:
-    ValueError: if `x` is rank 1 or lower.
   """
   x_static_shape = x.get_shape()
   if x_static_shape.ndims is not None and x_static_shape.ndims < 2:
-    raise ValueError(
-        "Expected input tensor %s to have rank at least 2, but saw shape: %s" %
-        (x, x_static_shape))
+    return x
+
   x_rank = array_ops.rank(x)
   x_t = array_ops.transpose(
       x, array_ops.concat(
@@ -82,8 +72,9 @@ def _best_effort_input_batch_size(flat_input):
   """Get static input batch size if available, with fallback to the dynamic one.
 
   Args:
-    flat_input: An iterable of time major input Tensors of shape [max_time,
-      batch_size, ...]. All inputs should have compatible batch sizes.
+    flat_input: An iterable of time major input Tensors of shape
+      `[max_time, batch_size, ...]`.
+    All inputs should have compatible batch sizes.
 
   Returns:
     The batch size in Python integer if available, or a scalar Tensor otherwise.
@@ -142,6 +133,40 @@ def _maybe_tensor_shape_from_tensor(shape):
     return shape
 
 
+def _should_cache():
+  """Returns True if a default caching device should be set, otherwise False."""
+  if context.executing_eagerly():
+    return False
+  # Don't set a caching device when running in a loop, since it is possible that
+  # train steps could be wrapped in a tf.while_loop. In that scenario caching
+  # prevents forward computations in loop iterations from re-reading the
+  # updated weights.
+  ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  return control_flow_util.GetContainingWhileContext(ctxt) is None
+
+
+def _is_keras_rnn_cell(rnn_cell):
+  """Check whether the cell is a Keras RNN cell.
+
+  The Keras RNN cell accept the state as a list even the state is a single
+  tensor, whereas the TF RNN cell does not wrap single state tensor in list.
+  This behavior difference should be unified in future version.
+
+  Args:
+    rnn_cell: An RNN cell instance that either follow the Keras interface or TF
+      RNN interface.
+  Returns:
+    Boolean, whether the cell is an Keras RNN cell.
+  """
+  # Cell type check is not strict enough since there are cells created by other
+  # library like Deepmind that didn't inherit tf.nn.rnn_cell.RNNCell.
+  # Keras cells never had zero_state method, which was from the original
+  # interface from TF RNN cell.
+  return (not isinstance(rnn_cell, rnn_cell_impl.RNNCell)
+          and isinstance(rnn_cell, base_layer.Layer)
+          and getattr(rnn_cell, "zero_state", None) is None)
+
+
 # pylint: disable=unused-argument
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
@@ -170,11 +195,11 @@ def _rnn_step(
   return (final_output, final_state)
 
   Args:
-    time: Python int, the current time step
-    sequence_length: int32 `Tensor` vector of size [batch_size]
-    min_sequence_length: int32 `Tensor` scalar, min of sequence_length
-    max_sequence_length: int32 `Tensor` scalar, max of sequence_length
-    zero_output: `Tensor` vector of shape [output_size]
+    time: int32 `Tensor` scalar.
+    sequence_length: int32 `Tensor` vector of size [batch_size].
+    min_sequence_length: int32 `Tensor` scalar, min of sequence_length.
+    max_sequence_length: int32 `Tensor` scalar, max of sequence_length.
+    zero_output: `Tensor` vector of shape [output_size].
     state: Either a single `Tensor` matrix of shape `[batch_size, state_size]`,
       or a list/tuple of such tensors.
     call_cell: lambda returning tuple of (new_output, new_state) where
@@ -201,6 +226,9 @@ def _rnn_step(
   flat_state = nest.flatten(state)
   flat_zero_output = nest.flatten(zero_output)
 
+  # Vector describing which batch entries are finished.
+  copy_cond = time >= sequence_length
+
   def _copy_one_through(output, new_output):
     # TensorArray and scalar get passed through.
     if isinstance(output, tensor_array_ops.TensorArray):
@@ -208,7 +236,6 @@ def _rnn_step(
     if output.shape.ndims == 0:
       return new_output
     # Otherwise propagate the old or the new value.
-    copy_cond = (time >= sequence_length)
     with ops.colocate_with(new_output):
       return array_ops.where(copy_cond, output, new_output)
 
@@ -320,6 +347,7 @@ def _reverse_seq(input_seq, lengths):
   return results
 
 
+@tf_export("nn.bidirectional_dynamic_rnn")
 def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               initial_state_fw=None, initial_state_bw=None,
                               dtype=None, parallel_iterations=None,
@@ -398,11 +426,8 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
-
-  if not _like_rnncell(cell_fw):
-    raise TypeError("cell_fw must be an instance of RNNCell")
-  if not _like_rnncell(cell_bw):
-    raise TypeError("cell_bw must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
+  rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -415,24 +440,30 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
 
     # Backward direction
     if not time_major:
-      time_dim = 1
-      batch_dim = 0
+      time_axis = 1
+      batch_axis = 0
     else:
-      time_dim = 0
-      batch_dim = 1
+      time_axis = 0
+      batch_axis = 1
 
-    def _reverse(input_, seq_lengths, seq_dim, batch_dim):
+    def _reverse(input_, seq_lengths, seq_axis, batch_axis):
       if seq_lengths is not None:
         return array_ops.reverse_sequence(
             input=input_, seq_lengths=seq_lengths,
-            seq_dim=seq_dim, batch_dim=batch_dim)
+            seq_axis=seq_axis, batch_axis=batch_axis)
       else:
-        return array_ops.reverse(input_, axis=[seq_dim])
+        return array_ops.reverse(input_, axis=[seq_axis])
 
     with vs.variable_scope("bw") as bw_scope:
-      inputs_reverse = _reverse(
-          inputs, seq_lengths=sequence_length,
-          seq_dim=time_dim, batch_dim=batch_dim)
+
+      def _map_reverse(inp):
+        return _reverse(
+            inp,
+            seq_lengths=sequence_length,
+            seq_axis=time_axis,
+            batch_axis=batch_axis)
+
+      inputs_reverse = nest.map_structure(_map_reverse, inputs)
       tmp, output_state_bw = dynamic_rnn(
           cell=cell_bw, inputs=inputs_reverse, sequence_length=sequence_length,
           initial_state=initial_state_bw, dtype=dtype,
@@ -441,7 +472,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
 
   output_bw = _reverse(
       tmp, seq_lengths=sequence_length,
-      seq_dim=time_dim, batch_dim=batch_dim)
+      seq_axis=time_axis, batch_axis=batch_axis)
 
   outputs = (output_fw, output_bw)
   output_states = (output_state_fw, output_state_bw)
@@ -449,6 +480,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   return (outputs, output_states)
 
 
+@tf_export("nn.dynamic_rnn")
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 dtype=None, parallel_iterations=None, swap_memory=False,
                 time_major=False, scope=None):
@@ -508,7 +540,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
       nested) tuple of Tensors each with dimensions `[batch_size, ...]`.
     sequence_length: (optional) An int32/int64 vector sized `[batch_size]`.
       Used to copy-through state and zero-out outputs when past a batch
-      element's sequence length.  So it's more for correctness than performance.
+      element's sequence length.  So it's more for performance than correctness.
     initial_state: (optional) An initial state for the RNN.
       If `cell.state_size` is an integer, this must be
       a `Tensor` of appropriate type and shape `[batch_size, cell.state_size]`.
@@ -562,14 +594,13 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     TypeError: If `cell` is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
   """
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
 
   with vs.variable_scope(scope or "rnn") as varscope:
     # Create a new scope in which the caching device is either
     # determined by the parent scope, or is set to place the cached
     # Variable using the same placement as for the rest of the RNN.
-    if context.in_graph_mode():
+    if _should_cache():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -600,7 +631,11 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     else:
       if not dtype:
         raise ValueError("If there is no initial_state, you must give a dtype.")
-      state = cell.zero_state(batch_size, dtype)
+      if getattr(cell, "get_initial_state", None) is not None:
+        state = cell.get_initial_state(
+            inputs=None, batch_size=batch_size, dtype=dtype)
+      else:
+        state = cell.zero_state(batch_size, dtype)
 
     def _assert_has_shape(x, shape):
       x_shape = array_ops.shape(x)
@@ -610,7 +645,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
           ["Expected shape for Tensor %s is " % x.name,
            packed_shape, " but saw shape: ", x_shape])
 
-    if context.in_graph_mode() and sequence_length is not None:
+    if not context.executing_eagerly() and sequence_length is not None:
       # Perform some shape validation
       with ops.control_dependencies(
           [_assert_has_shape(sequence_length, [batch_size])]):
@@ -665,7 +700,7 @@ def _dynamic_rnn_loop(cell,
     final_outputs:
       A `Tensor` of shape `[time, batch_size, cell.output_size]`.  If
       `cell.output_size` is a (possibly nested) tuple of ints or `TensorShape`
-      objects, then this returns a (possibly nsted) tuple of Tensors matching
+      objects, then this returns a (possibly nested) tuple of Tensors matching
       the corresponding shapes.
     final_state:
       A `Tensor`, or possibly nested tuple of Tensors, matching in length
@@ -674,6 +709,10 @@ def _dynamic_rnn_loop(cell,
   Raises:
     ValueError: If the input depth cannot be inferred via shape inference
       from the inputs.
+    ValueError: If time_step is not the same for all the elements in the
+      inputs.
+    ValueError: If batch_size is not the same for all the elements in the
+      inputs.
   """
   state = initial_state
   assert isinstance(parallel_iterations, int), "parallel_iterations must be int"
@@ -722,6 +761,8 @@ def _dynamic_rnn_loop(cell,
   if sequence_length is not None:
     min_sequence_length = math_ops.reduce_min(sequence_length)
     max_sequence_length = math_ops.reduce_max(sequence_length)
+  else:
+    max_sequence_length = time_steps
 
   time = array_ops.constant(0, dtype=dtypes.int32, name="time")
 
@@ -734,7 +775,7 @@ def _dynamic_rnn_loop(cell,
                                         element_shape=element_shape,
                                         tensor_array_name=base_name + name)
 
-  in_graph_mode = context.in_graph_mode()
+  in_graph_mode = not context.executing_eagerly()
   if in_graph_mode:
     output_ta = tuple(
         _create_ta(
@@ -778,6 +819,10 @@ def _dynamic_rnn_loop(cell,
       input_t = tuple(ta[time.numpy()] for ta in input_ta)
 
     input_t = nest.pack_sequence_as(structure=inputs, flat_sequence=input_t)
+    # Keras RNN cells only accept state as list, even if it's a single tensor.
+    is_keras_rnn_cell = _is_keras_rnn_cell(cell)
+    if is_keras_rnn_cell and not nest.is_sequence(state):
+      state = [state]
     call_cell = lambda: cell(input_t, state)
 
     if sequence_length is not None:
@@ -794,6 +839,9 @@ def _dynamic_rnn_loop(cell,
     else:
       (output, new_state) = call_cell()
 
+    # Keras cells always wrap state as list, even if it's a single tensor.
+    if is_keras_rnn_cell and len(new_state) == 1:
+      new_state = new_state[0]
     # Pack state if using state tuples
     output = nest.flatten(output)
 
@@ -806,11 +854,21 @@ def _dynamic_rnn_loop(cell,
 
     return (time + 1, output_ta_t, new_state)
 
+  if in_graph_mode:
+    # Make sure that we run at least 1 step, if necessary, to ensure
+    # the TensorArrays pick up the dynamic shape.
+    loop_bound = math_ops.minimum(
+        time_steps, math_ops.maximum(1, max_sequence_length))
+  else:
+    # Using max_sequence_length isn't currently supported in the Eager branch.
+    loop_bound = time_steps
+
   _, output_final_ta, final_state = control_flow_ops.while_loop(
-      cond=lambda time, *_: time < time_steps,
+      cond=lambda time, *_: time < loop_bound,
       body=_time_step,
       loop_vars=(time, output_ta, state),
       parallel_iterations=parallel_iterations,
+      maximum_iterations=time_steps,
       swap_memory=swap_memory)
 
   # Unpack final output if not using output tuples.
@@ -827,11 +885,13 @@ def _dynamic_rnn_loop(cell,
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
   if not in_graph_mode:
-    final_outputs = array_ops.stack(final_outputs, axis=0)
+    final_outputs = nest.map_structure_up_to(
+        cell.output_size, lambda x: array_ops.stack(x, axis=0), final_outputs)
 
   return (final_outputs, final_state)
 
 
+@tf_export("nn.raw_rnn")
 def raw_rnn(cell, loop_fn,
             parallel_iterations=None, swap_memory=False, scope=None):
   """Creates an `RNN` specified by RNNCell `cell` and loop function `loop_fn`.
@@ -853,7 +913,7 @@ def raw_rnn(cell, loop_fn,
 
   ```python
   time = tf.constant(0, dtype=tf.int32)
-  (finished, next_input, initial_state, _, loop_state) = loop_fn(
+  (finished, next_input, initial_state, emit_structure, loop_state) = loop_fn(
       time=time, cell_output=None, cell_state=None, loop_state=None)
   emit_ta = TensorArray(dynamic_size=True, dtype=initial_state.dtype)
   state = initial_state
@@ -864,7 +924,7 @@ def raw_rnn(cell, loop_fn,
         loop_state=loop_state)
     # Emit zeros and copy forward state for minibatch entries that are finished.
     state = tf.where(finished, state, next_state)
-    emit = tf.where(finished, tf.zeros_like(emit), emit)
+    emit = tf.where(finished, tf.zeros_like(emit_structure), emit)
     emit_ta = emit_ta.write(time, emit)
     # If any new minibatch entries are marked as finished, mark these.
     finished = tf.logical_or(finished, next_finished)
@@ -924,10 +984,15 @@ def raw_rnn(cell, loop_fn,
       and `emit_output`: the output to store for this iteration.
 
       Note that `emit_output` should be a `Tensor` or (possibly nested)
-      tuple of tensors with shapes and structure matching `cell.output_size`
-      and `cell_output` above.  The parameter `cell_state` and output
-      `next_cell_state` may be either a single or (possibly nested) tuple
-      of tensors.  The parameter `loop_state` and
+      tuple of tensors which is aggregated in the `emit_ta` inside the
+      `while_loop`. For the first call to `loop_fn`, the `emit_output`
+      corresponds to the `emit_structure` which is then used to determine the
+      size of the `zero_tensor` for the `emit_ta` (defaults to
+      `cell.output_size`). For the subsequent calls to the `loop_fn`, the
+      `emit_output` corresponds to the actual output tensor
+      that is to be aggregated in the `emit_ta`. The parameter `cell_state`
+      and output `next_cell_state` may be either a single or (possibly nested)
+      tuple of tensors.  The parameter `loop_state` and
       output `next_loop_state` may be either a single or (possibly nested) tuple
       of `Tensor` and `TensorArray` objects.  This last parameter
       may be ignored by `loop_fn` and the return value may be `None`.  If it
@@ -996,9 +1061,8 @@ def raw_rnn(cell, loop_fn,
     TypeError: If `cell` is not an instance of RNNCell, or `loop_fn` is not
       a `callable`.
   """
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
 
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
@@ -1008,7 +1072,7 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if _should_cache():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1109,6 +1173,12 @@ def raw_rnn(cell, loop_fn,
       def _copy_some_through(current, candidate):
         """Copy some tensors through via array_ops.where."""
         def copy_fn(cur_i, cand_i):
+          # TensorArray and scalar get passed through.
+          if isinstance(cur_i, tensor_array_ops.TensorArray):
+            return cand_i
+          if cur_i.shape.ndims == 0:
+            return cand_i
+          # Otherwise propagate the old or the new value.
           with ops.colocate_with(cand_i):
             return array_ops.where(elements_finished, cur_i, cand_i)
         return nest.map_structure(copy_fn, current, candidate)
@@ -1139,6 +1209,7 @@ def raw_rnn(cell, loop_fn,
     return (emit_ta, final_state, final_loop_state)
 
 
+@tf_export("nn.static_rnn")
 def static_rnn(cell,
                inputs,
                initial_state=None,
@@ -1203,9 +1274,7 @@ def static_rnn(cell,
     ValueError: If `inputs` is `None` or an empty list, or if the input depth
       (column size) cannot be inferred from inputs via shape inference.
   """
-
-  if not _like_rnncell(cell):
-    raise TypeError("cell must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell", cell)
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
   if not inputs:
@@ -1216,7 +1285,7 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if context.in_graph_mode():
+    if _should_cache():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1255,7 +1324,11 @@ def static_rnn(cell,
       if not dtype:
         raise ValueError("If no initial_state is provided, "
                          "dtype must be specified")
-      state = cell.zero_state(batch_size, dtype)
+      if getattr(cell, "get_initial_state", None) is not None:
+        state = cell.get_initial_state(
+            inputs=None, batch_size=batch_size, dtype=dtype)
+      else:
+        state = cell.zero_state(batch_size, dtype)
 
     if sequence_length is not None:  # Prepare variables
       sequence_length = ops.convert_to_tensor(
@@ -1284,6 +1357,10 @@ def static_rnn(cell,
       min_sequence_length = math_ops.reduce_min(sequence_length)
       max_sequence_length = math_ops.reduce_max(sequence_length)
 
+    # Keras RNN cells only accept state as list, even if it's a single tensor.
+    is_keras_rnn_cell = _is_keras_rnn_cell(cell)
+    if is_keras_rnn_cell and not nest.is_sequence(state):
+      state = [state]
     for time, input_ in enumerate(inputs):
       if time > 0:
         varscope.reuse_variables()
@@ -1302,12 +1379,15 @@ def static_rnn(cell,
             state_size=cell.state_size)
       else:
         (output, state) = call_cell()
-
       outputs.append(output)
+    # Keras RNN cells only return state as list, even if it's a single tensor.
+    if is_keras_rnn_cell and len(state) == 1:
+      state = state[0]
 
     return (outputs, state)
 
 
+@tf_export("nn.static_state_saving_rnn")
 def static_state_saving_rnn(cell,
                             inputs,
                             state_saver,
@@ -1389,9 +1469,17 @@ def static_state_saving_rnn(cell,
     outputs[-1] = nest.pack_sequence_as(
         structure=last_output, flat_sequence=flat_last_output)
 
+    if state_is_tuple:
+      state = nest.pack_sequence_as(
+          structure=state,
+          flat_sequence=[array_ops.identity(s) for s in flat_state])
+    else:
+      state = array_ops.identity(state)
+
   return (outputs, state)
 
 
+@tf_export("nn.static_bidirectional_rnn")
 def static_bidirectional_rnn(cell_fw,
                              cell_bw,
                              inputs,
@@ -1441,11 +1529,8 @@ def static_bidirectional_rnn(cell_fw,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
     ValueError: If inputs is None or an empty list.
   """
-
-  if not _like_rnncell(cell_fw):
-    raise TypeError("cell_fw must be an instance of RNNCell")
-  if not _like_rnncell(cell_bw):
-    raise TypeError("cell_bw must be an instance of RNNCell")
+  rnn_cell_impl.assert_like_rnncell("cell_fw", cell_fw)
+  rnn_cell_impl.assert_like_rnncell("cell_bw", cell_bw)
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
   if not inputs:

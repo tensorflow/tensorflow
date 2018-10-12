@@ -12,15 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Methods to allow dict of numpy arrays."""
+"""Methods to allow dict of numpy arrays (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn as core_numpy_input_fn
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated(None, 'Use tf.estimator.inputs.numpy_input_fn.')
 def numpy_input_fn(x,
                    y=None,
                    batch_size=128,

@@ -18,8 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import errors
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.basic_train_loop")
 def basic_train_loop(supervisor, train_step_fn, args=None,
                      kwargs=None, master=""):
   """Basic loop to train a model.

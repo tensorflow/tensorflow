@@ -53,11 +53,16 @@ class ClusterResolver(object):
     raise NotImplementedError(
         'cluster_spec is not implemented for {}.'.format(self))
 
+  @abc.abstractmethod
+  def master(self):
+    """..."""
+    raise NotImplementedError('master is not implemented for {}.'.format(self))
+
 
 class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
-  def __init__(self, cluster_spec):
+  def __init__(self, cluster_spec, master=''):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
     super(SimpleClusterResolver, self).__init__()
 
@@ -65,9 +70,17 @@ class SimpleClusterResolver(ClusterResolver):
       raise TypeError('cluster_spec must be a ClusterSpec.')
     self._cluster_spec = cluster_spec
 
+    if not isinstance(master, str):
+      raise TypeError('master must be a string.')
+    self._master = master
+
   def cluster_spec(self):
     """Returns the ClusterSpec passed into the constructor."""
     return self._cluster_spec
+
+  def master(self):
+    """Returns the master address to use when creating a session."""
+    return self._master
 
 
 class UnionClusterResolver(ClusterResolver):
@@ -87,8 +100,12 @@ class UnionClusterResolver(ClusterResolver):
 
     Raises:
       TypeError: If any argument is not a subclass of `ClusterResolvers`.
+      ValueError: If there are no arguments passed.
     """
     super(UnionClusterResolver, self).__init__()
+
+    if not args:
+      raise ValueError('At least one ClusterResolver is required.')
 
     for cluster_resolver in args:
       if not isinstance(cluster_resolver, ClusterResolver):
@@ -169,3 +186,7 @@ class UnionClusterResolver(ClusterResolver):
           merged_cluster[job_name].update(task_dict)
 
     return ClusterSpec(merged_cluster)
+
+  def master(self):
+    """master returns the master address from the first cluster resolver."""
+    return self._cluster_resolvers[0].master()

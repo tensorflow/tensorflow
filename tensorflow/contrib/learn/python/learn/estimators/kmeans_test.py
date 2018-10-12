@@ -36,7 +36,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
@@ -199,15 +198,7 @@ class KMeansTest(KMeansTestBase):
         input_fn=self.input_fn(batch_size=self.num_points), steps=1)
     self.assertNear(self.true_score, score, self.true_score * 0.01)
 
-  def test_infer(self):
-    kmeans = self._kmeans()
-    # Make a call to fit to initialize the cluster centers.
-    max_steps = 1
-    kmeans.fit(input_fn=self.input_fn(), max_steps=max_steps)
-    clusters = kmeans.clusters()
-
-    # Make a small test set
-    num_points = 10
+  def _infer_helper(self, kmeans, clusters, num_points):
     points, true_assignments, true_offsets = make_random_points(
         clusters, num_points)
     # Test predict
@@ -230,6 +221,17 @@ class KMeansTest(KMeansTestBase):
                keepdims=True) - 2 * np.dot(points, np.transpose(clusters)) +
         np.transpose(np.sum(np.square(clusters), axis=1, keepdims=True)))
     self.assertAllClose(transform, true_transform, rtol=0.05, atol=10)
+
+  def test_infer(self):
+    kmeans = self._kmeans()
+    # Make a call to fit to initialize the cluster centers.
+    max_steps = 1
+    kmeans.fit(input_fn=self.input_fn(), max_steps=max_steps)
+    clusters = kmeans.clusters()
+
+    # Run inference on small datasets.
+    self._infer_helper(kmeans, clusters, num_points=10)
+    self._infer_helper(kmeans, clusters, num_points=1)
 
 
 class KMeansTestMultiStageInit(KMeansTestBase):

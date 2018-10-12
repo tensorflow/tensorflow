@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
@@ -41,8 +42,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
       Defaults to the value in `server_or_cluster_def`, if specified. Otherwise
       defaults to 0 if the server's job has only one task.
     protocol: (Optional.) Specifies the protocol to be used by the server.
-      Acceptable values include `"grpc"`. Defaults to the value in
-      `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+      Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the value
+      in `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
     config: (Options.) A `tf.ConfigProto` that specifies default configuration
       options for all sessions that run on this server.
 
@@ -92,13 +93,14 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
   return server_def
 
 
+@tf_export("train.Server")
 class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
   A `tf.train.Server` instance encapsulates a set of devices and a
-  @{tf.Session} target that
+  `tf.Session` target that
   can participate in distributed training. A server belongs to a
-  cluster (specified by a @{tf.train.ClusterSpec}), and
+  cluster (specified by a `tf.train.ClusterSpec`), and
   corresponds to a particular task in a named job. The server can
   communicate with any other server in the same cluster.
   """
@@ -127,8 +129,9 @@ class Server(object):
         job. Defaults to the value in `server_or_cluster_def`, if specified.
         Otherwise defaults to 0 if the server's job has only one task.
       protocol: (Optional.) Specifies the protocol to be used by the server.
-        Acceptable values include `"grpc"`. Defaults to the value in
-        `server_or_cluster_def`, if specified. Otherwise defaults to `"grpc"`.
+        Acceptable values include `"grpc", "grpc+verbs"`. Defaults to the
+        value in `server_or_cluster_def`, if specified. Otherwise defaults to
+        `"grpc"`.
       config: (Options.) A `tf.ConfigProto` that specifies default
         configuration options for all sessions that run on this server.
       start: (Optional.) Boolean, indicating whether to start the server
@@ -183,7 +186,7 @@ class Server(object):
     """Returns the target for a `tf.Session` to connect to this server.
 
     To create a
-    @{tf.Session} that
+    `tf.Session` that
     connects to this server, use the following snippet:
 
     ```python
@@ -221,12 +224,13 @@ class Server(object):
                   start=start)
 
 
+@tf_export("train.ClusterSpec")
 class ClusterSpec(object):
   """Represents a cluster as a set of "tasks", organized into "jobs".
 
   A `tf.train.ClusterSpec` represents the set of processes that
   participate in a distributed TensorFlow computation. Every
-  @{tf.train.Server} is constructed in a particular cluster.
+  `tf.train.Server` is constructed in a particular cluster.
 
   To create a cluster with two jobs and five tasks, you specify the
   mapping from job names to lists of network addresses (typically
@@ -306,6 +310,12 @@ class ClusterSpec(object):
 
   def __ne__(self, other):
     return self._cluster_spec != other
+
+  def __str__(self):
+    key_values = self.as_dict()
+    string_items = [
+        repr(k) + ": " + repr(key_values[k]) for k in sorted(key_values)]
+    return "ClusterSpec({" + ", ".join(string_items) + "})"
 
   def as_dict(self):
     """Returns a dictionary from job names to their tasks.
@@ -411,7 +421,7 @@ class ClusterSpec(object):
     NOTE: For backwards compatibility, this method returns a list. If
     the given job was defined with a sparse set of task indices, the
     length of this list may not reflect the number of tasks defined in
-    this job. Use the @{tf.train.ClusterSpec.num_tasks} method
+    this job. Use the `tf.train.ClusterSpec.num_tasks` method
     to find the number of tasks defined in a particular job.
 
     Args:

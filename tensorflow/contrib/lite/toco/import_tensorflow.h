@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
 
 #include <memory>
 #include <string>
@@ -27,6 +27,11 @@ struct TensorFlowImportFlags {
   // If true, control dependencies will be dropped immediately
   // during the import of the TensorFlow GraphDef.
   bool drop_control_dependency = false;
+
+  // Do not recognize any op and import all ops as
+  // `TensorFlowUnsupportedOperator`. This is used to populated with the
+  // `force_flex_ops` flag.
+  bool import_all_ops_as_unsupported = false;
 };
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
@@ -39,4 +44,4 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_IMPORT_TENSORFLOW_H_

@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_set_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 _VALID_DTYPES = set([
@@ -30,6 +31,7 @@ _VALID_DTYPES = set([
     dtypes.uint8, dtypes.uint16, dtypes.string])
 
 
+@tf_export("sets.set_size")
 def set_size(a, validate_indices=True):
   """Compute number of unique elements along last dimension of `a`.
 
@@ -131,6 +133,7 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
+@tf_export("sets.set_intersection")
 def set_intersection(a, b, validate_indices=True):
   """Compute set intersection of elements in last dimension of `a` and `b`.
 
@@ -197,6 +200,7 @@ def set_intersection(a, b, validate_indices=True):
   return _set_operation(a, b, "intersection", validate_indices)
 
 
+@tf_export("sets.set_difference")
 def set_difference(a, b, aminusb=True, validate_indices=True):
   """Compute set difference of elements in last dimension of `a` and `b`.
 
@@ -243,7 +247,7 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
     #
     # collections.OrderedDict([
     #     ((0, 0, 0), 2),
-    #     ((0, 0, 1), 3),
+    #     ((0, 1, 0), 3),
     # ])
   ```
 
@@ -267,6 +271,7 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
   return _set_operation(a, b, "a-b" if aminusb else "b-a", validate_indices)
 
 
+@tf_export("sets.set_union")
 def set_union(a, b, validate_indices=True):
   """Compute set union of elements in last dimension of `a` and `b`.
 

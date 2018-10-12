@@ -17,96 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.util import deprecation
 
 
-class ParallelInterleaveDataset(dataset_ops.Dataset):
-  """A `Dataset` that maps a function over its input and flattens the result."""
-
-  def __init__(self, input_dataset, map_func, cycle_length, block_length,
-               sloppy):
-    """See `tf.contrib.data.parallel_interleave()` for details."""
-    super(ParallelInterleaveDataset, self).__init__()
-    self._input_dataset = input_dataset
-
-    @function.Defun(*nest.flatten(
-        sparse.as_dense_types(input_dataset.output_types,
-                              input_dataset.output_classes)))
-    def tf_map_func(*args):
-      """A wrapper for Defun that facilitates shape inference."""
-      # Pass in shape information from the input_dataset.
-      dense_shapes = sparse.as_dense_shapes(input_dataset.output_shapes,
-                                            input_dataset.output_classes)
-      for arg, shape in zip(args, nest.flatten(dense_shapes)):
-        arg.set_shape(shape)
-
-      nested_args = nest.pack_sequence_as(input_dataset.output_types, args)
-      nested_args = sparse.deserialize_sparse_tensors(
-          nested_args, input_dataset.output_types, input_dataset.output_shapes,
-          input_dataset.output_classes)
-      if dataset_ops._should_unpack_args(nested_args):  # pylint: disable=protected-access
-        dataset = map_func(*nested_args)
-      else:
-        dataset = map_func(nested_args)
-
-      if not isinstance(dataset, dataset_ops.Dataset):
-        raise TypeError("`map_func` must return a `Dataset` object.")
-
-      self._output_classes = dataset.output_classes
-      self._output_types = dataset.output_types
-      self._output_shapes = dataset.output_shapes
-
-      return dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-    self._map_func = tf_map_func
-    self._map_func.add_to_graph(ops.get_default_graph())
-
-    self._cycle_length = ops.convert_to_tensor(
-        cycle_length, dtype=dtypes.int64, name="cycle_length")
-    self._block_length = ops.convert_to_tensor(
-        block_length, dtype=dtypes.int64, name="block_length")
-    self._sloppy = ops.convert_to_tensor(
-        sloppy, dtype=dtypes.bool, name="sloppy")
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.parallel_interleave_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._map_func.captured_inputs,
-        self._cycle_length,
-        self._block_length,
-        self._sloppy,
-        f=self._map_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
-def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.parallel_interleave(...)`.")
+def parallel_interleave(map_func,
+                        cycle_length,
+                        block_length=1,
+                        sloppy=False,
+                        buffer_output_elements=None,
+                        prefetch_input_elements=None):
   """A parallel version of the `Dataset.interleave()` transformation.
 
   `parallel_interleave()` maps `map_func` across its input to produce nested
   datasets, and outputs their elements interleaved. Unlike
-  @{tf.data.Dataset.interleave}, it gets elements from `cycle_length` nested
+  `tf.data.Dataset.interleave`, it gets elements from `cycle_length` nested
   datasets in parallel, which increases the throughput, especially in the
   presence of stragglers. Furthermore, the `sloppy` argument can be used to
   improve performance, by relaxing the requirement that the outputs are produced
@@ -129,21 +56,25 @@ def parallel_interleave(map_func, cycle_length, block_length=1, sloppy=False):
 
   Args:
     map_func: A function mapping a nested structure of tensors to a `Dataset`.
-    cycle_length: The number of threads to interleave from in parallel.
-    block_length: The number of consecutive elements to pull from a thread
-      before advancing to the next thread.
+    cycle_length: The number of input `Dataset`s to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from an input
+      `Dataset` before advancing to the next input `Dataset`.
     sloppy: If false, elements are produced in deterministic order. Otherwise,
       the implementation is allowed, for the sake of expediency, to produce
       elements in a non-deterministic order.
+    buffer_output_elements: The number of elements each iterator being
+      interleaved should buffer (similar to the `.prefetch()` transformation for
+      each interleaved iterator).
+    prefetch_input_elements: The number of input elements to transform to
+      iterators before they are needed for interleaving.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
-  def _apply_fn(dataset):
-    return ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy)
-  return _apply_fn
+  return interleave_ops.parallel_interleave(
+      map_func, cycle_length, block_length, sloppy, buffer_output_elements,
+      prefetch_input_elements)
 
 
 @deprecation.deprecated(
@@ -187,17 +118,83 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
     map_func: A function mapping a nested structure of tensors (having shapes
       and types defined by `self.output_shapes` and `self.output_types`) to a
       `Dataset`.
-    cycle_length: The number of threads to interleave from in parallel.
-    block_length: The number of consecutive elements to pull from a thread
-      before advancing to the next thread. Note: sloppy_interleave will
-      skip the remainder of elements in the block_length in order to avoid
-      blocking.
+    cycle_length: The number of input `Dataset`s to interleave from in parallel.
+    block_length: The number of consecutive elements to pull from an input
+      `Dataset` before advancing to the next input `Dataset`. Note:
+      `sloppy_interleave` will skip the remainder of elements in the
+      `block_length` in order to avoid blocking.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
   """
-  def _apply_fn(dataset):
-    return ParallelInterleaveDataset(
-        dataset, map_func, cycle_length, block_length, sloppy=True)
-  return _apply_fn
+  return interleave_ops.parallel_interleave(
+      map_func, cycle_length, block_length, sloppy=True)
+
+
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.sample_from_datasets(...)`.")
+def sample_from_datasets(datasets, weights=None, seed=None):
+  """Samples elements at random from the datasets in `datasets`.
+
+  Args:
+    datasets: A list of `tf.data.Dataset` objects with compatible structure.
+    weights: (Optional.) A list of `len(datasets)` floating-point values where
+      `weights[i]` represents the probability with which an element should be
+      sampled from `datasets[i]`, or a `tf.data.Dataset` object where each
+      element is such a list. Defaults to a uniform distribution across
+      `datasets`.
+    seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+      random seed that will be used to create the distribution. See
+      `tf.set_random_seed` for behavior.
+
+  Returns:
+    A dataset that interleaves elements from `datasets` at random, according to
+    `weights` if provided, otherwise with uniform probability.
+
+  Raises:
+    TypeError: If the `datasets` or `weights` arguments have the wrong type.
+    ValueError: If the `weights` argument is specified and does not match the
+      length of the `datasets` element.
+  """
+  return interleave_ops.sample_from_datasets(datasets, weights, seed)
+
+
+@deprecation.deprecated(None,
+                        "Use `tf.data.experimental.choose_from_datasets(...)`.")
+def choose_from_datasets(datasets, choice_dataset):
+  """Creates a dataset that deterministically chooses elements from `datasets`.
+
+  For example, given the following datasets:
+
+  ```python
+  datasets = [tf.data.Dataset.from_tensors("foo").repeat(),
+              tf.data.Dataset.from_tensors("bar").repeat(),
+              tf.data.Dataset.from_tensors("baz").repeat()]
+
+  # Define a dataset containing `[0, 1, 2, 0, 1, 2, 0, 1, 2]`.
+  choice_dataset = tf.data.Dataset.range(3).repeat(3)
+
+  result = tf.contrib.data.choose_from_datasets(datasets, choice_dataset)
+  ```
+
+  The elements of `result` will be:
+
+  ```
+  "foo", "bar", "baz", "foo", "bar", "baz", "foo", "bar", "baz"
+  ```
+
+  Args:
+    datasets: A list of `tf.data.Dataset` objects with compatible structure.
+    choice_dataset: A `tf.data.Dataset` of scalar `tf.int64` tensors between
+      `0` and `len(datasets) - 1`.
+
+  Returns:
+    A dataset that interleaves elements from `datasets` according to the values
+    of `choice_dataset`.
+
+  Raises:
+    TypeError: If the `datasets` or `choice_dataset` arguments have the wrong
+      type.
+  """
+  return interleave_ops.choose_from_datasets(datasets, choice_dataset)

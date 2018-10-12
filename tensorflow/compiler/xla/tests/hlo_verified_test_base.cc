@@ -15,55 +15,74 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 
-/*static*/ int64 HloVerifiedTestBase::DefaultShapeSize(const Shape& shape) {
-  constexpr int64 kPointerSize = sizeof(void*);
-  if (ShapeUtil::IsOpaque(shape)) {
-    return kPointerSize;
+Status VerifiedHloModule::Verify() {
+  if (computation_count() == 0) {
+    // The computation was never built. Nothing to verify.
+    return Status::OK();
   }
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+  return verifier_.Run(this).status();
 }
 
-HloVerifiedTestBase::HloVerifiedTestBase() : shape_size_fn_(DefaultShapeSize) {}
-
-HloVerifiedTestBase::~HloVerifiedTestBase() {
-  // We can't call the ASSERT or EXPECT test macros in destructors, so we
-  // perform HLO verification in TearDown, and use the CHECK here to ensure
-  // users don't accidentally override the verification.
-  CHECK(tear_down_called_)
-      << "TearDown was never called; subclasses of HloVerifiedTestBase that "
-      << "override TearDown must call the superclass TearDown.";
-}
-
-void HloVerifiedTestBase::TearDown() {
-  EXPECT_FALSE(tear_down_called_)
-      << "TearDown called more than once; it should be called exactly once.";
-  tear_down_called_ = true;
-  if (module_) {
-    HloVerifier verifier(shape_size_fn_);
-    xla::StatusOr<bool> mutated = verifier.Run(module_.get());
-    if (!mutated.ok()) {
-      ADD_FAILURE() << "HloVerifier failed: " << mutated.status();
-    } else {
-      EXPECT_FALSE(mutated.ValueOrDie())
-          << "HloVerifier should never mutate the HloModule";
-    }
+void VerifiedHloModule::VerifyOrAddFailure(const string& message) {
+  Status status = Verify();
+  if (!status.ok()) {
+    ADD_FAILURE() << "HloVerifier failed on module " << name()
+                  << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
+                  << ": " << status;
   }
-  HloTestBase::TearDown();
 }
+
+HloVerifiedTestBase::HloVerifiedTestBase(bool layout_sensitive,
+                                         bool allow_mixed_precision)
+    : HloTestBase(
+          /*verifier_layout_sensitive=*/layout_sensitive,
+          /*allow_mixed_precision_in_hlo_verifier=*/allow_mixed_precision),
+      verifier_layout_sensitive_(layout_sensitive),
+      allow_mixed_precision_in_hlo_verifier_(allow_mixed_precision) {}
 
 HloModule& HloVerifiedTestBase::module() {
   if (!module_) {
-    module_ = CreateNewModule();
+    module_ = CreateNewVerifiedModule(TestName());
   }
   return *module_;
+}
+
+HloModule* HloVerifiedTestBase::CreateNewModule(const string& name) {
+  modules_.emplace_back(CreateNewVerifiedModule(name));
+  return modules_.back().get();
+}
+
+void HloVerifiedTestBase::ParseAndVerifyModule(absl::string_view hlo_text,
+                                               const HloModuleConfig& config) {
+  CHECK(!module_) << "Called ParseModule when test already has a module.";
+  module_ = CreateNewVerifiedModule(TestName());
+  TF_CHECK_OK(ParseHloString(hlo_text, module_.get()));
+  module_->VerifyOrAddFailure("after parsing");
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloVerifiedTestBase::ParseAndReturnVerifiedModule(
+    absl::string_view hlo_text, const HloModuleConfig& config) {
+  auto module = CreateNewVerifiedModule(TestName());
+  TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
+  TF_RETURN_IF_ERROR(module->Verify());
+  return std::move(module);
+}
+
+std::unique_ptr<VerifiedHloModule> HloVerifiedTestBase::CreateNewVerifiedModule(
+    const string& name) {
+  return absl::make_unique<VerifiedHloModule>(
+      name, GetModuleConfigForTest(), verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_);
 }
 
 }  // namespace xla

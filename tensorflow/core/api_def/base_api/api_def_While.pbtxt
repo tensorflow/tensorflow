@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "While"
+  in_arg {
+    name: "input"
+    description: "A list of input tensors whose types are T."
+  }
+  out_arg {
+    name: "output"
+    description: "A list of output tensors whose types are T."
+  }
+  attr { name: "T"  description: "dtype in use." }
+  attr {
+    name: "cond"
+    description: <<END
+      A function takes 'input' and returns a tensor.  If the tensor is
+      a scalar of non-boolean, the scalar is converted to a boolean
+      according to the following rule: if the scalar is a numerical
+      value, non-zero means True and zero means False; if the scalar is
+      a string, non-empty means True and empty means False. If the
+      tensor is not a scalar, non-emptiness means True and False
+      otherwise.
+END
+  }
+  attr {
+    name: "body"
+    description: <<END
+      A function that takes a list of tensors and returns another
+      list of tensors. Both lists have the same types as specified
+      by T.
+END
+  }
+  summary: "output = input; While (Cond(output)) { output = Body(output) }"
+}

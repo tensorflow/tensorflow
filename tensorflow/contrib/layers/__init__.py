@@ -14,11 +14,15 @@
 # ==============================================================================
 """Ops for building neural network layers, regularizers, summaries, etc.
 
-See the @{$python/contrib.layers} guide.
+See the
+[Contrib Layers](https://tensorflow.org/api_guides/python/contrib.layers)
+guide.
 
 @@avg_pool2d
 @@avg_pool3d
 @@batch_norm
+@@convolution
+@@convolution1d
 @@convolution2d
 @@convolution3d
 @@conv2d_in_plane
@@ -27,6 +31,7 @@ See the @{$python/contrib.layers} guide.
 @@convolution2d_transpose
 @@conv3d_transpose
 @@convolution3d_transpose
+@@dense_to_sparse
 @@dropout
 @@elu
 @@embedding_lookup_unique
@@ -34,6 +39,7 @@ See the @{$python/contrib.layers} guide.
 @@fully_connected
 @@GDN
 @@gdn
+@@images_to_sequence
 @@layer_norm
 @@linear
 @@max_pool2d
@@ -49,6 +55,7 @@ See the @{$python/contrib.layers} guide.
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
+@@sequence_to_images
 @@softmax
 @@spatial_softmax
 @@stack
@@ -101,6 +108,7 @@ See the @{$python/contrib.layers} guide.
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
 
+@@group_norm
 @@instance_norm
 """
 
@@ -115,10 +123,12 @@ from tensorflow.contrib.layers.python.layers import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['bias_add',
+                    'conv1d',
                     'conv2d',
                     'conv3d',
                     'elu',
                     'feature_column',
+                    'group_norm',
                     'instance_norm',
                     'legacy_fully_connected',
                     'legacy_linear',

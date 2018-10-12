@@ -22,9 +22,11 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -57,64 +59,6 @@ def _logit(x):
 
 class AssertCloseTest(test.TestCase):
 
-  def testAssertCloseIntegerDtype(self):
-    x = array_ops.placeholder(dtypes.int32)
-    y = x
-    z = array_ops.placeholder(dtypes.int32)
-    feed_dict = {x: [1, 5, 10, 15, 20], z: [2, 5, 10, 15, 20]}
-    with self.test_session():
-      with ops.control_dependencies([du.assert_close(x, y)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with ops.control_dependencies([du.assert_close(y, x)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(x, z)]):
-          array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(y, z)]):
-          array_ops.identity(y).eval(feed_dict=feed_dict)
-
-  def testAssertCloseNonIntegerDtype(self):
-    x = array_ops.placeholder(dtypes.float32)
-    y = x + 1e-8
-    z = array_ops.placeholder(dtypes.float32)
-    feed_dict = {x: [1., 5, 10, 15, 20], z: [2., 5, 10, 15, 20]}
-    with self.test_session():
-      with ops.control_dependencies([du.assert_close(x, y)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with ops.control_dependencies([du.assert_close(y, x)]):
-        array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(x, z)]):
-          array_ops.identity(x).eval(feed_dict=feed_dict)
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(y, z)]):
-          array_ops.identity(y).eval(feed_dict=feed_dict)
-
-  def testAssertCloseEpsilon(self):
-    x = [0., 5, 10, 15, 20]
-    # x != y
-    y = [0.1, 5, 10, 15, 20]
-    # x = z
-    z = [1e-8, 5, 10, 15, 20]
-    with self.test_session():
-      with ops.control_dependencies([du.assert_close(x, z)]):
-        array_ops.identity(x).eval()
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(x, y)]):
-          array_ops.identity(x).eval()
-
-      with self.assertRaisesOpError("Condition x ~= y"):
-        with ops.control_dependencies([du.assert_close(y, z)]):
-          array_ops.identity(y).eval()
-
   def testAssertIntegerForm(self):
     # This should only be detected as an integer.
     x = array_ops.placeholder(dtypes.float32)
@@ -125,7 +69,7 @@ class AssertCloseTest(test.TestCase):
     w = array_ops.placeholder(dtypes.float32)
     feed_dict = {x: [1., 5, 10, 15, 20], y: [1.1, 5, 10, 15, 20],
                  z: [1.0001, 5, 10, 15, 20], w: [1e-8, 5, 10, 15, 20]}
-    with self.test_session():
+    with self.cached_session():
       with ops.control_dependencies([du.assert_integer_form(x)]):
         array_ops.identity(x).eval(feed_dict=feed_dict)
 
@@ -145,58 +89,87 @@ class AssertCloseTest(test.TestCase):
           array_ops.identity(w).eval(feed_dict=feed_dict)
 
 
+class MaybeGetStaticTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetStaticInt(self):
+    x = 2
+    self.assertEqual(x, du.maybe_get_static_value(x))
+    self.assertAllClose(
+        np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetStaticNumpyArray(self):
+    x = np.array(2, dtype=np.int32)
+    self.assertEqual(x, du.maybe_get_static_value(x))
+    self.assertAllClose(
+        np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetStaticConstant(self):
+    x = constant_op.constant(2, dtype=dtypes.int32)
+    self.assertEqual(np.array(2, dtype=np.int32), du.maybe_get_static_value(x))
+    self.assertAllClose(
+        np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
+
+  def testGetStaticPlaceholder(self):
+    x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+    self.assertEqual(None, du.maybe_get_static_value(x))
+    self.assertEqual(None, du.maybe_get_static_value(x, dtype=np.float64))
+
+
 class GetLogitsAndProbsTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testImproperArguments(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        du.get_logits_and_probs(logits=None, probs=None)
+    with self.assertRaises(ValueError):
+      du.get_logits_and_probs(logits=None, probs=None)
 
-      with self.assertRaises(ValueError):
-        du.get_logits_and_probs(logits=[0.1], probs=[0.1])
+    with self.assertRaises(ValueError):
+      du.get_logits_and_probs(logits=[0.1], probs=[0.1])
 
+  @test_util.run_in_graph_and_eager_modes
   def testLogits(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
     logits = _logit(p)
 
-    with self.test_session():
-      new_logits, new_p = du.get_logits_and_probs(
-          logits=logits, validate_args=True)
+    new_logits, new_p = du.get_logits_and_probs(
+        logits=logits, validate_args=True)
 
-      self.assertAllClose(p, new_p.eval(), rtol=1e-5, atol=0.)
-      self.assertAllClose(logits, new_logits.eval(), rtol=1e-5, atol=0.)
+    self.assertAllClose(p, self.evaluate(new_p), rtol=1e-5, atol=0.)
+    self.assertAllClose(logits, self.evaluate(new_logits), rtol=1e-5, atol=0.)
 
+  @test_util.run_in_graph_and_eager_modes
   def testLogitsMultidimensional(self):
     p = np.array([0.2, 0.3, 0.5], dtype=np.float32)
     logits = np.log(p)
 
-    with self.test_session():
-      new_logits, new_p = du.get_logits_and_probs(
-          logits=logits, multidimensional=True, validate_args=True)
+    new_logits, new_p = du.get_logits_and_probs(
+        logits=logits, multidimensional=True, validate_args=True)
 
-      self.assertAllClose(new_p.eval(), p)
-      self.assertAllClose(new_logits.eval(), logits)
+    self.assertAllClose(self.evaluate(new_p), p)
+    self.assertAllClose(self.evaluate(new_logits), logits)
 
+  @test_util.run_in_graph_and_eager_modes
   def testProbability(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
 
-    with self.test_session():
-      new_logits, new_p = du.get_logits_and_probs(
-          probs=p, validate_args=True)
+    new_logits, new_p = du.get_logits_and_probs(probs=p, validate_args=True)
 
-      self.assertAllClose(_logit(p), new_logits.eval())
-      self.assertAllClose(p, new_p.eval())
+    self.assertAllClose(_logit(p), self.evaluate(new_logits))
+    self.assertAllClose(p, self.evaluate(new_p))
 
+  @test_util.run_in_graph_and_eager_modes
   def testProbabilityMultidimensional(self):
     p = np.array([[0.3, 0.4, 0.3], [0.1, 0.5, 0.4]], dtype=np.float32)
 
-    with self.test_session():
-      new_logits, new_p = du.get_logits_and_probs(
-          probs=p, multidimensional=True, validate_args=True)
+    new_logits, new_p = du.get_logits_and_probs(
+        probs=p, multidimensional=True, validate_args=True)
 
-      self.assertAllClose(np.log(p), new_logits.eval())
-      self.assertAllClose(p, new_p.eval())
+    self.assertAllClose(np.log(p), self.evaluate(new_logits))
+    self.assertAllClose(p, self.evaluate(new_p))
 
+  @test_util.run_in_graph_and_eager_modes
   def testProbabilityValidateArgs(self):
     p = [0.01, 0.2, 0.5, 0.7, .99]
     # Component less than 0.
@@ -204,29 +177,24 @@ class GetLogitsAndProbsTest(test.TestCase):
     # Component greater than 1.
     p3 = [2, 0.2, 0.5, 0.3, .2]
 
-    with self.test_session():
-      _, prob = du.get_logits_and_probs(
-          probs=p, validate_args=True)
-      prob.eval()
+    _, prob = du.get_logits_and_probs(probs=p, validate_args=True)
+    self.evaluate(prob)
 
-      with self.assertRaisesOpError("Condition x >= 0"):
-        _, prob = du.get_logits_and_probs(
-            probs=p2, validate_args=True)
-        prob.eval()
+    with self.assertRaisesOpError("Condition x >= 0"):
+      _, prob = du.get_logits_and_probs(probs=p2, validate_args=True)
+      self.evaluate(prob)
 
-      _, prob = du.get_logits_and_probs(
-          probs=p2, validate_args=False)
-      prob.eval()
+    _, prob = du.get_logits_and_probs(probs=p2, validate_args=False)
+    self.evaluate(prob)
 
-      with self.assertRaisesOpError("probs has components greater than 1"):
-        _, prob = du.get_logits_and_probs(
-            probs=p3, validate_args=True)
-        prob.eval()
+    with self.assertRaisesOpError("probs has components greater than 1"):
+      _, prob = du.get_logits_and_probs(probs=p3, validate_args=True)
+      self.evaluate(prob)
 
-      _, prob = du.get_logits_and_probs(
-          probs=p3, validate_args=False)
-      prob.eval()
+    _, prob = du.get_logits_and_probs(probs=p3, validate_args=False)
+    self.evaluate(prob)
 
+  @test_util.run_in_graph_and_eager_modes
   def testProbabilityValidateArgsMultidimensional(self):
     p = np.array([[0.3, 0.4, 0.3], [0.1, 0.5, 0.4]], dtype=np.float32)
     # Component less than 0. Still sums to 1.
@@ -236,41 +204,39 @@ class GetLogitsAndProbsTest(test.TestCase):
     # Does not sum to 1.
     p4 = np.array([[1.1, 0.3, 0.4], [0.1, 0.5, 0.4]], dtype=np.float32)
 
-    with self.test_session():
+    _, prob = du.get_logits_and_probs(probs=p, multidimensional=True)
+    self.evaluate(prob)
+
+    with self.assertRaisesOpError("Condition x >= 0"):
       _, prob = du.get_logits_and_probs(
-          probs=p, multidimensional=True)
-      prob.eval()
+          probs=p2, multidimensional=True, validate_args=True)
+      self.evaluate(prob)
 
-      with self.assertRaisesOpError("Condition x >= 0"):
-        _, prob = du.get_logits_and_probs(
-            probs=p2, multidimensional=True, validate_args=True)
-        prob.eval()
+    _, prob = du.get_logits_and_probs(
+        probs=p2, multidimensional=True, validate_args=False)
+    self.evaluate(prob)
 
+    with self.assertRaisesOpError(
+        "(probs has components greater than 1|probs does not sum to 1)"):
       _, prob = du.get_logits_and_probs(
-          probs=p2, multidimensional=True, validate_args=False)
-      prob.eval()
+          probs=p3, multidimensional=True, validate_args=True)
+      self.evaluate(prob)
 
-      with self.assertRaisesOpError(
-          "(probs has components greater than 1|probs does not sum to 1)"):
-        _, prob = du.get_logits_and_probs(
-            probs=p3, multidimensional=True, validate_args=True)
-        prob.eval()
+    _, prob = du.get_logits_and_probs(
+        probs=p3, multidimensional=True, validate_args=False)
+    self.evaluate(prob)
 
+    with self.assertRaisesOpError("probs does not sum to 1"):
       _, prob = du.get_logits_and_probs(
-          probs=p3, multidimensional=True, validate_args=False)
-      prob.eval()
+          probs=p4, multidimensional=True, validate_args=True)
+      self.evaluate(prob)
 
-      with self.assertRaisesOpError("probs does not sum to 1"):
-        _, prob = du.get_logits_and_probs(
-            probs=p4, multidimensional=True, validate_args=True)
-        prob.eval()
-
-      _, prob = du.get_logits_and_probs(
-          probs=p4, multidimensional=True, validate_args=False)
-      prob.eval()
+    _, prob = du.get_logits_and_probs(
+        probs=p4, multidimensional=True, validate_args=False)
+    self.evaluate(prob)
 
   def testProbsMultidimShape(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         p = array_ops.ones([int(2**11+1)], dtype=np.float16)
         du.get_logits_and_probs(
@@ -284,7 +250,7 @@ class GetLogitsAndProbsTest(test.TestCase):
         prob.eval(feed_dict={p: np.ones([int(2**11+1)])})
 
   def testLogitsMultidimShape(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         l = array_ops.ones([int(2**11+1)], dtype=np.float16)
         du.get_logits_and_probs(
@@ -301,7 +267,7 @@ class GetLogitsAndProbsTest(test.TestCase):
 class EmbedCheckCategoricalEventShapeTest(test.TestCase):
 
   def testTooSmall(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         param = array_ops.ones([1], dtype=np.float16)
         checked_param = du.embed_check_categorical_event_shape(
@@ -315,7 +281,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
         checked_param.eval(feed_dict={param: np.ones([1])})
 
   def testTooLarge(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         param = array_ops.ones([int(2**11+1)], dtype=dtypes.float16)
         checked_param = du.embed_check_categorical_event_shape(
@@ -328,17 +294,19 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
             param)
         checked_param.eval(feed_dict={param: np.ones([int(2**11+1)])})
 
+  @test_util.run_in_graph_and_eager_modes
   def testUnsupportedDtype(self):
-    with self.test_session():
-      with self.assertRaises(TypeError):
-        param = array_ops.ones([int(2**11+1)], dtype=dtypes.qint16)
-        du.embed_check_categorical_event_shape(param)
+    param = ops.convert_to_tensor(
+        np.ones([2**11 + 1]).astype(dtypes.qint16.as_numpy_dtype),
+        dtype=dtypes.qint16)
+    with self.assertRaises(TypeError):
+      du.embed_check_categorical_event_shape(param)
 
 
 class EmbedCheckIntegerCastingClosedTest(test.TestCase):
 
   def testCorrectlyAssertsNonnegative(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Elements must be non-negative"):
         x = array_ops.placeholder(dtype=dtypes.float16)
         x_checked = du.embed_check_integer_casting_closed(
@@ -346,7 +314,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
         x_checked.eval(feed_dict={x: np.array([1, -1], dtype=np.float16)})
 
   def testCorrectlyAssersIntegerForm(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Elements must be int16-equivalent."):
         x = array_ops.placeholder(dtype=dtypes.float16)
         x_checked = du.embed_check_integer_casting_closed(
@@ -354,7 +322,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
         x_checked.eval(feed_dict={x: np.array([1, 1.5], dtype=np.float16)})
 
   def testCorrectlyAssertsLargestPossibleInteger(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Elements cannot exceed 32767."):
         x = array_ops.placeholder(dtype=dtypes.int32)
         x_checked = du.embed_check_integer_casting_closed(
@@ -362,7 +330,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
         x_checked.eval(feed_dict={x: np.array([1, 2**15], dtype=np.int32)})
 
   def testCorrectlyAssertsSmallestPossibleInteger(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Elements cannot be smaller than 0."):
         x = array_ops.placeholder(dtype=dtypes.int32)
         x_checked = du.embed_check_integer_casting_closed(
@@ -370,6 +338,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
         x_checked.eval(feed_dict={x: np.array([1, -1], dtype=np.int32)})
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LogCombinationsTest(test.TestCase):
 
   def testLogCombinationsBinomial(self):
@@ -381,29 +350,27 @@ class LogCombinationsTest(test.TestCase):
 
     log_combs = np.log(special.binom(n, k))
 
-    with self.test_session():
-      n = np.array(n, dtype=np.float32)
-      counts = [[1., 1], [2., 3], [4., 8], [11, 4]]
-      log_binom = du.log_combinations(n, counts)
-      self.assertEqual([4], log_binom.get_shape())
-      self.assertAllClose(log_combs, log_binom.eval())
+    n = np.array(n, dtype=np.float32)
+    counts = [[1., 1], [2., 3], [4., 8], [11, 4]]
+    log_binom = du.log_combinations(n, counts)
+    self.assertEqual([4], log_binom.get_shape())
+    self.assertAllClose(log_combs, self.evaluate(log_binom))
 
   def testLogCombinationsShape(self):
     # Shape [2, 2]
     n = [[2, 5], [12, 15]]
 
-    with self.test_session():
-      n = np.array(n, dtype=np.float32)
-      # Shape [2, 2, 4]
-      counts = [[[1., 1, 0, 0], [2., 2, 1, 0]], [[4., 4, 1, 3], [10, 1, 1, 4]]]
-      log_binom = du.log_combinations(n, counts)
-      self.assertEqual([2, 2], log_binom.get_shape())
+    n = np.array(n, dtype=np.float32)
+    # Shape [2, 2, 4]
+    counts = [[[1., 1, 0, 0], [2., 2, 1, 0]], [[4., 4, 1, 3], [10, 1, 1, 4]]]
+    log_binom = du.log_combinations(n, counts)
+    self.assertEqual([2, 2], log_binom.get_shape())
 
 
 class DynamicShapeTest(test.TestCase):
 
   def testSameDynamicShape(self):
-    with self.test_session():
+    with self.cached_session():
       scalar = constant_op.constant(2.0)
       scalar1 = array_ops.placeholder(dtype=dtypes.float32)
 
@@ -511,18 +478,23 @@ class RotateTransposeTest(test.TestCase):
       x = np.array(x)
     return np.transpose(x, np.roll(np.arange(len(x.shape)), shift))
 
+  @test_util.run_in_graph_and_eager_modes
   def testRollStatic(self):
-    with self.test_session():
-      with self.assertRaisesRegexp(ValueError, "None values not supported."):
-        du.rotate_transpose(None, 1)
-      for x in (np.ones(1), np.ones((2, 1)), np.ones((3, 2, 1))):
-        for shift in np.arange(-5, 5):
-          y = du.rotate_transpose(x, shift)
-          self.assertAllEqual(self._np_rotate_transpose(x, shift), y.eval())
-          self.assertAllEqual(np.roll(x.shape, shift), y.get_shape().as_list())
+    if context.executing_eagerly():
+      error_message = r"Attempt to convert a value \(None\)"
+    else:
+      error_message = "None values not supported."
+    with self.assertRaisesRegexp(ValueError, error_message):
+      du.rotate_transpose(None, 1)
+    for x in (np.ones(1), np.ones((2, 1)), np.ones((3, 2, 1))):
+      for shift in np.arange(-5, 5):
+        y = du.rotate_transpose(x, shift)
+        self.assertAllEqual(
+            self._np_rotate_transpose(x, shift), self.evaluate(y))
+        self.assertAllEqual(np.roll(x.shape, shift), y.get_shape().as_list())
 
   def testRollDynamic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       shift = array_ops.placeholder(dtypes.int32)
       for x_value in (np.ones(
@@ -540,21 +512,137 @@ class RotateTransposeTest(test.TestCase):
 class PickVectorTest(test.TestCase):
 
   def testCorrectlyPicksVector(self):
-    with self.test_session():
+    with self.cached_session():
       x = np.arange(10, 12)
       y = np.arange(15, 18)
-      self.assertAllEqual(x,
-                          du.pick_vector(
-                              math_ops.less(0, 5), x, y).eval())
-      self.assertAllEqual(y,
-                          du.pick_vector(
-                              math_ops.less(5, 0), x, y).eval())
+      self.assertAllEqual(
+          x, self.evaluate(du.pick_vector(math_ops.less(0, 5), x, y)))
+      self.assertAllEqual(
+          y, self.evaluate(du.pick_vector(math_ops.less(5, 0), x, y)))
       self.assertAllEqual(x,
                           du.pick_vector(
                               constant_op.constant(True), x, y))  # No eval.
       self.assertAllEqual(y,
                           du.pick_vector(
                               constant_op.constant(False), x, y))  # No eval.
+
+
+class PreferStaticRankTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(3, rank)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(1, rank)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(0, rank)
+
+  def testDynamicRankEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.cached_session():
+      self.assertAllEqual(2, rank.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicRankEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.cached_session():
+      self.assertAllEqual(1, rank.eval(feed_dict={x: []}))
+
+  def testDynamicRankEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.cached_session():
+      self.assertAllEqual(0, rank.eval(feed_dict={x: 1}))
+
+
+class PreferStaticShapeTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([2, 3, 4]), shape)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([0]), shape)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([]), shape)
+
+  def testDynamicShapeEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.cached_session():
+      self.assertAllEqual((2, 3), shape.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicShapeEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.cached_session():
+      self.assertAllEqual(np.array([0]), shape.eval(feed_dict={x: []}))
+
+  def testDynamicShapeEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.cached_session():
+      self.assertAllEqual(np.array([]), shape.eval(feed_dict={x: 1}))
+
+
+class PreferStaticValueTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.zeros((2, 3, 4)), value)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.array([]), value)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.array(1.), value)
+
+  def testDynamicValueEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    value = du.prefer_static_value(x)
+    with self.cached_session():
+      self.assertAllEqual(np.zeros((2, 3)),
+                          value.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicValueEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    value = du.prefer_static_value(x)
+    with self.cached_session():
+      self.assertAllEqual(np.array([]), value.eval(feed_dict={x: []}))
+
+  def testDynamicValueEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    value = du.prefer_static_value(x)
+    with self.cached_session():
+      self.assertAllEqual(np.array(1), value.eval(feed_dict={x: 1}))
 
 
 class FillTriangularTest(test.TestCase):
@@ -572,7 +660,7 @@ class FillTriangularTest(test.TestCase):
       raise ValueError("Invalid shape.")
     n = np.int32(n)
     # We can't do: `x[..., -(n**2-m):]` because this doesn't correctly handle
-    # `m == n == 1`. Hence, we do absoulte indexing.
+    # `m == n == 1`. Hence, we do absolute indexing.
     x_tail = x[..., (m - (n * n - m)):]
     y = np.concatenate(
         [x, x_tail[..., ::-1]] if upper else [x_tail, x[..., ::-1]],
@@ -585,9 +673,9 @@ class FillTriangularTest(test.TestCase):
 
   def _run_test(self, x_, use_deferred_shape=False, **kwargs):
     x_ = np.asarray(x_)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       static_shape = None if use_deferred_shape else x_.shape
-      x_pl = array_ops.placeholder(dtype=x_.dtype, shape=static_shape)
+      x_pl = array_ops.placeholder_with_default(x_, shape=static_shape)
       # Add `zeros_like(x)` such that x's value and gradient are identical. We
       # do this so we can ensure each gradient value is mapped to the right
       # gradient location.  (Not doing this means the gradient wrt `x` is simple
@@ -651,6 +739,30 @@ class FillTriangularTest(test.TestCase):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)), upper=True)
 
 
+class FillTriangularInverseTest(FillTriangularTest):
+
+  def _run_test(self, x_, use_deferred_shape=False, **kwargs):
+    x_ = np.asarray(x_)
+    with self.cached_session() as sess:
+      static_shape = None if use_deferred_shape else x_.shape
+      x_pl = array_ops.placeholder_with_default(x_, shape=static_shape)
+      zeros_like_x_pl = (x_pl * array_ops.stop_gradient(x_pl - 1.)
+                         - array_ops.stop_gradient(x_pl * (x_pl - 1.)))
+      x = x_pl + zeros_like_x_pl
+      actual = du.fill_triangular(x, **kwargs)
+      inverse_actual = du.fill_triangular_inverse(actual, **kwargs)
+
+      inverse_actual_ = sess.run(
+          inverse_actual,
+          feed_dict={x_pl: x_})
+
+    if use_deferred_shape:
+      self.assertEqual(None, inverse_actual.shape)
+    else:
+      self.assertAllEqual(x_.shape, inverse_actual.shape)
+    self.assertAllEqual(x_, inverse_actual_)
+
+
 class ReduceWeightedLogSumExp(test.TestCase):
 
   def _reduce_weighted_logsumexp(self, logx, w, axis, keep_dims=False):
@@ -665,7 +777,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
     logx_ = np.array([[0., -1, 1000.],
                       [0, 1, -1000.],
                       [-5, 0, 5]])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logx = constant_op.constant(logx_)
       expected = math_ops.reduce_logsumexp(logx, axis=-1)
       grad_expected = gradients_impl.gradients(expected, logx)[0]
@@ -688,7 +800,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
                    [1, -2, 1],
                    [1, 0, 1]])
     expected, _ = self._reduce_weighted_logsumexp(logx_, w_, axis=-1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logx = constant_op.constant(logx_)
       w = constant_op.constant(w_)
       actual, actual_sgn = du.reduce_weighted_logsumexp(
@@ -706,7 +818,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
                    [1, 0, 1]])
     expected, _ = self._reduce_weighted_logsumexp(
         logx_, w_, axis=-1, keep_dims=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logx = constant_op.constant(logx_)
       w = constant_op.constant(w_)
       actual, actual_sgn = du.reduce_weighted_logsumexp(
@@ -718,7 +830,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
   def testDocString(self):
     """This test verifies the correctness of the docstring examples."""
 
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([[0., 0, 0],
                                 [0, 0, 0]])
 
@@ -726,25 +838,25 @@ class ReduceWeightedLogSumExp(test.TestCase):
                                 [1, 1, 1]])
 
       self.assertAllClose(
-          np.log(4),
-          du.reduce_weighted_logsumexp(x, w).eval())
+          np.log(4), self.evaluate(du.reduce_weighted_logsumexp(x, w)))
 
       with np.errstate(divide="ignore"):
         self.assertAllClose(
             np.log([0, 2, 2]),
-            du.reduce_weighted_logsumexp(x, w, axis=0).eval())
+            self.evaluate(du.reduce_weighted_logsumexp(x, w, axis=0)))
 
       self.assertAllClose(
           np.log([1, 3]),
-          du.reduce_weighted_logsumexp(x, w, axis=1).eval())
+          self.evaluate(du.reduce_weighted_logsumexp(x, w, axis=1)))
 
       self.assertAllClose(
           np.log([[1], [3]]),
-          du.reduce_weighted_logsumexp(x, w, axis=1, keep_dims=True).eval())
+          self.evaluate(
+              du.reduce_weighted_logsumexp(x, w, axis=1, keep_dims=True)))
 
       self.assertAllClose(
           np.log(4),
-          du.reduce_weighted_logsumexp(x, w, axis=[0, 1]).eval())
+          self.evaluate(du.reduce_weighted_logsumexp(x, w, axis=[0, 1])))
 
 
 class GenNewSeedTest(test.TestCase):
@@ -822,7 +934,7 @@ class SoftplusTest(test.TestCase):
           use_gpu=True)
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(
           [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
           shape=[2, 5],
@@ -838,24 +950,82 @@ class SoftplusTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def testInverseSoftplusGradientNeverNan(self):
-    with self.test_session():
+    with self.cached_session():
       # Note that this range contains both zero and inf.
       x = constant_op.constant(np.logspace(-8, 6).astype(np.float16))
       y = du.softplus_inverse(x)
-      grads = gradients_impl.gradients(y, x)[0].eval()
+      grads = self.evaluate(gradients_impl.gradients(y, x)[0])
       # Equivalent to `assertAllFalse` (if it existed).
       self.assertAllEqual(np.zeros_like(grads).astype(np.bool), np.isnan(grads))
 
   def testInverseSoftplusGradientFinite(self):
-    with self.test_session():
+    with self.cached_session():
       # This range of x is all finite, and so is 1 / x.  So the
       # gradient and its approximations should be finite as well.
       x = constant_op.constant(np.logspace(-4.8, 4.5).astype(np.float16))
       y = du.softplus_inverse(x)
-      grads = gradients_impl.gradients(y, x)[0].eval()
+      grads = self.evaluate(gradients_impl.gradients(y, x)[0])
       # Equivalent to `assertAllTrue` (if it existed).
       self.assertAllEqual(
           np.ones_like(grads).astype(np.bool), np.isfinite(grads))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ArgumentsTest(test.TestCase):
+
+  def testNoArguments(self):
+    def foo():
+      return du.parent_frame_arguments()
+
+    self.assertEqual({}, foo())
+
+  def testPositionalArguments(self):
+    def foo(a, b, c, d):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "d": 4}, foo(1, 2, 3, 4))
+
+    # Tests that it does not matter where this function is called, and
+    # no other local variables are returned back.
+    def bar(a, b, c):
+      unused_x = a * b
+      unused_y = c * 3
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, bar(1, 2, 3))
+
+  def testOverloadedArgumentValues(self):
+    def foo(a, b, c):  # pylint: disable=unused-argument
+      a = 42
+      b = 31
+      c = 42
+      return du.parent_frame_arguments()
+    self.assertEqual({"a": 42, "b": 31, "c": 42}, foo(1, 2, 3))
+
+  def testKeywordArguments(self):
+    def foo(**kwargs):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "d": 4}, foo(a=1, b=2, c=3, d=4))
+
+  def testPositionalKeywordArgs(self):
+    def foo(a, b, c, **kwargs):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, foo(a=1, b=2, c=3))
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "unicorn": None},
+                     foo(a=1, b=2, c=3, unicorn=None))
+
+  def testNoVarargs(self):
+    def foo(a, b, c, *varargs, **kwargs):  # pylint: disable=unused-argument
+      return du.parent_frame_arguments()
+
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, foo(a=1, b=2, c=3))
+    self.assertEqual({"a": 1, "b": 2, "c": 3}, foo(1, 2, 3, *[1, 2, 3]))
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "unicorn": None},
+                     foo(1, 2, 3, unicorn=None))
+    self.assertEqual({"a": 1, "b": 2, "c": 3, "unicorn": None},
+                     foo(1, 2, 3, *[1, 2, 3], unicorn=None))
 
 
 if __name__ == "__main__":

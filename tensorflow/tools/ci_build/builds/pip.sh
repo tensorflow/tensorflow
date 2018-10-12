@@ -123,11 +123,16 @@ done
 
 BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
 
+if [[ -z "$GIT_TAG_OVERRIDE" ]]; then
+  BAZEL_FLAGS+=" --action_env=GIT_TAG_OVERRIDE"
+fi
+
 echo "Using Bazel flags: ${BAZEL_FLAGS}"
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
 if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
+   [[ ${CONTAINER_TYPE} == "rocm" ]] || \
    [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
   bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
@@ -251,7 +256,8 @@ if [[ $(uname) == "Linux" ]]; then
       die "ERROR: Cannot find repaired wheel."
     fi
   # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
-  elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+  elif [[ ${CONTAINER_TYPE} == "gpu" ]] || \
+       [[ ${CONTAINER_TYPE} == "rocm" ]]; then
     WHL_PATH=${AUDITED_WHL_NAME}
     cp ${WHL_DIR}/${WHL_BASE_NAME} ${WHL_PATH}
     echo "Copied manylinx1 wheel file at ${WHL_PATH}"
@@ -296,19 +302,12 @@ create_activate_virtualenv_and_install_tensorflow() {
     die "FAILED to create virtualenv directory: ${VIRTUALENV_DIR}"
   fi
 
-  if [[ ${PYTHON_BIN_PATH} == *"python3.6"* ]]; then
-    "${PYTHON_BIN_PATH}" -m venv "${VIRTUALENV_FLAGS}" \
-      "${VIRTUALENV_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
-  else
-    # Verify that virtualenv exists
-    if [[ -z $(which virtualenv) ]]; then
-      die "FAILED: virtualenv not available on path"
-    fi
-    virtualenv ${VIRTUALENV_FLAGS} \
-      -p "${PYTHON_BIN_PATH}" "${VIRTUALENV_DIR}" || \
-      die "FAILED: Unable to create virtualenv"
-  fi
+  # Use the virtualenv from the default python version (i.e., python-virtualenv)
+  # to create the virtualenv directory for testing. Use the -p flag to specify
+  # the python version inside the to-be-created virtualenv directory.
+  ${PYTHON_BIN_PATH} -m virtualenv -p "${PYTHON_BIN_PATH}" ${VIRTUALENV_FLAGS} \
+    "${VIRTUALENV_DIR}" || \
+    die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
     die "FAILED: Unable to activate virtualenv in ${VIRTUALENV_DIR}"
@@ -317,7 +316,10 @@ create_activate_virtualenv_and_install_tensorflow() {
 
   # Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
   echo "Upgrade pip in virtualenv"
-  pip install --upgrade pip==9.0.1
+
+  # NOTE: pip install --upgrade pip leads to a documented TLS issue for
+  # some versions in python
+  curl https://bootstrap.pypa.io/get-pip.py | python
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
   # last build if it had the same version number as previous build.
@@ -325,6 +327,10 @@ create_activate_virtualenv_and_install_tensorflow() {
   pip install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
   echo "Successfully installed pip package ${TF_WHEEL_PATH}"
+
+  # Force downgrade setuptools.
+  pip install --upgrade setuptools==39.1.0
+
 }
 
 ################################################################################
@@ -350,7 +356,7 @@ do_clean_virtualenv_smoke_test() {
   then
     echo "Smoke test of tensorflow install in clean virtualenv PASSED."
   else
-    echo "Smoke test of tensroflow install in clean virtualenv FAILED."
+    echo "Smoke test of tensorflow install in clean virtualenv FAILED."
     return 1
   fi
 

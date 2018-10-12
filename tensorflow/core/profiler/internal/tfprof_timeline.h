@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
 
 #include "include/json/json.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -178,7 +178,6 @@ class Timeline {
   int64 step_;
   const string outfile_;
   int64 next_pid_ = 0;
-  int64 allocator_pid_ = -1;
   MemoryTracker mem_tracker_;
   ChromeTraceFormatter chrome_formatter_;
   std::map<string, int64> device_pids_;
@@ -191,4 +190,4 @@ class Timeline {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_

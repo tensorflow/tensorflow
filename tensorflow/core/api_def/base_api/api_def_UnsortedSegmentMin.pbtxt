@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "UnsortedSegmentMin"
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A tensor whose shape is a prefix of `data.shape`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimension which has size
+`num_segments`.
+END
+  }
+  summary: "Computes the minimum along segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+for an explanation of segments.
+
+This operator is similar to the unsorted segment sum operator found
+[(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+Instead of computing the sum over segments, it computes the minimum such that:
+
+\\(output_i = \min_{j...} data_[j...]\\) where min is over tuples `j...` such
+that `segment_ids[j...] == i`.
+
+If the minimum is empty for a given segment ID `i`, it outputs the largest
+possible value for the specific numeric type,
+`output[i] = numeric_limits<T>::max()`.
+
+If the given segment ID `i` is negative, then the corresponding value is
+dropped, and will not be included in the result.
+END
+}

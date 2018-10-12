@@ -108,7 +108,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "core_rnn_cell_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -118,7 +118,6 @@ cuda_py_tests(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python:rnn",
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
@@ -150,7 +149,7 @@ cuda_py_tests(
 
 cuda_py_tests(
     name = "core_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/kernel_tests/core_rnn_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -176,7 +175,7 @@ cuda_py_tests(
 
 tf_py_test(
     name = "fused_rnn_cell_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/fused_rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
@@ -213,6 +212,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["noasan"],
 )
 
 tf_custom_op_library(
@@ -280,7 +280,10 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "noasan",
+    ],
 )
 
 tf_cc_test(
@@ -288,6 +291,7 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/gru_ops_test.cc"],
     data = [":python/ops/_gru_ops.so"],
+    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -307,6 +311,7 @@ tf_cc_test(
     size = "small",
     srcs = ["ops/lstm_ops_test.cc"],
     data = [":python/ops/_lstm_ops.so"],
+    tags = ["noasan"],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -319,19 +324,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "tools/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_gen_op_libs(

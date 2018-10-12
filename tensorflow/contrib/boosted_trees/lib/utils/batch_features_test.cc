@@ -25,8 +25,8 @@ namespace boosted_trees {
 namespace utils {
 namespace {
 
-using test::AsTensor;
 using errors::InvalidArgument;
+using test::AsTensor;
 
 class BatchFeaturesTest : public ::testing::Test {};
 
@@ -59,7 +59,7 @@ TEST_F(BatchFeaturesTest, DenseFloatFeatures_Multivalent) {
   BatchFeatures batch_features(1);
   auto dense_vec = AsTensor<float>({3.0f, 7.0f}, {1, 2});
   auto expected_error = InvalidArgument(
-      "Dense float features may not be multi-valent: dim_size(1) = 2");
+      "Dense float features may not be multivalent: dim_size(1) = 2");
   EXPECT_EQ(expected_error,
             batch_features.Initialize({dense_vec}, {}, {}, {}, {}, {}, {}));
 }

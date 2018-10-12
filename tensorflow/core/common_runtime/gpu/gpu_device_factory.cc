@@ -18,7 +18,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
 namespace tensorflow {
@@ -26,10 +27,10 @@ namespace tensorflow {
 class GPUDevice : public BaseGPUDevice {
  public:
   GPUDevice(const SessionOptions& options, const string& name,
-            Bytes memory_limit, const DeviceLocality& locality, int gpu_id,
-            const string& physical_device_desc, Allocator* gpu_allocator,
-            Allocator* cpu_allocator)
-      : BaseGPUDevice(options, name, memory_limit, locality, gpu_id,
+            Bytes memory_limit, const DeviceLocality& locality,
+            TfGpuId tf_gpu_id, const string& physical_device_desc,
+            Allocator* gpu_allocator, Allocator* cpu_allocator)
+      : BaseGPUDevice(options, name, memory_limit, locality, tf_gpu_id,
                       physical_device_desc, gpu_allocator, cpu_allocator,
                       false /* sync every op */, 1 /* max_streams */) {
     if (options.config.has_gpu_options()) {
@@ -39,9 +40,10 @@ class GPUDevice : public BaseGPUDevice {
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
+    CHECK(cpu_allocator_) << "bad place 1";
     if (attr.on_host()) {
       if (attr.gpu_compatible() || force_gpu_compatible_) {
-        ProcessState* ps = ProcessState::singleton();
+        GPUProcessState* ps = GPUProcessState::singleton();
         return ps->GetCUDAHostAllocator(0);
       } else {
         return cpu_allocator_;
@@ -59,11 +61,12 @@ class GPUDeviceFactory : public BaseGPUDeviceFactory {
  private:
   BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
                                  const string& name, Bytes memory_limit,
-                                 const DeviceLocality& locality, int gpu_id,
+                                 const DeviceLocality& locality,
+                                 TfGpuId tf_gpu_id,
                                  const string& physical_device_desc,
                                  Allocator* gpu_allocator,
                                  Allocator* cpu_allocator) override {
-    return new GPUDevice(options, name, memory_limit, locality, gpu_id,
+    return new GPUDevice(options, name, memory_limit, locality, tf_gpu_id,
                          physical_device_desc, gpu_allocator, cpu_allocator);
   }
 };
@@ -88,7 +91,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   ~GPUCompatibleCPUDevice() override {}
 
   Allocator* GetAllocator(AllocatorAttributes attr) override {
-    ProcessState* ps = ProcessState::singleton();
+    GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
       return ps->GetCUDAHostAllocator(0);
     } else {

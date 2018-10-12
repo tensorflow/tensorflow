@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_INPUTS_INPUT_YIELDER_H_
-#define TENSORFLOW_GRAPPLER_INPUTS_INPUT_YIELDER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_INPUTS_INPUT_YIELDER_H_
+#define TENSORFLOW_CORE_GRAPPLER_INPUTS_INPUT_YIELDER_H_
 
 namespace tensorflow {
 namespace grappler {
@@ -32,4 +32,4 @@ class InputYielder {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_INPUTS_INPUT_YIELDER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_INPUTS_INPUT_YIELDER_H_

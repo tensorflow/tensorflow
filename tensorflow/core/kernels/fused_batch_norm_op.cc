@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -43,6 +44,24 @@ struct FusedBatchNorm;
 // is_training=True.
 template <typename Device, typename T, typename U>
 struct FusedBatchNormGrad;
+
+template <bool IsSame, typename Y, typename X, typename T>
+struct CastIfNecessary {
+  static inline void process(
+      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
+      const CPUDevice& d) {
+    y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
+  }
+};
+
+template <typename Y, typename X, typename T>
+struct CastIfNecessary<true, Y, X, T> {
+  static inline void process(
+      Y& y, X& x_shifted, const Eigen::DSizes<Eigen::Index, 2>& rest_by_depth,
+      const CPUDevice& d) {
+    y.reshape(rest_by_depth).device(d) = x_shifted;
+  }
+};
 
 template <typename T, typename U>
 struct FusedBatchNorm<CPUDevice, T, U> {
@@ -124,7 +143,11 @@ struct FusedBatchNorm<CPUDevice, T, U> {
     auto x_shifted =
         x_scaled + offset.reshape(one_by_depth).broadcast(bcast_spec);
 
-    y.reshape(rest_by_depth).device(d) = x_shifted.template cast<T>();
+    // Explicitly checks the types of T and U and only casts x_shifted when
+    // T != U. (Not doing so caused a 35-50% performance slowdown for
+    // some compiler flags.)
+    CastIfNecessary<std::is_same<T, U>::value, decltype(y), decltype(x_shifted),
+                    T>::process(y, x_shifted, rest_by_depth, d);
   }
 };
 
@@ -239,10 +262,18 @@ struct FusedBatchNorm<GPUDevice, T, U> {
             << " offset shape: " << offset.shape().DebugString()
             << " tensor format: " << tensor_format;
 
+    // If input is empty, return NaN mean/variance
+    if (x.shape().num_elements() == 0) {
+      functor::SetNanFunctor<U> f;
+      f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
+      f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
+      return;
+    }
+
     Tensor x_maybe_transformed = x;
     Tensor x_transformed;
     Tensor y_transformed;
-    perftools::gputools::DeviceMemory<T> y_ptr;
+    se::DeviceMemory<T> y_ptr;
 
     if (tensor_format == FORMAT_NCHW) {
       y_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*y);
@@ -270,19 +301,19 @@ struct FusedBatchNorm<GPUDevice, T, U> {
       return;
     }
 
-    perftools::gputools::dnn::BatchDescriptor x_desc;
+    se::dnn::BatchDescriptor x_desc;
     x_desc.set_count(batch_size)
         .set_feature_map_count(channels)
         .set_height(height)
         .set_width(width)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::BatchDescriptor scale_offset_desc;
+    se::dnn::BatchDescriptor scale_offset_desc;
     scale_offset_desc.set_count(1)
         .set_feature_map_count(channels)
         .set_height(1)
         .set_width(1)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
     auto x_ptr = StreamExecutorUtil::AsDeviceMemory<T>(x_maybe_transformed);
     auto scale_ptr = StreamExecutorUtil::AsDeviceMemory<U>(scale);
@@ -299,7 +330,7 @@ struct FusedBatchNorm<GPUDevice, T, U> {
         StreamExecutorUtil::AsDeviceMemory<U>(*saved_inv_var);
 
     GPUDevice d = context->eigen_device<GPUDevice>();
-    using perftools::gputools::DeviceMemory;
+    using se::DeviceMemory;
     Tensor inv_var;
     OP_REQUIRES_OK(
         context, context->allocate_temp(DataTypeToEnum<U>::value,
@@ -381,7 +412,7 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
 
     // Outputs
     Tensor x_backprop_transformed;
-    perftools::gputools::DeviceMemory<T> x_backprop_ptr;
+    se::DeviceMemory<T> x_backprop_ptr;
 
     if (tensor_format == FORMAT_NCHW) {
       x_backprop_ptr = StreamExecutorUtil::AsDeviceMemory<T>(*x_backprop);
@@ -424,19 +455,19 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
       return;
     }
 
-    perftools::gputools::dnn::BatchDescriptor x_desc;
+    se::dnn::BatchDescriptor x_desc;
     x_desc.set_count(batch_size)
         .set_feature_map_count(channels)
         .set_height(height)
         .set_width(width)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::BatchDescriptor scale_offset_desc;
+    se::dnn::BatchDescriptor scale_offset_desc;
     scale_offset_desc.set_count(1)
         .set_feature_map_count(channels)
         .set_height(1)
         .set_width(1)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
     auto y_backprop_ptr =
         StreamExecutorUtil::AsDeviceMemory<T>(y_backprop_maybe_transformed);
@@ -623,14 +654,26 @@ class FusedBatchNormGradOp : public OpKernel {
     Tensor* offset_backprop = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(2, scale_offset_shape,
                                                      &offset_backprop));
-    // two placeholders for estimated_mean and estimated_variance, which are
+    // Two placeholders for estimated_mean and estimated_variance, which are
     // used for inference and thus not needed here for gradient computation.
+    // They are filled with zeros so as to avoid NaN outputs.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(3, TensorShape({}), &placeholder_1));
+    functor::SetZeroFunctor<Device, float> f;
+    f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
+    f(context->eigen_device<Device>(), placeholder_2->flat<U>());
+
+    // If input is empty, set gradients w.r.t scale/offset to zero.
+    if (x.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, U> f;
+      f(context->eigen_device<Device>(), scale_backprop->flat<U>());
+      f(context->eigen_device<Device>(), offset_backprop->flat<U>());
+      return;
+    }
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(

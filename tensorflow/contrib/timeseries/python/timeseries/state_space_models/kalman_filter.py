@@ -170,7 +170,7 @@ class KalmanFilter(object):
         math_ops.matmul(
             transition_matrices,
             prior_state[..., None]),
-        squeeze_dims=[-1])
+        axis=[-1])
     return advanced_state
 
   def predict_state_var(
@@ -254,7 +254,7 @@ class KalmanFilter(object):
             kalman_gain_transposed,
             array_ops.expand_dims(residual, -1),
             adjoint_a=True),
-        squeeze_dims=[-1])
+        axis=[-1])
     gain_obs = math_ops.matmul(
         kalman_gain_transposed, observation_model, adjoint_a=True)
     identity_extradim = linalg_ops.eye(
@@ -332,7 +332,7 @@ class KalmanFilter(object):
             array_ops.expand_dims(state_mean, 1),
             observation_model,
             adjoint_b=True),
-        squeeze_dims=[1])
+        axis=[1])
     observed_var = math_ops.matmul(
         math_ops.matmul(observation_model, state_var),
         observation_model,

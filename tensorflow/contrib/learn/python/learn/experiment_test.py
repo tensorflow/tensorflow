@@ -492,6 +492,33 @@ class ExperimentTest(test.TestCase):
       self.assertEqual(3, est.eval_count)
       self.assertEqual([noop_hook], est.eval_hooks)
 
+  def test_continuous_eval_predicate_fn_with_checkpoint(self):
+    for est in self._estimators_for_tests():
+      eval_metrics = 'eval_metrics' if not isinstance(
+          est, core_estimator.Estimator) else None
+      est.fake_checkpoint()
+      noop_hook = _NoopHook()
+
+      def _predicate_fn(eval_result, checkpoint_path):
+        self.assertEqual(eval_result is None,
+                         checkpoint_path is None)
+        return est.eval_count < 3  # pylint: disable=cell-var-from-loop
+
+      ex = experiment.Experiment(
+          est,
+          train_input_fn='train_input',
+          eval_input_fn='eval_input',
+          eval_metrics=eval_metrics,
+          eval_hooks=[noop_hook],
+          eval_delay_secs=0,
+          continuous_eval_throttle_secs=0)
+      ex.continuous_eval(
+          evaluate_checkpoint_only_once=False,
+          continuous_eval_predicate_fn=_predicate_fn)
+      self.assertEqual(0, est.fit_count)
+      self.assertEqual(3, est.eval_count)
+      self.assertEqual([noop_hook], est.eval_hooks)
+
   def test_run_local(self):
     for est in self._estimators_for_tests():
       eval_metrics = 'eval_metrics' if not isinstance(
@@ -647,36 +674,10 @@ class ExperimentTest(test.TestCase):
   def test_min_eval_frequency_defaults(self):
     def dummy_model_fn(features, labels):  # pylint: disable=unused-argument
       pass
-
-    # The default value when model_dir is on GCS is 1000
-    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
-    ex = experiment.Experiment(
-        estimator, train_input_fn=None, eval_input_fn=None)
-    self.assertEquals(ex._min_eval_frequency, 1000)
-
-    # The default value when model_dir is not on GCS is 1
     estimator = core_estimator.Estimator(dummy_model_fn, '/tmp/dummy')
     ex = experiment.Experiment(
         estimator, train_input_fn=None, eval_input_fn=None)
     self.assertEquals(ex._min_eval_frequency, 1)
-
-    # Make sure default not used when explicitly set
-    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
-    ex = experiment.Experiment(
-        estimator,
-        min_eval_frequency=123,
-        train_input_fn=None,
-        eval_input_fn=None)
-    self.assertEquals(ex._min_eval_frequency, 123)
-
-    # Make sure default not used when explicitly set as 0
-    estimator = core_estimator.Estimator(dummy_model_fn, 'gs://dummy_bucket')
-    ex = experiment.Experiment(
-        estimator,
-        min_eval_frequency=0,
-        train_input_fn=None,
-        eval_input_fn=None)
-    self.assertEquals(ex._min_eval_frequency, 0)
 
   def test_continuous_train_and_eval(self):
     for est in self._estimators_for_tests(eval_dict={'global_step': 100}):

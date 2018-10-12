@@ -190,10 +190,11 @@ class SvdGradOpTest(test.TestCase):
   pass  # Filled in below
 
 
-def _GetSvdGradOpTest(dtype_, shape_, compute_uv_):
+def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
 
   def _NormalizingSvd(tf_a):
-    tf_s, tf_u, tf_v = linalg_ops.svd(tf_a, compute_uv=True, full_matrices=True)
+    tf_s, tf_u, tf_v = linalg_ops.svd(
+        tf_a, compute_uv=True, full_matrices=full_matrices_)
     # Singular vectors are only unique up to an arbitrary phase. We normalize
     # the vectors such that the first component of u (if m >=n) or v (if n > m)
     # have phase 0.
@@ -270,17 +271,20 @@ if __name__ == "__main__":
                          _GetSvdOpTest(dtype, shape, use_static_shape,
                                        compute_uv, full_matrices))
   for compute_uv in False, True:
-    dtypes = ([np.float32, np.float64] + [np.complex64, np.complex128] *
-              (not compute_uv))
-    for dtype in dtypes:
-      mat_shapes = ([(10, 11), (11, 10),
-                     (11, 11)] + [(5, 11), (11, 5)] * (not compute_uv))
-      for mat_shape in mat_shapes:
-        for batch_dims in [(), (3,)]:
-          shape = batch_dims + mat_shape
-          name = "%s_%s_compute_uv_%s" % (dtype.__name__,
-                                          "_".join(map(str, shape)), compute_uv)
-          _AddTest(SvdGradOpTest, "SvdGrad", name,
-                   _GetSvdGradOpTest(dtype, shape, compute_uv))
+    for full_matrices in False, True:
+      dtypes = ([np.float32, np.float64]
+                + [np.complex64, np.complex128] * (not compute_uv))
+      for dtype in dtypes:
+        mat_shapes = [(10, 11), (11, 10), (11, 11)]
+        if not full_matrices or not compute_uv:
+          mat_shapes += [(5, 11), (11, 5)]
+        for mat_shape in mat_shapes:
+          for batch_dims in [(), (3,)]:
+            shape = batch_dims + mat_shape
+            name = "%s_%s_compute_uv_%s_full_%s" % (
+                dtype.__name__, "_".join(map(str, shape)), compute_uv,
+                full_matrices)
+            _AddTest(SvdGradOpTest, "SvdGrad", name,
+                     _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
 
   test.main()

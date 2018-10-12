@@ -27,8 +27,10 @@ import six
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.Coordinator")
 class Coordinator(object):
   """A coordinator for threads.
 
@@ -406,6 +408,7 @@ class Coordinator(object):
 
 
 # Threads for the standard services.
+@tf_export("train.LooperThread")
 class LooperThread(threading.Thread):
   """A thread that runs code repeatedly, optionally on a timer.
 

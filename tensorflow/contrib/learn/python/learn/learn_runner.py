@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Runs an Experiment."""
+"""Runs an Experiment (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +27,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config as run_c
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
 from tensorflow.contrib.training.python.training import hparam as hparam_lib
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 # TODO(xiejw): Refactor the learn_runner to make code reusable.
@@ -99,6 +105,7 @@ def _wrapped_experiment_fn_with_uid_check(experiment_fn, require_hparams=False):
   return wrapped_experiment_fn
 
 
+@deprecated(None, 'Use tf.estimator.train_and_evaluate.')
 def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
         hparams=None):
   """Make and run an experiment.
@@ -218,6 +225,7 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
   return _execute_schedule(experiment, schedule)
 
 
+@deprecated(None, 'Use tf.estimator.train_and_evaluate.')
 def tune(experiment_fn, tuner):
   """Tune an experiment with hyper-parameters.
 

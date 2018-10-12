@@ -16,9 +16,34 @@ limitations under the License.
 package org.tensorflow;
 
 import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /** Static utility functions. */
 public class TestUtil {
+
+  public static final class AutoCloseableList<E extends AutoCloseable> extends ArrayList<E>
+      implements AutoCloseable {
+    public AutoCloseableList(Collection<? extends E> c) {
+      super(c);
+    }
+
+    @Override
+    public void close() {
+      Exception toThrow = null;
+      for (AutoCloseable c : this) {
+        try {
+          c.close();
+        } catch (Exception e) {
+          toThrow = e;
+        }
+      }
+      if (toThrow != null) {
+        throw new RuntimeException(toThrow);
+      }
+    }
+  }
+
   public static <T> Output<T> constant(Graph g, String name, Object value) {
     try (Tensor<?> t = Tensor.create(value)) {
       return g.opBuilder("Const", name)
@@ -36,7 +61,7 @@ public class TestUtil {
         .<T>output(0);
   }
 
-  public static Output<?> addN(Graph g, Output<?>... inputs) {
+  public static <T> Output<T> addN(Graph g, Output<?>... inputs) {
     return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
   }
 
@@ -57,6 +82,13 @@ public class TestUtil {
         .addInput(constant(g, "values", values))
         .setAttr("num_split", numSplit)
         .build();
+  }
+  
+  public static <T> Output<T> square(Graph g, String name, Output<T> value) {
+    return g.opBuilder("Square", name)
+        .addInput(value)
+        .build()
+        .<T>output(0);
   }
 
   public static void transpose_A_times_X(Graph g, int[][] a) {

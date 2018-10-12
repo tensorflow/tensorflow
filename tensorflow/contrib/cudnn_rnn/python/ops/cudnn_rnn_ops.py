@@ -17,26 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.cudnn_rnn.ops import gen_cudnn_rnn_ops
+import os
+from tensorflow.contrib.checkpoint.python import split_dependency
 from tensorflow.contrib.rnn.python.ops import lstm_ops
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.layers import base as base_layer
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
-
-_cudnn_rnn_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
+from tensorflow.python.training.checkpointable import tracking as checkpointable_lib
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -64,23 +61,23 @@ _WEIGHTS_VARIABLE_NAME = rnn_cell_impl._WEIGHTS_VARIABLE_NAME
 class CudnnCompatibleLSTMCell(lstm_ops.LSTMBlockCell):
   """Cudnn Compatible LSTMCell.
 
-  A simple wrapper around @{tf.contrib.rnn.LSTMBlockCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnLSTM}. The latter's params can be used by
+  A simple wrapper around `tf.contrib.rnn.LSTMBlockCell` to use along with
+  `tf.contrib.cudnn_rnn.CudnnLSTM`. The latter's params can be used by
   this cell seamlessly.
   """
 
   def __init__(self, num_units, reuse=None):
     super(CudnnCompatibleLSTMCell, self).__init__(
         num_units, forget_bias=0, cell_clip=None, use_peephole=False,
-        reuse=reuse)
+        reuse=reuse, name="cudnn_compatible_lstm_cell")
     self._names.update({"scope": "cudnn_compatible_lstm_cell"})
 
 
 class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
   """Cudnn Compatible GRUCell.
 
-  A GRU impl akin to @{tf.nn.rnn_cell.GRUCell} to use along with
-  @{tf.contrib.cudnn_rnn.CudnnGRU}. The latter's params can be used by
+  A GRU impl akin to `tf.nn.rnn_cell.GRUCell` to use along with
+  `tf.contrib.cudnn_rnn.CudnnGRU`. The latter's params can be used by
   it seamlessly.
 
   It differs from platform-independent GRUs in how the new memory gate is
@@ -91,19 +88,23 @@ class CudnnCompatibleGRUCell(rnn_cell_impl.GRUCell):
 
   Cudnn compatible GRU (from Cudnn library user guide):
   ```python
-  r_t = sigma(x_t * W_r + h_t-1 * R_h + b_Wr + b_Rr)  # reset gate
-  u_t = sigma(x_t * W_u + h_t-1 * R_u + b_Wu + b_Ru)  # update gate
-  h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_Rh) + b_Wh)  # new memory gate
-  h_t = (1 - u_t) .* h'_t + u_t .* h_t-1
+  # reset gate
+  $$r_t = \sigma(x_t * W_r + h_t-1 * R_h + b_{Wr} + b_{Rr})$$
+  # update gate
+  $$u_t = \sigma(x_t * W_u + h_t-1 * R_u + b_{Wu} + b_{Ru})$$
+  # new memory gate
+  $$h'_t = tanh(x_t * W_h + r_t .* (h_t-1 * R_h + b_{Rh}) + b_{Wh})$$
+  $$h_t = (1 - u_t) .* h'_t + u_t .* h_t-1$$
   ```
 
-  Other GRU (see @{tf.nn.rnn_cell.GRUCell} and @{tf.contrib.rnn.GRUBlockCell}):
+  Other GRU (see `tf.nn.rnn_cell.GRUCell` and `tf.contrib.rnn.GRUBlockCell`):
   ```python
-  h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_Wh)  # new memory gate
+  # new memory gate
+  \\(h'_t = tanh(x_t * W_h + (r_t .* h_t-1) * R_h + b_{Wh})\\)
   ```
   which is not equivalent to Cudnn GRU: in addition to the extra bias term b_Rh,
   ```python
-  r .* (h * R) != (r .* h) * R
+  \\(r .* (h * R) != (r .* h) * R\\)
   ```
   """
 
@@ -267,13 +268,16 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     # instead of having the master pull all slices and then save them.
     slice_spec = ""
     params = weights + biases
-    param_names = weight_names + bias_names
+    self._weight_names = weight_names
+    self._bias_names = bias_names
+    self._param_names = weight_names + bias_names
+    prefixed_param_names = weight_names + bias_names
     if self._scope:
-      param_names = ["%s/%s" % (self._scope, pn) for pn in param_names]
-
+      prefixed_param_names = [
+          "%s/%s" % (self._scope, pn) for pn in prefixed_param_names]
     specs = [
         saver.BaseSaverBuilder.SaveSpec(param, slice_spec, param_name)
-        for param, param_name in zip(params, param_names)
+        for param, param_name in zip(params, prefixed_param_names)
     ]
     super(CudnnOpaqueParamsSaveable, self).__init__(
         array_ops.identity(self._variables), specs, name)
@@ -285,6 +289,45 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
 
     return state_ops.assign(
         self._variables, opaque_params, validate_shape=False)
+
+  def _checkpointable_save(self, save_buffer):
+    weights, biases = self._OpaqueParamsToCanonical()
+    with ops.device("gpu:0"):
+      (weights, _), (biases, _) = self._TransformCanonical(
+          weights, biases)
+    for name, tensor in zip(self._param_names, weights + biases):
+      save_buffer[name] = array_ops.identity(tensor)
+
+  def _checkpointable_restore(self, restore_buffer):
+    tensors = [array_ops.identity(restore_buffer[name])
+               for name in self._param_names]
+    return self.restore(
+        restored_tensors=tensors,
+        restored_shapes=None  # Unused
+    )
+
+  def _add_checkpointable_dependencies(self, checkpointable, dtype):
+    """Add canonical weight dependencies to `checkpointable`.
+
+    When saving or restoring, converts to or from the opaque buffer
+    format. Weights are saved and loaded in the configuration expected by
+    cuDNN-compatible cells.
+
+    Args:
+      checkpointable: An object inheriting from `CheckpointableBase` to add
+        dependencies too (typically the cuDNN `Layer`).
+      dtype: The dtype for the canonical parameter Tensors.
+    """
+    split_dependencies = split_dependency.split_dependency(
+        component_names=self._param_names,
+        component_dtypes=(dtype,) * len(self._param_names),
+        fill_save_buffer_fn=self._checkpointable_save,
+        consume_restore_buffer_fn=self._checkpointable_restore)
+    self._checkpointable_track_params(checkpointable, split_dependencies)
+
+  def _checkpointable_track_params(self, checkpointable, params):
+    """Tracks parameters in a canonical configuration."""
+    return  # NotImplementedError raised by the Layer.
 
   def _TFCanonicalNamePrefix(self, layer, is_fwd=True):
     if self._direction == CUDNN_RNN_UNIDIRECTION:
@@ -303,16 +346,17 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       2 list for weights and biases respectively.
     """
-    weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        params=self._variables,
-        num_params=self._num_params,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
-    return (weights, biases)
+    with ops.device("/gpu:0"):
+      weights, biases = gen_cudnn_rnn_ops.cudnn_rnn_params_to_canonical(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          params=self._variables,
+          num_params=self._num_params,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
+      return (weights, biases)
 
   def _CanonicalToOpaqueParams(self, cu_weights, cu_biases):
     """Converts from Cudnn canonical format to opaque params.
@@ -323,15 +367,16 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     Returns:
       a single opaque tensor.
     """
-    return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        weights=cu_weights,
-        biases=cu_biases,
-        rnn_mode=self._rnn_mode,
-        input_mode=self._input_mode,
-        direction=self._direction)
+    with ops.device("/gpu:0"):
+      return gen_cudnn_rnn_ops.cudnn_rnn_canonical_to_params(
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          weights=cu_weights,
+          biases=cu_biases,
+          rnn_mode=self._rnn_mode,
+          input_mode=self._input_mode,
+          direction=self._direction)
 
   def _TransformCanonical(self, cu_weights, cu_biases):
     r"""Transform from Cudnn canonical to tf canonical.
@@ -479,10 +524,7 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
   _rnn_mode = CUDNN_LSTM
   _num_params_per_layer = CUDNN_LSTM_PARAMS_PER_LAYER
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(CudnnCompatibleLSTMCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(CudnnCompatibleLSTMCell.__name__)
 
   def _cudnn_to_tf_gate_params(self, *cu_gate_order):
     i_g, f_g, c_g, o_g = cu_gate_order
@@ -573,6 +615,29 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
     tf_biases.append(b)
     tf_bias_names.append(prefix + "/bias")
 
+  def _checkpointable_track_params(self, checkpointable, params):
+    """Track parameters for compatibility with CudnnCompatibleLSTMCell."""
+    biases = []
+    weights = []
+    for name in self._weight_names:
+      weights.append(params[name])
+    for name in self._bias_names:
+      biases.append(params[name])
+    assert len(params) == len(weights) + len(biases)
+    if len(weights) == 1 and len(biases) == 1:
+      # For single-layer cells, allow substituting a cell with no MultiRNNCell
+      # wrapping.
+      kernel, = weights  # pylint: disable=unbalanced-tuple-unpacking
+      bias, = biases  # pylint: disable=unbalanced-tuple-unpacking
+      checkpointable._track_checkpointable(kernel, name="kernel")  # pylint: disable=protected-access
+      checkpointable._track_checkpointable(bias, name="bias")  # pylint: disable=protected-access
+    assert len(biases) == len(weights)
+    for cell_index, (bias, kernel) in enumerate(zip(biases, weights)):
+      cell = checkpointable_lib.Checkpointable()
+      checkpointable._track_checkpointable(cell, name="cell-%d" % cell_index)  # pylint: disable=protected-access
+      cell.bias = bias
+      cell.kernel = kernel
+
 
 class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
   """SaveableObject implementation handling Cudnn GRU opaque params."""
@@ -580,10 +645,7 @@ class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
   _rnn_mode = CUDNN_GRU
   _num_params_per_layer = CUDNN_GRU_PARAMS_PER_LAYER
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(CudnnCompatibleGRUCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(CudnnCompatibleGRUCell.__name__)
 
   def _cudnn_to_tf_weights(self, *cu_weights):
     r"""Stitching cudnn canonical weights to generate tf canonical weights."""
@@ -662,11 +724,7 @@ class CudnnGRUSaveable(CudnnOpaqueParamsSaveable):
 class CudnnRNNSimpleSaveable(CudnnLSTMSaveable):
   """SaveableObject implementation handling Cudnn RNN Tanh opaque params."""
 
-  # pylint:disable=protected-access
-  _rnn_cell_name = base_layer._to_snake_case(
-      rnn_cell_impl.BasicRNNCell.__name__)
-
-  # pylint:enable=protected-access
+  _rnn_cell_name = base_layer.to_snake_case(rnn_cell_impl.BasicRNNCell.__name__)
 
   def _cudnn_to_tf_weights(self, *cu_weights):
     r"""Stitching cudnn canonical weights to generate tf canonical weights."""
@@ -833,7 +891,7 @@ def _cudnn_rnn(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -843,19 +901,27 @@ def _cudnn_rnn(inputs,
   check_direction(direction)
   check_input_mode(input_mode)
   seed, seed2 = random_seed.get_seed(seed)
-  outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      input=inputs,
-      input_h=input_h,
-      input_c=input_c,
-      params=params,
-      is_training=is_training,
-      rnn_mode=rnn_mode,
-      input_mode=input_mode,
-      direction=direction,
-      dropout=dropout,
-      seed=seed,
-      seed2=seed2,
-      name=name)
+  # TODO(jamesqin): switch default value to "1" on May 25th 2018, and get rid
+  # of V1 ops.
+  use_cudnn_v2 = os.environ.get("TF_CUDNN_RNN_USE_V2", "0")
+  args = {
+      "input": inputs,
+      "input_h": input_h,
+      "input_c": input_c,
+      "params": params,
+      "is_training": is_training,
+      "rnn_mode": rnn_mode,
+      "input_mode": input_mode,
+      "direction": direction,
+      "dropout": dropout,
+      "seed": seed,
+      "seed2": seed2,
+      "name": name
+  }
+  if use_cudnn_v2 is not "1":
+    outputs, output_h, output_c, _ = gen_cudnn_rnn_ops.cudnn_rnn(**args)
+  else:
+    outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv2(**args)
   return (outputs, output_h, output_c)
 
 
@@ -891,7 +957,7 @@ def cudnn_lstm(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -932,7 +998,7 @@ def _cudnn_rnn_no_input_c(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -974,7 +1040,7 @@ def cudnn_gru(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1013,7 +1079,7 @@ def cudnn_rnn_relu(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1053,7 +1119,7 @@ def cudnn_rnn_tanh(inputs,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1095,7 +1161,7 @@ def cudnn_rnn_opaque_params_to_canonical(rnn_mode,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1158,7 +1224,7 @@ def cudnn_rnn_canonical_to_opaque_params(rnn_mode,
     direction: the direction model that the model operates. Could be either
         'unidirectional' or 'bidirectional'
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1216,7 +1282,7 @@ def cudnn_rnn_opaque_params_size(rnn_mode,
         'unidirectional' or 'bidirectional'
     dtype: one of tf.float32 or tf.float64.
     dropout: whether to enable dropout. With it is 0, dropout is disabled.
-    seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+    seed: the op seed used for initializing dropout. See `tf.set_random_seed`
         for behavior.
     name: name of the operation.
   Returns:
@@ -1283,7 +1349,7 @@ class _CudnnRNN(object):
           'unidirectional' or 'bidirectional'
       dtype: dtype of params, tf.float32 or tf.float64.
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
           for behavior.
     Raises:
       ValueError: if direction is invalid.
@@ -1352,7 +1418,7 @@ class _CudnnRNN(object):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c. This is only relevant for LSTM.
     """
@@ -1470,7 +1536,7 @@ class CudnnLSTM(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
       output_c: the final state for c.
     """
@@ -1540,7 +1606,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       params: the parameter buffer created for this model.
       is_training: whether this operation will be used in training or inference.
     Returns:
-      output: the output sequuence.
+      output: the output sequence.
       output_h: the final state for h.
     """
     return _cudnn_rnn_no_input_c(
@@ -1580,35 +1646,3 @@ class CudnnRNNRelu(_CudnnRNNNoInputC):
   # 1 set of weight and bias parameters for the recurrent input, and 1 for the
   # previous layer input.
   _NUM_PARAMS_PER_LAYER = CUDNN_RNN_RELU_PARAMS_PER_LAYER
-
-
-@ops.RegisterGradient("CudnnRNN")
-def _cudnn_rnn_backward(op, *grad):
-  if not op.get_attr("is_training"):
-    raise ValueError(
-        "CudnnRNN must set is_training to True to be used in gradients")
-  return gen_cudnn_rnn_ops.cudnn_rnn_backprop(
-      input=op.inputs[0],
-      input_h=op.inputs[1],
-      input_c=op.inputs[2],
-      params=op.inputs[3],
-      output=op.outputs[0],
-      output_h=op.outputs[1],
-      output_c=op.outputs[2],
-      output_backprop=grad[0],
-      output_h_backprop=grad[1],
-      output_c_backprop=grad[2],
-      reserve_space=op.outputs[3],
-      dropout=op.get_attr("dropout"),
-      seed=op.get_attr("seed"),
-      seed2=op.get_attr("seed2"),
-      rnn_mode=op.get_attr("rnn_mode"),
-      input_mode=op.get_attr("input_mode"),
-      direction=op.get_attr("direction"))
-
-
-ops.RegisterShape("CudnnRNNParamsSize")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNParamsToCanonical")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNCanonicalToParams")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNN")(common_shapes.call_cpp_shape_fn)
-ops.RegisterShape("CudnnRNNBackprop")(common_shapes.call_cpp_shape_fn)

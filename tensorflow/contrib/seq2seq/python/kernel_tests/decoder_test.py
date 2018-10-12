@@ -44,7 +44,7 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       if time_major:
         inputs = np.random.randn(max_time, batch_size,
                                  input_depth).astype(np.float32)
@@ -92,14 +92,18 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       # Mostly a smoke test
       time_steps = max_out
+      expected_length = sequence_length
       if maximum_iterations is not None:
         time_steps = min(max_out, maximum_iterations)
+        expected_length = [min(x, maximum_iterations) for x in expected_length]
       self.assertEqual(
           _t((batch_size, time_steps, cell_depth)),
           sess_results["final_outputs"].rnn_output.shape)
       self.assertEqual(
           _t((batch_size, time_steps)),
           sess_results["final_outputs"].sample_id.shape)
+      self.assertItemsEqual(expected_length,
+                            sess_results["final_sequence_length"])
 
   def testDynamicDecodeRNNBatchMajor(self):
     self._testDynamicDecodeRNN(time_major=False)
@@ -122,7 +126,7 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
 

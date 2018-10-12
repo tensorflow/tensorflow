@@ -23,18 +23,21 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/math_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -42,39 +45,59 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace gpu {
 
+using absl::StrAppend;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
-using tensorflow::strings::StrAppend;
 
+namespace {
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  return operand->opcode() == HloOpcode::kConstant &&
-         operand->literal().IsAllFloat(value);
+  if (operand->opcode() == HloOpcode::kConstant &&
+      operand->literal().IsAllFloat(value)) {
+    return true;
+  }
+  return operand->opcode() == HloOpcode::kBroadcast &&
+         IsFPLiteralWithValue(operand->operand(0), value);
 }
+}  // namespace
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
-    llvm::IRBuilder<>* ir_builder, NestedComputer compute_nested)
-    : ElementalIrEmitter(hlo_module_config, module, ir_builder),
+    llvm::IRBuilder<>* b, NestedComputer compute_nested)
+    : ElementalIrEmitter(hlo_module_config, module, b),
       hlo_module_config_(hlo_module_config),
       compute_nested_(std::move(compute_nested)) {}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) const {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // The libdevice math functions differentiate between "double" and "float" by
-  // appending an 'f' to the function's name.
+  // appending an 'f' to the function's name. libdevice doesn't have f16 math
+  // functions, so we convert the operands to f32 before calling the function
+  // and then convert the result back to f16.
   string munged_callee = callee_name;
+  bool cast_result_to_fp16 = false;
+  std::vector<llvm::Value*> converted_operands(operands.begin(),
+                                               operands.end());
+  std::vector<PrimitiveType> converted_input_types(input_types.begin(),
+                                                   input_types.end());
   switch (output_type) {
+    case F16:
+      cast_result_to_fp16 = true;
+      for (int64 i = 0; i < operands.size(); ++i) {
+        if (input_types[i] == F16) {
+          converted_operands[i] =
+              FPCast(converted_operands[i], b_->getFloatTy());
+          converted_input_types[i] = F32;
+        }
+      }
+      output_type = F32;
+      TF_FALLTHROUGH_INTENDED;
     case F32:
       StrAppend(&munged_callee, "f");
       break;
@@ -82,20 +105,27 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
       break;
     default:
       return Unimplemented("Bad type for libdevice math call: %s",
-                           PrimitiveType_Name(output_type).c_str());
+                           PrimitiveType_Name(output_type));
   }
-  return EmitMathCall(munged_callee, operands, input_types, output_type);
+  llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
+                                     converted_input_types, output_type)
+                            .ValueOrDie();
+  if (cast_result_to_fp16) {
+    result = FPCast(result, b_->getHalfTy());
+  }
+  return result;
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) const {
-  // llvm intrinsics differentiate between float/double functions via the ".f32"
-  // and ".f64" suffixes.
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
+  // llvm intrinsics differentiate between half/float/double functions via
+  // the suffixes ".f16", ".f32" and ".f64".
   string munged_callee = callee_name;
   switch (output_type) {
+    case F16:
+      StrAppend(&munged_callee, ".f16");
+      break;
     case F32:
       StrAppend(&munged_callee, ".f32");
       break;
@@ -104,22 +134,20 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLlvmIntrinsicMathCall(
       break;
     default:
       return Unimplemented("Bad type for llvm intrinsic math call: %s",
-                           PrimitiveType_Name(output_type).c_str());
+                           PrimitiveType_Name(output_type));
   }
   return EmitMathCall(munged_callee, operands, input_types, output_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type) const {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type) {
   // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
       return Unimplemented("Input type ≠ output type: %s ≠ %s",
-                           PrimitiveType_Name(input_type).c_str(),
-                           PrimitiveType_Name(output_type).c_str());
+                           PrimitiveType_Name(input_type),
+                           PrimitiveType_Name(output_type));
     }
   }
 
@@ -129,16 +157,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
-    const HloInstruction* op, llvm::Value* lhs_value,
-    llvm::Value* rhs_value) const {
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
   switch (op->opcode()) {
-    case HloOpcode::kAtan2:
-      return EmitLibdeviceMathCall("__nv_atan2", {lhs_value, rhs_value},
-                                   {lhs_input_type, rhs_input_type},
-                                   output_type);
     case HloOpcode::kRemainder: {
       return EmitLibdeviceMathCall("__nv_fmod", {lhs_value, rhs_value},
                                    {lhs_input_type, rhs_input_type},
@@ -153,8 +176,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
-    const HloInstruction* op, llvm::Value* lhs_value,
-    llvm::Value* rhs_value) const {
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   CHECK_EQ(op->opcode(), HloOpcode::kPower);
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
@@ -180,13 +202,15 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     return make_sqrt();
   }
 
-  if (hlo_module_config_.debug_options().xla_enable_fast_math() &&
-      IsFPLiteralWithValue(rhs, -.5)) {
+  if (IsFPLiteralWithValue(rhs, -.5)) {
     VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
     // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX
     // rsqrt.approx instruction.
+    //
+    // TODO(jlebar): Does this happen with fastmath disabled?  If not, should
+    // we force-enable it?
     TF_ASSIGN_OR_RETURN(auto* sqrt, make_sqrt());
-    return ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
+    return FDiv(llvm::ConstantFP::get(llvm_ty, 1), sqrt);
   }
 
   VLOG(10) << "emitting pow as regular call to pow(): " << op->ToString();
@@ -195,265 +219,74 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitErfcInv(
-    PrimitiveType prim_type, llvm::Value* value) const {
+    PrimitiveType prim_type, llvm::Value* value) {
   return EmitLibdeviceMathCall("__nv_erfcinv", {value}, {prim_type}, prim_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
-    const HloInstruction* op, llvm::Value* operand_value) const {
-  PrimitiveType input_type = op->operand(0)->shape().element_type();
-  PrimitiveType output_type = op->shape().element_type();
-  switch (op->opcode()) {
-    case HloOpcode::kExp:
-      return EmitLibdeviceMathCall("__nv_exp", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kFloor:
-      return EmitLibdeviceMathCall("__nv_floor", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kCeil:
-      return EmitLibdeviceMathCall("__nv_ceil", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kLog:
-      return EmitLibdeviceMathCall("__nv_log", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kCos:
-      return EmitLibdeviceMathCall("__nv_cos", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kSin:
-      return EmitLibdeviceMathCall("__nv_sin", {operand_value}, {input_type},
-                                   output_type);
-    case HloOpcode::kTanh:
-      return EmitLibdeviceMathCall("__nv_tanh", {operand_value}, {input_type},
-                                   output_type);
-    default:
-      return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
-  }
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_log", {value}, {prim_type}, prim_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexBinaryOp(
-    const HloInstruction* op, llvm::Value* lhs_value,
-    llvm::Value* rhs_value) const {
-  PrimitiveType input_type = op->operand(0)->shape().element_type();
-  TF_RET_CHECK(primitive_util::IsComplexType(input_type));
-  PrimitiveType component_type =
-      primitive_util::ComplexComponentType(input_type);
-  switch (op->opcode()) {
-    case HloOpcode::kPower: {
-      // (a+bi)^(c+di) =
-      //    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
-      //    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
-      auto a = EmitExtractReal(lhs_value);
-      auto b = EmitExtractImag(lhs_value);
-      auto c = EmitExtractReal(rhs_value);
-      auto d = EmitExtractImag(rhs_value);
-      auto aa_p_bb = ir_builder_->CreateFAdd(ir_builder_->CreateFMul(a, a),
-                                             ir_builder_->CreateFMul(b, b));
-      auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
-      auto half_c = ir_builder_->CreateFMul(one_half, c);
-
-      TF_ASSIGN_OR_RETURN(
-          auto aa_p_bb_to_half_c,
-          EmitLibdeviceMathCall("__nv_pow", {aa_p_bb, half_c},
-                                {component_type, component_type},
-                                component_type));
-      auto neg_d = ir_builder_->CreateFNeg(d);
-      TF_ASSIGN_OR_RETURN(
-          auto arg_lhs, EmitLibdeviceMathCall("__nv_atan2", {b, a},
-                                              {component_type, component_type},
-                                              component_type));
-      auto neg_d_arg_lhs = ir_builder_->CreateFMul(neg_d, arg_lhs);
-      TF_ASSIGN_OR_RETURN(
-          auto e_to_neg_d_arg_lhs,
-          EmitLibdeviceMathCall("__nv_exp", {neg_d_arg_lhs}, {component_type},
-                                component_type));
-      auto coeff =
-          ir_builder_->CreateFMul(aa_p_bb_to_half_c, e_to_neg_d_arg_lhs);
-      TF_ASSIGN_OR_RETURN(
-          auto ln_aa_p_bb,
-          EmitLibdeviceMathCall("__nv_log", {aa_p_bb}, {component_type},
-                                component_type));
-      auto half_d = ir_builder_->CreateFMul(one_half, d);
-      auto q =
-          ir_builder_->CreateFAdd(ir_builder_->CreateFMul(c, arg_lhs),
-                                  ir_builder_->CreateFMul(half_d, ln_aa_p_bb));
-      TF_ASSIGN_OR_RETURN(
-          auto cos_q, EmitLibdeviceMathCall("__nv_cos", {q}, {component_type},
-                                            component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto sin_q, EmitLibdeviceMathCall("__nv_sin", {q}, {component_type},
-                                            component_type));
-      return EmitComposeComplex(op, ir_builder_->CreateFMul(coeff, cos_q),
-                                ir_builder_->CreateFMul(coeff, sin_q));
-    }
-    default:
-      return ElementalIrEmitter::EmitComplexBinaryOp(op, lhs_value, rhs_value);
-  }
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
+                                                        llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_log1p", {value}, {prim_type}, prim_type);
 }
 
-StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitComplexUnaryOp(
-    const HloInstruction* op, llvm::Value* operand_value) const {
-  PrimitiveType input_type = op->operand(0)->shape().element_type();
-  PrimitiveType component_type =
-      primitive_util::IsComplexType(input_type)
-          ? primitive_util::ComplexComponentType(input_type)
-          : input_type;
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_sin", {value}, {prim_type}, prim_type);
+}
 
-  switch (op->opcode()) {
-    case HloOpcode::kLog: {
-      // log(a+bi) = .5*log(a^2+b^2) + i*atan2(b, a)
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      llvm::Type* llvm_ty = a->getType();
-      auto sum_sq = ir_builder_->CreateFAdd(ir_builder_->CreateFMul(a, a),
-                                            ir_builder_->CreateFMul(b, b));
-      TF_ASSIGN_OR_RETURN(
-          auto log_sum_sq,
-          EmitLibdeviceMathCall("__nv_log", {sum_sq}, {component_type},
-                                component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto angle, EmitLibdeviceMathCall("__nv_atan2", {b, a},
-                                            {component_type, component_type},
-                                            component_type));
-      auto one_half = llvm::ConstantFP::get(llvm_ty, 0.5);
-      return EmitComposeComplex(
-          op, ir_builder_->CreateFMul(one_half, log_sum_sq), angle);
-    }
-    case HloOpcode::kExp: {
-      // e^(a+bi) = e^a*(cos(b)+sin(b)i)
-      auto b = EmitExtractImag(operand_value);
-      TF_ASSIGN_OR_RETURN(
-          auto exp_a,
-          EmitLibdeviceMathCall("__nv_exp", {EmitExtractReal(operand_value)},
-                                {component_type}, component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto cos_b, EmitLibdeviceMathCall("__nv_cos", {b}, {component_type},
-                                            component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto sin_b, EmitLibdeviceMathCall("__nv_sin", {b}, {component_type},
-                                            component_type));
-      return EmitComposeComplex(op, ir_builder_->CreateFMul(exp_a, cos_b),
-                                ir_builder_->CreateFMul(exp_a, sin_b));
-    }
-    case HloOpcode::kCos: {
-      // cos(a+bi) = .5(cos(a)*(e^-b+e^b) + i*sin(a)*(e^-b-e^b))
-      auto a = EmitExtractReal(operand_value);
-      auto llvm_ty = a->getType();
-      TF_ASSIGN_OR_RETURN(
-          auto exp_b,
-          EmitLibdeviceMathCall("__nv_exp", {EmitExtractImag(operand_value)},
-                                {component_type}, component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto cos_a, EmitLibdeviceMathCall("__nv_cos", {a}, {component_type},
-                                            component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto sin_a, EmitLibdeviceMathCall("__nv_sin", {a}, {component_type},
-                                            component_type));
-      auto half_exp_b =
-          ir_builder_->CreateFMul(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
-      auto half_exp_neg_b =
-          ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
-      return EmitComposeComplex(
-          op,
-          ir_builder_->CreateFMul(
-              cos_a, ir_builder_->CreateFAdd(half_exp_neg_b, half_exp_b)),
-          ir_builder_->CreateFMul(
-              sin_a, ir_builder_->CreateFSub(half_exp_neg_b, half_exp_b)));
-    }
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_cos", {value}, {prim_type}, prim_type);
+}
 
-    case HloOpcode::kSin: {
-      // sin(a+bi) = 0.5(sin(a)*(e^b+e^-b) + i*cos(a)*(e^b-e^-b)
-      auto a = EmitExtractReal(operand_value);
-      auto llvm_ty = a->getType();
-      TF_ASSIGN_OR_RETURN(
-          auto exp_b,
-          EmitLibdeviceMathCall("__nv_exp", {EmitExtractImag(operand_value)},
-                                {component_type}, component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto cos_a, EmitLibdeviceMathCall("__nv_cos", {a}, {component_type},
-                                            component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto sin_a, EmitLibdeviceMathCall("__nv_sin", {a}, {component_type},
-                                            component_type));
-      auto half_exp_b =
-          ir_builder_->CreateFMul(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
-      auto half_exp_neg_b =
-          ir_builder_->CreateFDiv(llvm::ConstantFP::get(llvm_ty, 0.5), exp_b);
-      return EmitComposeComplex(
-          op,
-          ir_builder_->CreateFMul(
-              sin_a, ir_builder_->CreateFAdd(half_exp_b, half_exp_neg_b)),
-          ir_builder_->CreateFMul(
-              cos_a, ir_builder_->CreateFSub(half_exp_b, half_exp_neg_b)));
-    }
-    case HloOpcode::kTanh: {
-      /*
-      tanh=(exp(x)-exp(-x)) / (exp(x)+exp(-x))
-      e^(a+bi) = e^a*(cos(b)+sin(b)i)
-      so tanh=(((cos(b)+sin(b)i)e^a - (cos(-b)+sin(-b)i)e^-a)) /
-              (((cos(b)+sin(b)i)e^a + (cos(-b)+sin(-b)i)e^-a))
-      cos(b)=cos(-b), sin(-b)=-sin(b)
-      so tanh=(((cos(b)+sin(b)i)e^a - (cos(b)-sin(b)i)e^-a)) /
-              (((cos(b)+sin(b)i)e^a + (cos(b)-sin(b)i)e^-a))
-             =(cos(b)e^a+i*sin(b)e^a + cos(b)(-e^-a)+i*sin(b)e^-a) /
-              (cos(b)e^a+i*sin(b)e^a + cos(b)e^-a+i*sin(b)(-e^-a))
-             =(cos(b)(e^a-e^-a) + i*sin(b)(e^a+e^-a)) /
-              (cos(b)(e^a+e^-a) + i*sin(b)(e^a-e^-a))
-      This is a complex division, so we can multiply by denom_conj/denom_conj
-             =(cos(b)(e^a-e^-a) + i*sin(b)(e^a+e^-a)) *
-              (cos(b)(e^a+e^-a) - i*sin(b)(e^a-e^-a)) /
-              ((cos(b)(e^a+e^-a))^2 + (sin(b)(e^a-e^-a))^2)
-             =(cos(b)^2(e^(2a)-e^(-2a)) + sin(b)^2(e^(2a)-e^(-2a)) +
-               i*(cos(b)sin(b)(e^a+e^-a)^2 - cos(b)sin(b)(e^a-e^-a)^2)) /
-              ((cos(b)(e^a+e^-a))^2 + (sin(b)(e^a-e^-a))^2)
-      */
-      auto a = EmitExtractReal(operand_value);
-      auto b = EmitExtractImag(operand_value);
-      TF_ASSIGN_OR_RETURN(
-          auto exp_a, EmitLibdeviceMathCall("__nv_exp", {a}, {component_type},
-                                            component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto cos_b, EmitLibdeviceMathCall("__nv_cos", {b}, {component_type},
-                                            component_type));
-      TF_ASSIGN_OR_RETURN(
-          auto sin_b, EmitLibdeviceMathCall("__nv_sin", {b}, {component_type},
-                                            component_type));
-      auto exp_neg_a = ir_builder_->CreateFDiv(
-          llvm::ConstantFP::get(exp_a->getType(), 1), exp_a);
-      auto exp_2a_minus_exp_neg_2a = ir_builder_->CreateFSub(
-          ir_builder_->CreateFMul(exp_a, exp_a),
-          ir_builder_->CreateFMul(exp_neg_a, exp_neg_a));
-      auto cos_b_sq = ir_builder_->CreateFMul(cos_b, cos_b);
-      auto sin_b_sq = ir_builder_->CreateFMul(sin_b, sin_b);
-      auto real_num = ir_builder_->CreateFAdd(
-          ir_builder_->CreateFMul(cos_b_sq, exp_2a_minus_exp_neg_2a),
-          ir_builder_->CreateFMul(sin_b_sq, exp_2a_minus_exp_neg_2a));
-      auto cos_b_sin_b = ir_builder_->CreateFMul(cos_b, sin_b);
-      auto exp_a_plus_exp_neg_a = ir_builder_->CreateFAdd(exp_a, exp_neg_a);
-      auto exp_a_plus_exp_neg_a_sq =
-          ir_builder_->CreateFMul(exp_a_plus_exp_neg_a, exp_a_plus_exp_neg_a);
-      auto exp_a_minus_exp_neg_a = ir_builder_->CreateFSub(exp_a, exp_neg_a);
-      auto exp_a_minus_exp_neg_a_sq =
-          ir_builder_->CreateFMul(exp_a_minus_exp_neg_a, exp_a_minus_exp_neg_a);
-      auto imag_num = ir_builder_->CreateFMul(
-          cos_b_sin_b, ir_builder_->CreateFSub(exp_a_plus_exp_neg_a_sq,
-                                               exp_a_minus_exp_neg_a_sq));
-      auto denom = ir_builder_->CreateFAdd(
-          ir_builder_->CreateFMul(cos_b_sq, exp_a_plus_exp_neg_a_sq),
-          ir_builder_->CreateFMul(sin_b_sq, exp_a_minus_exp_neg_a_sq));
-      return EmitComposeComplex(op, ir_builder_->CreateFDiv(real_num, denom),
-                                ir_builder_->CreateFDiv(imag_num, denom));
-    }
-    default:
-      return ElementalIrEmitter::EmitComplexUnaryOp(op, operand_value);
-  }
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(PrimitiveType prim_type,
+                                                      llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_exp", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
+                                                        llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_expm1", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
+                                                      llvm::Value* lhs,
+                                                      llvm::Value* rhs) {
+  return EmitLibdeviceMathCall("__nv_pow", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
+                                                        llvm::Value* lhs,
+                                                        llvm::Value* rhs) {
+  return EmitLibdeviceMathCall("__nv_atan2", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  // Emit a fast approximation of tanh instead of calling __nv_tanh.
+  // __nv_tanh is particularly bad because it contains branches, thus
+  // preventing LLVM's load-store vectorizer from working its magic across a
+  // function which contains tanh calls.
+  //
+  // This routine isn't numerically precise, but it's good enough for ML.
+
+  // Upcast F16 to F32 if necessary.
+  llvm::Type* type = prim_type == F16 ? b_->getFloatTy() : value->getType();
+  llvm::Value* input = FPCast(value, type);
+  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
+  return FPCast(fast_tanh, value->getType());
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) const {
+    const string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_types, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes) {
   std::vector<llvm::Type*> ir_input_types;
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
@@ -466,37 +299,35 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
 
   // Declares the callee if it is not declared already.
   llvm::Function* callee = llvm::cast<llvm::Function>(
-      ir_builder_->GetInsertBlock()->getModule()->getOrInsertFunction(
+      b_->GetInsertBlock()->getModule()->getOrInsertFunction(
           llvm_ir::AsStringRef(callee_name), callee_type));
 
   for (auto attribute : attributes) {
     callee->addFnAttr(attribute);
   }
 
-  return ir_builder_->CreateCall(callee, llvm_ir::AsArrayRef(operands));
+  return Call(callee, llvm_ir::AsArrayRef(operands));
 }
 
-llvm::Value* GpuElementalIrEmitter::EmitThreadId() const {
-  llvm::Value* block_id = ir_builder_->CreateIntCast(
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getIntNTy(128), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block = ir_builder_->CreateIntCast(
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getIntNTy(128), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = ir_builder_->CreateIntCast(
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
-  return ir_builder_->CreateNSWAdd(
-      ir_builder_->CreateNSWMul(block_id, threads_per_block),
-      thread_id_in_block);
+llvm::Value* GpuElementalIrEmitter::EmitThreadId() {
+  llvm::Value* block_id =
+      IntCast(llvm_ir::EmitCallToIntrinsic(
+                  llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b_),
+              b_->getIntNTy(128), /*isSigned=*/true, "block.id");
+  llvm::Value* thread_id_in_block =
+      IntCast(llvm_ir::EmitCallToIntrinsic(
+                  llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_),
+              b_->getIntNTy(128), /*isSigned=*/true, "thread.id");
+  llvm::Value* threads_per_block =
+      IntCast(llvm_ir::EmitCallToIntrinsic(
+                  llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x, {}, {}, b_),
+              b_->getIntNTy(128), /*isSigned=*/true, "threads_per_block");
+  return NSWAdd(NSWMul(block_id, threads_per_block), thread_id_in_block);
 }
 
 llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
-    const HloToElementGeneratorMap& operand_to_generator) const {
+    const HloToElementGeneratorMap& operand_to_generator) {
   switch (hlo->opcode()) {
     case HloOpcode::kMap:
       return [=, &operand_to_generator](
@@ -527,24 +358,23 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* operand = hlo->operand(0);
         const Window& window = hlo->window();
 
-        // TODO(b/31410564): Implement dilation for reduce-window.
-        if (window_util::HasDilation(window)) {
-          return Unimplemented(
-              "Dilation for reduce-window not implemented on GPU. "
-              "See b/31410564.");
-        }
-
         PrimitiveType operand_element_type = operand->shape().element_type();
         llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
             llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
-            "reduce_window_accum_ptr", ir_builder_);
+            "reduce_window_accum_ptr", b_);
         {
           TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
-                              operand_to_generator.at(hlo->operand(1))({}));
-          ir_builder_->CreateStore(init_value, accum_ptr);
+                              operand_to_generator.at(hlo->operand(1))(
+                                  IrArray::Index(index.GetType())));
+          Store(init_value, accum_ptr);
         }
 
-        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
+        llvm::Type* index_type = index.GetType();
+        auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+          return index.GetConstantWithIndexType(c);
+        };
+
+        llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
         std::vector<int64> window_size;
         for (const auto& dim : window.dimensions()) {
           window_size.push_back(dim.size());
@@ -553,57 +383,74 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
             ShapeUtil::MakeShape(operand_element_type, window_size), "window");
         CHECK_EQ(window_index.size(), index.size());
 
-        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
+        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
 
-        IrArray::Index input_index(index.size());
-        llvm::Value* in_bounds = ir_builder_->getInt1(true);
+        IrArray::Index input_index(index_type, index.size());
+        llvm::Value* in_bounds = b_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
-          llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
-              index[i], ir_builder_->getInt64(window.dimensions(i).stride()));
-          input_index[i] = ir_builder_->CreateNSWSub(
-              ir_builder_->CreateNSWAdd(stridden_index, window_index[i]),
-              ir_builder_->getInt64(window.dimensions(i).padding_low()));
+          llvm::Value* stridden_index = NSWMul(
+              index[i], index_typed_const(window.dimensions(i).stride()));
+          input_index[i] = NSWSub(
+              NSWAdd(stridden_index,
+                     NSWMul(window_index[i],
+                            index_typed_const(
+                                window.dimensions(i).window_dilation()))),
+              index_typed_const(window.dimensions(i).padding_low()));
+
+          // We need to verify that we are not in the dilated base area.
+          llvm::Value* dilation_condition = ICmpEQ(
+              SRem(input_index[i],
+                   index_typed_const(window.dimensions(i).base_dilation())),
+              index_typed_const(0));
+          in_bounds = And(in_bounds, dilation_condition);
+
+          // Apply base dilation to the index.
+          input_index[i] =
+              SDiv(input_index[i],
+                   index_typed_const(window.dimensions(i).base_dilation()));
 
           // We must check whether 0 ≤ input_index[i] < bound, as otherwise
           // we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
           // input_index[i] < bound, as a negative value wraps to a large
           // positive value.
-          in_bounds = ir_builder_->CreateAnd(
-              in_bounds,
-              ir_builder_->CreateICmpULT(
-                  input_index[i],
-                  ir_builder_->getInt64(operand->shape().dimensions(i))));
+          in_bounds =
+              And(in_bounds,
+                  ICmpULT(input_index[i],
+                          index_typed_const(operand->shape().dimensions(i))));
         }
 
         llvm_ir::LlvmIfData if_data =
-            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", ir_builder_);
-        SetToFirstInsertPoint(if_data.true_block, ir_builder_);
+            llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", b_);
+        SetToFirstInsertPoint(if_data.true_block, b_);
 
         // We are not in pad, so do the computation.
         TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                             operand_to_generator.at(operand)(input_index));
         TF_ASSIGN_OR_RETURN(
             llvm::Value * accum_value,
-            compute_nested_(*hlo->to_apply(),
-                            {ir_builder_->CreateLoad(accum_ptr), input_value}));
-        ir_builder_->CreateStore(accum_value, accum_ptr);
+            compute_nested_(*hlo->to_apply(), {Load(accum_ptr), input_value}));
+        Store(accum_value, accum_ptr);
 
-        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), ir_builder_);
-        return ir_builder_->CreateLoad(accum_ptr);
+        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b_);
+        return Load(accum_ptr);
       };
     case HloOpcode::kReduce:
+      // TODO(b/112040122): This should be supported.
+      CHECK_EQ(hlo->operand_count(), 2) << "Did not expect variadic reduce";
       return [=, &operand_to_generator](
                  const IrArray::Index& output_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
         llvm::Value* accum_ptr =
-            ir_builder()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
+            b()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
                 hlo->shape().element_type(), module_));
+        llvm::Type* index_type = output_index.GetType();
         TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
-                            operand_to_generator.at(hlo->operand(1))({}));
-        ir_builder()->CreateStore(init_value, accum_ptr);
+                            operand_to_generator.at(hlo->operand(1))(
+                                IrArray::Index(index_type)));
+        b()->CreateStore(init_value, accum_ptr);
 
-        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
         IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
             operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {
@@ -618,18 +465,17 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
           CHECK_EQ(output_index.size(), j);
         }
 
-        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder());
+        SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
         TF_ASSIGN_OR_RETURN(
             llvm::Value * input_value,
             operand_to_generator.at(hlo->operand(0))(input_index));
         TF_ASSIGN_OR_RETURN(
             llvm::Value * accum_value,
-            compute_nested_(
-                *hlo->to_apply(),
-                {ir_builder()->CreateLoad(accum_ptr), input_value}));
-        ir_builder()->CreateStore(accum_value, accum_ptr);
-        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), ir_builder());
-        return ir_builder()->CreateLoad(accum_ptr);
+            compute_nested_(*hlo->to_apply(),
+                            {b()->CreateLoad(accum_ptr), input_value}));
+        b()->CreateStore(accum_value, accum_ptr);
+        SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), b());
+        return b()->CreateLoad(accum_ptr);
       };
     default:
       return ElementalIrEmitter::MakeElementGenerator(hlo,
