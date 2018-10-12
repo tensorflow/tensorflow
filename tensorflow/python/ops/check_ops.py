@@ -476,7 +476,7 @@ def assert_near(
   If both `x` and `y` are empty, this is trivially satisfied.
 
   The default `atol` and `rtol` is `10 * eps`, where `eps` is the smallest
-  representable positive number such that `1 + eps != eps`.  This is about
+  representable positive number such that `1 + eps != 1`.  This is about
   `1.2e-6` in `32bit`, `2.22e-15` in `64bit`, and `0.00977` in `16bit`.
   See `numpy.finfo`.
 
