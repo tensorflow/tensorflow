@@ -275,21 +275,7 @@ bool CompositeNodeManager::Empty() const {
   return empty && send_manager_.Empty() && recv_manager_.Empty();
 }
 
-VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
-                                   const bool use_static_shapes,
-                                   Cluster* cluster,
-                                   ReadyNodeManager* ready_nodes)
-    : ready_nodes_(ready_nodes),
-      graph_costs_(Costs::ZeroCosts()),
-      graph_properties_(*grappler_item),
-      cluster_(cluster),
-      grappler_item_(grappler_item),
-      use_static_shapes_(use_static_shapes),
-      placer_(cluster) {
-  graph_costs_.num_ops_total = 0;
-  initialized_ = false;
-}
-
+// TODO(pcma): Modify to return unique_ptr instead
 ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
     const string& ready_node_manager) {
   if (ready_node_manager == "FIFO") {
@@ -304,21 +290,69 @@ ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
+VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
+                                   const bool use_static_shapes,
+                                   Cluster* cluster,
+                                   ReadyNodeManager* ready_nodes)
+    : ready_nodes_(ready_nodes),
+      graph_costs_(Costs::ZeroCosts()),
+      graph_properties_(new GraphProperties(*grappler_item)),
+      cluster_(cluster),
+      grappler_item_(grappler_item),
+      use_static_shapes_(use_static_shapes),
+      placer_(cluster) {
+  graph_costs_.num_ops_total = 0;
+  initialized_ = false;
+}
+
+VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
+                                   Cluster* cluster,
+                                   ReadyNodeManager* ready_nodes)
+    : ready_nodes_(ready_nodes),
+      graph_costs_(Costs::ZeroCosts()),
+      cluster_(cluster),
+      use_static_shapes_(use_static_shapes),
+      placer_(cluster) {
+  graph_costs_.num_ops_total = 0;
+  initialized_ = false;
+}
+
+Status VirtualScheduler::Init(const GrapplerItem* item) {
+  grappler_item_ = item;
+  graph_properties_ = absl::make_unique<GraphProperties>(*item);
+
+  return Init();
+}
+
+// TODO(pcma): Merge with Init(const GrapplerItem* item) when this
+// deprecated API is deleted
 Status VirtualScheduler::Init() {
+  initialized_ = false;
+
+  // Clear all internal states so that the VirtualScheduler is reusable for
+  // different GrapplerItems
+  node_map_.clear();
+  device_.clear();
+  additional_nodes_.clear();
+
+  graph_costs_ = Costs::ZeroCosts();
+  graph_costs_.num_ops_total = 0;
+  op_to_cost_.clear();
+
+  op_counts_.clear();
+  op_costs_.clear();
+
   // Init() preprocesses the input grappler_item and graph_properties to extract
   // necessary information for emulating tensorflow op scheduling and
   // construct internal data structures (NodeState and DeviceState) for virtual
   // scheduling.
   ready_nodes_->Init(GetNodeStates());
+
   // Construct graph properties.
-  Status status;
   if (use_static_shapes_) {
-    status = graph_properties_.InferStatically(true);
+    TF_RETURN_IF_ERROR(graph_properties_->InferStatically(true));
   } else {
-    status = graph_properties_.InferDynamically(cluster_);
-  }
-  if (!status.ok()) {
-    return status;
+    TF_RETURN_IF_ERROR(graph_properties_->InferDynamically(cluster_));
   }
 
   const auto& graph = grappler_item_->graph;
@@ -513,7 +547,7 @@ void VirtualScheduler::MaybeUpdateInputOutput(const NodeDef* node) {
       outputs.push_back(control_message);
     } else {
       auto output_properties =
-          graph_properties_.GetOutputProperties(NodeName(input_source_name));
+          graph_properties_->GetOutputProperties(NodeName(input_source_name));
       // Like with HasInputProperties, if a node does not have output
       // properties, it's likely it was pruned during the shape inference run.
       if (!output_properties.empty()) {
@@ -666,9 +700,9 @@ NodeState& VirtualScheduler::GetNodeStateOrCreateIt(const NodeDef* node) {
   it = node_map_.emplace(node, NodeState()).first;
   auto& node_state = it->second;
   node_state.input_properties =
-      graph_properties_.GetInputProperties(node->name());
+      graph_properties_->GetInputProperties(node->name());
   node_state.output_properties =
-      graph_properties_.GetOutputProperties(node->name());
+      graph_properties_->GetOutputProperties(node->name());
 
   // Some ops may need further processing to the input / output properties:
   // _Send and _Recv.
@@ -982,10 +1016,11 @@ Costs VirtualScheduler::Summary() const {
 }
 
 Costs VirtualScheduler::Summary(RunMetadata* metadata) {
-  if (!metadata) {
-    return Summary();
-  }
+  if (metadata) GenerateRunMetadata(metadata);
+  return Summary();
+}
 
+void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
   // Fill RunMetadata's step_stats and partition_graphs fields.
   StepStats* stepstats = metadata->mutable_step_stats();
   for (const auto& device : device_) {
@@ -1034,8 +1069,6 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
       *device_partition_graph->add_node() = *node_def;
     }
   }
-
-  return Summary();
 }
 
 const std::unordered_map<string, int64> VirtualScheduler::GetPeakMemoryUsage()
