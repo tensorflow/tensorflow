@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace toco {
@@ -1258,6 +1260,16 @@ class TensorFlowUnsupported : public BaseOperator {
       return std::unique_ptr<flexbuffers::Builder>();
     }
 
+    if (ShouldExportAsFlexOp(allow_flex_ops_, node_def.op())) {
+      fbb->Vector([&]() {
+        fbb->String(node_def.op());
+        fbb->String(op.tensorflow_node_def);
+      });
+      fbb->Finish();
+      LOG(INFO) << "Writing flex op: " << node_def.op();
+      return std::unique_ptr<flexbuffers::Builder>(fbb.release());
+    }
+
     bool has_valid_attr = false;
     size_t map_start = fbb->StartMap();
     for (const auto& pair : node_def.attr()) {
@@ -1586,6 +1598,21 @@ std::map<string, std::unique_ptr<BaseOperator>> BuildOperatorByNameMap(
   }
 
   return result;
+}
+
+bool ShouldExportAsFlexOp(bool allow_flex_ops,
+                          const string& tensorflow_op_name) {
+  // If Flex ops aren't allow at all, simply return false.
+  if (!allow_flex_ops) {
+    return false;
+  }
+  // Check if we can find the `OpDef` for the TensorFlow op. If we can find
+  // it, export the op as an Flex op. Otherwise, export it as a regular custom
+  // op.
+  const tensorflow::OpDef* op_def = nullptr;
+  return tensorflow::OpRegistry::Global()
+      ->LookUpOpDef(tensorflow_op_name, &op_def)
+      .ok();
 }
 
 }  // namespace tflite

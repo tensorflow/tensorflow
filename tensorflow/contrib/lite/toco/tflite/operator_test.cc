@@ -569,6 +569,12 @@ TEST_F(OperatorTest, TensorFlowUnsupportedWithoutAttr) {
   EXPECT_TRUE(output_node_def.attr().empty());
 }
 
+TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
+  EXPECT_FALSE(ShouldExportAsFlexOp(false, "Conv2D"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "Conv2D"));
+  EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
+}
+
 }  // namespace
 }  // namespace tflite
 
