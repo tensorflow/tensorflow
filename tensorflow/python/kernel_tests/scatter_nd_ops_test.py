@@ -285,6 +285,15 @@ class StatefulScatterNdTest(test.TestCase):
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
 
+  def testResVarInvalidOutputShape(self):
+    res = variables.Variable(
+        initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
+        dtype=dtypes.float32)
+    with self.cached_session():
+      res.initializer.run()
+      with self.assertRaisesOpError("Output must be at least 1-D"):
+        state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
+
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
     updates = array_ops.zeros([1, 1], dtypes.int32)
