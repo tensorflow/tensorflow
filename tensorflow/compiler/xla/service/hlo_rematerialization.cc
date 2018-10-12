@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -981,7 +982,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // rematerialization is essentially a move). If the next rematerialization of
   // the instruction is also a move then the rematerialization is added to the
   // blacklist.
-  tensorflow::gtl::FlatSet<const HloInstruction*> remat_move_instructions;
+  absl::flat_hash_set<const HloInstruction*> remat_move_instructions;
 
   // The map from instructions to their rematerializable status.
   absl::flat_hash_map<const HloInstruction*, bool> remat_able;
