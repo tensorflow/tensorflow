@@ -5474,79 +5474,6 @@ func Sign(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// ArgMinAttr is an optional argument to ArgMin.
-type ArgMinAttr func(optionalAttr)
-
-// ArgMinOutputType sets the optional output_type attribute to value.
-// If not specified, defaults to DT_INT64
-func ArgMinOutputType(value tf.DataType) ArgMinAttr {
-	return func(m optionalAttr) {
-		m["output_type"] = value
-	}
-}
-
-// Returns the index with the smallest value across dimensions of a tensor.
-//
-// Note that in case of ties the identity of the return value is not guaranteed.
-//
-// Arguments:
-//
-//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
-// Describes which dimension of the input Tensor to reduce across. For vectors,
-// use dimension = 0.
-func ArgMin(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMinAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ArgMin",
-		Input: []tf.Input{
-			input, dimension,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Convert the quantized 'input' tensor into a lower-precision 'output', using the
-//
-// output range specified with 'requested_output_min' and 'requested_output_max'.
-//
-// [input_min, input_max] are scalar floats that specify the range for the float
-// interpretation of the 'input' data. For example, if input_min is -1.0f and
-// input_max is 1.0f, and we are dealing with quint16 quantized data, then a 0
-// value in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f.
-//
-// Arguments:
-//
-//	input_min: The float value that the minimum quantized input value represents.
-//	input_max: The float value that the maximum quantized input value represents.
-//	requested_output_min: The float value that the minimum quantized output value represents.
-//	requested_output_max: The float value that the maximum quantized output value represents.
-//	out_type: The type of the output. Should be a lower bit depth than Tinput.
-//
-// Returns The requested_output_min value is copied into this output.The requested_output_max value is copied into this output.
-func Requantize(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, requested_output_min tf.Output, requested_output_max tf.Output, out_type tf.DataType) (output tf.Output, output_min tf.Output, output_max tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"out_type": out_type}
-	opspec := tf.OpSpec{
-		Type: "Requantize",
-		Input: []tf.Input{
-			input, input_min, input_max, requested_output_min, requested_output_max,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
 // PreventGradientAttr is an optional argument to PreventGradient.
 type PreventGradientAttr func(optionalAttr)
 
@@ -12631,6 +12558,124 @@ func SparseMatMul(scope *Scope, a tf.Output, b tf.Output, optional ...SparseMatM
 	return op.Output(0)
 }
 
+// CudnnRNNCanonicalToParamsAttr is an optional argument to CudnnRNNCanonicalToParams.
+type CudnnRNNCanonicalToParamsAttr func(optionalAttr)
+
+// CudnnRNNCanonicalToParamsRnnMode sets the optional rnn_mode attribute to value.
+// If not specified, defaults to "lstm"
+func CudnnRNNCanonicalToParamsRnnMode(value string) CudnnRNNCanonicalToParamsAttr {
+	return func(m optionalAttr) {
+		m["rnn_mode"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsInputMode sets the optional input_mode attribute to value.
+// If not specified, defaults to "linear_input"
+func CudnnRNNCanonicalToParamsInputMode(value string) CudnnRNNCanonicalToParamsAttr {
+	return func(m optionalAttr) {
+		m["input_mode"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsDirection sets the optional direction attribute to value.
+// If not specified, defaults to "unidirectional"
+func CudnnRNNCanonicalToParamsDirection(value string) CudnnRNNCanonicalToParamsAttr {
+	return func(m optionalAttr) {
+		m["direction"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsDropout sets the optional dropout attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsDropout(value float32) CudnnRNNCanonicalToParamsAttr {
+	return func(m optionalAttr) {
+		m["dropout"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsSeed sets the optional seed attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsSeed(value int64) CudnnRNNCanonicalToParamsAttr {
+	return func(m optionalAttr) {
+		m["seed"] = value
+	}
+}
+
+// CudnnRNNCanonicalToParamsSeed2 sets the optional seed2 attribute to value.
+// If not specified, defaults to 0
+func CudnnRNNCanonicalToParamsSeed2(value int64) CudnnRNNCanonicalToParamsAttr {
+	return func(m optionalAttr) {
+		m["seed2"] = value
+	}
+}
+
+// Converts CudnnRNN params from canonical form to usable form.
+//
+// Writes a set of weights into the opaque params buffer so they can be used in
+// upcoming training or inferences.
+//
+// Note that the params buffer may not be compatible across different GPUs. So any
+// save and restoration should be converted to and from the canonical weights and
+// biases.
+//
+// num_layers: Specifies the number of layers in the RNN model.
+// num_units: Specifies the size of the hidden state.
+// input_size: Specifies the size of the input state.
+// weights: the canonical form of weights that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// biases: the canonical form of biases that can be used for saving
+//     and restoration. They are more likely to be compatible across different
+//     generations.
+// num_params: number of parameter sets for all layers.
+//     Each layer may contain multiple parameter sets, with each set consisting of
+//     a weight matrix and a bias vector.
+// rnn_mode: Indicates the type of the RNN model.
+// input_mode: Indicate whether there is a linear projection between the input and
+//     The actual computation before the first layer. 'skip_input' is only allowed
+//     when input_size == num_units; 'auto_select' implies 'skip_input' when
+//     input_size == num_units; otherwise, it implies 'linear_input'.
+// direction: Indicates whether a bidirectional model will be used.
+//     dir = (direction == bidirectional) ? 2 : 1
+// dropout: dropout probability. When set to 0., dropout is disabled.
+// seed: the 1st part of a seed to initialize dropout.
+// seed2: the 2nd part of a seed to initialize dropout.
+func CudnnRNNCanonicalToParams(scope *Scope, num_layers tf.Output, num_units tf.Output, input_size tf.Output, weights []tf.Output, biases []tf.Output, optional ...CudnnRNNCanonicalToParamsAttr) (params tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CudnnRNNCanonicalToParams",
+		Input: []tf.Input{
+			num_layers, num_units, input_size, tf.OutputList(weights), tf.OutputList(biases),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset containing elements of first component of `input_dataset` having true in the last component.
+func FilterByLastComponentDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "FilterByLastComponentDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Elementwise computes the bitwise AND of `x` and `y`.
 //
 // The result will have those bits set, that are set in both `x` and `y`. The
@@ -18036,124 +18081,6 @@ func ResourceApplyAdagradDA(scope *Scope, var_ tf.Output, gradient_accumulator t
 	return scope.AddOperation(opspec)
 }
 
-// Creates a dataset containing elements of first component of `input_dataset` having true in the last component.
-func FilterByLastComponentDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "FilterByLastComponentDataset",
-		Input: []tf.Input{
-			input_dataset,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CudnnRNNCanonicalToParamsAttr is an optional argument to CudnnRNNCanonicalToParams.
-type CudnnRNNCanonicalToParamsAttr func(optionalAttr)
-
-// CudnnRNNCanonicalToParamsRnnMode sets the optional rnn_mode attribute to value.
-// If not specified, defaults to "lstm"
-func CudnnRNNCanonicalToParamsRnnMode(value string) CudnnRNNCanonicalToParamsAttr {
-	return func(m optionalAttr) {
-		m["rnn_mode"] = value
-	}
-}
-
-// CudnnRNNCanonicalToParamsInputMode sets the optional input_mode attribute to value.
-// If not specified, defaults to "linear_input"
-func CudnnRNNCanonicalToParamsInputMode(value string) CudnnRNNCanonicalToParamsAttr {
-	return func(m optionalAttr) {
-		m["input_mode"] = value
-	}
-}
-
-// CudnnRNNCanonicalToParamsDirection sets the optional direction attribute to value.
-// If not specified, defaults to "unidirectional"
-func CudnnRNNCanonicalToParamsDirection(value string) CudnnRNNCanonicalToParamsAttr {
-	return func(m optionalAttr) {
-		m["direction"] = value
-	}
-}
-
-// CudnnRNNCanonicalToParamsDropout sets the optional dropout attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNCanonicalToParamsDropout(value float32) CudnnRNNCanonicalToParamsAttr {
-	return func(m optionalAttr) {
-		m["dropout"] = value
-	}
-}
-
-// CudnnRNNCanonicalToParamsSeed sets the optional seed attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNCanonicalToParamsSeed(value int64) CudnnRNNCanonicalToParamsAttr {
-	return func(m optionalAttr) {
-		m["seed"] = value
-	}
-}
-
-// CudnnRNNCanonicalToParamsSeed2 sets the optional seed2 attribute to value.
-// If not specified, defaults to 0
-func CudnnRNNCanonicalToParamsSeed2(value int64) CudnnRNNCanonicalToParamsAttr {
-	return func(m optionalAttr) {
-		m["seed2"] = value
-	}
-}
-
-// Converts CudnnRNN params from canonical form to usable form.
-//
-// Writes a set of weights into the opaque params buffer so they can be used in
-// upcoming training or inferences.
-//
-// Note that the params buffer may not be compatible across different GPUs. So any
-// save and restoration should be converted to and from the canonical weights and
-// biases.
-//
-// num_layers: Specifies the number of layers in the RNN model.
-// num_units: Specifies the size of the hidden state.
-// input_size: Specifies the size of the input state.
-// weights: the canonical form of weights that can be used for saving
-//     and restoration. They are more likely to be compatible across different
-//     generations.
-// biases: the canonical form of biases that can be used for saving
-//     and restoration. They are more likely to be compatible across different
-//     generations.
-// num_params: number of parameter sets for all layers.
-//     Each layer may contain multiple parameter sets, with each set consisting of
-//     a weight matrix and a bias vector.
-// rnn_mode: Indicates the type of the RNN model.
-// input_mode: Indicate whether there is a linear projection between the input and
-//     The actual computation before the first layer. 'skip_input' is only allowed
-//     when input_size == num_units; 'auto_select' implies 'skip_input' when
-//     input_size == num_units; otherwise, it implies 'linear_input'.
-// direction: Indicates whether a bidirectional model will be used.
-//     dir = (direction == bidirectional) ? 2 : 1
-// dropout: dropout probability. When set to 0., dropout is disabled.
-// seed: the 1st part of a seed to initialize dropout.
-// seed2: the 2nd part of a seed to initialize dropout.
-func CudnnRNNCanonicalToParams(scope *Scope, num_layers tf.Output, num_units tf.Output, input_size tf.Output, weights []tf.Output, biases []tf.Output, optional ...CudnnRNNCanonicalToParamsAttr) (params tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CudnnRNNCanonicalToParams",
-		Input: []tf.Input{
-			num_layers, num_units, input_size, tf.OutputList(weights), tf.OutputList(biases),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SparseReduceMaxSparseAttr is an optional argument to SparseReduceMaxSparse.
 type SparseReduceMaxSparseAttr func(optionalAttr)
 
@@ -22020,6 +21947,79 @@ func QuantizeDownAndShrinkRange(scope *Scope, input tf.Output, input_min tf.Outp
 		Type: "QuantizeDownAndShrinkRange",
 		Input: []tf.Input{
 			input, input_min, input_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// ArgMinAttr is an optional argument to ArgMin.
+type ArgMinAttr func(optionalAttr)
+
+// ArgMinOutputType sets the optional output_type attribute to value.
+// If not specified, defaults to DT_INT64
+func ArgMinOutputType(value tf.DataType) ArgMinAttr {
+	return func(m optionalAttr) {
+		m["output_type"] = value
+	}
+}
+
+// Returns the index with the smallest value across dimensions of a tensor.
+//
+// Note that in case of ties the identity of the return value is not guaranteed.
+//
+// Arguments:
+//
+//	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
+// Describes which dimension of the input Tensor to reduce across. For vectors,
+// use dimension = 0.
+func ArgMin(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgMinAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ArgMin",
+		Input: []tf.Input{
+			input, dimension,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Convert the quantized 'input' tensor into a lower-precision 'output', using the
+//
+// output range specified with 'requested_output_min' and 'requested_output_max'.
+//
+// [input_min, input_max] are scalar floats that specify the range for the float
+// interpretation of the 'input' data. For example, if input_min is -1.0f and
+// input_max is 1.0f, and we are dealing with quint16 quantized data, then a 0
+// value in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f.
+//
+// Arguments:
+//
+//	input_min: The float value that the minimum quantized input value represents.
+//	input_max: The float value that the maximum quantized input value represents.
+//	requested_output_min: The float value that the minimum quantized output value represents.
+//	requested_output_max: The float value that the maximum quantized output value represents.
+//	out_type: The type of the output. Should be a lower bit depth than Tinput.
+//
+// Returns The requested_output_min value is copied into this output.The requested_output_max value is copied into this output.
+func Requantize(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, requested_output_min tf.Output, requested_output_max tf.Output, out_type tf.DataType) (output tf.Output, output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"out_type": out_type}
+	opspec := tf.OpSpec{
+		Type: "Requantize",
+		Input: []tf.Input{
+			input, input_min, input_max, requested_output_min, requested_output_max,
 		},
 		Attrs: attrs,
 	}
