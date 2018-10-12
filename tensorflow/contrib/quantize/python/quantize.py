@@ -36,6 +36,12 @@ _ACTIVATION_TYPES = {'Relu', 'Relu6', 'Identity'}
 
 _RELU_TYPES = {'Relu', 'Relu6'}
 
+_QUANTIZATION_OP = {'FakeQuantWithMinMaxVars'}
+_VALID_SRC_OP = {'Add', 'Mul'}
+_INTERMEDIATE_OP = {'Add', 'Mul'}
+_PASS_THROUGH_OP = {'Reshape', 'Identity', 'BatchToSpaceND', 'SpaceToBatchND'}
+_VALID_ACTIVATION_OP = {'Relu', 'Relu6'}
+
 
 def Quantize(graph,
              is_training,
@@ -78,6 +84,7 @@ def Quantize(graph,
     scope += '/'
 
   input_to_ops_map = input_to_ops.InputToOps(graph)
+  quantized_ops = set()
   for layer_match in _FindLayersToQuantize(graph):
     # Quantize the weights.
     context = _GetContextFromOp(layer_match.layer_op)
@@ -125,6 +132,7 @@ def Quantize(graph,
         symmetric=symmetric,
         init_min=0.0,
         producer_scope=scope)
+    quantized_ops.add(layer_match.activation_op)
 
     # Quantize the inputs and output to the bypass (if it exists). The input to
     # the bypass is the bias add, and the output is the activation.
@@ -145,6 +153,7 @@ def Quantize(graph,
           symmetric=symmetric,
           producer_scope=scope,
           consumer_scope=scope)
+      quantized_ops.add(layer_match.bias_add_op)
       # Make sure the op following this isn't an activation. In which case, we
       # shouldn't quantize it, since the activation will be Fused into the
       # Add at inference time.
@@ -167,6 +176,7 @@ def Quantize(graph,
             symmetric=symmetric,
             producer_scope=scope,
             consumer_scope=scope)
+        quantized_ops.add(layer_match.bypass_op)
 
     # Quantize bypass ops that occur after the activation.
     if layer_match.post_activation_bypass_op is not None:
@@ -200,6 +210,115 @@ def Quantize(graph,
             bits=activation_bits,
             symmetric=symmetric,
             producer_scope=scope)
+        quantized_ops.add(layer_match.post_activation_bypass_op)
+
+  _QuantizeActivationLayers(
+      quantized_ops,
+      graph,
+      is_training,
+      activation_bits,
+      ema_decay,
+      quant_delay,
+      vars_collection,
+      scope=scope)
+
+
+def _QuantizeActivationLayers(quantized_ops,
+                              graph,
+                              is_training,
+                              activation_bits=8,
+                              ema_decay=0.999,
+                              quant_delay=None,
+                              vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
+                              scope=None):
+  """Quantize intermediate activation tensors after addition and multiplication.
+
+  Args:
+    quantized_ops: Set of previously quantized activation ops.
+    graph: Graph to modify.
+    is_training: Whether quantizing training graph or eval graph.
+    activation_bits: Number of bits to use for quantizing activations.
+    ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
+      quantization intervals for quantizing activations (see here about EMA:
+      https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
+    quant_delay: (Optional, default None) Int, count of global steps for which
+      to delay quantization.  This helps weights stabilize at the start of
+      training.
+    vars_collection: (Optional) Collection where to store the variables for
+      quantization interval ends.
+    scope: The scope to be transformed. If it's not None, only the ops which are
+      in this scope will be transformed.
+
+  Raises:
+    ValueError: When quantization fails.
+  """
+  input_to_ops_map = input_to_ops.InputToOps(graph)
+  for op in (op for op in graph.get_operations()):
+    if _CheckIfQuantizableOp(op, quantized_ops):
+      logging.info('Inserting fake quant op activation_%s_quant after %s',
+                   op.type, op.name)
+      consumers = input_to_ops_map.ConsumerOperations(op)
+      _InsertQuantOp(
+          op.name,
+          'activation_' + op.type + '_quant',
+          op,
+          consumers,
+          is_training,
+          moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
+          bits=activation_bits,
+          producer_scope=scope)
+
+
+def _CheckIfQuantizableOp(src_op, quantized_ops):
+  """Check if the output of an op should be quantized.
+
+  Args:
+    src_op: op to be checked
+    quantized_ops: Set of previously quantized activation ops.
+
+  Returns:
+    Boolean specifying if output should be quantized or not.
+  """
+  src_op_name = set([src_op.type])
+  if src_op in quantized_ops:
+    return False
+  if not src_op_name.intersection(_VALID_SRC_OP):
+    return False
+
+  # If src op is an add or a mul and the output is immediately
+  # followed by an activation skip
+  if len(src_op.outputs) == 1 and len(src_op.outputs[0].consumers()) == 1:
+    op_consumers = src_op.outputs[0].consumers()
+    if set([op_consumers[0].type]).intersection(_VALID_ACTIVATION_OP):
+      logging.info('Skipping quant after %s', src_op.name)
+      return False
+  # Is an Add or a Mul
+  input_ops = src_op.inputs
+
+  for op in input_ops:
+    curr_op = op.op
+    curr_op_type = set([curr_op.type])
+    while curr_op_type.intersection(_PASS_THROUGH_OP):
+      # Walk back through pass through ops
+      curr_op = curr_op.inputs[0].op
+      curr_op_type = set([curr_op.type])
+      # Now at a valid or quantizable op, need to check if
+      # atleast one of the inputs to a valid op is connected
+      # to a quantizable op via pass through ops
+
+    if (curr_op_type.intersection(_QUANTIZATION_OP) or
+        curr_op.name.find('delayed_quant/Merge') > 0):
+      return True
+
+    if curr_op_type.intersection(_INTERMEDIATE_OP):
+      # Check if atleast one input to intermediate_op are quantizable
+      for input_op in curr_op.inputs:
+        if _CheckIfQuantizableOp(input_op.op, quantized_ops):
+          return True
+  return False
 
 
 def _FindLayersToQuantize(graph):
@@ -457,7 +576,7 @@ def _IsSkipLayer(activation_op):
       if consumer.type == 'FusedBatchNorm':
         skip_layer = True
         logging.info(
-            'Skipping quantizing %s, because it is the output of a conv/fc'
+            'Skipping quantizing %s, because it is the output of a conv/fc '
             'followed by a identity, feeding a fused batch norm.',
             activation_op.name)
   return skip_layer
