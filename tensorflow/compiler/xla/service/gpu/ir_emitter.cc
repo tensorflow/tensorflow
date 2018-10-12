@@ -264,7 +264,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //     the new value is copied to old_output, and steps 2. and 3. are repeated
 //     until atomicCAS succeeds.
 //
-// On Nvidia GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
+// On AMD GPUs, atomicCAS can only operate on 32 bit and 64 bit integers. If
 // the element type of the binary operation is 32 bits or 64 bits, the integer
 // type of the same size is used for the atomicCAS operation. On the other hand,
 // if the element type is smaller than 32 bits, int32 is used for the atomicCAS
@@ -286,11 +286,10 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //   cas_old_output_address = alloca(atomic_size);
 //   if (atomic_size != element_size) {
 //     atomic_address = output_address & ((int64)(-4));
-//     new_output_address = cas_new_output_address + (output_address & 3);
 //   } else {
 //     atomic_address = output_address;
-//     new_output_address = cas_new_output_address;
 //   }
+//   new_output_address = cas_new_output_address;
 //
 //   *cas_old_output_address = *atomic_address;
 //   do {
@@ -347,15 +346,12 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
     llvm::Type* address_int_type =
         module_->getDataLayout().getIntPtrType(output_address_type);
     atomic_memory_address = PtrToInt(output_address, address_int_type);
-    llvm::Value* mask = llvm::ConstantInt::get(address_int_type, 3);
-    llvm::Value* offset = And(atomic_memory_address, mask);
-    mask = llvm::ConstantInt::get(address_int_type, -4);
+    llvm::Value* mask = llvm::ConstantInt::get(address_int_type, -4);
     atomic_memory_address = And(atomic_memory_address, mask);
     atomic_memory_address =
         IntToPtr(atomic_memory_address, atomic_address_type);
     binop_output_address =
-        Add(PtrToInt(cas_new_output_address, address_int_type), offset);
-    binop_output_address = IntToPtr(binop_output_address, element_address_type);
+        BitCast(cas_new_output_address, element_address_type);
   } else {
     atomic_memory_address = BitCast(output_address, atomic_address_type);
     binop_output_address =
