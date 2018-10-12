@@ -304,8 +304,8 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 // TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
 // the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
-    const SmallVector<MLValue *, 4> &operands,
-    SmallVector<OperationStmt *, 4> *affineApplyOps) {
+    ArrayRef<MLValue *> operands,
+    SmallVectorImpl<OperationStmt *> &affineApplyOps) {
   struct State {
     // The ssa value for this node in the DFS traversal.
     MLValue *value;
@@ -329,7 +329,7 @@ void mlir::getReachableAffineApplyOps(
     if (auto affineApplyOp = opStmt->getAs<AffineApplyOp>()) {
       if (state.operandIndex == 0) {
         // Pre-Visit: Add 'opStmt' to reachable sequence.
-        affineApplyOps->push_back(opStmt);
+        affineApplyOps.push_back(opStmt);
       }
       if (state.operandIndex < opStmt->getNumOperands()) {
         // Visit: Add next 'affineApplyOp' operand to worklist.

@@ -22,7 +22,8 @@
 
 #include "mlir/Transforms/Utils.h"
 
-#include "mlir/IR/AffineMap.h"
+#include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -48,7 +49,7 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
-                                    ArrayRef<SSAValue *> extraIndices,
+                                    ArrayRef<MLValue *> extraIndices,
                                     AffineMap indexRemap) {
   unsigned newMemRefRank = cast<MemRefType>(newMemRef->getType())->getRank();
   (void)newMemRefRank; // unused in opt mode
@@ -101,24 +102,16 @@ bool mlir::replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
     operands.push_back(newMemRef);
 
     MLFuncBuilder builder(opStmt);
-    // Normally, we could just use extraIndices as operands, but we will
-    // clone it so that each op gets its own "private" index. See b/117159533.
     for (auto *extraIndex : extraIndices) {
-      OperationStmt::OperandMapTy operandMap;
       // TODO(mlir-team): An operation/SSA value should provide a method to
       // return the position of an SSA result in its defining
       // operation.
       assert(extraIndex->getDefiningStmt()->getNumResults() == 1 &&
              "single result op's expected to generate these indices");
-      // TODO: actually check if this is a result of an affine_apply op.
       assert((cast<MLValue>(extraIndex)->isValidDim() ||
               cast<MLValue>(extraIndex)->isValidSymbol()) &&
              "invalid memory op index");
-      auto *clonedExtraIndex =
-          cast<OperationStmt>(
-              builder.clone(*extraIndex->getDefiningStmt(), operandMap))
-              ->getResult(0);
-      operands.push_back(cast<MLValue>(clonedExtraIndex));
+      operands.push_back(cast<MLValue>(extraIndex));
     }
 
     // Construct new indices. The indices of a memref come right after it, i.e.,
@@ -162,4 +155,136 @@ bool mlir::replaceAllMemRefUsesWith(MLValue *oldMemRef, MLValue *newMemRef,
     opStmt->eraseFromBlock();
   }
   return true;
+}
+
+// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
+// its results equal to the number of 'operands, as a composition
+// of all other AffineApplyOps reachable from input parameter 'operands'. If the
+// operands were drawing results from multiple affine apply ops, this also leads
+// to a collapse into a single affine apply op. The final results of the
+// composed AffineApplyOp are returned in output parameter 'results'.
+OperationStmt *
+mlir::createComposedAffineApplyOp(MLFuncBuilder *builder, Location *loc,
+                                  ArrayRef<MLValue *> operands,
+                                  ArrayRef<OperationStmt *> affineApplyOps,
+                                  SmallVectorImpl<SSAValue *> &results) {
+  // Create identity map with same number of dimensions as number of operands.
+  auto map = builder->getMultiDimIdentityMap(operands.size());
+  // Initialize AffineValueMap with identity map.
+  AffineValueMap valueMap(map, operands);
+
+  for (auto *opStmt : affineApplyOps) {
+    assert(opStmt->is<AffineApplyOp>());
+    auto affineApplyOp = opStmt->getAs<AffineApplyOp>();
+    // Forward substitute 'affineApplyOp' into 'valueMap'.
+    valueMap.forwardSubstitute(*affineApplyOp);
+  }
+  // Compose affine maps from all ancestor AffineApplyOps.
+  // Create new AffineApplyOp from 'valueMap'.
+  unsigned numOperands = valueMap.getNumOperands();
+  SmallVector<SSAValue *, 4> outOperands(numOperands);
+  for (unsigned i = 0; i < numOperands; ++i) {
+    outOperands[i] = valueMap.getOperand(i);
+  }
+  // Create new AffineApplyOp based on 'valueMap'.
+  auto affineApplyOp =
+      builder->create<AffineApplyOp>(loc, valueMap.getAffineMap(), outOperands);
+  results.resize(operands.size());
+  for (unsigned i = 0, e = operands.size(); i < e; ++i) {
+    results[i] = affineApplyOp->getResult(i);
+  }
+  return cast<OperationStmt>(affineApplyOp->getOperation());
+}
+
+/// Given an operation statement, inserts a new single affine apply operation,
+/// that is exclusively used by this operation statement, and that provides all
+/// operands that are results of an affine_apply as a function of loop iterators
+/// and program parameters and whose results are.
+///
+/// Before
+///
+/// for %i = 0 to #map(%N)
+///   %idx = affine_apply (d0) -> (d0 mod 2) (%i)
+///   "send"(%idx, %A, ...)
+///   "compute"(%idx)
+///
+/// After
+///
+/// for %i = 0 to #map(%N)
+///   %idx = affine_apply (d0) -> (d0 mod 2) (%i)
+///   "send"(%idx, %A, ...)
+///   %idx_ = affine_apply (d0) -> (d0 mod 2) (%i)
+///   "compute"(%idx_)
+///
+/// This allows applying different transformations on send and compute (for eg.
+/// different shifts/delays).
+///
+/// Returns nullptr if none of the operands were the result of an affine_apply
+/// and thus there was no affine computation slice to create. Returns the newly
+/// affine_apply operation statement otherwise.
+///
+///
+OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
+  // Collect all operands that are results of affine apply ops.
+  SmallVector<MLValue *, 4> subOperands;
+  subOperands.reserve(opStmt->getNumOperands());
+  for (auto *operand : opStmt->getOperands()) {
+    auto *defStmt = operand->getDefiningStmt();
+    if (defStmt && defStmt->is<AffineApplyOp>()) {
+      subOperands.push_back(operand);
+    }
+  }
+
+  // Gather sequence of AffineApplyOps reachable from 'subOperands'.
+  SmallVector<OperationStmt *, 4> affineApplyOps;
+  getReachableAffineApplyOps(subOperands, affineApplyOps);
+  // Skip transforming if there are no affine maps to compose.
+  if (affineApplyOps.empty())
+    return nullptr;
+
+  // Check if all uses of the affine apply op's lie in this op stmt
+  // itself, in which case there would be nothing to do.
+  bool localized = true;
+  for (auto *op : affineApplyOps) {
+    for (auto *result : op->getResults()) {
+      for (auto &use : result->getUses()) {
+        if (use.getOwner() != opStmt) {
+          localized = false;
+          break;
+        }
+      }
+    }
+  }
+  if (localized)
+    return nullptr;
+
+  MLFuncBuilder builder(opStmt);
+  SmallVector<SSAValue *, 4> results;
+  auto *affineApplyStmt = createComposedAffineApplyOp(
+      &builder, opStmt->getLoc(), subOperands, affineApplyOps, results);
+  assert(results.size() == subOperands.size() &&
+         "number of results should be the same as the number of subOperands");
+
+  // Construct the new operands that include the results from the composed
+  // affine apply op above instead of existing ones (subOperands). So, they
+  // differ from opStmt's operands only for those operands in 'subOperands', for
+  // which they will be replaced by the corresponding one from 'results'.
+  SmallVector<MLValue *, 4> newOperands(opStmt->getOperands());
+  for (unsigned i = 0, e = newOperands.size(); i < e; i++) {
+    // Replace the subOperands from among the new operands.
+    unsigned j, f;
+    for (j = 0, f = subOperands.size(); j < f; j++) {
+      if (newOperands[i] == subOperands[j])
+        break;
+    }
+    if (j < subOperands.size()) {
+      newOperands[i] = cast<MLValue>(results[j]);
+    }
+  }
+
+  for (unsigned idx = 0; idx < newOperands.size(); idx++) {
+    opStmt->setOperand(idx, newOperands[idx]);
+  }
+
+  return affineApplyStmt;
 }

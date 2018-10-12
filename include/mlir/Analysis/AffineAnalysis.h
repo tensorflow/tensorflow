@@ -24,6 +24,7 @@
 #ifndef MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 
@@ -45,8 +46,8 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 void getReachableAffineApplyOps(
-    const llvm::SmallVector<MLValue *, 4> &operands,
-    llvm::SmallVector<OperationStmt *, 4> *affineApplyOps);
+    llvm::ArrayRef<MLValue *> operands,
+    llvm::SmallVectorImpl<OperationStmt *> &affineApplyOps);
 
 } // end namespace mlir
 
