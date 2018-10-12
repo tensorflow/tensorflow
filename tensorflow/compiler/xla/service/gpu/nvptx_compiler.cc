@@ -825,9 +825,8 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-NVPTXCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> module,
-    const AotCompilationOptions& options) {
+NVPTXCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+                                  const AotCompilationOptions& options) {
   return Unimplemented(
       "not yet implemented: NVPTXCompiler::CompileAheadOfTime");
 }
