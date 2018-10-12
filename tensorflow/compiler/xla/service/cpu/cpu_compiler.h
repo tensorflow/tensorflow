@@ -142,7 +142,7 @@ class CpuCompiler : public LLVMCompiler {
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                      const AotCompilationOptions& options) override;
 
   se::Platform::Id PlatformId() const override;

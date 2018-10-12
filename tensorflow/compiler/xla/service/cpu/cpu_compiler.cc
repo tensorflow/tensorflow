@@ -676,12 +676,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                 const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(!module_group->empty());
-  std::vector<std::unique_ptr<HloModule>> modules =
-      module_group->ConsumeModules();
-
+  TF_RET_CHECK(!modules.empty());
   std::call_once(llvm_command_line_options_initialized,
                  &llvm_ir::InitializeLLVMCommandLineOptions,
                  modules[0]->config());

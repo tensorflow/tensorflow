@@ -341,19 +341,18 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   }
 
   CHECK_EQ(module_protos.size(), module_configs.size());
-  auto module_group =
-      absl::make_unique<HloModuleGroup>(module_protos[0]->name());
+  std::vector<std::unique_ptr<HloModule>> modules;
   for (int64 i = 0; i < module_protos.size(); ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module, CreateModuleFromProto(*proto, config));
-    module_group->push_back(std::move(module));
+    modules.push_back(std::move(module));
   }
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(module_group),
-                                   std::move(executors), device_allocator));
+      backend->compiler()->Compile(std::move(modules), std::move(executors),
+                                   device_allocator));
 
   for (size_t i = 0; i < module_protos.size(); ++i) {
     if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
