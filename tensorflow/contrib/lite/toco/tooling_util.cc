@@ -2204,6 +2204,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt64;
     case BOOL:
       return ArrayDataType::kBool;
+    case STRING:
+      return ArrayDataType::kString;
     default:
       return ArrayDataType::kNone;
   }
