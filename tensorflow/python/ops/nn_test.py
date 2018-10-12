@@ -1074,7 +1074,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
   def _test(self, x_val, y_val_expected):
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_dim_map(x)
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.cached_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, y_val_expected)
 
@@ -1097,7 +1097,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y_val_expected = [2, 2, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="NCHW")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, y_val_expected)
 
@@ -1106,7 +1106,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y_val_expected = [2, 0, 1, 3, 2, 0, 1, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="HWNC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, y_val_expected)
 
@@ -1115,7 +1115,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y_val_expected = [3, 1, 0, 2, 3, 1, 0, 2]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_dim_map(x, src_format="NHWC", dst_format="WHCN")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, y_val_expected)
 
@@ -1124,7 +1124,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y_val_expected = [3, 2, 1, 0, 3, 2, 1, 0]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_dim_map(x, src_format="qwer", dst_format="rewq")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, y_val_expected)
 
@@ -1135,7 +1135,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x)
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
 
@@ -1143,7 +1143,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [7, 9, 3, 4])
 
@@ -1151,7 +1151,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="HWNC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [4, 9, 7, 3])
 
@@ -1159,7 +1159,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="HWNC", dst_format="NHWC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [9, 7, 4, 3])
 
@@ -1167,7 +1167,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x)
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
 
@@ -1175,7 +1175,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="NHWC", dst_format="HWNC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [[9, 3], [4, 5], [7, 4], [5, 1]])
 
@@ -1183,7 +1183,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="HWNC", dst_format="NHWC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [[4, 5], [7, 4], [9, 3], [5, 1]])
 
@@ -1191,7 +1191,7 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
-    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+    with self.session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
 
