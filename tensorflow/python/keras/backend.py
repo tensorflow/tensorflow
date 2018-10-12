@@ -57,6 +57,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -3133,11 +3134,13 @@ def rnn(step_function,
                   as 'states'. The first state in the list must be the
                   output tensor at the previous timestep.
       inputs: Tensor of temporal data of shape `(samples, time, ...)`
-          (at least 3D).
-      initial_states: Tensor with shape `(samples, output_dim)`
-          (no time dimension),
-          containing the initial values for the states used in
-          the step function.
+          (at least 3D), or nested tensors, and each of which has shape
+          `(samples, time, ...)`.
+      initial_states: Tensor with shape `(samples, state_size)`
+          (no time dimension), containing the initial values for the states used
+          in the step function. In the case that state_size is in a nested
+          shape, the shape of initial_states will also follow the nested
+          structure.
       go_backwards: Boolean. If True, do the iteration over the time
           dimension in reverse order and return the reversed sequence.
       mask: Binary tensor with shape `(samples, time, 1)`,
@@ -3169,21 +3172,31 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
-  ndim = len(inputs.shape)
-  if ndim < 3:
-    raise ValueError('Input should be at least 3D.')
-  inputs_shape = inputs.shape
+
+  def swap_batch_timestep(input_t):
+    # Swap the batch and timestep dim for the incoming tensor.
+    axes = list(range(len(input_t.shape)))
+    axes[0], axes[1] = 1, 0
+    return array_ops.transpose(input_t, axes)
+
   if not time_major:
-    axes = [1, 0] + list(range(2, ndim))
-    inputs = array_ops.transpose(inputs, axes)
+    inputs = nest.map_structure(swap_batch_timestep, inputs)
+
+  flatted_inputs = nest.flatten(inputs)
+  time_steps = flatted_inputs[0].shape[0]
+  batch = flatted_inputs[0].shape[1]
+  time_steps_t = array_ops.shape(flatted_inputs[0])[0]
+
+  for input_ in flatted_inputs:
+    input_.get_shape().with_rank_at_least(3)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
-    if len(mask.shape) == ndim - 1:
+    if len(mask.shape) == 2:
       mask = expand_dims(mask)
     if not time_major:
-      mask = array_ops.transpose(mask, axes)
+      mask = swap_batch_timestep(mask)
 
   if constants is None:
     constants = []
@@ -3191,40 +3204,61 @@ def rnn(step_function,
   global uses_learning_phase  # pylint: disable=global-variable-undefined
   uses_learning_phase = False
 
+  # tf.where needs its condition tensor to be the same shape as its two
+  # result tensors, but in our case the condition (mask) tensor is
+  # (nsamples, 1), and inputs are (nsamples, ndimensions) or even more.
+  # So we need to broadcast the mask to match the shape of inputs.
+  # That's what the tile call does, it just repeats the mask along its
+  # second dimension n times.
+  def _expand_mask(mask_t, input_t):
+    assert not nest.is_sequence(mask_t)
+    assert not nest.is_sequence(input_t)
+    rank_diff = len(input_t.shape) - len(mask_t.shape)
+    for _ in range(rank_diff):
+      mask_t = array_ops.expand_dims(mask_t)
+    expand_dims = [1] + input_t.shape.as_list()[1:]
+    return array_ops.tile(mask_t, expand_dims)
+
   if unroll:
-    if not inputs.shape[0]:
+    if not time_steps:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
     states = initial_states
     successive_states = []
     successive_outputs = []
 
-    input_list = array_ops.unstack(inputs)
-    if go_backwards:
-      input_list.reverse()
+    # Process the input tensors. The input tensor need to be split on the
+    # time_step dim, and reverse if go_backwards is True. In the case of nested
+    # input, the input is flattened and then transformed individually.
+    # The result of this will be a tuple of lists, each of the item in tuple is
+    # list of the tensor with shape (batch, feature)
+    def _process_single_input_t(input_t):
+      input_t = array_ops.unstack(input_t)  # unstack for time_step dim
+      if go_backwards:
+        input_t.reverse()
+      return input_t
+
+    if nest.is_sequence(inputs):
+      processed_input = nest.map_structure(_process_single_input_t, inputs)
+    else:
+      processed_input = (_process_single_input_t(inputs),)
+
+    def _get_input_tensor(time):
+      inp = [t_[time] for t_ in processed_input]
+      return nest.pack_sequence_as(inputs, inp)
 
     if mask is not None:
       mask_list = array_ops.unstack(mask)
       if go_backwards:
         mask_list.reverse()
 
-      for inp, mask_t in zip(input_list, mask_list):
+      for i in range(time_steps):
+        inp = _get_input_tensor(i)
+        mask_t = mask_list[i]
         output, new_states = step_function(inp, states + constants)
         if getattr(output, '_uses_learning_phase', False):
           uses_learning_phase = True
 
-        # tf.where needs its condition tensor
-        # to be the same shape as its two
-        # result tensors, but in our case
-        # the condition (mask) tensor is
-        # (nsamples, 1), and A and B are (nsamples, ndimensions).
-        # So we need to
-        # broadcast the mask to match the shape of A and B.
-        # That's what the tile call does,
-        # it just repeats the mask along its second dimension
-        # n times.
-        tiled_mask_t = array_ops.tile(mask_t,
-                                      array_ops.stack(
-                                          [1, array_ops.shape(output)[1]]))
+        tiled_mask_t = _expand_mask(mask_t, output)
 
         if not successive_outputs:
           prev_output = zeros_like(output)
@@ -3236,10 +3270,7 @@ def rnn(step_function,
         return_states = []
         for state, new_state in zip(states, new_states):
           # (see earlier comment for tile explanation)
-          tiled_mask_t = array_ops.tile(mask_t,
-                                        array_ops.stack(
-                                            [1,
-                                             array_ops.shape(new_state)[1]]))
+          tiled_mask_t = _expand_mask(mask_t, new_state)
           return_states.append(array_ops.where(tiled_mask_t, new_state, state))
         states = return_states
         successive_outputs.append(output)
@@ -3248,7 +3279,8 @@ def rnn(step_function,
       new_states = successive_states[-1]
       outputs = array_ops.stack(successive_outputs)
     else:
-      for inp in input_list:
+      for i in range(time_steps):
+        inp = _get_input_tensor(i)
         output, states = step_function(inp, states + constants)
         if getattr(output, '_uses_learning_phase', False):
           uses_learning_phase = True
@@ -3259,18 +3291,38 @@ def rnn(step_function,
       outputs = array_ops.stack(successive_outputs)
 
   else:
-    if go_backwards:
-      inputs = reverse(inputs, 0)
-
     states = tuple(initial_states)
 
-    time_steps = array_ops.shape(inputs)[0]
-    outputs, _ = step_function(inputs[0], initial_states + constants)
-    output_ta = tensor_array_ops.TensorArray(
-        dtype=outputs.dtype, size=time_steps, tensor_array_name='output_ta')
-    input_ta = tensor_array_ops.TensorArray(
-        dtype=inputs.dtype, size=time_steps, tensor_array_name='input_ta')
-    input_ta = input_ta.unstack(inputs)
+    # Create input tensor array, if the inputs is nested tensors, then it will
+    # be flattened first, and tensor array will be created one per flattened
+    # tensor.
+    input_ta = tuple(
+        tensor_array_ops.TensorArray(
+            dtype=inp.dtype,
+            size=time_steps_t,
+            tensor_array_name='input_ta_%s' % i)
+        for i, inp in enumerate(flatted_inputs))
+    input_ta = tuple(
+        ta.unstack(input_) if not go_backwards else ta
+        .unstack(reverse(input_, 0))
+        for ta, input_ in zip(input_ta, flatted_inputs))
+
+    # Get the time(0) input and compute the output for that, the output will be
+    # used to determine the dtype of output tensor array. Don't read from
+    # input_ta due to TensorArray clear_after_read default to True.
+    input_time_zero = nest.pack_sequence_as(inputs,
+                                            [inp[0] for inp in flatted_inputs])
+    # output_time_zero is used to determine the cell output shape and its dtype.
+    # the value is discarded.
+    output_time_zero, _ = step_function(input_time_zero,
+                                        initial_states + constants)
+    output_ta = tuple(
+        tensor_array_ops.TensorArray(
+            dtype=out.dtype,
+            size=time_steps_t,
+            tensor_array_name='output_ta_%s' % i)
+        for i, out in enumerate(nest.flatten(output_time_zero)))
+
     time = constant_op.constant(0, dtype='int32', name='time')
 
     if mask is not None:
@@ -3286,7 +3338,7 @@ def rnn(step_function,
 
       mask_ta = tensor_array_ops.TensorArray(
           dtype=dtypes_module.bool,
-          size=time_steps,
+          size=time_steps_t,
           tensor_array_name='mask_ta')
       mask_ta = mask_ta.unstack(mask)
 
@@ -3301,30 +3353,38 @@ def rnn(step_function,
         Returns:
             Tuple: `(time + 1,output_ta_t) + tuple(new_states)`
         """
-        current_input = input_ta.read(time)
+        current_input = tuple(ta.read(time) for ta in input_ta)
+        # maybe set shape.
+        current_input = nest.pack_sequence_as(inputs, current_input)
         mask_t = mask_ta.read(time)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
         if getattr(output, '_uses_learning_phase', False):
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
-        for state, new_state in zip(states, new_states):
+
+        flat_output = nest.flatten(output)
+        # This assume the state[0] is same shape as the output
+        flat_previous_output = nest.flatten(states[0])
+        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
+        flat_new_output = tuple(
+            array_ops.where(m, o, po) for m, o, po in zip(
+                tiled_mask_t, flat_output, flat_previous_output))
+
+        # mask states
+        flat_state = nest.flatten(states)
+        flat_new_state = nest.flatten(new_states)
+        for state, new_state in zip(flat_state, flat_new_state):
           new_state.set_shape(state.shape)
-        tiled_mask_t = array_ops.tile(mask_t,
-                                      array_ops.stack(
-                                          [1, array_ops.shape(output)[1]]))
-        output = array_ops.where(tiled_mask_t, output, states[0])
+        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
+        flat_final_state = tuple(
+            array_ops.where(m, o, po)
+            for m, o, po in zip(tiled_mask_t, flat_new_state, flat_state))
+        new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
-        masked_states = []
-        for i in range(len(states)):
-          states_dim = array_ops.shape(new_states[i])[1]
-          stacked_states_dim = array_ops.stack([1, states_dim])
-          tiled_mask = array_ops.tile(mask_t, stacked_states_dim)
-          masked_state = array_ops.where(tiled_mask, new_states[i], states[i])
-          masked_states.append(masked_state)
-        new_states = masked_states
-
-        output_ta_t = output_ta_t.write(time, output)
+        output_ta_t = tuple(
+            ta.write(time, out)
+            for ta, out in zip(output_ta_t, flat_new_output))
         return (time + 1, output_ta_t) + tuple(new_states)
     else:
 
@@ -3339,19 +3399,26 @@ def rnn(step_function,
         Returns:
             Tuple: `(time + 1,output_ta_t) + tuple(new_states)`
         """
-        current_input = input_ta.read(time)
+        current_input = tuple(ta.read(time) for ta in input_ta)
+        current_input = nest.pack_sequence_as(inputs, current_input)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
         if getattr(output, '_uses_learning_phase', False):
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
-        for state, new_state in zip(states, new_states):
+
+        flat_state = nest.flatten(states)
+        flat_new_state = nest.flatten(new_states)
+        for state, new_state in zip(flat_state, flat_new_state):
           new_state.set_shape(state.shape)
-        output_ta_t = output_ta_t.write(time, output)
+
+        flat_output = nest.flatten(output)
+        output_ta_t = tuple(
+            ta.write(time, out) for ta, out in zip(output_ta_t, flat_output))
         return (time + 1, output_ta_t) + tuple(new_states)
 
     final_outputs = control_flow_ops.while_loop(
-        cond=lambda time, *_: time < time_steps,
+        cond=lambda time, *_: time < time_steps_t,
         body=_step,
         loop_vars=(time, output_ta) + states,
         maximum_iterations=input_length,
@@ -3361,21 +3428,27 @@ def rnn(step_function,
     output_ta = final_outputs[1]
     new_states = final_outputs[2:]
 
-    outputs = output_ta.stack()
-    last_output = output_ta.read(last_time - 1)
+    outputs = tuple(o.stack() for o in output_ta)
+    outputs = nest.pack_sequence_as(output_time_zero, outputs)
+    last_output = tuple(o.read(last_time - 1) for o in output_ta)
+    if not context.executing_eagerly():
+      for o in last_output:
+        o._uses_learning_phase = uses_learning_phase
+    last_output = nest.pack_sequence_as(output_time_zero, last_output)
+
+  # static shape inference
+  def set_shape(output_):
+    shape = output_.shape.as_list()
+    shape[0] = time_steps
+    shape[1] = batch
+    output_.set_shape(shape)
+    return output_
+
+  outputs = nest.map_structure(set_shape, outputs)
 
   if not time_major:
-    axes = [1, 0] + list(range(2, len(outputs.shape)))
-    outputs = array_ops.transpose(outputs, axes)
+    outputs = nest.map_structure(swap_batch_timestep, outputs)
 
-  # Static shape inference: (samples, time, ...) or (time, sample, ...)
-  outputs_shape = outputs.shape.as_list()
-  outputs_shape[0] = inputs_shape[0]
-  outputs_shape[1] = inputs_shape[1]
-  outputs.set_shape(outputs_shape)
-
-  if not context.executing_eagerly():
-    last_output._uses_learning_phase = uses_learning_phase
   return last_output, outputs, new_states
 
 
