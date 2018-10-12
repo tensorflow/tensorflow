@@ -614,6 +614,9 @@ class Graph {
                          std::vector<OutputTensor> body_outputs,
                          WhileContext** result);
 
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
