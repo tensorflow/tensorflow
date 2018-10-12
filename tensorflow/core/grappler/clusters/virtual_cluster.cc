@@ -70,8 +70,8 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
-  TF_RETURN_IF_ERROR(scheduler.Init());
+  VirtualScheduler scheduler(true, this, node_manager_.get());
+  TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {
     metadata->clear_step_stats();

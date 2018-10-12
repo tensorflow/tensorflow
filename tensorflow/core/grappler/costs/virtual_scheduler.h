@@ -252,12 +252,26 @@ class CompositeNodeManager : public ReadyNodeManager {
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
+  // TODO(pcma): Modify power_analyzer.cc to use new API's.
+  // DEPRECATED
   VirtualScheduler(const GrapplerItem* grappler_item,
                    const bool use_static_shapes, Cluster* cluster,
                    ReadyNodeManager* ready_nodes);
-  // Initializes NodeState and DeviceState from grappler_item_ and
-  // graph_properties_.
+  // DEPRECATED
   Status Init();
+
+  // Does not take ownership of cluster or ready_nodes.
+  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes);
+  // Initializes the scheduler for the specific grappler item.
+  // Should be called immediately after the c'tor or when the scheduler will be
+  // reused for a new grappler item. All internal states of the scheduler
+  // related to the previous grappler item will be reset/cleared.
+  //
+  // This function should be called at least once after the scheduler is
+  // constructed. An uninitialized or failed-to-initialize scheduler will cause
+  // undefined behavior.
+  Status Init(const GrapplerItem* item);
 
   OpContext GetCurrNode() const;
 
@@ -269,6 +283,10 @@ class VirtualScheduler {
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
+  // Generate RunMetadata's step_stats and partition_graphs fields from results
+  // of the virtual execution of the graph.
+  void GenerateRunMetadata(RunMetadata* metadata);
+
   // Methods called from constructor.
   static ReadyNodeManager* ReadyNodeManagerFactory(
       const string& ready_node_manager);
@@ -326,8 +344,8 @@ class VirtualScheduler {
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
   // Auxiliary data structures for constructing NodeState and DeviceState.
-  GraphProperties graph_properties_;
-  Cluster* cluster_;  // Not owned.
+  std::unique_ptr<GraphProperties> graph_properties_;  // Initialized in Init().
+  Cluster* cluster_;                                   // Not owned.
 
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
