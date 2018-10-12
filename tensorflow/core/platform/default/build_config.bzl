@@ -166,10 +166,10 @@ def cc_proto_library(
         proto_gen(
             name = name + "_genproto",
             srcs = srcs,
-            deps = [s + "_genproto" for s in deps],
             includes = includes,
             protoc = protoc,
             visibility = ["//visibility:public"],
+            deps = [s + "_genproto" for s in deps],
         )
 
         # An empty cc_library to make rule dependency consistent.
@@ -193,15 +193,15 @@ def cc_proto_library(
     proto_gen(
         name = name + "_genproto",
         srcs = srcs,
-        deps = [s + "_genproto" for s in deps],
+        outs = outs,
+        gen_cc = 1,
         includes = includes,
-        protoc = protoc,
         plugin = grpc_cpp_plugin,
         plugin_language = "grpc",
         plugin_options = plugin_options,
-        gen_cc = 1,
-        outs = outs,
+        protoc = protoc,
         visibility = ["//visibility:public"],
+        deps = [s + "_genproto" for s in deps],
     )
 
     if use_grpc_plugin:
@@ -286,14 +286,14 @@ def py_proto_library(
     proto_gen(
         name = name + "_genproto",
         srcs = srcs,
-        deps = [s + "_genproto" for s in deps],
-        includes = includes,
-        protoc = protoc,
-        gen_py = 1,
         outs = outs,
-        visibility = ["//visibility:public"],
+        gen_py = 1,
+        includes = includes,
         plugin = grpc_python_plugin,
         plugin_language = "grpc",
+        protoc = protoc,
+        visibility = ["//visibility:public"],
+        deps = [s + "_genproto" for s in deps],
     )
 
     if default_runtime and not default_runtime in py_libs + deps:
@@ -345,14 +345,13 @@ def tf_proto_library_cc(
         # libraries containing all the sources.
         proto_gen(
             name = cc_name + "_genproto",
-            deps = [s + "_genproto" for s in cc_deps],
             protoc = "@protobuf_archive//:protoc",
             visibility = ["//visibility:public"],
+            deps = [s + "_genproto" for s in cc_deps],
         )
         native.cc_library(
             name = cc_name,
-            deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] +
-                   if_static([name + "_cc_impl"]),
+            deps = cc_deps + ["@protobuf_archive//:protobuf_headers"] + if_static([name + "_cc_impl"]),
             testonly = testonly,
             visibility = visibility,
         )
@@ -365,8 +364,8 @@ def tf_proto_library_cc(
 
     cc_proto_library(
         name = cc_name,
+        testonly = testonly,
         srcs = srcs,
-        deps = cc_deps + ["@protobuf_archive//:cc_wkt_protos"],
         cc_libs = cc_libs + if_static(
             ["@protobuf_archive//:protobuf"],
             ["@protobuf_archive//:protobuf_headers"],
@@ -376,11 +375,11 @@ def tf_proto_library_cc(
             "-Wno-unused-but-set-variable",
             "-Wno-sign-compare",
         ]),
+        default_header = default_header,
         protoc = "@protobuf_archive//:protoc",
         use_grpc_plugin = use_grpc_plugin,
-        testonly = testonly,
         visibility = visibility,
-        default_header = default_header,
+        deps = cc_deps + ["@protobuf_archive//:cc_wkt_protos"],
     )
 
 def tf_proto_library_py(
@@ -399,9 +398,9 @@ def tf_proto_library_py(
         # libraries containing all the sources.
         proto_gen(
             name = py_name + "_genproto",
-            deps = [s + "_genproto" for s in py_deps],
             protoc = "@protobuf_archive//:protoc",
             visibility = ["//visibility:public"],
+            deps = [s + "_genproto" for s in py_deps],
         )
         native.py_library(
             name = py_name,
@@ -413,14 +412,14 @@ def tf_proto_library_py(
 
     py_proto_library(
         name = py_name,
-        srcs = srcs,
-        srcs_version = srcs_version,
-        deps = deps + py_deps + ["@protobuf_archive//:protobuf_python"],
-        protoc = "@protobuf_archive//:protoc",
-        default_runtime = "@protobuf_archive//:protobuf_python",
-        visibility = visibility,
         testonly = testonly,
+        srcs = srcs,
+        default_runtime = "@protobuf_archive//:protobuf_python",
+        protoc = "@protobuf_archive//:protoc",
+        srcs_version = srcs_version,
         use_grpc_plugin = use_grpc_plugin,
+        visibility = visibility,
+        deps = deps + py_deps + ["@protobuf_archive//:protobuf_python"],
     )
 
 def tf_jspb_proto_library(**kwargs):
@@ -452,23 +451,23 @@ def tf_proto_library(
 
     tf_proto_library_cc(
         name = name,
+        testonly = testonly,
         srcs = srcs,
-        protodeps = protodeps,
         cc_grpc_version = cc_grpc_version,
         cc_libs = cc_libs,
-        testonly = testonly,
-        visibility = visibility,
         default_header = default_header,
+        protodeps = protodeps,
+        visibility = visibility,
     )
 
     tf_proto_library_py(
         name = name,
+        testonly = testonly,
         srcs = srcs,
         protodeps = protodeps,
         srcs_version = "PY2AND3",
-        testonly = testonly,
-        visibility = visibility,
         use_grpc_plugin = has_services,
+        visibility = visibility,
     )
 
 # A list of all files under platform matching the pattern in 'files'. In
@@ -632,13 +631,30 @@ def tf_additional_lib_deps():
 def tf_additional_core_deps():
     return select({
         "//tensorflow:android": [],
-        "//tensorflow:windows": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
-            "//tensorflow/core/platform/s3:s3_file_system",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_hdfs_support": [],
+        "//conditions:default": [
             "//tensorflow/core/platform/hadoop:hadoop_file_system",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
+            "//tensorflow/core/platform/s3:s3_file_system",
         ],
     })
 
@@ -646,9 +662,10 @@ def tf_additional_core_deps():
 def tf_additional_cloud_op_deps():
     return select({
         "//tensorflow:android": [],
-        "//tensorflow:windows": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
             "//tensorflow/contrib/cloud:gcs_config_ops_op_lib",
@@ -659,9 +676,10 @@ def tf_additional_cloud_op_deps():
 def tf_additional_cloud_kernel_deps():
     return select({
         "//tensorflow:android": [],
-        "//tensorflow:windows": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
             "//tensorflow/contrib/cloud/kernels:gcs_config_ops",
