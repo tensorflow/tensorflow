@@ -75,7 +75,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
   def testReduceLogSumExp(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         y_tf_np = math_ops.reduce_logsumexp(x_np).eval()
         y_np = log(np.sum(exp(x_np)))
         self.assertAllClose(y_tf_np, y_np)
@@ -83,7 +83,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
   def testReductionIndices(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=[0])
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
@@ -93,7 +93,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
   def testReductionIndices2(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=0)
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
@@ -103,7 +103,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
   def testKeepDims(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         y_tf_np = math_ops.reduce_logsumexp(x_np, keepdims=True).eval()
         self.assertEqual(y_tf_np.ndim, x_np.ndim)
         y_np = log(np.sum(exp(x_np), keepdims=True))
@@ -120,7 +120,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         if out == np.inf:
           raise RuntimeWarning("overflow encountered in exp")
 
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x_tf = constant_op.constant(x_np, shape=x_np.shape)
         y_tf_np = math_ops.reduce_logsumexp(x_tf).eval()
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
@@ -137,14 +137,14 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         if out == -np.inf:
           raise RuntimeWarning("divide by zero encountered in log")
 
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x_tf = constant_op.constant(x_np, shape=x_np.shape)
         y_tf_np = math_ops.reduce_logsumexp(x_tf).eval()
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
         self.assertAllClose(y_tf_np, y_np)
 
   def testInfinity(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       res = math_ops.reduce_logsumexp(-np.inf).eval()
       self.assertEqual(-np.inf, res)
 
@@ -172,7 +172,7 @@ class ModTest(test_util.TensorFlowTestCase):
       # Test scalar and vector versions.
       for denom in [x[0], [x[0]] * 3]:
         x_np = np.array(x, dtype=dtype)
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           x_tf = constant_op.constant(x_np, shape=x_np.shape)
           y_tf = math_ops.mod(x_tf, denom)
           y_tf_np = y_tf.eval()
@@ -185,7 +185,7 @@ class ModTest(test_util.TensorFlowTestCase):
       # Test scalar and vector versions.
       for denom in [x[0], x]:
         x_np = np.array(x, dtype=dtype)
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           x_tf = constant_op.constant(x_np, shape=x_np.shape)
           y_tf = math_ops.mod(x_tf, denom)
           y_tf_np = y_tf.eval()
@@ -293,7 +293,7 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
     np.random.seed(12345)
     x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
     tf_x = ops.convert_n_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllClose(x[0] * 5, math_ops.accumulate_n([tf_x[0]] * 5).eval())
 
@@ -301,7 +301,7 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
     np.random.seed(54321)
     x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
     tf_x = ops.convert_n_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllEqual(x[0] * 6, math_ops.accumulate_n([tf_x[0]] * 6).eval())
 
@@ -318,7 +318,7 @@ class AddNTest(test_util.TensorFlowTestCase):
                         constant_op.constant(1)]))
 
     res = math_ops.add_n(partials) + constant_op.constant(0)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(res.eval(), 100)
 
   def testFloat(self):
@@ -326,7 +326,7 @@ class AddNTest(test_util.TensorFlowTestCase):
     for num_inputs in range(1, 10):
       x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(num_inputs)]
       tf_x = ops.convert_n_to_tensor(x)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         self.assertAllClose(sum(x), math_ops.add_n(tf_x).eval())
         self.assertAllClose(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
@@ -339,7 +339,7 @@ class AddNTest(test_util.TensorFlowTestCase):
           for _ in range(num_inputs)
       ]
       tf_x = ops.convert_n_to_tensor(x)
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         self.assertAllEqual(sum(x), math_ops.add_n(tf_x).eval())
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
@@ -347,7 +347,7 @@ class AddNTest(test_util.TensorFlowTestCase):
   def testGrad(self):
     np.random.seed(42)
     for num_inputs in range(1, 10):
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         input_vars = [
             variables.Variable(10.0 * np.random.random())
             for i in range(0, num_inputs)

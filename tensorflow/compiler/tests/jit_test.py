@@ -276,7 +276,7 @@ class XlaCompilationTest(test.TestCase):
   def testReshape(self):
     """Tests an operator with compile-time constant and non-constant inputs."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as sess:
+    with self.session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -303,7 +303,7 @@ class XlaCompilationTest(test.TestCase):
   def testIgnoredArguments(self):
     """Tests that JIT computations can ignore formal parameters."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as sess:
+    with self.session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.int32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -331,7 +331,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoops(self):
     """Tests that compilation accepts computations containing loops."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as session:
+    with self.session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         c = lambda i, _: math_ops.less(i, 5)
@@ -349,7 +349,7 @@ class XlaCompilationTest(test.TestCase):
   def testCond(self):
     """Tests that compilation handles switch operators."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as session:
+    with self.session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
       c = array_ops.placeholder(dtypes.bool)
@@ -394,7 +394,7 @@ class XlaCompilationTest(test.TestCase):
       inp = array_ops.placeholder(dtypes.float32)
       out = Entry(inp)
 
-    with self.test_session(
+    with self.session(
         config=NoRewriteSessionConfig(), graph=g, use_gpu=True) as sess:
       run_metadata = config_pb2.RunMetadata()
       val = sess.run(out,
@@ -407,7 +407,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoopDeadlock(self):
     """Regression test for bug that caused deadlocks in graphs with loops."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as session:
+    with self.session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         y = x + 1.0

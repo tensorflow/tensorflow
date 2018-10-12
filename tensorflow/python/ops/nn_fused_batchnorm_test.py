@@ -66,7 +66,7 @@ class BatchNormalizationTest(test.TestCase):
     mean_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     var_val = np.random.random_sample(scale_shape).astype(scale_dtype)
 
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
@@ -115,7 +115,7 @@ class BatchNormalizationTest(test.TestCase):
     x_val = np.random.random_sample(x_shape).astype(x_dtype)
     scale_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     offset_val = np.random.random_sample(scale_shape).astype(scale_dtype)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
@@ -190,7 +190,7 @@ class BatchNormalizationTest(test.TestCase):
     scale_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     offset_val = np.random.random_sample(scale_shape).astype(scale_dtype)
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       x = constant_op.constant(x_val, name='x')
       scale = constant_op.constant(scale_val, name='scale')
       offset = constant_op.constant(offset_val, name='offset')
@@ -252,7 +252,7 @@ class BatchNormalizationTest(test.TestCase):
     scale_val = np.random.random_sample(scale_shape).astype(scale_dtype)
     offset_val = np.random.random_sample(scale_shape).astype(scale_dtype)
 
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       x = constant_op.constant(x_val, name='x')
       grad_y = constant_op.constant(grad_y_val, name='grad_y')
       scale = constant_op.constant(scale_val, name='scale')
