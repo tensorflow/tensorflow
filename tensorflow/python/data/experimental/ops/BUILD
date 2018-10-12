@@ -269,6 +269,16 @@ py_library(
 )
 
 py_library(
+    name = "sleep",
+    srcs = ["sleep.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "stats_ops",
     srcs = ["stats_ops.py"],
     srcs_version = "PY2AND3",
@@ -366,6 +376,7 @@ py_library(
         ":resampling",
         ":scan_ops",
         ":shuffle_ops",
+        ":sleep",
         ":stats_ops",
         ":threadpool",
         ":unique",
