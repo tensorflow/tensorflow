@@ -2982,7 +2982,8 @@ bool HloParser::ParseShape(Shape* result) {
   }
 
   if (lexer_.GetKind() != TokKind::kShape) {
-    return TokenError("expects shape");
+    return TokenError(absl::StrCat("expected shape, saw ",
+                                   TokKindToString(lexer_.GetKind())));
   }
   *result = lexer_.GetShapeVal();
   lexer_.Lex();

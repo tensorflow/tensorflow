@@ -597,7 +597,8 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
   // we convert in to the RE2-consumable type and then consume the corresponding
   // amount from our string_view type.
   static LazyRE2 shape_pattern = {
-      "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
+      "^(\\w*\\d*)\\[([\\d,\\s]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,\\s]+)})"
+      "?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
   if (RE2::Consume(&s_consumable, *shape_pattern, &element_type_string,
                    &dimensions_string, &format_string, &layout_string)) {
