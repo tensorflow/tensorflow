@@ -113,6 +113,11 @@ class BaseOperator {
   OperatorType type_;
 };
 
+// Helper function to determine if a unsupported TensorFlow op should be
+// exported as an Flex op or a regular custom op.
+bool ShouldExportAsFlexOp(bool allow_flex_ops,
+                          const string& tensorflow_op_name);
+
 }  // namespace tflite
 
 }  // namespace toco
