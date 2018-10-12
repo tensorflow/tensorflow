@@ -704,8 +704,8 @@ REGISTER_OP("LRNGrad")
 
 REGISTER_OP("MaxPool")
     .Attr(
-         "T: {half, bfloat16, float, double, int32, int64, uint8, int16, int8, "
-         "uint16, qint8} = DT_FLOAT")
+        "T: {half, bfloat16, float, double, int32, int64, uint8, int16, int8, "
+        "uint16, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -716,8 +716,8 @@ REGISTER_OP("MaxPool")
 
 REGISTER_OP("MaxPoolV2")
     .Attr(
-         "T: {half, bfloat16, float, double, int32, int64, uint8, int16, int8, "
-         "uint16, qint8} = DT_FLOAT")
+        "T: {half, bfloat16, float, double, int32, int64, uint8, int16, int8, "
+        "uint16, qint8} = DT_FLOAT")
     .Attr(GetPaddingAttrString())
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
@@ -2262,8 +2262,8 @@ REGISTER_OP("_MklInputConversion")
     .Output("mkl_output_1: uint8")
     // All datatypes supported by element-wise ops
     .Attr(
-         "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
-         "complex64, complex128}")
+        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
+        "complex64, complex128}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
