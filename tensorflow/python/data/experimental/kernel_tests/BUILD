@@ -565,6 +565,19 @@ py_test(
     ],
 )
 
+py_test(
+    name = "sleep_test",
+    srcs = ["sleep_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:sleep",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
 py_library(
     name = "sql_dataset_test_base",
     srcs = ["sql_dataset_test_base.py"],
