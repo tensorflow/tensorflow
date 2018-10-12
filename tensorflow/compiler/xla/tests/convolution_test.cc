@@ -883,7 +883,7 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 // (We run this test on all platforms, because, what the heck.)
 XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "cudnn-convolution-algorithm-picker");
+      "cudnn-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
