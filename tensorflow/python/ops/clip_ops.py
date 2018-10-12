@@ -160,7 +160,7 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   return tclip
 
 
-@tf_export("linalg.global_norm", "global_norm")
+@tf_export("linalg.global_norm", v1=["linalg.global_norm", "global_norm"])
 @deprecation.deprecated_endpoints("global_norm")
 def global_norm(t_list, name=None):
   """Computes the global norm of multiple tensors.
