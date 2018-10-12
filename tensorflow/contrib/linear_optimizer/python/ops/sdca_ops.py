@@ -204,7 +204,7 @@ class SdcaModel(object):
             with ops.colocate_with(v):
               # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109
               # is fixed.
-              slot_var = var_ops.Variable(
+              slot_var = var_ops.VariableV1(
                   initial_value=array_ops.zeros_like(v.initialized_value(),
                                                      dtypes.float32),
                   name=v.op.name + '_unshrinked/SDCAOptimizer')
@@ -216,7 +216,7 @@ class SdcaModel(object):
             # TODO(andreasst): remove SDCAOptimizer suffix once bug 30843109 is
             # fixed.
             self._slots['unshrinked_' + name].append(
-                var_ops.Variable(
+                var_ops.VariableV1(
                     array_ops.zeros_like(var.initialized_value(),
                                          dtypes.float32),
                     name=var.op.name + '_unshrinked/SDCAOptimizer'))
