@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "mkldnn.hpp"
+#include "tensorflow/core/util/mkl_util.h"
 using mkldnn::stream;
 
 namespace tensorflow {

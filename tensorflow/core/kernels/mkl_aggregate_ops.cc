@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "mkldnn.hpp"
+#include "tensorflow/core/util/mkl_util.h"
 using mkldnn::stream;
 using mkldnn::sum;
 
