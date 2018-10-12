@@ -41,6 +41,7 @@ def _traverse_internal(root, visit, stack, path):
       for enum_member in root.__members__.items():
         if enum_member not in children:
           children.append(enum_member)
+      children = sorted(children)
   except ImportError:
     # On some Python installations, some modules do not support enumerating
     # members (six in particular), leading to import errors.
