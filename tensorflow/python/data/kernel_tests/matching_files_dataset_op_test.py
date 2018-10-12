@@ -48,7 +48,7 @@ class MatchingFilesDatasetTest(test_base.DatasetTestBase):
   def testNonExistingDirectory(self):
     """Test the MatchingFiles dataset with a non-existing directory"""
 
-    self.tearDown()
+    self.tmp_dir = os.path.join(self.tmp_dir, "nonexistingdir")
     dataset = MatchingFilesDataset(os.path.join(self.tmp_dir, '*'))
     with self.cached_session() as sess:
       next_element = dataset.make_one_shot_iterator().get_next()
