@@ -46,6 +46,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
@@ -1919,7 +1920,7 @@ class AutomaticControlDependencies(object):
     # this.
     for op in new_operations:
       # TODO(apassos) make this code safely support while loops.
-      if isinstance(op._control_flow_context, control_flow_ops.WhileContext):  # pylint: disable=protected-access
+      if control_flow_util.IsInWhileLoop(op):
         continue
       control_inputs = set()
       # Ensure stateful ops run
