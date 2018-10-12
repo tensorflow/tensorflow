@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.compiler.tests import test_utils
 from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.layers import layers
@@ -29,7 +30,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 jit_scope = jit.experimental_jit_scope
-
 
 def GetRunMetadataLabels(run_metadata):
   """Returns all labels in run_metadata."""
@@ -74,7 +74,8 @@ class DenseLayerTest(test.TestCase):
 
       sess.run(variables.initialize_all_variables())
       run_metadata = config_pb2.RunMetadata()
-      sess.run(
+      test_utils.RunWithWarmup(
+          sess,
           y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
@@ -98,7 +99,8 @@ class DenseLayerTest(test.TestCase):
 
       sess.run(variables.initialize_all_variables())
       run_metadata = config_pb2.RunMetadata()
-      sess.run(
+      test_utils.RunWithWarmup(
+          sess,
           y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
@@ -126,7 +128,8 @@ class DenseLayerTest(test.TestCase):
 
       sess.run(variables.initialize_all_variables())
       run_metadata = config_pb2.RunMetadata()
-      sess.run(
+      test_utils.RunWithWarmup(
+          sess,
           y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
@@ -138,4 +141,6 @@ class DenseLayerTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_enable_lazy_compilation=true " +
+                                os.environ.get("TF_XLA_FLAGS", ""))
   test.main()
